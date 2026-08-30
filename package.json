@@ -11,6 +11,7 @@
     "check:mutation": "bash scripts/checks/mutation.sh",
     "check:deps": "bash scripts/checks/deps.sh",
     "check:security": "bash scripts/checks/security.sh",
+    "check:secrets": "bash scripts/checks/secrets.sh",
     "start": "react-native start",
     "test": "jest"
   },

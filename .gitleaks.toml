@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore vendored and generated paths"
+paths = [
+  '''ios/Pods/.*''',
+  '''vendor/.*''',
+  '''node_modules/.*''',
+  # CocoaPods lockfile: SHA1 checksums of each pod spec/source, not
+  # secrets. Confirmed false positive against generic-api-key
+  # (fingerprint ios/Podfile.lock:generic-api-key:1966).
+  '''ios/Podfile\.lock''',
+]
