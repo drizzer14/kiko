@@ -1,0 +1,17 @@
+{
+  "threshold": 5,
+  "minTokens": 50,
+  "minLines": 5,
+  "reporters": ["console", "threshold"],
+  "gitignore": true,
+  "absolute": true,
+  "path": ["."],
+  "ignore": [
+    "**/node_modules/**",
+    "ios/**",
+    "vendor/**",
+    "__tests__/**",
+    "coverage/**",
+    "**/*.jsbundle"
+  ]
+}
