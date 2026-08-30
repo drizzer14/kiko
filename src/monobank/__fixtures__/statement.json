@@ -1,0 +1,49 @@
+[
+  {
+    "id": "ZuHWzqkKGVo=",
+    "time": 1704067200,
+    "description": "Сільпо",
+    "mcc": 5411,
+    "originalMcc": 5411,
+    "hold": false,
+    "amount": -45000,
+    "operationAmount": -45000,
+    "currencyCode": 980,
+    "commissionRate": 0,
+    "cashbackAmount": 900,
+    "balance": 1205000,
+    "comment": "Продукти на тиждень",
+    "receiptId": "3H8A-4X9C-1234-ZZZZ"
+  },
+  {
+    "id": "aBcDeFgHiJk=",
+    "time": 1704153600,
+    "description": "Зарахування зарплати",
+    "mcc": 4829,
+    "originalMcc": 4829,
+    "hold": false,
+    "amount": 5000000,
+    "operationAmount": 5000000,
+    "currencyCode": 980,
+    "commissionRate": 0,
+    "cashbackAmount": 0,
+    "balance": 6205000
+  },
+  {
+    "id": "lMnOpQrStUv=",
+    "time": 1704240000,
+    "description": "Переказ на картку",
+    "mcc": 4829,
+    "originalMcc": 4829,
+    "hold": true,
+    "amount": -120000,
+    "operationAmount": -120000,
+    "currencyCode": 980,
+    "commissionRate": 0,
+    "cashbackAmount": 0,
+    "balance": 6085000,
+    "counterEdrpou": "12345678",
+    "counterIban": "UA733220010000026201112223334",
+    "counterName": "ТОВ Приклад"
+  }
+]
