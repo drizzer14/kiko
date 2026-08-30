@@ -6,7 +6,7 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 hits="$(grep -rnE 'biome-ignore' \
   --include='*.ts' --include='*.tsx' --include='*.js' \
   --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor "$ROOT" \
-  | grep -v 'OVERRIDE(' || true)"
+  | grep -v 'OVERRIDE(')"
 if [ -n "$hits" ]; then
   print_block \
     "Override guard" \

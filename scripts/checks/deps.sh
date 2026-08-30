@@ -35,7 +35,7 @@ fi
 # dependencies or devDependencies blocks since the last commit, for
 # human confirmation. This does not fail the check by itself.
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  dep_diff="$(git diff HEAD -- package.json | grep -E '^[+-]\s*"[^"]+":\s*"[^"]+"' | grep -v '^[+-][+-][+-]' || true)"
+  dep_diff="$(git diff HEAD -- package.json | grep -E '^[+-]\s*"[^"]+":\s*"[^"]+"' | grep -v '^[+-][+-][+-]')"
   if [ -n "$dep_diff" ]; then
     details="${details}--- New/changed dependency entries since last commit (confirm these are real) ---
 ${dep_diff}

@@ -11,7 +11,7 @@ out="$(semgrep --quiet --error --json \
   --config "$ROOT/rules/semgrep-mobile.yml" \
   "$TARGET" 2>/tmp/pff-security-stderr.$$)"
 semgrep_code=$?
-stderr_out="$(cat /tmp/pff-security-stderr.$$ 2>/dev/null || true)"
+stderr_out="$(cat /tmp/pff-security-stderr.$$ 2>/dev/null)"
 rm -f /tmp/pff-security-stderr.$$
 
 if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
