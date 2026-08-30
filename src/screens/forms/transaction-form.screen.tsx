@@ -20,30 +20,33 @@ export const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, n
   const { holdingId } = route.params;
   const { theme } = useUnistyles();
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
-  // currency and current balance (needed to convert the entered major
-  // amount and to write the adjusted balance) come from filtering the
-  // full holdings list for this id — the same approach the detail screen
-  // uses.
+  // currency (needed to convert the entered major amount to minor units)
+  // comes from filtering the full holdings list for this id — the same
+  // approach the detail screen uses. Currency does not change, so a
+  // render-time read is fine; the balance is read atomically inside the
+  // repo write, never from this snapshot.
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const holding = holdings.find(candidate => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
-  const currentBalance = holding?.balanceMinorUnits ?? 0;
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [sign, setSign] = useState<Sign>('income');
 
   const save = async (): Promise<void> => {
-    const magnitude = Money.fromMajor(currency, Number(amount) || 0);
+    const major = Number(amount);
+    // Guard: reject an empty or non-numeric amount — no zero-amount row.
+    if (amount.trim() === '' || Number.isNaN(major)) {
+      return;
+    }
+    const magnitude = Money.fromMajor(currency, major);
     const amountMinorUnits = sign === 'expense' ? -magnitude.minorUnits : magnitude.minorUnits;
-    await transactionsRepo.add({
+    await transactionsRepo.recordManual({
       holdingId,
       amountMinorUnits,
       time: Date.now(),
       description,
-      source: 'manual',
     });
-    await holdingsRepo.setBalance(holdingId, currentBalance + amountMinorUnits);
     navigation.goBack();
   };
 
