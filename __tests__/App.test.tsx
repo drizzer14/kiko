@@ -2,40 +2,34 @@
  * @format
  */
 
-import * as ReactNative from 'react-native';
-import ReactTestRenderer from 'react-test-renderer';
+import { render, waitFor } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
+
+// MigrationsGate pulls in the op-sqlite native binding, which has no jest
+// binary; stub it to render its children as if migrations already succeeded.
+jest.mock('../src/db/migrations-gate', () => ({
+  MigrationsGate: ({ children }: { children: ReactNode }) => children,
+}));
+
+const mockEnsure = jest.fn(() => Promise.resolve());
+jest.mock('../src/repositories/settings.repo', () => ({
+  settingsRepo: { ensure: () => mockEnsure() },
+}));
+
 import App from '../App';
 
-function renderApp(): ReactTestRenderer.ReactTestRenderer {
-  let result: ReactTestRenderer.ReactTestRenderer | undefined;
-  ReactTestRenderer.act(() => {
-    result = ReactTestRenderer.create(<App />);
-  });
-  if (!result) {
-    throw new Error('ReactTestRenderer.create did not return a renderer');
-  }
-  return result;
-}
-
 describe('App', () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
+  beforeEach(() => {
+    mockEnsure.mockClear();
   });
 
-  test('renders dark-content status bar when the color scheme is light', () => {
-    jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
-    const statusBar = renderApp().root.findByType(ReactNative.StatusBar);
-    expect(statusBar.props.barStyle).toBe('dark-content');
+  it('boots to the Home screen', async () => {
+    const { findByText } = await render(<App />);
+    expect(await findByText('Home')).toBeTruthy();
   });
 
-  test('renders light-content status bar when the color scheme is dark', () => {
-    jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('dark');
-    const statusBar = renderApp().root.findByType(ReactNative.StatusBar);
-    expect(statusBar.props.barStyle).toBe('light-content');
-  });
-
-  test('applies flex: 1 to the app container', () => {
-    const container = renderApp().root.findByType(ReactNative.View);
-    expect(container.props.style).toEqual({ flex: 1 });
+  it('ensures the settings row exists once migrations succeed', async () => {
+    await render(<App />);
+    await waitFor(() => expect(mockEnsure).toHaveBeenCalledTimes(1));
   });
 });

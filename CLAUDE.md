@@ -84,7 +84,14 @@ verified usage, not dead weight:
   the `react-native` CLI, not imported), `@stryker-mutator/core` /
   `-jest-runner` (used via `stryker.conf.json` + npx), `@types/jest`
   (type-only), and `typescript` (provides `tsc`/type declarations for
-  the toolchain, not directly invoked in a script).
+  the toolchain, not directly invoked in a script). Also
+  `react-native-screens` (a required runtime peer of
+  `@react-navigation/native-stack` — the native stack renders through
+  it; it is imported inside `native-stack`, never by app code, so
+  depcheck's static scan cannot see it) and `react-native-nitro-modules`
+  (the NitroModules native backend that `react-native-unistyles` is
+  built on; required at runtime, never statically imported by app
+  code).
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:

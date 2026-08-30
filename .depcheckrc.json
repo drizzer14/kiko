@@ -10,6 +10,8 @@
     "depcheck",
     "jscpd",
     "knip",
+    "react-native-nitro-modules",
+    "react-native-screens",
     "typescript"
   ]
 }

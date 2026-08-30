@@ -1,39 +1,37 @@
+// Must run first: configures the Unistyles StyleSheet (themes) as a side
+// effect before any component that calls StyleSheet.create is imported.
+import './src/design-system/unistyles';
+
+import { NavigationContainer } from '@react-navigation/native';
+import { type FC, useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MigrationsGate } from './src/db/migrations-gate';
+import { RootNavigator } from './src/navigation/root-navigator';
+import { settingsRepo } from './src/repositories/settings.repo';
+
 /**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
+ * Rendered only once `MigrationsGate` reports success, so its mount is the
+ * signal that the schema is ready. Ensures the single settings row exists,
+ * then hands off to the navigation stack.
  */
-
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+const AppRoot: FC = () => {
+  useEffect(() => {
+    void settingsRepo.ensure();
+  }, []);
 
   return (
+    <NavigationContainer>
+      <RootNavigator />
+    </NavigationContainer>
+  );
+};
+
+export default function App(): React.JSX.Element {
+  return (
     <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
+      <MigrationsGate>
+        <AppRoot />
+      </MigrationsGate>
     </SafeAreaProvider>
   );
 }
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen templateFileName="App.tsx" safeAreaInsets={safeAreaInsets} />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
-
-export default App;
