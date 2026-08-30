@@ -31,13 +31,17 @@ Composite scripts:
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint.
 
-Automatic wiring (`.claude/settings.json`): the fast tier
+Automatic wiring (`harness/pff-harness/hooks/hooks.json`, via the
+`pff-harness` plugin — see "Harness agents" below): the fast tier
 (`scripts/checks/fast.sh`: lint, security, secrets on the touched
 file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
-tier (`scripts/checks/medium.sh`: dup, knip, deps, overrides) runs on
-`Stop` and `SubagentStop`. Both wrappers exit `2` on failure and print
-the structured block to stderr, which is how Claude Code surfaces the
-failure back to the agent.
+tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
+session's changed source files; knip, deps project-wide) runs on
+`Stop` and `SubagentStop`, and stays silent when no source file
+changed. Both wrappers exit `2` on failure and print the structured
+block to stderr, which is how Claude Code surfaces the failure back
+to the agent. A fresh checkout must run `npm install` before these
+hooks work — every wrapper's tool lives in `node_modules`.
 
 ## Override protocol
 
@@ -134,3 +138,64 @@ not silence it. Re-run `npm run check:deep` periodically and upgrade
 # FUTURE (disabled): a pre-commit hook could run `npm run check:all`.
 # FUTURE (disabled): a CI job could run `npm run check:all` and `npm run check:deep` as required checks.
 ```
+
+## Harness agents
+
+The PFF agent harness is a local Claude Code plugin at
+`harness/pff-harness/` (`pff-harness` in the local
+`harness/.claude-plugin/marketplace.json`). It ships nine role agents,
+four project skills that thin-wrap superpowers, one vendored review
+command, and the tier hooks documented above.
+
+A fresh checkout must run `npm install` before the harness hooks
+work — the check tools they call (Biome, jscpd, Knip, depcheck,
+Stryker) live in `node_modules`; `semgrep` and `gitleaks` are resolved
+from `PATH` instead.
+
+### Delegation rule
+
+The coordinator delegates all work to these agents and never edits
+app files inline. Complex or parallel work is split into separate
+Orca worktrees. If no agent fits a task, the coordinator reports the
+gap — it does not do the task itself.
+
+### The nine agents
+
+| Agent | Role | model | effort | Spawn command |
+|---|---|---|---|---|
+| developer | Writes all TypeScript/React Native code | opus | high | `claude --agent developer --effort high` |
+| debugger | Isolates faults, writes no code | opus | high | `claude --agent debugger --effort high` |
+| reviewer | Reviews diffs: correctness, then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
+| qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | high | `claude --agent qa --effort high` |
+| designer | Owns theme tokens and shared styled components | sonnet | high | `claude --agent designer --effort high` |
+| explorer | Read-only codebase search | sonnet | medium | `claude --agent explorer --effort medium` |
+| retrospect | Gathers durable lessons after a run | sonnet | medium | `claude --agent retrospect --effort medium` |
+| scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
+| ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
+
+Agent frontmatter sets only `model` (there is no per-agent effort
+field); the coordinator applies the recorded effort with `--effort`
+at spawn time, per the table above.
+
+### Ponytail isolation
+
+The reviewer's `/ponytail-review` command vendors only the review
+prompt from ponytail 4.9.0 (`harness/pff-harness/commands/ponytail-review.md`).
+No ponytail hooks are registered anywhere (no `SessionStart`,
+`SubagentStart`, or `UserPromptSubmit` from ponytail). The ponytail
+persona applies only inside that command's own output; the STE style
+and every other agent's output stay unaffected.
+
+### Superpowers
+
+The plugin does not copy superpowers. Its skills
+(`harness-workflow`, `design-system`, `retrospect`, `ops`) and its
+agents point at superpowers skills directly (`superpowers:test-driven-development`,
+`superpowers:systematic-debugging`, `superpowers:using-git-worktrees`,
+`superpowers:requesting-code-review`, `superpowers:writing-skills`,
+`superpowers:dispatching-parallel-agents`, `superpowers:brainstorming`,
+`superpowers:writing-plans`, `superpowers:executing-plans`,
+`superpowers:subagent-driven-development`,
+`superpowers:verification-before-completion`,
+`superpowers:finishing-a-development-branch`), reusing the installed
+`superpowers` plugin rather than duplicating any of its content.
