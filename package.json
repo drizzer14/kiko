@@ -12,6 +12,9 @@
     "check:deps": "bash scripts/checks/deps.sh",
     "check:security": "bash scripts/checks/security.sh",
     "check:secrets": "bash scripts/checks/secrets.sh",
+    "check:overrides": "bash scripts/checks/override-guard.sh",
+    "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:secrets && npm run check:overrides",
+    "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",
     "test": "jest"
   },
