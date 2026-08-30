@@ -21,7 +21,20 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 
 const mockEnsure = jest.fn(() => Promise.resolve());
 jest.mock('../src/repositories/settings.repo', () => ({
-  settingsRepo: { ensure: () => mockEnsure() },
+  settingsRepo: {
+    ensure: () => mockEnsure(),
+    // The Home screen (initial route) reads settings via useLiveQuery, so its
+    // getQuery must be callable when the argument is evaluated.
+    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
+}));
+
+// The Home screen is data-driven (accounts/holdings/rates/settings via
+// useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
+// the hook to return empty data rather than opening a real op-sqlite reactive
+// subscription.
+jest.mock('../src/db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: [] }),
 }));
 
 import App from '../App';
