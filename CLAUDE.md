@@ -109,13 +109,24 @@ version installed normally.
 This requires npm 11.10+. Global npm on this machine was upgraded
 (user-approved) from 10.9.3 to 11.19.1 to enable it.
 
-`check:deep`'s osv-scanner step currently fails on 6 known CVEs in
+`check:deep`'s osv-scanner step previously failed on 6 known CVEs in
 transitive dev dependencies pulled in by the React Native CLI
-toolchain (`@babel/core`, `ajv`, `image-size`, `tmp`). Four have a
-patched version available; two (in `image-size`) do not yet. This is
-tracked, real risk, not a harness bug — do not suppress it. Re-run
-`npm run check:deep` after upgrading a fixable package, and revisit
-`image-size` when a patched release exists.
+toolchain (`@babel/core`, `ajv`, `image-size`, `tmp`). Four had a
+patched version available and are now remediated via the
+`overrides` block in `package.json` (`@babel/core`, `ajv`, `tmp`);
+two (in `image-size`) do not yet — see "Known dependency CVEs"
+below. This is tracked, real risk, not a harness bug — do not
+suppress it.
+
+### Known dependency CVEs
+
+`check:deep` will continue to flag 2 `image-size` advisories
+(GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr) at version 1.2.1, a
+transitive dev dependency of the React Native CLI toolchain. No
+patched release exists upstream yet, so there is nothing to pin via
+`overrides`. This is accepted debt, not a suppressed finding — do
+not silence it. Re-run `npm run check:deep` periodically and upgrade
+`image-size` (via `overrides`) the moment a fixed version ships.
 
 ## Future stubs (disabled — do not enable without discussion)
 
