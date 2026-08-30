@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["index.js", "App.tsx", "__tests__/**/*.{test,spec}.{ts,tsx}"],
+  "project": ["**/*.{ts,tsx,js}"],
+  "ignore": ["ios/**", "vendor/**", "coverage/**"],
+  // Real usages Knip cannot see statically. Each entry is a live
+  // dependency, not dead code — do not add anything here without the
+  // same kind of concrete justification.
+  "ignoreDependencies": [
+    // Injected by @babel/plugin-transform-runtime (via
+    // @react-native/babel-preset) as helper imports in compiled output;
+    // never appears as a static import in source.
+    "@babel/runtime",
+    // Provides the `tsgo` (TS7) binary. No typecheck script exists yet
+    // (out of scope for this harness plan); kept installed per the
+    // scaffold's stated TS6/TS7 dual-support plan.
+    "@typescript/native-preview",
+    // Invoked only via `npx --no-install jscpd` inside
+    // scripts/checks/dup.sh, not from a package.json script Knip scans.
+    "jscpd"
+  ]
+}
