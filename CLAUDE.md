@@ -31,8 +31,8 @@ Composite scripts:
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint.
 
-Automatic wiring (`harness/pff-harness/hooks/hooks.json`, via the
-`pff-harness` plugin — see "Harness agents" below): the fast tier
+Automatic wiring (`harness/pff/hooks/hooks.json`, via the
+`pff` plugin — see "Harness agents" below): the fast tier
 (`scripts/checks/fast.sh`: lint, security, secrets on the touched
 file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
@@ -156,7 +156,7 @@ not silence it. Re-run `npm run check:deep` periodically and upgrade
 ## Harness agents
 
 The PFF agent harness is a local Claude Code plugin at
-`harness/pff-harness/` (`pff-harness` in the local
+`harness/pff/` (`pff` in the local
 `harness/.claude-plugin/marketplace.json`). It ships nine role agents,
 four project skills that thin-wrap superpowers, one vendored review
 command, and the tier hooks documented above.
@@ -194,7 +194,7 @@ at spawn time, per the table above.
 ### Ponytail isolation
 
 The reviewer's `/ponytail-review` command vendors only the review
-prompt from ponytail 4.9.0 (`harness/pff-harness/commands/ponytail-review.md`).
+prompt from ponytail 4.9.0 (`harness/pff/commands/ponytail-review.md`).
 No ponytail hooks are registered anywhere (no `SessionStart`,
 `SubagentStart`, or `UserPromptSubmit` from ponytail). The ponytail
 persona applies only inside that command's own output; the STE style
