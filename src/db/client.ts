@@ -9,6 +9,12 @@ import * as schema from './schema';
  */
 export const rawDatabase = open({ name: 'pff.db' });
 
+// SQLite defaults foreign_keys OFF per connection and op-sqlite's open() does
+// not change it. Enable enforcement once at module load, on the raw connection,
+// before any transaction/write runs. The pragma is per-connection and a no-op
+// inside a transaction, so it must run here rather than inside `write`.
+rawDatabase.execute('PRAGMA foreign_keys = ON');
+
 /**
  * The Drizzle ORM instance layered over the same op-sqlite connection.
  * Reads (query builders passed to `useLiveQuery`) use this directly;
@@ -29,13 +35,22 @@ export const database = drizzle(rawDatabase, { schema });
  * Drizzle statements run on the same connection inside the native
  * transaction, and reactive queries fire on commit. Errors auto-rollback.
  *
+ * The callback receives the global `database` instance (not a
+ * transaction-scoped Drizzle handle) — its statements run on `rawDatabase`,
+ * which is already inside the open native transaction.
+ *
  * Every insert/update/delete in the app — even a single statement — must
  * go through here.
  */
-export const write = async <T>(work: (tx: typeof database) => Promise<T>): Promise<T> => {
+export const write = async <T>(work: (db: typeof database) => Promise<T>): Promise<T> => {
   let result!: T;
   await rawDatabase.transaction(async () => {
     result = await work(database);
   });
+  // Idempotent: flushes only the pending reactive queue. If the transaction
+  // commit already flushed, this is a harmless no-op. Guarantees live queries
+  // (Task 8's useLiveQuery) refresh after every write, removing the runtime
+  // uncertainty about whether the commit alone drives the reactive flush.
+  await rawDatabase.flushPendingReactiveQueries();
   return result;
 };
