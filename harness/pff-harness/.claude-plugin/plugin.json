@@ -1,0 +1,7 @@
+{
+  "name": "pff-harness",
+  "version": "0.1.0",
+  "description": "PFF agent harness: nine role agents, isolated ponytail review, and tiered quality hooks.",
+  "author": { "name": "PFF" },
+  "keywords": ["agents", "harness", "react-native", "quality"]
+}

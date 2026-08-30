@@ -1,0 +1,11 @@
+{
+  "name": "pff-harness-marketplace",
+  "owner": { "name": "PFF" },
+  "plugins": [
+    {
+      "name": "pff-harness",
+      "source": "./pff-harness",
+      "description": "PFF agent harness: nine role agents, isolated ponytail review, and tiered quality hooks."
+    }
+  ]
+}
