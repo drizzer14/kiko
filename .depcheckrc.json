@@ -1,0 +1,15 @@
+{
+  "ignores": [
+    "@babel/runtime",
+    "@react-native-community/cli",
+    "@react-native-community/cli-platform-ios",
+    "@stryker-mutator/core",
+    "@stryker-mutator/jest-runner",
+    "@types/jest",
+    "@typescript/native-preview",
+    "depcheck",
+    "jscpd",
+    "knip",
+    "typescript"
+  ]
+}
