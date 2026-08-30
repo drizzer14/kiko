@@ -2,10 +2,10 @@ import type { FC, ReactNode } from 'react';
 import { Text as RNText } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 
-export type TextVariant = 'title' | 'heading' | 'body' | 'caption';
-export type TextTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary';
+type TextVariant = 'title' | 'heading' | 'body' | 'caption';
+type TextTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary';
 
-export type TextProps = {
+type TextProps = {
   variant?: TextVariant;
   tone?: TextTone;
   children: ReactNode;

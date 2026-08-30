@@ -2,9 +2,9 @@ import type { FC, ReactNode } from 'react';
 import { View, type ViewProps } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
-export type BoxBackground = 'background' | 'surface' | 'surfaceHigh';
+type BoxBackground = 'background' | 'surface' | 'surfaceHigh';
 
-export type BoxProps = ViewProps & {
+type BoxProps = ViewProps & {
   children?: ReactNode;
   background?: BoxBackground;
   padding?: number;
