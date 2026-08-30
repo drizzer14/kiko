@@ -30,6 +30,9 @@ jest.mock('../../monobank/sync', () => ({
 jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
+jest.mock('../../repositories/rates.repo', () => ({
+  ratesRepo: { latestFetchedAt: () => Promise.resolve(null) },
+}));
 
 /** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {

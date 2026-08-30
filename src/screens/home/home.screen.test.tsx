@@ -17,7 +17,10 @@ jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('../../repositories/rates.repo', () => ({
-  ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  ratesRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    latestFetchedAt: () => Promise.resolve(null),
+  },
 }));
 jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: {
@@ -94,6 +97,12 @@ describe('HomeScreen', () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
     await fireEvent.press(getByText('Monobank'));
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+  });
+
+  it('navigates to AccountForm when Add account is pressed', async () => {
+    const { getByText } = await render(<HomeScreen navigation={navigation} />);
+    await fireEvent.press(getByText('Add account'));
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
   });
 
   it('calls runSync then refreshRates when Sync is pressed', async () => {

@@ -20,6 +20,7 @@ type Holding = {
   name: string;
   currency: string;
   balanceMinorUnits: number;
+  closedAt?: number | null;
 };
 
 const setHoldings = (holdings: Holding[]): void => {
@@ -57,6 +58,25 @@ describe('AccountDetailScreen', () => {
     );
     await fireEvent.press(getByText('Black card'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
+  });
+
+  it('excludes closed holdings from the list', async () => {
+    setHoldings([
+      { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000, closedAt: null },
+      {
+        id: 'h2',
+        name: 'Closed jar',
+        currency: 'UAH',
+        balanceMinorUnits: 5000,
+        closedAt: 1_700_000_000_000,
+      },
+    ]);
+    const navigation = { navigate: jest.fn() } as never;
+    const { getByText, queryByText } = await render(
+      <AccountDetailScreen route={route} navigation={navigation} />,
+    );
+    expect(getByText('Black card')).toBeTruthy();
+    expect(queryByText('Closed jar')).toBeNull();
   });
 
   it('navigates to HoldingForm when Add holding is pressed', async () => {

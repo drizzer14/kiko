@@ -19,6 +19,8 @@ export const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navig
   const { theme } = useUnistyles();
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
 
+  const activeHoldings = holdings.filter(holding => holding.closedAt == null);
+
   return (
     <Screen>
       <Box gap={4}>
@@ -26,7 +28,7 @@ export const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navig
 
         <Box gap={2}>
           <Text variant="heading">Holdings</Text>
-          {holdings.map(holding => (
+          {activeHoldings.map(holding => (
             <ListRow
               key={holding.id}
               onPress={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}

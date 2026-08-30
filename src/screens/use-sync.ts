@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { runSync } from '../monobank/sync';
 import { refreshRates } from '../rates/rates-refresh';
+import { ratesRepo } from '../repositories/rates.repo';
 
 const toErrorMessage = (caught: unknown): string =>
   caught instanceof Error ? caught.message : String(caught);
@@ -26,7 +27,8 @@ export const useSync = (): UseSync => {
     setError(undefined);
     try {
       await runSync();
-      await refreshRates();
+      const lastRefreshAt = await ratesRepo.latestFetchedAt();
+      await refreshRates({ lastRefreshAt });
     } catch (caught) {
       setError(toErrorMessage(caught));
     } finally {

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { max, sql } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { type CurrencyRateRow, currencyRates } from '../db/schema';
 
@@ -6,6 +6,15 @@ type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fet
 
 export const ratesRepo = {
   allQuery: () => database.select().from(currencyRates),
+  /**
+   * The newest `fetchedAt` across all stored rates, or null when none exist.
+   * A one-shot read (not reactive) — the caller awaits it to drive the rates
+   * refresh throttle.
+   */
+  latestFetchedAt: async (): Promise<number | null> => {
+    const rows = await database.select({ value: max(currencyRates.fetchedAt) }).from(currencyRates);
+    return rows.at(0)?.value ?? null;
+  },
   upsertMany: (rates: NewRate[]) =>
     write(async tx => {
       if (rates.length === 0) {

@@ -99,6 +99,13 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         <Box gap={2}>
           <Text variant="heading">Accounts</Text>
+          <PressableButton
+            onPress={() => navigation.navigate('AccountForm', {})}
+            backgroundColor={theme.colors.accent}
+            alignSelf="flex-start"
+          >
+            <Text variant="body">Add account</Text>
+          </PressableButton>
           {accounts.map(account => {
             const accountHoldings = activeHoldings.filter(
               holding => holding.accountId === account.id,
