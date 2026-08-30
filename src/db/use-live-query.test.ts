@@ -65,4 +65,50 @@ describe('useLiveQuery', () => {
     await unmount();
     expect(mockUnsubscribe).toHaveBeenCalled();
   });
+
+  it('keeps the latest initiated query when an earlier fire resolves after a later one', async () => {
+    // A controllable thenable: each `await query` registers a resolver in
+    // `resolvers` (in call order) instead of resolving immediately, so the
+    // test can resolve two overlapping runQuery calls out of order.
+    const resolvers: Array<(rows: Array<{ id: string }>) => void> = [];
+    const controllableQuery = {
+      toSQL: () => ({ sql: 'SELECT * FROM accounts', params: [] as unknown[] }),
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` above — must double as an awaitable Drizzle query builder.
+      then<TResult1 = Array<{ id: string }>, TResult2 = never>(
+        onfulfilled?: ((value: Array<{ id: string }>) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return new Promise<Array<{ id: string }>>(resolve => {
+          resolvers.push(resolve);
+        }).then(onfulfilled, onrejected);
+      },
+    };
+
+    const { result } = await renderHook(() => useLiveQuery(controllableQuery, ['accounts']));
+    await act(async () => {
+      resolvers[0]([{ id: 'initial' }]);
+    });
+    expect(result.current.data).toEqual([{ id: 'initial' }]);
+
+    // Fire #1 initiates an older runQuery call (registers resolvers[1]).
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+      await Promise.resolve();
+    });
+
+    // Fire #2 initiates a newer runQuery call (registers resolvers[2]).
+    await act(async () => {
+      mockReactiveCallback.current?.({ rows: [] });
+      await Promise.resolve();
+    });
+
+    // Resolve out of order: the newer call settles first, then the older,
+    // stale call settles after it. The stale result must not win.
+    await act(async () => {
+      resolvers[2]([{ id: 'newest' }]);
+      resolvers[1]([{ id: 'stale' }]);
+    });
+
+    expect(result.current.data).toEqual([{ id: 'newest' }]);
+  });
 });
