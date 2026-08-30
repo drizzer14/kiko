@@ -1,0 +1,44 @@
+rules:
+  # ---- Class A: deterministic hard-fail (severity ERROR) ----
+  - id: pff-disabled-tls
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      TLS certificate validation is disabled. An attacker on the network can
+      read or modify the app's traffic. Enable validation. Do not ship this.
+    patterns:
+      - pattern-either:
+          - pattern: "rejectUnauthorized: false"
+  - id: pff-insecure-random-for-secrets
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Math.random is not cryptographically secure. Do not use it for tokens,
+      keys, or secrets. Use a CSPRNG (react-native-get-random-values / crypto).
+    patterns:
+      - pattern-regex: (token|secret|key|nonce|otp)\s*=\s*.*Math\.random
+  - id: pff-secret-in-asyncstorage
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Secrets must not be written to AsyncStorage; it is unencrypted. Use the
+      iOS Keychain (react-native-keychain) for tokens and credentials.
+    patterns:
+      - pattern-either:
+          - pattern: AsyncStorage.setItem($K, $TOKEN)
+      - metavariable-regex:
+          metavariable: $K
+          regex: (?i).*(token|secret|password|credential).*
+  # ---- Class B: override-eligible finding (severity WARNING) ----
+  - id: pff-webview-injectedjs-dynamic
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      WebView injectedJavaScript built from a variable can run attacker code
+      in the web context. Confirm the input is constant or fully sanitized,
+      or add an OVERRIDE noting why it is safe.
+    patterns:
+      - pattern: <WebView injectedJavaScript={$X} ... />
+      - metavariable-regex:
+          metavariable: $X
+          regex: ^(?!["'`]).*$

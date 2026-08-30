@@ -10,6 +10,7 @@
     "check:knip": "bash scripts/checks/knip.sh",
     "check:mutation": "bash scripts/checks/mutation.sh",
     "check:deps": "bash scripts/checks/deps.sh",
+    "check:security": "bash scripts/checks/security.sh",
     "start": "react-native start",
     "test": "jest"
   },
