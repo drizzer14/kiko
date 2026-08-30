@@ -1,47 +1,65 @@
 import { useEffect, useMemo, useState } from 'react';
 import { rawDatabase } from './client';
 
-type SQLQuery = { toSQL(): { sql: string; params: unknown[] } };
+type SQLQuery<T> = { toSQL(): { sql: string; params: unknown[] } } & PromiseLike<T[]>;
 
 /**
- * Reactive read hook built directly on op-sqlite's `reactiveExecute`
- * primitive (Drizzle's own `useLiveQuery` only supports expo-sqlite).
+ * Reactive read hook built on op-sqlite's `reactiveExecute` primitive
+ * (Drizzle's own `useLiveQuery` only supports expo-sqlite).
  *
- * Pass a Drizzle query builder (never an already-`.execute()`d result —
- * that would defeat reactivity) plus the list of table names the query
- * depends on. The callback fires again whenever a `write()` (see
- * `src/db/client.ts`) commits a transaction touching one of `tables`.
- *
- * Callers routinely pass `tables` (and sometimes `query`) as a fresh
- * array/object literal on every render — e.g.
- * `useLiveQuery(accountsRepo.list(), ['accounts'])` inline in a
- * component. The subscription's re-run condition is therefore keyed on
- * the *serialized content* of `sql`/`params`/`tables`, not their object
- * identity: keying on identity would re-subscribe (and, because the
- * mock/native callback can fire synchronously inside the effect, could
- * infinite-loop) on every single render.
+ * Pass a Drizzle query builder — never an already-`.execute()`d result,
+ * that would defeat reactivity — plus the table names it depends on.
+ * `reactiveExecute` is used only as a change trigger: its own rows are
+ * raw, snake_case SQL columns with JSON columns left unparsed, so the
+ * mapped, typed rows are obtained by awaiting `query` itself, once on
+ * mount and again on every reactive fire.
  */
-export function useLiveQuery<T>(query: SQLQuery, tables: string[]): { data: T[]; error?: Error } {
+export function useLiveQuery<T>(
+  query: SQLQuery<T>,
+  tables: string[],
+): { data: T[]; error?: Error } {
   const [data, setData] = useState<T[]>([]);
   const [error, setError] = useState<Error | undefined>();
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
-  const fireOn = useMemo(() => tablesKey.split(',').map(table => ({ table })), [tablesKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
+  const fireOn = useMemo(() => tables.map(table => ({ table })), [tablesKey]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) params/tables are re-derived every render from stable serialized primitives (paramsKey/tablesKey); depending on the `params` array or `fireOn` object *reference* instead would re-subscribe on every render whenever a caller passes an inline array/object literal (a normal calling pattern, e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native/mock callback can fire synchronously inside the effect — infinite-loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
   useEffect(() => {
+    let alive = true;
+
+    const runQuery = async () => {
+      try {
+        const rows = await query;
+        if (!alive) return;
+        setData(rows);
+        setError(undefined);
+      } catch (caught) {
+        if (!alive) return;
+        setError(caught instanceof Error ? caught : new Error(String(caught)));
+      }
+    };
+
+    void runQuery();
+
     try {
       const unsubscribe = rawDatabase.reactiveExecute({
         query: sql,
         arguments: params,
         fireOn,
-        callback: (response: { rows: T[] }) => setData(response.rows ?? []),
+        callback: () => void runQuery(),
       });
-      return unsubscribe;
+      return () => {
+        alive = false;
+        unsubscribe();
+      };
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error(String(caught)));
-      return undefined;
+      return () => {
+        alive = false;
+      };
     }
   }, [sql, paramsKey, fireOn]);
 
