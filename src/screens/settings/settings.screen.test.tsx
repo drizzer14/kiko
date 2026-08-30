@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { SettingsScreen } from './settings.screen';
 
@@ -6,7 +6,7 @@ const mockSetBaseCurrency = jest.fn();
 const mockSaveToken = jest.fn();
 const mockRunSync = jest.fn();
 const mockRefreshRates = jest.fn();
-let mockReadTokenResult: string | undefined;
+const mockReadToken = jest.fn<Promise<string | undefined>, []>();
 let mockLiveQueryData: Array<{ baseCurrency: string; lastSyncAt: number | null }> = [
   { baseCurrency: 'UAH', lastSyncAt: null },
 ];
@@ -22,7 +22,7 @@ jest.mock('../../db/use-live-query', () => ({
 }));
 jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
-  readToken: async () => mockReadTokenResult,
+  readToken: () => mockReadToken(),
 }));
 jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
@@ -31,10 +31,19 @@ jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
 
+/** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
+const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => {
+    resolve = res;
+  });
+  return { promise, resolve };
+};
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadTokenResult = undefined;
+    mockReadToken.mockResolvedValue(undefined);
     mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: null }];
     mockRunSync.mockResolvedValue({ importedTransactions: 0 });
     mockRefreshRates.mockResolvedValue(undefined);
@@ -52,9 +61,26 @@ describe('SettingsScreen', () => {
   });
 
   it('prefills the token input from readToken', async () => {
-    mockReadTokenResult = 'existing-token';
+    mockReadToken.mockResolvedValue('existing-token');
     const { findByDisplayValue } = await render(<SettingsScreen />);
     expect(await findByDisplayValue('existing-token')).toBeTruthy();
+  });
+
+  it('does not overwrite the token the user is typing once readToken resolves late', async () => {
+    const pending = deferred<string | undefined>();
+    mockReadToken.mockReturnValue(pending.promise);
+    const { getByPlaceholderText, findByDisplayValue } = await render(<SettingsScreen />);
+
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'user-typed');
+
+    // Resolve readToken() and let its effect callback run to completion (and
+    // any resulting setState flush) before asserting on the rendered value.
+    await act(async () => {
+      pending.resolve('existing-token');
+      await pending.promise;
+    });
+
+    expect(await findByDisplayValue('user-typed')).toBeTruthy();
   });
 
   it('calls saveToken with the entered token when Save is pressed', async () => {

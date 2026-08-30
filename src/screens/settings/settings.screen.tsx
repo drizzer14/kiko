@@ -1,7 +1,7 @@
 import type { FC } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, TextInput } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { useLiveQuery } from '../../db/use-live-query';
 import { Box } from '../../design-system/components/box';
@@ -27,11 +27,12 @@ export const SettingsScreen: FC = () => {
   const [token, setToken] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
+  const hasUserEditedToken = useRef(false);
 
   useEffect(() => {
     let alive = true;
     void readToken().then(existing => {
-      if (alive && existing !== undefined) {
+      if (alive && !hasUserEditedToken.current && existing !== undefined) {
         setToken(existing);
       }
     });
@@ -39,6 +40,11 @@ export const SettingsScreen: FC = () => {
       alive = false;
     };
   }, []);
+
+  const handleChangeToken = (value: string): void => {
+    hasUserEditedToken.current = true;
+    setToken(value);
+  };
 
   const handleSelectCurrency = (currency: Currency): void => {
     void settingsRepo.setBaseCurrency(currency);
@@ -74,15 +80,15 @@ export const SettingsScreen: FC = () => {
                 key={currency}
                 accessibilityRole="button"
                 onPress={() => handleSelectCurrency(currency)}
-                style={{
-                  paddingVertical: theme.spacing(2),
-                  paddingHorizontal: theme.spacing(3),
-                  borderRadius: theme.radii.sm,
-                  backgroundColor:
-                    settings?.baseCurrency === currency
-                      ? theme.colors.surfaceHigh
-                      : theme.colors.surface,
-                }}
+                style={[
+                  styles.button,
+                  {
+                    backgroundColor:
+                      settings?.baseCurrency === currency
+                        ? theme.colors.surfaceHigh
+                        : theme.colors.surface,
+                  },
+                ]}
               >
                 <Text
                   variant="body"
@@ -99,7 +105,7 @@ export const SettingsScreen: FC = () => {
           <Text variant="heading">Monobank token</Text>
           <TextInput
             value={token}
-            onChangeText={setToken}
+            onChangeText={handleChangeToken}
             placeholder="Monobank token"
             placeholderTextColor={theme.colors.textSecondary}
             secureTextEntry
@@ -115,13 +121,10 @@ export const SettingsScreen: FC = () => {
           <Pressable
             accessibilityRole="button"
             onPress={handleSaveToken}
-            style={{
-              paddingVertical: theme.spacing(2),
-              paddingHorizontal: theme.spacing(3),
-              borderRadius: theme.radii.sm,
-              backgroundColor: theme.colors.surface,
-              alignSelf: 'flex-start',
-            }}
+            style={[
+              styles.button,
+              { backgroundColor: theme.colors.surface, alignSelf: 'flex-start' },
+            ]}
           >
             <Text variant="body">Save</Text>
           </Pressable>
@@ -132,13 +135,10 @@ export const SettingsScreen: FC = () => {
             accessibilityRole="button"
             onPress={() => void handleSync()}
             disabled={syncing}
-            style={{
-              paddingVertical: theme.spacing(2),
-              paddingHorizontal: theme.spacing(3),
-              borderRadius: theme.radii.sm,
-              backgroundColor: theme.colors.accent,
-              alignSelf: 'flex-start',
-            }}
+            style={[
+              styles.button,
+              { backgroundColor: theme.colors.accent, alignSelf: 'flex-start' },
+            ]}
           >
             <Text variant="body">{syncing ? 'Syncing…' : 'Sync'}</Text>
           </Pressable>
@@ -155,3 +155,11 @@ export const SettingsScreen: FC = () => {
     </Screen>
   );
 };
+
+const styles = StyleSheet.create(theme => ({
+  button: {
+    paddingVertical: theme.spacing(2),
+    paddingHorizontal: theme.spacing(3),
+    borderRadius: theme.radii.sm,
+  },
+}));
