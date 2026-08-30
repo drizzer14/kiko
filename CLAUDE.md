@@ -91,6 +91,14 @@ verified usage, not dead weight:
   `ios/Podfile.lock:generic-api-key:1966`).
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
+  `react-native` is exempt for the same category of reason: it is an
+  explicitly pinned core framework, not a freshly-published
+  auto-selected dependency, and react-native@0.87.1 being <7 days old
+  otherwise breaks npm's ranged-peer resolver (a dependent like
+  react-native-unistyles declares `react-native>=0.76.0`, and
+  `min-release-age` filtering RN out of the packument means npm
+  cannot validate that range against it — surfacing as an ERESOLVE
+  error without `--legacy-peer-deps`).
 
 ## Dependency hygiene
 
@@ -99,6 +107,7 @@ verified usage, not dead weight:
 ```
 min-release-age=7
 min-release-age-exclude[]=PFF
+min-release-age-exclude[]=react-native
 ```
 
 Note for anyone editing this: the real npm 11 config keys are
@@ -121,6 +130,11 @@ patched version available and are now remediated via the
 two (in `image-size`) do not yet — see "Known dependency CVEs"
 below. This is tracked, real risk, not a harness bug — do not
 suppress it.
+
+`check:deep`'s osv-scanner also flagged CVE GHSA-67mh-4wv8-2f99:
+esbuild <0.25.0, pulled in transitively by drizzle-kit's deprecated
+`@esbuild-kit/core-utils`. Same pattern as the other three: pinned
+via the `overrides` block in `package.json` to `^0.25.12`.
 
 ### Known dependency CVEs
 

@@ -4,7 +4,11 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/fast.sh", "timeout": 60 }
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/fast.sh",
+            "timeout": 60
+          }
         ]
       }
     ],
@@ -12,7 +16,11 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh", "timeout": 300 }
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh",
+            "timeout": 300
+          }
         ]
       }
     ],
@@ -20,7 +28,11 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh", "timeout": 300 }
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/scripts/checks/medium.sh",
+            "timeout": 300
+          }
         ]
       }
     ]
