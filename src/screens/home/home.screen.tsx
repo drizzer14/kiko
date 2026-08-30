@@ -1,33 +1,28 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { useState } from 'react';
-import { Pressable } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { Money } from '../../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import { Box } from '../../design-system/components/box';
+import { CurrencySwitch } from '../../design-system/components/currency-switch';
+import { ListRow } from '../../design-system/components/list-row';
 import { MoneyText } from '../../design-system/components/money-text';
+import { PressableButton } from '../../design-system/components/pressable-button';
 import { Screen } from '../../design-system/components/screen';
 import { Text } from '../../design-system/components/text';
-import { runSync } from '../../monobank/sync';
 import type { RootStackParamList } from '../../navigation/types';
 import { netWorth, type RateTable } from '../../rates/conversion';
-import { refreshRates } from '../../rates/rates-refresh';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
+import { useSync } from '../use-sync';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type ConvertibleHolding = Pick<HoldingRow, 'accountId' | 'currency' | 'balanceMinorUnits'>;
-
-const currencyOptions: Currency[] = ['BTC', 'USD', 'EUR', 'UAH'];
-
-const toErrorMessage = (caught: unknown): string =>
-  caught instanceof Error ? caught.message : String(caught);
 
 /** The `rate` column is stored as a string; parse it into the numeric RateTable. */
 const buildRateTable = (rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[]): RateTable => {
@@ -66,9 +61,7 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | undefined>();
+  const { isSyncing, error: syncError, sync } = useSync();
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
@@ -81,19 +74,6 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   const handleSelectCurrency = (currency: Currency): void => {
     void settingsRepo.setBaseCurrency(currency);
-  };
-
-  const handleSync = async (): Promise<void> => {
-    setSyncing(true);
-    setSyncError(undefined);
-    try {
-      await runSync();
-      await refreshRates();
-    } catch (caught) {
-      setSyncError(toErrorMessage(caught));
-    } finally {
-      setSyncing(false);
-    }
   };
 
   return (
@@ -114,29 +94,7 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         <Box gap={2}>
           <Text variant="heading">Base currency</Text>
-          <Box gap={2} style={{ flexDirection: 'row' }}>
-            {currencyOptions.map(currency => (
-              <Pressable
-                key={currency}
-                accessibilityRole="button"
-                onPress={() => handleSelectCurrency(currency)}
-                style={[
-                  styles.button,
-                  {
-                    backgroundColor:
-                      baseCurrency === currency ? theme.colors.surfaceHigh : theme.colors.surface,
-                  },
-                ]}
-              >
-                <Text
-                  variant="body"
-                  tone={baseCurrency === currency ? 'textPrimary' : 'textSecondary'}
-                >
-                  {currency}
-                </Text>
-              </Pressable>
-            ))}
-          </Box>
+          <CurrencySwitch selected={baseCurrency} onSelect={handleSelectCurrency} />
         </Box>
 
         <Box gap={2}>
@@ -147,31 +105,26 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             );
             const subtotal = guardedNetWorth(accountHoldings, baseCurrency, rateTable);
             return (
-              <Pressable
+              <ListRow
                 key={account.id}
-                accessibilityRole="button"
                 onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
-                style={[styles.row, { backgroundColor: theme.colors.surface }]}
               >
                 <Text variant="body">{account.name}</Text>
                 <MoneyText money={subtotal} />
-              </Pressable>
+              </ListRow>
             );
           })}
         </Box>
 
         <Box gap={2}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void handleSync()}
-            disabled={syncing}
-            style={[
-              styles.button,
-              { backgroundColor: theme.colors.accent, alignSelf: 'flex-start' },
-            ]}
+          <PressableButton
+            onPress={() => void sync()}
+            disabled={isSyncing}
+            backgroundColor={theme.colors.accent}
+            alignSelf="flex-start"
           >
-            <Text variant="body">{syncing ? 'Syncing…' : 'Sync'}</Text>
-          </Pressable>
+            <Text variant="body">{isSyncing ? 'Syncing…' : 'Sync'}</Text>
+          </PressableButton>
           {syncError !== undefined && (
             <Text variant="body" tone="negative">
               {syncError}
@@ -182,18 +135,3 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     </Screen>
   );
 };
-
-const styles = StyleSheet.create(theme => ({
-  button: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-}));
