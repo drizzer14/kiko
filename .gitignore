@@ -66,6 +66,10 @@ yarn-error.log
 # testing
 /coverage
 
+# Stryker mutation testing (check:mutation) generated output
+/reports
+.stryker-tmp/
+
 # Yarn
 .yarn/*
 !.yarn/patches
