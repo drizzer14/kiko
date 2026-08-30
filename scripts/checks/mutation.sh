@@ -3,8 +3,21 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
+ROOT="$(cd "$DIR/../.." && pwd)"
+BIN="$ROOT/node_modules/.bin/stryker"
 
-out="$(npx --no-install stryker run 2>&1)"
+if [ ! -x "$BIN" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "The stryker tool is not installed in node_modules." \
+    "$BIN was not found or is not executable." \
+    "The harness tools live in node_modules. Without them, no check can run, and a missing tool must not look like a code problem." \
+    "Run: npm install   then re-run: npm run check:mutation" \
+    "Do not run stryker through npx without --no-install (that can auto-fetch an unpinned version from the network). Install the pinned version with npm install."
+  exit 2
+fi
+
+out="$("$BIN" run 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
   print_block \

@@ -3,9 +3,18 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-hits="$(grep -rnE 'biome-ignore' \
+
+# With no args, scan the repo. With args, scan only those paths
+# (the medium tier's changed-files scope).
+if [ "$#" -eq 0 ]; then
+  scan_targets=("$ROOT")
+else
+  scan_targets=("$@")
+fi
+
+hits="$(grep -nE 'biome-ignore' \
   --include='*.ts' --include='*.tsx' --include='*.js' \
-  --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor "$ROOT" \
+  --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor -r "${scan_targets[@]}" \
   | grep -v 'OVERRIDE(')"
 if [ -n "$hits" ]; then
   print_block \

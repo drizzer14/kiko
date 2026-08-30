@@ -6,6 +6,17 @@ source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 TARGET="${1:-$ROOT}"
 
+if ! command -v semgrep >/dev/null 2>&1; then
+  print_block \
+    "Semgrep (mobile security rules)" \
+    "The semgrep tool is not installed." \
+    "'semgrep' was not found on PATH." \
+    "The harness tools must be present to run. Without semgrep, no security signal is available, and a missing tool must not look like a security problem." \
+    "Run: brew install semgrep   then re-run: npm run check:security" \
+    "Do not treat a missing scanner as a pass. Install semgrep, then re-run."
+  exit 2
+fi
+
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \

@@ -5,12 +5,24 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT" || exit 2
+BIN="$ROOT/node_modules/.bin/depcheck"
+
+if [ ! -x "$BIN" ]; then
+  print_block \
+    "depcheck (unused / missing dependencies)" \
+    "The depcheck tool is not installed in node_modules." \
+    "$BIN was not found or is not executable." \
+    "The harness tools live in node_modules. Without them, no check can run, and a missing tool must not look like a dependency problem." \
+    "Run: npm install   then re-run: npm run check:deps" \
+    "Do not run depcheck through npx without --no-install (that can auto-fetch an unpinned version from the network). Install the pinned version with npm install."
+  exit 2
+fi
 
 fail=0
 details=""
 
 # 1. Unused and missing dependencies.
-depcheck_out="$(npx --no-install depcheck 2>&1)"
+depcheck_out="$("$BIN" 2>&1)"
 depcheck_code=$?
 if [ "$depcheck_code" -ne 0 ]; then
   fail=1

@@ -6,6 +6,17 @@ source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 TARGET="${1:-$ROOT}"
 
+if ! command -v gitleaks >/dev/null 2>&1; then
+  print_block \
+    "gitleaks (secret scanning)" \
+    "The gitleaks tool is not installed." \
+    "'gitleaks' was not found on PATH." \
+    "The harness tools must be present to run. Without gitleaks, no secret-scanning signal is available, and a missing tool must not look like a leaked secret." \
+    "Run: brew install gitleaks   then re-run: npm run check:secrets" \
+    "Do not treat a missing scanner as a pass. Install gitleaks, then re-run."
+  exit 2
+fi
+
 out="$(gitleaks detect --no-git --source "$TARGET" --config "$ROOT/.gitleaks.toml" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
