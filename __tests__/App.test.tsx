@@ -11,6 +11,14 @@ jest.mock('../src/db/migrations-gate', () => ({
   MigrationsGate: ({ children }: { children: ReactNode }) => children,
 }));
 
+// The real Settings screen (wired into RootNavigator, rendered inside App)
+// also pulls in db/client directly (via useLiveQuery), which opens a real
+// op-sqlite connection at module load. Stub it the same way every repo test
+// does.
+jest.mock('@op-engineering/op-sqlite', () => ({
+  open: () => ({ execute: () => ({ rows: [] }) }),
+}));
+
 const mockEnsure = jest.fn(() => Promise.resolve());
 jest.mock('../src/repositories/settings.repo', () => ({
   settingsRepo: { ensure: () => mockEnsure() },

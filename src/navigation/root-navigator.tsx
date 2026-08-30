@@ -1,12 +1,12 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { AccountDetailScreen } from '../screens/account-detail-screen';
-import { AccountFormScreen } from '../screens/account-form-screen';
-import { HoldingDetailScreen } from '../screens/holding-detail-screen';
-import { HoldingFormScreen } from '../screens/holding-form-screen';
-import { HomeScreen } from '../screens/home-screen';
-import { SettingsScreen } from '../screens/settings-screen';
-import { TransactionFormScreen } from '../screens/transaction-form-screen';
+import { AccountDetailScreen } from '../screens/account-detail/account-detail.screen';
+import { AccountFormScreen } from '../screens/forms/account-form.screen';
+import { HoldingFormScreen } from '../screens/forms/holding-form.screen';
+import { TransactionFormScreen } from '../screens/forms/transaction-form.screen';
+import { HoldingDetailScreen } from '../screens/holding-detail/holding-detail.screen';
+import { HomeScreen } from '../screens/home/home.screen';
+import { SettingsScreen } from '../screens/settings/settings.screen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
