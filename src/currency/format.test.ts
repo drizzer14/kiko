@@ -26,3 +26,13 @@ describe('formatMoney symbols', () => {
     expect(formatMoney(Money.fromMajor('UAH', 2500))).toBe('2,500.00 ₴');
   });
 });
+
+describe('formatMoney negative amounts', () => {
+  it('puts the sign outside a prefix symbol', () => {
+    expect(formatMoney(Money.fromMajor('USD', -1234.5))).toBe('-$1,234.50');
+  });
+
+  it('puts the sign before a suffix-symbol amount', () => {
+    expect(formatMoney(Money.fromMajor('UAH', -2500))).toBe('-2,500.00 ₴');
+  });
+});
