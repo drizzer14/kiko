@@ -5,9 +5,13 @@ const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 const mockSettingsGetQuery = jest.fn();
 const mockConnectedQuery = jest.fn();
+const mockReadToken = jest.fn();
 
 jest.mock('../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
+}));
+jest.mock('../monobank/token', () => ({
+  readToken: (...args: unknown[]) => mockReadToken(...args),
 }));
 jest.mock('../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
@@ -34,24 +38,42 @@ describe('shouldAutoSync', () => {
   const now = 1_700_000_000_000;
 
   it.each([
-    ['not connected, no prior sync', { connected: false, lastSyncAt: null, now }, false],
-    ['connected, never synced', { connected: true, lastSyncAt: null, now }, true],
+    [
+      'not connected, no prior sync',
+      { connected: false, hasToken: true, lastSyncAt: null, now },
+      false,
+    ],
+    ['connected, never synced', { connected: true, hasToken: true, lastSyncAt: null, now }, true],
     [
       'connected, synced recently (within throttle window)',
-      { connected: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS + 1, now },
+      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS + 1, now },
       false,
     ],
     [
       'connected, synced exactly at the throttle boundary',
-      { connected: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS, now },
+      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS, now },
       true,
     ],
     [
       'connected, synced long ago (outside throttle window)',
-      { connected: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS - 1, now },
+      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS - 1, now },
       true,
     ],
-    ['not connected, synced long ago', { connected: false, lastSyncAt: 0, now }, false],
+    [
+      'not connected, synced long ago',
+      { connected: false, hasToken: true, lastSyncAt: 0, now },
+      false,
+    ],
+    [
+      'connected, no token, never synced',
+      { connected: true, hasToken: false, lastSyncAt: null, now },
+      false,
+    ],
+    [
+      'connected, token present, due',
+      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS - 1, now },
+      true,
+    ],
   ] as const)('%s', (_description, input, expected) => {
     expect(shouldAutoSync(input)).toBe(expected);
   });
@@ -65,6 +87,7 @@ describe('useAutoSync', () => {
     mockLatestFetchedAt.mockResolvedValue(null);
     mockSettingsGetQuery.mockResolvedValue([]);
     mockConnectedQuery.mockResolvedValue([]);
+    mockReadToken.mockResolvedValue('a-token');
   });
 
   it('does nothing when no account is connected', async () => {
@@ -100,14 +123,27 @@ describe('useAutoSync', () => {
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
-  it('runs sync then refreshes rates when connected and past the throttle window', async () => {
+  it('does nothing when connected and due but no token is stored', async () => {
+    mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
+    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
+    mockReadToken.mockResolvedValue(undefined);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockReadToken).toHaveBeenCalled());
+
+    expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockRefreshRates).not.toHaveBeenCalled();
+  });
+
+  it('runs sync with no target (reuses the already-connected account) then refreshes rates when connected, tokened, and past the throttle window', async () => {
     mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockLatestFetchedAt.mockResolvedValue(42);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-1' }));
+    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith());
     await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 }));
   });
 
@@ -118,7 +154,7 @@ describe('useAutoSync', () => {
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
-    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-1' }));
+    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith());
 
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });

@@ -47,12 +47,8 @@ const SettingsScreen: FC = () => {
     };
   }, []);
 
-  const markEdited = (): void => {
-    hasUserEditedToken.current = true;
-  };
-
   const handleChangeToken = (value: string): void => {
-    markEdited();
+    hasUserEditedToken.current = true;
     setToken(value);
     setTokenStatus({ kind: 'idle' });
   };
@@ -67,8 +63,8 @@ const SettingsScreen: FC = () => {
 
   const handlePasteToken = (): void => {
     void Clipboard.getString().then(value => {
-      markEdited();
-      setToken(value);
+      hasUserEditedToken.current = true;
+      setToken(value.trim());
       setTokenStatus({ kind: 'idle' });
     });
   };
@@ -150,6 +146,11 @@ const SettingsScreen: FC = () => {
               >
                 <Text variant="body">Save</Text>
               </PressableButton>
+              {tokenStatus.kind === 'checking' && (
+                <Text variant="body" tone="textSecondary">
+                  Checking…
+                </Text>
+              )}
               {tokenStatus.kind === 'success' && (
                 <Text variant="body" tone="positive">
                   Connected as {tokenStatus.name}

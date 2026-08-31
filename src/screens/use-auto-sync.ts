@@ -2,6 +2,7 @@ import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
 import { runSync } from '../monobank/sync';
+import { readToken } from '../monobank/token';
 import { refreshRates } from '../rates/rates-refresh';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { ratesRepo } from '../repositories/rates.repo';
@@ -17,18 +18,21 @@ export const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * Pure gating decision for the auto-sync effect: sync only when a Monobank
- * account is connected AND either no sync has ever run, or the last one is
- * older than the throttle window.
+ * account is connected, a token is stored, AND either no sync has ever run,
+ * or the last one is older than the throttle window.
  */
 export const shouldAutoSync = ({
   connected,
+  hasToken,
   lastSyncAt,
   now,
 }: {
   connected: boolean;
+  hasToken: boolean;
   lastSyncAt: number | null;
   now: number;
-}): boolean => connected && (lastSyncAt === null || now - lastSyncAt >= AUTO_SYNC_INTERVAL_MS);
+}): boolean =>
+  connected && hasToken && (lastSyncAt === null || now - lastSyncAt >= AUTO_SYNC_INTERVAL_MS);
 
 /**
  * Runs one throttled background sync of the connected Monobank account when
@@ -48,19 +52,20 @@ export const useAutoSync = (): void => {
     hasRun.current = true;
 
     void either<unknown, void>(async () => {
-      const [connectedAccounts, settingsRows] = await Promise.all([
+      const [connectedAccounts, settingsRows, token] = await Promise.all([
         accountsRepo.connectedQuery(),
         settingsRepo.getQuery(),
+        readToken(),
       ]);
-      const connectedAccountId = connectedAccounts.at(0)?.id;
-      const connected = connectedAccountId !== undefined;
+      const connected = connectedAccounts.at(0)?.id !== undefined;
+      const hasToken = token !== undefined;
       const lastSyncAt = settingsRows.at(0)?.lastSyncAt ?? null;
 
-      if (!shouldAutoSync({ connected, lastSyncAt, now: Date.now() })) {
+      if (!shouldAutoSync({ connected, hasToken, lastSyncAt, now: Date.now() })) {
         return;
       }
 
-      await runSync({ targetAccountId: connectedAccountId });
+      await runSync();
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
     });

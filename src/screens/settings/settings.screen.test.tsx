@@ -107,6 +107,22 @@ describe('SettingsScreen', () => {
     expect(await findByDisplayValue('clipboard-token')).toBeTruthy();
   });
 
+  it('trims surrounding whitespace from a pasted clipboard value', async () => {
+    mockGetString.mockResolvedValue('  clipboard-token\n');
+    const { getByText, getByPlaceholderText, findByDisplayValue } = await render(
+      <SettingsScreen />,
+    );
+    await act(async () => {
+      await fireEvent.press(getByText('Paste from clipboard'));
+    });
+    expect(await findByDisplayValue('clipboard-token')).toBeTruthy();
+    // Testing Library's display-value matcher normalizes (trims/collapses)
+    // whitespace by default, so assert the raw prop value directly rather
+    // than via a second query — this is the assertion that actually catches
+    // a missing `.trim()` in `handlePasteToken`.
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('clipboard-token');
+  });
+
   it('validates the token and calls saveToken when fetchClientInfo accepts it', async () => {
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     const { getByPlaceholderText, getByText, findByText } = await render(<SettingsScreen />);
@@ -146,6 +162,27 @@ describe('SettingsScreen', () => {
     expect(await findByText('Could not save token')).toBeTruthy();
     expect(queryByText('Invalid token')).toBeNull();
     expect(queryByText(/Connected as/)).toBeNull();
+  });
+
+  it('shows a "Checking…" line while token validation is in flight', async () => {
+    const pending = deferred<{ name: string }>();
+    mockFetchClientInfo.mockReturnValue(pending.promise);
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
+      <SettingsScreen />,
+    );
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'in-flight-token');
+    await act(async () => {
+      fireEvent.press(getByText('Save'));
+    });
+
+    expect(await findByText(/Checking/)).toBeTruthy();
+
+    await act(async () => {
+      pending.resolve({ name: 'Jane Doe' });
+      await pending.promise;
+    });
+
+    expect(queryByText(/Checking/)).toBeNull();
   });
 
   it('clears a stale save-result status line when the token text is edited afterward', async () => {
