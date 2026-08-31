@@ -6,18 +6,6 @@ source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 TARGET="${1:-$ROOT}"
 
-# gitleaks' finding fingerprint (and .gitleaksignore matching, which is
-# fingerprint-based) is derived verbatim from the --source string: an
-# absolute --source produces an absolute-path fingerprint, which is not
-# portable across checkouts/worktrees at different absolute paths. Always
-# invoke gitleaks with a ROOT-relative --source (cd into ROOT first) so
-# fingerprints — and this repo's committed .gitleaksignore entries — stay
-# stable regardless of where the repo is checked out.
-REL_TARGET="."
-if [ "$TARGET" != "$ROOT" ]; then
-  REL_TARGET="${TARGET#"$ROOT"/}"
-fi
-
 if ! command -v gitleaks >/dev/null 2>&1; then
   print_block \
     "gitleaks (secret scanning)" \
@@ -29,7 +17,7 @@ if ! command -v gitleaks >/dev/null 2>&1; then
   exit 2
 fi
 
-out="$(cd "$ROOT" && gitleaks detect --no-git --source "$REL_TARGET" --config "$ROOT/.gitleaks.toml" 2>&1)"
+out="$(gitleaks detect --no-git --source "$TARGET" --config "$ROOT/.gitleaks.toml" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
   print_block \

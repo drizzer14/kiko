@@ -6,6 +6,7 @@ describe('darkTheme iOS dark palette', () => {
     expect(darkTheme.colors.surface).toBe('#1C1C1E');
     expect(darkTheme.colors.surfaceHigh).toBe('#2C2C2E');
     expect(darkTheme.colors.textPrimary).toBe('#FFFFFF');
+    expect(darkTheme.colors.textSecondary).toBe('rgba(235,235,245,0.60)');
     expect(darkTheme.colors.accent).toBe('#0A84FF');
     expect(darkTheme.colors.positive).toBe('#30D158');
     expect(darkTheme.colors.negative).toBe('#FF453A');

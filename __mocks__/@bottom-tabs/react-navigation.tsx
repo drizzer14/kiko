@@ -29,20 +29,11 @@ function Screen(_props: MockScreenProps): null {
   return null;
 }
 
-function Navigator({
-  children,
-  initialRouteName,
-}: {
-  children: ReactNode;
-  initialRouteName?: string;
-}) {
+function Navigator({ children }: { children: ReactNode }) {
   const screens = Children.toArray(children).filter(
     isValidElement,
   ) as ReactElement<MockScreenProps>[];
-  const activeIndex = initialRouteName
-    ? screens.findIndex(screen => screen.props.name === initialRouteName)
-    : 0;
-  const active = screens[activeIndex] ?? screens[0];
+  const active = screens[0];
   const ActiveComponent = active?.props.component;
   return (
     <>

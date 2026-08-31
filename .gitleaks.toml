@@ -11,11 +11,6 @@ paths = [
   # secrets. Confirmed false positive against generic-api-key
   # (fingerprint ios/Podfile.lock:generic-api-key:1966).
   '''ios/Podfile\.lock''',
+  '''\.superpowers/.*''',
 ]
-# NOTE: a review-diff artifact under .superpowers/ can also quote an
-# ios/Podfile.lock hunk verbatim (same false-positive class as the path
-# entry above). That is intentionally NOT handled here by widening
-# `paths` or adding a content `regexes` entry — both were tried and
-# reverted; see .gitleaksignore and CLAUDE.md's "Documented exceptions"
-# for why, and for the single, fingerprint-scoped exception this repo
-# actually uses instead.
+# See CLAUDE.md "Documented exceptions" for why .superpowers/ is allowlisted.

@@ -115,45 +115,19 @@ verified usage, not dead weight:
   string `'inline-import'` in `babel.config.js` (it inlines the
   drizzle-orm migration `.sql` files as string exports), never
   imported from source, for the same reason.
-- **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` (path-scoped) —
-  CocoaPods lists a SHA1 checksum per pod, which gitleaks'
-  `generic-api-key` rule flags as a false positive (verified
-  fingerprint: `ios/Podfile.lock:generic-api-key:1966`).
-- **`.gitleaksignore`**: exactly one fingerprint-scoped entry (format
-  `path:ruleID:startLine`), for a review-diff artifact under the
-  gitignored `.superpowers/` directory that quotes an `ios/Podfile.lock`
-  hunk verbatim — the same false-positive class as the path entry above,
-  just inside a unified diff instead of the lockfile. This is
-  deliberately a single, exact fingerprint, not a `.gitleaks.toml`
-  allowlist, because two broader approaches were tried and reverted
-  after actually being tested against the installed gitleaks version
-  (8.30.1), not just read about: (1) a `paths` entry for
-  `.superpowers/.*` disabled every rule for the whole directory,
-  including a real secret pasted into a freeform note there; (2) a
-  content-only `regexes` entry (`regexTarget = "line"`, no `paths`)
-  matching the checksum-line shape was repo-wide — it allowlisted that
-  line shape in *any* file, anywhere, which is a real secret shape too
-  (e.g. a legacy 40-hex GitHub personal access token). Combining `paths`
-  and `regexes` in one allowlist with `condition = "and"` does **not**
-  fix this: `paths` matching skips the whole file before any
-  finding-level regex is evaluated in this gitleaks version (confirmed
-  via `strings` on the installed binary and empirically — a non-checksum
-  secret placed in a path-allowlisted directory was still silently
-  skipped even under `condition = "and"`), so there is no config-level
-  way to AND a path condition with a content condition at finding
-  granularity here. See `.gitleaksignore`'s own header comment for the
-  full writeup and the exact fingerprint.
-  Note for future editors: do not quote a real `PodName: <40-char hex>`
-  checksum pair adjacently in any tracked file (including this one) —
-  that exact shape is what `generic-api-key` matches, and reproducing it
-  verbatim would trip `check:secrets` on that file itself.
-  `scripts/checks/secrets.sh` always invokes gitleaks with a
-  ROOT-relative `--source` (it `cd`s into `$ROOT` first): gitleaks
-  derives a finding's fingerprint verbatim from the `--source` string,
-  so an absolute `--source` would produce an absolute-path fingerprint —
-  not portable across checkouts/worktrees at different absolute paths,
-  and unmatchable by a committed, relative-path `.gitleaksignore` entry
-  like the one above.
+- **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
+  a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
+  flags as a false positive (verified fingerprint:
+  `ios/Podfile.lock:generic-api-key:1966`). Also `.superpowers/.*` —
+  gitignored SDD scratch. Its generated review-diff artifacts echo
+  `ios/Podfile.lock` CocoaPods SHA1 checksums (same false-positive
+  class as the entry above) that trip `generic-api-key`, and a new
+  uniquely-named diff is written on every review cycle, so a
+  per-finding exception cannot stay green. Nothing under
+  `.superpowers/` ever enters git history (the threat the secrets
+  check guards against) — same class as `node_modules`/`ios/Pods`/
+  `vendor`, so it is path-allowlisted the same way. Do not quote a
+  literal 40-character hex checksum value in any tracked file.
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an
