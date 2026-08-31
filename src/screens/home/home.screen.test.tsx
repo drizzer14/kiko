@@ -1,11 +1,8 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import HomeScreen from './home.screen';
 
 const mockUseLiveQuery = jest.fn();
-const mockSetBaseCurrency = jest.fn();
-const mockRunSync = jest.fn();
-const mockRefreshRates = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -17,31 +14,38 @@ jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('../../repositories/rates.repo', () => ({
-  ratesRepo: {
-    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    latestFetchedAt: () => Promise.resolve(null),
-  },
+  ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('../../repositories/settings.repo', () => ({
-  settingsRepo: {
-    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
-  },
+  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../monobank/sync', () => ({
-  runSync: (...args: unknown[]) => mockRunSync(...args),
-}));
-jest.mock('../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+jest.mock('../../repositories/transactions.repo', () => ({
+  transactionsRepo: { listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-type Account = { id: string; name: string; kind: string };
-type Holding = { accountId: string; currency: string; balanceMinorUnits: number };
+type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
+type Holding = {
+  accountId: string;
+  currency: string;
+  balanceMinorUnits: number;
+  closedAt?: number | null;
+};
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
+type Transaction = {
+  id: string;
+  amountMinorUnits: number;
+  currency: string;
+  time: number;
+  description: string;
+  category: string | null;
+  accountId: string;
+  accountName: string;
+  holdingName: string;
+};
 
 /**
- * Drive the four `useLiveQuery` calls by the table they subscribe to, so the
+ * Drive the five `useLiveQuery` calls by the table they subscribe to, so the
  * mock survives re-renders (a sequential once-chain returns undefined after the
  * first render and crashes on the next). Keyed data still exercises the exact
  * call order the screen must use — asserted separately below.
@@ -51,12 +55,14 @@ const setLiveData = (data: {
   holdings?: Holding[];
   rates?: Rate[];
   settings?: Settings[];
+  transactions?: Transaction[];
 }): void => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
+    transactions: data.transactions ?? [],
   };
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
@@ -65,30 +71,34 @@ const setLiveData = (data: {
 
 const navigation = { navigate: jest.fn() } as never;
 
+const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
+  id: 't1',
+  amountMinorUnits: -5000,
+  currency: 'UAH',
+  time: 1,
+  description: 'Coffee',
+  category: 'Food',
+  accountId: 'a',
+  accountName: 'Monobank',
+  holdingName: 'Card',
+  ...overrides,
+});
+
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockRunSync.mockResolvedValue({ importedTransactions: 0 });
-    mockRefreshRates.mockResolvedValue(undefined);
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
       holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
       rates: [],
       settings: [{ baseCurrency: 'UAH' }],
+      transactions: [transaction()],
     });
   });
 
-  it('renders the net worth section', async () => {
-    // The Home tab's label is "Home" (asserted in root.navigator.test.tsx);
-    // the screen body itself has no title, so this checks the real heading
-    // it does render.
+  it('renders the net worth caption', async () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
     expect(getByText('Net worth')).toBeTruthy();
-  });
-
-  it('renders the account name', async () => {
-    const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    expect(getByText('Monobank')).toBeTruthy();
   });
 
   it('renders the total net worth in the base currency', async () => {
@@ -96,42 +106,30 @@ describe('HomeScreen', () => {
     expect(getAllByText(/1,000\.00 ₴/).length).toBeGreaterThan(0);
   });
 
-  it('navigates to AccountDetail on the Accounts tab when an account row is pressed', async () => {
+  it('renders a transaction description', async () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    await fireEvent.press(getByText('Monobank'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
-      screen: 'AccountDetail',
-      params: { accountId: 'a' },
+    expect(getByText('Coffee')).toBeTruthy();
+  });
+
+  it('renders the account-name and category label for a transaction', async () => {
+    const { getByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getByText('Monobank · Food')).toBeTruthy();
+  });
+
+  it('renders the signed transaction amount', async () => {
+    const { getByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getByText(/-50\.00 ₴/)).toBeTruthy();
+  });
+
+  it('renders a dash when the description is empty', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+      transactions: [transaction({ description: '', category: null })],
     });
-  });
-
-  it('navigates to AccountForm on the Accounts tab when Add account is pressed', async () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    await fireEvent.press(getByText('Add account'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
-      screen: 'AccountForm',
-      params: {},
-    });
-  });
-
-  it('calls runSync then refreshRates when Sync is pressed', async () => {
-    const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    await fireEvent.press(getByText('Sync'));
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
-    expect(mockRunSync).toHaveBeenCalled();
-  });
-
-  it('shows an error message when sync fails, without crashing', async () => {
-    mockRunSync.mockRejectedValue(new Error('sync boom'));
-    const { findByText, getByText } = await render(<HomeScreen navigation={navigation} />);
-    await fireEvent.press(getByText('Sync'));
-    expect(await findByText(/sync boom/i)).toBeTruthy();
-  });
-
-  it('calls setBaseCurrency when a currency option is pressed', async () => {
-    const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    await fireEvent.press(getByText('USD'));
-    expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
+    expect(getByText('—')).toBeTruthy();
+    expect(getByText('Monobank · Uncategorized')).toBeTruthy();
   });
 
   it('applies a rate from the rates table to convert a foreign holding', async () => {
@@ -146,7 +144,7 @@ describe('HomeScreen', () => {
     expect(getAllByText(/4,000\.00 ₴/).length).toBeGreaterThan(0);
   });
 
-  it('does not crash when a holding has no rate; excludes it and hints to sync', async () => {
+  it('does not crash when a holding has no rate; excludes it and hints at rates', async () => {
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
       holdings: [{ accountId: 'a', currency: 'BTC', balanceMinorUnits: 100000000 }],
@@ -155,13 +153,38 @@ describe('HomeScreen', () => {
     });
     const { getByText, getAllByText } = await render(<HomeScreen navigation={navigation} />);
     expect(getByText(/rates unavailable/i)).toBeTruthy();
-    // The unconvertible BTC holding is excluded, so the total is zero.
     expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
   });
 
-  it('reads accounts, holdings, rates, then settings in that order', async () => {
+  it('excludes holdings whose parent account is archived from the total', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', archivedAt: 123 }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+      settings: [{ baseCurrency: 'UAH' }],
+    });
+    const { getAllByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
+  it('excludes closed holdings from the total', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000, closedAt: 99 }],
+      settings: [{ baseCurrency: 'UAH' }],
+    });
+    const { getAllByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
+  it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
     await render(<HomeScreen navigation={navigation} />);
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 4).map(call => call[1][0]);
-    expect(tablesInOrder).toEqual(['accounts', 'holdings', 'currency_rates', 'settings']);
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map(call => call[1][0]);
+    expect(tablesInOrder).toEqual([
+      'accounts',
+      'holdings',
+      'currency_rates',
+      'settings',
+      'transactions',
+    ]);
   });
 });
