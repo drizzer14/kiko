@@ -1,11 +1,20 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import AccountDetailScreen from './account-detail.screen';
 
 const mockUseLiveQuery = jest.fn();
+const mockSync = jest.fn();
+const mockUseSync = jest.fn();
+const mockReadToken = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('../use-sync', () => ({
+  useSync: () => mockUseSync(),
+}));
+jest.mock('../../monobank/token', () => ({
+  readToken: () => mockReadToken(),
 }));
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
@@ -60,9 +69,23 @@ const account = (overrides: Partial<Account> = {}): Account => ({
 
 const route = { params: { accountId: 'a' } } as never;
 
+/**
+ * Render the screen with a fresh spy navigation, returned alongside the RNTL
+ * queries so a test can assert on `navigation.navigate` without re-wiring the
+ * boilerplate. Live data is seeded per-test (or by `beforeEach`) before this.
+ */
+const renderScreen = async () => {
+  const navigation = { navigate: jest.fn() } as never;
+  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />);
+  return { ...view, navigation };
+};
+
 describe('AccountDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockReadToken.mockResolvedValue('token-abc');
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
@@ -70,26 +93,17 @@ describe('AccountDetailScreen', () => {
   });
 
   it('lists holdings for the account', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText } = await renderScreen();
     expect(getByText('Black card')).toBeTruthy();
   });
 
   it('shows the holding balance as money', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText } = await renderScreen();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Black card'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
   });
@@ -114,19 +128,13 @@ describe('AccountDetailScreen', () => {
         },
       ],
     });
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText, queryByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText, queryByText } = await renderScreen();
     expect(getByText('Black card')).toBeTruthy();
     expect(queryByText('Closed jar')).toBeNull();
   });
 
   it('navigates to HoldingForm when Add holding is pressed', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
@@ -136,10 +144,7 @@ describe('AccountDetailScreen', () => {
       accounts: [account({ name: 'Ukrsibbank Card' })],
       holdings: [],
     });
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByText, queryByText } = await render(
-      <AccountDetailScreen route={route} navigation={navigation} />,
-    );
+    const { getByText, queryByText } = await renderScreen();
     expect(getByText('Ukrsibbank Card')).toBeTruthy();
     expect(queryByText('Account')).toBeNull();
   });
@@ -182,10 +187,7 @@ describe('AccountDetailScreen', () => {
     'gates the Monobank controls when $description',
     async ({ account: testAccount, visible, hidden }) => {
       setLiveData({ accounts: testAccount ? [testAccount] : [], holdings: [] });
-      const navigation = { navigate: jest.fn() } as never;
-      const { getByText, queryByText } = await render(
-        <AccountDetailScreen route={route} navigation={navigation} />,
-      );
+      const { getByText, queryByText } = await renderScreen();
       for (const text of visible) {
         expect(getByText(text)).toBeTruthy();
       }
@@ -194,4 +196,42 @@ describe('AccountDetailScreen', () => {
       }
     },
   );
+
+  it('syncs the account when a Monobank token exists (Connect action)', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const { getByText } = await renderScreen();
+    await fireEvent.press(getByText('Connect Monobank'));
+    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
+  });
+
+  it('re-syncs a connected account when Sync now is pressed', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
+    const { getByText } = await renderScreen();
+    await fireEvent.press(getByText('Sync now'));
+    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
+  });
+
+  it('directs the user to Settings and does not sync when no token is stored', async () => {
+    mockReadToken.mockResolvedValue(undefined);
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const { getByText, findByText, navigation } = await renderScreen();
+    await fireEvent.press(getByText('Connect Monobank'));
+    expect(await findByText(/Settings/)).toBeTruthy();
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the sync error from useSync', async () => {
+    mockUseSync.mockReturnValue({ isSyncing: false, error: 'sync boom', sync: mockSync });
+    setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
+    const { getByText } = await renderScreen();
+    expect(getByText('sync boom')).toBeTruthy();
+  });
+
+  it('shows a syncing label while a connected account is syncing', async () => {
+    mockUseSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+    setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
+    const { getByText } = await renderScreen();
+    expect(getByText('Syncing…')).toBeTruthy();
+  });
 });

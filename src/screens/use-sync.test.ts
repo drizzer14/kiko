@@ -49,6 +49,26 @@ describe('useSync', () => {
     expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: null });
   });
 
+  it('passes the target account id through to runSync', async () => {
+    const { result } = await renderHook(() => useSync());
+
+    await act(async () => {
+      await result.current.sync('acc-42');
+    });
+
+    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-42' });
+  });
+
+  it('calls runSync with no target id when sync is invoked without one', async () => {
+    const { result } = await renderHook(() => useSync());
+
+    await act(async () => {
+      await result.current.sync();
+    });
+
+    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: undefined });
+  });
+
   it('surfaces an error message when sync fails, without throwing', async () => {
     mockRunSync.mockRejectedValue(new Error('sync boom'));
     const { result } = await renderHook(() => useSync());

@@ -52,8 +52,14 @@ export interface SyncDeps {
     toSeconds: number,
     fetchImpl?: typeof fetch,
   ) => Promise<MonobankStatementItem[]>;
+  /**
+   * The user-created account to (re)target this sync at. When set, the account
+   * is marked `institution: 'monobank'` and every synced holding lands under
+   * it. When absent, the sync targets the already-connected Monobank account.
+   */
+  targetAccountId?: string;
   listAccounts: () => Promise<AccountRow[]>;
-  createMonobankAccount: () => Promise<unknown>;
+  updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   upsertHolding: (holding: MonobankHolding) => Promise<unknown>;
   listTransactionsByHolding: (holdingId: string) => Promise<TransactionRow[]>;
@@ -71,8 +77,7 @@ const defaultDeps: SyncDeps = {
   fetchClientInfo,
   fetchStatement,
   listAccounts: async () => accountsRepo.listQuery(),
-  createMonobankAccount: () =>
-    accountsRepo.create({ name: 'Monobank', kind: 'bank', institution: 'monobank' }),
+  updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async accountId => holdingsRepo.listByAccountQuery(accountId),
   upsertHolding: holding => holdingsRepo.upsertMonobank(holding),
   listTransactionsByHolding: async holdingId => transactionsRepo.listByHoldingQuery(holdingId),
@@ -135,17 +140,29 @@ type HoldingMetadata = { monobankId?: string } | null;
 const monobankIdOf = (metadata: unknown): string | undefined =>
   (metadata as HoldingMetadata)?.monobankId;
 
+/**
+ * Resolve the account this sync writes into. With a `targetAccountId`, mark
+ * that user-created account `institution: 'monobank'` (the Connect action) and
+ * return it. Without one, reuse the already-connected Monobank account. If
+ * neither is available there is nothing to sync into — the new model requires
+ * the user to create and connect an account first, so we surface a clear error
+ * rather than silently minting a stray 'Monobank' account.
+ */
 const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
-  const existing = (await deps.listAccounts()).find(account => account.institution === 'monobank');
-  if (existing) {
-    return existing.id;
+  const accounts = await deps.listAccounts();
+  if (deps.targetAccountId !== undefined) {
+    const target = accounts.find(account => account.id === deps.targetAccountId);
+    if (!target) {
+      throw new Error('No Monobank account connected');
+    }
+    await deps.updateAccount(deps.targetAccountId, { institution: 'monobank' });
+    return deps.targetAccountId;
   }
-  await deps.createMonobankAccount();
-  const created = (await deps.listAccounts()).find(account => account.institution === 'monobank');
-  if (!created) {
-    throw new Error('Failed to create the Monobank account');
+  const existing = accounts.find(account => account.institution === 'monobank');
+  if (!existing) {
+    throw new Error('No Monobank account connected');
   }
-  return created.id;
+  return existing.id;
 };
 
 const upsertHoldings = async (

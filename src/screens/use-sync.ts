@@ -8,7 +8,7 @@ import { ratesRepo } from '../repositories/rates.repo';
 type UseSync = {
   isSyncing: boolean;
   error: string | undefined;
-  sync: () => Promise<void>;
+  sync: (targetAccountId?: string) => Promise<void>;
 };
 
 /**
@@ -20,12 +20,12 @@ export const useSync = (): UseSync => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
-  const sync = async (): Promise<void> => {
+  const sync = async (targetAccountId?: string): Promise<void> => {
     setIsSyncing(true);
     setError(undefined);
 
     const result = await either<unknown, void>(async () => {
-      await runSync();
+      await runSync({ targetAccountId });
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
     });

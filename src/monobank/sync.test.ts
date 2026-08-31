@@ -73,8 +73,22 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * upsert on (accountId, monobankId), transactions dedup on (source,
  * externalId) — the same keys the real repos enforce.
  */
-const makeInMemoryDeps = (statementFor: (accountId: string) => MonobankStatementItem[]) => {
-  const accountsStore: AccountRow[] = [];
+const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
+  id: 'acc-1',
+  name: 'My Bank',
+  kind: 'bank',
+  institution: null,
+  sortOrder: 0,
+  archivedAt: null,
+  createdAt: 0,
+  ...overrides,
+});
+
+const makeInMemoryDeps = (
+  statementFor: (accountId: string) => MonobankStatementItem[],
+  initialAccounts: AccountRow[] = [],
+) => {
+  const accountsStore: AccountRow[] = initialAccounts.map(account => ({ ...account }));
   const holdingsStore: HoldingRow[] = [];
   const transactionsStore: TransactionRow[] = [];
   let sequence = 0;
@@ -134,16 +148,11 @@ const makeInMemoryDeps = (statementFor: (accountId: string) => MonobankStatement
     }),
     fetchStatement: async (_token, accountId) => statementFor(decodeURIComponent(accountId)),
     listAccounts: async () => accountsStore.map(account => ({ ...account })),
-    createMonobankAccount: async () => {
-      accountsStore.push({
-        id: nextId(),
-        name: 'Monobank',
-        kind: 'bank',
-        institution: 'monobank',
-        sortOrder: 0,
-        archivedAt: null,
-        createdAt: 0,
-      });
+    updateAccount: async (accountId, patch) => {
+      const target = accountsStore.find(account => account.id === accountId);
+      if (target) {
+        Object.assign(target, patch);
+      }
     },
     listHoldingsByAccount: async accountId =>
       holdingsStore
@@ -166,23 +175,56 @@ describe('runSync', () => {
   const onlyFirstAccount = (accountId: string): MonobankStatementItem[] =>
     accountId === firstAccountId ? (statement as MonobankStatementItem[]) : [];
 
-  it('creates a single Monobank account, upserts holdings, and imports statement items', async () => {
-    const { deps, accountsStore, holdingsStore, transactionsStore } =
-      makeInMemoryDeps(onlyFirstAccount);
+  it('marks the target account monobank, upserts holdings into it, and imports statement items', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      onlyFirstAccount,
+      [target],
+    );
+    deps.targetAccountId = 'acc-1';
 
     const result = await runSync(deps);
 
+    // the pre-existing account is reused and marked, not duplicated
     expect(accountsStore).toHaveLength(1);
+    expect(accountsStore[0].id).toBe('acc-1');
     expect(accountsStore[0].institution).toBe('monobank');
-    // two card accounts + one jar
+    // two card accounts + one jar, all under the target account
     expect(holdingsStore).toHaveLength(3);
+    expect(holdingsStore.every(holding => holding.accountId === 'acc-1')).toBe(true);
     expect(holdingsStore.filter(holding => holding.type === 'jar')).toHaveLength(1);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
   });
 
+  it('with no target id, syncs into the existing institution=monobank account', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      onlyFirstAccount,
+      [connected],
+    );
+
+    const result = await runSync(deps);
+
+    expect(accountsStore).toHaveLength(1);
+    expect(holdingsStore.every(holding => holding.accountId === 'acc-mono')).toBe(true);
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(transactionsStore).toHaveLength(statement.length);
+  });
+
+  it('throws when neither a target id nor an existing monobank account exists', async () => {
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      bankAccount({ id: 'acc-cash', institution: null }),
+    ]);
+
+    await expect(runSync(deps)).rejects.toThrow('No Monobank account connected');
+    expect(holdingsStore).toHaveLength(0);
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('imports zero new transactions on a second run (dedup on source + externalId)', async () => {
-    const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount);
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
 
     const first = await runSync(deps);
     const second = await runSync(deps);
@@ -193,8 +235,9 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(statement.length);
   });
 
-  it('does not create a second Monobank account on a repeat sync', async () => {
-    const { deps, accountsStore } = makeInMemoryDeps(onlyFirstAccount);
+  it('does not create a second account on a repeat sync', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, accountsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
 
     await runSync(deps);
     await runSync(deps);
@@ -203,7 +246,8 @@ describe('runSync', () => {
   });
 
   it('throws when no token is stored, without importing anything', async () => {
-    const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount);
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
     deps.readToken = async () => undefined;
 
     await expect(runSync(deps)).rejects.toThrow(/token/i);
@@ -229,7 +273,8 @@ describe('runSync', () => {
       return call === 1 ? cappedPage : secondPage;
     };
 
-    const { deps, sleep, transactionsStore } = makeInMemoryDeps(pagingStatement);
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, sleep, transactionsStore } = makeInMemoryDeps(pagingStatement, [connected]);
 
     const result = await runSync(deps);
 
