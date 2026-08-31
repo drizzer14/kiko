@@ -24,11 +24,33 @@ const mockEnsure = jest.fn(() => Promise.resolve());
 jest.mock('../src/repositories/settings.repo', () => ({
   settingsRepo: {
     ensure: () => mockEnsure(),
-    // The Home screen (initial route) reads settings via useLiveQuery, so its
-    // getQuery must be callable when the argument is evaluated.
-    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    // Two consumers read this: the Home screen (initial route), via
+    // useLiveQuery (mocked below to ignore its query argument, so the
+    // resolved value's shape doesn't matter there), and useAutoSync (wired
+    // into AppRoot), which one-shot `await`s this directly and calls
+    // `.at(0)` on the result. It must resolve an array like the real
+    // Drizzle query builder does — a `toSQL`-shaped stub would make
+    // useAutoSync's `.at(0)` throw, silently swallowed, masking a real bug
+    // rather than exercising its deliberate "no prior sync" no-op path.
+    getQuery: () => Promise.resolve([]),
   },
 }));
+
+// useAutoSync (wired into AppRoot) one-shot `await`s this directly. Stub it
+// to resolve no connected accounts so the App boot smoke test exercises
+// auto-sync's real "not connected" no-op path on purpose, rather than
+// passing by accident through an internally swallowed error. `listQuery` is
+// left as the real implementation since the Home screen calls it directly
+// through the mocked `useLiveQuery` (which ignores its query argument).
+jest.mock('../src/repositories/accounts.repo', () => {
+  const actual = jest.requireActual('../src/repositories/accounts.repo');
+  return {
+    accountsRepo: {
+      ...actual.accountsRepo,
+      connectedQuery: () => Promise.resolve([]),
+    },
+  };
+});
 
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub

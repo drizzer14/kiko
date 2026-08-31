@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react-native';
+import { renderHook, waitFor } from '@testing-library/react-native';
 
 const mockRunSync = jest.fn();
 const mockRefreshRates = jest.fn();
@@ -71,11 +71,17 @@ describe('useAutoSync', () => {
     mockConnectedQuery.mockResolvedValue([]);
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
 
-    await act(async () => {
-      renderHook(() => useAutoSync());
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await renderHook(() => useAutoSync());
+
+    // Both gating reads are always awaited (via Promise.all) on every path,
+    // including this bail path, so waiting on either deterministically
+    // flushes the whole one-shot read regardless of the hook's internal
+    // await depth — `waitFor` yields via a macrotask (`setImmediate`) after
+    // its check passes, which drains every pending microtask, so the "not
+    // called" assertions below are not coupled to how many `await` hops
+    // `useAutoSync` takes internally.
+    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
 
     expect(mockRunSync).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
@@ -85,13 +91,13 @@ describe('useAutoSync', () => {
     mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
 
-    await act(async () => {
-      renderHook(() => useAutoSync());
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
 
     expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
   it('runs sync then refreshes rates when connected and past the throttle window', async () => {
@@ -99,16 +105,10 @@ describe('useAutoSync', () => {
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockLatestFetchedAt.mockResolvedValue(42);
 
-    await act(async () => {
-      renderHook(() => useAutoSync());
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await renderHook(() => useAutoSync());
 
-    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-1' });
-    expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 });
+    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-1' }));
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 }));
   });
 
   it('swallows an error thrown by runSync without throwing out of the effect', async () => {
@@ -116,15 +116,9 @@ describe('useAutoSync', () => {
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockRunSync.mockRejectedValue(new Error('sync boom'));
 
-    await expect(
-      act(async () => {
-        renderHook(() => useAutoSync());
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      }),
-    ).resolves.not.toThrow();
+    await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
+
+    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'acc-1' }));
 
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
@@ -132,13 +126,9 @@ describe('useAutoSync', () => {
   it('swallows an error thrown while reading the connected account', async () => {
     mockConnectedQuery.mockRejectedValue(new Error('read boom'));
 
-    await expect(
-      act(async () => {
-        renderHook(() => useAutoSync());
-        await Promise.resolve();
-        await Promise.resolve();
-      }),
-    ).resolves.not.toThrow();
+    await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
+
+    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
 
     expect(mockRunSync).not.toHaveBeenCalled();
   });
