@@ -83,7 +83,11 @@ verified usage, not dead weight:
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
-  specifier needs ignoring.
+  specifier needs ignoring. Also `babel-plugin-inline-import` — a
+  Babel plugin referenced only as the string `'inline-import'` in
+  `babel.config.js` (it inlines the drizzle-orm migration `.sql`
+  files as string exports), never imported from source, so Knip's
+  static scan cannot see the usage.
 - **`.depcheckrc.json` `ignores`**: the same CLI-only-invoked tools
   (`jscpd`, `knip`, `depcheck`) plus `@babel/runtime`,
   `@react-native-community/cli` and `-cli-platform-ios` (invoked by
@@ -100,7 +104,11 @@ verified usage, not dead weight:
   code). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
   never imported from source, so depcheck's static scan cannot see the
-  usage and reports it as an unused devDependency.
+  usage and reports it as an unused devDependency. Also
+  `babel-plugin-inline-import` — a Babel plugin referenced only as the
+  string `'inline-import'` in `babel.config.js` (it inlines the
+  drizzle-orm migration `.sql` files as string exports), never
+  imported from source, for the same reason.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
