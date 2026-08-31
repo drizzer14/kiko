@@ -5,6 +5,9 @@ import SettingsScreen from './settings.screen';
 const mockSetBaseCurrency = jest.fn();
 const mockSaveToken = jest.fn();
 const mockReadToken = jest.fn<Promise<string | undefined>, []>();
+const mockFetchClientInfo = jest.fn();
+const mockOpenURL = jest.fn();
+const mockGetString = jest.fn<Promise<string>, []>();
 let mockLiveQueryData: Array<{ baseCurrency: string; lastSyncAt: number | null }> = [
   { baseCurrency: 'UAH', lastSyncAt: null },
 ];
@@ -21,6 +24,16 @@ jest.mock('../../db/use-live-query', () => ({
 jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
   readToken: () => mockReadToken(),
+}));
+jest.mock('../../monobank/monobank.client', () => ({
+  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
+jest.mock('react-native/Libraries/Linking/Linking', () => ({
+  __esModule: true,
+  default: { openURL: (...args: unknown[]) => mockOpenURL(...args) },
+}));
+jest.mock('@react-native-clipboard/clipboard', () => ({
+  getString: () => mockGetString(),
 }));
 
 /** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
@@ -78,11 +91,43 @@ describe('SettingsScreen', () => {
     expect(await findByDisplayValue('user-typed')).toBeTruthy();
   });
 
-  it('calls saveToken with the entered token when Save is pressed', async () => {
-    const { getByPlaceholderText, getByText } = await render(<SettingsScreen />);
+  it('opens api.monobank.ua when "Open api.monobank.ua" is pressed', async () => {
+    const { getByText } = await render(<SettingsScreen />);
+    await fireEvent.press(getByText('Open api.monobank.ua'));
+    expect(mockOpenURL).toHaveBeenCalledWith('https://api.monobank.ua/');
+  });
+
+  it('fills the token field from the clipboard when "Paste from clipboard" is pressed', async () => {
+    mockGetString.mockResolvedValue('clipboard-token');
+    const { getByText, findByDisplayValue } = await render(<SettingsScreen />);
+    await act(async () => {
+      await fireEvent.press(getByText('Paste from clipboard'));
+    });
+    expect(await findByDisplayValue('clipboard-token')).toBeTruthy();
+  });
+
+  it('validates the token and calls saveToken when fetchClientInfo accepts it', async () => {
+    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
+    const { getByPlaceholderText, getByText, findByText } = await render(<SettingsScreen />);
     await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'new-token');
-    await fireEvent.press(getByText('Save'));
+    await act(async () => {
+      await fireEvent.press(getByText('Save'));
+    });
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('new-token');
     expect(mockSaveToken).toHaveBeenCalledWith('new-token');
+    expect(await findByText(/Connected as Jane Doe/)).toBeTruthy();
+  });
+
+  it('does not call saveToken and shows an error when fetchClientInfo rejects the token', async () => {
+    mockFetchClientInfo.mockRejectedValue(new Error('Monobank request failed: 401'));
+    const { getByPlaceholderText, getByText, findByText } = await render(<SettingsScreen />);
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'bad-token');
+    await act(async () => {
+      await fireEvent.press(getByText('Save'));
+    });
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('bad-token');
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(await findByText('Invalid token')).toBeTruthy();
   });
 
   it('shows the last sync time from the live settings row', async () => {

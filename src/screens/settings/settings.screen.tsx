@@ -1,6 +1,7 @@
+import Clipboard from '@react-native-clipboard/clipboard';
 import type { FC } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { TextInput } from 'react-native';
+import { Linking, TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -9,9 +10,18 @@ import CurrencySwitch from '../../design-system/components/currency-switch';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
+import { fetchClientInfo } from '../../monobank/monobank.client';
 import { readToken, saveToken } from '../../monobank/token';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { styles } from './settings.styles';
+
+const MONOBANK_API_URL = 'https://api.monobank.ua/';
+
+type TokenStatus =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'success'; name: string }
+  | { kind: 'error' };
 
 const formatLastSyncAt = (lastSyncAt: number | null): string =>
   lastSyncAt === null ? 'Never' : new Date(lastSyncAt).toLocaleString();
@@ -21,6 +31,7 @@ const SettingsScreen: FC = () => {
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
   const [token, setToken] = useState('');
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus>({ kind: 'idle' });
   const hasUserEditedToken = useRef(false);
 
   useEffect(() => {
@@ -35,8 +46,12 @@ const SettingsScreen: FC = () => {
     };
   }, []);
 
-  const handleChangeToken = (value: string): void => {
+  const markEdited = (): void => {
     hasUserEditedToken.current = true;
+  };
+
+  const handleChangeToken = (value: string): void => {
+    markEdited();
     setToken(value);
   };
 
@@ -44,8 +59,27 @@ const SettingsScreen: FC = () => {
     void settingsRepo.setBaseCurrency(currency);
   };
 
+  const handleOpenMonobank = (): void => {
+    void Linking.openURL(MONOBANK_API_URL);
+  };
+
+  const handlePasteToken = (): void => {
+    void Clipboard.getString().then(value => {
+      markEdited();
+      setToken(value);
+    });
+  };
+
   const handleSaveToken = (): void => {
-    void saveToken(token);
+    setTokenStatus({ kind: 'checking' });
+    void fetchClientInfo(token)
+      .then(clientInfo => {
+        setTokenStatus({ kind: 'success', name: clientInfo.name });
+        return saveToken(token);
+      })
+      .catch(() => {
+        setTokenStatus({ kind: 'error' });
+      });
   };
 
   return (
@@ -67,6 +101,22 @@ const SettingsScreen: FC = () => {
             Monobank token
           </Text>
           <Box style={styles.card}>
+            <Box direction="row" gap={2} style={styles.row}>
+              <PressableButton
+                onPress={handleOpenMonobank}
+                backgroundColor={theme.colors.surfaceHigh}
+                alignSelf="flex-start"
+              >
+                <Text variant="body">Open api.monobank.ua</Text>
+              </PressableButton>
+              <PressableButton
+                onPress={handlePasteToken}
+                backgroundColor={theme.colors.surfaceHigh}
+                alignSelf="flex-start"
+              >
+                <Text variant="body">Paste from clipboard</Text>
+              </PressableButton>
+            </Box>
             <Box style={styles.row}>
               <TextInput
                 value={token}
@@ -79,14 +129,25 @@ const SettingsScreen: FC = () => {
                 style={styles.tokenInput}
               />
             </Box>
-            <Box style={[styles.row, styles.rowLast]}>
+            <Box gap={2} style={[styles.row, styles.rowLast]}>
               <PressableButton
                 onPress={handleSaveToken}
                 backgroundColor={theme.colors.surfaceHigh}
                 alignSelf="flex-start"
+                disabled={tokenStatus.kind === 'checking'}
               >
                 <Text variant="body">Save</Text>
               </PressableButton>
+              {tokenStatus.kind === 'success' && (
+                <Text variant="body" tone="positive">
+                  Connected as {tokenStatus.name}
+                </Text>
+              )}
+              {tokenStatus.kind === 'error' && (
+                <Text variant="body" tone="negative">
+                  Invalid token
+                </Text>
+              )}
             </Box>
           </Box>
         </Box>

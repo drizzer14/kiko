@@ -17,3 +17,14 @@ jest.mock('react-native-safe-area-context', () => {
 // without a native binary. Required here, in setupFiles, so it registers
 // before any test file's own `react-native-unistyles` import runs.
 require('react-native-unistyles/mocks');
+
+// @react-native-clipboard/clipboard ships an official Jest mock that stubs
+// its TurboModule-backed native binding (there is no native binary under
+// react-test-renderer, so an unmocked import throws
+// `TurboModuleRegistry.getEnforcing(...): 'RNCClipboard' could not be
+// found`). Registered globally, not per-test-file, because any screen that
+// imports it (e.g. settings) is reachable transitively from App.tsx /
+// root.navigator tests that never mock it themselves.
+jest.mock('@react-native-clipboard/clipboard', () =>
+  require('@react-native-clipboard/clipboard/jest/clipboard-mock'),
+);
