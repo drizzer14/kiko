@@ -115,16 +115,37 @@ verified usage, not dead weight:
   string `'inline-import'` in `babel.config.js` (it inlines the
   drizzle-orm migration `.sql` files as string exports), never
   imported from source, for the same reason.
-- **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
-  a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
-  flags as a false positive (verified fingerprint:
-  `ios/Podfile.lock:generic-api-key:1966`). Also `.superpowers/` — it
-  is fully gitignored (SDD planning artifacts, never committed), but
-  its per-task review diffs can capture an `ios/Podfile.lock` hunk
-  verbatim: the same CocoaPods SHA1 checksums allowlisted above, just
-  inside a unified diff instead of the lockfile (verified fingerprint:
+- **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` (path-scoped) —
+  CocoaPods lists a SHA1 checksum per pod, which gitleaks'
+  `generic-api-key` rule flags as a false positive (verified
+  fingerprint: `ios/Podfile.lock:generic-api-key:1966`). Also a
+  **content-scoped** `regexes` entry (`regexTarget = "line"`) matching
+  only the mechanical CocoaPods `PodName: <40-hex-char SHA1>` SPEC
+  CHECKSUMS line shape — deliberately *not* a path exemption for
+  `.superpowers/`: that directory is fully gitignored (SDD planning
+  artifacts, never committed) but holds freeform notes, reports, and
+  review diffs of real source, and must stay scanned for a real
+  secret pasted into any of them. Its per-task review diffs can
+  quote an `ios/Podfile.lock` hunk verbatim — the same CocoaPods SHA1
+  checksums allowlisted by path above, just inside a unified diff
+  instead of the lockfile — which is what the line-shape regex
+  allowlists instead, wherever that exact shape occurs (verified
+  fingerprint:
   `.superpowers/sdd/2026-08-31-pff-redesign-phase-1/review-137038e..d5465d6.diff:generic-api-key:192`,
-  a `React-cxxstableapi: <sha1>` SPEC CHECKSUMS line).
+  a `React`-family pod name followed by its 40-character checksum on the
+  same line; separately verified that an unrelated `key: <mixed-case
+  token>`-shaped line placed in the same directory is still flagged,
+  since it does not match the hex-only regex). Note for future editors:
+  do not quote a `PodName` and a real 40-character hex checksum
+  adjacently (`name` + `:` + hex) anywhere in a tracked file, including
+  this one — that exact shape is what `generic-api-key` (and this
+  allowlist entry) matches, and reproducing it verbatim here would trip
+  `check:secrets` on `CLAUDE.md` itself. gitleaks 8.30.1 rejects mixing
+  the legacy
+  single `[allowlist]` table with `[[allowlists]]` array-of-tables
+  (`"[allowlist] is deprecated, it cannot be used alongside
+  [[allowlists]]"`), so both the path list and the regex live in one
+  `[allowlist]` table.
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

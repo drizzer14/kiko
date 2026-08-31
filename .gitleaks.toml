@@ -2,7 +2,10 @@
 useDefault = true
 
 [allowlist]
-description = "Ignore vendored and generated paths"
+description = "Ignore vendored/generated paths, and one mechanical line shape"
+# gitleaks 8.30.1 rejects mixing the legacy single [allowlist] table with
+# [[allowlists]] ("[allowlist] is deprecated, it cannot be used alongside
+# [[allowlists]]"), so path- and content-scoped exceptions both live here.
 paths = [
   '''ios/Pods/.*''',
   '''vendor/.*''',
@@ -11,13 +14,25 @@ paths = [
   # secrets. Confirmed false positive against generic-api-key
   # (fingerprint ios/Podfile.lock:generic-api-key:1966).
   '''ios/Podfile\.lock''',
-  # .superpowers/ is fully gitignored (see .gitignore): SDD planning
-  # artifacts, never committed. Its per-task review diffs can capture an
-  # ios/Podfile.lock hunk verbatim — the same CocoaPods SHA1 checksums
-  # allowlisted above, just inside a unified diff instead of the
-  # lockfile. Confirmed false positive against generic-api-key
-  # (fingerprint .superpowers/sdd/2026-08-31-pff-redesign-phase-1/
-  # review-137038e..d5465d6.diff:generic-api-key:192, a
-  # "React-cxxstableapi: <sha1>" Podfile.lock SPEC CHECKSUMS line).
-  '''\.superpowers/.*''',
+]
+# .superpowers/ (SDD planning artifacts; gitignored, never committed — see
+# .gitignore) is deliberately NOT exempted by path above: it can contain
+# freeform notes, reports, and diffs of real source, and must stay
+# scanned for real secrets. What actually trips generic-api-key there is
+# one mechanical line shape — a CocoaPods `PodName: <40-hex-char SHA1>`
+# SPEC CHECKSUMS entry — which review diffs under .superpowers/ can quote
+# verbatim from ios/Podfile.lock (same false-positive class as the
+# path-scoped ios/Podfile.lock entry above, just inside a unified diff
+# instead of the lockfile itself). regexTarget = "line" plus this regex
+# allowlists only that line shape, wherever it appears, so a real secret
+# pasted anywhere else under .superpowers/ (or elsewhere) still gets
+# caught. Confirmed false positive against generic-api-key (fingerprint
+# .superpowers/sdd/2026-08-31-pff-redesign-phase-1/
+# review-137038e..d5465d6.diff:generic-api-key:192, matched line
+# "   React-cxxstableapi: <40-hex-char SHA1>"). Do not paste that
+# fingerprint's real checksum value into this comment or any tracked
+# file — see CLAUDE.md's "Documented exceptions" note on this.
+regexTarget = "line"
+regexes = [
+  '''^[+\-]?\s*[A-Za-z0-9_+./-]+:\s*[0-9a-f]{40}\s*$''',
 ]
