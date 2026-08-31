@@ -1,23 +1,24 @@
-// OLED dark theme tokens.
+// iOS dark system palette.
 //
-// Follows the Habr OLED method (see docs/superpowers/specs/2026-08-30-pff-foundation-design.md
-// and .claude/skills/pff-design-system/SKILL.md):
-// - true-black background so OLED pixels can switch fully off
-// - translucent white overlays (not solid grays) for elevation, opacity rising with level
-// - off-white (not pure white) primary text to avoid halation, with a dimmer secondary tone
-// - a desaturated accent rather than a fully saturated one on black
-// - unambiguous, distinct positive/negative money colors
+// Re-derived from Apple's dark-mode system colors (see
+// docs/superpowers/specs/2026-08-30-pff-foundation-design.md and
+// .claude/skills/pff-design-system/SKILL.md):
+// - true-black background (systemBackground, dark)
+// - secondary/tertiary system background levels for elevated surfaces
+// - label / secondaryLabel for primary and secondary text
+// - systemBlue for the accent, systemGreen/systemRed for money tones
+// - separator for hairline borders
 export const darkTheme = {
   colors: {
-    background: '#000000', // true black for OLED
-    surface: 'rgba(255,255,255,0.06)', // elevation level 1 overlay
-    surfaceHigh: 'rgba(255,255,255,0.10)', // elevation level 2 overlay
-    textPrimary: '#EDEDED', // off-white, reduces halation vs pure white
-    textSecondary: '#9A9A9A', // dimmer secondary tone
-    accent: '#7AA2C4', // desaturated blue, avoids eye strain on black
-    positive: '#4FB477',
-    negative: '#D06B6B',
-    border: 'rgba(255,255,255,0.12)',
+    background: '#000000', // systemBackground (dark)
+    surface: '#1C1C1E', // secondarySystemBackground
+    surfaceHigh: '#2C2C2E', // tertiarySystemBackground
+    textPrimary: '#FFFFFF', // label
+    textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
+    accent: '#0A84FF', // systemBlue (dark)
+    positive: '#30D158', // systemGreen (dark)
+    negative: '#FF453A', // systemRed (dark)
+    border: '#38383A', // separator (dark)
   },
   spacing: (multiplier: number) => multiplier * 4,
   radii: { sm: 6, md: 10, lg: 16 },
