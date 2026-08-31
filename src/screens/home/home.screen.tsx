@@ -6,14 +6,13 @@ import { useState } from 'react';
 import { FlatList } from 'react-native';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
-import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
-import { netWorth, type RateTable } from '../../rates/conversion';
+import { buildRateTable, canConvert, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
@@ -30,39 +29,6 @@ type HomeScreenProps = CompositeScreenProps<
   NativeStackScreenProps<HomeStackParamList, 'Home'>,
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
-
-type ConvertibleHolding = Pick<HoldingRow, 'accountId' | 'currency' | 'balanceMinorUnits'>;
-
-/** The `rate` column is stored as a string; parse it into the numeric RateTable. */
-const buildRateTable = (rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[]): RateTable => {
-  const table: RateTable = {};
-  for (const row of rows) {
-    const rate = Number(row.rate);
-    if (Number.isFinite(rate)) {
-      table[`${row.base}:${row.quote}`] = rate;
-    }
-  }
-  return table;
-};
-
-/**
- * `convert`/`netWorth` throw on a missing rate pair (RULING R2). A holding is
- * convertible only when it is already in the base currency or a base rate
- * exists — otherwise it is excluded from any sum so a first-run (no rates yet)
- * render never crashes.
- */
-const canConvert = (currency: Currency, base: Currency, rates: RateTable): boolean =>
-  currency === base || rates[`${currency}:${base}`] !== undefined;
-
-/** Sum the given holdings in the base currency, excluding any that cannot convert. */
-const guardedNetWorth = (
-  holdings: ConvertibleHolding[],
-  base: Currency,
-  rates: RateTable,
-): Money => {
-  const convertible = holdings.filter(holding => canConvert(holding.currency, base, rates));
-  return netWorth(convertible, base, rates);
-};
 
 const HomeScreen: FC<HomeScreenProps> = () => {
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
