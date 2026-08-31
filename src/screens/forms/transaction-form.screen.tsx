@@ -8,11 +8,11 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 
-type TransactionFormScreenProps = NativeStackScreenProps<RootStackParamList, 'TransactionForm'>;
+type TransactionFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'TransactionForm'>;
 
 type Sign = 'income' | 'expense';
 

@@ -5,10 +5,10 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import Box from '../../design-system/components/box';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 
-type AccountFormScreenProps = NativeStackScreenProps<RootStackParamList, 'AccountForm'>;
+type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
 const kinds = ['bank', 'cash', 'crypto', 'broker'] as const;
 type Kind = (typeof kinds)[number];

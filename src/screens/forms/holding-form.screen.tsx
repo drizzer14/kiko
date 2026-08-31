@@ -7,10 +7,10 @@ import { Money } from '../../currency/money';
 import Box from '../../design-system/components/box';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
-type HoldingFormScreenProps = NativeStackScreenProps<RootStackParamList, 'HoldingForm'>;
+type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
 const types = ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'] as const;
 type HoldingType = (typeof types)[number];

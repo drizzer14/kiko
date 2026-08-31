@@ -1,30 +1,35 @@
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { FC } from 'react';
-import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
-import AccountFormScreen from '../screens/forms/account-form.screen';
-import HoldingFormScreen from '../screens/forms/holding-form.screen';
-import TransactionFormScreen from '../screens/forms/transaction-form.screen';
-import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
-import HomeScreen from '../screens/home/home.screen';
-import SettingsScreen from '../screens/settings/settings.screen';
-import type { RootStackParamList } from './types';
+import AccountsStack from './accounts.stack';
+import HomeStack from './home.stack';
+import SettingsStack from './settings.stack';
+import type { TabParamList } from './types';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tabs = createNativeBottomTabNavigator<TabParamList>();
 
 /**
- * The app's single native stack. `NavigationContainer` is provided by the app
- * root (`App.tsx`), so this component renders only the navigator itself.
+ * The app's native bottom-tab navigator. Each tab hosts its own native stack.
+ * Icons are SF Symbols (`{ sfSymbol }` is the library's `AppleIcon` shape);
+ * `NavigationContainer` and its dark theme are provided by the app root.
  */
 const RootNavigator: FC = () => (
-  <Stack.Navigator initialRouteName="Home">
-    <Stack.Screen name="Home" component={HomeScreen} />
-    <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
-    <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
-    <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="AccountForm" component={AccountFormScreen} />
-    <Stack.Screen name="HoldingForm" component={HoldingFormScreen} />
-    <Stack.Screen name="TransactionForm" component={TransactionFormScreen} />
-  </Stack.Navigator>
+  <Tabs.Navigator>
+    <Tabs.Screen
+      name="HomeTab"
+      component={HomeStack}
+      options={{ title: 'Home', tabBarIcon: () => ({ sfSymbol: 'house.fill' }) }}
+    />
+    <Tabs.Screen
+      name="AccountsTab"
+      component={AccountsStack}
+      options={{ title: 'Accounts', tabBarIcon: () => ({ sfSymbol: 'wallet.pass.fill' }) }}
+    />
+    <Tabs.Screen
+      name="SettingsTab"
+      component={SettingsStack}
+      options={{ title: 'Settings', tabBarIcon: () => ({ sfSymbol: 'gearshape.fill' }) }}
+    />
+  </Tabs.Navigator>
 );
 
 export default RootNavigator;

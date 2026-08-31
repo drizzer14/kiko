@@ -1,3 +1,5 @@
+import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
+import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
@@ -12,7 +14,7 @@ import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { RootStackParamList } from '../../navigation/types';
+import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { netWorth, type RateTable } from '../../rates/conversion';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
@@ -20,7 +22,13 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { useSync } from '../use-sync';
 
-type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
+// Home lives in its own tab, but its account rows and "Add account" button
+// open screens that belong to the Accounts tab's stack. Composing the Home
+// stack props with the tab props keeps that cross-tab navigation type-safe.
+type HomeScreenProps = CompositeScreenProps<
+  NativeStackScreenProps<HomeStackParamList, 'Home'>,
+  NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
+>;
 
 type ConvertibleHolding = Pick<HoldingRow, 'accountId' | 'currency' | 'balanceMinorUnits'>;
 
@@ -79,7 +87,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   return (
     <Screen>
       <Box gap={4}>
-        <Text variant="title">Home</Text>
         <Box gap={1}>
           <Text variant="caption" tone="textSecondary">
             Net worth
@@ -100,7 +107,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         <Box gap={2}>
           <Text variant="heading">Accounts</Text>
           <PressableButton
-            onPress={() => navigation.navigate('AccountForm', {})}
+            onPress={() =>
+              navigation.navigate('AccountsTab', { screen: 'AccountForm', params: {} })
+            }
             backgroundColor={theme.colors.accent}
             alignSelf="flex-start"
           >
@@ -114,7 +123,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             return (
               <ListRow
                 key={account.id}
-                onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
+                onPress={() =>
+                  navigation.navigate('AccountsTab', {
+                    screen: 'AccountDetail',
+                    params: { accountId: account.id },
+                  })
+                }
               >
                 <Text variant="body">{account.name}</Text>
                 <MoneyText money={subtotal} />

@@ -6,6 +6,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { type FC, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MigrationsGate from './src/db/migrations.gate';
+import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
 import { settingsRepo } from './src/repositories/settings.repo';
 
@@ -20,7 +21,7 @@ const AppRoot: FC = () => {
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationDarkTheme}>
       <RootNavigator />
     </NavigationContainer>
   );

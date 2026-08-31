@@ -9,11 +9,11 @@ import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 
-type HoldingDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'HoldingDetail'>;
+type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
 const formatTime = (time: number): string => new Date(time).toLocaleString();
 
