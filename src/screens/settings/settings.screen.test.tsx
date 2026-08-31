@@ -1,11 +1,9 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import SettingsScreen from './settings.screen';
 
 const mockSetBaseCurrency = jest.fn();
 const mockSaveToken = jest.fn();
-const mockRunSync = jest.fn();
-const mockRefreshRates = jest.fn();
 const mockReadToken = jest.fn<Promise<string | undefined>, []>();
 let mockLiveQueryData: Array<{ baseCurrency: string; lastSyncAt: number | null }> = [
   { baseCurrency: 'UAH', lastSyncAt: null },
@@ -24,15 +22,6 @@ jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
   readToken: () => mockReadToken(),
 }));
-jest.mock('../../monobank/sync', () => ({
-  runSync: (...args: unknown[]) => mockRunSync(...args),
-}));
-jest.mock('../../rates/rates-refresh', () => ({
-  refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
-}));
-jest.mock('../../repositories/rates.repo', () => ({
-  ratesRepo: { latestFetchedAt: () => Promise.resolve(null) },
-}));
 
 /** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
@@ -48,8 +37,11 @@ describe('SettingsScreen', () => {
     jest.clearAllMocks();
     mockReadToken.mockResolvedValue(undefined);
     mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: null }];
-    mockRunSync.mockResolvedValue({ importedTransactions: 0 });
-    mockRefreshRates.mockResolvedValue(undefined);
+  });
+
+  it('does not render an in-screen "Settings" title (the native header provides it)', async () => {
+    const { queryByText } = await render(<SettingsScreen />);
+    expect(queryByText('Settings')).toBeNull();
   });
 
   it('shows the current base currency', async () => {
@@ -93,20 +85,6 @@ describe('SettingsScreen', () => {
     expect(mockSaveToken).toHaveBeenCalledWith('new-token');
   });
 
-  it('calls runSync then refreshRates when Sync is pressed', async () => {
-    const { getByText } = await render(<SettingsScreen />);
-    await fireEvent.press(getByText('Sync'));
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
-    expect(mockRunSync).toHaveBeenCalled();
-  });
-
-  it('shows an error message when sync fails, without crashing', async () => {
-    mockRunSync.mockRejectedValue(new Error('sync boom'));
-    const { findByText, getByText } = await render(<SettingsScreen />);
-    await fireEvent.press(getByText('Sync'));
-    expect(await findByText(/sync boom/i)).toBeTruthy();
-  });
-
   it('shows the last sync time from the live settings row', async () => {
     mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: 1700000000000 }];
     const { getByText, queryByText } = await render(<SettingsScreen />);
@@ -117,5 +95,10 @@ describe('SettingsScreen', () => {
   it('shows "Never" when there is no last sync time', async () => {
     const { getByText } = await render(<SettingsScreen />);
     expect(getByText(/Never/i)).toBeTruthy();
+  });
+
+  it('does not render a Sync button (sync is per-account now)', async () => {
+    const { queryByText } = await render(<SettingsScreen />);
+    expect(queryByText('Sync')).toBeNull();
   });
 });

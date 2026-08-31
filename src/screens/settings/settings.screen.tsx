@@ -11,7 +11,7 @@ import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { readToken, saveToken } from '../../monobank/token';
 import { settingsRepo } from '../../repositories/settings.repo';
-import { useSync } from '../use-sync';
+import { styles } from './settings.styles';
 
 const formatLastSyncAt = (lastSyncAt: number | null): string =>
   lastSyncAt === null ? 'Never' : new Date(lastSyncAt).toLocaleString();
@@ -21,7 +21,6 @@ const SettingsScreen: FC = () => {
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
   const [token, setToken] = useState('');
-  const { isSyncing, error: syncError, sync } = useSync();
   const hasUserEditedToken = useRef(false);
 
   useEffect(() => {
@@ -52,56 +51,57 @@ const SettingsScreen: FC = () => {
   return (
     <Screen>
       <Box gap={4}>
-        <Text variant="title">Settings</Text>
-
         <Box gap={2}>
-          <Text variant="heading">Base currency</Text>
-          <CurrencySwitch selected={settings?.baseCurrency} onSelect={handleSelectCurrency} />
-        </Box>
-
-        <Box gap={2}>
-          <Text variant="heading">Monobank token</Text>
-          <TextInput
-            value={token}
-            onChangeText={handleChangeToken}
-            placeholder="Monobank token"
-            placeholderTextColor={theme.colors.textSecondary}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={{
-              color: theme.colors.textPrimary,
-              backgroundColor: theme.colors.surface,
-              borderRadius: theme.radii.sm,
-              padding: theme.spacing(2),
-            }}
-          />
-          <PressableButton
-            onPress={handleSaveToken}
-            backgroundColor={theme.colors.surface}
-            alignSelf="flex-start"
-          >
-            <Text variant="body">Save</Text>
-          </PressableButton>
-        </Box>
-
-        <Box gap={2}>
-          <PressableButton
-            onPress={() => void sync()}
-            disabled={isSyncing}
-            backgroundColor={theme.colors.accent}
-            alignSelf="flex-start"
-          >
-            <Text variant="body">{isSyncing ? 'Syncing…' : 'Sync'}</Text>
-          </PressableButton>
           <Text variant="caption" tone="textSecondary">
-            Last sync: {formatLastSyncAt(settings?.lastSyncAt ?? null)}
+            Base currency
           </Text>
-          {syncError !== undefined && (
-            <Text variant="body" tone="negative">
-              {syncError}
-            </Text>
-          )}
+          <Box style={styles.card}>
+            <Box style={[styles.row, styles.rowLast]}>
+              <CurrencySwitch selected={settings?.baseCurrency} onSelect={handleSelectCurrency} />
+            </Box>
+          </Box>
+        </Box>
+
+        <Box gap={2}>
+          <Text variant="caption" tone="textSecondary">
+            Monobank token
+          </Text>
+          <Box style={styles.card}>
+            <Box style={styles.row}>
+              <TextInput
+                value={token}
+                onChangeText={handleChangeToken}
+                placeholder="Monobank token"
+                placeholderTextColor={theme.colors.textSecondary}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.tokenInput}
+              />
+            </Box>
+            <Box style={[styles.row, styles.rowLast]}>
+              <PressableButton
+                onPress={handleSaveToken}
+                backgroundColor={theme.colors.surfaceHigh}
+                alignSelf="flex-start"
+              >
+                <Text variant="body">Save</Text>
+              </PressableButton>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box gap={2}>
+          <Text variant="caption" tone="textSecondary">
+            Sync status
+          </Text>
+          <Box style={styles.card}>
+            <Box style={[styles.row, styles.rowLast]}>
+              <Text variant="body" tone="textSecondary">
+                Last sync: {formatLastSyncAt(settings?.lastSyncAt ?? null)}
+              </Text>
+            </Box>
+          </Box>
         </Box>
       </Box>
     </Screen>
