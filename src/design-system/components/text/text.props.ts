@@ -13,8 +13,6 @@ export type TextProps = {
   // balance without minting a new design-system typography token. `color` is
   // intentionally excluded so the `tone` token stays authoritative and a caller
   // can never override the money tone (zero=white / negative=red / positive=green).
-  style?: StyleProp<
-    Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign' | 'lineHeight' | 'letterSpacing'>
-  >;
+  style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign'>>;
   children: ReactNode;
 };

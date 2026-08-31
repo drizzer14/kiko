@@ -203,6 +203,49 @@ describe('HomeScreen', () => {
     expect(queryByText('Groceries')).toBeNull();
   });
 
+  it('renders an empty state when there are no transactions', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+      settings: [{ baseCurrency: 'UAH' }],
+      transactions: [],
+    });
+    const { getByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getByText('No transactions')).toBeTruthy();
+  });
+
+  it('renders an empty state when a filter narrows the list to zero rows', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'b', name: 'PrivatBank', kind: 'bank' },
+      ],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+      transactions: [
+        transaction({
+          id: 't1',
+          accountId: 'a',
+          accountName: 'Monobank',
+          category: 'Food',
+          description: 'Coffee',
+        }),
+        transaction({
+          id: 't2',
+          accountId: 'b',
+          accountName: 'PrivatBank',
+          category: 'Transport',
+          description: 'Groceries',
+        }),
+      ],
+    });
+    const { getByText } = await render(<HomeScreen navigation={navigation} />);
+
+    await fireEvent.press(getByText('Monobank'));
+    await fireEvent.press(getByText('Transport'));
+
+    expect(getByText('No transactions')).toBeTruthy();
+  });
+
   it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
     await render(<HomeScreen navigation={navigation} />);
     const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map(call => call[1][0]);

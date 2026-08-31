@@ -120,7 +120,7 @@ const HomeScreen: FC<HomeScreenProps> = () => {
 
   return (
     <Screen>
-      <Box gap={4}>
+      <Box gap={4} style={styles.content}>
         <Box gap={1} style={styles.header}>
           <Text variant="caption" tone="textSecondary">
             Net worth
@@ -146,6 +146,13 @@ const HomeScreen: FC<HomeScreenProps> = () => {
           data={filteredTransactions}
           keyExtractor={item => item.id}
           renderItem={renderTransaction}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <Box style={styles.empty}>
+              <Text tone="textSecondary">No transactions</Text>
+            </Box>
+          }
         />
       </Box>
     </Screen>
