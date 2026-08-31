@@ -16,6 +16,8 @@ type NewCashAccount = {
 
 export const accountsRepo = {
   listQuery: () => database.select().from(accounts),
+  byIdQuery: (accountId: string) =>
+    database.select().from(accounts).where(eq(accounts.id, accountId)),
   create: (input: NewAccount) => write(tx => tx.insert(accounts).values({ id: id(), ...input })),
   /**
    * Create a cash account and its initial cash holding in ONE op-sqlite

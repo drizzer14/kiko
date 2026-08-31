@@ -22,6 +22,12 @@ describe('accountsRepo', () => {
     expect(accountsRepo.listQuery().toSQL().sql).toContain('accounts');
   });
 
+  it('builds a single-account query filtered by id', () => {
+    const query = accountsRepo.byIdQuery('a1').toSQL();
+    expect(query.sql).toContain('accounts');
+    expect(query.params).toContain('a1');
+  });
+
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
     const inserts: Record<string, unknown>[] = [];
     mockTx = {
