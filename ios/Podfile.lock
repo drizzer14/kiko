@@ -1291,6 +1291,53 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-bottom-tabs (1.4.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - react-native-bottom-tabs/common (= 1.4.0)
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - SwiftUIIntrospect (~> 1.0)
+    - Yoga
+  - react-native-bottom-tabs/common (1.4.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - SwiftUIIntrospect (~> 1.0)
+    - Yoga
   - react-native-safe-area-context (5.9.1):
     - hermes-engine
     - RCTRequired
@@ -1789,6 +1836,7 @@ PODS:
     - Yoga
   - SocketRocket (0.7.1):
     - ReactNativeDependencies
+  - SwiftUIIntrospect (1.3.0)
   - Unistyles (3.3.0):
     - hermes-engine
     - NitroModules
@@ -1866,6 +1914,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - React-mutationobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
+  - react-native-bottom-tabs (from `../node_modules/react-native-bottom-tabs`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -1908,6 +1957,10 @@ DEPENDENCIES:
   - SocketRocket (from `build/rndeps-facades/SocketRocket`)
   - Unistyles (from `../node_modules/react-native-unistyles`)
   - Yoga (from `build/rncore-facades/Yoga`)
+
+SPEC REPOS:
+  trunk:
+    - SwiftUIIntrospect
 
 EXTERNAL SOURCES:
   boost:
@@ -2009,6 +2062,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   React-mutationobservernativemodule:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
+  react-native-bottom-tabs:
+    :path: "../node_modules/react-native-bottom-tabs"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   React-NativeModulesApple:
@@ -2114,7 +2169,7 @@ SPEC CHECKSUMS:
   React-bridging: 36710fbb84391e0c1ca07392e855a73f328058aa
   React-callinvoker: 33c0c2c46a808f55ef5a2927fa373977a334ea3e
   React-Core: a85e5b125475d5d744af9614165ddb0944b1f86d
-  React-Core-prebuilt: cd44efd12c9bfad37c194372a6d3a18a6a6d5c00
+  React-Core-prebuilt: d02240839df49bdfe03148fae0a647aaf7288d53
   React-CoreModules: 6bc28ab7a1b0450fe502b38b1ba6323db9f2a472
   React-cxxreact: cc133718b2f46a384b4ffafda73c87e8de23eab2
   React-cxxstableapi: 1e0ad8a5ecb7f2f5440c012798cf20bec6341c1f
@@ -2144,6 +2199,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: fedd8e34e26194cf70bd66e77c49170e22d88b82
   React-microtasksnativemodule: aa3ea1db91e208694042bd8af0bda65202f4a68d
   React-mutationobservernativemodule: 2dcf0e333fe6621c3ffea838fcc48d54435724a1
+  react-native-bottom-tabs: 175e6821dda118a172923fbaf5780b5a62b60011
   react-native-safe-area-context: 352ca3a1d913db1068dcd86669bf60d59608d6eb
   React-NativeModulesApple: 885f4cd7626a1ffe20e0dcd23ef8528f415795d3
   React-networking: 31c21d3a8ea93c859706f876d27578782b05d250
@@ -2184,6 +2240,7 @@ SPEC CHECKSUMS:
   RNKeychain: c21223f99385f30e3353355f1a130c150f23c96d
   RNScreens: 2b9596ab195e431f33241a94b71cfed0fcd63073
   SocketRocket: d57b1af80c029e12a75cd9b218287c67381e4593
+  SwiftUIIntrospect: fee9aa07293ee280373a591e1824e8ddc869ba5d
   Unistyles: b393e2bcd428210b00a2493cb9f0bb2a678a6ae0
   Yoga: 58b502c52b14ad3c4468805d461fc37d275c2a42
 
