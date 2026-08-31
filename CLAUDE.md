@@ -118,34 +118,42 @@ verified usage, not dead weight:
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` (path-scoped) —
   CocoaPods lists a SHA1 checksum per pod, which gitleaks'
   `generic-api-key` rule flags as a false positive (verified
-  fingerprint: `ios/Podfile.lock:generic-api-key:1966`). Also a
-  **content-scoped** `regexes` entry (`regexTarget = "line"`) matching
-  only the mechanical CocoaPods `PodName: <40-hex-char SHA1>` SPEC
-  CHECKSUMS line shape — deliberately *not* a path exemption for
-  `.superpowers/`: that directory is fully gitignored (SDD planning
-  artifacts, never committed) but holds freeform notes, reports, and
-  review diffs of real source, and must stay scanned for a real
-  secret pasted into any of them. Its per-task review diffs can
-  quote an `ios/Podfile.lock` hunk verbatim — the same CocoaPods SHA1
-  checksums allowlisted by path above, just inside a unified diff
-  instead of the lockfile — which is what the line-shape regex
-  allowlists instead, wherever that exact shape occurs (verified
-  fingerprint:
-  `.superpowers/sdd/2026-08-31-pff-redesign-phase-1/review-137038e..d5465d6.diff:generic-api-key:192`,
-  a `React`-family pod name followed by its 40-character checksum on the
-  same line; separately verified that an unrelated `key: <mixed-case
-  token>`-shaped line placed in the same directory is still flagged,
-  since it does not match the hex-only regex). Note for future editors:
-  do not quote a `PodName` and a real 40-character hex checksum
-  adjacently (`name` + `:` + hex) anywhere in a tracked file, including
-  this one — that exact shape is what `generic-api-key` (and this
-  allowlist entry) matches, and reproducing it verbatim here would trip
-  `check:secrets` on `CLAUDE.md` itself. gitleaks 8.30.1 rejects mixing
-  the legacy
-  single `[allowlist]` table with `[[allowlists]]` array-of-tables
-  (`"[allowlist] is deprecated, it cannot be used alongside
-  [[allowlists]]"`), so both the path list and the regex live in one
-  `[allowlist]` table.
+  fingerprint: `ios/Podfile.lock:generic-api-key:1966`).
+- **`.gitleaksignore`**: exactly one fingerprint-scoped entry (format
+  `path:ruleID:startLine`), for a review-diff artifact under the
+  gitignored `.superpowers/` directory that quotes an `ios/Podfile.lock`
+  hunk verbatim — the same false-positive class as the path entry above,
+  just inside a unified diff instead of the lockfile. This is
+  deliberately a single, exact fingerprint, not a `.gitleaks.toml`
+  allowlist, because two broader approaches were tried and reverted
+  after actually being tested against the installed gitleaks version
+  (8.30.1), not just read about: (1) a `paths` entry for
+  `.superpowers/.*` disabled every rule for the whole directory,
+  including a real secret pasted into a freeform note there; (2) a
+  content-only `regexes` entry (`regexTarget = "line"`, no `paths`)
+  matching the checksum-line shape was repo-wide — it allowlisted that
+  line shape in *any* file, anywhere, which is a real secret shape too
+  (e.g. a legacy 40-hex GitHub personal access token). Combining `paths`
+  and `regexes` in one allowlist with `condition = "and"` does **not**
+  fix this: `paths` matching skips the whole file before any
+  finding-level regex is evaluated in this gitleaks version (confirmed
+  via `strings` on the installed binary and empirically — a non-checksum
+  secret placed in a path-allowlisted directory was still silently
+  skipped even under `condition = "and"`), so there is no config-level
+  way to AND a path condition with a content condition at finding
+  granularity here. See `.gitleaksignore`'s own header comment for the
+  full writeup and the exact fingerprint.
+  Note for future editors: do not quote a real `PodName: <40-char hex>`
+  checksum pair adjacently in any tracked file (including this one) —
+  that exact shape is what `generic-api-key` matches, and reproducing it
+  verbatim would trip `check:secrets` on that file itself.
+  `scripts/checks/secrets.sh` always invokes gitleaks with a
+  ROOT-relative `--source` (it `cd`s into `$ROOT` first): gitleaks
+  derives a finding's fingerprint verbatim from the `--source` string,
+  so an absolute `--source` would produce an absolute-path fingerprint —
+  not portable across checkouts/worktrees at different absolute paths,
+  and unmatchable by a committed, relative-path `.gitleaksignore` entry
+  like the one above.
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an
