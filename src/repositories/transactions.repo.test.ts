@@ -26,6 +26,15 @@ describe('transactionsRepo', () => {
     expect(params).toContain('hold-1');
   });
 
+  it('exposes a joined all-transactions query with account and holding labels', () => {
+    const query = transactionsRepo.listAllWithContextQuery();
+    const sql = query.toSQL().sql.toLowerCase();
+    expect(sql).toContain('from "transactions"');
+    expect(sql).toContain('join "holdings"');
+    expect(sql).toContain('join "accounts"');
+    expect(sql).toContain('order by');
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {

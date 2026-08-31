@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
-import { holdings, type TransactionRow, transactions } from '../db/schema';
+import { accounts, holdings, type TransactionRow, transactions } from '../db/schema';
 import type { Repository } from './repository';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
@@ -13,6 +13,23 @@ type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' |
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
+  listAllWithContextQuery: () =>
+    database
+      .select({
+        id: transactions.id,
+        amountMinorUnits: transactions.amountMinorUnits,
+        currency: holdings.currency,
+        time: transactions.time,
+        description: transactions.description,
+        category: transactions.category,
+        accountId: accounts.id,
+        accountName: accounts.name,
+        holdingName: holdings.name,
+      })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+      .orderBy(desc(transactions.time)),
   add: (input: NewTransaction) =>
     write(tx => tx.insert(transactions).values({ id: id(), ...input })),
   /**
