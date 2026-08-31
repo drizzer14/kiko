@@ -3,18 +3,12 @@ import '../../design-system/unistyles';
 import AccountFormScreen from './account-form.screen';
 
 const mockCreate = jest.fn();
-const mockCreateAndReturn = jest.fn();
-const mockHoldingsCreate = jest.fn();
+const mockCreateCashAccount = jest.fn();
 
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
     create: (...args: unknown[]) => mockCreate(...args),
-    createAndReturn: (...args: unknown[]) => mockCreateAndReturn(...args),
-  },
-}));
-jest.mock('../../repositories/holdings.repo', () => ({
-  holdingsRepo: {
-    create: (...args: unknown[]) => mockHoldingsCreate(...args),
+    createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
   },
 }));
 
@@ -33,7 +27,7 @@ describe('AccountFormScreen', () => {
     expect(queryByText('broker')).toBeNull();
   });
 
-  it('creates a bank account without touching holdingsRepo', async () => {
+  it('creates a bank account without touching the cash-account path', async () => {
     const navigation = { goBack: jest.fn() } as never;
     const { getByLabelText, getByText } = await render(
       <AccountFormScreen navigation={navigation} />,
@@ -44,13 +38,11 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank' });
-    expect(mockCreateAndReturn).not.toHaveBeenCalled();
-    expect(mockHoldingsCreate).not.toHaveBeenCalled();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('creates a cash account and an attached cash holding with the initial value', async () => {
-    mockCreateAndReturn.mockResolvedValue('acc-1');
+  it('creates a cash account atomically with the initial value', async () => {
     const navigation = { goBack: jest.fn() } as never;
     const { getByLabelText, getByText } = await render(
       <AccountFormScreen navigation={navigation} />,
@@ -62,15 +54,12 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('EUR'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreateAndReturn).toHaveBeenCalledWith({ name: 'Wallet', kind: 'cash' });
-    expect(mockCreate).not.toHaveBeenCalled();
-    expect(mockHoldingsCreate).toHaveBeenCalledWith({
-      accountId: 'acc-1',
+    expect(mockCreateCashAccount).toHaveBeenCalledWith({
       name: 'Wallet',
-      type: 'cash',
       currency: 'EUR',
-      balanceMinorUnits: 25050,
+      initialBalanceMinorUnits: 25050,
     });
+    expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 });

@@ -2,10 +2,10 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   open: () => ({ execute: () => ({ rows: [] }) }),
 }));
 
-// `createAndReturn` runs its insert through the `write` helper (one op-sqlite
-// transaction). Override `write` to run the callback against a fake
-// transaction handle so the test can capture what was inserted and confirm
-// the returned id matches the id written to the row.
+// `createCashAccount` runs its inserts through the `write` helper (one
+// op-sqlite transaction). Override `write` to run the callback against a
+// fake transaction handle so the test can capture every insert issued
+// inside that single transaction.
 let mockTx: unknown;
 jest.mock('../db/client', () => {
   const actual = jest.requireActual('../db/client');
@@ -22,21 +22,37 @@ describe('accountsRepo', () => {
     expect(accountsRepo.listQuery().toSQL().sql).toContain('accounts');
   });
 
-  it('createAndReturn inserts a new account and returns the generated id', async () => {
-    const captured: { insert?: Record<string, unknown> } = {};
+  it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
+    const inserts: Record<string, unknown>[] = [];
     mockTx = {
       insert: () => ({
         values: (values: Record<string, unknown>) => {
-          captured.insert = values;
+          inserts.push(values);
           return Promise.resolve();
         },
       }),
     };
 
-    const returnedId = await accountsRepo.createAndReturn({ name: 'Wallet', kind: 'cash' });
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'EUR',
+      initialBalanceMinorUnits: 25050,
+    });
 
-    expect(typeof returnedId).toBe('string');
-    expect(returnedId.length).toBeGreaterThan(0);
-    expect(captured.insert).toMatchObject({ id: returnedId, name: 'Wallet', kind: 'cash' });
+    expect(inserts).toHaveLength(2);
+    const [accountInsert, holdingInsert] = inserts as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(accountInsert).toMatchObject({ name: 'Wallet', kind: 'cash' });
+    expect(holdingInsert).toMatchObject({
+      accountId: accountInsert.id,
+      name: 'Wallet',
+      type: 'cash',
+      currency: 'EUR',
+      balanceMinorUnits: 25050,
+    });
+    expect(typeof accountInsert.id).toBe('string');
+    expect((accountInsert.id as string).length).toBeGreaterThan(0);
   });
 });

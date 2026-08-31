@@ -9,7 +9,6 @@ import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -31,13 +30,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
 
   const save = async (): Promise<void> => {
     if (kind === 'cash') {
-      const accountId = await accountsRepo.createAndReturn({ name, kind: 'cash' });
-      await holdingsRepo.create({
-        accountId,
+      await accountsRepo.createCashAccount({
         name,
-        type: 'cash',
         currency,
-        balanceMinorUnits: Money.fromMajor(currency, Number(initialValue) || 0).minorUnits,
+        initialBalanceMinorUnits: Money.fromMajor(currency, Number(initialValue) || 0).minorUnits,
       });
       navigation.goBack();
       return;
@@ -46,6 +42,33 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
     await accountsRepo.create({ name, kind: 'bank' });
     navigation.goBack();
   };
+
+  // A labeled single-select chip row — the kind and currency pickers below
+  // are otherwise identical Pressable/Text JSX, so this local helper (closed
+  // over `theme`) renders either from its options/selected/onSelect args
+  // instead of duplicating the markup per picker.
+  const renderChipRow = <T extends string>(
+    options: readonly T[],
+    selected: T,
+    onSelect: (option: T) => void,
+  ) => (
+    <Box style={styles.chipRow} gap={2}>
+      {options.map(option => (
+        <Pressable
+          key={option}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selected === option }}
+          onPress={() => onSelect(option)}
+          style={[
+            styles.chip,
+            { backgroundColor: selected === option ? theme.colors.accent : theme.colors.surface },
+          ]}
+        >
+          <Text variant="body">{option}</Text>
+        </Pressable>
+      ))}
+    </Box>
+  );
 
   return (
     <Screen>
@@ -64,44 +87,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
           ]}
         />
 
-        <Box style={styles.chipRow} gap={2}>
-          {kinds.map(option => (
-            <Pressable
-              key={option}
-              accessibilityRole="button"
-              accessibilityState={{ selected: kind === option }}
-              onPress={() => setKind(option)}
-              style={[
-                styles.chip,
-                { backgroundColor: kind === option ? theme.colors.accent : theme.colors.surface },
-              ]}
-            >
-              <Text variant="body">{option}</Text>
-            </Pressable>
-          ))}
-        </Box>
+        {renderChipRow(kinds, kind, setKind)}
 
         {kind === 'cash' && (
           <>
-            <Box style={styles.chipRow} gap={2}>
-              {currencies.map(option => (
-                <Pressable
-                  key={option}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: currency === option }}
-                  onPress={() => setCurrency(option)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor:
-                        currency === option ? theme.colors.accent : theme.colors.surface,
-                    },
-                  ]}
-                >
-                  <Text variant="body">{option}</Text>
-                </Pressable>
-              ))}
-            </Box>
+            {renderChipRow(currencies, currency, setCurrency)}
 
             <TextInput
               accessibilityLabel="Initial value"
