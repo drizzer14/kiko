@@ -222,6 +222,17 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  it('throws when the target id does not match any existing account', async () => {
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      bankAccount({ id: 'acc-cash', institution: null }),
+    ]);
+    deps.targetAccountId = 'acc-does-not-exist';
+
+    await expect(runSync(deps)).rejects.toThrow('No Monobank account connected');
+    expect(holdingsStore).toHaveLength(0);
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('imports zero new transactions on a second run (dedup on source + externalId)', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
