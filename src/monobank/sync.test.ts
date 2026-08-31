@@ -36,6 +36,13 @@ describe('mapStatementItem', () => {
     expect(transaction.comment).toBeNull();
   });
 
+  it('derives category from the mcc via categoryForMcc', () => {
+    const groceryItem = statement[0];
+    const transaction = mapStatementItem(groceryItem, 'holding-1');
+    expect(groceryItem.mcc).toBe(5411);
+    expect(transaction.category).toBe('Groceries');
+  });
+
   it('keeps an existing comment', () => {
     const withComment = statement[0];
     const transaction = mapStatementItem(withComment, 'holding-1');
@@ -195,6 +202,11 @@ describe('runSync', () => {
     expect(holdingsStore.filter(holding => holding.type === 'jar')).toHaveLength(1);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
+    // the grocery-MCC fixture item (5411) is synced with its derived category
+    const groceryTransaction = transactionsStore.find(
+      transaction => transaction.externalId === statement[0].id,
+    );
+    expect(groceryTransaction?.category).toBe('Groceries');
   });
 
   it('with no target id, syncs into the existing institution=monobank account', async () => {

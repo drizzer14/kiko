@@ -6,6 +6,7 @@ import { holdingsRepo } from '../repositories/holdings.repo';
 import { settingsRepo } from '../repositories/settings.repo';
 import { transactionsRepo } from '../repositories/transactions.repo';
 import { currencyFromCode } from './currency-code';
+import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
 import { readToken } from './token';
@@ -96,6 +97,7 @@ export const mapStatementItem = (
   time: item.time * 1000,
   description: item.description ?? '',
   mcc: item.mcc,
+  category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
   externalId: item.id,
