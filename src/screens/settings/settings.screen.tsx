@@ -21,7 +21,8 @@ type TokenStatus =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'success'; name: string }
-  | { kind: 'error' };
+  | { kind: 'invalid' }
+  | { kind: 'saveError' };
 
 const formatLastSyncAt = (lastSyncAt: number | null): string =>
   lastSyncAt === null ? 'Never' : new Date(lastSyncAt).toLocaleString();
@@ -53,6 +54,7 @@ const SettingsScreen: FC = () => {
   const handleChangeToken = (value: string): void => {
     markEdited();
     setToken(value);
+    setTokenStatus({ kind: 'idle' });
   };
 
   const handleSelectCurrency = (currency: Currency): void => {
@@ -67,19 +69,29 @@ const SettingsScreen: FC = () => {
     void Clipboard.getString().then(value => {
       markEdited();
       setToken(value);
+      setTokenStatus({ kind: 'idle' });
     });
   };
 
   const handleSaveToken = (): void => {
     setTokenStatus({ kind: 'checking' });
-    void fetchClientInfo(token)
-      .then(clientInfo => {
-        setTokenStatus({ kind: 'success', name: clientInfo.name });
-        return saveToken(token);
-      })
-      .catch(() => {
-        setTokenStatus({ kind: 'error' });
-      });
+    void (async () => {
+      let clientName: string;
+      try {
+        const clientInfo = await fetchClientInfo(token);
+        clientName = clientInfo.name;
+      } catch {
+        setTokenStatus({ kind: 'invalid' });
+        return;
+      }
+
+      try {
+        await saveToken(token);
+        setTokenStatus({ kind: 'success', name: clientName });
+      } catch {
+        setTokenStatus({ kind: 'saveError' });
+      }
+    })();
   };
 
   return (
@@ -143,9 +155,14 @@ const SettingsScreen: FC = () => {
                   Connected as {tokenStatus.name}
                 </Text>
               )}
-              {tokenStatus.kind === 'error' && (
+              {tokenStatus.kind === 'invalid' && (
                 <Text variant="body" tone="negative">
                   Invalid token
+                </Text>
+              )}
+              {tokenStatus.kind === 'saveError' && (
+                <Text variant="body" tone="negative">
+                  Could not save token
                 </Text>
               )}
             </Box>

@@ -49,6 +49,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockReadToken.mockResolvedValue(undefined);
+    mockSaveToken.mockResolvedValue(undefined);
     mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: null }];
   });
 
@@ -128,6 +129,39 @@ describe('SettingsScreen', () => {
     expect(mockFetchClientInfo).toHaveBeenCalledWith('bad-token');
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(await findByText('Invalid token')).toBeTruthy();
+  });
+
+  it('shows a distinct save-error (not "Invalid token") when fetchClientInfo accepts the token but saveToken rejects', async () => {
+    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
+    mockSaveToken.mockRejectedValue(new Error('Keychain write failed'));
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
+      <SettingsScreen />,
+    );
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'valid-token');
+    await act(async () => {
+      await fireEvent.press(getByText('Save'));
+    });
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('valid-token');
+    expect(mockSaveToken).toHaveBeenCalledWith('valid-token');
+    expect(await findByText('Could not save token')).toBeTruthy();
+    expect(queryByText('Invalid token')).toBeNull();
+    expect(queryByText(/Connected as/)).toBeNull();
+  });
+
+  it('clears a stale save-result status line when the token text is edited afterward', async () => {
+    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
+      <SettingsScreen />,
+    );
+    const input = getByPlaceholderText('Monobank token');
+    await fireEvent.changeText(input, 'valid-token');
+    await act(async () => {
+      await fireEvent.press(getByText('Save'));
+    });
+    expect(await findByText(/Connected as Jane Doe/)).toBeTruthy();
+
+    await fireEvent.changeText(input, 'valid-token-2');
+    expect(queryByText(/Connected as Jane Doe/)).toBeNull();
   });
 
   it('shows the last sync time from the live settings row', async () => {
