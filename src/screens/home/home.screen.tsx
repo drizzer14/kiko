@@ -2,6 +2,7 @@ import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
+import { useState } from 'react';
 import { FlatList } from 'react-native';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
@@ -19,6 +20,7 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { styles } from './home.styles';
+import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
@@ -74,6 +76,9 @@ const HomeScreen: FC<HomeScreenProps> = () => {
   ]);
   type TransactionRow = (typeof transactions)[number];
 
+  const [selectedAccount, setSelectedAccount] = useState<string>(FILTER_ALL);
+  const [selectedCategory, setSelectedCategory] = useState<string>(FILTER_ALL);
+
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
 
@@ -89,6 +94,17 @@ const HomeScreen: FC<HomeScreenProps> = () => {
   const hasUnconvertible = activeHoldings.some(
     holding => !canConvert(holding.currency, baseCurrency, rateTable),
   );
+
+  const distinctAccountNames = Array.from(new Set(transactions.map(row => row.accountName)));
+  const distinctCategories = Array.from(
+    new Set(transactions.map(row => row.category ?? 'Uncategorized')),
+  );
+  const filteredTransactions = transactions.filter(row => {
+    const matchesAccount = selectedAccount === FILTER_ALL || row.accountName === selectedAccount;
+    const matchesCategory =
+      selectedCategory === FILTER_ALL || (row.category ?? 'Uncategorized') === selectedCategory;
+    return matchesAccount && matchesCategory;
+  });
 
   const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => (
     <Box gap={1} style={styles.row}>
@@ -117,8 +133,17 @@ const HomeScreen: FC<HomeScreenProps> = () => {
           )}
         </Box>
 
+        <TransactionFilterBar
+          accounts={distinctAccountNames}
+          categories={distinctCategories}
+          selectedAccount={selectedAccount}
+          selectedCategory={selectedCategory}
+          onSelectAccount={setSelectedAccount}
+          onSelectCategory={setSelectedCategory}
+        />
+
         <FlatList
-          data={transactions}
+          data={filteredTransactions}
           keyExtractor={item => item.id}
           renderItem={renderTransaction}
         />

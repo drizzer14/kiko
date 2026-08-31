@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import HomeScreen from './home.screen';
 
@@ -174,6 +174,33 @@ describe('HomeScreen', () => {
     });
     const { getAllByText } = await render(<HomeScreen navigation={navigation} />);
     expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
+  it('filters the transaction list to the selected account only', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'b', name: 'PrivatBank', kind: 'bank' },
+      ],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
+      transactions: [
+        transaction({ id: 't1', accountId: 'a', accountName: 'Monobank', description: 'Coffee' }),
+        transaction({
+          id: 't2',
+          accountId: 'b',
+          accountName: 'PrivatBank',
+          description: 'Groceries',
+        }),
+      ],
+    });
+    const { getByText, queryByText } = await render(<HomeScreen navigation={navigation} />);
+    expect(getByText('Coffee')).toBeTruthy();
+    expect(getByText('Groceries')).toBeTruthy();
+
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(getByText('Coffee')).toBeTruthy();
+    expect(queryByText('Groceries')).toBeNull();
   });
 
   it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
