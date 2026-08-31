@@ -78,9 +78,12 @@ describe('HomeScreen', () => {
     });
   });
 
-  it('renders the screen title', async () => {
+  it('renders the net worth section', async () => {
+    // The Home tab's label is "Home" (asserted in root.navigator.test.tsx);
+    // the screen body itself has no title, so this checks the real heading
+    // it does render.
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
-    expect(getByText('Home')).toBeTruthy();
+    expect(getByText('Net worth')).toBeTruthy();
   });
 
   it('renders the account name', async () => {
@@ -93,16 +96,22 @@ describe('HomeScreen', () => {
     expect(getAllByText(/1,000\.00 UAH/).length).toBeGreaterThan(0);
   });
 
-  it('navigates to AccountDetail when an account row is pressed', async () => {
+  it('navigates to AccountDetail on the Accounts tab when an account row is pressed', async () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
     await fireEvent.press(getByText('Monobank'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
+      screen: 'AccountDetail',
+      params: { accountId: 'a' },
+    });
   });
 
-  it('navigates to AccountForm when Add account is pressed', async () => {
+  it('navigates to AccountForm on the Accounts tab when Add account is pressed', async () => {
     const { getByText } = await render(<HomeScreen navigation={navigation} />);
     await fireEvent.press(getByText('Add account'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
+      screen: 'AccountForm',
+      params: {},
+    });
   });
 
   it('calls runSync then refreshRates when Sync is pressed', async () => {

@@ -98,10 +98,16 @@ verified usage, not dead weight:
   `react-native-screens` (a required runtime peer of
   `@react-navigation/native-stack` — the native stack renders through
   it; it is imported inside `native-stack`, never by app code, so
-  depcheck's static scan cannot see it) and `react-native-nitro-modules`
+  depcheck's static scan cannot see it), `react-native-nitro-modules`
   (the NitroModules native backend that `react-native-unistyles` is
   built on; required at runtime, never statically imported by app
-  code). Also `react-native-dotenv` — a Babel plugin referenced only
+  code), and `react-native-bottom-tabs` (the native tab-bar peer of
+  `@bottom-tabs/react-navigation` — its `NativeBottomTabView` imports
+  the real `TabView` component from `react-native-bottom-tabs` to
+  render the tab bar on-device; only `@bottom-tabs/react-navigation`
+  is imported from app code, in `src/navigation/root.navigator.tsx`,
+  so depcheck's static scan cannot see `react-native-bottom-tabs`
+  itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
   never imported from source, so depcheck's static scan cannot see the
   usage and reports it as an unused devDependency. Also
@@ -112,7 +118,13 @@ verified usage, not dead weight:
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
-  `ios/Podfile.lock:generic-api-key:1966`).
+  `ios/Podfile.lock:generic-api-key:1966`). Also `.superpowers/` — it
+  is fully gitignored (SDD planning artifacts, never committed), but
+  its per-task review diffs can capture an `ios/Podfile.lock` hunk
+  verbatim: the same CocoaPods SHA1 checksums allowlisted above, just
+  inside a unified diff instead of the lockfile (verified fingerprint:
+  `.superpowers/sdd/2026-08-31-pff-redesign-phase-1/review-137038e..d5465d6.diff:generic-api-key:192`,
+  a `React-cxxstableapi: <sha1>` SPEC CHECKSUMS line).
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

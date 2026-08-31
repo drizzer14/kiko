@@ -11,6 +11,7 @@
     "depcheck",
     "jscpd",
     "knip",
+    "react-native-bottom-tabs",
     "react-native-dotenv",
     "react-native-nitro-modules",
     "react-native-screens",

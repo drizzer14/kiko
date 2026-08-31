@@ -11,4 +11,13 @@ paths = [
   # secrets. Confirmed false positive against generic-api-key
   # (fingerprint ios/Podfile.lock:generic-api-key:1966).
   '''ios/Podfile\.lock''',
+  # .superpowers/ is fully gitignored (see .gitignore): SDD planning
+  # artifacts, never committed. Its per-task review diffs can capture an
+  # ios/Podfile.lock hunk verbatim — the same CocoaPods SHA1 checksums
+  # allowlisted above, just inside a unified diff instead of the
+  # lockfile. Confirmed false positive against generic-api-key
+  # (fingerprint .superpowers/sdd/2026-08-31-pff-redesign-phase-1/
+  # review-137038e..d5465d6.diff:generic-api-key:192, a
+  # "React-cxxstableapi: <sha1>" Podfile.lock SPEC CHECKSUMS line).
+  '''\.superpowers/.*''',
 ]
