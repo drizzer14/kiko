@@ -1,8 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create(theme => ({
-  // The scrollable content column: header stays fixed height, the list below
-  // grows to fill the remaining space.
+  // The screen's content column: fills the available space below the header.
   content: {
     flex: 1,
   },
@@ -10,7 +9,7 @@ export const styles = StyleSheet.create(theme => ({
   // iOS Settings groups related rows.
   group: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.sm,
+    borderRadius: theme.radii.md,
     overflow: 'hidden',
   },
   // A single account row: name + kind on the left, balance on the right.

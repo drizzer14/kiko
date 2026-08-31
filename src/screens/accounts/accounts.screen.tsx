@@ -3,6 +3,7 @@ import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
+import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import MoneyText from '../../design-system/components/money-text';
@@ -18,6 +19,13 @@ import { settingsRepo } from '../../repositories/settings.repo';
 import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
+
+const KIND_LABEL: Record<AccountRow['kind'], string> = {
+  bank: 'Bank',
+  cash: 'Cash',
+  crypto: 'Crypto',
+  broker: 'Broker',
+};
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { theme } = useUnistyles();
@@ -57,7 +65,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   <Box gap={1}>
                     <Text variant="body">{account.name}</Text>
                     <Text variant="caption" tone="textSecondary">
-                      {account.kind}
+                      {KIND_LABEL[account.kind]}
                     </Text>
                   </Box>
                   <MoneyText money={balance} />

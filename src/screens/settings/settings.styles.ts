@@ -5,7 +5,7 @@ export const styles = StyleSheet.create(theme => ({
   // iOS Settings groups related rows under a section header.
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.lg,
+    borderRadius: theme.radii.md,
     overflow: 'hidden',
   },
   // A single row within a card.
