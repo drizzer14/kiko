@@ -9,16 +9,21 @@ import MigrationsGate from './src/db/migrations.gate';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
 import { settingsRepo } from './src/repositories/settings.repo';
+import { useAutoSync } from './src/screens/use-auto-sync';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the
  * signal that the schema is ready. Ensures the single settings row exists,
- * then hands off to the navigation stack.
+ * then hands off to the navigation stack. `useAutoSync` kicks off a
+ * throttled background sync of the connected account without blocking this
+ * first render.
  */
 const AppRoot: FC = () => {
   useEffect(() => {
     void settingsRepo.ensure();
   }, []);
+
+  useAutoSync();
 
   return (
     <NavigationContainer theme={navigationDarkTheme}>
