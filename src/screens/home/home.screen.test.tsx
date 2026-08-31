@@ -93,7 +93,7 @@ describe('HomeScreen', () => {
 
   it('renders the total net worth in the base currency', async () => {
     const { getAllByText } = await render(<HomeScreen navigation={navigation} />);
-    expect(getAllByText(/1,000\.00 UAH/).length).toBeGreaterThan(0);
+    expect(getAllByText(/1,000\.00 ₴/).length).toBeGreaterThan(0);
   });
 
   it('navigates to AccountDetail on the Accounts tab when an account row is pressed', async () => {
@@ -143,7 +143,7 @@ describe('HomeScreen', () => {
     });
     const { getAllByText } = await render(<HomeScreen navigation={navigation} />);
     // 100.00 USD * 40 = 4,000.00 UAH
-    expect(getAllByText(/4,000\.00 UAH/).length).toBeGreaterThan(0);
+    expect(getAllByText(/4,000\.00 ₴/).length).toBeGreaterThan(0);
   });
 
   it('does not crash when a holding has no rate; excludes it and hints to sync', async () => {
@@ -156,7 +156,7 @@ describe('HomeScreen', () => {
     const { getByText, getAllByText } = await render(<HomeScreen navigation={navigation} />);
     expect(getByText(/rates unavailable/i)).toBeTruthy();
     // The unconvertible BTC holding is excluded, so the total is zero.
-    expect(getAllByText(/0\.00 UAH/).length).toBeGreaterThan(0);
+    expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
   });
 
   it('reads accounts, holdings, rates, then settings in that order', async () => {

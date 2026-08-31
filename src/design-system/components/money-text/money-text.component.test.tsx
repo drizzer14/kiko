@@ -6,6 +6,6 @@ import MoneyText from './money-text.component';
 describe('MoneyText', () => {
   it('renders the formatted amount', async () => {
     const { getByText } = await render(<MoneyText money={Money.of('USD', 123456)} />);
-    expect(getByText(/1,234\.56 USD/)).toBeTruthy();
+    expect(getByText(/\$1,234\.56/)).toBeTruthy();
   });
 });

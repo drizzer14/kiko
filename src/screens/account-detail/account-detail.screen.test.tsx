@@ -48,7 +48,7 @@ describe('AccountDetailScreen', () => {
     const { getByText } = await render(
       <AccountDetailScreen route={route} navigation={navigation} />,
     );
-    expect(getByText(/1,000\.00 UAH/)).toBeTruthy();
+    expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {

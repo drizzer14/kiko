@@ -14,3 +14,15 @@ describe('formatMoney', () => {
     expect(formatMoney(Money.of('UAH', -500))).toContain('-');
   });
 });
+
+describe('formatMoney symbols', () => {
+  it('puts $ / € / ₿ before the number', () => {
+    expect(formatMoney(Money.fromMajor('USD', 1234.5))).toBe('$1,234.50');
+    expect(formatMoney(Money.fromMajor('EUR', 10))).toBe('€10.00');
+    expect(formatMoney(Money.fromMajor('BTC', 0.5))).toBe('₿0.50000000');
+  });
+
+  it('puts ₴ after the number (Ukrainian convention)', () => {
+    expect(formatMoney(Money.fromMajor('UAH', 2500))).toBe('2,500.00 ₴');
+  });
+});

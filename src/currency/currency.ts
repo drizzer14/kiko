@@ -10,6 +10,13 @@ export const currencyScale: Record<Currency, number> = {
   UAH: 2,
 };
 
+export const currencySymbol: Record<Currency, string> = {
+  UAH: '₴',
+  USD: '$',
+  EUR: '€',
+  BTC: '₿',
+};
+
 const currencySet = new Set<string>(currencies);
 
 export const isCurrency = (value: string): value is Currency => currencySet.has(value);
