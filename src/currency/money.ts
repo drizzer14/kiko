@@ -1,9 +1,12 @@
 import { type Currency, currencyScale } from './currency';
 
 export class Money {
+  // `private constructor` has no `#` equivalent — JavaScript has no native
+  // private constructor, so a class-only factory is enforced via the TS
+  // `private` keyword (used through `of`/`fromMajor`).
   private constructor(
-    readonly currency: Currency,
-    readonly minorUnits: number,
+    public readonly currency: Currency,
+    public readonly minorUnits: number,
   ) {}
 
   static of(currency: Currency, minorUnits: number): Money {
@@ -12,22 +15,25 @@ export class Money {
 
   static fromMajor(currency: Currency, major: number): Money {
     const factor = 10 ** currencyScale[currency];
+
     return new Money(currency, Math.round(major * factor));
   }
 
-  private assertSameCurrency(other: Money): void {
+  #assertSameCurrency(other: Money): void {
     if (other.currency !== this.currency) {
       throw new Error(`Currency mismatch: ${this.currency} vs ${other.currency}`);
     }
   }
 
   add(other: Money): Money {
-    this.assertSameCurrency(other);
+    this.#assertSameCurrency(other);
+
     return new Money(this.currency, this.minorUnits + other.minorUnits);
   }
 
   subtract(other: Money): Money {
-    this.assertSameCurrency(other);
+    this.#assertSameCurrency(other);
+
     return new Money(this.currency, this.minorUnits - other.minorUnits);
   }
 

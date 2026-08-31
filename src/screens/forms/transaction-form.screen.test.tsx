@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
-import { TransactionFormScreen } from './transaction-form.screen';
+import TransactionFormScreen from './transaction-form.screen';
 
 const mockRecordManual = jest.fn();
 const mockUseLiveQuery = jest.fn();

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { settings } from '../db/schema';
+import type { Repository } from './repository';
 
 /** Settings is a single row, keyed at id = 1. */
 const SETTINGS_ID = 1;
@@ -17,4 +18,4 @@ export const settingsRepo = {
     write(tx =>
       tx.update(settings).set({ lastSyncAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
     ),
-};
+} satisfies Repository;

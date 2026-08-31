@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { holdings, type TransactionRow, transactions } from '../db/schema';
+import type { Repository } from './repository';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<Pick<TransactionRow, 'description' | 'category' | 'mcc' | 'comment' | 'externalId'>>;
@@ -55,4 +56,4 @@ export const transactionsRepo = {
         .values(inputs.map(input => ({ id: id(), ...input })))
         .onConflictDoNothing();
     }),
-};
+} satisfies Repository;

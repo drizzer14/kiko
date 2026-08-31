@@ -1,9 +1,9 @@
-import { fetchBtcPrice } from './coingecko';
+import { fetchBTCPrice } from './coingecko';
 
 const makeFetch = (body: unknown, ok = true): typeof fetch =>
   (async () => ({ ok, json: async () => body, status: ok ? 200 : 429 })) as unknown as typeof fetch;
 
-describe('fetchBtcPrice', () => {
+describe('fetchBTCPrice', () => {
   it('requests the CoinGecko simple-price endpoint', async () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
@@ -11,7 +11,7 @@ describe('fetchBtcPrice', () => {
       return { ok: true, json: async () => ({ bitcoin: { usd: 65_000 } }), status: 200 };
     }) as unknown as typeof fetch;
 
-    await fetchBtcPrice(spyFetch);
+    await fetchBTCPrice(spyFetch);
 
     expect(sentUrl).toBe(
       'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
@@ -19,12 +19,12 @@ describe('fetchBtcPrice', () => {
   });
 
   it('returns the BTC->USD rate entry', async () => {
-    const result = await fetchBtcPrice(makeFetch({ bitcoin: { usd: 65_000 } }));
+    const result = await fetchBTCPrice(makeFetch({ bitcoin: { usd: 65_000 } }));
 
     expect(result).toEqual([{ base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' }]);
   });
 
   it('throws on a non-ok response', async () => {
-    await expect(fetchBtcPrice(makeFetch({}, false))).rejects.toThrow('429');
+    await expect(fetchBTCPrice(makeFetch({}, false))).rejects.toThrow('429');
   });
 });

@@ -1,11 +1,9 @@
+import either, { bifold, isLeft } from 'fnts/either';
 import { useState } from 'react';
 
 import { runSync } from '../monobank/sync';
 import { refreshRates } from '../rates/rates-refresh';
 import { ratesRepo } from '../repositories/rates.repo';
-
-const toErrorMessage = (caught: unknown): string =>
-  caught instanceof Error ? caught.message : String(caught);
 
 type UseSync = {
   isSyncing: boolean;
@@ -25,14 +23,20 @@ export const useSync = (): UseSync => {
   const sync = async (): Promise<void> => {
     setIsSyncing(true);
     setError(undefined);
-    try {
+
+    const result = await either<unknown, void>(async () => {
       await runSync();
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
-    } catch (caught) {
-      setError(toErrorMessage(caught));
-    } finally {
-      setIsSyncing(false);
+    });
+
+    // Always clear the syncing flag, whether the run succeeded or failed —
+    // this is the old `finally` block.
+    setIsSyncing(false);
+
+    if (isLeft(result)) {
+      const caught = bifold(result);
+      setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
 

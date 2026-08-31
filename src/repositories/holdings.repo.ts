@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type HoldingRow, holdings } from '../db/schema';
+import type { Repository } from './repository';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;
@@ -41,4 +42,4 @@ export const holdingsRepo = {
       }
       await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged });
     }),
-};
+} satisfies Repository;

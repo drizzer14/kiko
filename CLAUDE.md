@@ -77,7 +77,13 @@ verified usage, not dead weight:
   does not exist yet), `jscpd`, `knip`, and `depcheck` (each invoked
   only via `npx --no-install <tool>` inside its own
   `scripts/checks/*.sh` wrapper, never from a package.json script
-  Knip's static scan can see).
+  Knip's static scan can see). Also `@env` — the virtual module that
+  the `react-native-dotenv` Babel plugin synthesizes at transform time
+  (`import { PRICE_ENDPOINT } from '@env'` in `src/rates/coingecko.ts`);
+  it is not a real npm package, so Knip's resolver reports the import
+  as an unlisted dependency. The package itself (`react-native-dotenv`)
+  is seen through `babel.config.js`; only the synthetic `@env`
+  specifier needs ignoring.
 - **`.depcheckrc.json` `ignores`**: the same CLI-only-invoked tools
   (`jscpd`, `knip`, `depcheck`) plus `@babel/runtime`,
   `@react-native-community/cli` and `-cli-platform-ios` (invoked by
@@ -91,7 +97,10 @@ verified usage, not dead weight:
   depcheck's static scan cannot see it) and `react-native-nitro-modules`
   (the NitroModules native backend that `react-native-unistyles` is
   built on; required at runtime, never statically imported by app
-  code).
+  code). Also `react-native-dotenv` — a Babel plugin referenced only
+  as the string `'module:react-native-dotenv'` in `babel.config.js`,
+  never imported from source, so depcheck's static scan cannot see the
+  usage and reports it as an unused devDependency.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:

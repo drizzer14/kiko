@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type AccountRow, accounts } from '../db/schema';
+import type { Repository } from './repository';
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
   Partial<Pick<AccountRow, 'institution' | 'sortOrder'>>;
@@ -15,4 +16,4 @@ export const accountsRepo = {
     write(tx =>
       tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
     ),
-};
+} satisfies Repository;

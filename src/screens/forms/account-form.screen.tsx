@@ -2,9 +2,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { Pressable, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Box } from '../../design-system/components/box';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import type { RootStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 
@@ -13,7 +13,7 @@ type AccountFormScreenProps = NativeStackScreenProps<RootStackParamList, 'Accoun
 const kinds = ['bank', 'cash', 'crypto', 'broker'] as const;
 type Kind = (typeof kinds)[number];
 
-export const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
+const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
   const { theme } = useUnistyles();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind>('bank');
@@ -92,3 +92,5 @@ const styles = StyleSheet.create(theme => ({
     alignSelf: 'flex-start',
   },
 }));
+
+export default AccountFormScreen;

@@ -9,7 +9,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 }));
 
 import '../design-system/unistyles';
-import { RootNavigator } from './root-navigator';
+import RootNavigator from './root.navigator';
 
 describe('RootNavigator', () => {
   it('boots to the Home screen', async () => {

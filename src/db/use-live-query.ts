@@ -1,8 +1,13 @@
+import either, { bifold, eitherSync, first, isLeft } from 'fnts/either';
 import { useEffect, useMemo, useRef, useState } from 'react';
+
 import { rawDatabase } from './client';
 
 type SQLQuery<T> = { toSQL(): { sql: string; params: unknown[] } } & PromiseLike<T[]>;
 
+// Normalizes a thrown, unknown value into an `Error` for the `error?: Error`
+// contract. It is applied through fnts's `first` (the Either left-channel map),
+// not from a `catch` block — the try/catch is replaced by `either`/`eitherSync`.
 const toError = (caught: unknown): Error =>
   caught instanceof Error ? caught : new Error(String(caught));
 
@@ -38,38 +43,57 @@ export function useLiveQuery<T>(
   useEffect(() => {
     let alive = true;
 
-    const runQuery = async () => {
+    const runQuery = async (): Promise<void> => {
       const myGeneration = ++generation.current;
-      try {
-        const rows = await query;
-        if (!alive || myGeneration !== generation.current) return;
-        setData(rows);
-        setError(undefined);
-      } catch (caught) {
-        if (!alive || myGeneration !== generation.current) return;
-        setError(toError(caught));
+
+      const result = await either<unknown, T[]>(async () => query);
+
+      // Out-of-order / unmount guard: an older overlapping run must not win,
+      // and a settled run after unmount must not touch state.
+      if (!alive || myGeneration !== generation.current) {
+        return;
       }
+
+      const settled = first(result, toError);
+
+      if (isLeft(settled)) {
+        setError(bifold(settled));
+
+        return;
+      }
+
+      setData(bifold(settled));
+      setError(undefined);
     };
 
     void runQuery();
 
-    try {
-      const unsubscribe = rawDatabase.reactiveExecute({
-        query: sql,
-        arguments: params,
-        fireOn,
-        callback: () => void runQuery(),
-      });
-      return () => {
-        alive = false;
-        unsubscribe();
-      };
-    } catch (caught) {
-      setError(toError(caught));
+    const subscription = first(
+      eitherSync<unknown, () => void>(() =>
+        rawDatabase.reactiveExecute({
+          query: sql,
+          arguments: params,
+          fireOn,
+          callback: () => void runQuery(),
+        }),
+      ),
+      toError,
+    );
+
+    if (isLeft(subscription)) {
+      setError(bifold(subscription));
+
       return () => {
         alive = false;
       };
     }
+
+    const unsubscribe: () => void = bifold(subscription);
+
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
   }, [sql, paramsKey, fireOn]);
 
   return { data, error };

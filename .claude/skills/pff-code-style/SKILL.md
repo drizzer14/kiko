@@ -29,6 +29,11 @@ From `biome.json`:
 Run `npm run check:lint` to verify (see the project harness in the
 root `CLAUDE.md`). Never hand-tune something Biome already owns.
 
+One readability convention Biome does **not** enforce, so apply it by
+hand: a blank line before every `return` statement. It visually
+separates the computed result from whatever led up to it, the same
+way a blank line already separates import groups.
+
 ## Linting rules that shape how you write code
 
 From `biome.json`'s `linter.rules`:
@@ -55,6 +60,21 @@ enforce invariants (no currency mismatch, no float drift) every time
 the value is touched. A class earns its place when the invariant
 needs enforcing at every call site, not just at construction.
 
+A value object's internals use native private fields and methods
+(`#field`, `#method`), not the TS `private` keyword — TS `private` is
+erased at compile time and still visible/settable from plain
+JavaScript or a type-cast, native `#` is enforced by the runtime
+itself. The one exception is the constructor: JavaScript has no
+native private constructor syntax, so a `private constructor` used to
+force construction through a static factory keeps the TS `private`
+keyword — document why at that one site so it doesn't read as an
+inconsistency.
+
+Annotate every public class field explicitly, including its type —
+`public readonly currency: Currency`, not a bare `readonly currency`
+left to inference. A public field is part of the class's contract;
+state it the same way a function signature would.
+
 Everything else defaults to plain functions and modules:
 
 - Repositories are functional modules of exported functions, not
@@ -74,12 +94,54 @@ than a `switch` or an `if`/`else` chain. Exhaustiveness checking means
 adding a new currency or a new holding type is a compile error at
 every mapping site that hasn't been updated, not a silent runtime gap.
 
+The set itself needs exactly one source of truth. Derive the literal
+union type from a `const` tuple, and build any runtime `Set` from the
+same tuple, instead of hand-maintaining a union type and a separate
+`Set` literal that can drift apart:
+
+```ts
+const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
+type Currency = (typeof currencies)[number];
+const currencySet = new Set<Currency>(currencies);
+```
+
+Colocate a type derived from a `const` this way — including a
+Drizzle `$inferSelect` row type — directly after the `const` it comes
+from, not stacked together at the end of the file. The reader should
+never have to jump away from a declaration to see what it produces.
+
 ## `fnts` for composition
 
 Use `fnts` (github.com/drizzer14/fnts) to compose functional
 transform pipelines — e.g. chaining the Monobank statement-item ->
 Transaction mapping steps. Don't hand-roll a `pipe`/`compose` helper;
 use the library's.
+
+`fnts` also owns network and error-handling code — reach for it
+instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
+
+- `either(() => Promise<R>)` / `eitherSync(() => R)` capture a thrown
+  error as a `Left`; route the result with `isLeft` / `isRight` /
+  `bifold`. Normalize the left channel with the **two-argument**
+  `first(result, toError)` — the curried `first(toError)(result)` has
+  nothing to infer `RightValue` from and silently collapses the right
+  side to `unknown`.
+- Reach for `guard` (a validator/executor pair) instead when the
+  function's own contract is to throw — an HTTP ok-check, for
+  example. Replace the `if (!ok) throw` chain with `guard` directly;
+  do not wrap-and-rethrow it through `either` first, that's pure
+  overhead on a function that was never meant to return an Either.
+- `maybe` / `just` / `nothing` / `fold` for nullable results, the same
+  way `either` handles throwable ones.
+- Fold the Either/Maybe back to the call site's existing external
+  contract at its boundary, so callers outside that module don't all
+  have to change shape.
+- Don't force this where idiomatic code already reads better — a
+  React early-return guard (`migrations-gate`) was correctly left as
+  plain JSX rather than routed through `maybe`/`fold`.
+- Inference gotcha: annotate a `bifold` result's type explicitly
+  wherever a narrowed `Right` value leaves nothing for TypeScript to
+  infer `LeftValue` from.
 
 ## Import ordering and `import type`
 
@@ -123,7 +185,71 @@ const maskedPAN = holding.metadata.maskedPAN; // correct
 const maskedPan = holding.metadata.maskedPan; // wrong
 ```
 
+This applies inside a compound name too, not just standalone —
+`fetchBtcPrice` was renamed to `fetchBTCPrice` during review (and its
+callers, `loadBTC` and `RefreshDeps.fetchBTCPrice`, followed the same
+rule).
+
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
 — this rule governs names you choose in application code, not
 database column identifiers already fixed by `pff-domain`.
+
+## Exports: default for components, named for everything else
+
+A React component file uses a default export, keeping the underlying
+function/const named so React DevTools still shows a display name
+instead of `Anonymous`. Hooks, repositories, utilities, types, the
+schema module, and the Monobank sync pipeline all stay **named**
+exports — a named export is greppable and re-exportable, and a
+default export only earns its keep where the framework (React,
+React Navigation) expects one. This mirrors `@ovpn/ui`'s convention.
+
+## File suffixes
+
+- A React UI component file: `<name>.component.tsx`, its test
+  `<name>.component.test.tsx`.
+- A screen: `<name>.screen.tsx`.
+- A repository: `<name>.repo.ts`.
+
+An **infrastructural** React module does not take `.component.tsx` —
+it isn't a UI building block, it's plumbing. A migrations gate or a
+navigator stays unsuffixed. `@ovpn/ui` follows the same split: it
+names providers/contexts `*.context.tsx` rather than
+`*.component.tsx`.
+
+## Repository type-safety: `satisfies`, not an annotation
+
+Constrain a repository object with `satisfies Repository`, where
+`type Repository = Record<string, (...args: never[]) => unknown>` —
+never a `: Repository` type annotation. An annotation widens the
+object to the annotation's own type immediately, so every method's
+precise inferred parameter and return types are lost to callers;
+`satisfies` checks the same shape constraint without touching the
+inferred type at all.
+
+## Externalize hardcoded config
+
+A hardcoded config value — including a plain public URL, not just a
+secret — belongs in `.env`, loaded through `react-native-dotenv`'s
+`@env` module with a typed `@env` declaration, not inlined as a
+string literal at its call site. Commit `.env` itself when its values
+are genuinely public (not secret): that way Jest and CI resolve
+`@env` with no mock setup required. Gitignore only `.env.local` for
+anything that must stay private. A dependency this introduces (for
+example an unused-looking `.env` import under knip or depcheck) gets
+documented as an ignore entry in the root `CLAUDE.md`, per that file's
+"Documented exceptions" convention — not silently suppressed.
+
+## Reviewed, and deliberately not changed
+
+Two review comments were raised and rejected during a past review —
+recorded here so they aren't re-proposed:
+
+- The inline `type` modifier on a mixed import
+  (`import { View, type ViewProps }`) stays. Biome's `useImportType`
+  requires it; dropping it fails `check:lint`.
+- The Monobank sync pipeline stays functional. Converting it to a
+  class was considered and rejected — see "Style choice" above for
+  why a class is reserved for a data type with behavior attached, not
+  a transform pipeline.

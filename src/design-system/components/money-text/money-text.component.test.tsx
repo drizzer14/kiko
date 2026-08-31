@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react-native';
-import { Money } from '../../currency/money';
-import '../unistyles';
-import { MoneyText } from './money-text';
+import { Money } from '../../../currency/money';
+import '../../unistyles';
+import MoneyText from './money-text.component';
 
 describe('MoneyText', () => {
   it('renders the formatted amount', async () => {

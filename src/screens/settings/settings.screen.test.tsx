@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
-import { SettingsScreen } from './settings.screen';
+import SettingsScreen from './settings.screen';
 
 const mockSetBaseCurrency = jest.fn();
 const mockSaveToken = jest.fn();

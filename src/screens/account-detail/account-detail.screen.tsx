@@ -3,18 +3,18 @@ import type { FC } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { Money } from '../../currency/money';
 import { useLiveQuery } from '../../db/use-live-query';
-import { Box } from '../../design-system/components/box';
-import { ListRow } from '../../design-system/components/list-row';
-import { MoneyText } from '../../design-system/components/money-text';
-import { PressableButton } from '../../design-system/components/pressable-button';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import ListRow from '../../design-system/components/list-row';
+import MoneyText from '../../design-system/components/money-text';
+import PressableButton from '../../design-system/components/pressable-button';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import type { RootStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
 type AccountDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'AccountDetail'>;
 
-export const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
+const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
   const { theme } = useUnistyles();
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
@@ -50,3 +50,5 @@ export const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navig
     </Screen>
   );
 };
+
+export default AccountDetailScreen;

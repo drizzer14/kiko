@@ -4,9 +4,9 @@ import { Pressable, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
-import { Box } from '../../design-system/components/box';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import type { RootStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
@@ -17,7 +17,7 @@ type HoldingType = (typeof types)[number];
 
 const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 
-export const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
+const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
   const { theme } = useUnistyles();
   const [name, setName] = useState('');
@@ -137,3 +137,5 @@ const styles = StyleSheet.create(theme => ({
     alignSelf: 'flex-start',
   },
 }));
+
+export default HoldingFormScreen;

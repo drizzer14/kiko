@@ -41,6 +41,11 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
+# Env: `.env` and `.env.example` are committed (public, non-secret config
+# consumed via react-native-dotenv, so Jest/CI need no mock). Only local
+# overrides are ignored.
+.env.local
+
 # fastlane
 #
 # It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the

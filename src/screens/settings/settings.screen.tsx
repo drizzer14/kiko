@@ -4,11 +4,11 @@ import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { useLiveQuery } from '../../db/use-live-query';
-import { Box } from '../../design-system/components/box';
-import { CurrencySwitch } from '../../design-system/components/currency-switch';
-import { PressableButton } from '../../design-system/components/pressable-button';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import CurrencySwitch from '../../design-system/components/currency-switch';
+import PressableButton from '../../design-system/components/pressable-button';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import { readToken, saveToken } from '../../monobank/token';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { useSync } from '../use-sync';
@@ -16,7 +16,7 @@ import { useSync } from '../use-sync';
 const formatLastSyncAt = (lastSyncAt: number | null): string =>
   lastSyncAt === null ? 'Never' : new Date(lastSyncAt).toLocaleString();
 
-export const SettingsScreen: FC = () => {
+const SettingsScreen: FC = () => {
   const { theme } = useUnistyles();
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
@@ -107,3 +107,5 @@ export const SettingsScreen: FC = () => {
     </Screen>
   );
 };
+
+export default SettingsScreen;

@@ -17,7 +17,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
   const captured: StoredRate[][] = [];
   const deps: RefreshDeps = {
     fetchFiatRates: async () => fiat,
-    fetchBtcPrice: async () => btc,
+    fetchBTCPrice: async () => btc,
     upsertMany: async (rates: StoredRate[]) => {
       captured.push(rates);
     },

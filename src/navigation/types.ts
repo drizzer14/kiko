@@ -1,6 +1,6 @@
 /**
  * The single native-stack param list for the whole app. Every screen is
- * registered against this map in `root-navigator.tsx`, and screen components
+ * registered against this map in `root.navigator.tsx`, and screen components
  * type their props with `NativeStackScreenProps<RootStackParamList, 'Name'>`.
  */
 export type RootStackParamList = {

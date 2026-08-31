@@ -7,8 +7,9 @@ import type { ReactNode } from 'react';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
-jest.mock('../src/db/migrations-gate', () => ({
-  MigrationsGate: ({ children }: { children: ReactNode }) => children,
+jest.mock('../src/db/migrations.gate', () => ({
+  __esModule: true,
+  default: ({ children }: { children: ReactNode }) => children,
 }));
 
 // The real Settings screen (wired into RootNavigator, rendered inside App)

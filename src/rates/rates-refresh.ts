@@ -1,6 +1,6 @@
 import type { Currency } from '../currency/currency';
 import { ratesRepo } from '../repositories/rates.repo';
-import { fetchBtcPrice } from './coingecko';
+import { fetchBTCPrice } from './coingecko';
 import type { RateEntry } from './conversion';
 import { fetchFiatRates } from './monobank-rates';
 
@@ -23,7 +23,7 @@ type StoredRate = {
 
 export type RefreshDeps = {
   fetchFiatRates?: () => Promise<RateEntry[]>;
-  fetchBtcPrice?: () => Promise<RateEntry[]>;
+  fetchBTCPrice?: () => Promise<RateEntry[]>;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
   lastRefreshAt?: number | null;
@@ -92,10 +92,10 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
     return;
   }
   const loadFiat = deps.fetchFiatRates ?? (() => fetchFiatRates());
-  const loadBtc = deps.fetchBtcPrice ?? (() => fetchBtcPrice());
+  const loadBTC = deps.fetchBTCPrice ?? (() => fetchBTCPrice());
   const upsertMany = deps.upsertMany ?? ratesRepo.upsertMany;
 
-  const [fiat, btc] = await Promise.all([loadFiat(), loadBtc()]);
+  const [fiat, btc] = await Promise.all([loadFiat(), loadBTC()]);
   const pairs = buildPairs(buildUahPrice(fiat, btc), at);
   if (pairs.length > 0) {
     await upsertMany(pairs);

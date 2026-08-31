@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
-import { HomeScreen } from './home.screen';
+import HomeScreen from './home.screen';
 
 const mockUseLiveQuery = jest.fn();
 const mockSetBaseCurrency = jest.fn();

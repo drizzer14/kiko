@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 import migrations from '../../drizzle/migrations/migrations';
 import { database } from './client';
 
-export const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
+const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { success, error } = useMigrations(database, migrations);
 
   if (error) {
@@ -25,3 +25,5 @@ export const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   return <>{children}</>;
 };
+
+export default MigrationsGate;

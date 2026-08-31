@@ -11,6 +11,8 @@ export const accounts = sqliteTable('accounts', {
   createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
 });
 
+export type AccountRow = typeof accounts.$inferSelect;
+
 export const holdings = sqliteTable('holdings', {
   id: text('id').primaryKey(),
   accountId: text('account_id')
@@ -27,6 +29,8 @@ export const holdings = sqliteTable('holdings', {
   closedAt: integer('closed_at'),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
 });
+
+export type HoldingRow = typeof holdings.$inferSelect;
 
 export const transactions = sqliteTable(
   'transactions',
@@ -50,6 +54,8 @@ export const transactions = sqliteTable(
   }),
 );
 
+export type TransactionRow = typeof transactions.$inferSelect;
+
 export const currencyRates = sqliteTable(
   'currency_rates',
   {
@@ -64,6 +70,8 @@ export const currencyRates = sqliteTable(
   }),
 );
 
+export type CurrencyRateRow = typeof currencyRates.$inferSelect;
+
 export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
   baseCurrency: text('base_currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] })
@@ -72,8 +80,4 @@ export const settings = sqliteTable('settings', {
   lastSyncAt: integer('last_sync_at'),
 });
 
-export type AccountRow = typeof accounts.$inferSelect;
-export type HoldingRow = typeof holdings.$inferSelect;
-export type TransactionRow = typeof transactions.$inferSelect;
-export type CurrencyRateRow = typeof currencyRates.$inferSelect;
 export type SettingsRow = typeof settings.$inferSelect;

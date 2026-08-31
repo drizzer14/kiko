@@ -10,6 +10,7 @@
     "depcheck",
     "jscpd",
     "knip",
+    "react-native-dotenv",
     "react-native-nitro-modules",
     "react-native-screens",
     "typescript"

@@ -5,13 +5,13 @@ import type { Currency } from '../../currency/currency';
 import type { Money } from '../../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
-import { Box } from '../../design-system/components/box';
-import { CurrencySwitch } from '../../design-system/components/currency-switch';
-import { ListRow } from '../../design-system/components/list-row';
-import { MoneyText } from '../../design-system/components/money-text';
-import { PressableButton } from '../../design-system/components/pressable-button';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import CurrencySwitch from '../../design-system/components/currency-switch';
+import ListRow from '../../design-system/components/list-row';
+import MoneyText from '../../design-system/components/money-text';
+import PressableButton from '../../design-system/components/pressable-button';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import type { RootStackParamList } from '../../navigation/types';
 import { netWorth, type RateTable } from '../../rates/conversion';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -55,7 +55,7 @@ const guardedNetWorth = (
   return netWorth(convertible, base, rates);
 };
 
-export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
+const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { theme } = useUnistyles();
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
@@ -142,3 +142,5 @@ export const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     </Screen>
   );
 };
+
+export default HomeScreen;

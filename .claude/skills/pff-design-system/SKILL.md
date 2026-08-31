@@ -50,7 +50,11 @@ Four token categories, defined once in a single theme module:
 - **radii** — the corner-radius scale for surfaces and controls.
 
 Components read tokens; they never hardcode a raw color, spacing, or
-radius value inline.
+radius value inline. The same rule extends to layout: prefer a
+design-system prop over an inline style whenever one exists — `Box`
+has a `direction` prop, so write `<Box direction="row">`, not
+`<Box style={{ flexDirection: 'row' }}>`. An inline style bypasses the
+one place a layout convention is supposed to live.
 
 ## Styling layer: react-native-unistyles v3
 
@@ -77,3 +81,30 @@ resist adding more until a real screen needs it:
   money color token based on the value's sign. This is the only
   primitive that knows about `Money` — plain `Text` never receives a
   `Money` object directly.
+
+## Wrapping a React Native primitive
+
+Each of the four primitives wraps a real React Native component
+(`View`, `Text`, ...), so widen the prop type from that underlying
+component's own props (`Pick` the ones that make sense, or extend the
+full set) rather than redeclaring a parallel prop shape by hand.
+Spread `{...props}` onto the underlying component, and place the
+design system's own explicit props — `placeholderTextColor`, `style`,
+whatever the primitive itself controls — **after** the spread, so a
+caller passing that same prop can never silently clobber the token-
+driven value the primitive is responsible for. Name that rest-props
+binding `props`, not `rest` — it's the component's full prop set
+minus what's already destructured, not a leftover.
+
+For mapping a value's state to a token — the `MoneyText` sign check
+above is the canonical case — avoid a nested ternary. Use a small
+named helper (`isNegative()`, `isZero()`) for boolean-predicate
+branching, since a helper reads cleaner there than a `match` for only
+two or three boolean checks; reach for `ts-pattern` instead when the
+input is a closed literal union rather than a predicate (see
+`pff-code-style`'s "`ts-pattern` for exhaustive mapping").
+
+Components are default exports with a `.component.tsx` file suffix
+(`box.component.tsx`, `money-text.component.tsx`) — see
+`pff-code-style`'s "Exports" and "File suffixes" sections for the
+project-wide rule this follows.

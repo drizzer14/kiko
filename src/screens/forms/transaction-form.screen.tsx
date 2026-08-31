@@ -5,9 +5,9 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { useLiveQuery } from '../../db/use-live-query';
-import { Box } from '../../design-system/components/box';
-import { Screen } from '../../design-system/components/screen';
-import { Text } from '../../design-system/components/text';
+import Box from '../../design-system/components/box';
+import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import type { RootStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
@@ -16,7 +16,7 @@ type TransactionFormScreenProps = NativeStackScreenProps<RootStackParamList, 'Tr
 
 type Sign = 'income' | 'expense';
 
-export const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
+const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
   const { theme } = useUnistyles();
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
@@ -131,3 +131,5 @@ const styles = StyleSheet.create(theme => ({
     alignSelf: 'flex-start',
   },
 }));
+
+export default TransactionFormScreen;

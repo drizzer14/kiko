@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
-import { AccountDetailScreen } from './account-detail.screen';
+import AccountDetailScreen from './account-detail.screen';
 
 const mockUseLiveQuery = jest.fn();
 

@@ -1,6 +1,7 @@
 import { max, sql } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { type CurrencyRateRow, currencyRates } from '../db/schema';
+import type { Repository } from './repository';
 
 type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fetchedAt'>;
 
@@ -34,4 +35,4 @@ export const ratesRepo = {
           },
         });
     }),
-};
+} satisfies Repository;
