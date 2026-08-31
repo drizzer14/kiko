@@ -1,9 +1,9 @@
 import type { Currency } from '../currency/currency';
-import { Money } from '../currency/money';
+import type { Money } from '../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../db/schema';
 import { netWorth, type RateTable } from './conversion';
 
-type ConvertibleHolding = Pick<HoldingRow, 'accountId' | 'currency' | 'balanceMinorUnits'>;
+type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits'>;
 
 /** The `rate` column is stored as a string; parse it into the numeric RateTable. */
 export const buildRateTable = (

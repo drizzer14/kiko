@@ -18,6 +18,13 @@ export const accountsRepo = {
   listQuery: () => database.select().from(accounts),
   byIdQuery: (accountId: string) =>
     database.select().from(accounts).where(eq(accounts.id, accountId)),
+  /**
+   * The account(s) currently connected to the personal Monobank API. The
+   * single-connection invariant means this yields at most one row; the UI uses
+   * it to hide "Connect" on every other account while one is connected.
+   */
+  connectedQuery: () =>
+    database.select().from(accounts).where(eq(accounts.institution, 'monobank')),
   create: (input: NewAccount) => write(tx => tx.insert(accounts).values({ id: id(), ...input })),
   /**
    * Create a cash account and its initial cash holding in ONE op-sqlite

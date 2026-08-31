@@ -19,7 +19,12 @@ jest.mock('../../monobank/token', () => ({
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) => ({
+      __kind: 'byId',
       toSQL: () => ({ sql: '', params: [accountId] }),
+    }),
+    connectedQuery: () => ({
+      __kind: 'connected',
+      toSQL: () => ({ sql: '', params: ['monobank'] }),
     }),
   },
 }));
@@ -46,17 +51,27 @@ type Holding = {
 };
 
 /**
- * Drive the two `useLiveQuery` calls by the table they subscribe to, so the
- * mock survives re-renders (mirrors the pattern in home.screen.test.tsx).
+ * Drive the three `useLiveQuery` calls, keying on the query's `__kind` (the
+ * account-by-id and connected queries both subscribe to `['accounts']`, so the
+ * table name alone can't tell them apart). `connected` defaults to the accounts
+ * currently marked `institution: 'monobank'`.
  */
-const setLiveData = (data: { accounts?: Account[]; holdings?: Holding[] }): void => {
-  const byTable: Record<string, unknown[]> = {
-    accounts: data.accounts ?? [],
-    holdings: data.holdings ?? [],
-  };
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
-    data: byTable[tables[0]] ?? [],
-  }));
+const setLiveData = (data: {
+  accounts?: Account[];
+  holdings?: Holding[];
+  connected?: Account[];
+}): void => {
+  const accounts = data.accounts ?? [];
+  const connected = data.connected ?? accounts.filter(a => a.institution === 'monobank');
+  mockUseLiveQuery.mockImplementation((query: { __kind?: string }, tables: string[]) => {
+    if (query.__kind === 'connected') {
+      return { data: connected };
+    }
+    if (tables[0] === 'holdings') {
+      return { data: data.holdings ?? [] };
+    }
+    return { data: accounts };
+  });
 };
 
 const account = (overrides: Partial<Account> = {}): Account => ({
@@ -196,6 +211,18 @@ describe('AccountDetailScreen', () => {
       }
     },
   );
+
+  it('hides Connect and shows a hint when another account is already connected', async () => {
+    setLiveData({
+      accounts: [account({ id: 'a', kind: 'bank', institution: null })],
+      holdings: [],
+      connected: [account({ id: 'other', kind: 'bank', institution: 'monobank' })],
+    });
+    const { getByText, queryByText } = await renderScreen();
+    expect(queryByText('Connect Monobank')).toBeNull();
+    expect(queryByText('Sync now')).toBeNull();
+    expect(getByText('Monobank is connected to another account')).toBeTruthy();
+  });
 
   it('syncs the account when a Monobank token exists (Connect action)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });

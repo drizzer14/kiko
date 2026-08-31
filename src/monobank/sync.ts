@@ -155,6 +155,17 @@ const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
     if (!target) {
       throw new Error('No Monobank account connected');
     }
+    // The personal Monobank API is a single connection: at most one account may
+    // be institution=monobank at a time. Re-connecting the SAME account is an
+    // idempotent re-sync and stays allowed; a DIFFERENT already-connected
+    // account is rejected so its cards/jars are never imported twice (which
+    // would double-count net worth).
+    const otherConnected = accounts.find(
+      account => account.institution === 'monobank' && account.id !== deps.targetAccountId,
+    );
+    if (otherConnected) {
+      throw new Error('A Monobank account is already connected');
+    }
     await deps.updateAccount(deps.targetAccountId, { institution: 'monobank' });
     return deps.targetAccountId;
   }

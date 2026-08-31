@@ -222,6 +222,40 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  it('rejects connecting a second account while another is already connected, importing nothing', async () => {
+    const connected = bankAccount({ id: 'acc-a', institution: 'monobank' });
+    const second = bankAccount({ id: 'acc-b', institution: null });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      onlyFirstAccount,
+      [connected, second],
+    );
+    deps.targetAccountId = 'acc-b';
+
+    await expect(runSync(deps)).rejects.toThrow('A Monobank account is already connected');
+    // account B is never marked, and no holdings/transactions land under it
+    expect(accountsStore.find(account => account.id === 'acc-b')?.institution).toBeNull();
+    expect(holdingsStore.filter(holding => holding.accountId === 'acc-b')).toHaveLength(0);
+    expect(holdingsStore).toHaveLength(0);
+    expect(transactionsStore).toHaveLength(0);
+  });
+
+  it('allows re-connecting the SAME already-connected account (idempotent re-sync)', async () => {
+    const connected = bankAccount({ id: 'acc-a', institution: 'monobank' });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      onlyFirstAccount,
+      [connected],
+    );
+    deps.targetAccountId = 'acc-a';
+
+    const result = await runSync(deps);
+
+    expect(accountsStore).toHaveLength(1);
+    expect(accountsStore[0].institution).toBe('monobank');
+    expect(holdingsStore.every(holding => holding.accountId === 'acc-a')).toBe(true);
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(transactionsStore).toHaveLength(statement.length);
+  });
+
   it('throws when the target id does not match any existing account', async () => {
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
       bankAccount({ id: 'acc-cash', institution: null }),

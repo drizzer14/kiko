@@ -28,6 +28,13 @@ describe('accountsRepo', () => {
     expect(query.params).toContain('a1');
   });
 
+  it('builds a connected query filtered on institution=monobank', () => {
+    const query = accountsRepo.connectedQuery().toSQL();
+    expect(query.sql).toContain('accounts');
+    expect(query.sql).toContain('institution');
+    expect(query.params).toContain('monobank');
+  });
+
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
     const inserts: Record<string, unknown>[] = [];
     mockTx = {

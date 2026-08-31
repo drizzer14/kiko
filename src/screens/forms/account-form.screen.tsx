@@ -28,18 +28,29 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
 
+  const trimmedName = name.trim();
+  const canSave = trimmedName !== '';
+
   const save = async (): Promise<void> => {
+    // Block submit on an empty (or whitespace-only) name; the button is also
+    // disabled below so this guards the programmatic path too.
+    if (!canSave) {
+      return;
+    }
     if (kind === 'cash') {
+      // Clamp a negative initial value to zero — a cash balance can never be
+      // negative, and Number('') || 0 also covers a blank field.
+      const initialMajor = Math.max(0, Number(initialValue) || 0);
       await accountsRepo.createCashAccount({
-        name,
+        name: trimmedName,
         currency,
-        initialBalanceMinorUnits: Money.fromMajor(currency, Number(initialValue) || 0).minorUnits,
+        initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
       });
       navigation.goBack();
       return;
     }
 
-    await accountsRepo.create({ name, kind: 'bank' });
+    await accountsRepo.create({ name: trimmedName, kind: 'bank' });
     navigation.goBack();
   };
 
@@ -110,6 +121,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
 
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ disabled: !canSave }}
+          disabled={!canSave}
           onPress={save}
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
         >

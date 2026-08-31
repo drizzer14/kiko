@@ -42,6 +42,36 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('does not create an account when the name is empty (or whitespace only)', async () => {
+    const navigation = { goBack: jest.fn() } as never;
+    const { getByLabelText, getByText } = await render(
+      <AccountFormScreen navigation={navigation} />,
+    );
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('clamps a negative cash initial value to zero', async () => {
+    const navigation = { goBack: jest.fn() } as never;
+    const { getByLabelText, getByText } = await render(
+      <AccountFormScreen navigation={navigation} />,
+    );
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('cash'));
+    await fireEvent.changeText(getByLabelText('Initial value'), '-50');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreateCashAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Wallet', initialBalanceMinorUnits: 0 }),
+    );
+  });
+
   it('creates a cash account atomically with the initial value', async () => {
     const navigation = { goBack: jest.fn() } as never;
     const { getByLabelText, getByText } = await render(
