@@ -16,8 +16,8 @@
 // screen's "Accounts" section heading), and mounts the initial (first)
 // screen's `component` — enough to exercise "does the tab navigator wire
 // the right tabs to the right stacks" without a native tab-bar renderer.
-import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
+import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 
 type MockScreenProps = {
   name: string;

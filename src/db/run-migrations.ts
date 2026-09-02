@@ -1,5 +1,5 @@
-import migrations from '../../drizzle/migrations/migrations';
 import { rawDatabase } from './client';
+import migrations from '../../drizzle/migrations/migrations';
 
 /**
  * A minimal, op-sqlite-18-correct reimplementation of drizzle-orm's op-sqlite
