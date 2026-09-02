@@ -2,10 +2,11 @@ import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
   // The breakdown is a two-column table: two equal columns of currency cells
-  // sitting side by side, with a gutter between them.
+  // sitting side by side, with a wide gutter between them so the two columns
+  // read as clearly separate rather than cramped against each other.
   table: {
     flexDirection: 'row',
-    columnGap: theme.spacing(4),
+    columnGap: theme.spacing(8),
   },
   // One column of the table: an equal share of the width, stacking its cells
   // vertically with a small gap between rows.

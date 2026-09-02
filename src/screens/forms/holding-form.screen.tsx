@@ -1,32 +1,79 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, type ReactElement, useRef, useState } from 'react';
-import { Pressable, TextInput, type TextInputProps } from 'react-native';
+import { type FC, useRef, useState } from 'react';
+import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { match } from 'ts-pattern';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import Switch from '../../design-system/components/switch';
 import Text from '../../design-system/components/text';
+import TextField from '../../design-system/components/text-field';
 import type { BondKind, CompoundingFrequency } from '../../holdings/holding-metadata';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+import ChipRow from './chip-row';
+import DateField from './date-field';
+import IconEditor from '../icon-editor';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
 const types = ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'] as const;
 type HoldingType = (typeof types)[number];
 
+// Human display text for the id-like holding types; the chip still reports the
+// underlying value on select.
+const TYPE_LABELS: Record<HoldingType, string> = {
+  card: 'Card',
+  term_deposit: 'Term Deposit',
+  bond: 'Bond',
+  cash: 'Cash',
+  crypto_asset: 'Crypto Asset',
+  jar: 'Jar',
+};
+
 const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 
 const bondKinds: readonly BondKind[] = ['government', 'corporate'];
 
-const recapitalizationOptions = ['on', 'off'] as const;
+const BOND_KIND_LABELS: Record<BondKind, string> = {
+  government: 'Government',
+  corporate: 'Corporate',
+};
+
 const compoundingOptions: readonly CompoundingFrequency[] = [
   'daily',
   'monthly',
   'quarterly',
   'annually',
 ];
+
+const COMPOUNDING_LABELS: Record<CompoundingFrequency, string> = {
+  daily: 'Daily',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  annually: 'Annually',
+};
+
+const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
+type CouponFrequency = (typeof couponFrequencies)[number];
+
+const COUPON_FREQUENCY_LABELS: Record<CouponFrequency, string> = {
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  semiannually: 'Semiannually',
+  annually: 'Annually',
+};
+
+type Contribution = { id: number; amount: string; date: number | null };
+
+// Neutral placeholder glyph shown in the create form's icon chip until the user
+// picks one. The persisted default (a type-derived icon) is applied by the
+// holding list rows when the stored icon is null; here a neutral swatch reads as
+// "unset".
+const FALLBACK_ICON = 'square.grid.2x2';
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
@@ -35,87 +82,135 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [type, setType] = useState<HoldingType>('card');
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [openingBalance, setOpeningBalance] = useState('');
+  const [icon, setIcon] = useState<string | null>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
-  const [contributions, setContributions] = useState<
-    { id: number; amount: string; date: string }[]
-  >([{ id: 0, amount: '', date: '' }]);
+  const [contributions, setContributions] = useState<Contribution[]>([
+    { id: 0, amount: '', date: null },
+  ]);
   const [annualRate, setAnnualRate] = useState('');
   const [termMonths, setTermMonths] = useState('');
-  const [recapitalization, setRecap] = useState<'on' | 'off'>('on');
+  const [recapitalization, setRecap] = useState(false);
   const [compounding, setCompounding] = useState<CompoundingFrequency>('monthly');
 
   // bond state
   const [quantity, setQuantity] = useState('');
   const [faceValue, setFaceValue] = useState('');
   const [couponPct, setCouponPct] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState('');
-  const [maturityDate, setMaturityDate] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState<number | null>(null);
+  const [maturityDate, setMaturityDate] = useState<number | null>(null);
   const [bondKind, setBondKind] = useState<BondKind>('government');
+  const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('annually');
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
-    setContributions((rows) => [...rows, { id, amount: '', date: '' }]);
+    setContributions((rows) => [...rows, { id, amount: '', date: null }]);
   };
 
   const removeContribution = (index: number): void => {
     setContributions((rows) => rows.filter((_, i) => i !== index));
   };
 
-  const updateContribution = (index: number, field: 'amount' | 'date', next: string): void => {
+  const updateContributionAmount = (index: number, next: string): void => {
     setContributions((rows) =>
-      rows.map((row, i) => (i === index ? { ...row, [field]: next } : row)),
+      rows.map((row, i) => (i === index ? { ...row, amount: next } : row)),
     );
   };
 
-  // Drop blank/partial rows: keep only a positive amount paired with a parseable date.
+  const updateContributionDate = (index: number, next: number): void => {
+    setContributions((rows) => rows.map((row, i) => (i === index ? { ...row, date: next } : row)));
+  };
+
+  // Drop blank/partial rows: keep only a positive amount paired with a picked date.
   const parsedContributions = (): { amountMinorUnits: number; date: number }[] =>
     contributions.flatMap(({ amount, date }) => {
       const amountValue = Number(amount);
-      const dateValue = Date.parse(date);
-      if (!(amountValue > 0) || date.trim() === '' || Number.isNaN(dateValue)) {
+      if (!(amountValue > 0) || date === null) {
         return [];
       }
-      return [
-        { amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date: dateValue },
-      ];
+
+      return [{ amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date }];
     });
 
   const buildMetadata = (): Record<string, unknown> | undefined => {
     if (type === 'term_deposit') {
       const rows = parsedContributions();
+
       if (rows.length === 0) {
         return undefined;
       }
+
       return {
         contributions: rows,
         annualRatePct: Number(annualRate) || 0,
         termMonths: Number(termMonths) || 0,
-        recapitalization: recapitalization === 'on',
+        recapitalization,
         compounding,
       };
     }
+
     if (type === 'bond') {
       return {
         quantity: Number(quantity) || 0,
         faceValueMinorUnits: Money.fromMajor(currency, Number(faceValue) || 0).minorUnits,
         couponPct: Number(couponPct) || 0,
-        purchaseDate: Date.parse(purchaseDate) || Date.now(),
-        maturityDate: Date.parse(maturityDate) || Date.now(),
+        purchaseDate: purchaseDate ?? Date.now(),
+        maturityDate: maturityDate ?? Date.now(),
         bondKind,
+        couponFrequency,
       };
     }
+
     return undefined;
   };
 
+  // A term deposit needs at least one contribution with a positive amount and a
+  // picked date (parsedContributions already drops blank/partial rows), a
+  // non-negative annual rate that was actually entered, and a whole-month term
+  // greater than zero. Recapitalization and compounding always carry defaults.
+  const isTermDepositValid = (): boolean => {
+    const rate = Number(annualRate);
+    const months = Number(termMonths);
+
+    return (
+      parsedContributions().length > 0 &&
+      annualRate.trim() !== '' &&
+      rate >= 0 &&
+      Number.isInteger(months) &&
+      months > 0
+    );
+  };
+
+  // A bond needs a positive quantity and face value, a non-negative coupon that
+  // was actually entered, both dates picked, and a maturity strictly after the
+  // purchase. Coupon frequency always carries a default, so it is always valid.
+  const isBondValid = (): boolean =>
+    Number(quantity) > 0 &&
+    Number(faceValue) > 0 &&
+    couponPct.trim() !== '' &&
+    Number(couponPct) >= 0 &&
+    purchaseDate !== null &&
+    maturityDate !== null &&
+    maturityDate > purchaseDate;
+
+  const isValid =
+    name.trim().length > 0 &&
+    match(type)
+      .with('term_deposit', isTermDepositValid)
+      .with('bond', isBondValid)
+      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
+      .exhaustive();
+
   const save = async (): Promise<void> => {
     const metadata = buildMetadata();
+
     // A term deposit with no valid contribution is invalid input: do not persist it.
     if (type === 'term_deposit' && metadata === undefined) {
       return;
     }
-    await holdingsRepo.create({
+
+    const newHoldingId = await holdingsRepo.create({
       accountId,
       name,
       type,
@@ -123,164 +218,179 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       balanceMinorUnits: Money.fromMajor(currency, Number(openingBalance) || 0).minorUnits,
       metadata,
     });
+
+    // Persist the chosen icon on the freshly-created row, using the id the
+    // create resolved to. Awaited so it commits before navigating away.
+    if (icon !== null) {
+      await holdingsRepo.setIcon(newHoldingId, icon);
+    }
+
     navigation.goBack();
   };
-
-  const renderInput = (
-    label: string,
-    value: string,
-    onChangeText: (next: string) => void,
-    options?: { placeholder?: string; keyboardType?: TextInputProps['keyboardType'] },
-  ): ReactElement => (
-    <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={options?.keyboardType}
-        placeholder={options?.placeholder ?? label}
-        placeholderTextColor={theme.colors.textSecondary}
-        style={[
-          styles.input,
-          { color: theme.colors.textPrimary, borderColor: theme.colors.border },
-        ]}
-      />
-    </Box>
-  );
-
-  const renderChips = <T extends string>(
-    label: string,
-    options: readonly T[],
-    selected: T,
-    onSelect: (option: T) => void,
-  ): ReactElement => (
-    <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
-      <Box style={styles.chipRow} gap={2}>
-        {options.map((option) => (
-          <Pressable
-            key={option}
-            accessibilityRole="button"
-            accessibilityState={{ selected: selected === option }}
-            onPress={() => onSelect(option)}
-            style={[
-              styles.chip,
-              { backgroundColor: selected === option ? theme.colors.accent : theme.colors.surface },
-            ]}
-          >
-            <Text variant="body">{option}</Text>
-          </Pressable>
-        ))}
-      </Box>
-    </Box>
-  );
-
-  const renderButton = (
-    label: string,
-    onPress: () => void,
-    accessibilityLabel?: string,
-  ): ReactElement => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      onPress={onPress}
-      style={[styles.button, { backgroundColor: theme.colors.surface }]}
-    >
-      <Text variant="body">{label}</Text>
-    </Pressable>
-  );
 
   return (
     <Screen
       scroll
       footer={
-        <Pressable
-          accessibilityRole="button"
-          onPress={save}
-          style={[styles.button, { backgroundColor: theme.colors.accent }]}
-        >
-          <Text variant="body">Save</Text>
-        </Pressable>
+        <Button onPress={save} disabled={!isValid}>
+          Save
+        </Button>
       }
     >
       <Box gap={4}>
-        {renderInput('Name', name, setName, { placeholder: 'Name' })}
+        <IconEditor
+          label="Icon"
+          icon={icon}
+          fallbackIcon={FALLBACK_ICON}
+          onSelect={setIcon}
+          onRemove={() => setIcon(null)}
+        />
 
-        {renderChips('Type', types, type, setType)}
+        <TextField label="Name" value={name} onChangeText={setName} placeholder="Name" />
 
-        {renderChips('Currency', currencies, currency, setCurrency)}
+        <ChipRow
+          label="Type"
+          options={types}
+          selected={type}
+          onSelect={setType}
+          labels={TYPE_LABELS}
+        />
 
-        {type !== 'term_deposit' &&
-          type !== 'bond' &&
-          renderInput('Balance', openingBalance, setOpeningBalance, {
-            placeholder: '0.00',
-            keyboardType: 'decimal-pad',
-          })}
+        <ChipRow label="Currency" options={currencies} selected={currency} onSelect={setCurrency} />
+
+        {type !== 'term_deposit' && type !== 'bond' && (
+          <TextField
+            label="Balance"
+            value={openingBalance}
+            onChangeText={setOpeningBalance}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+          />
+        )}
 
         {type === 'term_deposit' && (
           <Box gap={4}>
             {contributions.map((contribution, index) => (
               <Box key={contribution.id} gap={2}>
-                {renderInput(
-                  `Contribution ${index + 1} Amount`,
-                  contribution.amount,
-                  (next) => updateContribution(index, 'amount', next),
-                  { placeholder: '0.00', keyboardType: 'decimal-pad' },
+                <TextField
+                  label={`Contribution ${index + 1} Amount`}
+                  value={contribution.amount}
+                  onChangeText={(next) => updateContributionAmount(index, next)}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                />
+
+                <DateField
+                  label={`Contribution ${index + 1} Date`}
+                  value={contribution.date}
+                  onChange={(next) => updateContributionDate(index, next)}
+                  placeholder="Select a date"
+                />
+
+                {contributions.length > 1 && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove contribution ${index + 1}`}
+                    onPress={() => removeContribution(index)}
+                    style={[styles.secondaryButton, { backgroundColor: theme.colors.surface }]}
+                  >
+                    <Text variant="body">Remove</Text>
+                  </Pressable>
                 )}
-                {renderInput(
-                  `Contribution ${index + 1} Date`,
-                  contribution.date,
-                  (next) => updateContribution(index, 'date', next),
-                  { placeholder: 'YYYY-MM-DD' },
-                )}
-                {contributions.length > 1 &&
-                  renderButton(
-                    'Remove',
-                    () => removeContribution(index),
-                    `Remove contribution ${index + 1}`,
-                  )}
               </Box>
             ))}
-            {renderButton('Add contribution', addContribution)}
-            {renderInput('Annual Rate %', annualRate, setAnnualRate, {
-              placeholder: '0',
-              keyboardType: 'decimal-pad',
-            })}
-            {renderInput('Term (Months)', termMonths, setTermMonths, {
-              placeholder: '0',
-              keyboardType: 'number-pad',
-            })}
-            {renderChips('Recapitalization', recapitalizationOptions, recapitalization, setRecap)}
-            {renderChips('Compounding', compoundingOptions, compounding, setCompounding)}
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={addContribution}
+              style={[styles.secondaryButton, { backgroundColor: theme.colors.surface }]}
+            >
+              <Text variant="body">Add contribution</Text>
+            </Pressable>
+
+            <TextField
+              label="Annual Rate %"
+              value={annualRate}
+              onChangeText={setAnnualRate}
+              keyboardType="decimal-pad"
+              placeholder="0"
+            />
+
+            <TextField
+              label="Term (Months)"
+              value={termMonths}
+              onChangeText={setTermMonths}
+              keyboardType="number-pad"
+              placeholder="0"
+            />
+
+            <Switch label="Recapitalization" value={recapitalization} onValueChange={setRecap} />
+
+            <ChipRow
+              label="Compounding"
+              options={compoundingOptions}
+              selected={compounding}
+              onSelect={setCompounding}
+              labels={COMPOUNDING_LABELS}
+            />
           </Box>
         )}
 
         {type === 'bond' && (
           <Box gap={4}>
-            {renderInput('Quantity', quantity, setQuantity, {
-              placeholder: '0',
-              keyboardType: 'number-pad',
-            })}
-            {renderInput('Face Value', faceValue, setFaceValue, {
-              placeholder: '0.00',
-              keyboardType: 'decimal-pad',
-            })}
-            {renderInput('Coupon %', couponPct, setCouponPct, {
-              placeholder: '0',
-              keyboardType: 'decimal-pad',
-            })}
-            {renderInput('Purchase Date', purchaseDate, setPurchaseDate, {
-              placeholder: 'YYYY-MM-DD',
-            })}
-            {renderInput('Maturity Date', maturityDate, setMaturityDate, {
-              placeholder: 'YYYY-MM-DD',
-            })}
-            {renderChips('Bond Kind', bondKinds, bondKind, setBondKind)}
+            <TextField
+              label="Quantity"
+              value={quantity}
+              onChangeText={setQuantity}
+              keyboardType="number-pad"
+              placeholder="0"
+            />
+
+            <TextField
+              label="Face Value"
+              value={faceValue}
+              onChangeText={setFaceValue}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+            />
+
+            <TextField
+              label="Coupon %"
+              value={couponPct}
+              onChangeText={setCouponPct}
+              keyboardType="decimal-pad"
+              placeholder="0"
+            />
+
+            <DateField
+              label="Purchase Date"
+              value={purchaseDate}
+              onChange={setPurchaseDate}
+              placeholder="Select a date"
+            />
+
+            <DateField
+              label="Maturity Date"
+              value={maturityDate}
+              onChange={setMaturityDate}
+              placeholder="Select a date"
+            />
+
+            <ChipRow
+              label="Bond Kind"
+              options={bondKinds}
+              selected={bondKind}
+              onSelect={setBondKind}
+              labels={BOND_KIND_LABELS}
+            />
+
+            <ChipRow
+              label="Coupon frequency"
+              options={couponFrequencies}
+              selected={couponFrequency}
+              onSelect={setCouponFrequency}
+              labels={COUPON_FREQUENCY_LABELS}
+            />
           </Box>
         )}
       </Box>
@@ -289,22 +399,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 };
 
 const styles = StyleSheet.create((theme) => ({
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(3),
-    ...theme.typography.body,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  chip: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-  button: {
+  // A compact inline secondary action (add/remove a contribution row) — hugs its
+  // text at the leading edge rather than spanning the form's full width like the
+  // footer Save button.
+  secondaryButton: {
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,

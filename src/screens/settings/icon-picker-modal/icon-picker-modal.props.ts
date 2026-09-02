@@ -11,4 +11,9 @@ export type IconPickerModalProps = {
   // Called for every non-selecting dismissal: the cancel control, a backdrop
   // tap, or a hardware/gesture back (Modal's onRequestClose).
   onDismiss: () => void;
+  // Optional. When provided, the sheet offers a "Remove" control that clears
+  // the current icon back to none. Callers whose icon is nullable (accounts,
+  // holdings) pass it; the categories picker, whose icon is non-nullable, omits
+  // it and no control is rendered. The caller persists null and closes.
+  onRemove?: () => void;
 };

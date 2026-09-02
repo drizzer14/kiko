@@ -12,15 +12,32 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // Extra breathing room above the currency breakdown. The header's own
   // `gap={1}` already sits between the balance and the breakdown; this adds a
-  // second `spacing(1)` on top so the visible gap there is ~2x the others,
-  // separating the per-currency table from the headline figure.
+  // clearly larger `spacing(4)` on top so the per-currency table reads as a
+  // distinct block well separated from the headline net-worth figure.
   breakdown: {
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(4),
     alignSelf: 'stretch',
   },
-  // A date separator between day groups in the transaction SectionList.
+  // Extra breathing room above the filter row. With the divider now grouped
+  // just above it, this `spacing(4)` sits between the hairline rule and the
+  // filters (mirroring the content column's `gap(4)` above the divider) so the
+  // rule splits the net-worth/filters band evenly instead of doubling the gap.
+  filterBar: {
+    marginTop: theme.spacing(4),
+  },
+  // A hairline rule between the net-worth block and the filter row, drawn in
+  // the theme's separator color to match the dividers used elsewhere (e.g.
+  // account-detail). It carries no vertical margin of its own: the content
+  // column's `gap(4)` sits above it (net-worth card → divider) and the filter
+  // row's own `marginTop(4)` sits below it (divider → filters).
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.border,
+  },
+  // A date separator between day groups in the transaction SectionList. A
+  // generous top pad gives each date label clear separation above it.
   sectionHeader: {
-    paddingTop: theme.spacing(3),
+    paddingTop: theme.spacing(5),
     paddingBottom: theme.spacing(1),
   },
   // The large centered balance amount. Only size/weight/alignment live here —
@@ -37,14 +54,32 @@ export const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   // The primary line of a row: description on the left, amount on the right.
+  // Top-aligned so the icon and amount stay anchored to the top of the row and
+  // hold their place as a long title wraps and grows downward.
   rowMain: {
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   // The leading cluster of a row: category icon + description, kept together on
-  // the left so the row's space-between only splits this cluster from the amount.
+  // the left so the row's space-between only splits this cluster from the
+  // amount. `flex: 1` bounds it to the space left of the amount, and the right
+  // margin keeps a long, wrapping description clear of the amount column. Top-
+  // aligned so the icon sticks to the first line of a wrapping title.
   rowLead: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flex: 1,
+    marginRight: theme.spacing(3),
+  },
+  // The description cell inside the lead cluster: `flex: 1` lets a long title
+  // wrap onto multiple lines within the bounded lead column instead of pushing
+  // the amount off-screen.
+  rowDescription: {
+    flex: 1,
+  },
+  // The trailing amount cell: never shrinks, so the amount stays fully visible
+  // no matter how long the description grows.
+  rowAmount: {
+    flexShrink: 0,
   },
   // Bounds the FlatList to the remaining space below the fixed header/filter
   // bar so it scrolls instead of growing to content height.

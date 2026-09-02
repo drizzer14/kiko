@@ -49,3 +49,30 @@ jest.mock('react-native-nitro-sfsymbols', () => {
   const { View } = require('react-native');
   return { SFSymbolView: View };
 });
+
+// react-native-calendars' Calendar is a pure-JS component, but it pulls in
+// XDate/recyclerlistview machinery that is noisy under react-test-renderer and
+// gives a test no direct handle on day selection. Mocked to a plain View that
+// preserves `testID`, `markedDates`, `markingType`, and `onDayPress` as props,
+// so the Home date-range sheet mounts and a test can drive a day tap by calling
+// `onDayPress` with a DateData object directly.
+jest.mock('react-native-calendars', () => {
+  const { View } = require('react-native');
+  return { Calendar: View };
+});
+
+// react-native's Modal returns null under react-test-renderer (there is no
+// native modal host to portal into), so its children — the Home date-range
+// modal's calendars and Apply/Clear actions — never enter the tree for a test
+// to query. Mocked to a View that mirrors real Modal visibility: it renders
+// its children inline only while `visible` is truthy, and renders null
+// otherwise. This lets an open modal's contents be queried, while a closed
+// modal (e.g. the settings icon-picker) renders nothing, matching native
+// behavior — a bare passthrough View would leak a closed modal's children.
+jest.mock('react-native/Libraries/Modal/Modal', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const Modal = ({ visible, children, ...rest }) =>
+    visible ? React.createElement(View, rest, children) : null;
+  return { __esModule: true, default: Modal };
+});

@@ -14,6 +14,8 @@ jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     appendDepositContribution: jest.fn(),
+    updateName: jest.fn(),
+    setIcon: jest.fn(),
   },
 }));
 jest.mock('../../repositories/transactions.repo', () => ({
@@ -100,9 +102,58 @@ describe('HoldingDetailScreen', () => {
     const { getByTestId, queryByText } = await renderScreen();
 
     expect(getByTestId('screen-scroll-view')).toBeTruthy();
-    // The header large title is now the single title; the in-body duplicate is
-    // gone (the section heading "Transactions" stays).
+    // The header large title is still the single heading title; the metadata
+    // header's name field holds the name as an input value (not a host Text), so
+    // queryByText finds no in-body heading duplicate.
     expect(queryByText('My deposit')).toBeNull();
+  });
+
+  it('edits the holding name in a header field and renames via holdingsRepo.updateName on end-of-editing', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    // The name is edited on this page now (relocated from the account-detail
+    // list row): a labelled field committed once on end-of-editing.
+    const input = getByLabelText('Everyday card name');
+    await fireEvent.changeText(input, 'Renamed card');
+    await fireEvent(input, 'endEditing');
+
+    expect(holdingsRepo.updateName).toHaveBeenCalledWith('h-1', 'Renamed card');
+  });
+
+  it('does not save an empty holding name', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    const input = getByLabelText('Everyday card name');
+    await fireEvent.changeText(input, '   ');
+    await fireEvent(input, 'endEditing');
+
+    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
+  });
+
+  it('does not save an unchanged holding name', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    const input = getByLabelText('Everyday card name');
+    await fireEvent(input, 'endEditing');
+
+    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
+  });
+
+  it('changes the holding icon through the header icon editor, via holdingsRepo.setIcon', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
+
+    expect(holdingsRepo.setIcon).toHaveBeenCalledWith('h-1', 'basket');
   });
 
   it('shows gross, interest, and tax detail for a taxable deposit', async () => {
@@ -174,6 +225,53 @@ describe('HoldingDetailScreen', () => {
     const { queryByLabelText } = await renderScreen();
 
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('renders computed derived entries (contribution, interest, tax) for a deposit, marked Computed', async () => {
+    seed(depositHolding);
+
+    const { getByText, getAllByText } = await renderScreen();
+
+    // derivedEntries yields a Contribution row plus Interest and Tax rows once
+    // the deposit has accrued. These read distinctly from the value-breakdown
+    // labels ("Interest earned"/"Tax withheld").
+    expect(getByText('Contribution')).toBeTruthy();
+    expect(getByText('Interest')).toBeTruthy();
+    expect(getByText('Tax')).toBeTruthy();
+    // Every derived row carries a "Computed" marker so it reads as derived.
+    expect(getAllByText(/^Computed ·/).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('renders derived rows read-only: no swipe-delete and not tappable to the form', async () => {
+    seed(depositHolding);
+
+    const { getByText, queryByLabelText } = await renderScreen();
+
+    // A derived-only deposit (no real transactions) offers no delete action at all.
+    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // Pressing a derived row's label opens no transaction form.
+    await fireEvent.press(getByText('Contribution'));
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('merges real transactions with derived entries in one ordered ledger', async () => {
+    seed(depositHolding, [
+      {
+        id: 'txn-real',
+        amountMinorUnits: -5000,
+        time: Date.now(),
+        description: 'Fee',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByText, getByLabelText } = await renderScreen();
+
+    // Both the real transaction and the derived contribution render together.
+    expect(getByText('Fee')).toBeTruthy();
+    expect(getByText('Contribution')).toBeTruthy();
+    // Only the real row is deletable; the derived rows expose no delete action.
+    expect(getByLabelText('Delete', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it('appends a contribution through the add-contribution action', async () => {

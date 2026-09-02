@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
+import { formatDateTime } from '../../dates/format';
 import AccountDetailScreen from './account-detail.screen';
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
@@ -26,14 +27,19 @@ const mockUseSync = jest.fn();
 const mockReadToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
-const mockUpdateName = jest.fn();
 const mockRemove = jest.fn();
+const mockAccountSetIcon = jest.fn();
+const mockAccountUpdate = jest.fn();
+const mockDisconnect = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('../use-sync', () => ({
   useSync: () => mockUseSync(),
+}));
+jest.mock('../../monobank/disconnect', () => ({
+  disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../monobank/token', () => ({
   readToken: () => mockReadToken(),
@@ -52,6 +58,8 @@ jest.mock('../../repositories/accounts.repo', () => ({
       __kind: 'connected',
       toSQL: () => ({ sql: '', params: ['monobank'] }),
     }),
+    setIcon: (...args: unknown[]) => mockAccountSetIcon(...args),
+    update: (...args: unknown[]) => mockAccountUpdate(...args),
   },
 }));
 jest.mock('../../repositories/holdings.repo', () => ({
@@ -59,7 +67,6 @@ jest.mock('../../repositories/holdings.repo', () => ({
     listByAccountQuery: (accountId: string) => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
-    updateName: (...args: unknown[]) => mockUpdateName(...args),
     remove: (...args: unknown[]) => mockRemove(...args),
   },
 }));
@@ -75,6 +82,7 @@ type Account = {
   name: string;
   kind: string;
   institution?: string | null;
+  icon?: string | null;
 };
 type Holding = {
   id: string;
@@ -204,26 +212,19 @@ describe('AccountDetailScreen', () => {
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
+    // The holding row is display-only now (rename/icon editing moved to
+    // HoldingDetail), so pressing anywhere on it — the name included — opens the
+    // detail page.
     await fireEvent.press(getByText('Black card'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
   });
 
-  it('renames a holding via holdingsRepo.updateName when its title is edited', async () => {
-    const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Edit Black card title'));
-    const input = getByLabelText('Black card title');
-    await fireEvent.changeText(input, 'Renamed card');
-    await fireEvent(input, 'endEditing');
-    expect(mockUpdateName).toHaveBeenCalledWith('h1', 'Renamed card');
-  });
-
-  it('does not save an empty holding title', async () => {
-    const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Edit Black card title'));
-    const input = getByLabelText('Black card title');
-    await fireEvent.changeText(input, '   ');
-    await fireEvent(input, 'endEditing');
-    expect(mockUpdateName).not.toHaveBeenCalled();
+  it('shows the holding icon as a display-only glyph, not an editable icon control', async () => {
+    const { getByLabelText, queryByLabelText } = await renderScreen();
+    // The holding row renders a plain, non-editable icon (icon editing moved to
+    // HoldingDetail), so its glyph is present but no "Change … icon" affordance.
+    expect(getByLabelText('Black card icon')).toBeTruthy();
+    expect(queryByLabelText('Change Black card icon')).toBeNull();
   });
 
   it('excludes closed holdings from the list', async () => {
@@ -375,14 +376,17 @@ describe('AccountDetailScreen', () => {
     expect(mockSaveToken).toHaveBeenCalledWith('entered-here');
   });
 
-  it('shows the last sync time on a connected bank account', async () => {
+  it('shows the last sync time on a connected bank account, formatted as DD.MM.YYYY HH:mm', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: 'monobank' })],
       holdings: [],
       settings: [{ baseCurrency: 'UAH', lastSyncAt: 1_700_000_000_000 }],
     });
     const { getByText } = await renderScreen();
-    expect(getByText(new RegExp(new Date(1_700_000_000_000).toLocaleString()))).toBeTruthy();
+    // The shared formatDateTime helper (European DD.MM.YYYY, 24h) replaces the
+    // old locale-dependent toLocaleString rendering.
+    const stamp = formatDateTime(1_700_000_000_000);
+    expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
   });
 
   it('does not render the token input for a cash account', async () => {
@@ -438,6 +442,81 @@ describe('AccountDetailScreen', () => {
     const { queryByLabelText } = await renderScreen();
     // A synced holding renders no swipe delete action at all, hidden or not.
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("changes the account's own icon through the header icon editor, via accountsRepo.setIcon", async () => {
+    setLiveData({ accounts: [account({ name: 'Cash', kind: 'cash' })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon basket'));
+    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', 'basket');
+  });
+
+  it("clears the account's own icon through the header icon editor Remove control", async () => {
+    setLiveData({
+      accounts: [account({ name: 'Cash', kind: 'cash', icon: 'banknote' })],
+      holdings: [],
+    });
+    const { getByLabelText, getByText } = await renderScreen();
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByText('Remove'));
+    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', null);
+  });
+
+  it("edits the account's own name in a header field and renames via accountsRepo.update on end-of-editing", async () => {
+    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
+    const { getByLabelText, getByDisplayValue } = await renderScreen();
+    // The name renders as a labelled, editable field pre-filled with the account
+    // name; the rename commits once on end-of-editing through the generic update.
+    const field = getByDisplayValue('Ukrsibbank Card');
+    expect(field.props.editable).not.toBe(false);
+    const input = getByLabelText('Ukrsibbank Card name');
+    await fireEvent.changeText(input, 'Renamed account');
+    await fireEvent(input, 'endEditing');
+    expect(mockAccountUpdate).toHaveBeenCalledWith('a', { name: 'Renamed account' });
+  });
+
+  it('does not save an empty account name', async () => {
+    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+    const input = getByLabelText('Ukrsibbank Card name');
+    await fireEvent.changeText(input, '   ');
+    await fireEvent(input, 'endEditing');
+    expect(mockAccountUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not save an unchanged account name', async () => {
+    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+    const input = getByLabelText('Ukrsibbank Card name');
+    await fireEvent(input, 'endEditing');
+    expect(mockAccountUpdate).not.toHaveBeenCalled();
+  });
+
+  it('offers a Disconnect Monobank action on a connected account and confirms before disconnecting', async () => {
+    mockDisconnect.mockResolvedValue(undefined);
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'monobank' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+    await fireEvent.press(getByText('Disconnect Monobank'));
+    // The action confirms (an Alert) before it clears the connection + token.
+    expect(alertSpy).toHaveBeenCalled();
+    await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
+    alertSpy.mockRestore();
+  });
+
+  it('does not offer Disconnect Monobank on an account that is not connected', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const { queryByText } = await renderScreen();
+    expect(queryByText('Disconnect Monobank')).toBeNull();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {

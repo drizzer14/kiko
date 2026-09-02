@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Pressable, SectionList } from 'react-native';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { formatDate } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
@@ -59,6 +60,23 @@ const resolveCategoryDisplay = (
   return byKey.get(key) ?? byKey.get('other') ?? NEUTRAL_CATEGORY;
 };
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+// Whether a transaction time falls within the (inclusive) date range. A null
+// bound is open-ended on that side. The `to` bound is pushed to the end of its
+// calendar day so a same-day transaction any time that day still matches.
+const withinDateRange = (time: number, from: Date | null, to: Date | null): boolean => {
+  if (from !== null && time < startOfLocalDay(from.getTime())) {
+    return false;
+  }
+
+  if (to !== null && time > startOfLocalDay(to.getTime()) + DAY_IN_MS - 1) {
+    return false;
+  }
+
+  return true;
+};
+
 // A day's worth of transactions, headed by a human-readable label. The list is
 // a SectionList of these — one section per calendar day, newest day first.
 type DaySection<Row> = { title: string; data: Row[] };
@@ -72,9 +90,9 @@ const startOfLocalDay = (time: number): number => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 };
 
-// "Today"/"Yesterday" for the two most recent days, otherwise a locale-formatted
-// date (e.g. "12 Aug 2026" — order follows the device locale). `now` is passed
-// in rather than read here so the mapping stays pure and testable.
+// "Today"/"Yesterday" for the two most recent days, otherwise the shared
+// explicit DD.MM.YYYY format (locale-independent). `now` is passed in rather
+// than read here so the mapping stays pure and testable.
 const dayHeader = (dayStart: number, now: number): string => {
   const today = startOfLocalDay(now);
   const yesterdayDate = new Date(today);
@@ -87,11 +105,7 @@ const dayHeader = (dayStart: number, now: number): string => {
     return 'Yesterday';
   }
 
-  return new Date(dayStart).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatDate(dayStart);
 };
 
 // Fold rows (already ordered newest-first by the query) into per-day sections,
@@ -139,6 +153,23 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
+  // The date-range bounds; a null bound is ignored so the range is open-ended
+  // on that side. Both null means no date filtering at all.
+  const [dateFrom, setDateFrom] = useState<Date | null>(null);
+  const [dateTo, setDateTo] = useState<Date | null>(null);
+
+  const clearDateRange = (): void => {
+    setDateFrom(null);
+    setDateTo(null);
+  };
+
+  // The date-range modal commits both bounds at once on Apply; either may be
+  // null when that side of the range is left open-ended.
+  const applyDateRange = (from: Date | null, to: Date | null): void => {
+    setDateFrom(from);
+    setDateTo(to);
+  };
+
   // The `FILTER_ALL` chip clears the dimension; any other value toggles in/out.
   // A fresh Set keeps the state update immutable.
   const toggleFilter =
@@ -177,7 +208,31 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const total = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings);
 
-  const distinctAccountNames = Array.from(new Set(transactions.map((row) => row.accountName)));
+  // The full span of transaction dates, shown as the date-range field's default
+  // display when no range is active. It never filters — it only tells the user
+  // the range their data covers. With no transactions both bounds fall back to
+  // today so the field always has something to render.
+  const transactionTimes = transactions.map((row) => row.time);
+  const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
+  const spanEnd = transactionTimes.length > 0 ? Math.max(...transactionTimes) : now;
+
+  // The date-range field's *selectable* bounds are distinct from the display
+  // span above: the earliest a user may pick is the earliest transaction's day
+  // (`spanStart`, falling back to today when there are no transactions, and
+  // passed through as `minDate`), and the latest is today — future dates are
+  // never selectable. The field derives its selectable floor from `minDate`
+  // (= `spanStart`) and its ceiling from today itself, so the display span
+  // (earliest–latest transaction) stays independent of the selectable range.
+
+  // Every active (non-archived) account, so a newly-added account with no
+  // transactions yet still appears in the Accounts filter. Sourced from the
+  // accounts live query rather than from the transactions, which would omit it.
+  // Transaction matching still keys off `row.accountName` below.
+  const distinctAccountNames = Array.from(
+    new Set(
+      accounts.filter((account) => account.archivedAt == null).map((account) => account.name),
+    ),
+  );
   const distinctCategories = Array.from(
     new Set(transactions.map((row) => row.category ?? 'Uncategorized')),
   );
@@ -185,8 +240,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
     const matchesCategory =
       selectedCategories.size === 0 || selectedCategories.has(row.category ?? 'Uncategorized');
+    const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
 
-    return matchesAccount && matchesCategory;
+    return matchesAccount && matchesCategory && matchesDate;
   });
 
   // Grouping/sorting happens after filtering, over the query's newest-first
@@ -217,12 +273,16 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 tone="textSecondary"
                 accessibilityLabel={category.title}
               />
-              <Text variant="body">{description}</Text>
+              <Box style={styles.rowDescription}>
+                <Text variant="body">{description}</Text>
+              </Box>
             </Box>
-            <MoneyText
-              money={Money.of(item.currency, item.amountMinorUnits)}
-              context="transaction"
-            />
+            <Box style={styles.rowAmount}>
+              <MoneyText
+                money={Money.of(item.currency, item.amountMinorUnits)}
+                context="transaction"
+              />
+            </Box>
           </Box>
           <Text variant="caption" tone="textSecondary">
             {`${item.accountName} · ${category.title}`}
@@ -255,14 +315,30 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           </Box>
         </GlassSurface>
 
-        <TransactionFilterBar
-          accounts={distinctAccountNames}
-          categories={distinctCategories}
-          selectedAccount={selectedAccounts}
-          selectedCategory={selectedCategories}
-          onToggleAccount={toggleFilter(setSelectedAccounts)}
-          onToggleCategory={toggleFilter(setSelectedCategories)}
-        />
+        {/* The divider and the filter row are grouped so the content column's
+            `gap(4)` lands only above the divider (net-worth card → divider). The
+            filter row keeps its own `marginTop(4)`, which now serves as the
+            divider → filters spacing — splitting the existing card-to-filter band
+            evenly around the rule instead of stacking a second, doubled gap. */}
+        <Box>
+          <Box style={styles.divider} />
+          <Box style={styles.filterBar}>
+            <TransactionFilterBar
+              accounts={distinctAccountNames}
+              categories={distinctCategories}
+              selectedAccount={selectedAccounts}
+              selectedCategory={selectedCategories}
+              onToggleAccount={toggleFilter(setSelectedAccounts)}
+              onToggleCategory={toggleFilter(setSelectedCategories)}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              minDate={new Date(spanStart)}
+              maxDate={new Date(spanEnd)}
+              onApplyDates={applyDateRange}
+              onClearDates={clearDateRange}
+            />
+          </Box>
+        </Box>
 
         <SectionList
           sections={sections}

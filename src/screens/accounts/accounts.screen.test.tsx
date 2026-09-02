@@ -185,13 +185,25 @@ describe('AccountsScreen', () => {
     alertSpy.mockRestore();
   });
 
-  it('does not offer delete on a monobank account row', async () => {
+  it('does not offer delete on a still-connected (monobank) account row', async () => {
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', institution: 'monobank' }],
       holdings: [],
     });
     const { queryByLabelText } = await renderAccounts();
+    // A connected account must be disconnected (from account-detail) before it
+    // can be swipe-deleted, so the SwipeableRow is disabled and offers no action.
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('shows the account icon as a display-only glyph, not an editable icon control', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByLabelText, queryByLabelText } = await renderAccounts();
+    // The row renders a plain, non-editable icon (icon editing moved to
+    // AccountDetail), so its glyph is present but the "Change … icon" picker
+    // affordance is gone.
+    expect(getByLabelText('Cash icon')).toBeTruthy();
+    expect(queryByLabelText('Change Cash icon')).toBeNull();
   });
 
   it('reflects term-deposit growth in total net worth (now is passed)', async () => {

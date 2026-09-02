@@ -1,12 +1,14 @@
 import { type FC, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable, TextInput } from 'react-native';
+import { Alert, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
+import TextField from '../../design-system/components/text-field';
 import type { TransactionFormParams } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
@@ -154,26 +156,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     ]);
   };
 
-  const inputStyle = [
-    styles.input,
-    { color: theme.colors.textPrimary, borderColor: theme.colors.surfaceHigh },
-  ];
-
   return (
-    <Screen
-      scroll
-      footer={
-        isReadOnly ? undefined : (
-          <Pressable
-            accessibilityRole="button"
-            onPress={save}
-            style={[styles.button, { backgroundColor: theme.colors.accent }]}
-          >
-            <Text variant="body">Save</Text>
-          </Pressable>
-        )
-      }
-    >
+    <Screen scroll footer={isReadOnly ? undefined : <Button onPress={save}>Save</Button>}>
       <Box gap={4}>
         {isReadOnly && (
           <Box padding={3} style={[styles.notice, { backgroundColor: theme.colors.surfaceHigh }]}>
@@ -183,43 +167,42 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           </Box>
         )}
 
-        <TextInput
-          accessibilityLabel="Amount"
+        <TextField
+          label="Amount"
           value={amount}
           onChangeText={setAmount}
           editable={!isReadOnly}
           keyboardType="decimal-pad"
           placeholder="0.00"
-          placeholderTextColor={theme.colors.textSecondary}
-          style={inputStyle}
         />
 
-        <TextInput
-          accessibilityLabel="Description"
+        <TextField
+          label="Description"
           value={description}
           onChangeText={setDescription}
           editable={!isReadOnly}
           placeholder="Description"
-          placeholderTextColor={theme.colors.textSecondary}
-          style={inputStyle}
         />
 
         <Box style={styles.toggleRow} gap={2}>
-          {(['income', 'expense'] as const).map((option) => (
-            <Pressable
-              key={option}
-              accessibilityRole="button"
-              accessibilityState={{ selected: sign === option, disabled: isReadOnly }}
-              disabled={isReadOnly}
-              onPress={() => setSign(option)}
-              style={[
-                styles.chip,
-                { backgroundColor: sign === option ? theme.colors.accent : theme.colors.surface },
-              ]}
-            >
-              <Text variant="body">{option === 'income' ? 'Income' : 'Expense'}</Text>
-            </Pressable>
-          ))}
+          {(['income', 'expense'] as const).map((option) => {
+            const isSelected = sign === option;
+
+            return (
+              <Pressable
+                key={option}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: isReadOnly }}
+                disabled={isReadOnly}
+                onPress={() => setSign(option)}
+                style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}
+              >
+                <Text variant="body" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
+                  {option === 'income' ? 'Income' : 'Expense'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </Box>
 
         {isEditing && !isReadOnly && (
@@ -237,22 +220,30 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 };
 
 const styles = StyleSheet.create((theme) => ({
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(3),
-    ...theme.typography.body,
-  },
   notice: {
     borderRadius: theme.radii.sm,
   },
   toggleRow: {
     flexDirection: 'row',
   },
+  // Each option is an equal-width segment so the pair reads as one segmented
+  // control rather than two free-floating buttons.
   chip: {
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,
+  },
+  // The chosen option is clearly active: a solid accent fill behind white text.
+  chipSelected: {
+    backgroundColor: theme.colors.accent,
+  },
+  // The other option reads as inactive/disabled: a muted, dimmed surface behind
+  // secondary-tone text, so it is unambiguous which side is selected.
+  chipUnselected: {
+    backgroundColor: theme.colors.surfaceHigh,
+    opacity: 0.5,
   },
   button: {
     paddingVertical: theme.spacing(2),

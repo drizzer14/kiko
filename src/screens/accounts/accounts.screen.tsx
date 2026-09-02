@@ -6,9 +6,9 @@ import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
-import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
@@ -31,8 +31,10 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   broker: 'Broker',
 };
 
-// Leading SF Symbol per account kind, mirroring KIND_LABEL.
-const KIND_ICON: Record<AccountRow['kind'], string> = {
+// Leading SF Symbol per account kind, mirroring KIND_LABEL. Exported so the
+// account-detail header reuses the same kind-default glyph without a second
+// copy of the map drifting out of sync.
+export const KIND_ICON: Record<AccountRow['kind'], string> = {
   bank: 'building.columns',
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
@@ -57,13 +59,13 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       scroll
       footer={
         <Box testID="add-account-footer" style={styles.addAccountButton}>
-          <PressableButton
+          <Button
+            variant="primary"
+            fullWidth
             onPress={() => navigation.navigate('AccountForm', {})}
-            backgroundColor={theme.colors.accent}
-            icon={<SymbolIcon name="plus" tone="textPrimary" />}
           >
-            <Text variant="body">Add account</Text>
-          </PressableButton>
+            Add account
+          </Button>
         </Box>
       }
     >
@@ -82,17 +84,21 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             return (
               <SwipeableRow
                 key={account.id}
+                radius={theme.radii.md}
                 disabled={isSyncedAccount(account)}
                 onDelete={() => accountsRepo.remove(account.id)}
               >
-                <GlassSurface testID="account-card" padding={3}>
+                <GlassSurface testID="account-card" padding={4}>
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
                     style={styles.row}
                   >
                     <Box direction="row" gap={3} style={styles.rowLead}>
-                      <SymbolIcon name={KIND_ICON[account.kind]} tone="textSecondary" />
+                      <SymbolIcon
+                        name={account.icon ?? KIND_ICON[account.kind]}
+                        accessibilityLabel={`${account.name} icon`}
+                      />
                       <Box gap={1}>
                         <Text variant="body">{account.name}</Text>
                         <Text variant="caption" tone="textSecondary">

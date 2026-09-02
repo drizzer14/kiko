@@ -1,15 +1,15 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
-import { Pressable, TextInput } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
+import TextField from '../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import ChipRow from './chip-row';
+import IconEditor from '../icon-editor';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -20,14 +20,28 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 const kinds = ['bank', 'cash', 'crypto'] as const;
 type Kind = (typeof kinds)[number];
 
+// Human display text for the account kinds; the chip still reports the
+// underlying value on select.
+const KIND_LABELS: Record<Kind, string> = {
+  bank: 'Bank',
+  cash: 'Cash',
+  crypto: 'Crypto',
+};
+
 const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 
+// Neutral placeholder glyph shown in the create form's icon chip until the user
+// picks one. The persisted default (a kind-derived icon) is applied by the
+// account list rows when the stored icon is null; here the account has no kind
+// context worth deriving from yet, so a neutral swatch reads as "unset".
+const FALLBACK_ICON = 'square.grid.2x2';
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
-  const { theme } = useUnistyles();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind>('bank');
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
+  const [icon, setIcon] = useState<string | null>(null);
 
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
@@ -38,6 +52,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
     if (!canSave) {
       return;
     }
+
     if (kind === 'cash') {
       // Clamp a negative initial value to zero — a cash balance can never be
       // negative, and Number('') || 0 also covers a blank field.
@@ -48,10 +63,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
         initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
       });
       navigation.goBack();
+
       return;
     }
 
-    await accountsRepo.create({ name: trimmedName, kind });
+    const newAccountId = await accountsRepo.create({ name: trimmedName, kind });
+
+    // Persist the chosen icon on the freshly-created row, using the id the
+    // create resolved to. Awaited so it commits before navigating away.
+    if (icon !== null) {
+      await accountsRepo.setIcon(newAccountId, icon);
+    }
+
     navigation.goBack();
   };
 
@@ -59,47 +82,52 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
     <Screen
       scroll
       footer={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSave }}
-          disabled={!canSave}
-          onPress={save}
-          style={[styles.button, { backgroundColor: theme.colors.accent }]}
-        >
-          <Text variant="body">Save</Text>
-        </Pressable>
+        <Button onPress={save} disabled={!canSave}>
+          Save
+        </Button>
       }
     >
       <Box gap={4}>
-        <TextInput
-          accessibilityLabel="Name"
-          value={name}
-          onChangeText={setName}
-          placeholder="Name"
-          placeholderTextColor={theme.colors.textSecondary}
-          style={[
-            styles.input,
-            { color: theme.colors.textPrimary, borderColor: theme.colors.border },
-          ]}
-        />
+        {/* A cash account is created atomically via createCashAccount, which
+            does not return the new id, so its icon cannot be persisted at create
+            time — the icon picker is offered only on the create() path (bank /
+            crypto), whose returned id setIcon needs. A cash account's icon can
+            still be set later from the accounts list. */}
+        {kind !== 'cash' && (
+          <IconEditor
+            label="Icon"
+            icon={icon}
+            fallbackIcon={FALLBACK_ICON}
+            onSelect={setIcon}
+            onRemove={() => setIcon(null)}
+          />
+        )}
 
-        <ChipRow options={kinds} selected={kind} onSelect={setKind} />
+        <TextField label="Name" value={name} onChangeText={setName} placeholder="Name" />
+
+        <ChipRow
+          label="Kind"
+          options={kinds}
+          selected={kind}
+          onSelect={setKind}
+          labels={KIND_LABELS}
+        />
 
         {kind === 'cash' && (
           <>
-            <ChipRow options={currencies} selected={currency} onSelect={setCurrency} />
+            <ChipRow
+              label="Currency"
+              options={currencies}
+              selected={currency}
+              onSelect={setCurrency}
+            />
 
-            <TextInput
-              accessibilityLabel="Initial value"
+            <TextField
+              label="Initial value"
               value={initialValue}
               onChangeText={setInitialValue}
               keyboardType="decimal-pad"
               placeholder="0.00"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={[
-                styles.input,
-                { color: theme.colors.textPrimary, borderColor: theme.colors.border },
-              ]}
             />
           </>
         )}
@@ -107,20 +135,5 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
     </Screen>
   );
 };
-
-const styles = StyleSheet.create((theme) => ({
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(3),
-    ...theme.typography.body,
-  },
-  button: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-    alignSelf: 'flex-start',
-  },
-}));
 
 export default AccountFormScreen;

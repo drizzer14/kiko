@@ -10,6 +10,7 @@ import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
+import AddCategoryRow from './add-category-row';
 import { styles } from './categories.styles';
 import IconPickerModal from './icon-picker-modal';
 
@@ -50,15 +51,9 @@ const CategoryListRow: FC<{ category: CategoryRow; isLast: boolean }> = ({ categ
           onPress={() => setPickerOpen(true)}
           style={styles.iconChip}
         >
+          {/* The bordered chip is itself the edit affordance — no overlaid
+              pencil badge; the border reads as a tappable control. */}
           <SymbolIcon name={category.icon} tone="textSecondary" />
-          {/* A pencil badge overlapping the chip's corner makes the icon read
-              as editable at a glance, matching the bordered rename field beside
-              it. Marked with a testID (not an accessibility label) so it stays
-              a decorative cue inside the already-labelled button rather than a
-              second focus target for VoiceOver. */}
-          <Box style={styles.editBadge} testID="category-icon-edit-badge">
-            <SymbolIcon name="pencil" size={12} tone="textPrimary" />
-          </Box>
         </Pressable>
         <TextInput
           accessibilityLabel={`${category.title} title`}
@@ -102,6 +97,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
               isLast={index === categories.length - 1}
             />
           ))}
+
+          <AddCategoryRow />
         </GlassSurface>
       </Box>
     </Screen>

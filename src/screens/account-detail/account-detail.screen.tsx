@@ -1,13 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Pressable, TextInput } from 'react-native';
+import { Alert, TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
+import type { AccountRow, HoldingRow } from '../../db/schema';
+import { formatDateTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import ListRow from '../../design-system/components/list-row';
 import MoneyText from '../../design-system/components/money-text';
@@ -17,6 +18,8 @@ import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
+import { holdingValue } from '../../holdings/holding-value';
+import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { sumByCurrency } from '../../rates/currency-totals';
@@ -25,16 +28,29 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
+import IconEditor from '../icon-editor';
 import { useSync } from '../use-sync';
+import { KIND_ICON } from '../accounts/accounts.screen';
 import { styles } from './account-detail.styles';
 import MonobankTokenField from './monobank-token-field.component';
+
+// Leading SF Symbol fallback per holding type, shown until the user picks a
+// custom icon. Mirrors the accounts list's KIND_ICON treatment.
+const TYPE_ICON: Record<HoldingRow['type'], string> = {
+  card: 'creditcard',
+  term_deposit: 'banknote',
+  bond: 'doc.text',
+  cash: 'banknote',
+  crypto_asset: 'bitcoinsign.circle',
+  jar: 'cup.and.saucer',
+};
 
 // The token input now lives on this screen, so a missing token points the user
 // up to that field rather than off to global Settings.
 const NO_TOKEN_MESSAGE = 'Add your Monobank token above before connecting.';
 
 const formatLastSyncAt = (lastSyncAt: number | null): string =>
-  lastSyncAt === null ? 'Never' : new Date(lastSyncAt).toLocaleString();
+  lastSyncAt === null ? 'Never' : formatDateTime(lastSyncAt);
 
 // Connect (mark institution + first import) and Sync now (re-import) are the
 // same action; only the label and glyph differ. A link glyph while the action
@@ -53,63 +69,83 @@ const actionPresentation = (
   };
 };
 
-// One holding row: opens the holding on press, and renames its title inline
-// through a tap-to-edit affordance. Mirrors the categories rename pattern — a
-// pencil control reveals an inline field committed on end-of-editing, and an
-// empty (or unchanged) name is never written. Local title state seeds from the
-// row so keystrokes show immediately, while the persisted value flows back
-// through the live query.
-const HoldingListRow: FC<{ holding: HoldingRow; onOpen: () => void }> = ({ holding, onOpen }) => {
+// One holding row: display-only and tappable to open the holding. The holding's
+// name and icon are now edited on HoldingDetail (not inline here), so the row
+// shows the icon (custom, or the type-default fallback) beside the name and the
+// balance — pressing anywhere opens the detail page. The row renders the
+// holding's COMPUTED value as of `now` (deposits/bonds accrue over time and
+// carry a stored balance of 0), matching the headline and holding-detail.
+const HoldingListRow: FC<{ holding: HoldingRow; now: number; onOpen: () => void }> = ({
+  holding,
+  now,
+  onOpen,
+}) => {
+  return (
+    <ListRow onPress={onOpen}>
+      <Box direction="row" gap={3} style={styles.holdingLead}>
+        <SymbolIcon
+          name={holding.icon ?? TYPE_ICON[holding.type]}
+          accessibilityLabel={`${holding.name} icon`}
+        />
+
+        <Text variant="body">{holding.name}</Text>
+      </Box>
+      <Box
+        direction="row"
+        gap={2}
+        style={styles.statusLine}
+        testID={`holding-balance-${holding.id}`}
+      >
+        <MoneyText money={holdingValue(holding, now)} />
+      </Box>
+    </ListRow>
+  );
+};
+
+// The account's own metadata, edited here rather than on the tiny accounts-list
+// row: the icon opens the shared picker (with remove-to-default) under one
+// labelled "Icon" block reused from the create form, and the name is a proper
+// labelled field. Local name state seeds from the account so keystrokes show
+// immediately while the persisted value flows back through the live query; the
+// rename commits once on end-of-editing (return-key submit or blur) via the
+// generic accountsRepo.update, and an empty or unchanged name is never written.
+const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
   const { theme } = useUnistyles();
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(holding.name);
+  const [name, setName] = useState(account.name);
 
   const commitName = (): void => {
     const trimmed = name.trim();
-    setIsEditing(false);
 
-    if (trimmed !== '' && trimmed !== holding.name) {
-      holdingsRepo.updateName(holding.id, trimmed);
+    if (trimmed !== '' && trimmed !== account.name) {
+      accountsRepo.update(account.id, { name: trimmed });
     }
   };
 
   return (
-    <ListRow
-      onPress={() => {
-        if (!isEditing) {
-          onOpen();
-        }
-      }}
-    >
-      {isEditing ? (
+    <Box direction="row" gap={3} style={styles.metadataHeader}>
+      <IconEditor
+        label="Icon"
+        icon={account.icon}
+        fallbackIcon={KIND_ICON[account.kind]}
+        onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
+        onRemove={() => accountsRepo.setIcon(account.id, null)}
+      />
+
+      <Box gap={1} style={styles.metadataNameBlock}>
+        <Text variant="caption" tone="textSecondary">
+          Name
+        </Text>
+
         <TextInput
-          accessibilityLabel={`${holding.name} title`}
+          accessibilityLabel={`${account.name} name`}
           value={name}
           onChangeText={setName}
-          // Commit once on end-of-editing only (return-key submit or blur), so a
-          // rename that loses focus still saves without double-writing.
           onEndEditing={commitName}
-          autoFocus
           placeholderTextColor={theme.colors.textSecondary}
-          style={styles.textField}
+          style={styles.nameField}
         />
-      ) : (
-        <Text variant="body">{holding.name}</Text>
-      )}
-      <Box direction="row" gap={2} style={styles.statusLine}>
-        <MoneyText money={Money.of(holding.currency, holding.balanceMinorUnits)} />
-        {!isEditing && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${holding.name} title`}
-            onPress={() => setIsEditing(true)}
-            style={styles.iconButton}
-          >
-            <SymbolIcon name="pencil" tone="textSecondary" />
-          </Pressable>
-        )}
       </Box>
-    </ListRow>
+    </Box>
   );
 };
 
@@ -181,6 +217,36 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     }
   };
 
+  // Disconnect is the required first step before a Monobank account can be
+  // deleted: it clears the connection and the stored Keychain token, turning the
+  // account manual (its data kept as a historical snapshot). Confirm first, since
+  // it discards the token. Once it resolves, the live query flips `institution`
+  // to null and the account becomes swipe-deletable on the accounts list.
+  const runDisconnect = async (): Promise<void> => {
+    try {
+      await disconnectMonobank(accountId);
+    } catch {
+      Alert.alert('Could not disconnect', 'Please try again.');
+    }
+  };
+
+  const confirmDisconnect = (): void => {
+    Alert.alert(
+      'Disconnect Monobank',
+      'This clears the connection and the stored token. Your holdings and transactions stay as a manual snapshot.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => {
+            runDisconnect();
+          },
+        },
+      ],
+    );
+  };
+
   const { label: actionLabel, icon: actionIcon } = actionPresentation(
     isConnectedToMonobank,
     isSyncing,
@@ -196,15 +262,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   return (
     <Screen scroll>
       <Box gap={4}>
-        <Box gap={1}>
+        {account && <AccountMetadataHeader account={account} />}
+
+        <Box gap={1} style={styles.balanceBlock}>
           <Text variant="heading">Balance</Text>
           <MoneyText money={overallBalance} context="balance" style={styles.balance} />
-          <CurrencyBreakdown items={breakdown} />
+          <Box style={styles.breakdown}>
+            <CurrencyBreakdown items={breakdown} />
+          </Box>
         </Box>
 
         {showActionButton && <Box style={styles.divider} />}
 
-        {showActionButton && <MonobankTokenField />}
+        {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
 
         {showActionButton && (
           <Box direction="row" gap={2} style={styles.statusLine}>
@@ -230,6 +300,17 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           </Box>
         )}
 
+        {isConnectedToMonobank && (
+          <PressableButton
+            onPress={confirmDisconnect}
+            backgroundColor={theme.colors.surfaceHigh}
+            alignSelf="flex-start"
+            icon={<SymbolIcon name="link.badge.plus" tone="textPrimary" />}
+          >
+            <Text variant="body">Disconnect Monobank</Text>
+          </PressableButton>
+        )}
+
         {showConnectedElsewhereHint && (
           <Text variant="caption" tone="textSecondary">
             Monobank is connected to another account
@@ -250,30 +331,31 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         <Box style={styles.divider} />
 
-        <Box gap={2}>
+        <Box gap={3}>
           <Text variant="heading">Holdings</Text>
           {activeHoldings.map((holding) => (
             <SwipeableRow
               key={holding.id}
+              radius={theme.radii.sm}
               disabled={isSyncedHolding(holding)}
               onDelete={() => holdingsRepo.remove(holding.id)}
             >
               <HoldingListRow
                 holding={holding}
+                now={now}
                 onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
               />
             </SwipeableRow>
           ))}
         </Box>
 
-        <PressableButton
+        <Button
+          variant="primary"
+          fullWidth
           onPress={() => navigation.navigate('HoldingForm', { accountId })}
-          backgroundColor={theme.colors.accent}
-          alignSelf="flex-start"
-          icon={<SymbolIcon name="plus" tone="textPrimary" />}
         >
-          <Text variant="body">Add holding</Text>
-        </PressableButton>
+          Add holding
+        </Button>
       </Box>
     </Screen>
   );
