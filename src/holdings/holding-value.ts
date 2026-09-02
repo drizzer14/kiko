@@ -2,7 +2,7 @@ import { currencyScale } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow } from '../db/schema';
 import { asBondMeta, asTermDepositMeta } from './holding-metadata';
-import { accruedMajor, daysBetween, depositAccruedMajor, depositCompoundedMajor } from './interest';
+import { bondAccruedMajor, depositAccruedMajor, depositCompoundedMajor } from './interest';
 import { taxOnInterestMinor } from './tax';
 
 export type ValuableHolding = Pick<
@@ -86,8 +86,14 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   }
   const { currency } = holding;
   const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
-  const days = daysBetween(meta.purchaseDate, Math.min(now, meta.maturityDate));
-  const accrued = accruedMajor(toMajor(nominalMinor, currency), meta.couponPct, days);
+  const accrued = bondAccruedMajor(
+    toMajor(nominalMinor, currency),
+    meta.couponPct,
+    meta.couponFrequency,
+    meta.purchaseDate,
+    meta.maturityDate,
+    now,
+  );
   const accruedMinor = Money.fromMajor(currency, accrued).minorUnits;
   const grossMinor = nominalMinor + accruedMinor;
   const taxMinor = meta.bondKind === 'corporate' ? taxOnInterestMinor(accruedMinor) : 0;

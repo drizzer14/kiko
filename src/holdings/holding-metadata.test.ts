@@ -71,6 +71,7 @@ describe('asBondMeta', () => {
     purchaseDate: 1_700_000_000_000,
     maturityDate: 1_800_000_000_000,
     bondKind: 'government' as const,
+    couponFrequency: 'semiannually' as const,
   };
 
   it('returns the typed object for a valid shape', () => {
@@ -99,5 +100,29 @@ describe('asBondMeta bondKind', () => {
   it('defaults a missing or invalid kind to government', () => {
     expect(asBondMeta({ ...base })?.bondKind).toBe('government');
     expect(asBondMeta({ ...base, bondKind: 'nonsense' })?.bondKind).toBe('government');
+  });
+});
+
+describe('asBondMeta couponFrequency', () => {
+  const base = {
+    quantity: 10,
+    faceValueMinorUnits: 10000,
+    couponPct: 10,
+    purchaseDate: 1000,
+    maturityDate: 2000,
+  };
+
+  it('reads an explicit frequency', () => {
+    expect(asBondMeta({ ...base, couponFrequency: 'quarterly' })?.couponFrequency).toBe(
+      'quarterly',
+    );
+    expect(asBondMeta({ ...base, couponFrequency: 'semiannually' })?.couponFrequency).toBe(
+      'semiannually',
+    );
+  });
+
+  it('defaults a missing or invalid frequency to annually (back-compat)', () => {
+    expect(asBondMeta({ ...base })?.couponFrequency).toBe('annually');
+    expect(asBondMeta({ ...base, couponFrequency: 'weekly' })?.couponFrequency).toBe('annually');
   });
 });

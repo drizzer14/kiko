@@ -82,4 +82,25 @@ describe('SwipeableRow', () => {
     expect(queryByLabelText('Delete', HIDDEN)).toBeNull();
     expect(getByText('Row')).toBeTruthy();
   });
+
+  // The row clips to this radius (overflow: hidden + borderRadius) so the
+  // revealed delete action never bleeds past the wrapping card's rounded
+  // corners, and matches the card's own corner radius exactly.
+  it('clips the row to theme.radii.lg by default', async () => {
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row">
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    expect(getByTestId('row').props.style).toContainEqual({ borderRadius: 16 });
+  });
+
+  it('clips the row to a custom radius when the wrapping card uses a different one', async () => {
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" radius={10}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    expect(getByTestId('row').props.style).toContainEqual({ borderRadius: 10 });
+  });
 });

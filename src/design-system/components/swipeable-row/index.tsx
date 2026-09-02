@@ -17,6 +17,12 @@ type SwipeableRowProps = {
   confirmTitle?: string;
   confirmMessage?: string;
   testID?: string;
+  // Corner radius the row clips to, so the revealed delete action never
+  // bleeds past the wrapping card's rounded corners and its own corners
+  // match the card exactly. Defaults to theme.radii.lg (the standard
+  // GlassSurface card radius) — pass the wrapping card's actual radius
+  // (e.g. theme.radii.md, theme.radii.sm) when it differs.
+  radius?: number;
 };
 
 // Width the row travels to fully reveal the delete action, and the drag
@@ -54,8 +60,12 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   confirmTitle = 'Delete',
   confirmMessage = 'This cannot be undone.',
   testID,
+  radius,
 }) => {
   const { theme } = useUnistyles();
+  // theme is only available inside the component body, so the radii.lg
+  // default is applied here rather than as a destructured default.
+  const cornerRadius = radius ?? theme.radii.lg;
   const translateX = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
   // Whether the row is swiped open (delete action revealed). Gates the
@@ -101,7 +111,10 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   }
 
   return (
-    <View style={styles.container} testID={testID}>
+    // overflow: hidden (in styles.container) plus this same borderRadius is
+    // what keeps the revealed delete action clipped to the wrapping card's
+    // rounded corners instead of bleeding past them as a square.
+    <View style={[styles.container, { borderRadius: cornerRadius }]} testID={testID}>
       {/* When closed, the action stays mounted (for the reveal animation)
           but is removed from the accessibility tree so a screen reader
           cannot reach a visually-hidden "Delete". It flips to reachable

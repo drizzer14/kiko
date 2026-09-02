@@ -1,4 +1,4 @@
-import type { CompoundingFrequency } from './holding-metadata';
+import type { BondCouponFrequency, CompoundingFrequency } from './holding-metadata';
 
 const DAY_MS = 86_400_000;
 const DAYS_PER_YEAR = 365;
@@ -44,6 +44,37 @@ export const accruedMajor = (
   annualRatePct: number,
   daysElapsed: number,
 ): number => (baseMajor * (annualRatePct / 100) * daysElapsed) / DAYS_PER_YEAR;
+
+export const bondCouponPeriodsPerYear = (frequency: BondCouponFrequency): number => {
+  switch (frequency) {
+    case 'monthly':
+      return 12;
+    case 'quarterly':
+      return 4;
+    case 'semiannually':
+      return 2;
+    case 'annually':
+      return 1;
+  }
+};
+
+// Dirty-price coupon accrual: value only the coupon earned since the last
+// coupon date. Mirrors depositAccruedMajor's per-period reset, and caps the
+// end at maturity so no coupon accrues past it.
+export const bondAccruedMajor = (
+  nominalMajor: number,
+  couponPct: number,
+  frequency: BondCouponFrequency,
+  purchaseDate: number,
+  maturityDate: number,
+  now: number,
+): number => {
+  const end = Math.min(now, maturityDate);
+  const totalDays = daysBetween(purchaseDate, end);
+  const period = DAYS_PER_YEAR / bondCouponPeriodsPerYear(frequency);
+  const daysSinceLastCoupon = totalDays - Math.floor(totalDays / period) * period;
+  return accruedMajor(nominalMajor, couponPct, daysSinceLastCoupon);
+};
 
 type ContributionMajor = { amountMajor: number; date: number };
 

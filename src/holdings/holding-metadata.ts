@@ -12,6 +12,8 @@ export type TermDepositMeta = {
 
 export type BondKind = 'government' | 'corporate';
 
+export type BondCouponFrequency = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
+
 export type BondMeta = {
   quantity: number;
   faceValueMinorUnits: number;
@@ -19,9 +21,17 @@ export type BondMeta = {
   purchaseDate: number;
   maturityDate: number;
   bondKind: BondKind;
+  couponFrequency: BondCouponFrequency;
 };
 
 const frequencies = new Set<string>(['daily', 'monthly', 'quarterly', 'annually']);
+
+const bondCouponFrequencies = new Set<string>(['monthly', 'quarterly', 'semiannually', 'annually']);
+
+const asBondCouponFrequency = (value: unknown): BondCouponFrequency =>
+  typeof value === 'string' && bondCouponFrequencies.has(value)
+    ? (value as BondCouponFrequency)
+    : 'annually';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -101,5 +111,6 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     purchaseDate,
     maturityDate,
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
+    couponFrequency: asBondCouponFrequency(value.couponFrequency),
   };
 };

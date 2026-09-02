@@ -1,6 +1,8 @@
 import {
   accruedMajor,
   addMonths,
+  bondAccruedMajor,
+  bondCouponPeriodsPerYear,
   compoundedMajor,
   daysBetween,
   depositAccruedMajor,
@@ -129,5 +131,87 @@ describe('deposit contributions', () => {
       START + 10 * DAY,
     );
     expect(accrued).toBeGreaterThan(0);
+  });
+});
+
+describe('bondCouponPeriodsPerYear', () => {
+  it('maps each bond coupon frequency', () => {
+    expect(bondCouponPeriodsPerYear('monthly')).toBe(12);
+    expect(bondCouponPeriodsPerYear('quarterly')).toBe(4);
+    expect(bondCouponPeriodsPerYear('semiannually')).toBe(2);
+    expect(bondCouponPeriodsPerYear('annually')).toBe(1);
+  });
+});
+
+describe('bondAccruedMajor', () => {
+  const NOMINAL = 100_000; // 100,000 UAH nominal (major units)
+  const COUPON = 15;
+  const purchase = START;
+  const maturity = START + 10 * 365 * DAY; // far in the future
+
+  it('resets each coupon period: 3.5 years in accrues less than one full year', () => {
+    const midThirdPeriod = START + Math.round(3.5 * 365) * DAY;
+    const accrued = bondAccruedMajor(
+      NOMINAL,
+      COUPON,
+      'annually',
+      purchase,
+      maturity,
+      midThirdPeriod,
+    );
+    const oneFullYear = (NOMINAL * COUPON) / 100; // 15,000
+    expect(accrued).toBeGreaterThan(0);
+    expect(accrued).toBeLessThan(oneFullYear);
+    // Dirty-price, not lifetime: nowhere near three years of coupon.
+    expect(accrued).toBeLessThan(oneFullYear * 3);
+  });
+
+  it('shows ~0 accrued exactly at a coupon boundary', () => {
+    const atBoundary = START + 3 * 365 * DAY;
+    const accrued = bondAccruedMajor(NOMINAL, COUPON, 'annually', purchase, maturity, atBoundary);
+    expect(accrued).toBeCloseTo(0, 6);
+  });
+
+  it('accrues simple interest within the first period', () => {
+    const accrued = bondAccruedMajor(
+      NOMINAL,
+      COUPON,
+      'annually',
+      purchase,
+      maturity,
+      START + 73 * DAY,
+    );
+    // 73/365 of a full 15% year on 100,000 => 3,000.
+    expect(accrued).toBeCloseTo((NOMINAL * COUPON * 73) / 100 / 365, 6);
+  });
+
+  it('resets on the shorter quarterly period', () => {
+    const period = 365 / 4;
+    const now = START + Math.round(period + 10) * DAY; // ~10 days into the second quarter
+    const accrued = bondAccruedMajor(NOMINAL, COUPON, 'quarterly', purchase, maturity, now);
+    const oneQuarter = (NOMINAL * COUPON) / 100 / 4;
+    expect(accrued).toBeGreaterThan(0);
+    expect(accrued).toBeLessThan(oneQuarter);
+  });
+
+  it('stops accruing past maturity', () => {
+    const shortMaturity = START + 400 * DAY;
+    const atMaturity = bondAccruedMajor(
+      NOMINAL,
+      COUPON,
+      'annually',
+      purchase,
+      shortMaturity,
+      shortMaturity,
+    );
+    const wayPast = bondAccruedMajor(
+      NOMINAL,
+      COUPON,
+      'annually',
+      purchase,
+      shortMaturity,
+      START + 5000 * DAY,
+    );
+    expect(wayPast).toBeCloseTo(atMaturity, 6);
   });
 });
