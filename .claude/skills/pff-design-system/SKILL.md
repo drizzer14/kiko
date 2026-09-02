@@ -108,3 +108,14 @@ Components are default exports with a `.component.tsx` file suffix
 (`box.component.tsx`, `money-text.component.tsx`) — see
 `pff-code-style`'s "Exports" and "File suffixes" sections for the
 project-wide rule this follows.
+
+## JSX layout conventions
+
+Separate sibling React nodes in JSX with a blank line, the same way
+sibling statements are separated in `pff-code-style`'s "Blank lines
+before statement blocks" rule. This keeps distinct child elements
+visually distinct.
+
+Use title case for every heading and sub-heading shown in the UI —
+screen titles, section headers — styled through the typography tokens
+(see "Token categories" above).

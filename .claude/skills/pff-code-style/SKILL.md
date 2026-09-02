@@ -22,17 +22,49 @@ From `biome.json`:
 - 2-space indentation (not 4 — this differs from ovpn-ui).
 - 100-character line width.
 - Trailing commas everywhere (`"all"`).
-- Arrow function parens only when needed (`arrowParentheses:
-  "asNeeded"`) — write `x => x + 1`, not `(x) => x + 1`, unless the
-  parameter needs a type annotation or destructuring.
+- Arrow function parens are always required (`arrowParentheses:
+  "always"`) — write `(x) => x + 1`, never `x => x + 1`. This
+  **reverses** the earlier "asNeeded" setting: `biome.json` must be
+  set to `"always"`, and a repo-wide `biome format --write` pass
+  applies it everywhere at once, not file by file.
 
 Run `npm run check:lint` to verify (see the project harness in the
 root `CLAUDE.md`). Never hand-tune something Biome already owns.
 
-One readability convention Biome does **not** enforce, so apply it by
-hand: a blank line before every `return` statement. It visually
-separates the computed result from whatever led up to it, the same
-way a blank line already separates import groups.
+### Blank lines before statement blocks — apply by hand
+
+Biome does **not** enforce this, it recurs in review, and it is a
+**hard rule**: put a blank line before every `return`, and before
+every `if`, `for`, `while`, and `switch` statement. It visually
+separates that block from whatever led up to it, the same way a
+blank line already separates import groups.
+
+Exception: a statement that is the first line of its block (directly
+after `{`) needs no blank line before it — there is nothing above it
+to separate from.
+
+```ts
+export const toHex = (color: string): string => {
+  const match = color.match(RGBA_PATTERN);
+
+  if (!match) {
+    return color;
+  }
+
+  const bytes = parseBytes(match);
+
+  return formatBytes(bytes);
+};
+```
+
+### `.concat` over a multi-part template literal
+
+When building a string from many parts with no separators between
+them — assembling an `#RRGGBBAA` hex string from four byte-hex parts,
+for example — prefer `String.prototype.concat` over a template
+literal with many interpolations; it reads better than a long run of
+`${...}${...}${...}${...}`. A simple one- or two-part interpolation
+with separators (`` `${base}:${quote}` ``) stays a template literal.
 
 ## Linting rules that shape how you write code
 
@@ -49,6 +81,10 @@ From `biome.json`'s `linter.rules`:
   complicated branch into named helper functions rather than one
   large function; this pairs naturally with the functional style
   below.
+- `complexity.noVoid` is an error — never use the `void` operator. To
+  fire-and-forget a promise that already captures its own errors (an
+  `either(...)` call), call it as a plain expression statement; do
+  not prefix it with `void`.
 
 ## Style choice: functional-first, OOP for data models
 
@@ -95,15 +131,27 @@ adding a new currency or a new holding type is a compile error at
 every mapping site that hasn't been updated, not a silent runtime gap.
 
 The set itself needs exactly one source of truth. Derive the literal
-union type from a `const` tuple, and build any runtime `Set` from the
-same tuple, instead of hand-maintaining a union type and a separate
-`Set` literal that can drift apart:
+union type from a `const` tuple, instead of hand-maintaining a union
+type and a separate `Set` literal that can drift apart:
 
 ```ts
 const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 type Currency = (typeof currencies)[number];
-const currencySet = new Set<Currency>(currencies);
 ```
+
+For a small closed set like this, a parallel runtime `Set` for
+membership is redundant — two variables doing the same job. Test
+membership on the tuple directly instead:
+
+```ts
+export const isCurrency = (value: string): value is Currency =>
+  (currencies as readonly string[]).includes(value);
+```
+
+Only add a derived `Set` when the set is large or membership is
+checked on a hot path where O(1) lookup measurably pays off — and
+even then, build it from the tuple, never from a second hand-written
+literal.
 
 Colocate a type derived from a `const` this way — including a
 Drizzle `$inferSelect` row type — directly after the `const` it comes
@@ -147,6 +195,24 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 
 Two groups, separated by a blank line: external + path-aliased
 imports first, then local (relative) imports.
+
+Within each group, sort import statements by line length, shortest
+first (this matches `@ovpn/ui`). For a component file's local group,
+this puts the `.styles` import before the `.props` import, because
+the styles line is shorter:
+
+```ts
+import { Text, View } from 'react-native';
+import { Children, isValidElement, type ReactElement } from 'react';
+```
+
+Biome's import-organizing assist (`organizeImports`) is deliberately
+**disabled** in `biome.json` so this length-first order can hold —
+Biome's own `organizeImports` sorts by module path instead, and would
+fight this rule if it ran. Because it is disabled, no check enforces
+any of this: the two-group split and the shortest-first order within
+each group are both a manual convention. Apply it by hand when you
+write imports, and check it in review.
 
 Use `import type` when the entire import is types:
 
@@ -217,6 +283,46 @@ it isn't a UI building block, it's plumbing. A migrations gate or a
 navigator stays unsuffixed. `@ovpn/ui` follows the same split: it
 names providers/contexts `*.context.tsx` rather than
 `*.component.tsx`.
+
+A type-only file — one that exports only types, no runtime value —
+uses the `.d.ts` extension: `<name>.props.d.ts`, not `<name>.props.ts`.
+A props file holding only a props type is the canonical case. Import
+it with `import type` so the build erases it.
+
+## One component per file, each in its own folder
+
+Define exactly one React component per file. When a file grows a
+second component, move it to its own file.
+
+Each component gets its own folder named after it, holding the
+component and its siblings:
+
+```
+currency-breakdown/
+  currency-breakdown.component.tsx
+  currency-breakdown.props.d.ts
+  currency-breakdown.styles.ts
+```
+
+A function that returns JSX is a component, even a small "render row"
+helper. Do not define such a helper inside another component's body;
+extract it to its own file and folder. The extracted component reads
+the theme through `useUnistyles()` itself, so it does not need the
+parent's closure.
+
+A component uses an explicit `return` —
+`(props) => { return (<...>); }` — never the arrow-shorthand implicit
+return `(props) => (<...>)`.
+
+## Helper placement
+
+A non-JSX helper function that closes over **no** local variable
+belongs at module scope, not inside a function or component body. A
+`byteToHex` used inside a formatter should be a module-level `const`,
+not redefined in the body on every call. A helper that returns JSX is
+a component instead, in its own file — see "One component per file"
+above. A helper that genuinely closes over a local value (a `theme`
+binding, say) may stay in the body.
 
 ## Repository type-safety: `satisfies`, not an annotation
 
