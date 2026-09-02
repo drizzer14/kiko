@@ -8,7 +8,7 @@ import Text from '../text';
 import { styles } from './line-chart.styles';
 
 /** A currency line chart of indexed percent-change series. Empty when `series=[]`. */
-export type LineChartProps = { series: CurrencySeries[]; height?: number };
+type LineChartProps = { series: CurrencySeries[]; height?: number };
 
 // The logical SVG coordinate space. The plot stretches to the container's real
 // width via `width="100%"` + `preserveAspectRatio="none"`; these are the units

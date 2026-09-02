@@ -11,7 +11,7 @@ import MoneyText from '../money-text';
 import { styles } from './pie-chart.styles';
 
 /** A donut of per-account net-worth contribution. Empty when `slices=[]`. */
-export type PieChartProps = { slices: AccountSlice[]; baseCurrency: Currency; size?: number };
+type PieChartProps = { slices: AccountSlice[]; baseCurrency: Currency; size?: number };
 
 const DEFAULT_SIZE = 200;
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.

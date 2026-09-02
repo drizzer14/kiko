@@ -17,6 +17,11 @@ type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
+  // Every transaction row, newest first, carrying its `holdingId` — the
+  // Statistics line chart groups the whole ledger by holding to reconstruct
+  // each holding's balance over time, which `listAllWithContextQuery` (a
+  // display projection without `holdingId`) cannot feed.
+  listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   listAllWithContextQuery: () =>
