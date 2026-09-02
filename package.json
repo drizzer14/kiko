@@ -37,6 +37,7 @@
     "react-native-nitro-sfsymbols": "2.0.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.27.0",
+    "react-native-svg": "^15.15.5",
     "react-native-unistyles": "^3.3.0",
     "ts-pattern": "^5.9.0"
   },
