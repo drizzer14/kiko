@@ -12,4 +12,17 @@ describe('darkTheme iOS dark palette', () => {
     expect(darkTheme.colors.negative).toBe('#FF453A');
     expect(darkTheme.colors.border).toBe('#38383A');
   });
+
+  it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {
+    const { chartSeries } = darkTheme.colors;
+
+    expect(Array.isArray(chartSeries)).toBe(true);
+    expect(chartSeries.length).toBeGreaterThanOrEqual(6);
+
+    for (const hue of chartSeries) {
+      expect(hue).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+
+    expect(new Set(chartSeries).size).toBe(chartSeries.length);
+  });
 });

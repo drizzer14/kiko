@@ -19,6 +19,19 @@ export const darkTheme = {
     positive: '#30D158', // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
     border: '#38383A', // separator (dark)
+    // Categorical palette for charts (line series / pie slices). Eight Apple
+    // dark system hues, each legible on the true-black background and distinct
+    // from its neighbours. Consumers cycle with `chartSeries[i % chartSeries.length]`.
+    chartSeries: [
+      '#0A84FF', // systemBlue
+      '#30D158', // systemGreen
+      '#FF9F0A', // systemOrange
+      '#BF5AF2', // systemPurple
+      '#40C8E0', // systemTeal
+      '#FF375F', // systemPink
+      '#FFD60A', // systemYellow
+      '#5E5CE6', // systemIndigo
+    ] as readonly string[],
   },
   spacing: (multiplier: number) => multiplier * 4,
   radii: { sm: 6, md: 10, lg: 16 },
