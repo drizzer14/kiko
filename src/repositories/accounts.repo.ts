@@ -46,8 +46,46 @@ export const accountsRepo = {
         balanceMinorUnits: initialBalanceMinorUnits,
       });
     }),
+  /**
+   * Disconnect a Monobank-connected account, turning it into a plain manual
+   * account whose data is kept as a historical snapshot. In ONE op-sqlite
+   * transaction: clear the account's `institution` (so `isSyncedAccount` is
+   * false and `remove` accepts it), and strip the `monobankId` key from every
+   * synced holding's metadata (so `isSyncedHolding` is false and each card/jar
+   * holding becomes manual). Balances, holdings and transactions are left as-is.
+   * Manual holdings under the account (no `monobankId`) are untouched. Clearing
+   * the Keychain token is NOT done here — the Keychain is not transactional; the
+   * `disconnectMonobank` operation in `../monobank/disconnect` composes both.
+   */
+  disconnectMonobank: (accountId: string) =>
+    write(async (tx) => {
+      await tx.update(accounts).set({ institution: null }).where(eq(accounts.id, accountId));
+      const accountHoldings = await tx
+        .select()
+        .from(holdings)
+        .where(eq(holdings.accountId, accountId));
+      for (const holding of accountHoldings) {
+        const meta = holding.metadata;
+        if (typeof meta !== 'object' || meta === null || !('monobankId' in meta)) {
+          continue;
+        }
+        const { monobankId: _monobankId, ...rest } = meta as Record<string, unknown>;
+        const nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+        await tx
+          .update(holdings)
+          .set({ metadata: nextMetadata })
+          .where(eq(holdings.id, holding.id));
+      }
+    }),
   update: (accountId: string, patch: Partial<AccountRow>) =>
     write((tx) => tx.update(accounts).set(patch).where(eq(accounts.id, accountId))),
+  /**
+   * Sets the account's icon (an SF Symbol name) or, with `null`, clears it back
+   * to no custom icon. The display layer falls back to a kind-derived default
+   * when the stored icon is null.
+   */
+  setIcon: (accountId: string, icon: string | null) =>
+    write((tx) => tx.update(accounts).set({ icon }).where(eq(accounts.id, accountId))),
   archive: (accountId: string) =>
     write((tx) =>
       tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),

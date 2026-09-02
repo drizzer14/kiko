@@ -22,6 +22,7 @@ jest.mock('../db/client', () => {
 });
 
 import { holdings } from '../db/schema';
+import { captureSetTx } from './capture-set-tx';
 import { holdingsRepo } from './holdings.repo';
 
 // A minimal in-memory fake for the transaction handle `write` hands the repo.
@@ -70,27 +71,34 @@ describe('holdingsRepo', () => {
   });
 
   it('updateName writes the new name for the given holding id', async () => {
-    const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
-      whereCalled: false,
-    };
-    mockTx = {
-      update: () => ({
-        set: (values: Record<string, unknown>) => {
-          captured.set = values;
-          return {
-            where: () => {
-              captured.whereCalled = true;
-              return Promise.resolve();
-            },
-          };
-        },
-      }),
-    };
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
 
     await holdingsRepo.updateName('h1', 'Renamed card');
 
     expect(captured.set).toEqual({ name: 'Renamed card' });
     expect(captured.whereCalled).toBe(true);
+  });
+});
+
+describe('holdingsRepo.setIcon', () => {
+  it('sets the icon for the given holding id', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await holdingsRepo.setIcon('h1', 'star');
+
+    expect(captured.set).toEqual({ icon: 'star' });
+    expect(captured.whereCalled).toBe(true);
+  });
+
+  it('clears the icon when passed null', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await holdingsRepo.setIcon('h1', null);
+
+    expect(captured.set).toEqual({ icon: null });
   });
 });
 
