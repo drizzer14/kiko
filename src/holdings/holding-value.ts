@@ -2,70 +2,117 @@ import { currencyScale } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow } from '../db/schema';
 import { asBondMeta, asTermDepositMeta } from './holding-metadata';
-import { accruedMajor, addMonths, compoundedMajor, daysBetween, periodDays } from './interest';
+import { accruedMajor, daysBetween, depositAccruedMajor, depositCompoundedMajor } from './interest';
+import { taxOnInterestMinor } from './tax';
 
 export type ValuableHolding = Pick<
   HoldingRow,
   'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
 >;
 
-const cachedBalance = (holding: ValuableHolding): Money =>
-  Money.of(holding.currency, holding.balanceMinorUnits);
+export type HoldingValueBreakdown = {
+  gross: Money;
+  principalOrCost: Money;
+  interest: Money;
+  tax: Money;
+  net: Money;
+};
 
 const toMajor = (minorUnits: number, currency: ValuableHolding['currency']): number =>
   minorUnits / 10 ** currencyScale[currency];
 
-const termDepositValue = (holding: ValuableHolding, now: number): Money => {
-  const meta = asTermDepositMeta(holding.metadata);
-  if (meta === null) {
-    return cachedBalance(holding);
-  }
-  if (!meta.recapitalization) {
-    return Money.of(holding.currency, meta.principalMinorUnits);
-  }
-  const maturity = addMonths(meta.startDate, meta.termMonths);
-  const days = daysBetween(meta.startDate, Math.min(now, maturity));
-  const principalMajor = toMajor(meta.principalMinorUnits, holding.currency);
-  const valueMajor = compoundedMajor(principalMajor, meta.annualRatePct, meta.compounding, days);
-  return Money.fromMajor(holding.currency, valueMajor);
+const flat = (currency: ValuableHolding['currency'], minorUnits: number): HoldingValueBreakdown => {
+  const money = Money.of(currency, minorUnits);
+  const zero = Money.of(currency, 0);
+  return { gross: money, principalOrCost: money, interest: zero, tax: zero, net: money };
 };
 
-const bondValue = (holding: ValuableHolding, now: number): Money => {
+const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
+  const meta = asTermDepositMeta(holding.metadata);
+  if (meta === null) {
+    return flat(holding.currency, holding.balanceMinorUnits);
+  }
+  const { currency } = holding;
+  const contributionsMajor = meta.contributions.map((c) => ({
+    amountMajor: toMajor(c.amountMinorUnits, currency),
+    date: c.date,
+  }));
+  const principalMinor = meta.contributions.reduce((s, c) => s + c.amountMinorUnits, 0);
+
+  if (!meta.recapitalization) {
+    // Value is held at the contributions sum; interest is paid out.
+    // Tax/interest describe the current-period accrual for display only.
+    const accruedMajorValue = depositAccruedMajor(
+      contributionsMajor,
+      meta.annualRatePct,
+      meta.compounding,
+      meta.termMonths,
+      now,
+    );
+    const interestMinor = Money.fromMajor(currency, accruedMajorValue).minorUnits;
+    const taxMinor = taxOnInterestMinor(interestMinor);
+    return {
+      gross: Money.of(currency, principalMinor),
+      principalOrCost: Money.of(currency, principalMinor),
+      interest: Money.of(currency, interestMinor),
+      tax: Money.of(currency, taxMinor),
+      net: Money.of(currency, principalMinor),
+    };
+  }
+
+  const grossMajor = depositCompoundedMajor(
+    contributionsMajor,
+    meta.annualRatePct,
+    meta.compounding,
+    meta.termMonths,
+    now,
+  );
+  const grossMinor = Money.fromMajor(currency, grossMajor).minorUnits;
+  const interestMinor = Math.max(0, grossMinor - principalMinor);
+  const taxMinor = taxOnInterestMinor(interestMinor);
+  return {
+    gross: Money.of(currency, grossMinor),
+    principalOrCost: Money.of(currency, principalMinor),
+    interest: Money.of(currency, interestMinor),
+    tax: Money.of(currency, taxMinor),
+    net: Money.of(currency, grossMinor - taxMinor),
+  };
+};
+
+const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
   const meta = asBondMeta(holding.metadata);
   if (meta === null) {
-    return cachedBalance(holding);
+    return flat(holding.currency, holding.balanceMinorUnits);
   }
+  const { currency } = holding;
   const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
   const days = daysBetween(meta.purchaseDate, Math.min(now, meta.maturityDate));
-  const nominalMajor = toMajor(nominalMinor, holding.currency);
-  const accrued = accruedMajor(nominalMajor, meta.couponPct, days);
-  return Money.fromMajor(holding.currency, nominalMajor + accrued);
+  const accrued = accruedMajor(toMajor(nominalMinor, currency), meta.couponPct, days);
+  const accruedMinor = Money.fromMajor(currency, accrued).minorUnits;
+  const grossMinor = nominalMinor + accruedMinor;
+  const taxMinor = meta.bondKind === 'corporate' ? taxOnInterestMinor(accruedMinor) : 0;
+  return {
+    gross: Money.of(currency, grossMinor),
+    principalOrCost: Money.of(currency, nominalMinor),
+    interest: Money.of(currency, accruedMinor),
+    tax: Money.of(currency, taxMinor),
+    net: Money.of(currency, grossMinor - taxMinor),
+  };
 };
 
-export const holdingValue = (holding: ValuableHolding, now: number): Money => {
+export const holdingValueBreakdown = (
+  holding: ValuableHolding,
+  now: number,
+): HoldingValueBreakdown => {
   switch (holding.type) {
     case 'term_deposit':
-      return termDepositValue(holding, now);
+      return depositBreakdown(holding, now);
     case 'bond':
-      return bondValue(holding, now);
+      return bondBreakdown(holding, now);
     default:
-      return cachedBalance(holding);
+      return flat(holding.currency, holding.balanceMinorUnits);
   }
 };
 
-export const accruedInterest = (holding: ValuableHolding, now: number): Money | null => {
-  if (holding.type !== 'term_deposit') {
-    return null;
-  }
-  const meta = asTermDepositMeta(holding.metadata);
-  if (meta === null || meta.recapitalization) {
-    return null;
-  }
-  const maturity = addMonths(meta.startDate, meta.termMonths);
-  const days = daysBetween(meta.startDate, Math.min(now, maturity));
-  const period = periodDays(meta.compounding);
-  const daysIntoPeriod = days - Math.floor(days / period) * period;
-  const principalMajor = toMajor(meta.principalMinorUnits, holding.currency);
-  const accrued = accruedMajor(principalMajor, meta.annualRatePct, daysIntoPeriod);
-  return Money.fromMajor(holding.currency, accrued);
-};
+export const holdingValue = (holding: ValuableHolding, now: number): Money =>
+  holdingValueBreakdown(holding, now).net;

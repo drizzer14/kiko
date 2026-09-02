@@ -15,6 +15,7 @@ jest.mock('../db/client', () => {
   };
 });
 
+import { accounts, holdings, transactions } from '../db/schema';
 import { accountsRepo } from './accounts.repo';
 
 describe('accountsRepo', () => {
@@ -67,5 +68,77 @@ describe('accountsRepo', () => {
     });
     expect(typeof accountInsert.id).toBe('string');
     expect((accountInsert.id as string).length).toBeGreaterThan(0);
+  });
+});
+
+// Build a fake transaction handle for `remove`. `select(...).from(...).where(...)`
+// resolves queued rows in call order (first the account row, then the account's
+// holdings); each `delete(table)` records the table it targeted, in order, so a
+// test can prove the cascade deletes transactions, then holdings, then the account
+// itself — all inside the single transaction the `write` mock runs the work in.
+const makeRemoveTx = (opts: {
+  account: Record<string, unknown> | null;
+  holdings: Record<string, unknown>[];
+}): { tx: unknown; captured: { deletedFrom: unknown[] } } => {
+  const selectQueue: unknown[][] = [opts.account ? [opts.account] : [], opts.holdings];
+  const captured: { deletedFrom: unknown[] } = { deletedFrom: [] };
+  const tx = {
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
+    }),
+    delete: (table: unknown) => {
+      captured.deletedFrom.push(table);
+      return { where: () => Promise.resolve() };
+    },
+  };
+  return { tx, captured };
+};
+
+describe('accountsRepo.remove', () => {
+  it('cascades to holdings and their transactions in one transaction', async () => {
+    const { tx, captured } = makeRemoveTx({
+      account: { id: 'acc-1', institution: null },
+      holdings: [{ id: 'hold-1' }],
+    });
+    mockTx = tx;
+
+    await accountsRepo.remove('acc-1');
+
+    // The holding's transactions are deleted first, then the holdings, then the
+    // account row — proving the full cascade runs inside the one transaction.
+    expect(captured.deletedFrom).toEqual([transactions, holdings, accounts]);
+  });
+
+  it('deletes each holding’s transactions before removing holdings and the account', async () => {
+    const { tx, captured } = makeRemoveTx({
+      account: { id: 'acc-1', institution: null },
+      holdings: [{ id: 'hold-1' }, { id: 'hold-2' }],
+    });
+    mockTx = tx;
+
+    await accountsRepo.remove('acc-1');
+
+    // One transactions delete per holding, then the holdings, then the account.
+    expect(captured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
+  });
+
+  it('refuses a synced (monobank) account and leaves it in place', async () => {
+    const { tx, captured } = makeRemoveTx({
+      account: { id: 'acc-1', institution: 'monobank' },
+      holdings: [{ id: 'hold-1' }],
+    });
+    mockTx = tx;
+
+    await expect(accountsRepo.remove('acc-1')).rejects.toThrow(/synced/);
+    expect(captured.deletedFrom).toEqual([]);
+  });
+
+  it('does nothing when the target account does not exist', async () => {
+    const { tx, captured } = makeRemoveTx({ account: null, holdings: [] });
+    mockTx = tx;
+
+    await accountsRepo.remove('missing');
+
+    expect(captured.deletedFrom).toEqual([]);
   });
 });

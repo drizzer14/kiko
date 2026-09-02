@@ -222,3 +222,109 @@ describe('transactionsRepo', () => {
     expect(captured.holdingSet).toBeUndefined();
   });
 });
+
+// Build a fake transaction handle for `remove`. `select(...).from(...).where(...)`
+// resolves queued rows in call order (first the transaction row, then the holding
+// row); each `delete(table)` records the table it targeted (so a test can prove
+// the transaction row was deleted) and each `update(holdings).set(values)` captures
+// the reversed balance written back.
+const makeRemoveTx = (opts: {
+  transaction: Record<string, unknown> | null;
+  holding: Record<string, unknown> | null;
+}): {
+  tx: unknown;
+  captured: { deletedFrom: unknown[]; holdingSet?: Record<string, unknown> };
+} => {
+  const selectQueue: unknown[][] = [
+    opts.transaction ? [opts.transaction] : [],
+    opts.holding ? [opts.holding] : [],
+  ];
+  const captured: { deletedFrom: unknown[]; holdingSet?: Record<string, unknown> } = {
+    deletedFrom: [],
+  };
+  const tx = {
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
+    }),
+    delete: (table: unknown) => {
+      captured.deletedFrom.push(table);
+      return { where: () => Promise.resolve() };
+    },
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        if (table === holdings) {
+          captured.holdingSet = values;
+        }
+        return { where: () => Promise.resolve() };
+      },
+    }),
+  };
+  return { tx, captured };
+};
+
+describe('transactionsRepo.remove', () => {
+  it('deletes a manual transaction and reverses its balance effect', async () => {
+    // Holding balance is 102500 after a +2500 manual top-up; removing the
+    // transaction must reverse the effect, restoring 102500 - 2500 = 100000.
+    const { tx, captured } = makeRemoveTx({
+      transaction: {
+        id: 'txn-1',
+        holdingId: 'hold-1',
+        amountMinorUnits: 2500,
+        source: 'manual',
+      },
+      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+    });
+    mockTx = tx;
+
+    await transactionsRepo.remove('txn-1');
+
+    expect(captured.deletedFrom).toContain(transactions);
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100000 });
+  });
+
+  it('reverses a negative-amount transaction by adding the amount back', async () => {
+    const { tx, captured } = makeRemoveTx({
+      transaction: {
+        id: 'txn-1',
+        holdingId: 'hold-1',
+        amountMinorUnits: -1000,
+        source: 'manual',
+      },
+      holding: { id: 'hold-1', balanceMinorUnits: 4000 },
+    });
+    mockTx = tx;
+
+    await transactionsRepo.remove('txn-1');
+
+    // balance - amount = 4000 - (-1000) = 5000
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 5000 });
+  });
+
+  it('refuses a synced (monobank) transaction and leaves it in place', async () => {
+    const { tx, captured } = makeRemoveTx({
+      transaction: {
+        id: 'txn-1',
+        holdingId: 'hold-1',
+        amountMinorUnits: 2500,
+        source: 'monobank',
+      },
+      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+    });
+    mockTx = tx;
+
+    await expect(transactionsRepo.remove('txn-1')).rejects.toThrow(/synced/);
+    expect(captured.deletedFrom).toEqual([]);
+    expect(captured.holdingSet).toBeUndefined();
+  });
+
+  it('does nothing when the target transaction does not exist', async () => {
+    const { tx, captured } = makeRemoveTx({ transaction: null, holding: null });
+    mockTx = tx;
+
+    await transactionsRepo.remove('missing');
+
+    expect(captured.deletedFrom).toEqual([]);
+    expect(captured.holdingSet).toBeUndefined();
+  });
+});

@@ -1,5 +1,5 @@
 import { type FC, useEffect, useLayoutEffect, useState } from 'react';
-import { Pressable, TextInput } from 'react-native';
+import { Alert, Pressable, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
@@ -135,6 +135,25 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     navigation.goBack();
   };
 
+  // A manual row can be deleted; the confirm dialog guards the destructive write,
+  // and only its "Delete" button runs the removal, then returns to the list.
+  const confirmDelete = (): void => {
+    if (editingId === null) {
+      return;
+    }
+    Alert.alert('Delete Transaction', 'This transaction will be permanently removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await transactionsRepo.remove(editingId);
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
   const inputStyle = [
     styles.input,
     { color: theme.colors.textPrimary, borderColor: theme.colors.surfaceHigh },
@@ -202,6 +221,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             </Pressable>
           ))}
         </Box>
+
+        {isEditing && !isReadOnly && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={confirmDelete}
+            style={[styles.button, { backgroundColor: theme.colors.negative }]}
+          >
+            <Text variant="body">Delete</Text>
+          </Pressable>
+        )}
       </Box>
     </Screen>
   );

@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
-import { type AccountRow, accounts, holdings } from '../db/schema';
+import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
+import { isSyncedAccount } from '../holdings/deletable';
 import type { Repository } from './repository';
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
@@ -51,4 +52,33 @@ export const accountsRepo = {
     write((tx) =>
       tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
     ),
+  /**
+   * Delete a MANUAL account together with all of its holdings and every one of
+   * their transactions, in ONE op-sqlite transaction so a partial failure can
+   * never leave orphaned holdings or ledger rows behind (and so foreign-key
+   * enforcement, ON per connection, is satisfied by deleting children before
+   * parents: transactions, then holdings, then the account). A synced (monobank)
+   * account is owned by the bank connection and is refused with a typed error; a
+   * missing id is a no-op rather than an error.
+   */
+  remove: (accountId: string) =>
+    write(async (tx) => {
+      const rows = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+      const row = rows.at(0);
+      if (!row) {
+        return;
+      }
+      if (isSyncedAccount(row)) {
+        throw new Error('accountsRepo.remove: cannot delete a synced account');
+      }
+      const accountHoldings = await tx
+        .select()
+        .from(holdings)
+        .where(eq(holdings.accountId, accountId));
+      for (const holding of accountHoldings) {
+        await tx.delete(transactions).where(eq(transactions.holdingId, holding.id));
+      }
+      await tx.delete(holdings).where(eq(holdings.accountId, accountId));
+      await tx.delete(accounts).where(eq(accounts.id, accountId));
+    }),
 } satisfies Repository;

@@ -44,3 +44,41 @@ export const accruedMajor = (
   annualRatePct: number,
   daysElapsed: number,
 ): number => (baseMajor * (annualRatePct / 100) * daysElapsed) / DAYS_PER_YEAR;
+
+type ContributionMajor = { amountMajor: number; date: number };
+
+export const depositMaturity = (contributions: { date: number }[], termMonths: number): number =>
+  addMonths(Math.min(...contributions.map((c) => c.date)), termMonths);
+
+export const depositCompoundedMajor = (
+  contributions: ContributionMajor[],
+  annualRatePct: number,
+  frequency: CompoundingFrequency,
+  termMonths: number,
+  now: number,
+): number => {
+  const maturity = depositMaturity(contributions, termMonths);
+  const end = Math.min(now, maturity);
+  return contributions.reduce(
+    (sum, c) =>
+      sum + compoundedMajor(c.amountMajor, annualRatePct, frequency, daysBetween(c.date, end)),
+    0,
+  );
+};
+
+export const depositAccruedMajor = (
+  contributions: ContributionMajor[],
+  annualRatePct: number,
+  frequency: CompoundingFrequency,
+  termMonths: number,
+  now: number,
+): number => {
+  const maturity = depositMaturity(contributions, termMonths);
+  const end = Math.min(now, maturity);
+  const period = periodDays(frequency);
+  return contributions.reduce((sum, c) => {
+    const days = daysBetween(c.date, end);
+    const daysIntoPeriod = days - Math.floor(days / period) * period;
+    return sum + accruedMajor(c.amountMajor, annualRatePct, daysIntoPeriod);
+  }, 0);
+};

@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
@@ -26,6 +27,7 @@ const mockReadToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockUpdateName = jest.fn();
+const mockRemove = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -58,6 +60,7 @@ jest.mock('../../repositories/holdings.repo', () => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
     updateName: (...args: unknown[]) => mockUpdateName(...args),
+    remove: (...args: unknown[]) => mockRemove(...args),
   },
 }));
 jest.mock('../../repositories/rates.repo', () => ({
@@ -79,6 +82,8 @@ type Holding = {
   currency: string;
   balanceMinorUnits: number;
   closedAt?: number | null;
+  type?: string;
+  metadata?: Record<string, unknown> | null;
 };
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string; lastSyncAt?: number | null };
@@ -398,5 +403,104 @@ describe('AccountDetailScreen', () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
     const { getByText } = await renderScreen();
     expect(getByText('Syncing…')).toBeTruthy();
+  });
+
+  it('deletes a manual holding via the swipe action', async () => {
+    // Auto-confirm: fire the destructive button's handler as soon as the alert opens.
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { getByLabelText } = await renderScreen();
+    // The delete action is a11y-hidden until the row is swiped open, so it must
+    // be queried through the hidden elements to reach it programmatically.
+    await fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
+    expect(mockRemove).toHaveBeenCalledWith('h1');
+    alertSpy.mockRestore();
+  });
+
+  it('does not offer delete on a synced holding row (monobankId)', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        {
+          id: 'h1',
+          name: 'Black card',
+          currency: 'UAH',
+          balanceMinorUnits: 100000,
+          metadata: { monobankId: 'mono-1' },
+        },
+      ],
+    });
+    const { queryByLabelText } = await renderScreen();
+    // A synced holding renders no swipe delete action at all, hidden or not.
+    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('reflects term-deposit growth in net worth (now is passed)', async () => {
+    // A recapitalizing 10%/yr deposit funded well in the past has matured: its
+    // value grows to 1,100.00 ₴ gross, less 23% tax on 100.00 ₴ interest, for a
+    // 1,077.00 ₴ net worth — distinct from the 1,000.00 ₴ cached balance. Without
+    // the `now` argument the growth math yields NaN and this value never renders.
+    const START = Date.UTC(2020, 0, 1);
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        {
+          id: 'h1',
+          name: 'Term deposit',
+          currency: 'UAH',
+          balanceMinorUnits: 100000,
+          type: 'term_deposit',
+          metadata: {
+            contributions: [{ amountMinorUnits: 100000, date: START }],
+            annualRatePct: 10,
+            termMonths: 12,
+            recapitalization: true,
+            compounding: 'annually',
+          },
+        },
+      ],
+    });
+    // The grown value now appears in both the headline and the (single UAH)
+    // breakdown line, so more than one match is expected.
+    const { getAllByText } = await renderScreen();
+    expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
+  it('reflects the grown deposit value in the per-currency breakdown (not the raw balance)', async () => {
+    // Same matured recapitalizing deposit: gross 1,100.00 ₴, net-of-tax 1,077.00 ₴.
+    // The breakdown values the holding via holdingValue, so the grown 1,077.00 ₴
+    // appears both in the headline and in the single UAH breakdown line — while
+    // the raw 1,000.00 ₴ cached balance shows only in the holding row. Passing
+    // `now` to sumByCurrency is what makes the breakdown line agree.
+    const START = Date.UTC(2020, 0, 1);
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        {
+          id: 'h1',
+          name: 'Term deposit',
+          currency: 'UAH',
+          balanceMinorUnits: 100000,
+          type: 'term_deposit',
+          metadata: {
+            contributions: [{ amountMinorUnits: 100000, date: START }],
+            annualRatePct: 10,
+            termMonths: 12,
+            recapitalization: true,
+            compounding: 'annually',
+          },
+        },
+      ],
+    });
+    const { getAllByText } = await renderScreen();
+    // Two occurrences: the balance headline and the UAH breakdown line. Without
+    // the grown valuation the breakdown would instead show 1,000.00 ₴, leaving
+    // only the single headline match.
+    expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThanOrEqual(2);
   });
 });

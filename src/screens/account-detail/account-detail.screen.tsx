@@ -13,8 +13,10 @@ import ListRow from '../../design-system/components/list-row';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
+import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { isSyncedHolding } from '../../holdings/deletable';
 import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { sumByCurrency } from '../../rates/currency-totals';
@@ -140,8 +142,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // into the base currency, then list each currency's own total beneath.
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
-  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable);
-  const breakdown = sumByCurrency(activeHoldings);
+  // Deposit/bond holdings grow with time, so net worth is evaluated as of now —
+  // otherwise their accrued value never reflects in the account balance.
+  const now = Date.now();
+  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
+  const breakdown = sumByCurrency(activeHoldings, now);
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -248,11 +253,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={2}>
           <Text variant="heading">Holdings</Text>
           {activeHoldings.map((holding) => (
-            <HoldingListRow
+            <SwipeableRow
               key={holding.id}
-              holding={holding}
-              onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
-            />
+              disabled={isSyncedHolding(holding)}
+              onDelete={() => holdingsRepo.remove(holding.id)}
+            >
+              <HoldingListRow
+                holding={holding}
+                onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
+              />
+            </SwipeableRow>
           ))}
         </Box>
 

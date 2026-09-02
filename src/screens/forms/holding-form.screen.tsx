@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, type ReactElement, useState } from 'react';
+import { type FC, type ReactElement, useRef, useState } from 'react';
 import { Pressable, TextInput, type TextInputProps } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -7,7 +7,7 @@ import { Money } from '../../currency/money';
 import Box from '../../design-system/components/box';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import type { CompoundingFrequency } from '../../holdings/holding-metadata';
+import type { BondKind, CompoundingFrequency } from '../../holdings/holding-metadata';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
@@ -17,6 +17,8 @@ const types = ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'] as
 type HoldingType = (typeof types)[number];
 
 const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
+
+const bondKinds: readonly BondKind[] = ['government', 'corporate'];
 
 const recapitalizationOptions = ['on', 'off'] as const;
 const compoundingOptions: readonly CompoundingFrequency[] = [
@@ -35,9 +37,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [openingBalance, setOpeningBalance] = useState('');
 
   // term deposit state
-  const [principal, setPrincipal] = useState('');
+  const nextContributionId = useRef(1);
+  const [contributions, setContributions] = useState<
+    { id: number; amount: string; date: string }[]
+  >([{ id: 0, amount: '', date: '' }]);
   const [annualRate, setAnnualRate] = useState('');
-  const [startDate, setStartDate] = useState('');
   const [termMonths, setTermMonths] = useState('');
   const [recapitalization, setRecap] = useState<'on' | 'off'>('on');
   const [compounding, setCompounding] = useState<CompoundingFrequency>('monthly');
@@ -48,13 +52,45 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [couponPct, setCouponPct] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [maturityDate, setMaturityDate] = useState('');
+  const [bondKind, setBondKind] = useState<BondKind>('government');
+
+  const addContribution = (): void => {
+    const id = nextContributionId.current++;
+    setContributions((rows) => [...rows, { id, amount: '', date: '' }]);
+  };
+
+  const removeContribution = (index: number): void => {
+    setContributions((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  const updateContribution = (index: number, field: 'amount' | 'date', next: string): void => {
+    setContributions((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, [field]: next } : row)),
+    );
+  };
+
+  // Drop blank/partial rows: keep only a positive amount paired with a parseable date.
+  const parsedContributions = (): { amountMinorUnits: number; date: number }[] =>
+    contributions.flatMap(({ amount, date }) => {
+      const amountValue = Number(amount);
+      const dateValue = Date.parse(date);
+      if (!(amountValue > 0) || date.trim() === '' || Number.isNaN(dateValue)) {
+        return [];
+      }
+      return [
+        { amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date: dateValue },
+      ];
+    });
 
   const buildMetadata = (): Record<string, unknown> | undefined => {
     if (type === 'term_deposit') {
+      const rows = parsedContributions();
+      if (rows.length === 0) {
+        return undefined;
+      }
       return {
-        principalMinorUnits: Money.fromMajor(currency, Number(principal) || 0).minorUnits,
+        contributions: rows,
         annualRatePct: Number(annualRate) || 0,
-        startDate: Date.parse(startDate) || Date.now(),
         termMonths: Number(termMonths) || 0,
         recapitalization: recapitalization === 'on',
         compounding,
@@ -67,19 +103,25 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         couponPct: Number(couponPct) || 0,
         purchaseDate: Date.parse(purchaseDate) || Date.now(),
         maturityDate: Date.parse(maturityDate) || Date.now(),
+        bondKind,
       };
     }
     return undefined;
   };
 
   const save = async (): Promise<void> => {
+    const metadata = buildMetadata();
+    // A term deposit with no valid contribution is invalid input: do not persist it.
+    if (type === 'term_deposit' && metadata === undefined) {
+      return;
+    }
     await holdingsRepo.create({
       accountId,
       name,
       type,
       currency,
       balanceMinorUnits: Money.fromMajor(currency, Number(openingBalance) || 0).minorUnits,
-      metadata: buildMetadata(),
+      metadata,
     });
     navigation.goBack();
   };
@@ -138,6 +180,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     </Box>
   );
 
+  const renderButton = (
+    label: string,
+    onPress: () => void,
+    accessibilityLabel?: string,
+  ): ReactElement => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={[styles.button, { backgroundColor: theme.colors.surface }]}
+    >
+      <Text variant="body">{label}</Text>
+    </Pressable>
+  );
+
   return (
     <Screen
       scroll
@@ -167,15 +224,33 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type === 'term_deposit' && (
           <Box gap={4}>
-            {renderInput('Principal', principal, setPrincipal, {
-              placeholder: '0.00',
-              keyboardType: 'decimal-pad',
-            })}
+            {contributions.map((contribution, index) => (
+              <Box key={contribution.id} gap={2}>
+                {renderInput(
+                  `Contribution ${index + 1} Amount`,
+                  contribution.amount,
+                  (next) => updateContribution(index, 'amount', next),
+                  { placeholder: '0.00', keyboardType: 'decimal-pad' },
+                )}
+                {renderInput(
+                  `Contribution ${index + 1} Date`,
+                  contribution.date,
+                  (next) => updateContribution(index, 'date', next),
+                  { placeholder: 'YYYY-MM-DD' },
+                )}
+                {contributions.length > 1 &&
+                  renderButton(
+                    'Remove',
+                    () => removeContribution(index),
+                    `Remove contribution ${index + 1}`,
+                  )}
+              </Box>
+            ))}
+            {renderButton('Add contribution', addContribution)}
             {renderInput('Annual Rate %', annualRate, setAnnualRate, {
               placeholder: '0',
               keyboardType: 'decimal-pad',
             })}
-            {renderInput('Start Date', startDate, setStartDate, { placeholder: 'YYYY-MM-DD' })}
             {renderInput('Term (Months)', termMonths, setTermMonths, {
               placeholder: '0',
               keyboardType: 'number-pad',
@@ -205,6 +280,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             {renderInput('Maturity Date', maturityDate, setMaturityDate, {
               placeholder: 'YYYY-MM-DD',
             })}
+            {renderChips('Bond Kind', bondKinds, bondKind, setBondKind)}
           </Box>
         )}
       </Box>

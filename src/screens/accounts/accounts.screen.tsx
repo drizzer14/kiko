@@ -10,8 +10,10 @@ import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
+import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { isSyncedAccount } from '../../holdings/deletable';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -46,6 +48,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
+  const now = Date.now();
 
   const activeAccounts = accounts.filter((account) => account.archivedAt == null);
 
@@ -74,27 +77,33 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             const accountHoldings = holdings.filter(
               (holding) => holding.accountId === account.id && holding.closedAt == null,
             );
-            const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable);
+            const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
 
             return (
-              <GlassSurface key={account.id} testID="account-card" padding={3}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
-                  style={styles.row}
-                >
-                  <Box direction="row" gap={3} style={styles.rowLead}>
-                    <SymbolIcon name={KIND_ICON[account.kind]} tone="textSecondary" />
-                    <Box gap={1}>
-                      <Text variant="body">{account.name}</Text>
-                      <Text variant="caption" tone="textSecondary">
-                        {KIND_LABEL[account.kind]}
-                      </Text>
+              <SwipeableRow
+                key={account.id}
+                disabled={isSyncedAccount(account)}
+                onDelete={() => accountsRepo.remove(account.id)}
+              >
+                <GlassSurface testID="account-card" padding={3}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
+                    style={styles.row}
+                  >
+                    <Box direction="row" gap={3} style={styles.rowLead}>
+                      <SymbolIcon name={KIND_ICON[account.kind]} tone="textSecondary" />
+                      <Box gap={1}>
+                        <Text variant="body">{account.name}</Text>
+                        <Text variant="caption" tone="textSecondary">
+                          {KIND_LABEL[account.kind]}
+                        </Text>
+                      </Box>
                     </Box>
-                  </Box>
-                  <MoneyText money={balance} context="balance" />
-                </Pressable>
-              </GlassSurface>
+                    <MoneyText money={balance} context="balance" />
+                  </Pressable>
+                </GlassSurface>
+              </SwipeableRow>
             );
           })
         )}
