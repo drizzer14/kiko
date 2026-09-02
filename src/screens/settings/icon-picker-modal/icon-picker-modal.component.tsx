@@ -99,6 +99,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   selectedIcon,
   onSelect,
   onDismiss,
+  onRemove,
 }) => {
   const { theme } = useUnistyles();
 
@@ -122,9 +123,17 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           <Box direction="row" gap={3} style={styles.header}>
             <Text variant="heading">Choose Icon</Text>
 
-            <PressableButton onPress={onDismiss} backgroundColor={theme.colors.surface}>
-              <Text variant="body">Cancel</Text>
-            </PressableButton>
+            <Box direction="row" gap={2}>
+              {onRemove !== undefined && (
+                <PressableButton onPress={onRemove} backgroundColor={theme.colors.surface}>
+                  <Text variant="body">Remove</Text>
+                </PressableButton>
+              )}
+
+              <PressableButton onPress={onDismiss} backgroundColor={theme.colors.surface}>
+                <Text variant="body">Cancel</Text>
+              </PressableButton>
+            </Box>
           </Box>
 
           <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>

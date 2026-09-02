@@ -21,26 +21,13 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The leading icon presented as a bordered, rounded chip so it reads as a
   // tappable control — mirroring the bordered rename field beside it (see
-  // `input`) so both edit affordances share one visual language. `relative`
-  // anchors the absolutely-positioned edit badge to this chip's corner.
+  // `input`) so both edit affordances share one visual language. The border is
+  // the affordance; there is no overlaid pencil badge.
   iconChip: {
-    position: 'relative',
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // A small accent "pencil" badge peeking over the chip's lower-right corner:
-  // an unmistakable cue that tapping the icon opens the picker.
-  editBadge: {
-    position: 'absolute',
-    right: -theme.spacing(1),
-    bottom: -theme.spacing(1),
-    padding: theme.spacing(1),
-    borderRadius: theme.radii.lg,
-    backgroundColor: theme.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },

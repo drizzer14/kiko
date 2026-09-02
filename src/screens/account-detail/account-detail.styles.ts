@@ -7,6 +7,41 @@ export const styles = StyleSheet.create((theme) => ({
   statusLine: {
     alignItems: 'center',
   },
+  // The leading cluster of a holding row: the icon editor next to the holding
+  // name. Grows to fill the row width beside the trailing balance, so the inline
+  // rename field (flex: 1) has room to expand within it.
+  holdingLead: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  // The account's metadata header: the icon chip on the left, the name field
+  // growing beside it. Bottom-aligned so the chip lines up with the field's
+  // input row (which sits below its caption label) rather than its caption.
+  metadataHeader: {
+    alignItems: 'flex-end',
+  },
+  // The name field's column: grows to fill the row beside the fixed-width icon
+  // chip, so a long account name has room to render.
+  metadataNameBlock: {
+    flex: 1,
+  },
+  // A labelled name field: a bordered, filled input matching the token field's
+  // treatment, so the editable name reads as a proper field rather than a tiny
+  // inline control.
+  nameField: {
+    color: theme.colors.textPrimary,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.sm,
+    padding: theme.spacing(2),
+    ...theme.typography.body,
+  },
+  // The balance block sits directly under the large navigation title, so give
+  // it breathing room at the top rather than crowding the heading against the
+  // header — matching the roomier feel of the rest of the screen.
+  balanceBlock: {
+    paddingTop: theme.spacing(2),
+  },
   // The account's primary number: larger than body so the total balance reads
   // as the headline of the screen. Only size/weight live here — MoneyText still
   // owns the tone color, so this deliberately omits `color`.
@@ -14,10 +49,17 @@ export const styles = StyleSheet.create((theme) => ({
     fontSize: theme.typography.title.fontSize,
     fontWeight: theme.typography.title.fontWeight,
   },
+  // Extra space above the per-currency breakdown so it reads as a distinct
+  // block beneath the headline number rather than crowding right under it.
+  breakdown: {
+    marginTop: theme.spacing(3),
+  },
   // A hairline rule separating the Balance / Synchronization / Holdings
-  // sections, drawn in the theme's separator color.
+  // sections, drawn in the theme's separator color. Vertical margin gives each
+  // section room to breathe rather than crowding the rule against its neighbors.
   divider: {
     height: StyleSheet.hairlineWidth,
+    marginVertical: theme.spacing(2),
     backgroundColor: theme.colors.border,
   },
   // A bordered, filled text field affordance shared by the Monobank token entry

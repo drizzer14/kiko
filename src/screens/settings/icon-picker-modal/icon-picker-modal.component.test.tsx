@@ -60,4 +60,19 @@ describe('IconPickerModal', () => {
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('offers no Remove control when onRemove is not provided', async () => {
+    const { queryByText } = await setup();
+
+    expect(queryByText('Remove')).toBeNull();
+  });
+
+  it('renders a Remove control and calls onRemove when it is pressed', async () => {
+    const onRemove = jest.fn();
+    const { getByText } = await setup({ onRemove });
+
+    fireEvent.press(getByText('Remove'));
+
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,7 +1,10 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Alert, type AlertButton, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import AccountsScreen from './accounts.screen';
+
+// 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
+const START = Date.UTC(2024, 0, 1);
 
 // The screen reads the floating tab-bar height from `react-native-bottom-tabs`
 // to lift its footer clear of the bar. The real hook throws outside a native
@@ -13,12 +16,16 @@ jest.mock('react-native-bottom-tabs', () => ({
 }));
 
 const mockUseLiveQuery = jest.fn();
+const mockAccountRemove = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('../../repositories/accounts.repo', () => ({
-  accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  accountsRepo: {
+    listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    remove: (...args: unknown[]) => mockAccountRemove(...args),
+  },
 }));
 jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -30,11 +37,19 @@ jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
+type Account = {
+  id: string;
+  name: string;
+  kind: string;
+  institution?: string | null;
+  archivedAt?: number | null;
+};
 type Holding = {
   accountId: string;
   currency: string;
   balanceMinorUnits: number;
+  type?: string;
+  metadata?: unknown;
   closedAt?: number | null;
 };
 type Rate = { base: string; quote: string; rate: string };
@@ -152,5 +167,69 @@ describe('AccountsScreen', () => {
     });
     const { getByText } = await renderAccounts();
     expect(getByText('No accounts yet')).toBeTruthy();
+  });
+
+  it('deletes a manual account via the swipe action', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    // Auto-confirm the destructive button so the swipe action fires onDelete.
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((_t: string, _m?: string, buttons?: AlertButton[]) => {
+        (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+      });
+    // The "Delete" action sits behind the closed row, so it is a11y-hidden
+    // until swiped open — query it including hidden elements.
+    const { getByLabelText } = await renderAccounts();
+    fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
+    expect(mockAccountRemove).toHaveBeenCalledWith('a');
+    alertSpy.mockRestore();
+  });
+
+  it('does not offer delete on a still-connected (monobank) account row', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', institution: 'monobank' }],
+      holdings: [],
+    });
+    const { queryByLabelText } = await renderAccounts();
+    // A connected account must be disconnected (from account-detail) before it
+    // can be swipe-deleted, so the SwipeableRow is disabled and offers no action.
+    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('shows the account icon as a display-only glyph, not an editable icon control', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByLabelText, queryByLabelText } = await renderAccounts();
+    // The row renders a plain, non-editable icon (icon editing moved to
+    // AccountDetail), so its glyph is present but the "Change … icon" picker
+    // affordance is gone.
+    expect(getByLabelText('Cash icon')).toBeTruthy();
+    expect(queryByLabelText('Change Cash icon')).toBeNull();
+  });
+
+  it('reflects term-deposit growth in total net worth (now is passed)', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Deposit', kind: 'bank' }],
+      holdings: [
+        {
+          accountId: 'a',
+          currency: 'UAH',
+          balanceMinorUnits: 100000,
+          type: 'term_deposit',
+          metadata: {
+            contributions: [{ amountMinorUnits: 100000, date: START }],
+            annualRatePct: 10,
+            termMonths: 12,
+            recapitalization: true,
+            compounding: 'annually',
+          },
+        },
+      ],
+    });
+    const { getByText, queryByText } = await renderAccounts();
+    // Recapitalized to maturity: 100000 * 1.10 = 110000 gross, less 23% tax on
+    // the 10000 interest (2300) = 107700 net -> 1,077.00 ₴. Without `now` the
+    // deposit value would be NaN and never render the grown figure.
+    expect(getByText(/1,077\.00 ₴/)).toBeTruthy();
+    expect(queryByText(/1,000\.00 ₴/)).toBeNull();
   });
 });

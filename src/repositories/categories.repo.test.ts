@@ -54,6 +54,28 @@ describe('categoriesRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
+  it('create inserts a new category with a generated key, title and icon', async () => {
+    const captured: { values?: Record<string, unknown> } = {};
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          captured.values = values;
+
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
+
+    expect(captured.values).toMatchObject({ title: 'Travel', icon: 'airplane' });
+    // The key is generated (not one of the seeded slugs), so it must be a
+    // non-empty string the caller never supplied.
+    const generatedKey = captured.values?.key;
+    expect(typeof generatedKey).toBe('string');
+    expect((generatedKey as string).length).toBeGreaterThan(0);
+  });
+
   it('updateIcon writes the new icon for the given key', async () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,

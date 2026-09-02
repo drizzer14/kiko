@@ -1,5 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { formatDate } from '../../dates/format';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
@@ -114,6 +115,27 @@ const seed = (data: LiveData = {}): void =>
   setLiveData({ accounts: [MONOBANK], holdings: [UAH_HOLDING], ...data });
 
 const renderHome = (): ReturnType<typeof render> => render(<HomeScreen navigation={navigation} />);
+
+// The filter controls are two custom dropdown sheets, one per dimension. A
+// filter toggle opens the sheet (press its anchor testID), taps the option row
+// (`${menuTestID}-option-${value}`), then dismisses via the backdrop — self-
+// contained so each call leaves the sheet closed. `fireEvent` wraps each state
+// update in `act`.
+const pressFilter = async (
+  getByTestId: (id: string) => Parameters<typeof fireEvent.press>[0],
+  menuTestID: string,
+  value: string,
+): Promise<void> => {
+  await act(async () => {
+    fireEvent.press(getByTestId(menuTestID));
+  });
+  await act(async () => {
+    fireEvent.press(getByTestId(`${menuTestID}-option-${value}`));
+  });
+  await act(async () => {
+    fireEvent.press(getByTestId(`${menuTestID}-backdrop`));
+  });
+};
 
 describe('HomeScreen', () => {
   beforeEach(() => {
@@ -296,14 +318,35 @@ describe('HomeScreen', () => {
         }),
       ],
     });
-    const { getByText, queryByText } = await renderHome();
+    const { getByText, queryByText, getByTestId } = await renderHome();
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
 
-    await fireEvent.press(getByText('Monobank'));
+    await pressFilter(getByTestId, 'account-filter-menu', 'Monobank');
 
     expect(getByText('Coffee')).toBeTruthy();
     expect(queryByText('Groceries')).toBeNull();
+  });
+
+  it('lists every active account in the account filter, even one with no transactions', async () => {
+    // PrivatBank has no transactions and Closed is archived. The filter options
+    // must come from the accounts query (all active accounts), not from the
+    // transactions — so PrivatBank still appears and the archived one does not.
+    seed({
+      accounts: [MONOBANK, PRIVATBANK, { id: 'c', name: 'Closed', kind: 'bank', archivedAt: 123 }],
+      transactions: [transaction({ accountId: 'a', accountName: 'Monobank' })],
+    });
+    const { getByTestId, queryByTestId } = await renderHome();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('account-filter-menu'));
+    });
+
+    expect(getByTestId('account-filter-menu-option-Monobank')).toBeTruthy();
+    // Present despite having zero transactions...
+    expect(getByTestId('account-filter-menu-option-PrivatBank')).toBeTruthy();
+    // ...while the archived account is excluded.
+    expect(queryByTestId('account-filter-menu-option-Closed')).toBeNull();
   });
 
   it('keeps both categories active and shows transactions from either when two are toggled on', async () => {
@@ -314,28 +357,28 @@ describe('HomeScreen', () => {
         transaction({ id: 't3', category: 'Housing', description: 'Rent' }),
       ],
     });
-    const { getByText, queryByText } = await renderHome();
+    const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await fireEvent.press(getByText('Food'));
-    await fireEvent.press(getByText('Transport'));
+    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
 
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
     expect(queryByText('Rent')).toBeNull();
   });
 
-  it('removes a category from the set when its chip is toggled off again', async () => {
+  it('removes a category from the set when its action is toggled off again', async () => {
     seed({
       transactions: [
         transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
       ],
     });
-    const { getByText, queryByText } = await renderHome();
+    const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await fireEvent.press(getByText('Food'));
-    await fireEvent.press(getByText('Transport'));
-    await fireEvent.press(getByText('Food'));
+    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
 
     expect(queryByText('Coffee')).toBeNull();
     expect(getByText('Groceries')).toBeTruthy();
@@ -348,16 +391,69 @@ describe('HomeScreen', () => {
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
       ],
     });
-    const { getByText, getAllByText, queryByText } = await renderHome();
+    const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await fireEvent.press(getByText('Food'));
+    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
     expect(queryByText('Groceries')).toBeNull();
 
-    // The category row's `All` chip is the second `All` (the account row's is first).
-    await fireEvent.press(getAllByText(FILTER_ALL)[1]);
+    await pressFilter(getByTestId, 'category-filter-menu', FILTER_ALL);
 
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
+  });
+
+  it('keeps the category dropdown open through several toggles and applies them all', async () => {
+    seed({
+      transactions: [
+        transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
+        transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
+        transaction({ id: 't3', category: 'Housing', description: 'Rent' }),
+      ],
+    });
+    const { getByText, queryByText, getByTestId, queryByTestId } = await renderHome();
+
+    // Open once, then toggle two categories without reopening. Each toggle
+    // changes the selection state (and re-renders the sheet); it must stay open.
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu-option-Food'));
+    });
+    expect(queryByTestId('category-filter-menu-option-Transport')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu-option-Transport'));
+    });
+    expect(queryByTestId('category-filter-menu-option-Housing')).toBeTruthy();
+
+    // Dismiss and confirm both selections took effect.
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu-backdrop'));
+    });
+    expect(getByText('Coffee')).toBeTruthy();
+    expect(getByText('Groceries')).toBeTruthy();
+    expect(queryByText('Rent')).toBeNull();
+  });
+
+  it('displays the full transaction date span in the date-range field without filtering', async () => {
+    const earliest = new Date(2026, 0, 10).getTime();
+    const latest = new Date(2026, 2, 15).getTime();
+    seed({
+      transactions: [
+        transaction({ id: 't1', time: latest, description: 'Newer' }),
+        transaction({ id: 't2', time: earliest, description: 'Older' }),
+      ],
+    });
+    const { getByText } = await renderHome();
+
+    // The field shows earliest–latest by default...
+    expect(
+      getByText(`${formatDate(new Date(earliest))} – ${formatDate(new Date(latest))}`),
+    ).toBeTruthy();
+    // ...and every transaction still shows, so the default span does not filter.
+    expect(getByText('Newer')).toBeTruthy();
+    expect(getByText('Older')).toBeTruthy();
   });
 
   it('renders an empty state when there are no transactions', async () => {
@@ -399,15 +495,17 @@ describe('HomeScreen', () => {
     expect(rendered).toEqual(['Today', 'TodayTxn', 'Yesterday', 'YesterdayTxn']);
   });
 
-  it('renders a locale-formatted date separator for an older day (not Today/Yesterday)', async () => {
+  it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
     const day = 24 * 60 * 60 * 1000;
     const now = Date.now();
     const older = now - 5 * day;
-    const expectedHeader = new Date(
-      new Date(older).getFullYear(),
-      new Date(older).getMonth(),
-      new Date(older).getDate(),
-    ).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const expectedHeader = formatDate(
+      new Date(
+        new Date(older).getFullYear(),
+        new Date(older).getMonth(),
+        new Date(older).getDate(),
+      ),
+    );
     seed({
       transactions: [transaction({ id: 't1', time: older, description: 'OldTxn' })],
     });
@@ -436,10 +534,10 @@ describe('HomeScreen', () => {
         }),
       ],
     });
-    const { getByText } = await renderHome();
+    const { getByText, getByTestId } = await renderHome();
 
-    await fireEvent.press(getByText('Monobank'));
-    await fireEvent.press(getByText('Transport'));
+    await pressFilter(getByTestId, 'account-filter-menu', 'Monobank');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
 
     expect(getByText('No transactions')).toBeTruthy();
   });

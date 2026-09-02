@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { accounts, holdings, type TransactionRow, transactions } from '../db/schema';
+import { isSyncedTransaction } from '../holdings/deletable';
 import type { Repository } from './repository';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
@@ -87,7 +88,7 @@ export const transactionsRepo = {
         .where(eq(transactions.id, transactionId))
         .limit(1);
       const existing = existingRows.at(0);
-      if (!existing || existing.source !== 'manual') {
+      if (existing?.source !== 'manual') {
         return;
       }
       await tx
@@ -108,6 +109,35 @@ export const transactionsRepo = {
         .update(holdings)
         .set({ balanceMinorUnits: base + delta })
         .where(eq(holdings.id, existing.holdingId));
+    }),
+  /**
+   * Delete a MANUAL transaction and reverse its effect on the holding's stored
+   * balance, all in ONE op-sqlite transaction so the ledger and the balance can
+   * never desync on a partial failure. The reversal is the exact inverse of
+   * `recordManual`/`update`: `balance -= amountMinorUnits`, read *inside* the
+   * transaction so it never clobbers a concurrent write with a stale snapshot. A
+   * synced (monobank) transaction is owned by the bank import and is refused with
+   * a typed error; a missing id is a no-op rather than an error.
+   */
+  remove: (transactionId: string) =>
+    write(async (tx) => {
+      const rows = await tx.select().from(transactions).where(eq(transactions.id, transactionId));
+      const row = rows.at(0);
+      if (!row) {
+        return;
+      }
+      if (isSyncedTransaction(row)) {
+        throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
+      }
+      await tx.delete(transactions).where(eq(transactions.id, transactionId));
+      const holdingRows = await tx.select().from(holdings).where(eq(holdings.id, row.holdingId));
+      const holding = holdingRows.at(0);
+      if (holding) {
+        await tx
+          .update(holdings)
+          .set({ balanceMinorUnits: holding.balanceMinorUnits - row.amountMinorUnits })
+          .where(eq(holdings.id, row.holdingId));
+      }
     }),
   addManyDedup: (inputs: NewTransaction[]) =>
     write(async (tx) => {

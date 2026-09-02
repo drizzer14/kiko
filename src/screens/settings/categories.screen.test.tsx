@@ -5,11 +5,13 @@ import CategoriesScreen from './categories.screen';
 
 const mockUpdateTitle = jest.fn();
 const mockUpdateIcon = jest.fn();
+const mockCreate = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string }> = [];
 
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    create: (...args: unknown[]) => mockCreate(...args),
     updateTitle: (...args: unknown[]) => mockUpdateTitle(...args),
     updateIcon: (...args: unknown[]) => mockUpdateIcon(...args),
   },
@@ -95,12 +97,61 @@ describe('CategoriesScreen', () => {
     expect(queryByPlaceholderText(/icon/i)).toBeNull();
   });
 
-  it('shows an edit affordance on every category icon so it reads as tappable', async () => {
-    const { getAllByTestId } = await render(<CategoriesScreen />);
+  it('no longer overlays a pencil edit badge on the category icons', async () => {
+    const { queryAllByTestId } = await render(<CategoriesScreen />);
 
-    // Every row surfaces the pencil edit badge overlay, one per category, so
-    // the icon is visibly editable at rest without opening the picker first.
-    expect(getAllByTestId('category-icon-edit-badge')).toHaveLength(SEEDED_CATEGORIES.length);
+    // The bordered icon chip is now the sole edit affordance; the overlaid
+    // pencil badge was removed.
+    expect(queryAllByTestId('category-icon-edit-badge')).toHaveLength(0);
+  });
+
+  it('reveals the inline add-category form when the add row is tapped', async () => {
+    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
+
+    // The name field is absent until the collapsed "Add category" row is tapped.
+    expect(queryByLabelText('Name')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    expect(getByLabelText('Name')).toBeTruthy();
+  });
+
+  it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+    await fireEvent.press(getByText('Save'));
+
+    // The default icon seeds the new category until the user picks another.
+    expect(mockCreate).toHaveBeenCalledWith({ title: 'Travel', icon: 'square.grid.2x2' });
+    // The form collapses (clears) on a successful add.
+    expect(queryByLabelText('Name')).toBeNull();
+  });
+
+  it('does not create a category when the name is empty', async () => {
+    const { getByLabelText, getByText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    // Enter a name, then back out — Cancel must be a real escape hatch.
+    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+    await fireEvent.press(getByText('Cancel'));
+
+    // The form collapses back to the single "Add category" affordance...
+    expect(queryByLabelText('Name')).toBeNull();
+    expect(getByLabelText('Add category')).toBeTruthy();
+    // ...without persisting anything.
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('offers an expanded curated icon pool covering common finance categories', async () => {

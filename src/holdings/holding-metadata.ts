@@ -1,13 +1,18 @@
 export type CompoundingFrequency = 'daily' | 'monthly' | 'quarterly' | 'annually';
 
+export type DepositContribution = { amountMinorUnits: number; date: number };
+
 export type TermDepositMeta = {
-  principalMinorUnits: number;
+  contributions: DepositContribution[];
   annualRatePct: number;
-  startDate: number;
   termMonths: number;
   recapitalization: boolean;
   compounding: CompoundingFrequency;
 };
+
+export type BondKind = 'government' | 'corporate';
+
+export type BondCouponFrequency = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
 
 export type BondMeta = {
   quantity: number;
@@ -15,9 +20,18 @@ export type BondMeta = {
   couponPct: number;
   purchaseDate: number;
   maturityDate: number;
+  bondKind: BondKind;
+  couponFrequency: BondCouponFrequency;
 };
 
 const frequencies = new Set<string>(['daily', 'monthly', 'quarterly', 'annually']);
+
+const bondCouponFrequencies = new Set<string>(['monthly', 'quarterly', 'semiannually', 'annually']);
+
+const asBondCouponFrequency = (value: unknown): BondCouponFrequency =>
+  typeof value === 'string' && bondCouponFrequencies.has(value)
+    ? (value as BondCouponFrequency)
+    : 'annually';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -25,22 +39,41 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
+const asContribution = (value: unknown): DepositContribution | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { amountMinorUnits, date } = value;
+  if (!isNumber(amountMinorUnits) || !isNumber(date)) {
+    return null;
+  }
+  return { amountMinorUnits, date };
+};
+
+const readContributions = (value: Record<string, unknown>): DepositContribution[] | null => {
+  const { contributions, principalMinorUnits, startDate } = value;
+  if (Array.isArray(contributions)) {
+    const parsed = contributions.map(asContribution);
+    if (parsed.length > 0 && parsed.every((c): c is DepositContribution => c !== null)) {
+      return [...parsed].sort((a, b) => a.date - b.date);
+    }
+    return null;
+  }
+  if (isNumber(principalMinorUnits) && isNumber(startDate)) {
+    return [{ amountMinorUnits: principalMinorUnits, date: startDate }];
+  }
+  return null;
+};
+
 export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
   if (!isRecord(value)) {
     return null;
   }
-  const {
-    principalMinorUnits,
-    annualRatePct,
-    startDate,
-    termMonths,
-    recapitalization,
-    compounding,
-  } = value;
+  const { annualRatePct, termMonths, recapitalization, compounding } = value;
+  const contributions = readContributions(value);
   if (
-    !isNumber(principalMinorUnits) ||
+    contributions === null ||
     !isNumber(annualRatePct) ||
-    !isNumber(startDate) ||
     !isNumber(termMonths) ||
     typeof recapitalization !== 'boolean' ||
     typeof compounding !== 'string' ||
@@ -49,9 +82,8 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
     return null;
   }
   return {
-    principalMinorUnits,
+    contributions,
     annualRatePct,
-    startDate,
     termMonths,
     recapitalization,
     compounding: compounding as CompoundingFrequency,
@@ -62,7 +94,7 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   if (!isRecord(value)) {
     return null;
   }
-  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate } = value;
+  const { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate, bondKind } = value;
   if (
     !isNumber(quantity) ||
     !isNumber(faceValueMinorUnits) ||
@@ -72,5 +104,13 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   ) {
     return null;
   }
-  return { quantity, faceValueMinorUnits, couponPct, purchaseDate, maturityDate };
+  return {
+    quantity,
+    faceValueMinorUnits,
+    couponPct,
+    purchaseDate,
+    maturityDate,
+    bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
+    couponFrequency: asBondCouponFrequency(value.couponFrequency),
+  };
 };

@@ -17,7 +17,13 @@ const CurrencySwitch: FC<CurrencySwitchProps> = ({ selected, onSelect }) => {
         <PressableButton
           key={currency}
           onPress={() => onSelect(currency)}
-          backgroundColor={selected === currency ? theme.colors.surfaceHigh : theme.colors.surface}
+          // Only the selected option paints a (raised) surface; the others stay
+          // transparent so the glass card behind them shows through. Painting an
+          // opaque fill on every pill made the Base Currency card read as a
+          // solid gray block beside the plain-glass Categories card — leaving
+          // the unselected pills transparent lets both cards share the one glass
+          // surface treatment.
+          backgroundColor={selected === currency ? theme.colors.surfaceHigh : 'transparent'}
         >
           <Text variant="body" tone={selected === currency ? 'textPrimary' : 'textSecondary'}>
             {currency}

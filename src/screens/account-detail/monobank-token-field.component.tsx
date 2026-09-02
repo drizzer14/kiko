@@ -19,11 +19,19 @@ type TokenStatus =
   | { kind: 'invalid' }
   | { kind: 'saveError' };
 
+type MonobankTokenFieldProps = {
+  // True once the account is connected/synced to Monobank. The token-entry
+  // controls only make sense before that, so they hide once it flips true.
+  isConnected: boolean;
+};
+
 // The Monobank token belongs with the bank account, not global Settings:
 // entry, the Open/Paste helpers, a validated Save, and the result status all
 // live here. Persists through the same Keychain path (`saveToken`), so only
-// the token's location in the UI moved.
-const MonobankTokenField: FC = () => {
+// the token's location in the UI moved. Once the account is connected, the
+// token-entry controls (link, input, Save) disappear — the Connect/Sync/
+// Disconnect actions live on the parent account-detail screen instead.
+const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
   const { theme } = useUnistyles();
   const [token, setToken] = useState('');
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>({ kind: 'idle' });
@@ -82,9 +90,21 @@ const MonobankTokenField: FC = () => {
     })();
   };
 
+  // Once connected, only the section heading remains — the token has already
+  // been accepted and stored, so the link/input/Save entry controls no longer
+  // apply. Re-entry runs through Disconnect on the parent screen first.
+  if (isConnected) {
+    return (
+      <Box gap={3}>
+        <Text variant="heading">Synchronization</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box gap={2}>
+    <Box gap={3}>
       <Text variant="heading">Synchronization</Text>
+
       <Pressable
         accessibilityRole="link"
         accessibilityLabel="Open api.monobank.ua"
@@ -93,7 +113,8 @@ const MonobankTokenField: FC = () => {
       >
         <RNText style={styles.link}>Open api.monobank.ua</RNText>
       </Pressable>
-      <Box direction="row" gap={2} style={styles.fieldRow}>
+
+      <Box direction="row" gap={3} style={styles.fieldRow}>
         <TextInput
           value={token}
           onChangeText={handleChangeToken}
@@ -113,6 +134,7 @@ const MonobankTokenField: FC = () => {
           <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
+
       <Box direction="row" gap={2} style={styles.statusLine}>
         <PressableButton
           onPress={handleSaveToken}

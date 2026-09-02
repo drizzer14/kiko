@@ -59,6 +59,20 @@ describe('CurrencyBreakdown', () => {
     expect(table?.children).toHaveLength(2);
   });
 
+  it('separates the two columns with a wide gutter so they are not cramped', async () => {
+    const { toJSON } = await render(
+      <CurrencyBreakdown items={[Money.of('UAH', 12500), Money.of('USD', 5000)]} />,
+    );
+
+    const table = toJSON();
+    const columnGap = styleLayers(table?.props.style)
+      .map((layer) => layer.columnGap)
+      .find((value): value is number => typeof value === 'number');
+
+    // The gutter was widened from the cramped spacing(4)=16 to spacing(8)=32.
+    expect(columnGap).toBeGreaterThanOrEqual(32);
+  });
+
   it('aligns each currency code and amount as a space-between cell', async () => {
     const { getByText } = await render(<CurrencyBreakdown items={[Money.of('UAH', 12500)]} />);
 

@@ -1,15 +1,18 @@
+import { Alert } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import TransactionFormScreen from './transaction-form.screen';
 
 const mockRecordManual = jest.fn();
 const mockUpdate = jest.fn();
+const mockRemove = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('../../repositories/transactions.repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
+    remove: (...args: unknown[]) => mockRemove(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
@@ -152,6 +155,20 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     );
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
+
+  it('deletes the transaction and navigates back after confirmation', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const destructive = (buttons ?? []).find((button) => button.style === 'destructive');
+      destructive?.onPress?.();
+    });
+    mockRemove.mockResolvedValue(undefined);
+    const { getByText } = await renderEdit('txn-1');
+    await fireEvent.press(getByText('Delete'));
+    expect(mockRemove).toHaveBeenCalledWith('txn-1');
+    await Promise.resolve();
+    expect(navigation.goBack).toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
 });
 
 describe('TransactionFormScreen — read-only mode (monobank)', () => {
@@ -184,5 +201,10 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(queryByText('Save')).toBeNull();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('offers no Delete action for a synced transaction', async () => {
+    const { queryByText } = await renderEdit('txn-9');
+    expect(queryByText('Delete')).toBeNull();
   });
 });
