@@ -11,7 +11,7 @@ import type { Repository } from './repository';
 export const categoriesRepo = {
   allQuery: () => database.select().from(categories),
   updateTitle: (key: string, title: string) =>
-    write(tx => tx.update(categories).set({ title }).where(eq(categories.key, key))),
+    write((tx) => tx.update(categories).set({ title }).where(eq(categories.key, key))),
   updateIcon: (key: string, icon: string) =>
-    write(tx => tx.update(categories).set({ icon }).where(eq(categories.key, key))),
+    write((tx) => tx.update(categories).set({ icon }).where(eq(categories.key, key))),
 } satisfies Repository;

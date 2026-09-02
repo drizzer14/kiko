@@ -67,7 +67,7 @@ const HoldingListRow: FC<{ holding: HoldingRow; onOpen: () => void }> = ({ holdi
     setIsEditing(false);
 
     if (trimmed !== '' && trimmed !== holding.name) {
-      void holdingsRepo.updateName(holding.id, trimmed);
+      holdingsRepo.updateName(holding.id, trimmed);
     }
   };
 
@@ -134,7 +134,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     }
   }, [navigation, accountName]);
 
-  const activeHoldings = holdings.filter(holding => holding.closedAt == null);
+  const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
   // Reuse the accounts-list conversion path: sum this account's open holdings
   // into the base currency, then list each currency's own total beneath.
@@ -146,7 +146,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
   // Monobank connection, so this one may not connect a second.
-  const otherAccountConnected = connectedAccounts.some(connected => connected.id !== accountId);
+  const otherAccountConnected = connectedAccounts.some((connected) => connected.id !== accountId);
 
   const { isSyncing, error, sync } = useSync();
   const [tokenMessage, setTokenMessage] = useState<string | undefined>();
@@ -204,7 +204,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {showActionButton && (
           <Box direction="row" gap={2} style={styles.statusLine}>
             <PressableButton
-              onPress={() => void handlePress()}
+              onPress={() => {
+                handlePress();
+              }}
               disabled={isSyncing}
               backgroundColor={theme.colors.accent}
               alignSelf="flex-start"
@@ -245,7 +247,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         <Box gap={2}>
           <Text variant="heading">Holdings</Text>
-          {activeHoldings.map(holding => (
+          {activeHoldings.map((holding) => (
             <HoldingListRow
               key={holding.id}
               holding={holding}

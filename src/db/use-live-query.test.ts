@@ -78,7 +78,7 @@ describe('useLiveQuery', () => {
         onfulfilled?: ((value: Array<{ id: string }>) => TResult1 | PromiseLike<TResult1>) | null,
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
       ) {
-        return new Promise<Array<{ id: string }>>(resolve => {
+        return new Promise<Array<{ id: string }>>((resolve) => {
           resolvers.push(resolve);
         }).then(onfulfilled, onrejected);
       },

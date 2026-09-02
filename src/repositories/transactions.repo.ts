@@ -36,7 +36,7 @@ export const transactionsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .orderBy(desc(transactions.time)),
   add: (input: NewTransaction) =>
-    write(tx => tx.insert(transactions).values({ id: id(), ...input })),
+    write((tx) => tx.insert(transactions).values({ id: id(), ...input })),
   /**
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
@@ -45,7 +45,7 @@ export const transactionsRepo = {
    * writes cannot clobber each other with a stale read-modify-write.
    */
   recordManual: ({ holdingId, amountMinorUnits, time, description }: ManualTransaction) =>
-    write(async tx => {
+    write(async (tx) => {
       await tx.insert(transactions).values({
         id: id(),
         holdingId,
@@ -76,7 +76,7 @@ export const transactionsRepo = {
    * a missing id is a no-op rather than an error.
    */
   update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
-    write(async tx => {
+    write(async (tx) => {
       const existingRows = await tx
         .select({
           holdingId: transactions.holdingId,
@@ -110,7 +110,7 @@ export const transactionsRepo = {
         .where(eq(holdings.id, existing.holdingId));
     }),
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async tx => {
+    write(async (tx) => {
       if (inputs.length === 0) {
         return;
       }
@@ -119,7 +119,7 @@ export const transactionsRepo = {
       // duplicated. Manual rows with a null externalId are never conflated.
       await tx
         .insert(transactions)
-        .values(inputs.map(input => ({ id: id(), ...input })))
+        .values(inputs.map((input) => ({ id: id(), ...input })))
         .onConflictDoNothing();
     }),
 } satisfies Repository;

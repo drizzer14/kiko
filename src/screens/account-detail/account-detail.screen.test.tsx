@@ -98,7 +98,7 @@ const setLiveData = (data: {
   settings?: Settings[];
 }): void => {
   const accounts = data.accounts ?? [];
-  const connected = data.connected ?? accounts.filter(a => a.institution === 'monobank');
+  const connected = data.connected ?? accounts.filter((a) => a.institution === 'monobank');
   mockUseLiveQuery.mockImplementation((query: { __kind?: string }, tables: string[]) => {
     if (query.__kind === 'connected') {
       return { data: connected };

@@ -77,7 +77,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const holdingId =
     existing?.holdingId ?? ('holdingId' in route.params ? route.params.holdingId : undefined);
-  const holding = holdings.find(candidate => candidate.id === holdingId);
+  const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
 
   const isReadOnly = existing?.source === 'monobank';
@@ -186,7 +186,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         />
 
         <Box style={styles.toggleRow} gap={2}>
-          {(['income', 'expense'] as const).map(option => (
+          {(['income', 'expense'] as const).map((option) => (
             <Pressable
               key={option}
               accessibilityRole="button"
@@ -207,7 +207,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
 };
 
-const styles = StyleSheet.create(theme => ({
+const styles = StyleSheet.create((theme) => ({
   input: {
     borderWidth: 1,
     borderRadius: theme.radii.sm,

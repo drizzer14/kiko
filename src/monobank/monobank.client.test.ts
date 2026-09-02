@@ -48,8 +48,8 @@ describe('fetchStatement', () => {
     expect(sentUrl).toBe('https://api.monobank.ua/personal/statement/acc-1/1704067200/1704240000');
     expect(sentHeaders['X-Token']).toBe('secret');
     expect(result.length).toBe(3);
-    expect(result.some(item => item.amount < 0)).toBe(true);
-    expect(result.some(item => item.amount > 0)).toBe(true);
+    expect(result.some((item) => item.amount < 0)).toBe(true);
+    expect(result.some((item) => item.amount > 0)).toBe(true);
     expect(result[0].id).toBe('ZuHWzqkKGVo=');
   });
 

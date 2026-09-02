@@ -120,7 +120,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {label}
       </Text>
       <Box style={styles.chipRow} gap={2}>
-        {options.map(option => (
+        {options.map((option) => (
           <Pressable
             key={option}
             accessibilityRole="button"
@@ -212,7 +212,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   );
 };
 
-const styles = StyleSheet.create(theme => ({
+const styles = StyleSheet.create((theme) => ({
   input: {
     borderWidth: 1,
     borderRadius: theme.radii.sm,

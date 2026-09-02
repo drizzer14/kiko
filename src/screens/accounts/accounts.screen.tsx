@@ -47,7 +47,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
 
-  const activeAccounts = accounts.filter(account => account.archivedAt == null);
+  const activeAccounts = accounts.filter((account) => account.archivedAt == null);
 
   return (
     <Screen
@@ -70,9 +70,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             <Text tone="textSecondary">No accounts yet</Text>
           </Box>
         ) : (
-          activeAccounts.map(account => {
+          activeAccounts.map((account) => {
             const accountHoldings = holdings.filter(
-              holding => holding.accountId === account.id && holding.closedAt == null,
+              (holding) => holding.accountId === account.id && holding.closedAt == null,
             );
             const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable);
 

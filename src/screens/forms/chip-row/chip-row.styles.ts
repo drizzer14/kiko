@@ -1,11 +1,13 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  row: {
+  chipRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing(3),
+    flexWrap: 'wrap',
+  },
+  chip: {
+    paddingVertical: theme.spacing(2),
+    paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,
   },
 }));

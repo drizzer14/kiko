@@ -31,7 +31,7 @@ const MonobankTokenField: FC = () => {
 
   useEffect(() => {
     let alive = true;
-    void readToken().then(existing => {
+    readToken().then((existing) => {
       if (alive && !hasUserEditedToken.current && existing !== undefined) {
         setToken(existing);
       }
@@ -49,11 +49,11 @@ const MonobankTokenField: FC = () => {
   };
 
   const handleOpenMonobank = (): void => {
-    void Linking.openURL(MONOBANK_API_URL);
+    Linking.openURL(MONOBANK_API_URL);
   };
 
   const handlePasteToken = (): void => {
-    void Clipboard.getString().then(value => {
+    Clipboard.getString().then((value) => {
       hasUserEditedToken.current = true;
       setToken(value.trim());
       setTokenStatus({ kind: 'idle' });
@@ -62,7 +62,7 @@ const MonobankTokenField: FC = () => {
 
   const handleSaveToken = (): void => {
     setTokenStatus({ kind: 'checking' });
-    void (async () => {
+    (async () => {
       let clientName: string;
       try {
         const clientInfo = await fetchClientInfo(token);
@@ -85,6 +85,14 @@ const MonobankTokenField: FC = () => {
   return (
     <Box gap={2}>
       <Text variant="heading">Synchronization</Text>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open api.monobank.ua"
+        onPress={handleOpenMonobank}
+        style={styles.linkPressable}
+      >
+        <RNText style={styles.link}>Open api.monobank.ua</RNText>
+      </Pressable>
       <Box direction="row" gap={2} style={styles.fieldRow}>
         <TextInput
           value={token}
@@ -105,14 +113,6 @@ const MonobankTokenField: FC = () => {
           <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel="Open api.monobank.ua"
-        onPress={handleOpenMonobank}
-        style={styles.linkPressable}
-      >
-        <RNText style={styles.link}>Open api.monobank.ua</RNText>
-      </Pressable>
       <Box direction="row" gap={2} style={styles.statusLine}>
         <PressableButton
           onPress={handleSaveToken}

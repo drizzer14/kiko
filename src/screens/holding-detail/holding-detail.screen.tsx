@@ -31,7 +31,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     'transactions',
   ]);
 
-  const holding = holdings.find(candidate => candidate.id === holdingId);
+  const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
   const accrued = holding ? accruedInterest(holding, now) : null;
@@ -69,7 +69,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
         <Box gap={2}>
           <Text variant="heading">Transactions</Text>
-          {transactions.map(transaction => (
+          {transactions.map((transaction) => (
             // Every row is tappable: it opens the shared Transaction form for
             // this id. A manual row edits; a synced (Monobank) row opens
             // read-only — the form resolves which from the transaction's own
@@ -115,7 +115,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   );
 };
 
-const styles = StyleSheet.create(theme => ({
+const styles = StyleSheet.create((theme) => ({
   row: {
     padding: theme.spacing(3),
     borderRadius: theme.radii.sm,

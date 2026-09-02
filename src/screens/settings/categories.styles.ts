@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(theme => ({
+export const styles = StyleSheet.create((theme) => ({
   // A single full-width category row within the GlassSurface list. Mirrors the
   // SettingsRow row/divider shape (see settings.styles.ts) so the two lists
   // read as one design language.
@@ -51,18 +51,5 @@ export const styles = StyleSheet.create(theme => ({
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
     ...theme.typography.body,
-  },
-  // The curated icon picker: a wrapping grid of equal, tappable swatches
-  // revealed beneath the row when its icon toggle is pressed.
-  iconGrid: {
-    flexWrap: 'wrap',
-  },
-  // One curated icon swatch — a fixed-size, centered, tappable tile.
-  iconOption: {
-    width: theme.spacing(11),
-    height: theme.spacing(11),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radii.sm,
   },
 }));

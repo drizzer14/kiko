@@ -18,15 +18,15 @@ export const holdingsRepo = {
   allQuery: () => database.select().from(holdings),
   listByAccountQuery: (accountId: string) =>
     database.select().from(holdings).where(eq(holdings.accountId, accountId)),
-  create: (input: NewHolding) => write(tx => tx.insert(holdings).values({ id: id(), ...input })),
+  create: (input: NewHolding) => write((tx) => tx.insert(holdings).values({ id: id(), ...input })),
   setBalance: (holdingId: string, minorUnits: number) =>
-    write(tx =>
+    write((tx) =>
       tx.update(holdings).set({ balanceMinorUnits: minorUnits }).where(eq(holdings.id, holdingId)),
     ),
   updateName: (holdingId: string, name: string) =>
-    write(tx => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
+    write((tx) => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
   upsertMonobank: ({ monobankId, metadata, ...rest }: MonobankHolding) =>
-    write(async tx => {
+    write(async (tx) => {
       const merged = { ...(metadata as Record<string, unknown> | null), monobankId };
       const monobankMatch = sql`json_extract(${holdings.metadata}, '$.monobankId') = ${monobankId}`;
       const existing = await tx

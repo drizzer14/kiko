@@ -73,19 +73,19 @@ export interface SyncDeps {
 const defaultDeps: SyncDeps = {
   fetchImpl: fetch,
   now: () => Date.now(),
-  sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   readToken,
   fetchClientInfo,
   fetchStatement,
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
-  listHoldingsByAccount: async accountId => holdingsRepo.listByAccountQuery(accountId),
-  upsertHolding: holding => holdingsRepo.upsertMonobank(holding),
-  listTransactionsByHolding: async holdingId => transactionsRepo.listByHoldingQuery(holdingId),
-  addTransactions: transactions => transactionsRepo.addManyDedup(transactions),
+  listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
+  upsertHolding: (holding) => holdingsRepo.upsertMonobank(holding),
+  listTransactionsByHolding: async (holdingId) => transactionsRepo.listByHoldingQuery(holdingId),
+  addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
   ensureSettings: () => settingsRepo.ensure(),
   getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
-  setLastSyncAt: timestamp => settingsRepo.setLastSyncAt(timestamp),
+  setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
 };
 
 export const mapStatementItem = (
@@ -153,7 +153,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
   const accounts = await deps.listAccounts();
   if (deps.targetAccountId !== undefined) {
-    const target = accounts.find(account => account.id === deps.targetAccountId);
+    const target = accounts.find((account) => account.id === deps.targetAccountId);
     if (!target) {
       throw new Error('No Monobank account connected');
     }
@@ -163,7 +163,7 @@ const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
     // account is rejected so its cards/jars are never imported twice (which
     // would double-count net worth).
     const otherConnected = accounts.find(
-      account => account.institution === 'monobank' && account.id !== deps.targetAccountId,
+      (account) => account.institution === 'monobank' && account.id !== deps.targetAccountId,
     );
     if (otherConnected) {
       throw new Error('A Monobank account is already connected');
@@ -171,7 +171,7 @@ const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
     await deps.updateAccount(deps.targetAccountId, { institution: 'monobank' });
     return deps.targetAccountId;
   }
-  const existing = accounts.find(account => account.institution === 'monobank');
+  const existing = accounts.find((account) => account.institution === 'monobank');
   if (!existing) {
     throw new Error('No Monobank account connected');
   }
@@ -230,7 +230,7 @@ const fetchAllStatements = async (
     );
     collected.push(...items);
     const hitCap = items.length >= MAX_ITEMS_PER_RESPONSE;
-    windowTo = hitCap ? Math.min(...items.map(item => item.time)) - 1 : windowFrom - 1;
+    windowTo = hitCap ? Math.min(...items.map((item) => item.time)) - 1 : windowFrom - 1;
   }
   return collected;
 };
@@ -240,11 +240,11 @@ const freshTransactions = (
   holdingId: string,
   existing: TransactionRow[],
 ): NewTransaction[] => {
-  const knownExternalIds = new Set(existing.map(transaction => transaction.externalId));
+  const knownExternalIds = new Set(existing.map((transaction) => transaction.externalId));
   const buildFresh = pipe(
-    (list: MonobankStatementItem[]) => list.map(item => mapStatementItem(item, holdingId)),
+    (list: MonobankStatementItem[]) => list.map((item) => mapStatementItem(item, holdingId)),
     (mapped: NewTransaction[]) =>
-      mapped.filter(transaction => !knownExternalIds.has(transaction.externalId ?? null)),
+      mapped.filter((transaction) => !knownExternalIds.has(transaction.externalId ?? null)),
   );
   return buildFresh(items);
 };
@@ -258,7 +258,7 @@ const importAccount = async (
   toSeconds: number,
 ): Promise<number> => {
   const holdings = await deps.listHoldingsByAccount(accountId);
-  const holding = holdings.find(candidate => monobankIdOf(candidate.metadata) === account.id);
+  const holding = holdings.find((candidate) => monobankIdOf(candidate.metadata) === account.id);
   if (!holding) {
     return 0;
   }

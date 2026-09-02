@@ -34,13 +34,25 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
-  it('offers only Bank and Cash, not Crypto or Broker', async () => {
+  it('offers the three account kinds', async () => {
     const { getByText, queryByText } = await renderForm();
 
     expect(getByText('bank')).toBeTruthy();
     expect(getByText('cash')).toBeTruthy();
-    expect(queryByText('crypto')).toBeNull();
+    expect(getByText('crypto')).toBeTruthy();
     expect(queryByText('broker')).toBeNull();
+  });
+
+  it('creates a crypto account with the crypto kind', async () => {
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('crypto'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Crypto', kind: 'crypto' });
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
   });
 
   it('creates a bank account without touching the cash-account path', async () => {

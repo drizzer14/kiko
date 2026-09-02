@@ -22,7 +22,7 @@ const MCC_CATEGORIES: Record<string, readonly number[]> = {
 
 const MCC_TO_CATEGORY: ReadonlyMap<number, string> = new Map(
   Object.entries(MCC_CATEGORIES).flatMap(([category, mccs]) =>
-    mccs.map(mcc => [mcc, category] as const),
+    mccs.map((mcc) => [mcc, category] as const),
   ),
 );
 

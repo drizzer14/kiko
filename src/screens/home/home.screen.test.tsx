@@ -394,7 +394,7 @@ describe('HomeScreen', () => {
     // getAllByText returns matches in tree order, so the rendered order of the
     // separators and their rows proves the newest day (and its row) comes first.
     const rendered = getAllByText(/^(Today|TodayTxn|Yesterday|YesterdayTxn)$/).map(
-      node => node.props.children,
+      (node) => node.props.children,
     );
     expect(rendered).toEqual(['Today', 'TodayTxn', 'Yesterday', 'YesterdayTxn']);
   });
@@ -446,7 +446,7 @@ describe('HomeScreen', () => {
 
   it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map(call => call[1][0]);
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map((call) => call[1][0]);
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',

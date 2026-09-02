@@ -17,7 +17,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const settings = data.at(0);
 
   const handleSelectCurrency = (currency: Currency): void => {
-    void settingsRepo.setBaseCurrency(currency);
+    settingsRepo.setBaseCurrency(currency);
   };
 
   return (
@@ -32,7 +32,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-base-currency"
             icon="dollarsign.circle"
-            label="Base currency"
+            label="Base Currency"
           >
             <CurrencySwitch selected={settings?.baseCurrency} onSelect={handleSelectCurrency} />
           </SettingsRow>

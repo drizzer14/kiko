@@ -132,7 +132,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   type TransactionRow = (typeof transactions)[number];
 
   const categoryByKey: ReadonlyMap<string, CategoryDisplay> = new Map(
-    categories.map(category => [category.key, { title: category.title, icon: category.icon }]),
+    categories.map((category) => [category.key, { title: category.title, icon: category.icon }]),
   );
 
   // Each dimension holds a set of selected values; an empty set means "all".
@@ -150,7 +150,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         return;
       }
 
-      setSelected(previous => {
+      setSelected((previous) => {
         const next = new Set(previous);
         if (next.has(value)) {
           next.delete(value);
@@ -168,20 +168,20 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // A holding counts toward net worth only when it is open AND its parent
   // account is not archived — archived accounts are hidden but not deleted.
   const archivedAccountIds = new Set(
-    accounts.filter(account => account.archivedAt != null).map(account => account.id),
+    accounts.filter((account) => account.archivedAt != null).map((account) => account.id),
   );
   const activeHoldings = holdings.filter(
-    holding => holding.closedAt == null && !archivedAccountIds.has(holding.accountId),
+    (holding) => holding.closedAt == null && !archivedAccountIds.has(holding.accountId),
   );
   const now = Date.now();
   const total = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings);
 
-  const distinctAccountNames = Array.from(new Set(transactions.map(row => row.accountName)));
+  const distinctAccountNames = Array.from(new Set(transactions.map((row) => row.accountName)));
   const distinctCategories = Array.from(
-    new Set(transactions.map(row => row.category ?? 'Uncategorized')),
+    new Set(transactions.map((row) => row.category ?? 'Uncategorized')),
   );
-  const filteredTransactions = transactions.filter(row => {
+  const filteredTransactions = transactions.filter((row) => {
     const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
     const matchesCategory =
       selectedCategories.size === 0 || selectedCategories.has(row.category ?? 'Uncategorized');
@@ -266,7 +266,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         <SectionList
           sections={sections}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           renderItem={renderTransaction}
           renderSectionHeader={renderDayHeader}
           stickySectionHeadersEnabled={false}

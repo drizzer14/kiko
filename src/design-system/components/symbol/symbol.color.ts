@@ -16,15 +16,22 @@
 // unchanged.
 const RGBA_PATTERN = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
 
+const byteToHex = (byte: number): string => byte.toString(16).padStart(2, '0');
+
 export const toSFSymbolTintColor = (color: string): string => {
   const match = color.match(RGBA_PATTERN);
+
   if (!match) {
     return color;
   }
 
   const [, r, g, b, a] = match;
-  const byteToHex = (byte: number) => byte.toString(16).padStart(2, '0');
   const alphaByte = a === undefined ? 255 : Math.round(Number(a) * 255);
 
-  return `#${byteToHex(Number(r))}${byteToHex(Number(g))}${byteToHex(Number(b))}${byteToHex(alphaByte)}`;
+  return '#'.concat(
+    byteToHex(Number(r)),
+    byteToHex(Number(g)),
+    byteToHex(Number(b)),
+    byteToHex(alphaByte),
+  );
 };

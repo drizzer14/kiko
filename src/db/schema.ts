@@ -49,7 +49,7 @@ export const transactions = sqliteTable(
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   },
-  table => ({
+  (table) => ({
     externalUnique: uniqueIndex('transactions_source_external').on(table.source, table.externalId),
   }),
 );
@@ -65,7 +65,7 @@ export const currencyRates = sqliteTable(
     source: text('source', { enum: ['monobank', 'coingecko'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
-  table => ({
+  (table) => ({
     pairUnique: uniqueIndex('currency_rates_pair').on(table.base, table.quote),
   }),
 );

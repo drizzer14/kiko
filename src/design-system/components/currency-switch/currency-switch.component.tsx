@@ -13,7 +13,7 @@ const CurrencySwitch: FC<CurrencySwitchProps> = ({ selected, onSelect }) => {
 
   return (
     <Box gap={2} direction="row">
-      {currencyOptions.map(currency => (
+      {currencyOptions.map((currency) => (
         <PressableButton
           key={currency}
           onPress={() => onSelect(currency)}

@@ -14,7 +14,7 @@
     "formatter": {
       "quoteStyle": "single",
       "trailingCommas": "all",
-      "arrowParentheses": "asNeeded"
+      "arrowParentheses": "always"
     }
   },
   "linter": {
@@ -27,6 +27,7 @@
         "noUnusedImports": "error"
       },
       "complexity": {
+        "noVoid": "error",
         "noExcessiveCognitiveComplexity": {
           "level": "error",
           "options": { "maxAllowedComplexity": 15 }

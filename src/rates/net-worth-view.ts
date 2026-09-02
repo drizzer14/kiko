@@ -10,6 +10,7 @@ export const buildRateTable = (
   rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[],
 ): RateTable => {
   const table: RateTable = {};
+
   for (const row of rows) {
     const rate = Number(row.rate);
     if (Number.isFinite(rate)) {
@@ -35,6 +36,6 @@ export const guardedNetWorth = (
   rates: RateTable,
   now: number,
 ): Money => {
-  const convertible = holdings.filter(holding => canConvert(holding.currency, base, rates));
+  const convertible = holdings.filter((holding) => canConvert(holding.currency, base, rates));
   return netWorth(convertible, base, rates, now);
 };

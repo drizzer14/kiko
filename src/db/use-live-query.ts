@@ -32,7 +32,7 @@ export function useLiveQuery<T>(
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
-  const fireOn = useMemo(() => tables.map(table => ({ table })), [tablesKey]);
+  const fireOn = useMemo(() => tables.map((table) => ({ table })), [tablesKey]);
   // Generation counter: `runQuery` runs on mount and again on every
   // reactive fire as independent, un-cancelled async calls. If two
   // overlapping calls settle out of order (e.g. two rapid writes), an
@@ -66,7 +66,7 @@ export function useLiveQuery<T>(
       setError(undefined);
     };
 
-    void runQuery();
+    runQuery();
 
     const subscription = first(
       eitherSync<unknown, () => void>(() =>
@@ -74,7 +74,9 @@ export function useLiveQuery<T>(
           query: sql,
           arguments: params,
           fireOn,
-          callback: () => void runQuery(),
+          callback: () => {
+            runQuery();
+          },
         }),
       ),
       toError,

@@ -10,6 +10,7 @@ export const formatMoney = (money: Money, locale = 'en-US'): string => {
   });
   const symbol = currencySymbol[money.currency];
   const sign = money.minorUnits < 0 ? '-' : '';
+
   return money.currency === 'UAH'
     ? `${sign}${formatted} ${symbol}`
     : `${sign}${symbol}${formatted}`;

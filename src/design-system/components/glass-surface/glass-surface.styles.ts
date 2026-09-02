@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(theme => ({
+export const styles = StyleSheet.create((theme) => ({
   // Shared by both the liquid-glass branch and the plain-View fallback so
   // children always clip to the surface's rounded corners.
   surface: {

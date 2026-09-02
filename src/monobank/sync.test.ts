@@ -95,7 +95,7 @@ const makeInMemoryDeps = (
   statementFor: (accountId: string) => MonobankStatementItem[],
   initialAccounts: AccountRow[] = [],
 ) => {
-  const accountsStore: AccountRow[] = initialAccounts.map(account => ({ ...account }));
+  const accountsStore: AccountRow[] = initialAccounts.map((account) => ({ ...account }));
   const holdingsStore: HoldingRow[] = [];
   const transactionsStore: TransactionRow[] = [];
   let sequence = 0;
@@ -105,7 +105,7 @@ const makeInMemoryDeps = (
   const upsertHolding: SyncDeps['upsertHolding'] = async ({ monobankId, metadata, ...rest }) => {
     const merged = { ...(metadata as Record<string, unknown> | null), monobankId };
     const existing = holdingsStore.find(
-      holding =>
+      (holding) =>
         holding.accountId === rest.accountId && monobankIdOf(holding.metadata) === monobankId,
     );
     if (existing) {
@@ -124,10 +124,10 @@ const makeInMemoryDeps = (
     });
   };
 
-  const addTransactions: SyncDeps['addTransactions'] = async inputs => {
+  const addTransactions: SyncDeps['addTransactions'] = async (inputs) => {
     for (const input of inputs) {
       const duplicate = transactionsStore.some(
-        row => row.source === input.source && row.externalId === (input.externalId ?? null),
+        (row) => row.source === input.source && row.externalId === (input.externalId ?? null),
       );
       if (!duplicate) {
         transactionsStore.push({
@@ -154,20 +154,20 @@ const makeInMemoryDeps = (
       jars: clientInfo.jars as MonobankJar[],
     }),
     fetchStatement: async (_token, accountId) => statementFor(decodeURIComponent(accountId)),
-    listAccounts: async () => accountsStore.map(account => ({ ...account })),
+    listAccounts: async () => accountsStore.map((account) => ({ ...account })),
     updateAccount: async (accountId, patch) => {
-      const target = accountsStore.find(account => account.id === accountId);
+      const target = accountsStore.find((account) => account.id === accountId);
       if (target) {
         Object.assign(target, patch);
       }
     },
-    listHoldingsByAccount: async accountId =>
+    listHoldingsByAccount: async (accountId) =>
       holdingsStore
-        .filter(holding => holding.accountId === accountId)
-        .map(holding => ({ ...holding })),
+        .filter((holding) => holding.accountId === accountId)
+        .map((holding) => ({ ...holding })),
     upsertHolding,
-    listTransactionsByHolding: async holdingId =>
-      transactionsStore.filter(row => row.holdingId === holdingId).map(row => ({ ...row })),
+    listTransactionsByHolding: async (holdingId) =>
+      transactionsStore.filter((row) => row.holdingId === holdingId).map((row) => ({ ...row })),
     addTransactions,
     ensureSettings: async () => undefined,
     getLastSyncAt: async () => null,
@@ -198,13 +198,13 @@ describe('runSync', () => {
     expect(accountsStore[0].institution).toBe('monobank');
     // two card accounts + one jar, all under the target account
     expect(holdingsStore).toHaveLength(3);
-    expect(holdingsStore.every(holding => holding.accountId === 'acc-1')).toBe(true);
-    expect(holdingsStore.filter(holding => holding.type === 'jar')).toHaveLength(1);
+    expect(holdingsStore.every((holding) => holding.accountId === 'acc-1')).toBe(true);
+    expect(holdingsStore.filter((holding) => holding.type === 'jar')).toHaveLength(1);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
     // the grocery-MCC fixture item (5411) is synced with its derived category
     const groceryTransaction = transactionsStore.find(
-      transaction => transaction.externalId === statement[0].id,
+      (transaction) => transaction.externalId === statement[0].id,
     );
     expect(groceryTransaction?.category).toBe('Groceries');
   });
@@ -219,7 +219,7 @@ describe('runSync', () => {
     const result = await runSync(deps);
 
     expect(accountsStore).toHaveLength(1);
-    expect(holdingsStore.every(holding => holding.accountId === 'acc-mono')).toBe(true);
+    expect(holdingsStore.every((holding) => holding.accountId === 'acc-mono')).toBe(true);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
   });
@@ -245,8 +245,8 @@ describe('runSync', () => {
 
     await expect(runSync(deps)).rejects.toThrow('A Monobank account is already connected');
     // account B is never marked, and no holdings/transactions land under it
-    expect(accountsStore.find(account => account.id === 'acc-b')?.institution).toBeNull();
-    expect(holdingsStore.filter(holding => holding.accountId === 'acc-b')).toHaveLength(0);
+    expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBeNull();
+    expect(holdingsStore.filter((holding) => holding.accountId === 'acc-b')).toHaveLength(0);
     expect(holdingsStore).toHaveLength(0);
     expect(transactionsStore).toHaveLength(0);
   });
@@ -263,7 +263,7 @@ describe('runSync', () => {
 
     expect(accountsStore).toHaveLength(1);
     expect(accountsStore[0].institution).toBe('monobank');
-    expect(holdingsStore.every(holding => holding.accountId === 'acc-a')).toBe(true);
+    expect(holdingsStore.every((holding) => holding.accountId === 'acc-a')).toBe(true);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
   });
@@ -327,7 +327,7 @@ describe('runSync', () => {
 
     // the card holdings still land, and none are jars
     expect(holdingsStore).toHaveLength(clientInfo.accounts.length);
-    expect(holdingsStore.every(holding => holding.type === 'card')).toBe(true);
+    expect(holdingsStore.every((holding) => holding.type === 'card')).toBe(true);
     // the transaction-import loop still runs for the cards
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
@@ -346,7 +346,7 @@ describe('runSync', () => {
     const result = await runSync(deps);
 
     expect(holdingsStore).toHaveLength(clientInfo.accounts.length);
-    expect(holdingsStore.every(holding => holding.type === 'card')).toBe(true);
+    expect(holdingsStore.every((holding) => holding.type === 'card')).toBe(true);
     expect(result.importedTransactions).toBe(statement.length);
     expect(transactionsStore).toHaveLength(statement.length);
   });

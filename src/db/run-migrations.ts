@@ -75,12 +75,12 @@ const applyMigration = async (entry: MigrationJournalEntry): Promise<void> => {
   // hand-edited migration file cannot produce a `tx.execute('')`.
   const statements = resolveMigrationSql(entry)
     .split(STATEMENT_BREAKPOINT)
-    .filter(statement => statement.trim() !== '');
+    .filter((statement) => statement.trim() !== '');
 
   // Each migration's statements and its bookkeeping insert commit atomically,
   // matching drizzle's own transactional migration semantics. drizzle records
   // an empty hash for op-sqlite migrations, so this does the same.
-  await rawDatabase.transaction(async tx => {
+  await rawDatabase.transaction(async (tx) => {
     for (const statement of statements) {
       await tx.execute(statement);
     }

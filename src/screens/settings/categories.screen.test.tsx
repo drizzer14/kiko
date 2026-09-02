@@ -21,7 +21,7 @@ jest.mock('../../db/use-live-query', () => ({
 describe('CategoriesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockLiveQueryData = SEEDED_CATEGORIES.map(category => ({ ...category }));
+    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
   });
 
   it('lists every seeded category by its title', async () => {
@@ -53,13 +53,36 @@ describe('CategoriesScreen', () => {
     expect(mockUpdateTitle).not.toHaveBeenCalled();
   });
 
-  it('changes a category icon via updateIcon when a curated icon is chosen', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+  it('opens the icon picker modal when a category icon is tapped', async () => {
+    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
+
+    // The modal — and its options — is absent until the icon chip is tapped.
+    expect(queryByLabelText('Choose icon basket')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Change Groceries icon'));
+
+    expect(getByLabelText('Choose icon basket')).toBeTruthy();
+  });
+
+  it('changes a category icon via updateIcon and closes the modal when a curated icon is chosen', async () => {
+    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
     await fireEvent.press(getByLabelText('Choose icon basket'));
 
     expect(mockUpdateIcon).toHaveBeenCalledWith('groceries', 'basket');
+    // Selecting dismisses the modal, so its options are gone.
+    expect(queryByLabelText('Choose icon basket')).toBeNull();
+  });
+
+  it('closes the modal on cancel without changing the icon', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Change Groceries icon'));
+    await fireEvent.press(getByText('Cancel'));
+
+    expect(mockUpdateIcon).not.toHaveBeenCalled();
+    expect(queryByLabelText('Choose icon basket')).toBeNull();
   });
 
   it('offers a fixed curated icon set (not a free-text field) in the picker', async () => {

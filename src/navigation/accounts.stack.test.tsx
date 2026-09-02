@@ -26,7 +26,7 @@ const titleByScreen = (): Record<string, string | undefined> => {
   const screens = navigator.props.children.filter(isValidElement);
 
   return Object.fromEntries(
-    screens.map(screen => [screen.props.name, screen.props.options?.title]),
+    screens.map((screen) => [screen.props.name, screen.props.options?.title]),
   );
 };
 

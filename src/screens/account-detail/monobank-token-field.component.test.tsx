@@ -26,7 +26,7 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
 /** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(res => {
+  const promise = new Promise<T>((res) => {
     resolve = res;
   });
 

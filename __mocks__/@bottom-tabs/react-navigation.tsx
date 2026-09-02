@@ -49,7 +49,7 @@ function Navigator({ children, barTintColor, translucent }: MockNavigatorProps) 
   return (
     <>
       <View testID="tab-bar" barTintColor={barTintColor} translucent={translucent}>
-        {screens.map(screen => (
+        {screens.map((screen) => (
           <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
         ))}
       </View>

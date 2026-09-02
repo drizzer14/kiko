@@ -22,6 +22,7 @@ const PressableButton: FC<PressableButtonProps> = ({
     ) : (
       <View style={styles.content}>
         {icon}
+
         {children}
       </View>
     )}

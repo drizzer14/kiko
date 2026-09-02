@@ -11,88 +11,9 @@ import SymbolIcon from '../../design-system/components/symbol';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { styles } from './categories.styles';
+import IconPickerModal from './icon-picker-modal';
 
 type CategoriesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Categories'>;
-
-// A fixed, curated set of SF Symbol names offered by the icon picker. Editing
-// an icon is deliberately a pick from this closed list rather than free text:
-// the app renders every category icon through SymbolIcon/SFSymbolView, whose
-// tint path (see symbol.color.ts) only handles known-good names, so an
-// arbitrary user string could resolve to an invisible/blank glyph. The seed
-// icons (see __fixtures__/seeded-categories) are all included so a category's
-// current icon always appears selected. Grouped by personal-finance theme for
-// readability; every entry is a real SF Symbol identifier.
-const CURATED_ICONS = [
-  // Food & dining
-  'cart',
-  'basket',
-  'fork.knife',
-  'cup.and.saucer',
-  'wineglass',
-  'takeoutbag.and.cup.and.straw',
-  // Transport & travel
-  'car',
-  'fuelpump',
-  'bus',
-  'tram',
-  'bicycle',
-  'airplane',
-  'suitcase',
-  'map',
-  'globe',
-  // Home & utilities
-  'house',
-  'bolt',
-  'lightbulb',
-  'drop',
-  'flame',
-  'wifi',
-  // Health & fitness
-  'cross.case',
-  'pills',
-  'stethoscope',
-  'heart',
-  'dumbbell',
-  'figure.run',
-  // Education
-  'book',
-  'graduationcap',
-  'backpack',
-  // Entertainment & subscriptions
-  'gamecontroller',
-  'tv',
-  'film',
-  'music.note',
-  'headphones',
-  'ticket',
-  'calendar',
-  // Shopping & clothing
-  'bag',
-  'tshirt',
-  'handbag',
-  'gift',
-  'giftcard',
-  // Family & pets
-  'pawprint',
-  'teddybear',
-  // Money, finance & bills
-  'banknote',
-  'creditcard',
-  'dollarsign.circle',
-  'chart.line.uptrend.xyaxis',
-  'building.columns',
-  'percent',
-  'briefcase',
-  'shield',
-  'wallet.pass',
-  'chart.pie',
-  // Transfers & other
-  'arrow.left.arrow.right',
-  'hands.sparkles',
-  'wrench.and.screwdriver',
-  'tag',
-  'square.grid.2x2',
-] as const;
 
 // One editable category row: the leading icon doubles as the picker toggle,
 // and the title is an inline rename field committed on submit/blur. Local
@@ -107,7 +28,7 @@ const CategoryListRow: FC<{ category: CategoryRow; isLast: boolean }> = ({ categ
     const trimmed = title.trim();
 
     if (trimmed !== '' && trimmed !== category.title) {
-      void categoriesRepo.updateTitle(category.key, trimmed);
+      categoriesRepo.updateTitle(category.key, trimmed);
     }
   };
 
@@ -115,7 +36,7 @@ const CategoryListRow: FC<{ category: CategoryRow; isLast: boolean }> = ({ categ
     setPickerOpen(false);
 
     if (icon !== category.icon) {
-      void categoriesRepo.updateIcon(category.key, icon);
+      categoriesRepo.updateIcon(category.key, icon);
     }
   };
 
@@ -126,7 +47,7 @@ const CategoryListRow: FC<{ category: CategoryRow; isLast: boolean }> = ({ categ
           accessibilityRole="button"
           accessibilityLabel={`Change ${category.title} icon`}
           accessibilityState={{ expanded: pickerOpen }}
-          onPress={() => setPickerOpen(open => !open)}
+          onPress={() => setPickerOpen(true)}
           style={styles.iconChip}
         >
           <SymbolIcon name={category.icon} tone="textSecondary" />
@@ -155,28 +76,12 @@ const CategoryListRow: FC<{ category: CategoryRow; isLast: boolean }> = ({ categ
           ]}
         />
       </Box>
-      {pickerOpen && (
-        <Box direction="row" gap={2} style={styles.iconGrid}>
-          {CURATED_ICONS.map(icon => (
-            <Pressable
-              key={icon}
-              accessibilityRole="button"
-              accessibilityLabel={`Choose icon ${icon}`}
-              accessibilityState={{ selected: icon === category.icon }}
-              onPress={() => selectIcon(icon)}
-              style={[
-                styles.iconOption,
-                {
-                  backgroundColor:
-                    icon === category.icon ? theme.colors.accent : theme.colors.surface,
-                },
-              ]}
-            >
-              <SymbolIcon name={icon} tone="textSecondary" />
-            </Pressable>
-          ))}
-        </Box>
-      )}
+      <IconPickerModal
+        visible={pickerOpen}
+        selectedIcon={category.icon}
+        onSelect={selectIcon}
+        onDismiss={() => setPickerOpen(false)}
+      />
     </Box>
   );
 };

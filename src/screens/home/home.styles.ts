@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(theme => ({
+export const styles = StyleSheet.create((theme) => ({
   // The scrollable content column: header + filter bar stay fixed height, the
   // FlatList below is the only flexed (and therefore scrollable) child.
   content: {

@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(theme => ({
+export const styles = StyleSheet.create((theme) => ({
   // A leading-icon status line: keeps the SF Symbol vertically centered against
   // its adjacent status text (token result, last-sync time), and the sync
   // action beside its last-sync status.

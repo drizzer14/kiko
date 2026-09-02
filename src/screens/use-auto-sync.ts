@@ -51,7 +51,7 @@ export const useAutoSync = (): void => {
     }
     hasRun.current = true;
 
-    void either<unknown, void>(async () => {
+    either<unknown, void>(async () => {
       const [connectedAccounts, settingsRows, token] = await Promise.all([
         accountsRepo.connectedQuery(),
         settingsRepo.getQuery(),

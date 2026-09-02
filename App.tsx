@@ -20,7 +20,7 @@ import { useAutoSync } from './src/screens/use-auto-sync';
  */
 const AppRoot: FC = () => {
   useEffect(() => {
-    void settingsRepo.ensure();
+    settingsRepo.ensure();
   }, []);
 
   useAutoSync();

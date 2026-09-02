@@ -83,9 +83,9 @@ describe('categories seed migration', () => {
   const migrationsDir = join(__dirname, '../../drizzle/migrations');
   const migrationFiles = (): { name: string; sql: string }[] =>
     readdirSync(migrationsDir)
-      .filter(name => name.endsWith('.sql'))
+      .filter((name) => name.endsWith('.sql'))
       .sort()
-      .map(name => ({ name, sql: readFileSync(join(migrationsDir, name), 'utf8') }));
+      .map((name) => ({ name, sql: readFileSync(join(migrationsDir, name), 'utf8') }));
 
   const createMigration = (): { name: string; sql: string } => {
     const file = migrationFiles().find(({ sql }) => sql.includes('CREATE TABLE `categories`'));

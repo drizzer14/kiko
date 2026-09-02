@@ -53,14 +53,19 @@ describe('CurrencyBreakdown', () => {
 
     const table = toJSON();
     // The table is a row whose direct children are exactly the two columns.
-    expect(styleLayers(table?.props.style).some(layer => layer.flexDirection === 'row')).toBe(true);
+    expect(styleLayers(table?.props.style).some((layer) => layer.flexDirection === 'row')).toBe(
+      true,
+    );
     expect(table?.children).toHaveLength(2);
   });
 
   it('aligns each currency code and amount as a space-between cell', async () => {
     const { getByText } = await render(<CurrencyBreakdown items={[Money.of('UAH', 12500)]} />);
 
-    const cell = ancestorWith(getByText('UAH'), layer => layer.justifyContent === 'space-between');
+    const cell = ancestorWith(
+      getByText('UAH'),
+      (layer) => layer.justifyContent === 'space-between',
+    );
 
     expect(cell).toBeTruthy();
   });

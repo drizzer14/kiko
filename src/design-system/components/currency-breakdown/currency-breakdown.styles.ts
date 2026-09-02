@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(theme => ({
+export const styles = StyleSheet.create((theme) => ({
   // The breakdown is a two-column table: two equal columns of currency cells
   // sitting side by side, with a gutter between them.
   table: {

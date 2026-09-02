@@ -25,7 +25,7 @@ export const accountsRepo = {
    */
   connectedQuery: () =>
     database.select().from(accounts).where(eq(accounts.institution, 'monobank')),
-  create: (input: NewAccount) => write(tx => tx.insert(accounts).values({ id: id(), ...input })),
+  create: (input: NewAccount) => write((tx) => tx.insert(accounts).values({ id: id(), ...input })),
   /**
    * Create a cash account and its initial cash holding in ONE op-sqlite
    * transaction, so the account can never persist without its holding on a
@@ -33,7 +33,7 @@ export const accountsRepo = {
    * balance atomicity).
    */
   createCashAccount: ({ name, currency, initialBalanceMinorUnits }: NewCashAccount) =>
-    write(async tx => {
+    write(async (tx) => {
       const accountId = id();
       await tx.insert(accounts).values({ id: accountId, name, kind: 'cash' });
       await tx.insert(holdings).values({
@@ -46,9 +46,9 @@ export const accountsRepo = {
       });
     }),
   update: (accountId: string, patch: Partial<AccountRow>) =>
-    write(tx => tx.update(accounts).set(patch).where(eq(accounts.id, accountId))),
+    write((tx) => tx.update(accounts).set(patch).where(eq(accounts.id, accountId))),
   archive: (accountId: string) =>
-    write(tx =>
+    write((tx) =>
       tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
     ),
 } satisfies Repository;

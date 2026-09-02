@@ -17,7 +17,7 @@ export const ratesRepo = {
     return rows.at(0)?.value ?? null;
   },
   upsertMany: (rates: NewRate[]) =>
-    write(async tx => {
+    write(async (tx) => {
       if (rates.length === 0) {
         return;
       }

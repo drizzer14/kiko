@@ -17,6 +17,5 @@ export const currencySymbol: Record<Currency, string> = {
   BTC: '₿',
 };
 
-const currencySet = new Set<string>(currencies);
-
-export const isCurrency = (value: string): value is Currency => currencySet.has(value);
+export const isCurrency = (value: string): value is Currency =>
+  (currencies as readonly string[]).includes(value);
