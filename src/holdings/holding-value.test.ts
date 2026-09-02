@@ -65,21 +65,41 @@ describe('holdingValue', () => {
     expect(wayPast.equals(atMaturity)).toBe(true);
   });
 
-  it('keeps a recapitalization-OFF deposit at its contributions sum', () => {
+  it('counts cumulative accrued interest, net of tax, in a recap-OFF deposit value', () => {
     const holding: ValuableHolding = {
       ...base,
       type: 'term_deposit',
       balanceMinorUnits: 0,
       metadata: {
-        contributions: [{ amountMinorUnits: 100_000, date: START }],
-        annualRatePct: 12,
+        // 10,000.00 UAH contribution, 10% annual, monthly compounding.
+        contributions: [{ amountMinorUnits: 1_000_000, date: START }],
+        annualRatePct: 10,
         termMonths: 24,
         recapitalization: false,
         compounding: 'monthly',
       },
     };
+    // Held a full year => 1000.00 cumulative interest, tax 230.00, net 10,770.00.
+    const value = holdingValue(holding, AFTER_1Y);
+    expect(value.equals(Money.of('UAH', 1_077_000))).toBe(true);
+  });
+
+  it('accrues cumulative interest for a recap-OFF daily-compounding deposit', () => {
+    const holding: ValuableHolding = {
+      ...base,
+      type: 'term_deposit',
+      balanceMinorUnits: 0,
+      metadata: {
+        contributions: [{ amountMinorUnits: 1_000_000, date: START }],
+        annualRatePct: 10,
+        termMonths: 24,
+        recapitalization: false,
+        compounding: 'daily',
+      },
+    };
+    // Daily compounding used to collapse to exactly 0; now it accrues.
     const value = holdingValue(holding, START + 200 * day);
-    expect(value.equals(Money.of('UAH', 100_000))).toBe(true);
+    expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
 
   it('values a bond at nominal plus coupon accrued since the last coupon date', () => {
@@ -187,10 +207,15 @@ describe('holdingValueBreakdown', () => {
     expect(b.net.minorUnits).toBe(107700);
   });
 
-  it('keeps a non-recapitalizing deposit value at the contributions sum', () => {
+  it('surfaces cumulative accrued interest, net of tax, for a non-recapitalizing deposit', () => {
+    // deposit(): 100000 minor (1000.00) at 10% annual, held one year => 100.00
+    // cumulative interest (10000 minor), tax floor(10000 * 23%) = 2300.
     const b = holdingValueBreakdown(deposit({ recapitalization: false }), AFTER_1Y);
-    expect(b.gross.minorUnits).toBe(100000);
-    expect(b.net.minorUnits).toBe(100000);
+    expect(b.principalOrCost.minorUnits).toBe(100000);
+    expect(b.interest.minorUnits).toBe(10000);
+    expect(b.tax.minorUnits).toBe(2300);
+    expect(b.gross.minorUnits).toBe(110000);
+    expect(b.net.minorUnits).toBe(107700);
   });
 
   // 73 days into the first annual coupon period => 73/365 of a 10% year on the

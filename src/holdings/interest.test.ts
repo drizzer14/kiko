@@ -122,14 +122,27 @@ describe('deposit contributions', () => {
     expect(two).toBeCloseTo(one * 2, 6);
   });
 
-  it('accrues per-contribution over the current period (recap-off)', () => {
-    const accrued = depositAccruedMajor(
-      [{ amountMajor: 1000, date: START }],
-      12,
-      'monthly',
-      24,
-      START + 10 * DAY,
-    );
+  it('accrues cumulative simple interest from the contribution date to now (recap-off)', () => {
+    // 10,000 at 10% over a full 365-day year => 1000.00 cumulative.
+    const accrued = depositAccruedMajor([{ amountMajor: 10000, date: START }], 10, 120, AFTER_1Y);
+    expect(accrued).toBeCloseTo(1000, 6);
+  });
+
+  it('sums cumulative accrual across contributions, each from its own date', () => {
+    const now = START + 200 * DAY;
+    const c1 = { amountMajor: 10000, date: now - 180 * DAY };
+    const c2 = { amountMajor: 5000, date: now - 60 * DAY };
+    const accrued = depositAccruedMajor([c1, c2], 10, 120, now);
+    const expected = accruedMajor(10000, 10, 180) + accruedMajor(5000, 10, 60);
+    expect(accrued).toBeCloseTo(expected, 6);
+    expect(accrued).toBeGreaterThan(0);
+  });
+
+  it('stays non-zero for a matured multi-contribution deposit (capped at maturity)', () => {
+    const c1 = { amountMajor: 10000, date: START };
+    const c2 = { amountMajor: 5000, date: START + 30 * DAY };
+    // 12-month term matures long before `now`; end caps at maturity, still > 0.
+    const accrued = depositAccruedMajor([c1, c2], 10, 12, AFTER_1Y + 500 * DAY);
     expect(accrued).toBeGreaterThan(0);
   });
 });

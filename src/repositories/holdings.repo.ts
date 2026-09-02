@@ -55,7 +55,7 @@ export const holdingsRepo = {
     write(async (tx) => {
       const rows = await tx.select().from(holdings).where(eq(holdings.id, holdingId));
       const row = rows.at(0);
-      if (!row || row.type !== 'term_deposit') {
+      if (row?.type !== 'term_deposit') {
         throw new Error('appendDepositContribution: not a term deposit');
       }
       const meta = asTermDepositMeta(row.metadata);

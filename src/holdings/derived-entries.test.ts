@@ -71,6 +71,32 @@ describe('derivedEntries', () => {
     expect(kinds).toEqual(['contribution', 'contribution', 'interest', 'tax']);
   });
 
+  it('emits interest and tax rows for a recap-off deposit', () => {
+    const holding: Holding = {
+      id: 'off',
+      type: 'term_deposit',
+      currency: 'UAH',
+      balanceMinorUnits: 1_000_000,
+      metadata: {
+        // 10,000.00 UAH, 10% annual, monthly, interest paid out (recap-off).
+        contributions: [{ amountMinorUnits: 1_000_000, date: T0 }],
+        annualRatePct: 10,
+        termMonths: 24,
+        recapitalization: false,
+        compounding: 'monthly',
+      },
+    };
+    const now = T0 + 365 * DAY;
+
+    const entries = derivedEntries(holding, now);
+
+    expect(entries.map((e) => e.kind)).toEqual(['contribution', 'interest', 'tax']);
+    const interest = entries.find((e) => e.kind === 'interest');
+    const tax = entries.find((e) => e.kind === 'tax');
+    expect(interest?.amountMinorUnits).toBe(100_000); // 1000.00 cumulative interest
+    expect(tax?.amountMinorUnits).toBe(-23_000); // floor(23%) of 1000.00
+  });
+
   it('returns [] for a term deposit with unparseable metadata', () => {
     const holding: Holding = {
       id: 'bad',

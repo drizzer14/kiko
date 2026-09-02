@@ -103,4 +103,21 @@ describe('SwipeableRow', () => {
     );
     expect(getByTestId('row').props.style).toContainEqual({ borderRadius: 10 });
   });
+
+  // The action layer is mounted behind the row content at all times (for the
+  // reveal animation), and the row it sits behind is a translucent
+  // GlassSurface card. Accessibility-hiding it is not enough on its own — a
+  // closed row's red delete action must have zero *visible* presence, or it
+  // bleeds through the glass. Opacity is tied to the same translateX driving
+  // the swipe, so it is provably 0 at rest regardless of the row's own
+  // translucency.
+  it('renders the delete action with zero opacity at rest', async () => {
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row">
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    const actions = getByTestId('row-actions', HIDDEN);
+    expect(actions.props.style).toMatchObject({ opacity: 0 });
+  });
 });

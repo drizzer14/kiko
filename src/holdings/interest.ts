@@ -59,8 +59,8 @@ export const bondCouponPeriodsPerYear = (frequency: BondCouponFrequency): number
 };
 
 // Dirty-price coupon accrual: value only the coupon earned since the last
-// coupon date. Mirrors depositAccruedMajor's per-period reset, and caps the
-// end at maturity so no coupon accrues past it.
+// coupon date (per-period reset), and cap the end at maturity so no coupon
+// accrues past it.
 export const bondAccruedMajor = (
   nominalMajor: number,
   couponPct: number,
@@ -97,19 +97,21 @@ export const depositCompoundedMajor = (
   );
 };
 
+// Recap-off deposits pay interest out each period rather than compounding it.
+// We surface the CUMULATIVE simple interest earned to date: each contribution
+// accrues from its own date to `end` (now, capped at the single maturity
+// anchored to the earliest contribution). No per-period reset — a matured or
+// multi-contribution deposit no longer collapses to zero.
 export const depositAccruedMajor = (
   contributions: ContributionMajor[],
   annualRatePct: number,
-  frequency: CompoundingFrequency,
   termMonths: number,
   now: number,
 ): number => {
   const maturity = depositMaturity(contributions, termMonths);
   const end = Math.min(now, maturity);
-  const period = periodDays(frequency);
-  return contributions.reduce((sum, c) => {
-    const days = daysBetween(c.date, end);
-    const daysIntoPeriod = days - Math.floor(days / period) * period;
-    return sum + accruedMajor(c.amountMajor, annualRatePct, daysIntoPeriod);
-  }, 0);
+  return contributions.reduce(
+    (sum, c) => sum + accruedMajor(c.amountMajor, annualRatePct, daysBetween(c.date, end)),
+    0,
+  );
 };

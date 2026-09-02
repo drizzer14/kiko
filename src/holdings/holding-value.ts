@@ -40,23 +40,24 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
   const principalMinor = meta.contributions.reduce((s, c) => s + c.amountMinorUnits, 0);
 
   if (!meta.recapitalization) {
-    // Value is held at the contributions sum; interest is paid out.
-    // Tax/interest describe the current-period accrual for display only.
+    // Interest is paid out each period rather than compounded. We surface the
+    // CUMULATIVE interest accrued to date, net of tax, and count it in the
+    // deposit's value/net worth (principal + net interest).
     const accruedMajorValue = depositAccruedMajor(
       contributionsMajor,
       meta.annualRatePct,
-      meta.compounding,
       meta.termMonths,
       now,
     );
     const interestMinor = Money.fromMajor(currency, accruedMajorValue).minorUnits;
     const taxMinor = taxOnInterestMinor(interestMinor);
+    const grossMinor = principalMinor + interestMinor;
     return {
-      gross: Money.of(currency, principalMinor),
+      gross: Money.of(currency, grossMinor),
       principalOrCost: Money.of(currency, principalMinor),
       interest: Money.of(currency, interestMinor),
       tax: Money.of(currency, taxMinor),
-      net: Money.of(currency, principalMinor),
+      net: Money.of(currency, grossMinor - taxMinor),
     };
   }
 

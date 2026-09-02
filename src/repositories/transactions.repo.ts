@@ -88,7 +88,7 @@ export const transactionsRepo = {
         .where(eq(transactions.id, transactionId))
         .limit(1);
       const existing = existingRows.at(0);
-      if (!existing || existing.source !== 'manual') {
+      if (existing?.source !== 'manual') {
         return;
       }
       await tx

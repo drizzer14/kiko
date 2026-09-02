@@ -99,6 +99,19 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   }
   const panResponder = responderRef.current;
 
+  // The action layer is mounted behind the row content at all times (so the
+  // reveal can animate), but the row itself is a translucent GlassSurface
+  // card — an opaque background on the row cannot be assumed. Tying opacity
+  // to the same translateX driving the reveal makes the action genuinely
+  // invisible (not just accessibility-hidden) at rest, and ramps it in only
+  // as the row is actually dragged open, so nothing can bleed through a
+  // closed glass card.
+  const actionOpacity = translateX.interpolate({
+    inputRange: [-ACTION_WIDTH, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   const confirmDelete = () => {
     Alert.alert(confirmTitle, confirmMessage, [
       { text: 'Cancel', style: 'cancel' },
@@ -119,8 +132,9 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
           but is removed from the accessibility tree so a screen reader
           cannot reach a visually-hidden "Delete". It flips to reachable
           once the row is swiped open. */}
-      <View
-        style={styles.actionLayer}
+      <Animated.View
+        testID={testID ? `${testID}-actions` : 'swipeable-row-actions'}
+        style={[styles.actionLayer, { opacity: actionOpacity }]}
         pointerEvents="box-none"
         accessibilityElementsHidden={!isOpen}
         importantForAccessibility={isOpen ? 'auto' : 'no-hide-descendants'}
@@ -133,7 +147,7 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
         >
           <Text style={styles.deleteLabel}>Delete</Text>
         </Pressable>
-      </View>
+      </Animated.View>
       <Animated.View {...panResponder.panHandlers} style={{ transform: [{ translateX }] }}>
         {children}
       </Animated.View>
