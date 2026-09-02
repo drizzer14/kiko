@@ -70,6 +70,29 @@ describe('holdingsRepo', () => {
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('holdings');
   });
 
+  it('create inserts the holding and resolves to the generated id', async () => {
+    let insertedId: unknown;
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          insertedId = values.id;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    const result = await holdingsRepo.create({
+      accountId: 'acc-1',
+      name: 'Card',
+      type: 'card',
+      currency: 'EUR',
+    });
+
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
+    expect(result).toBe(insertedId);
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
     const { captured, tx } = captureSetTx();
     mockTx = tx;

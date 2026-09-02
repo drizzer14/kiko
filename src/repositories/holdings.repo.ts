@@ -20,7 +20,18 @@ export const holdingsRepo = {
   allQuery: () => database.select().from(holdings),
   listByAccountQuery: (accountId: string) =>
     database.select().from(holdings).where(eq(holdings.accountId, accountId)),
-  create: (input: NewHolding) => write((tx) => tx.insert(holdings).values({ id: id(), ...input })),
+  /**
+   * Insert a new holding and resolve to its generated app id (the text UUID),
+   * so a caller can immediately act on the new row (e.g. set its icon). The
+   * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
+   * not this id, so it is not returned.
+   */
+  create: (input: NewHolding): Promise<string> =>
+    write(async (tx) => {
+      const holdingId = id();
+      await tx.insert(holdings).values({ id: holdingId, ...input });
+      return holdingId;
+    }),
   setBalance: (holdingId: string, minorUnits: number) =>
     write((tx) =>
       tx.update(holdings).set({ balanceMinorUnits: minorUnits }).where(eq(holdings.id, holdingId)),

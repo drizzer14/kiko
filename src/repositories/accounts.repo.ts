@@ -26,7 +26,18 @@ export const accountsRepo = {
    */
   connectedQuery: () =>
     database.select().from(accounts).where(eq(accounts.institution, 'monobank')),
-  create: (input: NewAccount) => write((tx) => tx.insert(accounts).values({ id: id(), ...input })),
+  /**
+   * Insert a new account and resolve to its generated app id (the text UUID),
+   * so a caller can immediately act on the new row (e.g. set its icon). The
+   * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
+   * not this id, so it is not returned.
+   */
+  create: (input: NewAccount): Promise<string> =>
+    write(async (tx) => {
+      const accountId = id();
+      await tx.insert(accounts).values({ id: accountId, ...input });
+      return accountId;
+    }),
   /**
    * Create a cash account and its initial cash holding in ONE op-sqlite
    * transaction, so the account can never persist without its holding on a

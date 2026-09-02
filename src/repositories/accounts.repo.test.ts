@@ -38,6 +38,24 @@ describe('accountsRepo', () => {
     expect(query.params).toContain('monobank');
   });
 
+  it('create inserts the account and resolves to the generated id', async () => {
+    let insertedId: unknown;
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          insertedId = values.id;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    const result = await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
+    expect(result).toBe(insertedId);
+  });
+
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
     const inserts: Record<string, unknown>[] = [];
     mockTx = {
