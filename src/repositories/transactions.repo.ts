@@ -10,9 +10,14 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
 type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>>;
 
+type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
+  Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
+  getByIdQuery: (transactionId: string) =>
+    database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   listAllWithContextQuery: () =>
     database
       .select({
@@ -59,6 +64,50 @@ export const transactionsRepo = {
         .update(holdings)
         .set({ balanceMinorUnits: base + amountMinorUnits })
         .where(eq(holdings.id, holdingId));
+    }),
+  /**
+   * Edit an existing MANUAL transaction and keep its holding's stored balance
+   * consistent, all in ONE op-sqlite transaction. The row is re-read *inside*
+   * the transaction so the balance delta is computed against the amount that is
+   * actually persisted, never a stale render snapshot. Only the difference
+   * (newAmount - oldAmount) moves the balance, so a description/time-only edit
+   * (zero delta) leaves the balance untouched. A synced (monobank) transaction
+   * is never mutated by this path — its amount is owned by the bank import — and
+   * a missing id is a no-op rather than an error.
+   */
+  update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
+    write(async tx => {
+      const existingRows = await tx
+        .select({
+          holdingId: transactions.holdingId,
+          amountMinorUnits: transactions.amountMinorUnits,
+          source: transactions.source,
+        })
+        .from(transactions)
+        .where(eq(transactions.id, transactionId))
+        .limit(1);
+      const existing = existingRows.at(0);
+      if (!existing || existing.source !== 'manual') {
+        return;
+      }
+      await tx
+        .update(transactions)
+        .set({ amountMinorUnits, time, description: description ?? '' })
+        .where(eq(transactions.id, transactionId));
+      const delta = amountMinorUnits - existing.amountMinorUnits;
+      if (delta === 0) {
+        return;
+      }
+      const current = await tx
+        .select({ balanceMinorUnits: holdings.balanceMinorUnits })
+        .from(holdings)
+        .where(eq(holdings.id, existing.holdingId))
+        .limit(1);
+      const base = current.at(0)?.balanceMinorUnits ?? 0;
+      await tx
+        .update(holdings)
+        .set({ balanceMinorUnits: base + delta })
+        .where(eq(holdings.id, existing.holdingId));
     }),
   addManyDedup: (inputs: NewTransaction[]) =>
     write(async tx => {

@@ -81,3 +81,18 @@ export const settings = sqliteTable('settings', {
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
+
+/**
+ * Categories are keyed by a STABLE slug (`key`), so renaming a category or
+ * changing its icon never rewrites the `category` value stored on transaction
+ * rows. Transactions keep the stable key; the display layer resolves
+ * key -> `{ title, icon }`. `title` and `icon` are user-editable; `icon` is an
+ * SF Symbol name rendered by the `Symbol` primitive.
+ */
+export const categories = sqliteTable('categories', {
+  key: text('key').primaryKey(),
+  title: text('title').notNull(),
+  icon: text('icon').notNull(),
+});
+
+export type CategoryRow = typeof categories.$inferSelect;

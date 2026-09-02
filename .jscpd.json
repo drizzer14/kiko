@@ -12,6 +12,7 @@
     "vendor/**",
     "__tests__/**",
     "coverage/**",
-    "**/*.jsbundle"
+    "**/*.jsbundle",
+    "**/drizzle/migrations/meta/*_snapshot.json"
   ]
 }

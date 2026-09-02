@@ -12,14 +12,30 @@ jest.mock('../../repositories/accounts.repo', () => ({
   },
 }));
 
+const renderForm = async (): Promise<
+  ReturnType<typeof render> & { navigation: { goBack: jest.Mock } }
+> => {
+  const navigation = { goBack: jest.fn() };
+  const view = await render(<AccountFormScreen navigation={navigation as never} />);
+  return { ...view, navigation };
+};
+
 describe('AccountFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
+  it('renders in scroll mode so the native large title renders and collapses', async () => {
+    const { getByTestId, queryByText } = await renderForm();
+
+    expect(getByTestId('screen-scroll-view')).toBeTruthy();
+    // The static stack header title "Add account" is now the single title; the
+    // in-body duplicate is gone.
+    expect(queryByText('Add account')).toBeNull();
+  });
+
   it('offers only Bank and Cash, not Crypto or Broker', async () => {
-    const navigation = { goBack: jest.fn() } as never;
-    const { getByText, queryByText } = await render(<AccountFormScreen navigation={navigation} />);
+    const { getByText, queryByText } = await renderForm();
 
     expect(getByText('bank')).toBeTruthy();
     expect(getByText('cash')).toBeTruthy();
@@ -28,10 +44,7 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a bank account without touching the cash-account path', async () => {
-    const navigation = { goBack: jest.fn() } as never;
-    const { getByLabelText, getByText } = await render(
-      <AccountFormScreen navigation={navigation} />,
-    );
+    const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
     await fireEvent.press(getByText('bank'));
@@ -43,10 +56,7 @@ describe('AccountFormScreen', () => {
   });
 
   it('does not create an account when the name is empty (or whitespace only)', async () => {
-    const navigation = { goBack: jest.fn() } as never;
-    const { getByLabelText, getByText } = await render(
-      <AccountFormScreen navigation={navigation} />,
-    );
+    const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Save'));
@@ -57,10 +67,7 @@ describe('AccountFormScreen', () => {
   });
 
   it('clamps a negative cash initial value to zero', async () => {
-    const navigation = { goBack: jest.fn() } as never;
-    const { getByLabelText, getByText } = await render(
-      <AccountFormScreen navigation={navigation} />,
-    );
+    const { getByLabelText, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await fireEvent.press(getByText('cash'));
@@ -73,10 +80,7 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a cash account atomically with the initial value', async () => {
-    const navigation = { goBack: jest.fn() } as never;
-    const { getByLabelText, getByText } = await render(
-      <AccountFormScreen navigation={navigation} />,
-    );
+    const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await fireEvent.press(getByText('cash'));

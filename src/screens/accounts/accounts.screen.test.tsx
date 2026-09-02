@@ -1,6 +1,16 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import AccountsScreen from './accounts.screen';
+
+// The screen reads the floating tab-bar height from `react-native-bottom-tabs`
+// to lift its footer clear of the bar. The real hook throws outside a native
+// bottom-tab navigator scene (there is no `BottomTabBarHeightContext` here), so
+// stub it with a deterministic height the clearance test can assert against.
+const MOCK_TAB_BAR_HEIGHT = 80;
+jest.mock('react-native-bottom-tabs', () => ({
+  useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+}));
 
 const mockUseLiveQuery = jest.fn();
 
@@ -54,6 +64,9 @@ const setLiveData = (data: {
 
 const navigation = { navigate: jest.fn() } as never;
 
+const renderAccounts = (): ReturnType<typeof render> =>
+  render(<AccountsScreen navigation={navigation} route={{} as never} />);
+
 describe('AccountsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -69,34 +82,65 @@ describe('AccountsScreen', () => {
   });
 
   it('renders an active account with its name and balance', async () => {
-    const { getByText } = await render(
-      <AccountsScreen navigation={navigation} route={{} as never} />,
-    );
+    const { getByText } = await renderAccounts();
     expect(getByText('Monobank')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
   it('does not render an archived account', async () => {
-    const { queryByText } = await render(
-      <AccountsScreen navigation={navigation} route={{} as never} />,
-    );
+    const { queryByText } = await renderAccounts();
     expect(queryByText('Old Cash')).toBeNull();
   });
 
   it('navigates to AccountDetail when a row is pressed', async () => {
-    const { getByText } = await render(
-      <AccountsScreen navigation={navigation} route={{} as never} />,
-    );
+    const { getByText } = await renderAccounts();
     await fireEvent.press(getByText('Monobank'));
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
   });
 
   it('navigates to AccountForm when "Add account" is pressed', async () => {
-    const { getByText } = await render(
-      <AccountsScreen navigation={navigation} route={{} as never} />,
-    );
+    const { getByText } = await renderAccounts();
     await fireEvent.press(getByText('Add account'));
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+  });
+
+  it('renders "Add account" in the pinned footer, not inside the scrolled list', async () => {
+    const { getByTestId } = await renderAccounts();
+    const scrollView = getByTestId('screen-scroll-view');
+    const footer = getByTestId('screen-footer');
+
+    expect(within(scrollView).queryByText('Add account')).toBeNull();
+    expect(within(footer).queryByText('Add account')).toBeTruthy();
+  });
+
+  it('clears the floating tab bar through the shared Screen footer, not a per-button margin', async () => {
+    const { getByTestId } = await renderAccounts();
+    const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);
+    const buttonBoxStyle = StyleSheet.flatten(getByTestId('add-account-footer').props.style);
+
+    // Clearance now lives on the Screen footer (base padding spacing(4) = 16 plus
+    // the mocked tab-bar height; the safe-area mock reports a 0 bottom inset).
+    expect(footerStyle.paddingBottom).toBe(16 + MOCK_TAB_BAR_HEIGHT);
+    // The button box must not re-add its own clearance, or the footer would be
+    // double-padded.
+    expect(buttonBoxStyle.marginBottom).toBeUndefined();
+  });
+
+  it('renders each account in its own card, not one shared surface', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+      holdings: [],
+      rates: [],
+      settings: [{ baseCurrency: 'UAH' }],
+    });
+    const { getAllByTestId } = await renderAccounts();
+
+    // Each account maps to its own GlassSurface card (testID `account-card`),
+    // so two active accounts yield two distinct cards rather than one group.
+    expect(getAllByTestId('account-card')).toHaveLength(2);
   });
 
   it('renders an empty state when there are no active accounts', async () => {
@@ -106,9 +150,7 @@ describe('AccountsScreen', () => {
       rates: [],
       settings: [{ baseCurrency: 'UAH' }],
     });
-    const { getByText } = await render(
-      <AccountsScreen navigation={navigation} route={{} as never} />,
-    );
+    const { getByText } = await renderAccounts();
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 });

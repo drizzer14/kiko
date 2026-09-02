@@ -1,5 +1,6 @@
 import { type Currency, currencyScale } from '../currency/currency';
 import { Money } from '../currency/money';
+import { holdingValue, type ValuableHolding } from '../holdings/holding-value';
 
 /** A rate table keyed `${base}:${quote}` mapping to a major-unit rate. */
 export type RateTable = Record<string, number>;
@@ -27,12 +28,12 @@ export const convert = (money: Money, target: Currency, rates: RateTable): Money
 };
 
 export const netWorth = (
-  holdings: { currency: Currency; balanceMinorUnits: number }[],
+  holdings: ValuableHolding[],
   base: Currency,
   rates: RateTable,
+  now: number,
 ): Money =>
   holdings.reduce(
-    (sum, holding) =>
-      sum.add(convert(Money.of(holding.currency, holding.balanceMinorUnits), base, rates)),
+    (sum, holding) => sum.add(convert(holdingValue(holding, now), base, rates)),
     Money.of(base, 0),
   );

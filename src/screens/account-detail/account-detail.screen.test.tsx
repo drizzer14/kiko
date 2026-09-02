@@ -1,11 +1,31 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
 import AccountDetailScreen from './account-detail.screen';
+
+// The Text primitive's tone -> color mapping lives in a react-native-unistyles
+// variant that the project's Jest mock strips before a test can inspect it.
+// Mock Text here — following the money-text/home test precedent — so the
+// resolved `tone` MoneyText emits is observable via a testID, while the amount
+// still renders as plain text so every getByText assertion is unaffected.
+jest.mock('../../design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone, children }: { tone: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
 
 const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockReadToken = jest.fn();
+const mockSaveToken = jest.fn();
+const mockFetchClientInfo = jest.fn();
+const mockUpdateName = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -15,6 +35,10 @@ jest.mock('../use-sync', () => ({
 }));
 jest.mock('../../monobank/token', () => ({
   readToken: () => mockReadToken(),
+  saveToken: (...args: unknown[]) => mockSaveToken(...args),
+}));
+jest.mock('../../monobank/monobank.client', () => ({
+  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
@@ -33,7 +57,14 @@ jest.mock('../../repositories/holdings.repo', () => ({
     listByAccountQuery: (accountId: string) => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
+    updateName: (...args: unknown[]) => mockUpdateName(...args),
   },
+}));
+jest.mock('../../repositories/rates.repo', () => ({
+  ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+jest.mock('../../repositories/settings.repo', () => ({
+  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
 type Account = {
@@ -49,17 +80,22 @@ type Holding = {
   balanceMinorUnits: number;
   closedAt?: number | null;
 };
+type Rate = { base: string; quote: string; rate: string };
+type Settings = { baseCurrency: string; lastSyncAt?: number | null };
 
 /**
- * Drive the three `useLiveQuery` calls, keying on the query's `__kind` (the
+ * Drive the five `useLiveQuery` calls, keying on the query's `__kind` (the
  * account-by-id and connected queries both subscribe to `['accounts']`, so the
- * table name alone can't tell them apart). `connected` defaults to the accounts
- * currently marked `institution: 'monobank'`.
+ * table name alone can't tell them apart) and otherwise on the subscribed
+ * table. `connected` defaults to the accounts currently marked
+ * `institution: 'monobank'`; `settings` defaults to a UAH base.
  */
 const setLiveData = (data: {
   accounts?: Account[];
   holdings?: Holding[];
   connected?: Account[];
+  rates?: Rate[];
+  settings?: Settings[];
 }): void => {
   const accounts = data.accounts ?? [];
   const connected = data.connected ?? accounts.filter(a => a.institution === 'monobank');
@@ -69,6 +105,12 @@ const setLiveData = (data: {
     }
     if (tables[0] === 'holdings') {
       return { data: data.holdings ?? [] };
+    }
+    if (tables[0] === 'currency_rates') {
+      return { data: data.rates ?? [] };
+    }
+    if (tables[0] === 'settings') {
+      return { data: data.settings ?? [{ baseCurrency: 'UAH' }] };
     }
     return { data: accounts };
   });
@@ -84,13 +126,25 @@ const account = (overrides: Partial<Account> = {}): Account => ({
 
 const route = { params: { accountId: 'a' } } as never;
 
+// A UAH + USD holding pair with a USD->UAH rate: the overall converts to
+// 1,000.00 ₴ + $50.00 * 40 = 3,000.00 ₴. Shared by the two balance tests.
+const multiCurrencyData = {
+  accounts: [account()],
+  holdings: [
+    { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+    { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+  ],
+  rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
+  settings: [{ baseCurrency: 'UAH' }],
+};
+
 /**
  * Render the screen with a fresh spy navigation, returned alongside the RNTL
  * queries so a test can assert on `navigation.navigate` without re-wiring the
  * boilerplate. Live data is seeded per-test (or by `beforeEach`) before this.
  */
 const renderScreen = async () => {
-  const navigation = { navigate: jest.fn() } as never;
+  const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
   const view = await render(<AccountDetailScreen route={route} navigation={navigation} />);
   return { ...view, navigation };
 };
@@ -101,6 +155,8 @@ describe('AccountDetailScreen', () => {
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockReadToken.mockResolvedValue('token-abc');
+    mockSaveToken.mockResolvedValue(undefined);
+    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
@@ -112,15 +168,57 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Black card')).toBeTruthy();
   });
 
+  it('sets the header title to the account name', async () => {
+    const { navigation } = await renderScreen();
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Monobank' });
+  });
+
   it('shows the holding balance as money', async () => {
+    const { getAllByText } = await renderScreen();
+    // The amount now appears in the per-holding row, the overall balance, and
+    // the single-currency breakdown line — at least one is enough here.
+    expect(getAllByText(/1,000\.00 ₴/).length).toBeGreaterThan(0);
+  });
+
+  it('shows the overall converted balance and a per-currency breakdown', async () => {
+    setLiveData(multiCurrencyData);
     const { getByText } = await renderScreen();
-    expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
+    // Overall = 1,000.00 ₴ + $50.00 * 40 = 3,000.00 ₴ (unique to the headline).
+    expect(getByText(/3,000\.00 ₴/)).toBeTruthy();
+    // A breakdown line per held currency (labels appear only in the breakdown).
+    expect(getByText('UAH')).toBeTruthy();
+    expect(getByText('USD')).toBeTruthy();
+  });
+
+  it('renders a positive overall balance in the balance tone (white / textPrimary)', async () => {
+    setLiveData(multiCurrencyData);
+    const { getByText } = await renderScreen();
+    // The converted overall amount is unique to the headline MoneyText.
+    expect(getByText(/3,000\.00 ₴/).props.testID).toBe('text-tone-textPrimary');
   });
 
   it('navigates to HoldingDetail when a holding row is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Black card'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
+  });
+
+  it('renames a holding via holdingsRepo.updateName when its title is edited', async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText('Edit Black card title'));
+    const input = getByLabelText('Black card title');
+    await fireEvent.changeText(input, 'Renamed card');
+    await fireEvent(input, 'endEditing');
+    expect(mockUpdateName).toHaveBeenCalledWith('h1', 'Renamed card');
+  });
+
+  it('does not save an empty holding title', async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText('Edit Black card title'));
+    const input = getByLabelText('Black card title');
+    await fireEvent.changeText(input, '   ');
+    await fireEvent(input, 'endEditing');
+    expect(mockUpdateName).not.toHaveBeenCalled();
   });
 
   it('excludes closed holdings from the list', async () => {
@@ -154,14 +252,23 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
-  it("renders the account's real name as the screen identity", async () => {
+  it("drives the header title from the account's real name, with no in-body duplicate", async () => {
     setLiveData({
       accounts: [account({ name: 'Ukrsibbank Card' })],
       holdings: [],
     });
-    const { getByText, queryByText } = await renderScreen();
-    expect(getByText('Ukrsibbank Card')).toBeTruthy();
+    const { queryByText, navigation } = await renderScreen();
+    // The name is the single (header) title, set via setOptions; it no longer
+    // also renders as an in-body <Text variant="title"> duplicate.
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Ukrsibbank Card' });
+    expect(queryByText('Ukrsibbank Card')).toBeNull();
     expect(queryByText('Account')).toBeNull();
+  });
+
+  it('renders in scroll mode so the native large title renders and collapses', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+    const { getByTestId } = await renderScreen();
+    expect(getByTestId('screen-scroll-view')).toBeTruthy();
   });
 
   type MonobankGateCase = {
@@ -238,14 +345,45 @@ describe('AccountDetailScreen', () => {
     await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
   });
 
-  it('directs the user to Settings and does not sync when no token is stored', async () => {
+  it('points the user at the on-screen token input and does not sync when no token is stored', async () => {
     mockReadToken.mockResolvedValue(undefined);
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByText, findByText, navigation } = await renderScreen();
+    const { getByText, findByText, queryByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Connect Monobank'));
-    expect(await findByText(/Settings/)).toBeTruthy();
+    expect(await findByText(/Add your Monobank token above/)).toBeTruthy();
+    // The pointer no longer sends the user to global Settings.
+    expect(queryByText(/in Settings/)).toBeNull();
     expect(mockSync).not.toHaveBeenCalled();
     expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('renders the Monobank token input and saves it via the token path for a bank account', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const { getByPlaceholderText, getByText } = await renderScreen();
+    const input = getByPlaceholderText('Monobank token');
+    expect(input).toBeTruthy();
+    await fireEvent.changeText(input, 'entered-here');
+    await act(async () => {
+      await fireEvent.press(getByText('Save'));
+    });
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('entered-here');
+    expect(mockSaveToken).toHaveBeenCalledWith('entered-here');
+  });
+
+  it('shows the last sync time on a connected bank account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'monobank' })],
+      holdings: [],
+      settings: [{ baseCurrency: 'UAH', lastSyncAt: 1_700_000_000_000 }],
+    });
+    const { getByText } = await renderScreen();
+    expect(getByText(new RegExp(new Date(1_700_000_000_000).toLocaleString()))).toBeTruthy();
+  });
+
+  it('does not render the token input for a cash account', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash', institution: null })], holdings: [] });
+    const { queryByPlaceholderText } = await renderScreen();
+    expect(queryByPlaceholderText('Monobank token')).toBeNull();
   });
 
   it('surfaces the sync error from useSync', async () => {

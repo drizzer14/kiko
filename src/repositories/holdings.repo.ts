@@ -23,6 +23,8 @@ export const holdingsRepo = {
     write(tx =>
       tx.update(holdings).set({ balanceMinorUnits: minorUnits }).where(eq(holdings.id, holdingId)),
     ),
+  updateName: (holdingId: string, name: string) =>
+    write(tx => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
   upsertMonobank: ({ monobankId, metadata, ...rest }: MonobankHolding) =>
     write(async tx => {
       const merged = { ...(metadata as Record<string, unknown> | null), monobankId };

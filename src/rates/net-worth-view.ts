@@ -3,7 +3,7 @@ import type { Money } from '../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../db/schema';
 import { netWorth, type RateTable } from './conversion';
 
-type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits'>;
+type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
 
 /** The `rate` column is stored as a string; parse it into the numeric RateTable. */
 export const buildRateTable = (
@@ -33,7 +33,8 @@ export const guardedNetWorth = (
   holdings: ConvertibleHolding[],
   base: Currency,
   rates: RateTable,
+  now: number,
 ): Money => {
   const convertible = holdings.filter(holding => canConvert(holding.currency, base, rates));
-  return netWorth(convertible, base, rates);
+  return netWorth(convertible, base, rates, now);
 };

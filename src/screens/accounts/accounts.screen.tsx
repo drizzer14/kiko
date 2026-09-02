@@ -6,9 +6,11 @@ import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
+import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
@@ -27,6 +29,14 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   broker: 'Broker',
 };
 
+// Leading SF Symbol per account kind, mirroring KIND_LABEL.
+const KIND_ICON: Record<AccountRow['kind'], string> = {
+  bank: 'building.columns',
+  cash: 'banknote',
+  crypto: 'bitcoinsign.circle',
+  broker: 'chart.line.uptrend.xyaxis',
+};
+
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { theme } = useUnistyles();
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
@@ -40,48 +50,54 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const activeAccounts = accounts.filter(account => account.archivedAt == null);
 
   return (
-    <Screen>
+    <Screen
+      scroll
+      footer={
+        <Box testID="add-account-footer" style={styles.addAccountButton}>
+          <PressableButton
+            onPress={() => navigation.navigate('AccountForm', {})}
+            backgroundColor={theme.colors.accent}
+            icon={<SymbolIcon name="plus" tone="textPrimary" />}
+          >
+            <Text variant="body">Add account</Text>
+          </PressableButton>
+        </Box>
+      }
+    >
       <Box gap={4} style={styles.content}>
         {activeAccounts.length === 0 ? (
           <Box style={styles.empty}>
             <Text tone="textSecondary">No accounts yet</Text>
           </Box>
         ) : (
-          <Box style={styles.group}>
-            {activeAccounts.map((account, index) => {
-              const accountHoldings = holdings.filter(
-                holding => holding.accountId === account.id && holding.closedAt == null,
-              );
-              const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable);
-              const isLast = index === activeAccounts.length - 1;
+          activeAccounts.map(account => {
+            const accountHoldings = holdings.filter(
+              holding => holding.accountId === account.id && holding.closedAt == null,
+            );
+            const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable);
 
-              return (
+            return (
+              <GlassSurface key={account.id} testID="account-card" padding={3}>
                 <Pressable
-                  key={account.id}
                   accessibilityRole="button"
                   onPress={() => navigation.navigate('AccountDetail', { accountId: account.id })}
-                  style={[styles.row, isLast && styles.rowLast]}
+                  style={styles.row}
                 >
-                  <Box gap={1}>
-                    <Text variant="body">{account.name}</Text>
-                    <Text variant="caption" tone="textSecondary">
-                      {KIND_LABEL[account.kind]}
-                    </Text>
+                  <Box direction="row" gap={3} style={styles.rowLead}>
+                    <SymbolIcon name={KIND_ICON[account.kind]} tone="textSecondary" />
+                    <Box gap={1}>
+                      <Text variant="body">{account.name}</Text>
+                      <Text variant="caption" tone="textSecondary">
+                        {KIND_LABEL[account.kind]}
+                      </Text>
+                    </Box>
                   </Box>
-                  <MoneyText money={balance} />
+                  <MoneyText money={balance} context="balance" />
                 </Pressable>
-              );
-            })}
-          </Box>
+              </GlassSurface>
+            );
+          })
         )}
-
-        <PressableButton
-          onPress={() => navigation.navigate('AccountForm', {})}
-          backgroundColor={theme.colors.accent}
-          alignSelf="flex-start"
-        >
-          <Text variant="body">Add account</Text>
-        </PressableButton>
       </Box>
     </Screen>
   );

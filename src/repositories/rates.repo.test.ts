@@ -1,13 +1,25 @@
-const mockExecuteRawAsync = jest.fn();
+const mockExecuteRaw = jest.fn();
 
+// Model op-sqlite 18.1.4 faithfully: its read primitive is `executeRaw`,
+// which resolves to a `RawQueryResult` OBJECT (`{ rawRows, columnNames,
+// rowsAffected }`). The drizzle client wrapper in `db/client.ts` calls this
+// and hands drizzle the unwrapped `rawRows`. (An earlier fixture stubbed a
+// bare-array `executeRawAsync`, the incorrect shape that hid the app-wide
+// read bug.)
 jest.mock('@op-engineering/op-sqlite', () => ({
   open: () => ({
     execute: () => ({ rows: [] }),
-    executeRawAsync: (...args: unknown[]) => mockExecuteRawAsync(...args),
+    executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
   }),
 }));
 
 import { ratesRepo } from './rates.repo';
+
+const rawResult = (rawRows: unknown[][]) => ({
+  rawRows,
+  columnNames: ['fetchedAt'],
+  rowsAffected: 0,
+});
 
 describe('ratesRepo', () => {
   it('builds an all-rates query against the currency_rates table', () => {
@@ -15,14 +27,14 @@ describe('ratesRepo', () => {
   });
 
   it('reads the latest stored fetchedAt via a max aggregate', async () => {
-    mockExecuteRawAsync.mockResolvedValue([[1_700_000_000_000]]);
+    mockExecuteRaw.mockResolvedValue(rawResult([[1_700_000_000_000]]));
     const latest = await ratesRepo.latestFetchedAt();
     expect(latest).toBe(1_700_000_000_000);
-    expect(mockExecuteRawAsync.mock.calls[0][0]).toMatch(/max/i);
+    expect(mockExecuteRaw.mock.calls[0][0]).toMatch(/max/i);
   });
 
   it('returns null when no rate has been stored yet', async () => {
-    mockExecuteRawAsync.mockResolvedValue([[null]]);
+    mockExecuteRaw.mockResolvedValue(rawResult([[null]]));
     expect(await ratesRepo.latestFetchedAt()).toBeNull();
   });
 });

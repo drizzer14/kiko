@@ -128,6 +128,16 @@ verified usage, not dead weight:
   check guards against) — same class as `node_modules`/`ios/Pods`/
   `vendor`, so it is path-allowlisted the same way. Do not quote a
   literal 40-character hex checksum value in any tracked file.
+- **`.jscpd.json` `ignore`**: `**/drizzle/migrations/meta/*_snapshot.json`
+  — drizzle-kit's schema snapshots are tool-generated and *cumulative*:
+  each `NNNN_snapshot.json` embeds the entire prior schema plus that
+  migration's delta, so consecutive snapshots are near-identical by
+  design (`0000`/`0001`/`0002` clone each other at ~35–65%). There is
+  nothing to "extract into a shared function" — drizzle-kit owns the
+  format and regenerates these files wholesale, so copy/paste detection
+  is a pure false positive on them. Only the generated `*_snapshot.json`
+  files are excluded; the hand-authored `.sql` migrations and every
+  other JSON file stay in scope.
 - **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

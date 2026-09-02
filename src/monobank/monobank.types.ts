@@ -35,7 +35,8 @@ export interface MonobankClientInfo {
   webHookUrl: string;
   permissions: string;
   accounts: MonobankAccount[];
-  jars: MonobankJar[];
+  // Monobank omits `jars` for a user with no jars, so it can be absent.
+  jars?: MonobankJar[];
 }
 
 export interface MonobankStatementItem {

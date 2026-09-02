@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-nitro-sfsymbols/nitrogen/generated/ios/c++/views/HybridNitroSfsymbolsComponent.mm b/node_modules/react-native-nitro-sfsymbols/nitrogen/generated/ios/c++/views/HybridNitroSfsymbolsComponent.mm
+index 5ebc5a6..b72174f 100644
+--- a/node_modules/react-native-nitro-sfsymbols/nitrogen/generated/ios/c++/views/HybridNitroSfsymbolsComponent.mm
++++ b/node_modules/react-native-nitro-sfsymbols/nitrogen/generated/ios/c++/views/HybridNitroSfsymbolsComponent.mm
+@@ -50,6 +50,8 @@ using namespace margelo::nitro::nitrosfsymbols::views;
+ 
+ - (instancetype) init {
+   if (self = [super init]) {
++    static const auto defaultProps = std::make_shared<const HybridNitroSfsymbolsProps>();
++    _props = defaultProps;
+     std::shared_ptr<HybridNitroSfsymbolsSpec> hybridView = NitroSfsymbols::NitroSfsymbolsAutolinking::createNitroSfsymbols();
+     _hybridView = std::dynamic_pointer_cast<HybridNitroSfsymbolsSpecSwift>(hybridView);
+     [self updateView];

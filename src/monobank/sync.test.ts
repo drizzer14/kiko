@@ -311,6 +311,46 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  it('does not throw and still imports cards when client-info omits jars (jars: undefined)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      connected,
+    ]);
+    // A Monobank user with NO jars: the /personal/client-info response omits
+    // `jars`, so it arrives undefined. This must not crash the sync.
+    deps.fetchClientInfo = async () => ({
+      accounts: clientInfo.accounts as MonobankAccount[],
+      jars: undefined,
+    });
+
+    const result = await runSync(deps);
+
+    // the card holdings still land, and none are jars
+    expect(holdingsStore).toHaveLength(clientInfo.accounts.length);
+    expect(holdingsStore.every(holding => holding.type === 'card')).toBe(true);
+    // the transaction-import loop still runs for the cards
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(transactionsStore).toHaveLength(statement.length);
+  });
+
+  it('does not throw and still imports cards when client-info has no jars field at all', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      connected,
+    ]);
+    // `jars` entirely absent from the payload — same effect as undefined.
+    deps.fetchClientInfo = async () => ({
+      accounts: clientInfo.accounts as MonobankAccount[],
+    });
+
+    const result = await runSync(deps);
+
+    expect(holdingsStore).toHaveLength(clientInfo.accounts.length);
+    expect(holdingsStore.every(holding => holding.type === 'card')).toBe(true);
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(transactionsStore).toHaveLength(statement.length);
+  });
+
   it('pages a capped window and throttles with the injected sleep', async () => {
     const cappedPage: MonobankStatementItem[] = Array.from({ length: 500 }, (_, index) => ({
       ...(statement[0] as MonobankStatementItem),

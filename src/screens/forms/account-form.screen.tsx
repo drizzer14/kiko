@@ -82,10 +82,21 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
   );
 
   return (
-    <Screen>
+    <Screen
+      scroll
+      footer={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canSave }}
+          disabled={!canSave}
+          onPress={save}
+          style={[styles.button, { backgroundColor: theme.colors.accent }]}
+        >
+          <Text variant="body">Save</Text>
+        </Pressable>
+      }
+    >
       <Box gap={4}>
-        <Text variant="title">Add account</Text>
-
         <TextInput
           accessibilityLabel="Name"
           value={name}
@@ -118,16 +129,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
             />
           </>
         )}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSave }}
-          disabled={!canSave}
-          onPress={save}
-          style={[styles.button, { backgroundColor: theme.colors.accent }]}
-        >
-          <Text variant="body">Save</Text>
-        </Pressable>
       </Box>
     </Screen>
   );

@@ -25,11 +25,22 @@ type MockScreenProps = {
   options?: { title?: string };
 };
 
+type MockNavigatorProps = {
+  children: ReactNode;
+  // Native tab-bar appearance props the real navigator forwards to the
+  // UITabBar. Surfaced here on the `tab-bar` view so tests can assert the
+  // app pins them (e.g. `barTintColor` to keep the bar's scheme deterministic).
+  barTintColor?: string;
+  translucent?: boolean;
+  tabBarActiveTintColor?: string;
+  tabBarInactiveTintColor?: string;
+};
+
 function Screen(_props: MockScreenProps): null {
   return null;
 }
 
-function Navigator({ children }: { children: ReactNode }) {
+function Navigator({ children, barTintColor, translucent }: MockNavigatorProps) {
   const screens = Children.toArray(children).filter(
     isValidElement,
   ) as ReactElement<MockScreenProps>[];
@@ -37,7 +48,7 @@ function Navigator({ children }: { children: ReactNode }) {
   const ActiveComponent = active?.props.component;
   return (
     <>
-      <View testID="tab-bar">
+      <View testID="tab-bar" barTintColor={barTintColor} translucent={translucent}>
         {screens.map(screen => (
           <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
         ))}

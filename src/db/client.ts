@@ -1,3 +1,4 @@
+import type { DB, Scalar } from '@op-engineering/op-sqlite';
 import { open } from '@op-engineering/op-sqlite';
 import { drizzle } from 'drizzle-orm/op-sqlite';
 
@@ -17,11 +18,42 @@ export const rawDatabase = open({ name: 'pff.db' });
 rawDatabase.execute('PRAGMA foreign_keys = ON');
 
 /**
+ * The op-sqlite connection shape drizzle's op-sqlite session actually calls.
+ *
+ * drizzle's fielded read path (`values()` -> `all()`/`get()`) invokes
+ * `client.executeRawAsync(sql, params)` and expects a bare positional row
+ * matrix `Scalar[][]`, which it maps directly. op-sqlite 18.1.4's runtime
+ * `executeRawAsync`, however, resolves to its `RawQueryResult` OBJECT
+ * (`{ rawRows, columnNames, rowsAffected, insertId? }`) — the method is not
+ * even declared on the exported `DB` type. The mismatch makes every read
+ * throw `TypeError: rows.map is not a function`, which `useLiveQuery`
+ * swallows into empty data, so the whole UI renders blank.
+ */
+type DrizzleOPSQLiteClient = DB & {
+  executeRawAsync(query: string, params?: Scalar[]): Promise<Scalar[][]>;
+};
+
+/**
+ * Thin wrapper that delegates every method to the real op-sqlite handle
+ * (the spread copies its own-enumerable methods, including the runtime-only
+ * `executeAsync`/`executeRawAsync` that the `DB` type omits) but overrides
+ * `executeRawAsync` to return the unwrapped `Scalar[][]` drizzle's reads
+ * expect. Writes are untouched: drizzle mutations and the transaction
+ * begin/commit/rollback all route through `run()` -> `executeAsync`, a
+ * different method whose `QueryResult` (`rowsAffected`/`insertId`) return
+ * shape this wrapper preserves verbatim.
+ */
+export const wrapClientForDrizzle = (client: DB): DrizzleOPSQLiteClient => ({
+  ...client,
+  executeRawAsync: async (query, params) => (await client.executeRaw(query, params)).rawRows,
+});
+
+/**
  * The Drizzle ORM instance layered over the same op-sqlite connection.
  * Reads (query builders passed to `useLiveQuery`) use this directly;
  * writes must go through `write` so they run inside a transaction.
  */
-export const database = drizzle(rawDatabase, { schema });
+export const database = drizzle(wrapClientForDrizzle(rawDatabase), { schema });
 
 /**
  * The one sanctioned write path for the app.

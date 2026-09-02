@@ -5,7 +5,15 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+platform :ios, "16.0"
+
+# Build React Native core from source instead of the prebuilt React.xcframework.
+# The prebuilt facade exposes core headers only as <React/...>, but
+# react-native-bottom-tabs (RCTTabViewComponentView.mm) imports "RCTConversions.h"
+# with quotes, which only resolves against the from-source header search paths.
+# Must be set before use_react_native! reads it.
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']

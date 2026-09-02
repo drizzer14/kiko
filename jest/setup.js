@@ -28,3 +28,24 @@ require('react-native-unistyles/mocks');
 jest.mock('@react-native-clipboard/clipboard', () =>
   require('@react-native-clipboard/clipboard/jest/clipboard-mock'),
 );
+
+// @callstack/liquid-glass and react-native-nitro-sfsymbols are both
+// Nitro/native-binding packages with no software fallback — an unmocked
+// import throws under react-test-renderer, the same class of failure as the
+// clipboard mock above. Design-system components (GlassSurface, Symbol) hide
+// behind these two modules, so any test that renders one transitively needs
+// this mocked globally, not per-test-file. Kept minimal: just enough surface
+// (a plain View, plus isLiquidGlassSupported as a static false) for
+// GlassSurface's fallback branch and Symbol to render without crashing.
+jest.mock('@callstack/liquid-glass', () => {
+  const { View } = require('react-native');
+  return {
+    LiquidGlassView: View,
+    isLiquidGlassSupported: false,
+  };
+});
+
+jest.mock('react-native-nitro-sfsymbols', () => {
+  const { View } = require('react-native');
+  return { SFSymbolView: View };
+});

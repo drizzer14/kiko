@@ -11,13 +11,20 @@ export const FILTER_ALL = 'All';
 
 type FilterChipRowProps = {
   options: string[];
-  selected: string;
-  onSelect: (value: string) => void;
+  selected: Set<string>;
+  onToggle: (value: string) => void;
 };
 
-/** A single-select, horizontally-scrolling row of chips: `FILTER_ALL` plus one per option. */
-const FilterChipRow: FC<FilterChipRowProps> = ({ options, selected, onSelect }) => {
+/**
+ * A multi-select, horizontally-scrolling row of chips: `FILTER_ALL` plus one
+ * per option. A chip is active when it is in `selected`; the `FILTER_ALL` chip
+ * is active when `selected` is empty (an empty set means "no filter").
+ */
+const FilterChipRow: FC<FilterChipRowProps> = ({ options, selected, onToggle }) => {
   const { theme } = useUnistyles();
+
+  const isActive = (option: string): boolean =>
+    option === FILTER_ALL ? selected.size === 0 : selected.has(option);
 
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
@@ -25,10 +32,10 @@ const FilterChipRow: FC<FilterChipRowProps> = ({ options, selected, onSelect }) 
         {[FILTER_ALL, ...options].map(option => (
           <PressableButton
             key={option}
-            onPress={() => onSelect(option)}
-            backgroundColor={selected === option ? theme.colors.surfaceHigh : theme.colors.surface}
+            onPress={() => onToggle(option)}
+            backgroundColor={isActive(option) ? theme.colors.surfaceHigh : theme.colors.surface}
           >
-            <Text variant="caption" tone={selected === option ? 'textPrimary' : 'textSecondary'}>
+            <Text variant="caption" tone={isActive(option) ? 'textPrimary' : 'textSecondary'}>
               {option}
             </Text>
           </PressableButton>
@@ -41,24 +48,24 @@ const FilterChipRow: FC<FilterChipRowProps> = ({ options, selected, onSelect }) 
 type TransactionFilterBarProps = {
   accounts: string[];
   categories: string[];
-  selectedAccount: string;
-  selectedCategory: string;
-  onSelectAccount: (value: string) => void;
-  onSelectCategory: (value: string) => void;
+  selectedAccount: Set<string>;
+  selectedCategory: Set<string>;
+  onToggleAccount: (value: string) => void;
+  onToggleCategory: (value: string) => void;
 };
 
-/** Two independent single-select filter rows stacked above the transaction list. */
+/** Two independent multi-select filter rows stacked above the transaction list. */
 const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
   accounts,
   categories,
   selectedAccount,
   selectedCategory,
-  onSelectAccount,
-  onSelectCategory,
+  onToggleAccount,
+  onToggleCategory,
 }) => (
   <Box gap={2}>
-    <FilterChipRow options={accounts} selected={selectedAccount} onSelect={onSelectAccount} />
-    <FilterChipRow options={categories} selected={selectedCategory} onSelect={onSelectCategory} />
+    <FilterChipRow options={accounts} selected={selectedAccount} onToggle={onToggleAccount} />
+    <FilterChipRow options={categories} selected={selectedCategory} onToggle={onToggleCategory} />
   </Box>
 );
 

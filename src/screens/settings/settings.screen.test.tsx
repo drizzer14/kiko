@@ -1,16 +1,9 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import SettingsScreen from './settings.screen';
 
 const mockSetBaseCurrency = jest.fn();
-const mockSaveToken = jest.fn();
-const mockReadToken = jest.fn<Promise<string | undefined>, []>();
-const mockFetchClientInfo = jest.fn();
-const mockOpenURL = jest.fn();
-const mockGetString = jest.fn<Promise<string>, []>();
-let mockLiveQueryData: Array<{ baseCurrency: string; lastSyncAt: number | null }> = [
-  { baseCurrency: 'UAH', lastSyncAt: null },
-];
+let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
 
 jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: {
@@ -21,36 +14,11 @@ jest.mock('../../repositories/settings.repo', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData }),
 }));
-jest.mock('../../monobank/token', () => ({
-  saveToken: (...args: unknown[]) => mockSaveToken(...args),
-  readToken: () => mockReadToken(),
-}));
-jest.mock('../../monobank/monobank.client', () => ({
-  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
-}));
-jest.mock('react-native/Libraries/Linking/Linking', () => ({
-  __esModule: true,
-  default: { openURL: (...args: unknown[]) => mockOpenURL(...args) },
-}));
-jest.mock('@react-native-clipboard/clipboard', () => ({
-  getString: () => mockGetString(),
-}));
-
-/** Resolves and rejects deferred outside the executor, for controlling async timing in tests. */
-const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(res => {
-    resolve = res;
-  });
-  return { promise, resolve };
-};
 
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadToken.mockResolvedValue(undefined);
-    mockSaveToken.mockResolvedValue(undefined);
-    mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: null }];
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
   });
 
   it('does not render an in-screen "Settings" title (the native header provides it)', async () => {
@@ -63,154 +31,67 @@ describe('SettingsScreen', () => {
     expect(getByText(/UAH/)).toBeTruthy();
   });
 
+  it('renders the base-currency entry as a single full-width settings row, not a bare boxed card', async () => {
+    const { getByTestId } = await render(<SettingsScreen />);
+    expect(getByTestId('settings-row-base-currency')).toBeTruthy();
+  });
+
+  it('renders each setting in its own separate card, not one shared grouped card', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { getByTestId } = await render(<SettingsScreen navigation={navigation} />);
+
+    const currencyCard = getByTestId('settings-card-base-currency');
+    const categoriesCard = getByTestId('settings-card-categories');
+
+    // Two distinct GlassSurface cards, one per setting.
+    expect(currencyCard).toBeTruthy();
+    expect(categoriesCard).toBeTruthy();
+    expect(currencyCard).not.toBe(categoriesCard);
+
+    // The base-currency row lives only inside its own card...
+    expect(within(currencyCard).getByTestId('settings-row-base-currency')).toBeTruthy();
+    expect(within(currencyCard).queryByTestId('settings-row-categories')).toBeNull();
+
+    // ...and the Categories row lives only inside its own card.
+    expect(within(categoriesCard).getByTestId('settings-row-categories')).toBeTruthy();
+    expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
+  });
+
+  it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { getAllByRole } = await render(<SettingsScreen navigation={navigation} />);
+    // BTC, USD, EUR, UAH — four separate currency pressables, not one combined
+    // control — plus the navigating Categories row's own pressable (5 total).
+    expect(getAllByRole('button')).toHaveLength(5);
+  });
+
+  it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { getByTestId } = await render(<SettingsScreen navigation={navigation} />);
+
+    await fireEvent.press(getByTestId('settings-row-categories'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Categories');
+  });
+
   it('calls setBaseCurrency when a currency option is pressed', async () => {
     const { getByText } = await render(<SettingsScreen />);
     await fireEvent.press(getByText('USD'));
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
   });
 
-  it('prefills the token input from readToken', async () => {
-    mockReadToken.mockResolvedValue('existing-token');
-    const { findByDisplayValue } = await render(<SettingsScreen />);
-    expect(await findByDisplayValue('existing-token')).toBeTruthy();
+  it('no longer renders the Monobank token input (it lives on the bank account now)', async () => {
+    const { queryByPlaceholderText, queryByText } = await render(<SettingsScreen />);
+    expect(queryByPlaceholderText('Monobank token')).toBeNull();
+    expect(queryByText('Save')).toBeNull();
+    expect(queryByText('Paste from clipboard')).toBeNull();
+    expect(queryByText('Open api.monobank.ua')).toBeNull();
   });
 
-  it('does not overwrite the token the user is typing once readToken resolves late', async () => {
-    const pending = deferred<string | undefined>();
-    mockReadToken.mockReturnValue(pending.promise);
-    const { getByPlaceholderText, findByDisplayValue } = await render(<SettingsScreen />);
-
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'user-typed');
-
-    // Resolve readToken() and let its effect callback run to completion (and
-    // any resulting setState flush) before asserting on the rendered value.
-    await act(async () => {
-      pending.resolve('existing-token');
-      await pending.promise;
-    });
-
-    expect(await findByDisplayValue('user-typed')).toBeTruthy();
-  });
-
-  it('opens api.monobank.ua when "Open api.monobank.ua" is pressed', async () => {
-    const { getByText } = await render(<SettingsScreen />);
-    await fireEvent.press(getByText('Open api.monobank.ua'));
-    expect(mockOpenURL).toHaveBeenCalledWith('https://api.monobank.ua/');
-  });
-
-  it('fills the token field from the clipboard when "Paste from clipboard" is pressed', async () => {
-    mockGetString.mockResolvedValue('clipboard-token');
-    const { getByText, findByDisplayValue } = await render(<SettingsScreen />);
-    await act(async () => {
-      await fireEvent.press(getByText('Paste from clipboard'));
-    });
-    expect(await findByDisplayValue('clipboard-token')).toBeTruthy();
-  });
-
-  it('trims surrounding whitespace from a pasted clipboard value', async () => {
-    mockGetString.mockResolvedValue('  clipboard-token\n');
-    const { getByText, getByPlaceholderText, findByDisplayValue } = await render(
-      <SettingsScreen />,
-    );
-    await act(async () => {
-      await fireEvent.press(getByText('Paste from clipboard'));
-    });
-    expect(await findByDisplayValue('clipboard-token')).toBeTruthy();
-    // Testing Library's display-value matcher normalizes (trims/collapses)
-    // whitespace by default, so assert the raw prop value directly rather
-    // than via a second query — this is the assertion that actually catches
-    // a missing `.trim()` in `handlePasteToken`.
-    expect(getByPlaceholderText('Monobank token').props.value).toBe('clipboard-token');
-  });
-
-  it('validates the token and calls saveToken when fetchClientInfo accepts it', async () => {
-    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
-    const { getByPlaceholderText, getByText, findByText } = await render(<SettingsScreen />);
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'new-token');
-    await act(async () => {
-      await fireEvent.press(getByText('Save'));
-    });
-    expect(mockFetchClientInfo).toHaveBeenCalledWith('new-token');
-    expect(mockSaveToken).toHaveBeenCalledWith('new-token');
-    expect(await findByText(/Connected as Jane Doe/)).toBeTruthy();
-  });
-
-  it('does not call saveToken and shows an error when fetchClientInfo rejects the token', async () => {
-    mockFetchClientInfo.mockRejectedValue(new Error('Monobank request failed: 401'));
-    const { getByPlaceholderText, getByText, findByText } = await render(<SettingsScreen />);
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'bad-token');
-    await act(async () => {
-      await fireEvent.press(getByText('Save'));
-    });
-    expect(mockFetchClientInfo).toHaveBeenCalledWith('bad-token');
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(await findByText('Invalid token')).toBeTruthy();
-  });
-
-  it('shows a distinct save-error (not "Invalid token") when fetchClientInfo accepts the token but saveToken rejects', async () => {
-    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
-    mockSaveToken.mockRejectedValue(new Error('Keychain write failed'));
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <SettingsScreen />,
-    );
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'valid-token');
-    await act(async () => {
-      await fireEvent.press(getByText('Save'));
-    });
-    expect(mockFetchClientInfo).toHaveBeenCalledWith('valid-token');
-    expect(mockSaveToken).toHaveBeenCalledWith('valid-token');
-    expect(await findByText('Could not save token')).toBeTruthy();
-    expect(queryByText('Invalid token')).toBeNull();
-    expect(queryByText(/Connected as/)).toBeNull();
-  });
-
-  it('shows a "Checking…" line while token validation is in flight', async () => {
-    const pending = deferred<{ name: string }>();
-    mockFetchClientInfo.mockReturnValue(pending.promise);
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <SettingsScreen />,
-    );
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'in-flight-token');
-    await act(async () => {
-      fireEvent.press(getByText('Save'));
-    });
-
-    expect(await findByText(/Checking/)).toBeTruthy();
-
-    await act(async () => {
-      pending.resolve({ name: 'Jane Doe' });
-      await pending.promise;
-    });
-
-    expect(queryByText(/Checking/)).toBeNull();
-  });
-
-  it('clears a stale save-result status line when the token text is edited afterward', async () => {
-    mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <SettingsScreen />,
-    );
-    const input = getByPlaceholderText('Monobank token');
-    await fireEvent.changeText(input, 'valid-token');
-    await act(async () => {
-      await fireEvent.press(getByText('Save'));
-    });
-    expect(await findByText(/Connected as Jane Doe/)).toBeTruthy();
-
-    await fireEvent.changeText(input, 'valid-token-2');
-    expect(queryByText(/Connected as Jane Doe/)).toBeNull();
-  });
-
-  it('shows the last sync time from the live settings row', async () => {
-    mockLiveQueryData = [{ baseCurrency: 'UAH', lastSyncAt: 1700000000000 }];
-    const { getByText, queryByText } = await render(<SettingsScreen />);
-    expect(queryByText(/Never/i)).toBeNull();
-    expect(getByText(new RegExp(new Date(1700000000000).toLocaleString()))).toBeTruthy();
-  });
-
-  it('shows "Never" when there is no last sync time', async () => {
-    const { getByText } = await render(<SettingsScreen />);
-    expect(getByText(/Never/i)).toBeTruthy();
+  it('no longer renders the sync-status card (it lives on the bank account now)', async () => {
+    const { queryByText } = await render(<SettingsScreen />);
+    expect(queryByText(/Last sync/i)).toBeNull();
+    expect(queryByText(/Sync status/i)).toBeNull();
   });
 
   it('does not render a Sync button (sync is per-account now)', async () => {

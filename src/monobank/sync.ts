@@ -44,7 +44,7 @@ export interface SyncDeps {
     fetchImpl?: typeof fetch,
   ) => Promise<{
     accounts: MonobankAccount[];
-    jars: MonobankJar[];
+    jars?: MonobankJar[];
   }>;
   fetchStatement: (
     token: string,
@@ -182,15 +182,18 @@ const upsertHoldings = async (
   deps: SyncDeps,
   accountId: string,
   accounts: MonobankAccount[],
-  jars: MonobankJar[],
+  jars: MonobankJar[] | undefined,
 ): Promise<void> => {
-  for (const account of accounts) {
+  // A Monobank user with no cards/jars gets those fields omitted from the
+  // /personal/client-info payload, so they arrive undefined. Default to an
+  // empty list so the sync never crashes iterating an absent collection.
+  for (const account of accounts ?? []) {
     await deps.upsertHolding({
       ...mapAccountToHolding(account, accountId),
       monobankId: account.id,
     });
   }
-  for (const jar of jars) {
+  for (const jar of jars ?? []) {
     await deps.upsertHolding({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
   }
 };

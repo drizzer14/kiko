@@ -10,6 +10,19 @@ export const styles = StyleSheet.create(theme => ({
   header: {
     alignItems: 'center',
   },
+  // Extra breathing room above the currency breakdown. The header's own
+  // `gap={1}` already sits between the balance and the breakdown; this adds a
+  // second `spacing(1)` on top so the visible gap there is ~2x the others,
+  // separating the per-currency table from the headline figure.
+  breakdown: {
+    marginTop: theme.spacing(1),
+    alignSelf: 'stretch',
+  },
+  // A date separator between day groups in the transaction SectionList.
+  sectionHeader: {
+    paddingTop: theme.spacing(3),
+    paddingBottom: theme.spacing(1),
+  },
   // The large centered balance amount. Only size/weight/alignment live here —
   // MoneyText still owns the tone color, so this deliberately omits `color`.
   balance: {
@@ -19,13 +32,18 @@ export const styles = StyleSheet.create(theme => ({
   },
   // A single transaction row: description + amount on one line, context below.
   row: {
-    paddingVertical: theme.spacing(2),
+    paddingVertical: theme.spacing(3),
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
   // The primary line of a row: description on the left, amount on the right.
   rowMain: {
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  // The leading cluster of a row: category icon + description, kept together on
+  // the left so the row's space-between only splits this cluster from the amount.
+  rowLead: {
     alignItems: 'center',
   },
   // Bounds the FlatList to the remaining space below the fixed header/filter

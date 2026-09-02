@@ -8,6 +8,20 @@
       "when": 1788123454602,
       "tag": "0000_aromatic_carmella_unuscione",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788259079337,
+      "tag": "0001_mushy_obadiah_stane",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788345479337,
+      "tag": "0002_seed_categories",
+      "breakpoints": true
     }
   ]
 }

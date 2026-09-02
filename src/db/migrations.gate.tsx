@@ -1,21 +1,44 @@
-import { useMigrations } from 'drizzle-orm/op-sqlite/migrator';
-import type { FC, ReactNode } from 'react';
+import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import migrations from '../../drizzle/migrations/migrations';
-import { database } from './client';
+import { runMigrations } from './run-migrations';
+
+type MigrationState =
+  | { status: 'pending' }
+  | { status: 'success' }
+  | { status: 'error'; error: Error };
 
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
-  const { success, error } = useMigrations(database, migrations);
+  const [state, setState] = useState<MigrationState>({ status: 'pending' });
 
-  if (error) {
+  useEffect(() => {
+    let cancelled = false;
+
+    runMigrations()
+      .then(() => {
+        if (!cancelled) {
+          setState({ status: 'success' });
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setState({ status: 'error', error });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (state.status === 'error') {
     return (
       <View>
-        <Text>Migration error: {error.message}</Text>
+        <Text>Migration error: {state.error.message}</Text>
       </View>
     );
   }
 
-  if (!success) {
+  if (state.status === 'pending') {
     return (
       <View>
         <Text>Preparing database...</Text>
