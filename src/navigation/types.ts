@@ -36,6 +36,10 @@ export type SettingsStackParamList = {
   Categories: undefined;
 };
 
+export type StatisticsStackParamList = {
+  Statistics: undefined;
+};
+
 /**
  * The native bottom-tab param list. `AccountsTab` carries
  * `NavigatorScreenParams` so a cross-tab `navigate('AccountsTab', { screen,
@@ -44,5 +48,6 @@ export type SettingsStackParamList = {
 export type TabParamList = {
   HomeTab: undefined;
   AccountsTab: NavigatorScreenParams<AccountsStackParamList>;
+  StatisticsTab: undefined;
   SettingsTab: undefined;
 };

@@ -18,7 +18,7 @@ import '../design-system/unistyles';
 import RootNavigator from './root.navigator';
 
 describe('RootNavigator', () => {
-  it('renders the three bottom tabs', async () => {
+  it('renders the four bottom tabs', async () => {
     const { findByTestId } = await render(
       <NavigationContainer theme={navigationDarkTheme}>
         <RootNavigator />
@@ -27,6 +27,7 @@ describe('RootNavigator', () => {
     const tabBar = within(await findByTestId('tab-bar'));
     expect(tabBar.getByText('Home')).toBeTruthy();
     expect(tabBar.getByText('Accounts')).toBeTruthy();
+    expect(tabBar.getByText('Statistics')).toBeTruthy();
     expect(tabBar.getByText('Settings')).toBeTruthy();
   });
 

@@ -4,6 +4,7 @@ import { darkTheme } from '../design-system/theme';
 import AccountsStack from './accounts.stack';
 import HomeStack from './home.stack';
 import SettingsStack from './settings.stack';
+import StatisticsStack from './statistics.stack';
 import type { TabParamList } from './types';
 
 const Tabs = createNativeBottomTabNavigator<TabParamList>();
@@ -46,6 +47,11 @@ const RootNavigator: FC = () => (
       name="AccountsTab"
       component={AccountsStack}
       options={{ title: 'Accounts', tabBarIcon: () => ({ sfSymbol: 'wallet.pass.fill' }) }}
+    />
+    <Tabs.Screen
+      name="StatisticsTab"
+      component={StatisticsStack}
+      options={{ title: 'Statistics', tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }) }}
     />
     <Tabs.Screen
       name="SettingsTab"
