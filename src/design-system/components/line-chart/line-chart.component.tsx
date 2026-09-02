@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import { Svg, Polyline, Line, G } from 'react-native-svg';
+import { Svg, Polyline, Line, Circle, G } from 'react-native-svg';
 import type { CurrencySeries, SeriesPoint } from '../../../statistics/currency-series';
 import Box from '../box';
 import Text from '../text';
@@ -19,6 +19,9 @@ const PADDING_X = 8;
 const PADDING_Y = 12;
 const SERIES_STROKE_WIDTH = 2;
 const GRID_STROKE_WIDTH = 1;
+// A single-point series has no segment to stroke, so its lone datum is drawn as
+// a filled dot of this radius instead — otherwise the line would render nothing.
+const MARKER_RADIUS = 3;
 // The fractions of the plot height, top to bottom, that carry a light gridline.
 // 0.5 is the 0% baseline and is drawn separately (stronger); these are the two
 // quarter lines that frame it.
@@ -121,6 +124,19 @@ const LineChart: FC<LineChartProps> = ({ series, height = DEFAULT_HEIGHT }) => {
             strokeWidth={SERIES_STROKE_WIDTH}
           />
         ))}
+
+        {series.map((line, index) =>
+          line.points.length === 1 ? (
+            <Circle
+              key={line.currency}
+              testID={`line-chart-marker-${line.currency}`}
+              cx={scales.x(line.points[0].t)}
+              cy={scales.y(line.points[0].pct)}
+              r={MARKER_RADIUS}
+              fill={palette[index % palette.length]}
+            />
+          ) : null,
+        )}
       </Svg>
 
       <Box style={styles.legend}>

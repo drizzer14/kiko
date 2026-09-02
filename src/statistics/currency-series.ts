@@ -1,4 +1,5 @@
 import type { Currency } from '../currency/currency';
+import { DAY_MS } from '../dates/duration';
 import type { HoldingRow } from '../db/schema';
 import { holdingValueBreakdown } from '../holdings/holding-value';
 
@@ -17,7 +18,17 @@ export type SeriesPoint = { t: number; pct: number };
 /** One line: a currency and its day-bucketed, start-indexed percent-change points. */
 export type CurrencySeries = { currency: Currency; points: SeriesPoint[] };
 
-const DAY_MS = 86_400_000;
+// Past this line-window span the daily bucket count would grow unbounded, so
+// the series coarsens to a weekly bucket to keep the point count sane.
+const COARSE_BUCKET_THRESHOLD_DAYS = 180;
+const WEEKLY_BUCKET_DAYS = 7;
+const DAILY_BUCKET_DAYS = 1;
+
+// The bucket width (in days) for a line window of `spanMs`: daily for short
+// ranges, weekly once the span passes the coarsening threshold so a multi-year
+// window renders a bounded number of buckets instead of ~one per day.
+export const bucketDaysForSpan = (spanMs: number): number =>
+  spanMs > COARSE_BUCKET_THRESHOLD_DAYS * DAY_MS ? WEEKLY_BUCKET_DAYS : DAILY_BUCKET_DAYS;
 
 // The bucket instants across the range: `from`, then one per `bucketDays` step,
 // always closing on `to` so the window's start and end are both represented.
@@ -62,14 +73,22 @@ const holdingValueAt = (
 // is undefined, so we baseline against the FIRST NON-ZERO bucket instead; every
 // leading zero bucket reports 0% (the flat baseline until money first appears),
 // and an all-zero series stays flat at 0%.
+//
+// The percent divides by |baseline|, not the signed baseline: dividing by a
+// negative range-start value (an overdraft total, say) would flip the line's
+// direction, reading an improving negative balance as a fall. The magnitude
+// baseline keeps "closer to zero" rising for both signs.
 const indexToStart = (values: number[]): number[] => {
   const baselineIndex = values.findIndex((value) => value !== 0);
   if (baselineIndex === -1) {
     return values.map(() => 0);
   }
   const baseline = values[baselineIndex];
+  const baselineMagnitude = Math.abs(baseline);
 
-  return values.map((value, index) => (index < baselineIndex ? 0 : (value / baseline - 1) * 100));
+  return values.map((value, index) =>
+    index < baselineIndex ? 0 : ((value - baseline) / baselineMagnitude) * 100,
+  );
 };
 
 // Distinct currencies in first-appearance order, so the output line order is

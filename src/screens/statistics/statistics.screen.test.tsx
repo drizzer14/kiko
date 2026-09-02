@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { formatDate } from '../../dates/format';
 import '../../design-system/unistyles';
 import StatisticsScreen from './statistics.screen';
 
@@ -181,5 +182,27 @@ describe('StatisticsScreen', () => {
 
     expect(getByTestId('line-chart-empty')).toBeTruthy();
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
+  });
+
+  it('lets the date picker span extend to today, not just the last transaction', async () => {
+    // The latest transaction is `now - DAY`, but the default line window runs to
+    // `now`, so the field's display span must show today as its upper bound.
+    const { getByText } = await renderScreen();
+
+    const expectedSpan = `${formatDate(new Date(now - 3 * DAY))} – ${formatDate(new Date(now))}`;
+    expect(getByText(expectedSpan)).toBeTruthy();
+  });
+
+  it('memoizes the line series across a re-render with unchanged inputs', async () => {
+    const { getByTestId, rerender } = await renderScreen();
+
+    const before = getByTestId('line-chart-series-UAH').props.points;
+
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    const after = getByTestId('line-chart-series-UAH').props.points;
+    expect(after).toBe(before);
   });
 });

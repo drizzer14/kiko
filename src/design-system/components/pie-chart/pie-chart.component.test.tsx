@@ -32,6 +32,16 @@ describe('PieChart', () => {
     expect(getByText('10%')).toBeTruthy();
   });
 
+  it('emits a closed donut-wedge arc path: move-to, an A arc command, and a Z cap', async () => {
+    const { getByTestId } = await render(<PieChart slices={slices} baseCurrency="USD" />);
+
+    const d: string = getByTestId('pie-chart-arc-a1').props.d;
+    expect(d.startsWith('M ')).toBe(true);
+    // Outer sweep and inner return sweep: two elliptical-arc commands.
+    expect(d.match(/A /g) ?? []).toHaveLength(2);
+    expect(d.trimEnd().endsWith('Z')).toBe(true);
+  });
+
   it('renders an empty-state message when there are no slices', async () => {
     const { getByTestId, queryByTestId } = await render(
       <PieChart slices={[]} baseCurrency="USD" />,

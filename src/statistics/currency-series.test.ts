@@ -1,5 +1,5 @@
 import type { HoldingRow } from '../db/schema';
-import { buildCurrencySeries, type SeriesHolding } from './currency-series';
+import { bucketDaysForSpan, buildCurrencySeries, type SeriesHolding } from './currency-series';
 
 const DAY = 86_400_000;
 const D0 = Date.UTC(2026, 0, 1);
@@ -109,5 +109,46 @@ describe('buildCurrencySeries', () => {
     });
 
     expect(series[0].points.every((point) => point.pct === 0)).toBe(true);
+  });
+
+  it('reads an improving negative balance as a rising line, indexed to |baseline|', () => {
+    // Opening -100_000 (current -50_000 minus the +50_000 that lands at D1).
+    // The overdraft halving from -100_000 to -50_000 is a +50% improvement, not
+    // the -50% that a signed baseline division would report.
+    const holdings = [holding({ id: 'a', balanceMinorUnits: -50_000 })];
+    const txByHolding = new Map([['a', [{ time: D1, amountMinorUnits: 50_000 }]]]);
+
+    const series = buildCurrencySeries({ holdings, txByHolding, range: { from: D0, to: D1 } });
+
+    const points = series[0].points;
+    expect(points[0].pct).toBe(0); // base -100_000
+    expect(points[1].pct).toBeCloseTo(50, 5); // -50_000 vs -100_000 -> +50%
+  });
+});
+
+describe('bucketDaysForSpan', () => {
+  it('keeps daily buckets for a short span', () => {
+    expect(bucketDaysForSpan(30 * DAY)).toBe(1);
+    expect(bucketDaysForSpan(180 * DAY)).toBe(1);
+  });
+
+  it('coarsens to weekly buckets once the span passes ~180 days', () => {
+    expect(bucketDaysForSpan(181 * DAY)).toBe(7);
+    expect(bucketDaysForSpan(3 * 365 * DAY)).toBe(7);
+  });
+
+  it('bounds the bucket count on a multi-year span via the coarser bucket', () => {
+    const from = D0;
+    const to = D0 + 3 * 365 * DAY;
+
+    const series = buildCurrencySeries({
+      holdings: [holding({ id: 'a', balanceMinorUnits: 100_000 })],
+      txByHolding: new Map(),
+      range: { from, to },
+      bucketDays: bucketDaysForSpan(to - from),
+    });
+
+    const dayCount = (to - from) / DAY; // ~1095 daily buckets
+    expect(series[0].points.length).toBeLessThan(dayCount / 5);
   });
 });

@@ -1,5 +1,6 @@
-import { type FC, useState } from 'react';
+import { type FC, useMemo, useState } from 'react';
 import type { Currency } from '../../currency/currency';
+import { DAY_MS } from '../../dates/duration';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import GlassSurface from '../../design-system/components/glass-surface';
@@ -14,12 +15,14 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { buildAccountContribution } from '../../statistics/account-contribution';
-import { buildCurrencySeries, type SeriesTransaction } from '../../statistics/currency-series';
+import {
+  bucketDaysForSpan,
+  buildCurrencySeries,
+  type SeriesTransaction,
+} from '../../statistics/currency-series';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL } from '../home/filter-menu';
 import { styles } from './statistics.styles';
-
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 // Midnight (local) of the calendar day a timestamp falls on — the line chart's
 // range bounds snap to whole days so the same-day picks a user makes in the
@@ -103,50 +106,67 @@ const StatisticsScreen: FC = () => {
   };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  const rateTable = buildRateTable(rates);
-  const now = Date.now();
 
-  // Only non-archived accounts are ever shown, and the filter narrows within
-  // those. An empty selection means every visible account contributes.
-  const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
-  const filteredAccounts = visibleAccounts.filter(
-    (account) => selectedAccounts.size === 0 || selectedAccounts.has(account.name),
-  );
-  const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
+  // `now` is fixed at mount: the default line window and every memo below key on
+  // it, and a fresh `Date.now()` each render would defeat that memoization.
+  const now = useMemo(() => Date.now(), []);
+  const rateTable = useMemo(() => buildRateTable(rates), [rates]);
 
-  // A holding feeds either chart only when it is open AND its account survived
-  // the account filter above.
-  const visibleHoldings = holdings.filter(
-    (holding) => holding.closedAt == null && filteredAccountIds.has(holding.accountId),
-  );
+  // Only non-archived accounts are ever shown; the account filter narrows within
+  // those, and a holding then feeds either chart only when it is open AND its
+  // account survived that filter. Memoized so both chart builders below key off
+  // a stable collection instead of a fresh array on every render.
+  const filtered = useMemo(() => {
+    const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
+    const filteredAccounts = visibleAccounts.filter(
+      (account) => selectedAccounts.size === 0 || selectedAccounts.has(account.name),
+    );
+    const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
+    const visibleHoldings = holdings.filter(
+      (holding) => holding.closedAt == null && filteredAccountIds.has(holding.accountId),
+    );
+
+    return { visibleAccounts, filteredAccounts, visibleHoldings };
+  }, [accounts, holdings, selectedAccounts]);
 
   // The full transaction span drives the date field's default display and the
-  // line's default window. With no transactions both bounds fall back to now.
+  // line's default window. With no transactions the start falls back to now.
   const transactionTimes = transactions.map((transaction) => transaction.time);
   const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
-  const spanEnd = transactionTimes.length > 0 ? Math.max(...transactionTimes) : now;
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). The `to` bound extends to
   // the end of its day so a same-day pick still captures that day's buckets.
   const rangeFrom = dateFrom !== null ? startOfLocalDay(dateFrom.getTime()) : spanStart;
-  const rangeTo = dateTo !== null ? startOfLocalDay(dateTo.getTime()) + DAY_IN_MS - 1 : now;
+  const rangeTo = dateTo !== null ? startOfLocalDay(dateTo.getTime()) + DAY_MS - 1 : now;
 
-  const series = buildCurrencySeries({
-    holdings: visibleHoldings,
-    txByHolding: groupByHolding(transactions),
-    range: { from: rangeFrom, to: rangeTo },
-  });
+  // Both builders are memoized on their real inputs so they no longer run every
+  // render; the line coarsens its day bucket on a long window (see
+  // `bucketDaysForSpan`) so the point count stays bounded on multi-year spans.
+  const series = useMemo(
+    () =>
+      buildCurrencySeries({
+        holdings: filtered.visibleHoldings,
+        txByHolding: groupByHolding(transactions),
+        range: { from: rangeFrom, to: rangeTo },
+        bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
+      }),
+    [filtered, transactions, rangeFrom, rangeTo],
+  );
 
-  const slices = buildAccountContribution({
-    accounts: filteredAccounts,
-    holdings: visibleHoldings,
-    rateTable,
-    baseCurrency,
-    now,
-  });
+  const slices = useMemo(
+    () =>
+      buildAccountContribution({
+        accounts: filtered.filteredAccounts,
+        holdings: filtered.visibleHoldings,
+        rateTable,
+        baseCurrency,
+        now,
+      }),
+    [filtered, rateTable, baseCurrency, now],
+  );
 
-  const accountNames = visibleAccounts.map((account) => account.name);
+  const accountNames = filtered.visibleAccounts.map((account) => account.name);
 
   return (
     <Screen scroll>
@@ -164,7 +184,7 @@ const StatisticsScreen: FC = () => {
             dateFrom={dateFrom}
             dateTo={dateTo}
             minDate={new Date(spanStart)}
-            maxDate={new Date(spanEnd)}
+            maxDate={new Date(now)}
             onApply={applyDateRange}
             onClear={clearDateRange}
           />
