@@ -5,44 +5,44 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { HoldingRow } from '../../db/schema';
 import { Money } from '../../currency/money';
-import { formatDateTime } from '../../dates/format';
+import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
+import { formatDate, formatDateTime, parseLocalDate } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
+import SymbolIcon from '../../design-system/components/symbol';
 import SwipeableRow from '../../design-system/components/swipeable-row';
 import Text from '../../design-system/components/text';
 import { isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries } from '../../holdings/derived-entries';
-import { type HoldingValueBreakdown, holdingValueBreakdown } from '../../holdings/holding-value';
+import { asBondMeta, asTermDepositMeta } from '../../holdings/holding-metadata';
+import {
+  bondExpectedProfitMinor,
+  type HoldingValueBreakdown,
+  holdingValueBreakdown,
+} from '../../holdings/holding-value';
+import { bondSchedule, depositSchedule } from '../../holdings/schedule';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { defaultTransactionDescription } from '../../transactions/default-description';
-import IconEditor from '../icon-editor';
+import { parseAmount } from '../../currency/parse';
+import { holdingTypeIcon } from '../../holdings/holding-icon';
+import HoldingIdentityField from '../forms/holding-identity-field';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
-// Leading SF Symbol fallback per holding type, shown until the user picks a
-// custom icon — the display-side default for the metadata header's IconEditor.
-const TYPE_ICON: Record<HoldingRow['type'], string> = {
-  card: 'creditcard',
-  term_deposit: 'banknote',
-  bond: 'doc.text',
-  cash: 'banknote',
-  crypto_asset: 'bitcoinsign.circle',
-  jar: 'cup.and.saucer',
-};
-
 // The holding's own metadata, edited here rather than on the tiny account-detail
-// list row: the icon opens the shared picker (with remove-to-default), and the
-// name is a proper labelled field. Local name state seeds from the holding so
-// keystrokes show immediately while the persisted value flows back through the
-// live query; the rename commits once on end-of-editing (return-key submit or
-// blur), and an empty or unchanged name is never written.
+// list row: the shared identity control pairs the icon picker (with
+// remove-to-default) with a labelled name field. Local name state seeds from
+// the holding so keystrokes show immediately while the persisted value flows
+// back through the live query; the rename commits once on end-of-editing
+// (return-key submit or blur), and an empty or unchanged name is never written.
 const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
-  const { theme } = useUnistyles();
   const [name, setName] = useState(holding.name);
 
   const commitName = (): void => {
@@ -54,30 +54,16 @@ const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
   };
 
   return (
-    <Box direction="row" gap={3} style={styles.metadataHeader}>
-      <IconEditor
-        label="Icon"
-        icon={holding.icon}
-        fallbackIcon={TYPE_ICON[holding.type]}
-        onSelect={(icon) => holdingsRepo.setIcon(holding.id, icon)}
-        onRemove={() => holdingsRepo.setIcon(holding.id, null)}
-      />
-
-      <Box gap={1} style={styles.metadataNameBlock}>
-        <Text variant="caption" tone="textSecondary">
-          Name
-        </Text>
-
-        <TextInput
-          accessibilityLabel={`${holding.name} name`}
-          value={name}
-          onChangeText={setName}
-          onEndEditing={commitName}
-          placeholderTextColor={theme.colors.textSecondary}
-          style={styles.nameField}
-        />
-      </Box>
-    </Box>
+    <HoldingIdentityField
+      icon={holding.icon}
+      fallbackIcon={holdingTypeIcon[holding.type]}
+      name={name}
+      onChangeName={setName}
+      onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}
+      onRemoveIcon={() => holdingsRepo.setIcon(holding.id, null)}
+      nameAccessibilityLabel={`${holding.name} name`}
+      onEndEditingName={commitName}
+    />
   );
 };
 
@@ -87,12 +73,116 @@ const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
 const breakdownRows = (
   breakdown: HoldingValueBreakdown,
   type: string,
+  expectedProfit: Money | null,
 ): { label: string; money: Money }[] => [
   { label: type === 'bond' ? 'Cost' : 'Principal', money: breakdown.principalOrCost },
   { label: 'Gross value', money: breakdown.gross },
   { label: 'Interest earned', money: breakdown.interest },
   { label: 'Tax withheld', money: breakdown.tax },
+  // Bonds surface the whole-life expected profit: sum of net coupons + nominal
+  // redeemed, less the price paid (the figure the bank statement shows).
+  ...(expectedProfit ? [{ label: 'Expected profit', money: expectedProfit }] : []),
 ];
+
+// One labelled figure inside a schedule card: a small caption over the amount,
+// so opening/added/interest read as named columns without a wide table.
+const ScheduleFigure: FC<{ label: string; money: Money }> = ({ label, money }) => (
+  <Box gap={1} style={styles.scheduleFigure}>
+    <Text variant="caption" tone="textSecondary">
+      {label}
+    </Text>
+    <MoneyText money={money} />
+  </Box>
+);
+
+// A per-period lifecycle table so the user can reconcile a deposit or bond one
+// period at a time against a bank statement. The rows come from the pure,
+// unit-tested `depositSchedule` / `bondSchedule` builders; this only renders
+// them. Future (projected) periods are dimmed.
+const HoldingSchedule: FC<{ holding: HoldingRow; now: number }> = ({ holding, now }) => {
+  const { currency } = holding;
+  const depositMeta = holding.type === 'term_deposit' ? asTermDepositMeta(holding.metadata) : null;
+  const bondMeta = holding.type === 'bond' ? asBondMeta(holding.metadata) : null;
+
+  if (depositMeta !== null) {
+    const rows = depositSchedule(depositMeta, currency, now);
+    if (rows.length === 0) {
+      return null;
+    }
+    return (
+      <Box gap={2}>
+        <Text variant="heading">Schedule</Text>
+        {rows.map((row) => (
+          <GlassSurface
+            key={row.periodEnd}
+            padding={3}
+            style={row.isFuture ? styles.futureRow : undefined}
+          >
+            <Box gap={2}>
+              <Box direction="row" style={styles.scheduleHeaderRow}>
+                <Text variant="body">{formatDate(row.periodEnd)}</Text>
+                <MoneyText money={Money.fromMajor(currency, row.closingMajor)} />
+              </Box>
+              <Box direction="row" gap={4} style={styles.scheduleFigures}>
+                <ScheduleFigure
+                  label="Opening"
+                  money={Money.fromMajor(currency, row.openingMajor)}
+                />
+                {row.contributionMajor > 0 && (
+                  <ScheduleFigure
+                    label="Added"
+                    money={Money.fromMajor(currency, row.contributionMajor)}
+                  />
+                )}
+                <ScheduleFigure
+                  label="Earned"
+                  money={Money.fromMajor(currency, row.interestMajor)}
+                />
+              </Box>
+            </Box>
+          </GlassSurface>
+        ))}
+      </Box>
+    );
+  }
+
+  if (bondMeta !== null) {
+    const rows = bondSchedule(bondMeta, currency, now);
+    if (rows.length === 0) {
+      return null;
+    }
+    return (
+      <Box gap={2}>
+        <Text variant="heading">Coupon schedule</Text>
+        {rows.map((row) => (
+          <GlassSurface
+            key={row.couponDate}
+            padding={3}
+            style={row.isFuture ? styles.futureRow : undefined}
+          >
+            <Box gap={2}>
+              <Box direction="row" style={styles.scheduleHeaderRow}>
+                <Text variant="body">{formatDate(row.couponDate)}</Text>
+                <MoneyText
+                  money={Money.fromMajor(currency, row.couponMajor)}
+                  context="transaction"
+                />
+              </Box>
+              <Box direction="row" gap={4} style={styles.scheduleFigures}>
+                <ScheduleFigure
+                  label="Cumulative"
+                  money={Money.fromMajor(currency, row.cumulativeMajor)}
+                />
+              </Box>
+            </Box>
+          </GlassSurface>
+        ))}
+      </Box>
+    );
+  }
+
+  return null;
+};
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
@@ -104,11 +194,21 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const { data: transactions } = useLiveQuery(transactionsRepo.listByHoldingQuery(holdingId), [
     'transactions',
   ]);
+  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+
+  // Resolve each transaction row's stored category to its display (icon + title)
+  // through the same shared mapping Home uses, so a rename flows through here too.
+  const categoryByKey = buildCategoryDisplayMap(categories);
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
   const breakdown = holding ? holdingValueBreakdown(holding, now) : null;
+  // Bonds show a whole-life expected profit line (net coupons + nominal - price).
+  const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
+  const expectedProfit = bondMeta
+    ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
+    : null;
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
@@ -149,11 +249,15 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     if (!holding) {
       return;
     }
-    // `Number('')` is 0, not NaN, so a blank field must be rejected explicitly:
-    // require a strictly positive major amount and a parseable date. Anything
-    // else keeps the form open (no zero-amount or invalid-date contribution).
-    const majorAmount = Number(contributionAmount);
-    const date = Date.parse(contributionDate);
+    // parseAmount (accepting a comma decimal) yields NaN for a blank or junk
+    // field, and `!(NaN > 0)` rejects it: require a strictly positive major
+    // amount and a parseable date. Anything else keeps the form open (no
+    // zero-amount or invalid-date contribution).
+    const majorAmount = parseAmount(contributionAmount);
+    // Parse the typed YYYY-MM-DD as LOCAL midnight (matching DateField and the
+    // interest boundaries), not the UTC midnight Date.parse would give — which
+    // would shift the contribution a day off in a +2/+3 zone.
+    const date = parseLocalDate(contributionDate);
     if (!(majorAmount > 0) || Number.isNaN(date)) {
       return;
     }
@@ -176,7 +280,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ];
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={
+        <PressableButton
+          onPress={() => navigation.navigate('TransactionForm', { holdingId })}
+          backgroundColor={theme.colors.accent}
+          alignSelf="flex-start"
+          label="Add transaction"
+        />
+      }
+    >
       <Box gap={4}>
         {holding && <HoldingMetadataHeader holding={holding} />}
 
@@ -188,7 +302,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             <MoneyText money={breakdown.net} style={styles.headlineValue} />
             {showBreakdown && (
               <Box gap={1} style={styles.breakdown}>
-                {breakdownRows(breakdown, holding.type).map((detail) => (
+                {breakdownRows(breakdown, holding.type, expectedProfit).map((detail) => (
                   <Box
                     key={detail.label}
                     style={{ flexDirection: 'row', justifyContent: 'space-between' }}
@@ -204,41 +318,59 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           </Box>
         )}
 
+        {holding && showBreakdown && <HoldingSchedule holding={holding} now={now} />}
+
         <Box gap={2}>
           <Text variant="heading">Transactions</Text>
-          {ledger.map((row) =>
-            row.kind === 'derived' ? (
-              // A computed entry (contribution/interest/tax/purchase/coupon):
-              // read-only — no SwipeableRow, not tappable — and marked "Computed"
-              // so it reads as derived, not a stored transaction. The signed
-              // amount uses transaction sign coloring (positive green, negative
-              // red).
-              <Box
-                key={row.entry.id}
-                gap={1}
-                style={[styles.row, { backgroundColor: theme.colors.surface }]}
-              >
-                <Box direction="row" style={styles.rowMain}>
-                  <Box style={styles.rowDescription}>
-                    <Text variant="body">{row.entry.label}</Text>
+          {ledger.map((row) => {
+            if (row.kind === 'derived') {
+              // A computed entry (contribution/interest/tax/purchase/coupon/
+              // redemption): read-only — no SwipeableRow, not tappable — and
+              // marked "Computed" so it reads as derived, not a stored
+              // transaction. A projected (future-dated) entry — an upcoming
+              // coupon or the redemption — is dimmed to read as an estimate. The
+              // signed amount uses transaction sign coloring (positive green,
+              // negative red).
+              return (
+                <Box
+                  key={row.entry.id}
+                  gap={1}
+                  style={[
+                    styles.row,
+                    { backgroundColor: theme.colors.surface },
+                    row.entry.isFuture && styles.futureRow,
+                  ]}
+                >
+                  <Box direction="row" style={styles.rowMain}>
+                    <Box style={styles.rowDescription}>
+                      <Text variant="body">{row.entry.label}</Text>
+                    </Box>
+                    <Box style={styles.rowAmount}>
+                      <MoneyText
+                        money={Money.of(currency, row.entry.amountMinorUnits)}
+                        context="transaction"
+                      />
+                    </Box>
                   </Box>
-                  <Box style={styles.rowAmount}>
-                    <MoneyText
-                      money={Money.of(currency, row.entry.amountMinorUnits)}
-                      context="transaction"
-                    />
-                  </Box>
+                  <Text variant="caption" tone="textSecondary">
+                    {row.entry.isFuture ? 'Projected' : 'Computed'} ·{' '}
+                    {formatDateTime(row.entry.time)}
+                  </Text>
                 </Box>
-                <Text variant="caption" tone="textSecondary">
-                  Computed · {formatDateTime(row.entry.time)}
-                </Text>
-              </Box>
-            ) : (
-              // Every real row is tappable: it opens the shared Transaction form
-              // for this id. A manual row edits; a synced (Monobank) row opens
-              // read-only — the form resolves which from the transaction's own
-              // `source`, so the row only needs to pass the id. Swipe-to-delete
-              // is disabled for synced rows (their state is owned by the sync).
+              );
+            }
+
+            // The row's stored category resolves to its icon + title through the
+            // same shared mapping Home uses; a null/unknown category falls back
+            // to the neutral display.
+            const category = resolveCategoryDisplay(row.transaction.category, categoryByKey);
+
+            // Every real row is tappable: it opens the shared Transaction form
+            // for this id. A manual row edits; a synced (Monobank) row opens
+            // read-only — the form resolves which from the transaction's own
+            // `source`, so the row only needs to pass the id. Swipe-to-delete
+            // is disabled for synced rows (their state is owned by the sync).
+            return (
               <SwipeableRow
                 key={row.transaction.id}
                 disabled={isSyncedTransaction(row.transaction)}
@@ -252,14 +384,22 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                 >
                   <Box gap={1} style={[styles.row, { backgroundColor: theme.colors.surface }]}>
                     <Box direction="row" style={styles.rowMain}>
-                      <Box style={styles.rowDescription}>
-                        <Text variant="body">
-                          {row.transaction.description ||
-                            defaultTransactionDescription(
-                              holdingName ?? '',
-                              row.transaction.amountMinorUnits,
-                            )}
-                        </Text>
+                      <Box direction="row" gap={2} style={styles.rowLead}>
+                        <SymbolIcon
+                          name={category.icon}
+                          size={18}
+                          tone="textSecondary"
+                          accessibilityLabel={category.title}
+                        />
+                        <Box style={styles.rowDescription}>
+                          <Text variant="body">
+                            {row.transaction.description ||
+                              defaultTransactionDescription(
+                                holdingName ?? '',
+                                row.transaction.amountMinorUnits,
+                              )}
+                          </Text>
+                        </Box>
                       </Box>
                       <Box style={styles.rowAmount}>
                         <MoneyText
@@ -274,8 +414,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   </Box>
                 </Pressable>
               </SwipeableRow>
-            ),
-          )}
+            );
+          })}
         </Box>
 
         {isDeposit &&
@@ -302,53 +442,42 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                 onPress={submitContribution}
                 backgroundColor={theme.colors.accent}
                 alignSelf="flex-start"
-              >
-                <Text variant="body">Save contribution</Text>
-              </PressableButton>
+                label="Save contribution"
+              />
             </Box>
           ) : (
             <PressableButton
               onPress={() => setAddingContribution(true)}
               backgroundColor={theme.colors.surfaceHigh}
               alignSelf="flex-start"
-            >
-              <Text variant="body">Add contribution</Text>
-            </PressableButton>
+              label="Add contribution"
+            />
           ))}
-
-        <PressableButton
-          onPress={() => navigation.navigate('TransactionForm', { holdingId })}
-          backgroundColor={theme.colors.accent}
-          alignSelf="flex-start"
-        >
-          <Text variant="body">Add transaction</Text>
-        </PressableButton>
       </Box>
     </Screen>
   );
 };
 
 const styles = StyleSheet.create((theme) => ({
-  // The holding's metadata header: the icon chip on the left, the name field
-  // growing beside it. Bottom-aligned so the chip lines up with the field's
-  // input row (which sits below its caption label) rather than its caption.
-  metadataHeader: {
-    alignItems: 'flex-end',
+  // A schedule card's header line: the period/coupon date on the left, the
+  // closing balance (or period coupon) on the right, split by space-between.
+  scheduleHeaderRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  // The name field's column: grows to fill the row beside the fixed-width icon
-  // chip, so a long holding name has room to render.
-  metadataNameBlock: {
-    flex: 1,
+  // The row of labelled figures (opening/added/interest, or days/cumulative)
+  // beneath a schedule card's header; wraps if the figures overflow the width.
+  scheduleFigures: {
+    flexWrap: 'wrap',
   },
-  // A labelled name field: a bordered, filled input so the editable name reads
-  // as a proper field rather than a tiny inline control.
-  nameField: {
-    color: theme.colors.textPrimary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(2),
-    ...theme.typography.body,
+  // One labelled figure within that row.
+  scheduleFigure: {
+    minWidth: theme.spacing(20),
+  },
+  // A projected (post-`now`) schedule period, dimmed so it reads as an estimate
+  // rather than a settled statement line.
+  futureRow: {
+    opacity: 0.5,
   },
   // The holding's headline net value: rendered at the title type scale so it
   // reads as the primary figure of the screen. Only size/weight live here —
@@ -371,6 +500,14 @@ const styles = StyleSheet.create((theme) => ({
   rowMain: {
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  // The leading cluster of a transaction row: category icon + description, kept
+  // together on the left so the row's space-between only splits this cluster
+  // from the amount. `flex: 1` bounds it to the space left of the amount; top-
+  // aligned so the icon sticks to the first line of a wrapping title.
+  rowLead: {
+    flex: 1,
+    alignItems: 'flex-start',
   },
   // The description cell: `flex: 1` lets a long title wrap onto multiple lines
   // within the bounded row instead of pushing the amount off-screen.

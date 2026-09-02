@@ -142,9 +142,8 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
           alignSelf="flex-start"
           disabled={tokenStatus.kind === 'checking'}
           icon={<SymbolIcon name="checkmark.circle" tone="textPrimary" />}
-        >
-          <Text variant="body">Save</Text>
-        </PressableButton>
+          label="Save"
+        />
         {tokenStatus.kind === 'checking' && (
           <Text variant="body" tone="textSecondary">
             Checking…

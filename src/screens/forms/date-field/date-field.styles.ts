@@ -23,11 +23,17 @@ export const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.background,
   },
   // The calendar sheet: flush to the screen's bottom edge with rounded top
-  // corners — a clean bottom sheet, no floating card frame.
-  sheet: {
+  // corners — a clean bottom sheet, no floating card frame. This Modal
+  // renders outside any SafeAreaView, so the bottom edge must add the bottom
+  // safe-area inset (the home indicator's zone) itself on top of the base
+  // padding, or the sheet sits flush against it — `bottomInset` is
+  // `useSafeAreaInsets().bottom` from the call site.
+  sheet: (bottomInset: number) => ({
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
     backgroundColor: theme.colors.surfaceHigh,
-    padding: theme.spacing(4),
-  },
+    paddingTop: theme.spacing(4),
+    paddingHorizontal: theme.spacing(4),
+    paddingBottom: theme.spacing(4) + bottomInset,
+  }),
 }));

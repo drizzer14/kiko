@@ -58,7 +58,9 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
           </Pressable>
         </Box>
 
-        <Text variant="heading">{title}</Text>
+        <Box style={styles.titleColumn}>
+          <Text variant="heading">{title}</Text>
+        </Box>
 
         <Box direction="row" gap={3} style={styles.group}>
           <Pressable

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { ACTION_WIDTH, clampTranslate, resolveSnap, shouldClaimSwipe } from './gesture';
 
 type SwipeableRowProps = {
   children: ReactNode;
@@ -24,11 +25,6 @@ type SwipeableRowProps = {
   // (e.g. theme.radii.md, theme.radii.sm) when it differs.
   radius?: number;
 };
-
-// Width the row travels to fully reveal the delete action, and the drag
-// distance past which a release snaps open instead of closed.
-const ACTION_WIDTH = 88;
-const OPEN_THRESHOLD = ACTION_WIDTH / 2;
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -79,21 +75,42 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   // renders, so capturing it here once is safe.
   const responderRef = useRef<PanResponderInstance | null>(null);
   if (responderRef.current === null) {
+    // A stable resting state is the only thing the row is ever allowed to
+    // settle at: fully open or fully closed, always animated with a bounded
+    // spring so a cancelled or stolen gesture returns cleanly rather than
+    // resting partway.
     const snapTo = (value: number) => {
       offset.current = value;
       setIsOpen(value !== 0);
-      Animated.spring(translateX, { toValue: value, useNativeDriver: true }).start();
+      Animated.spring(translateX, {
+        toValue: value,
+        useNativeDriver: true,
+        bounciness: 0,
+      }).start();
     };
     responderRef.current = PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, gesture) =>
-        Math.abs(gesture.dx) > Math.abs(gesture.dy) && Math.abs(gesture.dx) > 4,
+      // Do not claim on touch-down, so a plain tap on the row still reaches
+      // its children.
+      onStartShouldSetPanResponder: () => false,
+      // activeOffsetX / failOffsetY arbitration: claim the swipe only on a
+      // clear, dominant horizontal drag, and never when the movement is
+      // vertical (which must fall through to the enclosing list's scroll).
+      onMoveShouldSetPanResponder: (_e, gesture) => shouldClaimSwipe(gesture.dx, gesture.dy),
+      // Once the horizontal swipe is committed, refuse to hand the gesture
+      // back to a parent scroll view mid-drag — that hand-off is exactly what
+      // left the row stranded partly open.
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_e, gesture) => {
-        const next = Math.min(0, Math.max(-ACTION_WIDTH, offset.current + gesture.dx));
-        translateX.setValue(next);
+        translateX.setValue(clampTranslate(offset.current, gesture.dx));
       },
       onPanResponderRelease: (_e, gesture) => {
-        const next = offset.current + gesture.dx;
-        snapTo(next < -OPEN_THRESHOLD ? -ACTION_WIDTH : 0);
+        snapTo(resolveSnap(offset.current, gesture.dx));
+      },
+      // If the gesture is nonetheless terminated (e.g. an ancestor forcibly
+      // takes over), still settle to a stable state instead of freezing
+      // partway open.
+      onPanResponderTerminate: (_e, gesture) => {
+        snapTo(resolveSnap(offset.current, gesture.dx));
       },
     });
   }

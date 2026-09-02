@@ -1,6 +1,13 @@
 import { Alert, Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
+import {
+  ACTION_WIDTH,
+  clampTranslate,
+  OPEN_THRESHOLD,
+  resolveSnap,
+  shouldClaimSwipe,
+} from './gesture';
 import SwipeableRow from './index';
 
 // The delete action is mounted behind the row content for the reveal
@@ -10,6 +17,57 @@ import SwipeableRow from './index';
 // with `includeHiddenElements: true` to reach the mounted-but-hidden button
 // (which is exactly what a swiped-open row exposes to the user).
 const HIDDEN = { includeHiddenElements: true } as const;
+
+describe('swipe gesture arbitration', () => {
+  // Mirrors activeOffsetX([-n, n]).failOffsetY([-m, m]): the pan claims the
+  // gesture only on clear horizontal intent and forfeits it the moment the
+  // drag turns vertical, so a scroll never partially opens the row.
+  it('does NOT claim the gesture for a vertical drag (lets the list scroll)', () => {
+    // A downward swipe with negligible horizontal travel.
+    expect(shouldClaimSwipe(2, 40)).toBe(false);
+    // ...and an upward one.
+    expect(shouldClaimSwipe(-3, -40)).toBe(false);
+    // A diagonal drag whose vertical travel crosses the fail offset still
+    // yields to the scroll view rather than opening the row.
+    expect(shouldClaimSwipe(20, 30)).toBe(false);
+  });
+
+  it('does NOT claim the gesture until horizontal travel is unambiguous', () => {
+    // A tiny horizontal jitter below the active offset must not steal a tap.
+    expect(shouldClaimSwipe(6, 0)).toBe(false);
+    expect(shouldClaimSwipe(-6, 1)).toBe(false);
+  });
+
+  it('claims the gesture for a clear, dominant horizontal drag', () => {
+    expect(shouldClaimSwipe(-20, 2)).toBe(true);
+    expect(shouldClaimSwipe(20, -2)).toBe(true);
+  });
+});
+
+describe('swipe settle (release / termination snap)', () => {
+  it('snaps a small horizontal drag below the open threshold back closed', () => {
+    // Started closed, dragged left less than half the action width.
+    expect(resolveSnap(0, -(OPEN_THRESHOLD - 1))).toBe(0);
+  });
+
+  it('snaps a horizontal drag past the open threshold fully open', () => {
+    expect(resolveSnap(0, -(OPEN_THRESHOLD + 1))).toBe(-ACTION_WIDTH);
+  });
+
+  it('always settles to a single stable resting state, never partial', () => {
+    // Over-drag past the action width still rests exactly at fully open.
+    expect(resolveSnap(0, -(ACTION_WIDTH * 3))).toBe(-ACTION_WIDTH);
+    // A small back-drag from open keeps it open; a large one closes it.
+    expect(resolveSnap(-ACTION_WIDTH, 10)).toBe(-ACTION_WIDTH);
+    expect(resolveSnap(-ACTION_WIDTH, ACTION_WIDTH)).toBe(0);
+  });
+
+  it('clamps live translation to the open/closed travel bounds', () => {
+    expect(clampTranslate(0, 20)).toBe(0);
+    expect(clampTranslate(0, -20)).toBe(-20);
+    expect(clampTranslate(0, -(ACTION_WIDTH * 2))).toBe(-ACTION_WIDTH);
+  });
+});
 
 describe('SwipeableRow', () => {
   it('renders a delete action for an enabled row and confirms before deleting', async () => {

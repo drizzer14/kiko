@@ -14,29 +14,4 @@ export const styles = StyleSheet.create((theme) => ({
   rowLast: {
     borderBottomWidth: 0,
   },
-  // The row's header line: the leading icon-picker toggle sits next to the
-  // editable title field, both vertically centered.
-  header: {
-    alignItems: 'center',
-  },
-  // The leading icon presented as a bordered, rounded chip so it reads as a
-  // tappable control — mirroring the bordered rename field beside it (see
-  // `input`) so both edit affordances share one visual language. The border is
-  // the affordance; there is no overlaid pencil badge.
-  iconChip: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(2),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // The rename field grows to fill the row width beside the fixed icon toggle.
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(2),
-    ...theme.typography.body,
-  },
 }));

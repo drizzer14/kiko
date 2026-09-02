@@ -5,6 +5,11 @@ import type { ValuableHolding } from './holding-value';
 const DAY = 86_400_000;
 const T0 = 1_600_000_000_000;
 
+// Local-midnight instant, matching the local Date arithmetic the coupon-date
+// helpers use.
+const local = (year: number, monthIndex: number, day: number): number =>
+  new Date(year, monthIndex, day).getTime();
+
 type Holding = ValuableHolding & { id: string };
 
 describe('derivedEntries', () => {
@@ -36,6 +41,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: 100_000,
         label: 'Contribution',
         kind: 'contribution',
+        isFuture: false,
         derived: true,
       },
       {
@@ -44,22 +50,32 @@ describe('derivedEntries', () => {
         amountMinorUnits: 100_000,
         label: 'Contribution',
         kind: 'contribution',
+        isFuture: false,
         derived: true,
       },
       {
         id: 'derived:h1:interest:0',
         time: now,
-        amountMinorUnits: 20_000,
+        // Interest with calendar-anniversary compounding: the first 100,000
+        // completes one annual period (+10,000) then accrues the trailing
+        // ~35 days simple; the second 100,000 (dated T0+30d) accrues a partial
+        // first period actual/365 to the annual boundary, then the trailing
+        // partial. Total 21,280 — the old fixed-day compounding under-counted
+        // this at 20,000.
+        amountMinorUnits: 21_280,
         label: 'Interest',
         kind: 'interest',
+        isFuture: false,
         derived: true,
       },
       {
         id: 'derived:h1:tax:0',
         time: now,
-        amountMinorUnits: -4_600,
+        // floor(21,280 * 23%) = 4,894.
+        amountMinorUnits: -4_894,
         label: 'Tax',
         kind: 'tax',
+        isFuture: false,
         derived: true,
       },
     ];
@@ -109,93 +125,115 @@ describe('derivedEntries', () => {
     expect(derivedEntries(holding, T0)).toEqual([]);
   });
 
-  it('derives purchase and coupon for a government bond with no tax entry', () => {
+  it('derives purchase, each net coupon, and redemption for a government bond', () => {
+    // Nominal 10,000.00 (10 * 1,000.00), 5% annual => 500.00 coupons. Coupons
+    // step back from maturity: 15 Jan 2025 (past), 15 Jan 2026 and 1 Jan 2027
+    // (future). Redemption of the nominal on the maturity date.
     const holding: Holding = {
       id: 'gov',
       type: 'bond',
-      currency: 'USD',
-      balanceMinorUnits: 1_000_000,
+      currency: 'UAH',
+      balanceMinorUnits: 0,
       metadata: {
         quantity: 10,
-        faceValueMinorUnits: 100_000,
+        faceValueMinorUnits: 100_000, // 1,000.00 each => nominal 1,000,000 minor
         couponPct: 5,
         couponFrequency: 'annually',
         bondKind: 'government',
-        purchaseDate: T0,
-        maturityDate: T0 + 3650 * DAY,
+        purchaseDate: local(2025, 0, 1),
+        maturityDate: local(2027, 0, 1),
       },
     };
-    const now = T0 + 100 * DAY;
+    const now = local(2025, 5, 1); // 1 Jun 2025
 
     const entries = derivedEntries(holding, now);
 
     expect(entries).toEqual([
       {
         id: 'derived:gov:purchase:0',
-        time: T0,
-        amountMinorUnits: 1_000_000,
+        time: local(2025, 0, 1),
+        amountMinorUnits: -1_000_000, // defaults price to nominal (paid at par)
         label: 'Purchase',
         kind: 'purchase',
+        isFuture: false,
         derived: true,
       },
       {
         id: 'derived:gov:coupon:0',
-        time: now,
-        amountMinorUnits: 13_699,
+        time: local(2025, 0, 15),
+        amountMinorUnits: 50_000,
         label: 'Coupon',
         kind: 'coupon',
+        isFuture: false,
+        derived: true,
+      },
+      {
+        id: 'derived:gov:coupon:1',
+        time: local(2026, 0, 15),
+        amountMinorUnits: 50_000,
+        label: 'Coupon',
+        kind: 'coupon',
+        isFuture: true,
+        derived: true,
+      },
+      {
+        id: 'derived:gov:coupon:2',
+        time: local(2027, 0, 1),
+        amountMinorUnits: 50_000,
+        label: 'Coupon',
+        kind: 'coupon',
+        isFuture: true,
+        derived: true,
+      },
+      {
+        id: 'derived:gov:redemption:0',
+        time: local(2027, 0, 1),
+        amountMinorUnits: 1_000_000,
+        label: 'Redemption',
+        kind: 'redemption',
+        isFuture: true,
         derived: true,
       },
     ]);
     expect(entries.some((e) => e.kind === 'tax')).toBe(false);
   });
 
-  it('derives purchase, coupon and tax for a corporate bond', () => {
+  it('pays a corporate bond coupon net of the 23% withholding, using the real price', () => {
+    // Coupon 500.00 gross => net 500.00 - floor(23%) = 385.00 (38,500 minor).
+    // Purchase entry uses the actual price paid, not the nominal.
     const holding: Holding = {
       id: 'corp',
       type: 'bond',
-      currency: 'USD',
-      balanceMinorUnits: 1_000_000,
+      currency: 'UAH',
+      balanceMinorUnits: 0,
       metadata: {
         quantity: 10,
         faceValueMinorUnits: 100_000,
         couponPct: 5,
         couponFrequency: 'annually',
         bondKind: 'corporate',
-        purchaseDate: T0,
-        maturityDate: T0 + 3650 * DAY,
+        purchaseDate: local(2025, 0, 1),
+        purchasePriceMinorUnits: 980_000, // paid below par
+        maturityDate: local(2027, 0, 1),
       },
     };
-    const now = T0 + 100 * DAY;
+    const now = local(2025, 5, 1);
 
     const entries = derivedEntries(holding, now);
 
-    expect(entries).toEqual([
-      {
-        id: 'derived:corp:purchase:0',
-        time: T0,
-        amountMinorUnits: 1_000_000,
-        label: 'Purchase',
-        kind: 'purchase',
-        derived: true,
-      },
-      {
-        id: 'derived:corp:coupon:0',
-        time: now,
-        amountMinorUnits: 13_699,
-        label: 'Coupon',
-        kind: 'coupon',
-        derived: true,
-      },
-      {
-        id: 'derived:corp:tax:0',
-        time: now,
-        amountMinorUnits: -3_150,
-        label: 'Tax',
-        kind: 'tax',
-        derived: true,
-      },
+    expect(entries[0]).toEqual({
+      id: 'derived:corp:purchase:0',
+      time: local(2025, 0, 1),
+      amountMinorUnits: -980_000,
+      label: 'Purchase',
+      kind: 'purchase',
+      isFuture: false,
+      derived: true,
+    });
+    expect(entries.filter((e) => e.kind === 'coupon').map((e) => e.amountMinorUnits)).toEqual([
+      38_500, 38_500, 38_500,
     ]);
+    expect(entries.some((e) => e.kind === 'tax')).toBe(false);
   });
 
   it('returns [] for non deposit/bond holdings', () => {

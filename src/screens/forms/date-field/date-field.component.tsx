@@ -1,6 +1,7 @@
 import { type FC, useState } from 'react';
 import { Modal, Pressable } from 'react-native';
 import type { DateData } from 'react-native-calendars';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { formatDate } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
@@ -25,6 +26,7 @@ const toCalendarKey = (timestamp: number): string => {
 // DD.MM.YYYY, mirroring the Home date-range field's calendar chrome.
 const DateField: FC<DateFieldProps> = ({ label, value, onChange, placeholder }) => {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
   const handleDayPress = (day: DateData): void => {
@@ -59,7 +61,7 @@ const DateField: FC<DateFieldProps> = ({ label, value, onChange, placeholder }) 
 
       <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Box gap={4} style={styles.sheet} onStartShouldSetResponder={() => true}>
+          <Box gap={4} style={styles.sheet(insets.bottom)} onStartShouldSetResponder={() => true}>
             <Text variant="heading">{label}</Text>
 
             <PffCalendar

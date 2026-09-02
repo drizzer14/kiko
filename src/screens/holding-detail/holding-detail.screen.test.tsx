@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
@@ -25,6 +25,9 @@ jest.mock('../../repositories/transactions.repo', () => ({
     }),
     remove: jest.fn(),
   },
+}));
+jest.mock('../../repositories/categories.repo', () => ({
+  categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
 const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
@@ -63,13 +66,39 @@ const depositHolding = {
   },
 };
 
+// A deposit whose earliest contribution is dated ~now with a long term, so its
+// schedule tabulates period rows that all close in the future — the case that
+// used to render a "· projected" suffix.
+const futureDepositHolding = {
+  id: 'h-1',
+  name: 'Future deposit',
+  type: 'term_deposit',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    contributions: [{ amountMinorUnits: 100_000, date: Date.now() }],
+    annualRatePct: 12,
+    termMonths: 24,
+    recapitalization: true,
+    compounding: 'annually',
+  },
+};
+
 // Key each live-query result to its tag so a state-driven re-render (e.g. the
 // add-contribution form) keeps returning the same data instead of draining a
 // one-shot queue.
-const seed = (holding: unknown, transactions: unknown[] = []): void => {
-  mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) =>
-    keys[0] === 'holdings' ? { data: [holding] } : { data: transactions },
-  );
+const seed = (holding: unknown, transactions: unknown[] = [], categories: unknown[] = []): void => {
+  mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
+    if (keys[0] === 'holdings') {
+      return { data: [holding] };
+    }
+
+    if (keys[0] === 'categories') {
+      return { data: categories };
+    }
+
+    return { data: transactions };
+  });
 };
 
 const renderScreen = () => render(<HoldingDetailScreen navigation={navigation} route={route} />);
@@ -167,6 +196,31 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Tax withheld')).toBeTruthy();
   });
 
+  it('never labels a future schedule period with the word "projected"', async () => {
+    seed(futureDepositHolding);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    // The schedule still renders (its future periods are dimmed via opacity),
+    // but the literal "projected" wording has been dropped from the period line.
+    expect(getByText('Schedule')).toBeTruthy();
+    expect(queryByText(/projected/i)).toBeNull();
+  });
+
+  it('renders a per-period lifecycle schedule for a deposit', async () => {
+    seed(depositHolding);
+
+    const { getByText, getAllByText } = await renderScreen();
+
+    // The deposit (opened 2024-01-01, 24-month term) tabulates a row per annual
+    // period; the first anniversary closes on 2025-01-01. The builder is unit-
+    // tested separately, so the screen only needs to prove it renders the rows.
+    expect(getByText('Schedule')).toBeTruthy();
+    expect(getByText('01.01.2025')).toBeTruthy();
+    // One "Opening" figure label per period row.
+    expect(getAllByText('Opening').length).toBeGreaterThan(0);
+  });
+
   it('shows the shared default description for a transaction with an empty description', async () => {
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: 1, description: '', source: 'manual' },
@@ -177,6 +231,59 @@ describe('HoldingDetailScreen', () => {
 
     expect(getByText('Everyday card expense')).toBeTruthy();
     expect(getByText('Everyday card income')).toBeTruthy();
+  });
+
+  it('pins the Add transaction action to the screen footer', async () => {
+    seed(cardHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // The action sits in the Screen footer slot so it stays pinned to the bottom
+    // on a short page rather than floating beneath the (possibly empty) ledger.
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add transaction')).toBeTruthy();
+  });
+
+  it('renders the resolved category icon on a transaction row', async () => {
+    seed(
+      cardHolding,
+      [
+        {
+          id: 'txn-cat',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: 'Coffee',
+          category: 'Food',
+          source: 'manual',
+        },
+      ],
+      [{ key: 'food', title: 'Food', icon: 'fork.knife' }],
+    );
+
+    const { getByLabelText } = await renderScreen();
+
+    // The row resolves its stored `category` through the same shared mapping
+    // Home uses, so the icon follows the categories table (here `fork.knife`).
+    expect(getByLabelText('Food').props.name).toBe('fork.knife');
+  });
+
+  it('renders the neutral category icon for an empty or unknown category', async () => {
+    seed(cardHolding, [
+      {
+        id: 'txn-none',
+        amountMinorUnits: -5000,
+        time: 1,
+        description: 'Coffee',
+        category: null,
+        source: 'manual',
+      },
+    ]);
+
+    const { getByLabelText } = await renderScreen();
+
+    // A null/unresolvable category falls back to the shared neutral display
+    // (Uncategorized / creditcard), matching Home's neutral fallback.
+    expect(getByLabelText('Uncategorized').props.name).toBe('creditcard');
   });
 
   it('opens the transaction form for the tapped row, keyed by its id', async () => {
@@ -284,9 +391,12 @@ describe('HoldingDetailScreen', () => {
     await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
     await fireEvent.press(getByText('Save contribution'));
 
+    // The typed YYYY-MM-DD lands at LOCAL midnight of that day (matching
+    // DateField and the interest boundaries), not the UTC midnight Date.parse
+    // would give — which shifts a day off in a +2/+3 zone.
     expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith('h-1', {
       amountMinorUnits: 100_000,
-      date: Date.parse('2025-06-01'),
+      date: new Date(2025, 5, 1).getTime(),
     });
   });
 

@@ -259,7 +259,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M52858LNYL;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = PFF/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -273,9 +276,6 @@
 					"-ObjC",
 					"-lc++",
 				);
-				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				DEVELOPMENT_TEAM = M52858LNYL;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff;
 				PRODUCT_NAME = PFF;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -292,7 +292,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M52858LNYL;
 				INFOPLIST_FILE = PFF/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -305,9 +308,6 @@
 					"-ObjC",
 					"-lc++",
 				);
-				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				DEVELOPMENT_TEAM = M52858LNYL;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff;
 				PRODUCT_NAME = PFF;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

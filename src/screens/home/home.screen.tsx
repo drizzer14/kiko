@@ -4,6 +4,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
 import { useState } from 'react';
 import { Pressable, SectionList } from 'react-native';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { formatDate } from '../../dates/format';
@@ -36,29 +38,6 @@ type HomeScreenProps = CompositeScreenProps<
   NativeStackScreenProps<HomeStackParamList, 'Home'>,
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
-
-// A transaction stores a category as a stable key (the MCC category name,
-// lowercased — see Task 13's slug convention). The categories table maps that
-// key to the user-editable title + icon, so the display resolves through the
-// table rather than any hard-coded map.
-type CategoryDisplay = { title: string; icon: string };
-
-// Shown when a category cannot be resolved and the table has no seeded `other`
-// row (e.g. before the seed migration runs). A null/empty category also lands
-// here so its label matches the filter bar's own "Uncategorized" chip.
-const NEUTRAL_CATEGORY: CategoryDisplay = { title: 'Uncategorized', icon: 'creditcard' };
-
-const resolveCategoryDisplay = (
-  category: string | null,
-  byKey: ReadonlyMap<string, CategoryDisplay>,
-): CategoryDisplay => {
-  const key = category?.toLowerCase();
-  if (!key) {
-    return NEUTRAL_CATEGORY;
-  }
-
-  return byKey.get(key) ?? byKey.get('other') ?? NEUTRAL_CATEGORY;
-};
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -133,6 +112,18 @@ const groupByDay = <Row extends { time: number }>(
 };
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
+  // The floating native glass tab bar sits over this screen's bottom edge, so
+  // the SectionList needs bottom clearance beyond it or the last transaction
+  // row is left partially covered. Unlike the Screen primitive's own
+  // footer/content clearance (see `screen.component.tsx`), this omits the
+  // bottom safe-area inset: Screen's plain-branch `SafeAreaView` already
+  // reserves that inset natively around this screen's content (it keeps the
+  // default 'bottom' edge), so adding it again here would double-count it and
+  // leave too much space below the last row. The measured tab-bar height
+  // alone is the only clearance this list needs to add itself.
+  const tabBarHeight = useBottomTabBarHeight();
+  const listBottomClearance = tabBarHeight;
+
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -145,9 +136,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   type TransactionRow = (typeof transactions)[number];
 
-  const categoryByKey: ReadonlyMap<string, CategoryDisplay> = new Map(
-    categories.map((category) => [category.key, { title: category.title, icon: category.icon }]),
-  );
+  const categoryByKey = buildCategoryDisplayMap(categories);
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -301,7 +290,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   );
 
   return (
-    <Screen>
+    // The SectionList below is this screen's own scrollable surface and applies
+    // the tab-bar clearance to its own content (`listContent`), so Screen must
+    // not also reserve it — `bleedBottom` drops Screen's own content clearance
+    // to avoid double-counting the gap below the last transaction row.
+    <Screen bleedBottom>
       <Box gap={4} style={styles.content}>
         <GlassSurface padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
@@ -347,7 +340,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           renderSectionHeader={renderDayHeader}
           stickySectionHeadersEnabled={false}
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={styles.listContent(listBottomClearance)}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">No transactions</Text>

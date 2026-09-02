@@ -1,12 +1,11 @@
 import { type FC, useState } from 'react';
-import { Pressable, TextInput } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { Pressable } from 'react-native';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { categoriesRepo } from '../../../repositories/categories.repo';
-import IconPickerModal from '../icon-picker-modal';
+import HoldingIdentityField from '../../forms/holding-identity-field';
 import { styles } from './add-category-row.styles';
 
 // The default icon a new category starts with — a neutral grid glyph from the
@@ -19,11 +18,9 @@ const DEFAULT_ICON = 'square.grid.2x2';
 // (the new row then appears through the list's existing live query); Cancel
 // collapses the form back so the action is never a dead end.
 const AddCategoryRow: FC = () => {
-  const { theme } = useUnistyles();
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const trimmedName = name.trim();
   // Save enables the moment a non-empty (non-whitespace) name is entered.
@@ -46,11 +43,6 @@ const AddCategoryRow: FC = () => {
     collapse();
   };
 
-  const selectIcon = (nextIcon: string): void => {
-    setIcon(nextIcon);
-    setPickerOpen(false);
-  };
-
   if (!expanded) {
     return (
       <Pressable
@@ -71,32 +63,20 @@ const AddCategoryRow: FC = () => {
 
   return (
     <Box gap={3} style={styles.form}>
-      <Box direction="row" gap={3} style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Choose new category icon"
-          accessibilityState={{ expanded: pickerOpen }}
-          onPress={() => setPickerOpen(true)}
-          style={styles.iconChip}
-        >
-          <SymbolIcon name={icon} tone="textSecondary" />
-        </Pressable>
-
-        {/* A bare, unlabelled input — like the category rows above it — so the
-            name field lines up cleanly with the leading icon chip rather than
-            being pushed down by a field label. */}
-        <TextInput
-          accessibilityLabel="Name"
-          value={name}
-          onChangeText={setName}
-          placeholder="Category name"
-          placeholderTextColor={theme.colors.textSecondary}
-          style={[
-            styles.input,
-            { color: theme.colors.textPrimary, borderColor: theme.colors.border },
-          ]}
-        />
-      </Box>
+      {/* The shared identity field in its caption-free (dense list) mode, so
+          the icon chip and the name field line up at equal height — matching
+          the category rows above. A new category always has an icon, so no
+          Remove is offered (no onRemoveIcon). */}
+      <HoldingIdentityField
+        captioned={false}
+        icon={icon}
+        fallbackIcon={icon}
+        iconAccessibilityLabel="Choose new category icon"
+        onSelectIcon={setIcon}
+        name={name}
+        onChangeName={setName}
+        namePlaceholder="Category name"
+      />
 
       <Box direction="row" gap={3}>
         <Box style={styles.action}>
@@ -111,13 +91,6 @@ const AddCategoryRow: FC = () => {
           </Button>
         </Box>
       </Box>
-
-      <IconPickerModal
-        visible={pickerOpen}
-        selectedIcon={icon}
-        onSelect={selectIcon}
-        onDismiss={() => setPickerOpen(false)}
-      />
     </Box>
   );
 };

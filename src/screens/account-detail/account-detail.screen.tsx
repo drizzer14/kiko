@@ -18,6 +18,7 @@ import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
+import { holdingTypeIcon } from '../../holdings/holding-icon';
 import { holdingValue } from '../../holdings/holding-value';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
@@ -33,17 +34,6 @@ import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
 import { styles } from './account-detail.styles';
 import MonobankTokenField from './monobank-token-field.component';
-
-// Leading SF Symbol fallback per holding type, shown until the user picks a
-// custom icon. Mirrors the accounts list's KIND_ICON treatment.
-const TYPE_ICON: Record<HoldingRow['type'], string> = {
-  card: 'creditcard',
-  term_deposit: 'banknote',
-  bond: 'doc.text',
-  cash: 'banknote',
-  crypto_asset: 'bitcoinsign.circle',
-  jar: 'cup.and.saucer',
-};
 
 // The token input now lives on this screen, so a missing token points the user
 // up to that field rather than off to global Settings.
@@ -84,7 +74,7 @@ const HoldingListRow: FC<{ holding: HoldingRow; now: number; onOpen: () => void 
     <ListRow onPress={onOpen}>
       <Box direction="row" gap={3} style={styles.holdingLead}>
         <SymbolIcon
-          name={holding.icon ?? TYPE_ICON[holding.type]}
+          name={holding.icon ?? holdingTypeIcon[holding.type]}
           accessibilityLabel={`${holding.name} icon`}
         />
 
@@ -260,7 +250,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     isBankAccount && !isConnectedToMonobank && otherAccountConnected;
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={
+        <Button
+          variant="primary"
+          fullWidth
+          onPress={() => navigation.navigate('HoldingForm', { accountId })}
+        >
+          Add holding
+        </Button>
+      }
+    >
       <Box gap={4}>
         {account && <AccountMetadataHeader account={account} />}
 
@@ -286,9 +287,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               backgroundColor={theme.colors.accent}
               alignSelf="flex-start"
               icon={<SymbolIcon name={actionIcon} tone="textPrimary" />}
-            >
-              <Text variant="body">{actionLabel}</Text>
-            </PressableButton>
+              label={actionLabel}
+            />
             {isConnectedToMonobank && (
               <Box direction="row" gap={2} style={styles.statusLine}>
                 <SymbolIcon name="clock" tone="textSecondary" />
@@ -306,9 +306,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             backgroundColor={theme.colors.surfaceHigh}
             alignSelf="flex-start"
             icon={<SymbolIcon name="link.badge.plus" tone="textPrimary" />}
-          >
-            <Text variant="body">Disconnect Monobank</Text>
-          </PressableButton>
+            label="Disconnect Monobank"
+          />
         )}
 
         {showConnectedElsewhereHint && (
@@ -348,14 +347,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             </SwipeableRow>
           ))}
         </Box>
-
-        <Button
-          variant="primary"
-          fullWidth
-          onPress={() => navigation.navigate('HoldingForm', { accountId })}
-        >
-          Add holding
-        </Button>
       </Box>
     </Screen>
   );

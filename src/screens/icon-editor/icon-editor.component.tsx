@@ -16,9 +16,21 @@ import { styles } from './icon-editor.styles';
 // caption. Selecting a swatch persists it through `onSelect`; the picker also
 // offers a Remove control (via the modal's `onRemove`) whenever a custom icon is
 // currently set, which clears it back to the fallback.
-const IconEditor: FC<IconEditorProps> = ({ icon, fallbackIcon, label, onSelect, onRemove }) => {
+const IconEditor: FC<IconEditorProps> = ({
+  icon,
+  fallbackIcon,
+  label,
+  iconAccessibilityLabel,
+  onSelect,
+  onRemove,
+}) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const displayIcon = icon ?? fallbackIcon;
+  const toggleLabel =
+    iconAccessibilityLabel ?? (label !== undefined ? `Change ${label}` : 'Change icon');
+  // Remove is offered only when a custom icon is set AND the caller opted into
+  // it by supplying a handler — a mandatory-icon row (a category) omits it.
+  const removable = icon != null && onRemove !== undefined;
 
   const handleSelect = (next: string): void => {
     setPickerOpen(false);
@@ -27,7 +39,7 @@ const IconEditor: FC<IconEditorProps> = ({ icon, fallbackIcon, label, onSelect, 
 
   const handleRemove = (): void => {
     setPickerOpen(false);
-    onRemove();
+    onRemove?.();
   };
 
   return (
@@ -40,19 +52,23 @@ const IconEditor: FC<IconEditorProps> = ({ icon, fallbackIcon, label, onSelect, 
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={label !== undefined ? `Change ${label}` : 'Change icon'}
+        accessibilityLabel={toggleLabel}
         accessibilityState={{ expanded: pickerOpen }}
         onPress={() => setPickerOpen(true)}
         style={styles.iconChip}
       >
-        <SymbolIcon name={displayIcon} tone="textSecondary" />
+        <SymbolIcon
+          name={displayIcon}
+          tone="textSecondary"
+          accessibilityLabel={`Icon ${displayIcon}`}
+        />
       </Pressable>
 
       <IconPickerModal
         visible={pickerOpen}
         selectedIcon={displayIcon}
         onSelect={handleSelect}
-        onRemove={icon != null ? handleRemove : undefined}
+        onRemove={removable ? handleRemove : undefined}
         onDismiss={() => setPickerOpen(false)}
       />
     </Box>

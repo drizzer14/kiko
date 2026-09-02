@@ -8,11 +8,12 @@ type TextTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary';
 export type TextProps = {
   variant?: TextVariant;
   tone?: TextTone;
-  // An optional screen-local style override (size/weight/alignment) layered on
-  // top of the variant/tone tokens — lets a screen render, e.g., a large
-  // balance without minting a new design-system typography token. `color` is
-  // intentionally excluded so the `tone` token stays authoritative and a caller
-  // can never override the money tone (zero=white / negative=red / positive=green).
-  style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign'>>;
+  // An optional screen-local style override (size/weight/alignment/transform)
+  // layered on top of the variant/tone tokens — lets a screen render, e.g., a
+  // large balance without minting a new design-system typography token, or a
+  // title-cased button label via `textTransform`. `color` is intentionally
+  // excluded so the `tone` token stays authoritative and a caller can never
+  // override the money tone (zero=white / negative=red / positive=green).
+  style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign' | 'textTransform'>>;
   children: ReactNode;
 };

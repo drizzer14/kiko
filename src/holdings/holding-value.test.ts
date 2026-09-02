@@ -1,5 +1,7 @@
 import { Money } from '../currency/money';
+import { asBondMeta } from './holding-metadata';
 import {
+  bondExpectedProfitMinor,
   holdingValue,
   type HoldingValueBreakdown,
   holdingValueBreakdown,
@@ -10,6 +12,32 @@ const base = { currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
 const START = Date.UTC(2026, 0, 1);
 const day = 86_400_000;
 const AFTER_1Y = START + 365 * day;
+
+// Local-midnight instant, matching the local Date arithmetic the coupon-date
+// helpers use.
+const local = (year: number, monthIndex: number, dayOfMonth: number): number =>
+  new Date(year, monthIndex, dayOfMonth).getTime();
+
+// The Monobank screenshot bond: 100 bonds of 1,000.00 nominal each (100,000.00
+// nominal), bought 18 Sep 2025 for 107,868.00, 16.35% semiannual coupons,
+// matures 14 Oct 2026. Coupons 8,175.00 on 15 Oct 2025 / 15 Apr 2026 / 14 Oct
+// 2026; redemption 100,000.00; expected profit 16,657.00.
+const screenshotBond = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  ...base,
+  type: 'bond',
+  balanceMinorUnits: 0,
+  metadata: {
+    quantity: 100,
+    faceValueMinorUnits: 100_000, // 1,000.00 each
+    couponPct: 16.35,
+    couponFrequency: 'semiannually',
+    bondKind: 'government',
+    purchaseDate: local(2025, 8, 18),
+    purchasePriceMinorUnits: 10_786_800, // 107,868.00
+    maturityDate: local(2026, 9, 14),
+    ...over,
+  },
+});
 
 describe('holdingValue', () => {
   it('returns the stored balance for a cash holding', () => {
@@ -102,60 +130,91 @@ describe('holdingValue', () => {
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
 
-  it('values a bond at nominal plus coupon accrued since the last coupon date', () => {
-    const holding: ValuableHolding = {
-      ...base,
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 10,
-        faceValueMinorUnits: 100_000, // 1000.00 each => nominal 10000.00
-        couponPct: 10,
-        purchaseDate: START,
-        maturityDate: START + 730 * day,
-        // couponFrequency omitted => defaults to annually (365-day period).
-      },
-    };
-    // 73 days into the first annual period => 73/365 of a 10% year on 10000
-    // => +200.00 dirty-price accrual. Government bond by default => no tax.
-    const value = holdingValue(holding, START + 73 * day);
-    expect(value.equals(Money.of('UAH', 1_020_000))).toBe(true);
+  it('values the screenshot bond at nominal plus the coupon accrued this period', () => {
+    // Current period purchase (18 Sep 2025) -> first coupon (15 Oct 2025) = 27
+    // days. Valued 9 days in => 9/27 of the 8,175.00 coupon = 2,725.00 accrued on
+    // top of the 100,000.00 nominal. Government bond => no tax.
+    const value = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * day);
+    expect(value.equals(Money.of('UAH', 10_272_500))).toBe(true);
   });
 
-  it('resets bond accrual at each coupon boundary (just nominal)', () => {
-    const holding: ValuableHolding = {
-      ...base,
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 10,
-        faceValueMinorUnits: 100_000,
-        couponPct: 10,
-        purchaseDate: START,
-        maturityDate: START + 730 * day,
-      },
-    };
-    // Exactly one annual coupon period elapsed => accrual resets to ~0.
-    const value = holdingValue(holding, START + 365 * day);
-    expect(value.equals(Money.of('UAH', 1_000_000))).toBe(true);
+  it('drops the value back to nominal on a coupon date (coupon paid out)', () => {
+    // Exactly on the 15 Oct 2025 coupon date the accrual resets to ~0 => nominal.
+    const value = holdingValue(screenshotBond(), local(2025, 9, 15));
+    expect(value.equals(Money.of('UAH', 10_000_000))).toBe(true);
   });
 
-  it('stops bond accrual at maturity (dirty price, capped)', () => {
+  it('reports zero once the bond has matured (nominal redeemed as a transaction)', () => {
+    const value = holdingValue(screenshotBond(), local(2026, 9, 14) + day);
+    expect(value.minorUnits).toBe(0);
+  });
+
+  it('excludes a future-dated deposit contribution from principal and value (D2)', () => {
     const holding: ValuableHolding = {
       ...base,
-      type: 'bond',
+      type: 'term_deposit',
       balanceMinorUnits: 0,
       metadata: {
-        quantity: 10,
-        faceValueMinorUnits: 100_000,
-        couponPct: 10,
-        purchaseDate: START,
-        maturityDate: START + 730 * day, // two full annual periods
+        // 10,000.00 opened at START, a 5,000.00 top-up scheduled 30 days out.
+        contributions: [
+          { amountMinorUnits: 1_000_000, date: START },
+          { amountMinorUnits: 500_000, date: START + 30 * day },
+        ],
+        annualRatePct: 12,
+        termMonths: 24,
+        recapitalization: true,
+        compounding: 'monthly',
       },
     };
-    // Well past maturity: end caps at maturity (730 days = 2 periods) => ~0 accrued.
-    const value = holdingValue(holding, START + 2000 * day);
-    expect(value.equals(Money.of('UAH', 1_000_000))).toBe(true);
+    // Valued the day after START, before the top-up: principal is only the
+    // first contribution, not 15,000.
+    const b = holdingValueBreakdown(holding, START + day);
+    expect(b.principalOrCost.minorUnits).toBe(1_000_000);
+    expect(b.gross.minorUnits).toBeLessThan(1_010_000);
+    expect(b.gross.minorUnits).toBeGreaterThanOrEqual(1_000_000);
+  });
+
+  it('reports no value for a bond purchased in the future (guard)', () => {
+    const holding = screenshotBond({ purchaseDate: local(2025, 8, 18) });
+    const before = local(2025, 8, 17); // the day before purchase
+    const b = holdingValueBreakdown(holding, before);
+    expect(b.gross.minorUnits).toBe(0);
+    expect(b.principalOrCost.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(0);
+    expect(holdingValue(holding, before).minorUnits).toBe(0);
+  });
+
+  it('values a recap-on bi-weekly deposit net of the per-period withholding', () => {
+    // Opened 11 Jan 2024 with 10,000.00; the bi-weekly engine capitalizes each
+    // period net of the 23% tax. Net value is below the untaxed gross line.
+    const holding: ValuableHolding = {
+      ...base,
+      type: 'term_deposit',
+      balanceMinorUnits: 0,
+      metadata: {
+        contributions: [{ amountMinorUnits: 1_000_000, date: local(2024, 0, 11) }],
+        annualRatePct: 12,
+        termMonths: 24,
+        recapitalization: true,
+        compounding: 'bi-weekly',
+      },
+    };
+    const b = holdingValueBreakdown(holding, local(2024, 2, 12));
+    expect(b.principalOrCost.minorUnits).toBe(1_000_000);
+    expect(b.interest.minorUnits).toBeGreaterThan(0);
+    expect(b.tax.minorUnits).toBeGreaterThan(0);
+    // Net = principal + gross interest - tax, and below the gross value.
+    expect(b.net.minorUnits).toBe(b.gross.minorUnits - b.tax.minorUnits);
+    expect(b.net.minorUnits).toBeLessThan(b.gross.minorUnits);
+  });
+
+  it('reproduces the screenshot expected profit (16,657.00)', () => {
+    const meta = asBondMeta(screenshotBond().metadata);
+    expect(meta).not.toBeNull();
+    if (meta !== null) {
+      // 3 * 8,175.00 net coupons + 100,000.00 nominal - 107,868.00 paid.
+      expect(bondExpectedProfitMinor(meta, 'UAH')).toBe(1_665_700);
+    }
   });
 
   it('falls back to the cached balance when metadata is malformed', () => {
@@ -189,10 +248,12 @@ const bond = (bondKind: string): ValuableHolding => ({
   balanceMinorUnits: 0,
   metadata: {
     quantity: 10,
-    faceValueMinorUnits: 10000,
+    faceValueMinorUnits: 10000, // 100.00 each => nominal 1,000.00 (100,000 minor)
     couponPct: 10,
-    purchaseDate: START,
-    maturityDate: AFTER_1Y + day,
+    couponFrequency: 'annually',
+    purchaseDate: local(2026, 0, 1),
+    purchasePriceMinorUnits: 100_000, // paid at par
+    maturityDate: local(2027, 0, 1),
     bondKind,
   },
 });
@@ -218,25 +279,27 @@ describe('holdingValueBreakdown', () => {
     expect(b.net.minorUnits).toBe(107700);
   });
 
-  // 73 days into the first annual coupon period => 73/365 of a 10% year on the
-  // 1000.00 nominal => 20.00 accrued (2000 minor), dirty-price.
-  const BOND_AT = START + 73 * day;
+  // The first coupon period runs purchase (1 Jan 2026) -> first coupon
+  // (15 Jan 2026) = 14 days. Valued 7 days in => 7/14 = half of the 100.00
+  // annual coupon = 50.00 accrued (5000 minor), dirty-price. Cost is the price
+  // paid (par = 100,000 minor here).
+  const BOND_AT = local(2026, 0, 1) + 7 * day;
 
   it('does not tax a government bond', () => {
     const b = holdingValueBreakdown(bond('government'), BOND_AT);
-    expect(b.gross.minorUnits).toBe(102000);
+    expect(b.gross.minorUnits).toBe(105000);
     expect(b.principalOrCost.minorUnits).toBe(100000);
-    expect(b.interest.minorUnits).toBe(2000);
+    expect(b.interest.minorUnits).toBe(5000);
     expect(b.tax.minorUnits).toBe(0);
-    expect(b.net.minorUnits).toBe(102000);
+    expect(b.net.minorUnits).toBe(105000);
   });
 
   it('taxes a corporate bond coupon at 23%', () => {
     const b = holdingValueBreakdown(bond('corporate'), BOND_AT);
-    expect(b.gross.minorUnits).toBe(102000);
-    expect(b.interest.minorUnits).toBe(2000);
-    expect(b.tax.minorUnits).toBe(460); // floor(2000 * 23 / 100)
-    expect(b.net.minorUnits).toBe(101540);
+    expect(b.gross.minorUnits).toBe(105000);
+    expect(b.interest.minorUnits).toBe(5000);
+    expect(b.tax.minorUnits).toBe(1150); // floor(5000 * 23 / 100)
+    expect(b.net.minorUnits).toBe(103850);
   });
 
   it('holdingValue returns the net value', () => {

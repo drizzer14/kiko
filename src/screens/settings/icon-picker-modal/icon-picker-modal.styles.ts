@@ -20,15 +20,18 @@ export const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   // The raised card holding the picker. Rounded only along its top edge so it
-  // reads as a sheet sliding up from the bottom.
-  sheet: {
+  // reads as a sheet sliding up from the bottom. This Modal renders outside
+  // any SafeAreaView, so its own bottom padding must add the bottom safe-area
+  // inset (the home indicator's zone) itself, or the sheet sits flush against
+  // it — `bottomInset` is `useSafeAreaInsets().bottom` from the call site.
+  sheet: (bottomInset: number) => ({
     maxHeight: '80%',
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
-    paddingBottom: theme.spacing(6),
+    paddingBottom: theme.spacing(6) + bottomInset,
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
-  },
+  }),
   // The sheet's title line: heading on the left, cancel control on the right.
   header: {
     alignItems: 'center',

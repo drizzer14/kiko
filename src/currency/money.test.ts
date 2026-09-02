@@ -1,4 +1,4 @@
-import { Money } from './money';
+import { Money, toMajor } from './money';
 
 describe('Money', () => {
   it('adds two amounts of the same currency', () => {
@@ -22,5 +22,15 @@ describe('Money', () => {
   it('negates and detects zero', () => {
     expect(Money.of('EUR', 500).negate().minorUnits).toBe(-500);
     expect(Money.of('EUR', 0).isZero()).toBe(true);
+  });
+});
+
+describe('toMajor', () => {
+  it('scales fiat minor units down by two decimals', () => {
+    expect(toMajor(1234, 'UAH')).toBeCloseTo(12.34, 6);
+  });
+
+  it('scales BTC minor units down by eight decimals', () => {
+    expect(toMajor(100_000_000, 'BTC')).toBeCloseTo(1, 6);
   });
 });

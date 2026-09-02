@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { parseAmount } from '../../currency/parse';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -9,7 +10,7 @@ import TextField from '../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import ChipRow from './chip-row';
-import IconEditor from '../icon-editor';
+import HoldingIdentityField from './holding-identity-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -55,12 +56,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
 
     if (kind === 'cash') {
       // Clamp a negative initial value to zero — a cash balance can never be
-      // negative, and Number('') || 0 also covers a blank field.
-      const initialMajor = Math.max(0, Number(initialValue) || 0);
+      // negative, and parseAmount('') is NaN so `|| 0` also covers a blank field.
+      const initialMajor = Math.max(0, parseAmount(initialValue) || 0);
       await accountsRepo.createCashAccount({
         name: trimmedName,
         currency,
         initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
+        icon,
       });
       navigation.goBack();
 
@@ -88,22 +90,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
       }
     >
       <Box gap={4}>
-        {/* A cash account is created atomically via createCashAccount, which
-            does not return the new id, so its icon cannot be persisted at create
-            time — the icon picker is offered only on the create() path (bank /
-            crypto), whose returned id setIcon needs. A cash account's icon can
-            still be set later from the accounts list. */}
-        {kind !== 'cash' && (
-          <IconEditor
-            label="Icon"
-            icon={icon}
-            fallbackIcon={FALLBACK_ICON}
-            onSelect={setIcon}
-            onRemove={() => setIcon(null)}
-          />
-        )}
-
-        <TextField label="Name" value={name} onChangeText={setName} placeholder="Name" />
+        {/* One shared icon+name block for every kind, cash included: the icon
+            picker stays visible whatever the kind is. The cash create path
+            (createCashAccount) now persists the picked icon in its own atomic
+            insert, and the bank/crypto path sets it via setIcon on the returned
+            id below. */}
+        <HoldingIdentityField
+          icon={icon}
+          fallbackIcon={FALLBACK_ICON}
+          name={name}
+          onChangeName={setName}
+          onSelectIcon={setIcon}
+          onRemoveIcon={() => setIcon(null)}
+          namePlaceholder="Name"
+        />
 
         <ChipRow
           label="Kind"

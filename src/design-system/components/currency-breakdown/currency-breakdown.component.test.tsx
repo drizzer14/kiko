@@ -69,7 +69,9 @@ describe('CurrencyBreakdown', () => {
       .map((layer) => layer.columnGap)
       .find((value): value is number => typeof value === 'number');
 
-    // The gutter was widened from the cramped spacing(4)=16 to spacing(8)=32.
+    // The gutter was widened from the cramped spacing(4)=16, first to
+    // spacing(8)=32, then further to spacing(12)=48 so the two columns read
+    // as clearly separate.
     expect(columnGap).toBeGreaterThanOrEqual(32);
   });
 

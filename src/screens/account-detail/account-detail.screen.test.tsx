@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
@@ -256,6 +256,14 @@ describe('AccountDetailScreen', () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+  });
+
+  it('pins the Add holding action to the screen footer', async () => {
+    const { getByTestId } = await renderScreen();
+    // The action lives in the Screen footer slot so it stays pinned to the
+    // bottom on a short page rather than floating beneath the holdings list.
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
   it("drives the header title from the account's real name, with no in-body duplicate", async () => {

@@ -1,5 +1,11 @@
 import { type Currency, currencyScale } from './currency';
 
+// Minor units -> major units for a currency's decimal scale (e.g. 1234 UAH
+// minor -> 12.34). The single source of truth for this conversion, shared by
+// every value/schedule/ledger module rather than re-inlined per file.
+export const toMajor = (minorUnits: number, currency: Currency): number =>
+  minorUnits / 10 ** currencyScale[currency];
+
 export class Money {
   // `private constructor` has no `#` equivalent — JavaScript has no native
   // private constructor, so a class-only factory is enforced via the TS

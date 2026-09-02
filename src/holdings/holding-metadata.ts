@@ -1,4 +1,4 @@
-export type CompoundingFrequency = 'daily' | 'monthly' | 'quarterly' | 'annually';
+export type CompoundingFrequency = 'bi-weekly' | 'monthly' | 'quarterly' | 'annually';
 
 export type DepositContribution = { amountMinorUnits: number; date: number };
 
@@ -19,12 +19,21 @@ export type BondMeta = {
   faceValueMinorUnits: number;
   couponPct: number;
   purchaseDate: number;
+  purchasePriceMinorUnits: number;
   maturityDate: number;
   bondKind: BondKind;
   couponFrequency: BondCouponFrequency;
 };
 
-const frequencies = new Set<string>(['daily', 'monthly', 'quarterly', 'annually']);
+const frequencies = new Set<string>(['bi-weekly', 'monthly', 'quarterly', 'annually']);
+
+// Legacy deposits stored a now-removed 'daily' compounding option. Map any such
+// record onto 'monthly' — the safe, conservative choice: it is an existing,
+// well-tested calendar-anniversary mode that yields slightly LESS than the new
+// default 'bi-weekly', so a migrated deposit never over-reports its value, and
+// it avoids retro-fitting an opening-day anchor the record never carried.
+const normalizeCompounding = (value: string): CompoundingFrequency =>
+  value === 'daily' ? 'monthly' : (value as CompoundingFrequency);
 
 const bondCouponFrequencies = new Set<string>(['monthly', 'quarterly', 'semiannually', 'annually']);
 
@@ -71,13 +80,15 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
   }
   const { annualRatePct, termMonths, recapitalization, compounding } = value;
   const contributions = readContributions(value);
+  // Accept the legacy 'daily' literal so existing deposits still parse; it is
+  // normalized to 'monthly' below rather than rejected.
   if (
     contributions === null ||
     !isNumber(annualRatePct) ||
     !isNumber(termMonths) ||
     typeof recapitalization !== 'boolean' ||
     typeof compounding !== 'string' ||
-    !frequencies.has(compounding)
+    !(frequencies.has(compounding) || compounding === 'daily')
   ) {
     return null;
   }
@@ -86,7 +97,7 @@ export const asTermDepositMeta = (value: unknown): TermDepositMeta | null => {
     annualRatePct,
     termMonths,
     recapitalization,
-    compounding: compounding as CompoundingFrequency,
+    compounding: normalizeCompounding(compounding),
   };
 };
 
@@ -104,11 +115,20 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
   ) {
     return null;
   }
+  // `purchasePriceMinorUnits` is the total actually paid (separate from nominal
+  // = quantity * faceValue). Legacy bonds predate this field; default it to the
+  // nominal so the purchase ledger entry and expected-profit both read as
+  // break-even until the user edits the real price in.
+  const nominalMinorUnits = quantity * faceValueMinorUnits;
+  const { purchasePriceMinorUnits } = value;
   return {
     quantity,
     faceValueMinorUnits,
     couponPct,
     purchaseDate,
+    purchasePriceMinorUnits: isNumber(purchasePriceMinorUnits)
+      ? purchasePriceMinorUnits
+      : nominalMinorUnits,
     maturityDate,
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
     couponFrequency: asBondCouponFrequency(value.couponFrequency),

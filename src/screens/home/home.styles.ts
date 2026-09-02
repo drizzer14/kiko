@@ -40,11 +40,12 @@ export const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing(5),
     paddingBottom: theme.spacing(1),
   },
-  // The large centered balance amount. Only size/weight/alignment live here —
-  // MoneyText still owns the tone color, so this deliberately omits `color`.
+  // The large centered balance amount, one step up from `title` on the
+  // `display` typography token — the net worth is the single most prominent
+  // figure on this screen. MoneyText still owns the tone color, so this
+  // deliberately omits `color`.
   balance: {
-    fontSize: 40,
-    fontWeight: '700',
+    ...theme.typography.display,
     textAlign: 'center',
   },
   // A single transaction row: description + amount on one line, context below.
@@ -89,9 +90,15 @@ export const styles = StyleSheet.create((theme) => ({
   // `flexGrow` (not `flex`) on the content container: rows still stack from
   // the top and the container scrolls once its content overflows, but an
   // empty/short list still grows to fill the viewport so `empty` can center.
-  listContent: {
+  // Bottom padding is lifted clear of the floating native glass tab bar by
+  // `bottomClearance` (the bar's measured height plus the bottom safe-area
+  // inset, computed at the call site — the same pattern as the Screen
+  // primitive's own footer/content clearance), so the last transaction row
+  // is never left partially hidden beneath the bar.
+  listContent: (bottomClearance: number) => ({
     flexGrow: 1,
-  },
+    paddingBottom: bottomClearance,
+  }),
   // Empty-state container: fills the list viewport and centers its Text.
   empty: {
     flex: 1,

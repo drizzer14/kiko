@@ -25,6 +25,18 @@ describe('asTermDepositMeta', () => {
     expect(asTermDepositMeta({ ...valid, compounding: 'weekly' })).toBeNull();
   });
 
+  it('accepts the new bi-weekly compounding option', () => {
+    expect(asTermDepositMeta({ ...valid, compounding: 'bi-weekly' })?.compounding).toBe(
+      'bi-weekly',
+    );
+  });
+
+  it('migrates a legacy daily deposit to monthly (safe, conservative)', () => {
+    // The 'daily' option was removed; existing records must still parse rather
+    // than crash, mapped onto the calendar-anniversary 'monthly' mode.
+    expect(asTermDepositMeta({ ...valid, compounding: 'daily' })?.compounding).toBe('monthly');
+  });
+
   it('returns null for null', () => {
     expect(asTermDepositMeta(null)).toBeNull();
   });
@@ -69,6 +81,7 @@ describe('asBondMeta', () => {
     faceValueMinorUnits: 100_000,
     couponPct: 9,
     purchaseDate: 1_700_000_000_000,
+    purchasePriceMinorUnits: 980_000,
     maturityDate: 1_800_000_000_000,
     bondKind: 'government' as const,
     couponFrequency: 'semiannually' as const,
@@ -81,6 +94,15 @@ describe('asBondMeta', () => {
 
   it('returns null when a field is the wrong type', () => {
     expect(asBondMeta({ ...valid, quantity: '10' })).toBeNull();
+  });
+
+  it('reads an explicit purchase price', () => {
+    expect(asBondMeta(valid)?.purchasePriceMinorUnits).toBe(980_000);
+  });
+
+  it('defaults a missing purchase price to the nominal (quantity * faceValue)', () => {
+    const { purchasePriceMinorUnits, ...withoutPrice } = valid;
+    expect(asBondMeta(withoutPrice)?.purchasePriceMinorUnits).toBe(10 * 100_000);
   });
 });
 

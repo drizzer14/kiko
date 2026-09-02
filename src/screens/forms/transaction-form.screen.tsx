@@ -3,6 +3,7 @@ import { Alert, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -40,7 +41,7 @@ const headerTitle = (isReadOnly: boolean, isEditing: boolean): string => {
 };
 
 const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): number => {
-  const magnitude = Money.fromMajor(currency, Number(amount));
+  const magnitude = Money.fromMajor(currency, parseAmount(amount));
 
   return sign === 'expense' ? -magnitude.minorUnits : magnitude.minorUnits;
 };
@@ -113,7 +114,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const save = async (): Promise<void> => {
     // Guard: reject an empty or non-numeric amount — no zero-amount row.
-    if (amount.trim() === '' || Number.isNaN(Number(amount))) {
+    if (amount.trim() === '' || Number.isNaN(parseAmount(amount))) {
       return;
     }
     const amountMinorUnits = signedMinorUnits(currency, amount, sign);

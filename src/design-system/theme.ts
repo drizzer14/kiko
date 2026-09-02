@@ -23,6 +23,10 @@ export const darkTheme = {
   spacing: (multiplier: number) => multiplier * 4,
   radii: { sm: 6, md: 10, lg: 16 },
   typography: {
+    // One step above `title` — a hero numeral (e.g. Home's net-worth
+    // balance), styled at the same weight but larger, for the one or two
+    // spots that need to read as the single most prominent figure on screen.
+    display: { fontSize: 44, fontWeight: '700' as const },
     title: { fontSize: 28, fontWeight: '700' as const },
     heading: { fontSize: 20, fontWeight: '600' as const },
     body: { fontSize: 16, fontWeight: '400' as const },

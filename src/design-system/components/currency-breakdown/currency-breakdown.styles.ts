@@ -6,7 +6,7 @@ export const styles = StyleSheet.create((theme) => ({
   // read as clearly separate rather than cramped against each other.
   table: {
     flexDirection: 'row',
-    columnGap: theme.spacing(8),
+    columnGap: theme.spacing(12),
   },
   // One column of the table: an equal share of the width, stacking its cells
   // vertically with a small gap between rows.

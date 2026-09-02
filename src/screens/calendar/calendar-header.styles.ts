@@ -19,6 +19,17 @@ export const styles = StyleSheet.create((theme) => ({
   group: {
     alignItems: 'center',
   },
+  // The title's wrapping column: `flex: 1` claims exactly the space left over
+  // between the two fixed-size arrow groups, so the title's own box width is
+  // identical for every month regardless of how wide its text is ("May 2026"
+  // vs "September 2026"). Centered so the title still reads as centered
+  // between the arrows instead of left-aligned inside its flex box. Without
+  // this the title Text sized itself to its content, so a long month name
+  // could grow the row's natural width and reflow the header between months.
+  titleColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
   // The weekday-label row, matching the day grid's seven equal-width columns so
   // each label sits above its column.
   weekRow: {

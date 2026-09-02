@@ -7,11 +7,27 @@ jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: { create: jest.fn().mockResolvedValue('new-holding-id'), setIcon: jest.fn() },
 }));
 
+// The account whose kind constrains the offered holding types. `mock`-prefixed
+// so the hoisted jest.mock factory may close over it; each test can reassign it
+// before rendering to exercise a different account kind.
+let mockAccountKind = 'bank';
+
+jest.mock('../../db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: [{ id: 'acc-1', kind: mockAccountKind }] }),
+}));
+jest.mock('../../repositories/accounts.repo', () => ({
+  accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+
 const navigation = { goBack: jest.fn(), navigate: jest.fn() } as never;
 const route = { params: { accountId: 'acc-1' } } as never;
 
 const createMock = holdingsRepo.create as jest.Mock;
 const setIconMock = holdingsRepo.setIcon as jest.Mock;
+
+beforeEach(() => {
+  mockAccountKind = 'bank';
+});
 
 const renderScreen = () => render(<HoldingFormScreen navigation={navigation} route={route} />);
 
@@ -395,5 +411,73 @@ describe('HoldingFormScreen icon', () => {
 
     expect(createMock).toHaveBeenCalled();
     expect(setIconMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('HoldingFormScreen icon follows type until dirty', () => {
+  it("shows the default type's icon before any pick (card -> creditcard)", async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByLabelText('Icon creditcard')).toBeTruthy();
+  });
+
+  it('re-derives the icon to the newly selected type default while not dirty', async () => {
+    const screen = await renderScreen();
+
+    // card default is creditcard; switching to bond swaps the shown default to
+    // the bond glyph, because the icon has not been manually picked (not dirty).
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(screen.getByLabelText('Icon doc.text')).toBeTruthy();
+  });
+
+  it('keeps a manually picked icon when the type changes afterwards (dirty)', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByLabelText('Change Icon'));
+    await fireEvent.press(screen.getByLabelText('Choose icon basket'));
+
+    expect(screen.getByLabelText('Icon basket')).toBeTruthy();
+
+    // Once picked, the icon is dirty: switching type no longer moves it off the
+    // user's choice.
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(screen.getByLabelText('Icon basket')).toBeTruthy();
+    expect(screen.queryByLabelText('Icon doc.text')).toBeNull();
+  });
+});
+
+describe('HoldingFormScreen type chips are constrained by the account kind', () => {
+  it('forbids cash and crypto_asset holding types on a bank account', async () => {
+    mockAccountKind = 'bank';
+
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Card')).toBeTruthy();
+    expect(screen.getByText('Jar')).toBeTruthy();
+    expect(screen.queryByText('Cash')).toBeNull();
+    expect(screen.queryByText('Crypto Asset')).toBeNull();
+  });
+
+  it('offers only the crypto_asset holding type on a crypto account', async () => {
+    mockAccountKind = 'crypto';
+
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Crypto Asset')).toBeTruthy();
+    expect(screen.queryByText('Card')).toBeNull();
+    expect(screen.queryByText('Term Deposit')).toBeNull();
+  });
+
+  it('snaps an out-of-range default type into the account kind allowed set', async () => {
+    mockAccountKind = 'crypto';
+
+    const screen = await renderScreen();
+
+    // The default type is `card`, which a crypto account forbids, so the form
+    // resets to the first allowed type (crypto_asset) — proven by the shown
+    // default icon following to the crypto_asset glyph.
+    expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
   });
 });

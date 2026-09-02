@@ -71,6 +71,30 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('keeps the icon field visible after selecting the Cash kind', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    // Choosing Cash must not hide the icon picker — every kind, cash included,
+    // can pick an icon in the create form now.
+    await fireEvent.press(getByText('Cash'));
+
+    expect(getByLabelText('Change Icon')).toBeTruthy();
+  });
+
+  it('persists a picked icon on a cash account created atomically', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('Cash'));
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon banknote'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreateCashAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Wallet', icon: 'banknote' }),
+    );
+  });
+
   it('sets the picked icon on the new account using the returned id', async () => {
     const { getByLabelText, getByText, navigation } = await renderForm();
 
@@ -130,6 +154,8 @@ describe('AccountFormScreen', () => {
     expect(mockCreateCashAccount).toHaveBeenCalledWith({
       name: 'Wallet',
       currency: 'EUR',
+      // No icon was picked, so the create passes an explicit null.
+      icon: null,
       initialBalanceMinorUnits: 25050,
     });
     expect(mockCreate).not.toHaveBeenCalled();

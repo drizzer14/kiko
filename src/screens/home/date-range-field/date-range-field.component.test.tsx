@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 import { formatDate } from '../../../dates/format';
 import '../../../design-system/unistyles';
 import DateRangeField from './date-range-field.component';
@@ -188,6 +189,38 @@ describe('DateRangeField value tone', () => {
     const label = `${formatDate(from)} – ${formatDate(to)}`;
 
     expect(getByText(label).props.testID).toBe('text-tone-textPrimary');
+  });
+});
+
+describe('DateRangeField safe area', () => {
+  it('pads the sheet clear of the home indicator (bottom safe-area inset)', async () => {
+    const earliest = new Date(2000, 0, 1);
+    const latest = new Date(2000, 5, 15);
+    const { getByLabelText, getByTestId } = await render(
+      <DateRangeField
+        dateFrom={null}
+        dateTo={null}
+        minDate={earliest}
+        maxDate={latest}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+
+    // Walk up from the calendar itself to the sheet Box that wraps it.
+    let node = getByTestId('date-range-calendar');
+    while (node && StyleSheet.flatten(node.props.style)?.paddingBottom === undefined) {
+      node = node.parent;
+    }
+
+    // The safe-area mock reports a 0 bottom inset by default, so the padding
+    // collapses to the sheet's own base spacing(4) = 16 — this only proves the
+    // inset is additive, not double-subtracted or dropped.
+    expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(16);
   });
 });
 

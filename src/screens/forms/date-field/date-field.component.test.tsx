@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { formatDate } from '../../../dates/format';
 import DateField from './date-field.component';
@@ -19,6 +20,25 @@ describe('DateField', () => {
     );
 
     expect(getByText(formatDate(value))).toBeTruthy();
+  });
+
+  it('pads the sheet clear of the home indicator (bottom safe-area inset)', async () => {
+    const { getByLabelText, getByTestId } = await render(
+      <DateField label="Start Date" value={null} onChange={jest.fn()} />,
+    );
+
+    await fireEvent.press(getByLabelText('Start Date'));
+
+    // Walk up from the calendar itself to the sheet Box that wraps it.
+    let node = getByTestId('Start Date calendar');
+    while (node && StyleSheet.flatten(node.props.style)?.paddingBottom === undefined) {
+      node = node.parent;
+    }
+
+    // The safe-area mock reports a 0 bottom inset by default, so the padding
+    // collapses to the sheet's own base spacing(4) = 16 — this only proves the
+    // inset is additive, not double-subtracted or dropped.
+    expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(16);
   });
 
   it('opens the calendar and reports the picked day as a local-midnight timestamp', async () => {

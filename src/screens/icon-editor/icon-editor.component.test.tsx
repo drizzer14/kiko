@@ -68,4 +68,27 @@ describe('IconEditor', () => {
 
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
+
+  it('suppresses the Remove control entirely when no onRemove handler is supplied', async () => {
+    // A mandatory-icon caller (a category row) omits onRemove; even a set icon
+    // then offers no Remove, so the icon can never be cleared to none.
+    const { getByLabelText, queryByText } = await setup({
+      icon: 'creditcard',
+      onRemove: undefined,
+    });
+
+    await fireEvent.press(getByLabelText('Change Icon'));
+
+    expect(queryByText('Remove')).toBeNull();
+  });
+
+  it('uses an explicit iconAccessibilityLabel for the toggle over the caption default', async () => {
+    const { getByLabelText, queryByLabelText } = await setup({
+      label: undefined,
+      iconAccessibilityLabel: 'Change Groceries icon',
+    });
+
+    expect(getByLabelText('Change Groceries icon')).toBeTruthy();
+    expect(queryByLabelText('Change icon')).toBeNull();
+  });
 });

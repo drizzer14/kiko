@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { Modal, Pressable, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import Box from '../../../design-system/components/box';
 import PressableButton from '../../../design-system/components/pressable-button';
@@ -102,6 +103,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   onRemove,
 }) => {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
 
   return (
     <Modal
@@ -119,20 +121,24 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           style={styles.backdrop}
         />
 
-        <Box background="surfaceHigh" gap={3} style={styles.sheet}>
+        <Box background="surfaceHigh" gap={3} style={styles.sheet(insets.bottom)}>
           <Box direction="row" gap={3} style={styles.header}>
             <Text variant="heading">Choose Icon</Text>
 
             <Box direction="row" gap={2}>
               {onRemove !== undefined && (
-                <PressableButton onPress={onRemove} backgroundColor={theme.colors.surface}>
-                  <Text variant="body">Remove</Text>
-                </PressableButton>
+                <PressableButton
+                  onPress={onRemove}
+                  backgroundColor={theme.colors.surface}
+                  label="Remove"
+                />
               )}
 
-              <PressableButton onPress={onDismiss} backgroundColor={theme.colors.surface}>
-                <Text variant="body">Cancel</Text>
-              </PressableButton>
+              <PressableButton
+                onPress={onDismiss}
+                backgroundColor={theme.colors.surface}
+                label="Cancel"
+              />
             </Box>
           </Box>
 

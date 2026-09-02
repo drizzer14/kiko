@@ -10,6 +10,11 @@ export const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
+    // Pin the chip to the shared control height (the iOS 44pt minimum tap
+    // target) so it lines up exactly with the name field beside it, which
+    // carries the same `minHeight` — otherwise the 20pt glyph makes the chip a
+    // hair taller than the text input and the two boxes read as misaligned.
+    minHeight: theme.spacing(11),
     alignItems: 'center',
     justifyContent: 'center',
   },

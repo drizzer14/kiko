@@ -1,27 +1,33 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useRef, useState } from 'react';
+import { type FC, useEffect, useRef, useState } from 'react';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { parseAmount } from '../../currency/parse';
+import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
 import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
+import { holdingTypeIcon } from '../../holdings/holding-icon';
 import type { BondKind, CompoundingFrequency } from '../../holdings/holding-metadata';
+import {
+  type HoldingType,
+  holdingTypes,
+  holdingTypesForAccountKind,
+} from '../../holdings/holding-type';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import ChipRow from './chip-row';
 import DateField from './date-field';
-import IconEditor from '../icon-editor';
+import HoldingIdentityField from './holding-identity-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
-
-const types = ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'] as const;
-type HoldingType = (typeof types)[number];
 
 // Human display text for the id-like holding types; the chip still reports the
 // underlying value on select.
@@ -44,14 +50,14 @@ const BOND_KIND_LABELS: Record<BondKind, string> = {
 };
 
 const compoundingOptions: readonly CompoundingFrequency[] = [
-  'daily',
+  'bi-weekly',
   'monthly',
   'quarterly',
   'annually',
 ];
 
 const COMPOUNDING_LABELS: Record<CompoundingFrequency, string> = {
-  daily: 'Daily',
+  'bi-weekly': 'Bi-weekly',
   monthly: 'Monthly',
   quarterly: 'Quarterly',
   annually: 'Annually',
@@ -69,20 +75,35 @@ const COUPON_FREQUENCY_LABELS: Record<CouponFrequency, string> = {
 
 type Contribution = { id: number; amount: string; date: number | null };
 
-// Neutral placeholder glyph shown in the create form's icon chip until the user
-// picks one. The persisted default (a type-derived icon) is applied by the
-// holding list rows when the stored icon is null; here a neutral swatch reads as
-// "unset".
-const FALLBACK_ICON = 'square.grid.2x2';
-
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
   const { theme } = useUnistyles();
+  // The account this holding is created under; its `kind` constrains which
+  // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
+  const accountKind = accounts.at(0)?.kind;
+  const allowedTypes = accountKind ? holdingTypesForAccountKind[accountKind] : holdingTypes;
+
   const [name, setName] = useState('');
   const [type, setType] = useState<HoldingType>('card');
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [openingBalance, setOpeningBalance] = useState('');
+  // The icon is null until the user picks one ("not dirty"): while null, the
+  // chip shows the selected type's default glyph (holdingTypeIcon[type]) and
+  // switching type re-derives it, so an untouched icon follows the type. Once
+  // the user picks (icon !== null, "dirty"), that choice overrides the default
+  // and type changes no longer move it.
   const [icon, setIcon] = useState<string | null>(null);
+
+  // Keep the selected type valid for the account's kind. The account loads
+  // asynchronously, so once its allowed set is known, a default (or previously
+  // selected) type outside that set snaps to the first allowed type — which
+  // also re-derives the non-dirty icon to match.
+  useEffect(() => {
+    if (!allowedTypes.includes(type)) {
+      setType(allowedTypes[0]);
+    }
+  }, [allowedTypes, type]);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -92,12 +113,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [annualRate, setAnnualRate] = useState('');
   const [termMonths, setTermMonths] = useState('');
   const [recapitalization, setRecap] = useState(false);
-  const [compounding, setCompounding] = useState<CompoundingFrequency>('monthly');
+  const [compounding, setCompounding] = useState<CompoundingFrequency>('bi-weekly');
 
   // bond state
   const [quantity, setQuantity] = useState('');
   const [faceValue, setFaceValue] = useState('');
   const [couponPct, setCouponPct] = useState('');
+  const [purchasePrice, setPurchasePrice] = useState('');
   const [purchaseDate, setPurchaseDate] = useState<number | null>(null);
   const [maturityDate, setMaturityDate] = useState<number | null>(null);
   const [bondKind, setBondKind] = useState<BondKind>('government');
@@ -125,7 +147,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Drop blank/partial rows: keep only a positive amount paired with a picked date.
   const parsedContributions = (): { amountMinorUnits: number; date: number }[] =>
     contributions.flatMap(({ amount, date }) => {
-      const amountValue = Number(amount);
+      const amountValue = parseAmount(amount);
       if (!(amountValue > 0) || date === null) {
         return [];
       }
@@ -133,35 +155,48 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return [{ amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date }];
     });
 
+  const buildDepositMetadata = (): Record<string, unknown> | undefined => {
+    const rows = parsedContributions();
+    if (rows.length === 0) {
+      return undefined;
+    }
+    return {
+      contributions: rows,
+      annualRatePct: parseAmount(annualRate) || 0,
+      termMonths: parseAmount(termMonths) || 0,
+      recapitalization,
+      compounding,
+    };
+  };
+
+  const buildBondMetadata = (): Record<string, unknown> => {
+    const quantityValue = parseAmount(quantity) || 0;
+    const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
+    const priceValue = parseAmount(purchasePrice);
+    return {
+      quantity: quantityValue,
+      faceValueMinorUnits,
+      couponPct: parseAmount(couponPct) || 0,
+      // The total actually paid. If left blank, fall back to nominal (par), so
+      // the purchase entry and expected profit read as break-even.
+      purchasePriceMinorUnits:
+        priceValue > 0
+          ? Money.fromMajor(currency, priceValue).minorUnits
+          : quantityValue * faceValueMinorUnits,
+      purchaseDate: purchaseDate ?? Date.now(),
+      maturityDate: maturityDate ?? Date.now(),
+      bondKind,
+      couponFrequency,
+    };
+  };
+
   const buildMetadata = (): Record<string, unknown> | undefined => {
     if (type === 'term_deposit') {
-      const rows = parsedContributions();
-
-      if (rows.length === 0) {
-        return undefined;
-      }
-
-      return {
-        contributions: rows,
-        annualRatePct: Number(annualRate) || 0,
-        termMonths: Number(termMonths) || 0,
-        recapitalization,
-        compounding,
-      };
+      return buildDepositMetadata();
     }
-
     if (type === 'bond') {
-      return {
-        quantity: Number(quantity) || 0,
-        faceValueMinorUnits: Money.fromMajor(currency, Number(faceValue) || 0).minorUnits,
-        couponPct: Number(couponPct) || 0,
-        purchaseDate: purchaseDate ?? Date.now(),
-        maturityDate: maturityDate ?? Date.now(),
-        bondKind,
-        couponFrequency,
-      };
+      return buildBondMetadata();
     }
-
     return undefined;
   };
 
@@ -170,8 +205,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // non-negative annual rate that was actually entered, and a whole-month term
   // greater than zero. Recapitalization and compounding always carry defaults.
   const isTermDepositValid = (): boolean => {
-    const rate = Number(annualRate);
-    const months = Number(termMonths);
+    const rate = parseAmount(annualRate);
+    const months = parseAmount(termMonths);
 
     return (
       parsedContributions().length > 0 &&
@@ -186,10 +221,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // was actually entered, both dates picked, and a maturity strictly after the
   // purchase. Coupon frequency always carries a default, so it is always valid.
   const isBondValid = (): boolean =>
-    Number(quantity) > 0 &&
-    Number(faceValue) > 0 &&
+    parseAmount(quantity) > 0 &&
+    parseAmount(faceValue) > 0 &&
     couponPct.trim() !== '' &&
-    Number(couponPct) >= 0 &&
+    parseAmount(couponPct) >= 0 &&
     purchaseDate !== null &&
     maturityDate !== null &&
     maturityDate > purchaseDate;
@@ -215,7 +250,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       name,
       type,
       currency,
-      balanceMinorUnits: Money.fromMajor(currency, Number(openingBalance) || 0).minorUnits,
+      balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
       metadata,
     });
 
@@ -238,19 +273,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       }
     >
       <Box gap={4}>
-        <IconEditor
-          label="Icon"
+        <HoldingIdentityField
           icon={icon}
-          fallbackIcon={FALLBACK_ICON}
-          onSelect={setIcon}
-          onRemove={() => setIcon(null)}
+          fallbackIcon={holdingTypeIcon[type]}
+          name={name}
+          onChangeName={setName}
+          onSelectIcon={setIcon}
+          onRemoveIcon={() => setIcon(null)}
+          namePlaceholder="Name"
         />
-
-        <TextField label="Name" value={name} onChangeText={setName} placeholder="Name" />
 
         <ChipRow
           label="Type"
-          options={types}
+          options={allowedTypes}
           selected={type}
           onSelect={setType}
           labels={TYPE_LABELS}
@@ -360,6 +395,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onChangeText={setCouponPct}
               keyboardType="decimal-pad"
               placeholder="0"
+            />
+
+            <TextField
+              label="Purchase Price (total paid)"
+              value={purchasePrice}
+              onChangeText={setPurchasePrice}
+              keyboardType="decimal-pad"
+              placeholder="Defaults to nominal"
             />
 
             <DateField

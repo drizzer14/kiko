@@ -4,6 +4,7 @@
   "testRunner": "jest",
   "jest": { "projectType": "custom", "configFile": "jest.config.js" },
   "mutate": ["**/*.ts", "**/*.tsx", "!**/*.test.ts", "!**/*.test.tsx", "!__tests__/**", "!ios/**"],
+  "ignorePatterns": ["ios", "android"],
   "incremental": true,
   "reporters": ["clear-text", "progress"],
   "thresholds": { "high": 80, "low": 60, "break": 60 },

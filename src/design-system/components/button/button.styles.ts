@@ -31,6 +31,10 @@ export const styles = StyleSheet.create((theme) => ({
   label: {
     ...theme.typography.body,
     fontWeight: '600',
+    // Every call site passes a sentence-case label ("Add holding") — force
+    // title case here, once, so button copy reads consistently without
+    // editing each call site.
+    textTransform: 'capitalize',
     variants: {
       variant: {
         primary: { color: theme.colors.textPrimary },

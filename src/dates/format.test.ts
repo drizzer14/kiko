@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime } from './format';
+import { formatDate, formatDateTime, parseLocalDate } from './format';
 
 describe('formatDate', () => {
   it('formats a Date as zero-padded DD.MM.YYYY', () => {
@@ -29,5 +29,35 @@ describe('formatDateTime', () => {
     const timestamp = new Date(2026, 5, 7, 0, 0).getTime();
 
     expect(formatDateTime(timestamp)).toBe('07.06.2026 00:00');
+  });
+});
+
+describe('parseLocalDate', () => {
+  it('parses YYYY-MM-DD to local midnight of that calendar day', () => {
+    // Local midnight, not UTC midnight: Date.parse('2026-09-02') would land at
+    // 00:00 UTC = 02:00/03:00 local in Kyiv, but the day must read back as the
+    // exact typed calendar day at 00:00 local.
+    const parsed = parseLocalDate('2026-09-02');
+    expect(parsed).toBe(new Date(2026, 8, 2).getTime());
+    const asDate = new Date(parsed);
+    expect(asDate.getFullYear()).toBe(2026);
+    expect(asDate.getMonth()).toBe(8);
+    expect(asDate.getDate()).toBe(2);
+    expect(asDate.getHours()).toBe(0);
+  });
+
+  it('does not match plain Date.parse (which reads the string as UTC midnight)', () => {
+    // Guards the fix: in a non-UTC zone the two disagree by the zone offset.
+    const offsetMinutes = new Date(2026, 8, 2).getTimezoneOffset();
+    if (offsetMinutes !== 0) {
+      expect(parseLocalDate('2026-09-02')).not.toBe(Date.parse('2026-09-02'));
+    }
+  });
+
+  it('returns NaN for a malformed or out-of-range string', () => {
+    expect(Number.isNaN(parseLocalDate(''))).toBe(true);
+    expect(Number.isNaN(parseLocalDate('not-a-date'))).toBe(true);
+    expect(Number.isNaN(parseLocalDate('2026-13-01'))).toBe(true);
+    expect(Number.isNaN(parseLocalDate('2026-02-30'))).toBe(true);
   });
 });

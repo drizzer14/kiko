@@ -13,6 +13,10 @@ type NewCashAccount = {
   name: string;
   currency: Currency;
   initialBalanceMinorUnits: number;
+  // Optional SF Symbol icon, persisted on the account row in the same
+  // transaction so a cash account created with a picked icon keeps it (the
+  // create form now offers the icon picker for every kind, cash included).
+  icon?: string | null;
 };
 
 export const accountsRepo = {
@@ -44,10 +48,10 @@ export const accountsRepo = {
    * partial failure (mirrors `transactionsRepo.recordManual`'s ledger +
    * balance atomicity).
    */
-  createCashAccount: ({ name, currency, initialBalanceMinorUnits }: NewCashAccount) =>
+  createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon }: NewCashAccount) =>
     write(async (tx) => {
       const accountId = id();
-      await tx.insert(accounts).values({ id: accountId, name, kind: 'cash' });
+      await tx.insert(accounts).values({ id: accountId, name, kind: 'cash', icon: icon ?? null });
       await tx.insert(holdings).values({
         id: id(),
         accountId,
