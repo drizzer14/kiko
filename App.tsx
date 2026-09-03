@@ -4,6 +4,7 @@ import './src/design-system/unistyles';
 
 import { NavigationContainer } from '@react-navigation/native';
 import { type FC, useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MigrationsGate from './src/db/migrations.gate';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
@@ -34,10 +35,16 @@ const AppRoot: FC = () => {
 
 export default function App(): React.JSX.Element {
   return (
-    <SafeAreaProvider>
-      <MigrationsGate>
-        <AppRoot />
-      </MigrationsGate>
-    </SafeAreaProvider>
+    // GestureHandlerRootView must wrap the whole app so react-native-gesture-handler
+    // (and react-native-sortables, which builds its drag gestures on it) has a
+    // root to attach native gesture recognizers to. `flex: 1` lets it fill the
+    // screen; without it the tree would collapse to zero height.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <MigrationsGate>
+          <AppRoot />
+        </MigrationsGate>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

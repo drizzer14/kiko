@@ -76,3 +76,50 @@ jest.mock('react-native/Libraries/Modal/Modal', () => {
     visible ? React.createElement(View, rest, children) : null;
   return { __esModule: true, default: Modal };
 });
+
+// react-native-reanimated ships an official Jest mock that replaces its
+// worklet/native-driven animation runtime with synchronous JS stubs, so any
+// component that imports it (react-native-sortables, GestureHandlerRootView's
+// tree) renders under react-test-renderer without the native worklets binary.
+// Registered globally because the accounts / holdings grids reach it
+// transitively from App.tsx / navigator tests.
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+
+// react-native-gesture-handler's jestSetup self-registers mocks for its native
+// gesture recognizers (it calls jest.mock internally as a side effect of being
+// required), so GestureHandlerRootView and the sortables drag gestures mount
+// without the native binding.
+require('react-native-gesture-handler/jestSetup');
+
+// react-native-sortables' Grid is JS-only but its drag machinery leans on
+// reanimated shared values and gesture-handler internals that stay noisy under
+// react-test-renderer and give a test no direct handle on reordering. Mocked so
+// `Sortable.Grid` renders each datum through `renderItem` in `data` order (its
+// keys via `keyExtractor`) inside a host View that surfaces `onDragEnd` as a
+// prop, letting a test read the rendered order and drive a reorder by calling
+// `onDragEnd` with a params object directly. The other exports resolve to inert
+// passthroughs so an import never crashes.
+jest.mock('react-native-sortables', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  const Grid = ({ data, renderItem, keyExtractor, onDragEnd }) =>
+    React.createElement(
+      View,
+      { testID: 'sortable-grid', onDragEnd },
+      (data ?? []).map((item, index) =>
+        React.createElement(
+          React.Fragment,
+          { key: keyExtractor ? keyExtractor(item) : index },
+          renderItem({ item, index }),
+        ),
+      ),
+    );
+
+  const Passthrough = ({ children }) => children ?? null;
+
+  return {
+    __esModule: true,
+    default: { Grid, Flex: Passthrough, Layer: Passthrough, Handle: Passthrough },
+  };
+});
