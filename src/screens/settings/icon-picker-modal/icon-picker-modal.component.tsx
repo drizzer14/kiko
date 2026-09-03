@@ -3,7 +3,7 @@ import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import PressableButton from '../../../design-system/components/pressable-button';
+import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import type { IconPickerModalProps } from './icon-picker-modal.props';
@@ -117,18 +117,14 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
 
         <Box direction="row" gap={2}>
           {onRemove !== undefined && (
-            <PressableButton
-              onPress={onRemove}
-              backgroundColor={theme.colors.surface}
-              label="Remove"
-            />
+            <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
+              Remove
+            </Button>
           )}
 
-          <PressableButton
-            onPress={onDismiss}
-            backgroundColor={theme.colors.surface}
-            label="Cancel"
-          />
+          <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
+            Cancel
+          </Button>
         </Box>
       </Box>
 

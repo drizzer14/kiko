@@ -73,7 +73,7 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
   },
   // A bare icon button (paste, edit) — padding gives a comfortable tap target
-  // without the filled-button chrome of PressableButton.
+  // without the filled chrome of the shared Button.
   iconButton: {
     padding: theme.spacing(2),
   },

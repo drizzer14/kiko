@@ -12,7 +12,6 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import MoneyText from '../../design-system/components/money-text';
-import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
@@ -261,16 +260,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {showActionButton && (
           <Box direction="row" gap={2} style={styles.statusLine}>
-            <PressableButton
+            <Button
+              variant="primary"
+              size="compact"
+              fullWidth={false}
               onPress={() => {
                 handlePress();
               }}
               disabled={isSyncing}
-              backgroundColor={theme.colors.accent}
-              alignSelf="flex-start"
-              icon={<SymbolIcon name={actionIcon} tone="textPrimary" />}
-              label={actionLabel}
-            />
+              icon={actionIcon}
+            >
+              {actionLabel}
+            </Button>
             {isConnectedToMonobank && (
               <Box direction="row" gap={2} style={styles.statusLine}>
                 <SymbolIcon name="clock" tone="textSecondary" />
@@ -283,13 +284,15 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         )}
 
         {isConnectedToMonobank && (
-          <PressableButton
+          <Button
+            variant="secondary"
+            size="compact"
+            fullWidth={false}
             onPress={confirmDisconnect}
-            backgroundColor={theme.colors.surfaceHigh}
-            alignSelf="flex-start"
-            icon={<SymbolIcon name="link.badge.plus" tone="textPrimary" />}
-            label="Disconnect Monobank"
-          />
+            icon="link.badge.plus"
+          >
+            Disconnect Monobank
+          </Button>
         )}
 
         {showConnectedElsewhereHint && (

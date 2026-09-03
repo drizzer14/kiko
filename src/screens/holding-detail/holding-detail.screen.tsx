@@ -11,7 +11,6 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
-import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import SwipeableRow from '../../design-system/components/swipeable-row';
@@ -261,12 +260,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               placeholderTextColor={theme.colors.textSecondary}
               style={inputStyle}
             />
-            <PressableButton
-              onPress={submitContribution}
-              backgroundColor={theme.colors.accent}
-              alignSelf="flex-start"
-              label="Save contribution"
-            />
+            <Button variant="primary" size="compact" fullWidth={false} onPress={submitContribution}>
+              Save contribution
+            </Button>
           </Box>
         )}
 

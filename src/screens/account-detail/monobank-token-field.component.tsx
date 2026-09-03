@@ -3,7 +3,7 @@ import { type FC, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, Text as RNText, TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import Box from '../../design-system/components/box';
-import PressableButton from '../../design-system/components/pressable-button';
+import Button from '../../design-system/components/button';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { fetchClientInfo } from '../../monobank/monobank.client';
@@ -136,14 +136,16 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
       </Box>
 
       <Box direction="row" gap={2} style={styles.statusLine}>
-        <PressableButton
+        <Button
+          variant="secondary"
+          size="compact"
+          fullWidth={false}
           onPress={handleSaveToken}
-          backgroundColor={theme.colors.surfaceHigh}
-          alignSelf="flex-start"
           disabled={tokenStatus.kind === 'checking'}
-          icon={<SymbolIcon name="checkmark.circle" tone="textPrimary" />}
-          label="Save"
-        />
+          icon="checkmark.circle"
+        >
+          Save
+        </Button>
         {tokenStatus.kind === 'checking' && (
           <Text variant="body" tone="textSecondary">
             Checking…

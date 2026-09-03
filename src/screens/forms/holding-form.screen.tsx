@@ -1,7 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useRef, useState } from 'react';
-import { Pressable } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
@@ -11,7 +9,6 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
-import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
@@ -80,7 +77,6 @@ type Contribution = { id: number; amount: string; date: number | null };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
-  const { theme } = useUnistyles();
   // The account this holding is created under; its `kind` constrains which
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
@@ -340,25 +336,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 />
 
                 {contributions.length > 1 && (
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    fullWidth={false}
                     accessibilityLabel={`Remove contribution ${index + 1}`}
                     onPress={() => removeContribution(index)}
-                    style={[styles.secondaryButton, { backgroundColor: theme.colors.surface }]}
                   >
-                    <Text variant="body">Remove</Text>
-                  </Pressable>
+                    Remove
+                  </Button>
                 )}
               </Box>
             ))}
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={addContribution}
-              style={[styles.secondaryButton, { backgroundColor: theme.colors.surface }]}
-            >
-              <Text variant="body">Add contribution</Text>
-            </Pressable>
+            <Button variant="secondary" size="compact" fullWidth={false} onPress={addContribution}>
+              Add contribution
+            </Button>
 
             <TextField
               label="Annual Rate %"
@@ -457,17 +450,5 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     </Screen>
   );
 };
-
-const styles = StyleSheet.create((theme) => ({
-  // A compact inline secondary action (add/remove a contribution row) — hugs its
-  // text at the leading edge rather than spanning the form's full width like the
-  // footer Save button.
-  secondaryButton: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-    alignSelf: 'flex-start',
-  },
-}));
 
 export default HoldingFormScreen;

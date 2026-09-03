@@ -208,13 +208,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         </Box>
 
         {isEditing && !isReadOnly && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={confirmDelete}
-            style={[styles.button, { backgroundColor: theme.colors.negative }]}
-          >
-            <Text variant="body">Delete</Text>
-          </Pressable>
+          <Button variant="destructive" size="compact" fullWidth={false} onPress={confirmDelete}>
+            Delete
+          </Button>
         )}
       </Box>
     </Screen>
@@ -246,12 +242,6 @@ const styles = StyleSheet.create((theme) => ({
   chipUnselected: {
     backgroundColor: theme.colors.surfaceHigh,
     opacity: 0.5,
-  },
-  button: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-    alignSelf: 'flex-start',
   },
 }));
 
