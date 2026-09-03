@@ -29,6 +29,88 @@ rules:
       - metavariable-regex:
           metavariable: $K
           regex: (?i).*(token|secret|password|credential).*
+  - id: pff-secret-in-db-or-log
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      A token/secret/credential must never be written to the database or a log.
+      The Monobank token lives only in the iOS Keychain (react-native-keychain).
+    patterns:
+      - pattern-either:
+          - pattern: console.$M($TOKEN)
+          - pattern: $DB.insert($TBL).values($TOKEN)
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: (?i).*(token|secret|password|credential).*
+  # ---- Class A: code-style conventions (deterministic hard-fail) ----
+  - id: pff-repo-no-class
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Repositories are plain function modules, never classes. Export an object
+      literal of query/write functions applied with `satisfies Repository`.
+    paths:
+      include:
+        - "*.repo.ts"
+    patterns:
+      - pattern-regex: \bclass\s+\w
+  - id: pff-repo-satisfies-not-annotation
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A repository object uses `satisfies Repository`, never a `: Repository`
+      type annotation, so its precise per-method signatures are not widened away.
+    paths:
+      include:
+        - "*.repo.ts"
+    patterns:
+      - pattern: "const $X: Repository = { ... }"
+  - id: pff-money-column-integer-minor-units
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Money columns are stored as integer minor units, never as floating-point
+      `real`/`decimal`/`numeric`. Use `integer('..._minor_units')`.
+    paths:
+      include:
+        - "schema.ts"
+    patterns:
+      - pattern-either:
+          - pattern: real($NAME)
+          - pattern: decimal($NAME)
+          - pattern: numeric($NAME)
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(minor_units|amount|balance).*
+  - id: pff-component-rest-props-named-props
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A component's rest-props binding is named `props`, not `rest`. Destructure
+      `const { someOwnProp, ...props } = ...` so the spread reads `{...props}`.
+    paths:
+      include:
+        - "*.component.tsx"
+    patterns:
+      - pattern-regex: \.\.\.rest\b
+  - id: pff-first-two-arg-not-curried
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Call `first(result, toError)` with two arguments, never the curried
+      `first(toError)(result)` form.
+    patterns:
+      - pattern: first($X)($Y)
+  - id: pff-no-handrolled-pipe-compose
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Do not hand-roll `pipe`/`compose`. Import the composition helpers from
+      `fnts` instead of defining them locally.
+    patterns:
+      - pattern-either:
+          - pattern: const pipe = $F
+          - pattern: const compose = $F
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: pff-webview-injectedjs-dynamic
     languages: [typescript, javascript]

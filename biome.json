@@ -39,6 +39,10 @@
           "level": "error",
           "options": { "maxAllowedComplexity": 15 }
         }
+      },
+      "style": {
+        "noNestedTernary": "error",
+        "useImportType": "error"
       }
     }
   }
