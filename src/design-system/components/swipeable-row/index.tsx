@@ -1,4 +1,4 @@
-import { type FC, type ReactNode, useRef, useState } from 'react';
+import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -9,7 +9,13 @@ import {
   View,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ACTION_WIDTH, clampTranslate, resolveSnap, shouldClaimSwipe } from './gesture';
+import {
+  ACTION_WIDTH,
+  clampTranslate,
+  resolveSnap,
+  shouldClaimSwipe,
+  shouldMergeEdge,
+} from './gesture';
 
 type SwipeableRowProps = {
   children: ReactNode;
@@ -41,6 +47,25 @@ const styles = StyleSheet.create((theme) => ({
     width: ACTION_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
+    // The button's LEFT corners stay square so its inner edge meets the card's
+    // squared right edge as one seam; its RIGHT corners (the row's outer edge)
+    // take the card radius, applied inline where cornerRadius is known.
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  // A surface-coloured backing pinned to the card's right edge. The wrapped
+  // card (a GlassSurface) rounds its own right corners, and overflow-clipping
+  // cannot square a child's rounded corner, so this strip paints the two corner
+  // notches with the card's surface colour: while the row is open its right
+  // corners square off, filling the gap so the card reads flush against the
+  // delete button. It sits behind the card content (only the notches show) and
+  // in front of the delete action, and is invisible at rest.
+  seamFiller: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    backgroundColor: theme.colors.surface,
   },
   deleteLabel: {
     color: theme.colors.textPrimary,
@@ -68,6 +93,21 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   // action's presence in the accessibility tree so a screen reader cannot
   // reach "Delete" on a visually-closed row.
   const [isOpen, setIsOpen] = useState(false);
+  // Whether the card's right corners are squared off to meet the delete button
+  // as one seam. Driven off the live translateX so the merge snaps in the
+  // moment the swipe crosses a small threshold and restores on settle-back;
+  // setEdgeMerged with an unchanged boolean is a no-op, so this only re-renders
+  // on an actual open/closed flip, not on every drag frame.
+  const [edgeMerged, setEdgeMerged] = useState(false);
+  useEffect(() => {
+    const id = translateX.addListener(({ value }) => {
+      setEdgeMerged(shouldMergeEdge(value));
+    });
+
+    return () => {
+      translateX.removeListener(id);
+    };
+  }, [translateX]);
 
   // The pan responder closes over stable refs, so it is built once via a
   // lazy ref initializer rather than a memo (no dependency list to keep in
@@ -160,11 +200,41 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Delete"
           onPress={confirmDelete}
-          style={[styles.deleteAction, { backgroundColor: theme.colors.negative }]}
+          style={[
+            styles.deleteAction,
+            {
+              backgroundColor: theme.colors.negative,
+              // Outer (right) corners take the row's radius; the left corners
+              // are squared in styles.deleteAction to meet the card's seam.
+              borderTopRightRadius: cornerRadius,
+              borderBottomRightRadius: cornerRadius,
+            },
+          ]}
         >
           <Text style={styles.deleteLabel}>Delete</Text>
         </Pressable>
       </Animated.View>
+
+      {/* Behind the card content, in front of the delete action: the surface
+          strip that squares the card's right edge against the button. It
+          tracks the card via the same translateX and stays invisible at rest
+          via the same reveal opacity, so a closed row shows the card's normal
+          rounded right corners. */}
+      <Animated.View
+        testID={testID ? `${testID}-seam` : 'swipeable-row-seam'}
+        pointerEvents="none"
+        style={[
+          styles.seamFiller,
+          { width: cornerRadius, opacity: actionOpacity, transform: [{ translateX }] },
+          {
+            borderTopLeftRadius: cornerRadius,
+            borderBottomLeftRadius: cornerRadius,
+            borderTopRightRadius: edgeMerged ? 0 : cornerRadius,
+            borderBottomRightRadius: edgeMerged ? 0 : cornerRadius,
+          },
+        ]}
+      />
+
       <Animated.View {...panResponder.panHandlers} style={{ transform: [{ translateX }] }}>
         {children}
       </Animated.View>

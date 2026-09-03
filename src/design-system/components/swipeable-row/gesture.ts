@@ -33,6 +33,19 @@ export const shouldClaimSwipe = (dx: number, dy: number): boolean => {
 export const clampTranslate = (offset: number, dx: number): number =>
   Math.min(0, Math.max(-ACTION_WIDTH, offset + dx));
 
+// Once the card has slid left past this small threshold (or is fully open), its
+// right edge and the delete button merge into a single straight seam: the
+// card's right corners square off to meet the button's square left edge with no
+// rounded gap between them.
+export const MERGE_THRESHOLD = 8;
+
+// Whether the card's right corners should square off to meet the delete button.
+// Driven off the live translateX value (0 when closed, down to -ACTION_WIDTH
+// when fully open); false at rest restores the card's normal right-corner
+// radius once the row settles back closed.
+export const shouldMergeEdge = (translateXValue: number): boolean =>
+  translateXValue <= -MERGE_THRESHOLD;
+
 // Settle: from wherever the gesture ended (release OR a termination stolen by
 // the scroll view), resolve to a single stable resting state — fully open past
 // the threshold, otherwise fully closed. Never a partial rest.

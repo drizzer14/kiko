@@ -4,9 +4,11 @@ import '../../unistyles';
 import {
   ACTION_WIDTH,
   clampTranslate,
+  MERGE_THRESHOLD,
   OPEN_THRESHOLD,
   resolveSnap,
   shouldClaimSwipe,
+  shouldMergeEdge,
 } from './gesture';
 import SwipeableRow from './index';
 
@@ -41,6 +43,35 @@ describe('swipe gesture arbitration', () => {
   it('claims the gesture for a clear, dominant horizontal drag', () => {
     expect(shouldClaimSwipe(-20, 2)).toBe(true);
     expect(shouldClaimSwipe(20, -2)).toBe(true);
+  });
+
+  // A right-swipe while the row is OPEN is a clear, dominant horizontal drag,
+  // so the row's own responder claims it (rather than letting it fall through)
+  // and resolveSnap then settles it closed.
+  it('claims a rightward close-swipe (so it does not fall through to the row content)', () => {
+    expect(shouldClaimSwipe(30, 3)).toBe(true);
+    // ...and a decisive rightward drag from fully open settles the row closed.
+    expect(resolveSnap(-ACTION_WIDTH, ACTION_WIDTH)).toBe(0);
+  });
+});
+
+// The card's right corners square off (borderRadius 0) to meet the delete
+// button flush the moment the swipe travels past a small threshold, and
+// restore their normal radius once the row settles back closed. Driven off
+// the live translateX value (0 closed, negative as the card is dragged open).
+describe('edge-merge state (card right corners vs delete button seam)', () => {
+  it('does NOT merge while the row is at rest or barely moved', () => {
+    // Fully closed keeps the card's normal rounded right corners.
+    expect(shouldMergeEdge(0)).toBe(false);
+    // A jitter shy of the threshold has not opened the seam yet.
+    expect(shouldMergeEdge(-(MERGE_THRESHOLD - 1))).toBe(false);
+  });
+
+  it('merges once the card is dragged past the small threshold or fully open', () => {
+    // At the threshold the seam squares off.
+    expect(shouldMergeEdge(-MERGE_THRESHOLD)).toBe(true);
+    // ...and stays merged all the way to fully open.
+    expect(shouldMergeEdge(-ACTION_WIDTH)).toBe(true);
   });
 });
 
@@ -177,5 +208,26 @@ describe('SwipeableRow', () => {
     );
     const actions = getByTestId('row-actions', HIDDEN);
     expect(actions.props.style).toMatchObject({ opacity: 0 });
+  });
+
+  // The seam filler is the surface backing that squares the card's right edge
+  // against the delete button. At rest (row closed) it is invisible (zero
+  // opacity, tied to the same translateX driving the reveal) and its right
+  // corners carry the card's normal radius — the merge only takes effect once
+  // the row is swiped open, and restores on settle-back.
+  it('renders the seam filler invisible with the card radius restored at rest', async () => {
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" radius={10}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    const seam = getByTestId('row-seam', HIDDEN);
+    expect(seam.props.style).toMatchObject({
+      opacity: 0,
+      borderTopLeftRadius: 10,
+      borderBottomLeftRadius: 10,
+      borderTopRightRadius: 10,
+      borderBottomRightRadius: 10,
+    });
   });
 });
