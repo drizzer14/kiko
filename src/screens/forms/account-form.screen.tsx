@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
-import type { Currency } from '../../currency/currency';
+import { type Currency, currencyOptions } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import Box from '../../design-system/components/box';
@@ -31,8 +31,6 @@ const KIND_LABELS: Record<Kind, string> = {
   cash: 'Cash',
   crypto: 'Crypto',
 };
-
-const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one. The persisted default (a kind-derived icon) is applied by the
@@ -118,6 +116,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
           namePlaceholder="Name"
         />
 
+        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
+
         <ChipRow
           label="Kind"
           options={kinds}
@@ -126,13 +126,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
           labels={KIND_LABELS}
         />
 
-        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
-
         {kind === 'cash' && (
           <>
             <ChipRow
               label="Currency"
-              options={currencies}
+              options={currencyOptions}
               selected={currency}
               onSelect={setCurrency}
             />

@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { match } from 'ts-pattern';
-import type { Currency } from '../../currency/currency';
+import { type Currency, currencyOptions } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -39,8 +39,6 @@ const TYPE_LABELS: Record<HoldingType, string> = {
   crypto_asset: 'Crypto Asset',
   jar: 'Jar',
 };
-
-const currencies = ['BTC', 'USD', 'EUR', 'UAH'] as const;
 
 const bondKinds: readonly BondKind[] = ['government', 'corporate'];
 
@@ -294,6 +292,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           namePlaceholder="Name"
         />
 
+        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
+
         <ChipRow
           label="Type"
           options={allowedTypes}
@@ -302,9 +302,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           labels={TYPE_LABELS}
         />
 
-        <ChipRow label="Currency" options={currencies} selected={currency} onSelect={setCurrency} />
-
-        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
+        <ChipRow
+          label="Currency"
+          options={currencyOptions}
+          selected={currency}
+          onSelect={setCurrency}
+        />
 
         {type !== 'term_deposit' && type !== 'bond' && (
           <TextField

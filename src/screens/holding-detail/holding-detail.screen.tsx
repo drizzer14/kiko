@@ -33,6 +33,7 @@ import { defaultTransactionDescription } from '../../transactions/default-descri
 import { parseAmount } from '../../currency/parse';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
+import ColorPicker from '../forms/color-picker';
 import HoldingIdentityField from '../forms/holding-identity-field';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -54,18 +55,31 @@ const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
     }
   };
 
+  // The effective color: the holding's own pick, or its type default while
+  // unset — the same fallback the icon uses, so the picker highlights that
+  // swatch. Editing here mirrors the create form: a pick persists immediately.
+  const effectiveColor = holding.color ?? defaultHoldingColor[holding.type];
+
   return (
-    <HoldingIdentityField
-      icon={holding.icon}
-      fallbackIcon={holdingTypeIcon[holding.type]}
-      iconColor={holding.color ?? defaultHoldingColor[holding.type]}
-      name={name}
-      onChangeName={setName}
-      onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}
-      onRemoveIcon={() => holdingsRepo.setIcon(holding.id, null)}
-      nameAccessibilityLabel={`${holding.name} name`}
-      onEndEditingName={commitName}
-    />
+    <Box gap={4}>
+      <HoldingIdentityField
+        icon={holding.icon}
+        fallbackIcon={holdingTypeIcon[holding.type]}
+        iconColor={effectiveColor}
+        name={name}
+        onChangeName={setName}
+        onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}
+        onRemoveIcon={() => holdingsRepo.setIcon(holding.id, null)}
+        nameAccessibilityLabel={`${holding.name} name`}
+        onEndEditingName={commitName}
+      />
+
+      <ColorPicker
+        label="Color"
+        value={effectiveColor}
+        onSelect={(color) => holdingsRepo.setColor(holding.id, color)}
+      />
+    </Box>
   );
 };
 

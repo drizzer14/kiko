@@ -26,6 +26,7 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
+import ColorPicker from '../forms/color-picker';
 import IconEditor from '../icon-editor';
 import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
 import { useSync } from '../use-sync';
@@ -77,31 +78,44 @@ const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
     }
   };
 
+  // The effective color: the account's own pick, or its kind default while
+  // unset — the same fallback the icon uses, so the picker highlights that
+  // swatch. Editing here mirrors the create form: a pick persists immediately.
+  const effectiveColor = account.color ?? defaultAccountColor[account.kind];
+
   return (
-    <Box direction="row" gap={3} style={styles.metadataHeader}>
-      <IconEditor
-        label="Icon"
-        icon={account.icon}
-        fallbackIcon={KIND_ICON[account.kind]}
-        iconColor={account.color ?? defaultAccountColor[account.kind]}
-        onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
-        onRemove={() => accountsRepo.setIcon(account.id, null)}
-      />
-
-      <Box gap={1} style={styles.metadataNameBlock}>
-        <Text variant="caption" tone="textSecondary">
-          Name
-        </Text>
-
-        <TextInput
-          accessibilityLabel={`${account.name} name`}
-          value={name}
-          onChangeText={setName}
-          onEndEditing={commitName}
-          placeholderTextColor={theme.colors.textSecondary}
-          style={styles.nameField}
+    <Box gap={4}>
+      <Box direction="row" gap={3} style={styles.metadataHeader}>
+        <IconEditor
+          label="Icon"
+          icon={account.icon}
+          fallbackIcon={KIND_ICON[account.kind]}
+          iconColor={effectiveColor}
+          onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
+          onRemove={() => accountsRepo.setIcon(account.id, null)}
         />
+
+        <Box gap={1} style={styles.metadataNameBlock}>
+          <Text variant="caption" tone="textSecondary">
+            Name
+          </Text>
+
+          <TextInput
+            accessibilityLabel={`${account.name} name`}
+            value={name}
+            onChangeText={setName}
+            onEndEditing={commitName}
+            placeholderTextColor={theme.colors.textSecondary}
+            style={styles.nameField}
+          />
+        </Box>
       </Box>
+
+      <ColorPicker
+        label="Color"
+        value={effectiveColor}
+        onSelect={(color) => accountsRepo.update(account.id, { color })}
+      />
     </Box>
   );
 };

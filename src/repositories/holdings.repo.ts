@@ -70,6 +70,15 @@ export const holdingsRepo = {
   setIcon: (holdingId: string, icon: string | null) =>
     write((tx) => tx.update(holdings).set({ icon }).where(eq(holdings.id, holdingId))),
   /**
+   * Sets the holding's color (an entity-color hex) or, with `null`, clears it
+   * back to no custom color. The display layer falls back to a type-derived
+   * default when the stored color is null — the same fallback the icon uses.
+   * Mirrors `setIcon` so the detail header can edit the color exactly as the
+   * create form does.
+   */
+  setColor: (holdingId: string, color: string | null) =>
+    write((tx) => tx.update(holdings).set({ color }).where(eq(holdings.id, holdingId))),
+  /**
    * Appends one contribution to a term deposit and rewrites its metadata in a
    * single transaction. Metadata is rebuilt cleanly from the parsed meta, so
    * any legacy `principalMinorUnits`/`startDate` keys are dropped rather than

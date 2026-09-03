@@ -66,6 +66,7 @@ jest.mock('../../repositories/holdings.repo', () => ({
     appendDepositContribution: jest.fn(),
     updateName: jest.fn(),
     setIcon: jest.fn(),
+    setColor: jest.fn(),
   },
 }));
 jest.mock('../../repositories/transactions.repo', () => ({
@@ -255,6 +256,33 @@ describe('HoldingDetailScreen', () => {
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
+  });
+
+  it('hydrates the color picker with the holding stored color as the selected swatch', async () => {
+    seed({ ...cardHolding, color: darkTheme.colors.entityColors.violet });
+
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('hydrates the color picker with the type default when no color is stored', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    // A `card` holding with no color highlights the card type default (white).
+    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('changes the holding color through the header color picker, via holdingsRepo.setColor', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    await fireEvent.press(getByLabelText('Color violet'));
+
+    expect(holdingsRepo.setColor).toHaveBeenCalledWith('h-1', darkTheme.colors.entityColors.violet);
   });
 
   it('shows gross, interest, and tax detail for a taxable deposit', async () => {

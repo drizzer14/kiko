@@ -604,6 +604,31 @@ describe('AccountDetailScreen', () => {
     expect(mockAccountSetIcon).toHaveBeenCalledWith('a', null);
   });
 
+  it('hydrates the color picker with the account stored color as the selected swatch', async () => {
+    setLiveData({
+      accounts: [account({ color: darkTheme.colors.entityColors.violet })],
+      holdings: [],
+    });
+    const { getByLabelText } = await renderScreen();
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('hydrates the color picker with the kind default when no color is stored', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+    // A `bank` account with no color highlights the bank kind default (white).
+    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+  });
+
+  it("changes the account's own color through the header color picker, via accountsRepo.update", async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText('Color violet'));
+    expect(mockAccountUpdate).toHaveBeenCalledWith('a', {
+      color: darkTheme.colors.entityColors.violet,
+    });
+  });
+
   it("edits the account's own name in a header field and renames via accountsRepo.update on end-of-editing", async () => {
     setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
     const { getByLabelText, getByDisplayValue } = await renderScreen();
