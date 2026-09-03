@@ -5,6 +5,7 @@ import { styles } from './holding-card.styles';
 import type { HoldingRow } from '../../db/schema';
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
+import { entityTintBackground } from '../../design-system/entity-tint';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingValue } from '../../holdings/holding-value';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
@@ -25,7 +26,13 @@ const HoldingCard: FC<{
   now: number;
   onOpen: () => void;
 }> = ({ holding, now, onOpen }) => (
-  <GlassSurface testID="holding-card" radius="md" padding={3} style={styles.card}>
+  <GlassSurface
+    testID="holding-card"
+    radius="md"
+    padding={3}
+    tint={entityTintBackground(holding.color ?? defaultHoldingColor[holding.type])}
+    style={styles.card}
+  >
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.pressable}>
       <SymbolIcon
         name={holding.icon ?? holdingTypeIcon[holding.type]}

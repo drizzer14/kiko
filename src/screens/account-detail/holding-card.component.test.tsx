@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { HoldingRow } from '../../db/schema';
 import '../../design-system/unistyles';
+import { entityTintBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import HoldingCard from './holding-card.component';
 
@@ -61,6 +62,33 @@ describe('HoldingCard', () => {
     // A `card` holding with no color reads the card type default (white).
     expect(getByLabelText('Black card icon').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('washes the card with its stored color as a subtle tint on first render', async () => {
+    const { getByTestId } = await render(
+      <HoldingCard
+        holding={holding({ color: darkTheme.colors.entityColors.violet })}
+        now={NOW}
+        onOpen={jest.fn()}
+      />,
+    );
+
+    const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
+    expect(cardStyle.backgroundColor).toBe(
+      entityTintBackground(darkTheme.colors.entityColors.violet),
+    );
+  });
+
+  it('washes the card with the type default color when it has no stored color', async () => {
+    const { getByTestId } = await render(
+      <HoldingCard holding={holding({ color: null })} now={NOW} onOpen={jest.fn()} />,
+    );
+
+    const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
+    // A `card` holding with no color reads the card type default (white).
+    expect(cardStyle.backgroundColor).toBe(
+      entityTintBackground(darkTheme.colors.entityColors.white),
     );
   });
 

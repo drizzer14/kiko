@@ -13,6 +13,7 @@ import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { entityTintBackground } from '../../design-system/entity-tint';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { AccountsStackParamList } from '../../navigation/types';
@@ -106,7 +107,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
 
                 return (
-                  <GlassSurface testID="account-card" padding={4}>
+                  <GlassSurface
+                    testID="account-card"
+                    padding={4}
+                    tint={entityTintBackground(item.color ?? defaultAccountColor[item.kind])}
+                  >
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => navigation.navigate('AccountDetail', { accountId: item.id })}

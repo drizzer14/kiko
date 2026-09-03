@@ -15,6 +15,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   style,
   padding,
   radius = 'md',
+  tint,
   ...props
 }) => {
   const { theme } = useUnistyles();
@@ -22,13 +23,17 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
     { borderRadius: theme.radii[radius] },
     padding !== undefined && { padding: theme.spacing(padding) },
   ];
+  // The wash goes through the Unistyles-managed `tinted` member so it lands on
+  // the first paint (see the `tint` prop docs); appended after the base surface
+  // so it layers over the glass material / fallback color.
+  const wash = tint === undefined ? false : styles.tinted(tint);
 
   if (isLiquidGlassSupported) {
     return (
       <LiquidGlassView
         effect="regular"
         colorScheme="dark"
-        style={[styles.surface, sizing, style]}
+        style={[styles.surface, wash, sizing, style]}
         {...props}
       >
         {children}
@@ -37,7 +42,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   }
 
   return (
-    <View style={[styles.surface, styles.fallback, sizing, style]} {...props}>
+    <View style={[styles.surface, styles.fallback, wash, sizing, style]} {...props}>
       {children}
     </View>
   );

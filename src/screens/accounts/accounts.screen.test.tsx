@@ -1,6 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { ActionSheetIOS, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
+import { entityTintBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import AccountsScreen from './accounts.screen';
 
@@ -277,6 +278,32 @@ describe('AccountsScreen', () => {
 
     // A `cash` account with no color reads the cash kind default (khaki).
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
+  });
+
+  it('washes each account card with a subtle tint of its color on first render', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+
+    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(cardStyle.backgroundColor).toBe(
+      entityTintBackground(darkTheme.colors.entityColors.blue),
+    );
+  });
+
+  it('washes an uncolored account card with its kind default tint', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByTestId } = await renderAccounts();
+
+    // A `cash` account with no color reads the cash kind default (khaki).
+    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(cardStyle.backgroundColor).toBe(
+      entityTintBackground(darkTheme.colors.entityColors.khaki),
+    );
   });
 
   it('reflects term-deposit growth in total net worth (now is passed)', async () => {
