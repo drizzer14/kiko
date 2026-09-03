@@ -27,11 +27,14 @@ export const darkTheme = {
     positive, // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
     border: '#38383A', // separator (dark)
-    // Named palette a user picks from to color an account or holding. Six
-    // distinct swatches, each legible on the true-black background. `blue` and
-    // `green` alias the `accent` / `positive` tones above to keep one source of
-    // truth; the default kind/type -> color mappings live in
-    // src/holdings/entity-colors.ts and reference these tokens.
+    // Named palette a user picks from to color an account or holding. Twelve
+    // distinct swatches drawn from Apple's dark-mode system color family, each
+    // legible on the true-black background and visually distinct from its
+    // neighbours. `blue` and `green` alias the `accent` / `positive` tones
+    // above to keep one source of truth; the default kind/type -> color
+    // mappings live in src/holdings/entity-colors.ts and reference these
+    // tokens. Only appended to below the original six (never remove/rename a
+    // key) so an existing default mapping never dangles.
     entityColors: {
       white: '#FFFFFF',
       khaki: '#BDB76B',
@@ -39,6 +42,12 @@ export const darkTheme = {
       blue: accent,
       green: positive,
       violet: '#BF5AF2', // systemPurple (dark)
+      red: '#FF453A', // systemRed (dark)
+      orange: '#FF9F0A', // systemOrange (dark)
+      teal: '#40C8E0', // systemTeal (dark)
+      pink: '#FF375F', // systemPink (dark)
+      indigo: '#5E5CE6', // systemIndigo (dark)
+      gray: '#98989D', // systemGray (dark)
     },
     // Categorical palette for charts (line series / pie slices). Eight Apple
     // dark system hues, each legible on the true-black background and distinct
