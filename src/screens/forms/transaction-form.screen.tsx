@@ -1,10 +1,12 @@
 import { type FC, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable } from 'react-native';
+import { Alert } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { groupAmount } from './amount-format';
+import ChipRow from './chip-row';
+import DateField from './date-field';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -26,6 +28,10 @@ type TransactionFormScreenProps = {
 };
 
 type Sign = 'income' | 'expense';
+
+const SIGN_OPTIONS: readonly Sign[] = ['income', 'expense'];
+
+const SIGN_LABELS: Record<Sign, string> = { income: 'Income', expense: 'Expense' };
 
 // The message shown on a synced row: its amount is owned by the bank import, so
 // the form opens read-only rather than pretending an edit would stick.
@@ -93,6 +99,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [sign, setSign] = useState<Sign>('income');
+  // The transaction's time, defaulting to now for a fresh add so a manual row
+  // can be BACKDATED via the DateField below. Edit mode hydrates the existing
+  // time; picking a day sets it to that day's local midnight.
+  const [time, setTime] = useState<number>(() => Date.now());
   const [hydrated, setHydrated] = useState(false);
 
   // Seed the fields once, when BOTH the transaction and its holding have loaded
@@ -104,6 +114,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setAmount(groupAmount(fields.amount));
       setSign(fields.sign);
       setDescription(existing.description);
+      setTime(existing.time);
       setHydrated(true);
     }
   }, [existing, holding, hydrated, currency]);
@@ -125,14 +136,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       await transactionsRepo.update({
         transactionId: editingId,
         amountMinorUnits,
-        time: existing?.time ?? Date.now(),
+        time,
         description,
       });
     } else if (holdingId) {
       await transactionsRepo.recordManual({
         holdingId,
         amountMinorUnits,
-        time: Date.now(),
+        time,
         description,
       });
     }
@@ -186,26 +197,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           placeholder="Description"
         />
 
-        <Box style={styles.toggleRow} gap={2}>
-          {(['income', 'expense'] as const).map((option) => {
-            const isSelected = sign === option;
+        <DateField label="Date" value={time} onChange={isReadOnly ? () => undefined : setTime} />
 
-            return (
-              <Pressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: isReadOnly }}
-                disabled={isReadOnly}
-                onPress={() => setSign(option)}
-                style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}
-              >
-                <Text variant="body" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
-                  {option === 'income' ? 'Income' : 'Expense'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </Box>
+        {/* Income/expense sign as a shared two-option chip row. On a read-only
+            (synced) row the selection is fixed: the handler is a no-op so the
+            chips read but cannot toggle. */}
+        <ChipRow
+          options={SIGN_OPTIONS}
+          selected={sign}
+          onSelect={isReadOnly ? () => undefined : setSign}
+          labels={SIGN_LABELS}
+        />
 
         {isEditing && !isReadOnly && (
           <Button variant="destructive" size="compact" fullWidth={false} onPress={confirmDelete}>
@@ -220,28 +222,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 const styles = StyleSheet.create((theme) => ({
   notice: {
     borderRadius: theme.radii.sm,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-  },
-  // Each option is an equal-width segment so the pair reads as one segmented
-  // control rather than two free-floating buttons.
-  chip: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-  // The chosen option is clearly active: a solid accent fill behind white text.
-  chipSelected: {
-    backgroundColor: theme.colors.accent,
-  },
-  // The other option reads as inactive/disabled: a muted, dimmed surface behind
-  // secondary-tone text, so it is unambiguous which side is selected.
-  chipUnselected: {
-    backgroundColor: theme.colors.surfaceHigh,
-    opacity: 0.5,
   },
 }));
 

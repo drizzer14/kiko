@@ -64,6 +64,24 @@ const renderEdit = (transactionId: string): ReturnType<typeof render> => {
   return render(<TransactionFormScreen route={route} navigation={navigation} />);
 };
 
+// Drive the DateField calendar: open the "Date" sheet, then fire the mocked
+// calendar's day-press for the given local day, so a test can backdate a row.
+const pickDate = async (
+  utils: ReturnType<typeof render>,
+  year: number,
+  month: number,
+  day: number,
+): Promise<void> => {
+  await fireEvent.press(utils.getByLabelText('Date'));
+  await fireEvent(utils.getByTestId('Date calendar'), 'dayPress', {
+    year,
+    month,
+    day,
+    dateString: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    timestamp: 0,
+  });
+};
+
 describe('TransactionFormScreen — add mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -105,6 +123,26 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -1000 }),
+    );
+  });
+
+  it('shows the income/expense sign as a shared chip row with income selected by default', async () => {
+    const { getByRole } = await renderAdd();
+    // The hand-rolled Pressable toggle is now the shared ChipRow; income is the
+    // default selection and expense is not.
+    expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(true);
+    expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(false);
+  });
+
+  it('backdates a manual transaction to the date picked in the calendar', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickDate(utils, 2025, 6, 1);
+    await fireEvent.press(utils.getByText('Save'));
+    // The picked day is persisted as the transaction time at LOCAL midnight,
+    // instead of the hardcoded Date.now() the form used before.
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2025, 5, 1).getTime() }),
     );
   });
 
@@ -166,6 +204,23 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
       }),
     );
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('persists the existing time unchanged when the date is not edited', async () => {
+    const { getByText } = await renderEdit('txn-1');
+    await fireEvent.press(getByText('Save'));
+    // The stored time (42) hydrates the DateField and round-trips on save,
+    // rather than being reset to Date.now().
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: 42 }));
+  });
+
+  it('re-dates the transaction to a newly picked calendar day', async () => {
+    const utils = await renderEdit('txn-1');
+    await pickDate(utils, 2025, 1, 10);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2025, 0, 10).getTime() }),
+    );
   });
 
   it('deletes the transaction and navigates back after confirmation', async () => {
