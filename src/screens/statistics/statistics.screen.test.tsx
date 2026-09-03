@@ -44,7 +44,13 @@ jest.mock('../../repositories/transactions.repo', () => ({
   transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-type Account = { id: string; name: string; archivedAt?: number | null };
+type Account = {
+  id: string;
+  name: string;
+  kind?: 'bank' | 'cash' | 'crypto';
+  color?: string | null;
+  archivedAt?: number | null;
+};
 type Holding = {
   id: string;
   accountId: string;
@@ -86,8 +92,8 @@ const setLiveData = (data: LiveData): void => {
 const DAY = 86_400_000;
 const now = Date.now();
 
-const CASH: Account = { id: 'a', name: 'Cash' };
-const BANK: Account = { id: 'b', name: 'Bank' };
+const CASH: Account = { id: 'a', name: 'Cash', kind: 'cash', color: null };
+const BANK: Account = { id: 'b', name: 'Bank', kind: 'bank', color: null };
 
 const UAH_HOLDING: Holding = {
   id: 'h1',

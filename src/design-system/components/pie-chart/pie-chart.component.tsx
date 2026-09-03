@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 import { Svg, Path } from 'react-native-svg';
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -68,16 +67,16 @@ const donutArc = (center: number, outerRadius: number, arc: ArcSlice): string =>
 const toPercent = (share: number): string => `${Math.round(share * 100)}%`;
 
 // One legend row: colour swatch + account name on the left, converted amount +
-// share on the right.
-const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; color: string }> = ({
+// share on the right. The swatch wears the slice's own entity color, matching
+// its pie arc and the account card.
+const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
   slice,
   baseCurrency,
-  color,
 }) => {
   return (
     <View testID={`pie-chart-legend-${slice.accountId}`} style={styles.legendEntry}>
       <View style={styles.legendAccount}>
-        <View style={[styles.swatch, { backgroundColor: color }]} />
+        <View style={[styles.swatch, { backgroundColor: slice.color }]} />
 
         <Text variant="body" tone="textPrimary">
           {slice.name}
@@ -96,8 +95,6 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; color: s
 };
 
 const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE }) => {
-  const { theme } = useUnistyles();
-
   if (slices.length === 0) {
     return (
       <Box testID="pie-chart-empty" style={styles.empty}>
@@ -108,7 +105,6 @@ const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE
     );
   }
 
-  const palette = theme.colors.chartSeries;
   const center = size / 2;
   const arcs = withAngles(slices);
 
@@ -116,25 +112,20 @@ const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE
     <Box style={styles.container}>
       <View style={styles.chart}>
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {arcs.map((arc, index) => (
+          {arcs.map((arc) => (
             <Path
               key={arc.accountId}
               testID={`pie-chart-arc-${arc.accountId}`}
               d={donutArc(center, center, arc)}
-              fill={palette[index % palette.length]}
+              fill={arc.color}
             />
           ))}
         </Svg>
       </View>
 
       <Box style={styles.legend}>
-        {slices.map((slice, index) => (
-          <PieLegendEntry
-            key={slice.accountId}
-            slice={slice}
-            baseCurrency={baseCurrency}
-            color={palette[index % palette.length]}
-          />
+        {slices.map((slice) => (
+          <PieLegendEntry key={slice.accountId} slice={slice} baseCurrency={baseCurrency} />
         ))}
       </Box>
     </Box>

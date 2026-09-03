@@ -4,9 +4,9 @@ import '../../unistyles';
 import PieChart from './pie-chart.component';
 
 const slices: AccountSlice[] = [
-  { accountId: 'a1', name: 'Monobank', amount: 600_00, share: 0.6 },
-  { accountId: 'a2', name: 'Cash', amount: 300_00, share: 0.3 },
-  { accountId: 'a3', name: 'Revolut', amount: 100_00, share: 0.1 },
+  { accountId: 'a1', name: 'Monobank', amount: 600_00, share: 0.6, color: '#FF375F' },
+  { accountId: 'a2', name: 'Cash', amount: 300_00, share: 0.3, color: '#30D158' },
+  { accountId: 'a3', name: 'Revolut', amount: 100_00, share: 0.1, color: '#0A84FF' },
 ];
 
 describe('PieChart', () => {
@@ -30,6 +30,14 @@ describe('PieChart', () => {
     expect(getByText(/\$600\.00/)).toBeTruthy();
     expect(getByText('60%')).toBeTruthy();
     expect(getByText('10%')).toBeTruthy();
+  });
+
+  it("colors each arc with the slice's entity color", async () => {
+    const { getByTestId } = await render(<PieChart slices={slices} baseCurrency="USD" />);
+
+    expect(getByTestId('pie-chart-arc-a1').props.fill).toBe('#FF375F');
+    expect(getByTestId('pie-chart-arc-a2').props.fill).toBe('#30D158');
+    expect(getByTestId('pie-chart-arc-a3').props.fill).toBe('#0A84FF');
   });
 
   it('emits a closed donut-wedge arc path: move-to, an A arc command, and a Z cap', async () => {

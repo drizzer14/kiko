@@ -1,10 +1,15 @@
 import type { Currency } from '../currency/currency';
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { defaultAccountColor } from '../holdings/entity-colors';
 import type { RateTable } from '../rates/conversion';
 import { guardedNetWorth } from '../rates/net-worth-view';
 
-/** An account as the pie chart needs it: identity and display name. */
-export type ContributionAccount = Pick<AccountRow, 'id' | 'name'>;
+/**
+ * An account as the pie chart needs it: identity, display name, and the two
+ * fields that resolve its slice color — its own optional `color` override and
+ * its `kind` (which selects the default swatch when there is no override).
+ */
+export type ContributionAccount = Pick<AccountRow, 'id' | 'name' | 'kind' | 'color'>;
 
 /** A holding as the pie chart needs it: its account plus its convertible value. */
 export type ContributionHolding = Pick<
@@ -17,7 +22,16 @@ export type ContributionHolding = Pick<
  * minor units (so the legend can rebuild a `Money`); `share` is that amount over
  * the total of all returned slices, in `[0, 1]`.
  */
-export type AccountSlice = { accountId: string; name: string; amount: number; share: number };
+export type AccountSlice = {
+  accountId: string;
+  name: string;
+  amount: number;
+  share: number;
+  // The effective slice color: the account's own override when set, else the
+  // per-kind default. The same color the account card renders, so the pie reads
+  // in the app's color language.
+  color: string;
+};
 
 /**
  * Build one pie slice per account for the "Account contribution" chart. Each
@@ -40,8 +54,9 @@ export const buildAccountContribution = (input: {
     .map((account) => {
       const accountHoldings = holdings.filter((holding) => holding.accountId === account.id);
       const amount = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now).minorUnits;
+      const color = account.color ?? defaultAccountColor[account.kind];
 
-      return { accountId: account.id, name: account.name, amount };
+      return { accountId: account.id, name: account.name, amount, color };
     })
     .filter((slice) => slice.amount > 0);
 
