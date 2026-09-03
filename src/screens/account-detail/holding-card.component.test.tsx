@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { HoldingRow } from '../../db/schema';
 import '../../design-system/unistyles';
@@ -90,6 +91,16 @@ describe('HoldingCard', () => {
     expect(cardStyle.backgroundColor).toBe(
       entityTintBackground(darkTheme.colors.entityColors.white),
     );
+  });
+
+  it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {
+    const { getByTestId } = await render(
+      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
+    );
+
+    const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
+    expect(cardStyle.borderWidth).toBe(UnistylesStyleSheet.hairlineWidth);
+    expect(cardStyle.borderColor).toBe(darkTheme.colors.border);
   });
 
   it('renders the value larger (heading step) and bold, above a wider gap from the name', async () => {

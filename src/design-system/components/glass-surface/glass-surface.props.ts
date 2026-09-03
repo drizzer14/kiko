@@ -17,4 +17,12 @@ export type GlassSurfaceProps = ViewProps & {
   // and only tints it after a re-render. Routing the tint through the managed
   // style makes it land on the first paint.
   tint?: string;
+  // Draws the shared card edge: a hairline separator border in the theme's
+  // `border` token. Routed through a Unistyles-managed style member inside the
+  // component (not a plain inline `borderWidth`/`borderColor`) for the same
+  // ShadowNode-reconciliation reason as `tint`: a foreign inline border is not
+  // written to the native node until the next React commit, so it appears only
+  // intermittently on the first paint. Routing it through the managed style
+  // makes the border land on the first frame every time (G2).
+  bordered?: boolean;
 };

@@ -16,6 +16,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   padding,
   radius = 'md',
   tint,
+  bordered = false,
   ...props
 }) => {
   const { theme } = useUnistyles();
@@ -27,13 +28,16 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // the first paint (see the `tint` prop docs); appended after the base surface
   // so it layers over the glass material / fallback color.
   const wash = tint === undefined ? false : styles.tinted(tint);
+  // The card edge goes through the Unistyles-managed `bordered` member for the
+  // same first-paint reason as the wash (see the `bordered` prop docs).
+  const edge = bordered ? styles.bordered : false;
 
   if (isLiquidGlassSupported) {
     return (
       <LiquidGlassView
         effect="regular"
         colorScheme="dark"
-        style={[styles.surface, wash, sizing, style]}
+        style={[styles.surface, wash, edge, sizing, style]}
         {...props}
       >
         {children}
@@ -42,7 +46,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   }
 
   return (
-    <View style={[styles.surface, styles.fallback, wash, sizing, style]} {...props}>
+    <View style={[styles.surface, styles.fallback, wash, edge, sizing, style]} {...props}>
       {children}
     </View>
   );

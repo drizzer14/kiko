@@ -1,6 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -325,6 +326,15 @@ describe('AccountsScreen', () => {
     expect(cardStyle.backgroundColor).toBe(
       entityTintBackground(darkTheme.colors.entityColors.khaki),
     );
+  });
+
+  it('draws the shared hairline card border on first render (G2)', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByTestId } = await renderAccounts();
+
+    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(cardStyle.borderWidth).toBe(UnistylesStyleSheet.hairlineWidth);
+    expect(cardStyle.borderColor).toBe(darkTheme.colors.border);
   });
 
   it('reflects term-deposit growth in total net worth (now is passed)', async () => {

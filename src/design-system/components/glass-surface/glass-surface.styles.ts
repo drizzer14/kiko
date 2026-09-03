@@ -18,4 +18,13 @@ export const styles = StyleSheet.create((theme) => ({
   tinted: (background: string) => ({
     backgroundColor: background,
   }),
+  // The card edge, applied when `bordered` is set. A Unistyles-managed member
+  // (not a plain inline object) for the same reason as `tinted`: Unistyles
+  // writes it straight to the native ShadowNode, so the hairline separator
+  // paints on the first frame rather than intermittently after a re-render
+  // (G2). Uses the theme's `border` separator token at the iOS hairline width.
+  bordered: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
 }));

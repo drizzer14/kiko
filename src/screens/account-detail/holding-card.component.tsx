@@ -31,6 +31,7 @@ const HoldingCard: FC<{
     testID="holding-card"
     radius="md"
     padding={3}
+    bordered
     tint={entityTintBackground(holding.color ?? defaultHoldingColor[holding.type])}
     style={styles.card}
   >

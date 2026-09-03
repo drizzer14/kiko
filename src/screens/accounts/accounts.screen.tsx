@@ -116,6 +116,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     <GlassSurface
                       testID="account-card"
                       padding={4}
+                      bordered
                       tint={entityTintBackground(item.color ?? defaultAccountColor[item.kind])}
                     >
                       <Pressable

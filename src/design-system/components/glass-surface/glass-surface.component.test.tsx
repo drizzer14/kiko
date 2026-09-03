@@ -1,6 +1,11 @@
 import { render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
+// The border width the surface applies comes from Unistyles' own
+// `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so the
+// assertion reads the expected value from the same source the style uses.
+import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../unistyles';
+import { darkTheme } from '../../theme';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/glass-surface`), not `./glass-surface.component`
 // directly, so this test also exercises index.ts's re-export.
@@ -31,6 +36,33 @@ describe('GlassSurface', () => {
 
     const flat = StyleSheet.flatten(getByTestId('tinted-surface').props.style);
     expect(flat.backgroundColor).toBe(tint);
+  });
+
+  // The border must land on the very first render for the same reason as the
+  // tint: it flows through a Unistyles-managed style member, so its width/color
+  // are written to the native ShadowNode on the first frame rather than only
+  // after a re-render (the intermittently-bordered card bug, G2).
+  it('draws the hairline separator border on first render when bordered', async () => {
+    const { getByTestId } = await render(
+      <GlassSurface testID="bordered-surface" bordered>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('bordered-surface').props.style);
+    expect(flat.borderWidth).toBe(UnistylesStyleSheet.hairlineWidth);
+    expect(flat.borderColor).toBe(darkTheme.colors.border);
+  });
+
+  it('draws no border when not bordered', async () => {
+    const { getByTestId } = await render(
+      <GlassSurface testID="borderless-surface">
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('borderless-surface').props.style);
+    expect(flat.borderWidth).toBeUndefined();
   });
 
   it('leaves the surface background untinted when no tint is set', async () => {
