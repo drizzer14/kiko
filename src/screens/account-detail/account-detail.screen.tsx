@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, type ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -147,6 +148,12 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
   // order is the sole ordering key and no screen-level re-sort is needed.
+
+  // The parent ScrollView's animated ref, shared with the sortable grid so a
+  // drag near the top/bottom edge auto-scrolls the list (the grid is nested
+  // inside this Screen's ScrollView, so it cannot scroll it without the ref).
+  const scrollableRef = useAnimatedRef<ScrollView>();
+
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -226,6 +233,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Button
           variant="primary"
@@ -314,8 +322,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
               opens the holding; a touch-and-hold on a manual card opens the
               native context menu (Delete); a hold-and-move drags to reorder —
-              see `CardContextMenu` and `onGridDragEnd`. `sortEnabled` is off with
-              a single holding, where there is nothing to reorder. */}
+              see `CardContextMenu` and `onGridDragEnd`. `scrollableRef` +
+              `autoScrollActivationOffset` let a drag near an edge scroll the
+              parent list (F9). `sortEnabled` is off with a single holding, where
+              there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
@@ -323,6 +333,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               columns={2}
               rowGap={theme.spacing(3)}
               columnGap={theme.spacing(3)}
+              scrollableRef={scrollableRef}
+              autoScrollActivationOffset={75}
               keyExtractor={(holding) => holding.id}
               renderItem={({ item }) => (
                 <Box testID="holding-grid-item">

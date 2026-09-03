@@ -1,7 +1,16 @@
 import type { ReactNode } from 'react';
+import type { ScrollView } from 'react-native';
+import type { AnimatedRef } from 'react-native-reanimated';
 
 export type ScreenProps = {
   children?: ReactNode;
+  // The animated ref of the scroll-mode ScrollView, forwarded to its `ref`.
+  // A screen that nests a `react-native-sortables` grid inside this Screen's
+  // ScrollView passes the same `useAnimatedRef()` here and to the grid's
+  // `scrollableRef`, so a drag near an edge can auto-scroll the parent list
+  // (the grid cannot scroll a scrollable it does not hold a ref to). Only
+  // meaningful in `scroll` mode; ignored otherwise.
+  scrollableRef?: AnimatedRef<ScrollView>;
   // Opt-in scroll mode for a large-title screen: the native large title needs
   // a scrollable content root (`contentInsetAdjustmentBehavior="automatic"`)
   // to measure and collapse correctly. Defaults to `false`, preserving the

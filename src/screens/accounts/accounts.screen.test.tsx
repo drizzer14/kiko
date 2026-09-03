@@ -206,6 +206,22 @@ describe('AccountsScreen', () => {
     expect(mockAccountRemove).not.toHaveBeenCalled();
   });
 
+  it('wires an auto-scroll ref and an edge activation offset to the grid (F9)', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+    const grid = getByTestId('sortable-grid');
+    // The grid receives the parent scroll view's animated ref plus a positive
+    // edge offset, so a drag near the top/bottom edge auto-scrolls the list.
+    expect(grid.props.scrollableRef).toBeDefined();
+    expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
+  });
+
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
     setLiveData({
       accounts: [

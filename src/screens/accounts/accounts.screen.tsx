@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, type ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -58,9 +59,15 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // filtered to the non-archived accounts.
   const activeAccounts = accounts.filter((account) => account.archivedAt == null);
 
+  // The parent ScrollView's animated ref, shared with the sortable grid so a
+  // drag near the top/bottom edge auto-scrolls the list (the grid is nested
+  // inside this Screen's ScrollView, so it cannot scroll it without the ref).
+  const scrollableRef = useAnimatedRef<ScrollView>();
+
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Box testID="add-account-footer" style={styles.addAccountButton}>
           <Button
@@ -82,13 +89,17 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           // A single-column drag-and-drop grid of the existing wide account
           // cards. A plain tap opens the account; a touch-and-hold on a manual
           // card opens the native context menu (Delete); a hold-and-move drags
-          // to reorder — see `CardContextMenu` and `onGridDragEnd`.
+          // to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
+          // + `autoScrollActivationOffset` let a drag near an edge scroll the
+          // parent list (F9).
           <Box testID="accounts-grid">
             <Sortable.Grid
               data={activeAccounts}
               sortEnabled={activeAccounts.length > 1}
               columns={1}
               rowGap={theme.spacing(4)}
+              scrollableRef={scrollableRef}
+              autoScrollActivationOffset={75}
               keyExtractor={(account) => account.id}
               renderItem={({ item }) => {
                 const accountHoldings = holdings.filter(

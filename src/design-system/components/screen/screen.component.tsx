@@ -11,7 +11,13 @@ import { styles } from './screen.styles';
 // task 3, for the root cause).
 const SCROLL_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
 
-const Screen: FC<ScreenProps> = ({ children, scroll = false, footer, bleedBottom = false }) => {
+const Screen: FC<ScreenProps> = ({
+  children,
+  scroll = false,
+  footer,
+  bleedBottom = false,
+  scrollableRef,
+}) => {
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -48,6 +54,7 @@ const Screen: FC<ScreenProps> = ({ children, scroll = false, footer, bleedBottom
     return (
       <SafeAreaView edges={SCROLL_SAFE_AREA_EDGES} style={styles.safeArea}>
         <ScrollView
+          ref={scrollableRef}
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
           // Default "never" consumes the first tap to dismiss the keyboard, so

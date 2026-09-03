@@ -512,6 +512,22 @@ describe('AccountDetailScreen', () => {
     expect(mockRemove).toHaveBeenCalledWith('h1');
   });
 
+  it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+      ],
+    });
+    const { getByTestId } = await renderScreen();
+    const grid = getByTestId('sortable-grid');
+    // The grid receives the parent scroll view's animated ref plus a positive
+    // edge offset, so a drag near the top/bottom edge auto-scrolls the list.
+    expect(grid.props.scrollableRef).toBeDefined();
+    expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
+  });
+
   it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
     setLiveData({
       accounts: [account()],
