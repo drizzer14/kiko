@@ -1,16 +1,10 @@
 import type { Currency } from '../currency/currency';
 import { DAY_MS } from '../dates/duration';
-import type { HoldingRow } from '../db/schema';
-import { holdingValueBreakdown } from '../holdings/holding-value';
+import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from './holding-value-at';
 
-/** A holding as the line chart needs it: identity, currency, and value inputs. */
-export type SeriesHolding = Pick<
-  HoldingRow,
-  'id' | 'currency' | 'type' | 'balanceMinorUnits' | 'metadata'
->;
-
-/** One transaction as the reconstruction needs it: when, and how much (signed). */
-export type SeriesTransaction = { time: number; amountMinorUnits: number };
+// Re-exported from their new shared home so existing importers of these types
+// (the screen, the line chart, the tests) keep their `./currency-series` path.
+export type { SeriesHolding, SeriesTransaction };
 
 /** A single point on a currency's line: `pct` = percent change vs the range start. */
 export type SeriesPoint = { t: number; pct: number };
@@ -32,7 +26,8 @@ export const bucketDaysForSpan = (spanMs: number): number =>
 
 // The bucket instants across the range: `from`, then one per `bucketDays` step,
 // always closing on `to` so the window's start and end are both represented.
-const bucketTimes = (from: number, to: number, bucketDays: number): number[] => {
+// Exported so the converted net-worth series buckets on the exact same instants.
+export const bucketTimes = (from: number, to: number, bucketDays: number): number[] => {
   const step = bucketDays * DAY_MS;
   const times: number[] = [];
   for (let t = from; t < to; t += step) {
@@ -41,31 +36,6 @@ const bucketTimes = (from: number, to: number, bucketDays: number): number[] => 
   times.push(to);
 
   return times;
-};
-
-// A holding's value at instant `t`, in its own currency's minor units.
-// - term_deposit / bond: computed via `holdingValueBreakdown(holding, t)` so
-//   accrued interest / coupons are correct at each past date (no ledger needed).
-// - everything else (card / cash / jar / crypto_asset): the running balance,
-//   reconstructed as opening balance + every transaction dated at or before `t`.
-//   Opening balance = current balance - sum(all transactions), since the stored
-//   `balanceMinorUnits` is the CURRENT balance, not the range-start balance.
-const holdingValueAt = (
-  holding: SeriesHolding,
-  transactions: SeriesTransaction[],
-  t: number,
-): number => {
-  if (holding.type === 'term_deposit' || holding.type === 'bond') {
-    return holdingValueBreakdown(holding, t).net.minorUnits;
-  }
-  const openingBalance =
-    holding.balanceMinorUnits -
-    transactions.reduce((sum, transaction) => sum + transaction.amountMinorUnits, 0);
-  const applied = transactions
-    .filter((transaction) => transaction.time <= t)
-    .reduce((sum, transaction) => sum + transaction.amountMinorUnits, 0);
-
-  return openingBalance + applied;
 };
 
 // Convert a currency's per-bucket absolute totals into percent change vs the
