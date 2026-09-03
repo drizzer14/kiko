@@ -8,26 +8,43 @@ const { entityColors } = darkTheme.colors;
 const mockCreate = jest.fn();
 const mockCreateCashAccount = jest.fn();
 const mockSetIcon = jest.fn();
+const mockUpdate = jest.fn();
 
+// The account the edit-mode form loads through useLiveQuery. `mock`-prefixed so
+// the hoisted factory may close over it; create-mode tests leave it empty.
+let mockAccounts: unknown[] = [];
+
+jest.mock('../../db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: mockAccounts }),
+}));
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
+    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),
     createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
     setIcon: (...args: unknown[]) => mockSetIcon(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
 }));
 
-const renderForm = async (): Promise<
-  ReturnType<typeof render> & { navigation: { goBack: jest.Mock } }
+type RouteParams = { accountId?: string };
+
+const renderForm = async (
+  params: RouteParams = {},
+): Promise<
+  ReturnType<typeof render> & { navigation: { goBack: jest.Mock; setOptions: jest.Mock } }
 > => {
-  const navigation = { goBack: jest.fn() };
-  const view = await render(<AccountFormScreen navigation={navigation as never} />);
+  const navigation = { goBack: jest.fn(), setOptions: jest.fn() };
+  const route = { params } as never;
+  const view = await render(<AccountFormScreen navigation={navigation as never} route={route} />);
   return { ...view, navigation };
 };
 
 describe('AccountFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // No account loaded by default: create mode. Edit-mode tests seed this.
+    mockAccounts = [];
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
   });
@@ -230,5 +247,83 @@ describe('AccountFormScreen color follows kind until dirty', () => {
     expect(mockCreateCashAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Wallet', color: entityColors.violet }),
     );
+  });
+});
+
+describe('AccountFormScreen edit mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [
+      {
+        id: 'acc-1',
+        name: 'Ukrsibbank Card',
+        kind: 'bank',
+        icon: 'banknote',
+        color: entityColors.violet,
+      },
+    ];
+  });
+
+  it('sets the header title to "Edit Account"', async () => {
+    const { navigation } = await renderForm({ accountId: 'acc-1' });
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Account' });
+  });
+
+  it('seeds the name field from the existing account', async () => {
+    const { getByDisplayValue } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByDisplayValue('Ukrsibbank Card')).toBeTruthy();
+  });
+
+  it('seeds the stored icon and color as the selected swatch', async () => {
+    const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByLabelText('Icon banknote')).toBeTruthy();
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('shows the kind read-only (disabled) so it cannot change after creation', async () => {
+    const { getByText } = await renderForm({ accountId: 'acc-1' });
+
+    // The kind chip still shows Bank selected, but pressing another kind is inert.
+    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(getByText('Crypto'));
+    // Save still routes to the account's original kind via update (never create).
+    await fireEvent.press(getByText('Save'));
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not render the cash currency or initial-value fields in edit mode', async () => {
+    mockAccounts = [{ id: 'acc-1', name: 'Wallet', kind: 'cash', icon: null, color: null }];
+    const { queryByLabelText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(queryByLabelText('Initial value')).toBeNull();
+  });
+
+  it('saves through the update path with the edited name and color, and sets the icon', async () => {
+    const { getByLabelText, getByText, navigation } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Renamed account');
+    await fireEvent.press(getByLabelText('Color teal'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', {
+      name: 'Renamed account',
+      color: entityColors.teal,
+    });
+    expect(mockSetIcon).toHaveBeenCalledWith('acc-1', 'banknote');
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('does not save an empty (whitespace-only) edited name', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

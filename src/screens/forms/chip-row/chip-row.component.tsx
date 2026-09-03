@@ -18,6 +18,7 @@ const ChipRow = <Option extends string>({
   onSelect,
   label,
   labels,
+  disabled = false,
 }: ChipRowProps<Option>): ReactElement => {
   const { theme } = useUnistyles();
 
@@ -29,12 +30,13 @@ const ChipRow = <Option extends string>({
         </Text>
       )}
 
-      <Box style={styles.chipRow} gap={2}>
+      <Box style={[styles.chipRow, disabled && styles.disabled]} gap={2}>
         {options.map((option) => (
           <Pressable
             key={option}
             accessibilityRole="button"
-            accessibilityState={{ selected: selected === option }}
+            accessibilityState={{ selected: selected === option, disabled }}
+            disabled={disabled}
             onPress={() => onSelect(option)}
             style={[
               styles.chip,

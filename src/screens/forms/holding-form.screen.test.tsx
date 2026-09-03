@@ -7,32 +7,54 @@ import HoldingFormScreen from './holding-form.screen';
 const { entityColors } = darkTheme.colors;
 
 jest.mock('../../repositories/holdings.repo', () => ({
-  holdingsRepo: { create: jest.fn().mockResolvedValue('new-holding-id'), setIcon: jest.fn() },
+  holdingsRepo: {
+    create: jest.fn().mockResolvedValue('new-holding-id'),
+    setIcon: jest.fn(),
+    update: jest.fn(),
+    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 
 // The account whose kind constrains the offered holding types. `mock`-prefixed
 // so the hoisted jest.mock factory may close over it; each test can reassign it
 // before rendering to exercise a different account kind.
 let mockAccountKind = 'bank';
+// The holding the edit-mode form loads through useLiveQuery. Empty by default
+// (create mode); edit-mode tests seed it before rendering.
+let mockEditHoldings: unknown[] = [];
 
 jest.mock('../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: [{ id: 'acc-1', kind: mockAccountKind }] }),
+  // Key on the subscribed table: the holdings query drives edit-mode hydration,
+  // the accounts query drives the allowed-type filter.
+  useLiveQuery: (_query: unknown, keys: string[]) =>
+    keys[0] === 'holdings'
+      ? { data: mockEditHoldings }
+      : { data: [{ id: 'acc-1', kind: mockAccountKind }] },
 }));
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-const navigation = { goBack: jest.fn(), navigate: jest.fn() } as never;
+const navigation = { goBack: jest.fn(), navigate: jest.fn(), setOptions: jest.fn() } as never;
 const route = { params: { accountId: 'acc-1' } } as never;
 
 const createMock = holdingsRepo.create as jest.Mock;
 const setIconMock = holdingsRepo.setIcon as jest.Mock;
+const updateMock = holdingsRepo.update as jest.Mock;
 
 beforeEach(() => {
   mockAccountKind = 'bank';
+  mockEditHoldings = [];
 });
 
 const renderScreen = () => render(<HoldingFormScreen navigation={navigation} route={route} />);
+
+// Render the form in EDIT mode against a seeded holding, keyed by its id.
+const renderEdit = (holding: Record<string, unknown>) => {
+  mockEditHoldings = [holding];
+  const editRoute = { params: { accountId: 'acc-1', holdingId: holding.id } } as never;
+  return render(<HoldingFormScreen navigation={navigation} route={editRoute} />);
+};
 
 type Screen = Awaited<ReturnType<typeof renderScreen>>;
 
@@ -539,5 +561,146 @@ describe('HoldingFormScreen color follows type until dirty', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(createMock.mock.calls[0][0].color).toBeNull();
+  });
+});
+
+const cardHolding = {
+  id: 'h-1',
+  name: 'Everyday card',
+  type: 'card',
+  currency: 'UAH',
+  balanceMinorUnits: 250_00,
+  icon: 'banknote',
+  color: entityColors.violet,
+};
+
+const depositHolding = {
+  id: 'h-1',
+  name: 'My deposit',
+  type: 'term_deposit',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  icon: null,
+  color: null,
+  metadata: {
+    contributions: [{ amountMinorUnits: 100_000, date: localDay(2026, 1, 1) }],
+    annualRatePct: 12,
+    termMonths: 24,
+    recapitalization: true,
+    compounding: 'monthly',
+  },
+};
+
+const bondHolding = {
+  id: 'h-1',
+  name: 'Gov bond',
+  type: 'bond',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  icon: null,
+  color: null,
+  metadata: {
+    quantity: 10,
+    faceValueMinorUnits: 100_000,
+    couponPct: 9,
+    purchasePriceMinorUnits: 950_000,
+    purchaseDate: localDay(2026, 1, 1),
+    maturityDate: localDay(2028, 1, 1),
+    bondKind: 'corporate',
+    couponFrequency: 'quarterly',
+  },
+};
+
+describe('HoldingFormScreen edit mode', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    setIconMock.mockClear();
+    updateMock.mockClear();
+  });
+
+  it('sets the header title to "Edit Holding"', async () => {
+    await renderEdit(cardHolding);
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Holding' });
+  });
+
+  it('seeds the name, icon, and color from the existing holding', async () => {
+    const { getByDisplayValue, getByLabelText } = await renderEdit(cardHolding);
+
+    expect(getByDisplayValue('Everyday card')).toBeTruthy();
+    expect(getByLabelText('Icon banknote')).toBeTruthy();
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('seeds the balance for a simple type as a grouped major string', async () => {
+    const { getByDisplayValue } = await renderEdit(cardHolding);
+
+    // 25000 minor UAH -> "250" major, shown in the Balance field.
+    expect(getByDisplayValue('250')).toBeTruthy();
+  });
+
+  it('shows type and currency read-only (disabled) so neither can change', async () => {
+    const { getByText } = await renderEdit(cardHolding);
+
+    expect(getByText('Card').parent?.props.accessibilityState.disabled).toBe(true);
+    expect(getByText('UAH').parent?.props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('saves a simple type through update with the edited name, color, and balance', async () => {
+    const screen = await renderEdit(cardHolding);
+
+    await fill(screen, 'Name', 'Renamed card');
+    await fill(screen, 'Balance', '300');
+    await fireEvent.press(screen.getByLabelText('Color teal'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateMock).toHaveBeenCalledWith('h-1', {
+      name: 'Renamed card',
+      color: entityColors.teal,
+      balanceMinorUnits: 300_00,
+    });
+    expect(setIconMock).toHaveBeenCalledWith('h-1', 'banknote');
+    expect(createMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('seeds a term deposit and saves its edited metadata through update', async () => {
+    const screen = await renderEdit(depositHolding);
+
+    // The stored contribution/rate/term seed the fields.
+    expect(screen.getByDisplayValue('1 000')).toBeTruthy();
+    expect(screen.getByDisplayValue('12')).toBeTruthy();
+    expect(screen.getByDisplayValue('24')).toBeTruthy();
+
+    await fill(screen, 'Annual Rate %', '15');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const patch = updateMock.mock.calls[0][1];
+    expect(patch.name).toBe('My deposit');
+    expect(patch.metadata.annualRatePct).toBe(15);
+    expect(patch.metadata.termMonths).toBe(24);
+    expect(patch.metadata.contributions).toEqual([
+      { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
+    ]);
+    // A deposit's value derives from metadata, so no balance is written.
+    expect(patch.balanceMinorUnits).toBeUndefined();
+  });
+
+  it('seeds a bond and saves its edited metadata through update', async () => {
+    const screen = await renderEdit(bondHolding);
+
+    // Stored bond fields seed the inputs (quantity, coupon %, corporate kind).
+    expect(screen.getByDisplayValue('10')).toBeTruthy();
+    expect(screen.getByDisplayValue('9')).toBeTruthy();
+    expect(screen.getByText('Corporate').parent?.props.accessibilityState.selected).toBe(true);
+
+    await fill(screen, 'Coupon %', '11');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const patch = updateMock.mock.calls[0][1];
+    expect(patch.metadata.couponPct).toBe(11);
+    expect(patch.metadata.quantity).toBe(10);
+    expect(patch.metadata.bondKind).toBe('corporate');
+    expect(patch.balanceMinorUnits).toBeUndefined();
   });
 });

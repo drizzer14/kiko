@@ -36,6 +36,8 @@ export const holdingsRepo = {
   // deterministic order rather than flickering between renders.
   allQuery: () =>
     database.select().from(holdings).orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
+  byIdQuery: (holdingId: string) =>
+    database.select().from(holdings).where(eq(holdings.id, holdingId)),
   listByAccountQuery: (accountId: string) =>
     database
       .select()
@@ -62,6 +64,15 @@ export const holdingsRepo = {
     ),
   updateName: (holdingId: string, name: string) =>
     write((tx) => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
+  /**
+   * Generic partial update for a holding row (name, color, balance, metadata),
+   * mirroring `accountsRepo.update`. The edit form saves an existing holding's
+   * editable fields through this in ONE transaction — the icon still routes
+   * through `setIcon` (so a cleared icon persists an explicit null), the same
+   * split the create form uses.
+   */
+  update: (holdingId: string, patch: Partial<HoldingRow>) =>
+    write((tx) => tx.update(holdings).set(patch).where(eq(holdings.id, holdingId))),
   /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back
    * to no custom icon. The display layer falls back to a type-derived default

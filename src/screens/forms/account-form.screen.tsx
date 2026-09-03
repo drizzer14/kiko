@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useState } from 'react';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type Currency, currencyOptions } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
+import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -38,7 +39,14 @@ const KIND_LABELS: Record<Kind, string> = {
 // context worth deriving from yet, so a neutral swatch reads as "unset".
 const FALLBACK_ICON = 'square.grid.2x2';
 
-const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
+const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
+  // An `accountId` in the route params switches the form to EDIT mode: the same
+  // fields, seeded from the existing account, saving through the update path
+  // rather than create. Absent (the accounts list passes `{}`), it is a plain
+  // create form.
+  const editId = route.params?.accountId;
+  const isEdit = editId !== undefined;
+
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind>('bank');
   const [currency, setCurrency] = useState<Currency>('UAH');
@@ -51,6 +59,36 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
   const [color, setColor] = useState<string | null>(null);
   const effectiveColor = color ?? defaultAccountColor[kind];
 
+  // In edit mode, load the account being edited so its fields can seed the form.
+  // The query always runs (hooks can't be conditional); an empty id in create
+  // mode simply matches no row.
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? ''), ['accounts']);
+  const editingAccount = isEdit ? accounts.at(0) : undefined;
+
+  // Seed the form once from the loaded account. `useLiveQuery` resolves
+  // asynchronously, so the initial render precedes the data; a one-shot ref
+  // guards against re-seeding (and clobbering the user's in-progress edits) on
+  // every subsequent live-query emission.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (!isEdit || hydrated.current || editingAccount === undefined) {
+      return;
+    }
+    hydrated.current = true;
+    setName(editingAccount.name);
+    setKind(editingAccount.kind);
+    setIcon(editingAccount.icon);
+    setColor(editingAccount.color);
+  }, [isEdit, editingAccount]);
+
+  // The stack sets the static "Add Account" title; in edit mode override it with
+  // "Edit Account" so the header reads correctly for the update flow.
+  useLayoutEffect(() => {
+    if (isEdit) {
+      navigation.setOptions({ title: 'Edit Account' });
+    }
+  }, [isEdit, navigation]);
+
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
 
@@ -58,6 +96,19 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
     // Block submit on an empty (or whitespace-only) name; the button is also
     // disabled below so this guards the programmatic path too.
     if (!canSave) {
+      return;
+    }
+
+    if (isEdit) {
+      // Update the editable identity fields in one transaction; the icon routes
+      // through setIcon (so a cleared icon persists an explicit null), the same
+      // split the create path uses. Kind is read-only, and the cash currency +
+      // initial value belong to the create-time initial holding, so neither is
+      // touched here.
+      await accountsRepo.update(editId, { name: trimmedName, color });
+      await accountsRepo.setIcon(editId, icon);
+      navigation.goBack();
+
       return;
     }
 
@@ -118,15 +169,23 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
 
         <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
 
+        {/* Kind fixes an account's structure (a cash account owns an initial
+            cash holding; a bank/crypto does not), and no repo path re-shapes it,
+            so it is read-only in edit mode — shown, but not switchable. */}
         <ChipRow
           label="Kind"
           options={kinds}
           selected={kind}
           onSelect={setKind}
           labels={KIND_LABELS}
+          disabled={isEdit}
         />
 
-        {kind === 'cash' && (
+        {/* The currency + initial value seed the cash account's initial holding
+            at creation only; they have no meaning once the holding exists (its
+            balance is edited on the holding itself), so the edit form omits
+            them. */}
+        {!isEdit && kind === 'cash' && (
           <>
             <ChipRow
               label="Currency"

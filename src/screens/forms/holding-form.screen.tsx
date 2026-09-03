@@ -1,9 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { match } from 'ts-pattern';
 import { type Currency, currencyOptions } from '../../currency/currency';
-import { Money } from '../../currency/money';
+import { Money, toMajor } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
+import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -12,7 +13,14 @@ import Switch from '../../design-system/components/switch';
 import TextField from '../../design-system/components/text-field';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
-import type { BondKind, CompoundingFrequency } from '../../holdings/holding-metadata';
+import {
+  asBondMeta,
+  asTermDepositMeta,
+  type BondKind,
+  type BondMeta,
+  type CompoundingFrequency,
+  type TermDepositMeta,
+} from '../../holdings/holding-metadata';
 import {
   type HoldingType,
   holdingTypes,
@@ -28,6 +36,69 @@ import { groupAmount } from './amount-format';
 import HoldingIdentityField from './holding-identity-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
+
+type Contribution = { id: number; amount: string; date: number | null };
+
+// Seed the repeatable contributions list from a stored deposit: each stored
+// amount is minor units, shown back in the field as a grouped major string the
+// user can edit (the inverse of the create form's parse-on-save).
+const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribution[] =>
+  meta.contributions.map((contribution, index) => ({
+    id: index,
+    amount: groupAmount(String(toMajor(contribution.amountMinorUnits, currency))),
+    date: contribution.date,
+  }));
+
+// Seed the bond number/date fields from stored metadata. Minor-unit money
+// fields (face value, purchase price) convert back to grouped major strings;
+// plain-number fields (quantity, coupon %) render verbatim.
+const seedBondFields = (
+  meta: BondMeta,
+  currency: Currency,
+): {
+  quantity: string;
+  faceValue: string;
+  couponPct: string;
+  purchasePrice: string;
+  purchaseDate: number;
+  maturityDate: number;
+  bondKind: BondKind;
+  couponFrequency: BondMeta['couponFrequency'];
+} => ({
+  quantity: groupAmount(String(meta.quantity)),
+  faceValue: groupAmount(String(toMajor(meta.faceValueMinorUnits, currency))),
+  couponPct: String(meta.couponPct),
+  purchasePrice: groupAmount(String(toMajor(meta.purchasePriceMinorUnits, currency))),
+  purchaseDate: meta.purchaseDate,
+  maturityDate: meta.maturityDate,
+  bondKind: meta.bondKind,
+  couponFrequency: meta.couponFrequency,
+});
+
+// The partial row an edit-mode save writes: always the editable identity fields
+// (name, color), plus the one value field that belongs to the type — a
+// deposit/bond's value derives from its metadata (its balance is not stored), so
+// those write metadata; every other type writes its edited balance.
+const buildHoldingPatch = (params: {
+  name: string;
+  color: string | null;
+  type: HoldingType;
+  currency: Currency;
+  openingBalance: string;
+  metadata: Record<string, unknown> | undefined;
+}): Partial<HoldingRow> => {
+  const { name, color, type, currency, openingBalance, metadata } = params;
+
+  if (type === 'term_deposit' || type === 'bond') {
+    return { name, color, metadata };
+  }
+
+  return {
+    name,
+    color,
+    balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
+  };
+};
 
 // Human display text for the id-like holding types; the chip still reports the
 // underlying value on select.
@@ -71,15 +142,25 @@ const COUPON_FREQUENCY_LABELS: Record<CouponFrequency, string> = {
   annually: 'Annually',
 };
 
-type Contribution = { id: number; amount: string; date: number | null };
-
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
-  const { accountId } = route.params;
+  const { accountId, holdingId } = route.params;
+  // A `holdingId` in the route params switches the form to EDIT mode: the same
+  // fields, seeded from the existing holding, saving through the update path
+  // rather than create.
+  const isEdit = holdingId !== undefined;
   // The account this holding is created under; its `kind` constrains which
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const accountKind = accounts.at(0)?.kind;
   const allowedTypes = accountKind ? holdingTypesForAccountKind[accountKind] : holdingTypes;
+
+  // In edit mode, load the holding being edited so its fields can seed the form.
+  // The query always runs (hooks can't be conditional); an empty id in create
+  // mode simply matches no row.
+  const { data: editHoldings } = useLiveQuery(holdingsRepo.byIdQuery(holdingId ?? ''), [
+    'holdings',
+  ]);
+  const editingHolding = isEdit ? editHoldings.at(0) : undefined;
 
   const [name, setName] = useState('');
   const [type, setType] = useState<HoldingType>('card');
@@ -130,6 +211,65 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Semiannual coupons are the common case for the government/corporate bonds
   // this tracks (the Monobank statement default), so the picker starts there.
   const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
+
+  // Seed the form once from the loaded holding (edit mode only). `useLiveQuery`
+  // resolves asynchronously, so the initial render precedes the data; a one-shot
+  // ref guards against re-seeding (and clobbering in-progress edits) on every
+  // subsequent live-query emission. The type-specific fields are rebuilt from
+  // the stored metadata: minor-unit money reads back as grouped major strings.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (!isEdit || hydrated.current || editingHolding === undefined) {
+      return;
+    }
+    hydrated.current = true;
+    const holding = editingHolding;
+    setName(holding.name);
+    setType(holding.type);
+    setCurrency(holding.currency);
+    setIcon(holding.icon);
+    setColor(holding.color);
+
+    if (holding.type === 'term_deposit') {
+      const meta = asTermDepositMeta(holding.metadata);
+      if (meta) {
+        const rows = seedContributions(meta, holding.currency);
+        setContributions(rows);
+        nextContributionId.current = rows.length;
+        setAnnualRate(String(meta.annualRatePct));
+        setTermMonths(String(meta.termMonths));
+        setRecap(meta.recapitalization);
+        setCompounding(meta.compounding);
+      }
+      return;
+    }
+
+    if (holding.type === 'bond') {
+      const meta = asBondMeta(holding.metadata);
+      if (meta) {
+        const fields = seedBondFields(meta, holding.currency);
+        setQuantity(fields.quantity);
+        setFaceValue(fields.faceValue);
+        setCouponPct(fields.couponPct);
+        setPurchasePrice(fields.purchasePrice);
+        setPurchaseDate(fields.purchaseDate);
+        setMaturityDate(fields.maturityDate);
+        setBondKind(fields.bondKind);
+        setCouponFrequency(fields.couponFrequency);
+      }
+      return;
+    }
+
+    setOpeningBalance(groupAmount(String(toMajor(holding.balanceMinorUnits, holding.currency))));
+  }, [isEdit, editingHolding]);
+
+  // The stack sets the static "Add Holding" title; in edit mode override it with
+  // "Edit Holding" so the header reads correctly for the update flow.
+  useLayoutEffect(() => {
+    if (isEdit) {
+      navigation.setOptions({ title: 'Edit Holding' });
+    }
+  }, [isEdit, navigation]);
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
@@ -251,6 +391,25 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
+    if (isEdit && holdingId !== undefined) {
+      // Update the editable fields in one transaction (see buildHoldingPatch:
+      // deposit/bond write metadata, every other type writes its balance). The
+      // icon routes through setIcon (so a cleared icon persists an explicit
+      // null), the same split the create path uses. Type/currency are read-only.
+      await holdingsRepo.update(
+        holdingId,
+        buildHoldingPatch({ name, color, type, currency, openingBalance, metadata }),
+      );
+
+      if (icon !== null) {
+        await holdingsRepo.setIcon(holdingId, icon);
+      }
+
+      navigation.goBack();
+
+      return;
+    }
+
     const newHoldingId = await holdingsRepo.create({
       accountId,
       name,
@@ -296,12 +455,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
 
+        {/* A holding's type shapes its metadata and value math, and its currency
+            fixes the unit of every stored balance/transaction; no repo path
+            re-shapes either, so both are read-only in edit mode — shown, but not
+            switchable. */}
         <ChipRow
           label="Type"
           options={allowedTypes}
           selected={type}
           onSelect={setType}
           labels={TYPE_LABELS}
+          disabled={isEdit}
         />
 
         <ChipRow
@@ -309,6 +473,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           options={currencyOptions}
           selected={currency}
           onSelect={setCurrency}
+          disabled={isEdit}
         />
 
         {type !== 'term_deposit' && type !== 'bond' && (
