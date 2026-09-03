@@ -6,6 +6,7 @@ import m0001 from './0001_mushy_obadiah_stane.sql';
 import m0002 from './0002_seed_categories.sql';
 import m0003 from './0003_special_the_phantom.sql';
 import m0004 from './0004_abnormal_energizer.sql';
+import m0005 from './0005_add_entity_color.sql';
 
 export default {
   journal,
@@ -15,5 +16,6 @@ export default {
     m0002,
     m0003,
     m0004,
+    m0005,
   },
 };
