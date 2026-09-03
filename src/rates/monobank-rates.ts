@@ -21,15 +21,22 @@ const isFiat = (currency: Currency | undefined): currency is Currency =>
   currency !== undefined && fiatCurrencies.has(currency);
 
 /**
- * Derive a single A->B rate from one Monobank entry: prefer the cross rate,
- * else the buy/sell midpoint when both exist, else whichever side is present.
+ * Derive a single A->B rate from one Monobank entry.
+ *
+ * A foreign-currency holding is a bank ASSET, so it is valued at the bank's
+ * BUY price — the rate the bank pays to buy that currency from you, i.e. your
+ * realistic liquidation value. This reproduces the figure monobank shows in
+ * its own app (e.g. USD->UAH at rateBuy 44.46, not the buy/sell midpoint
+ * 44.6455, which would overvalue the holding). So when both sides are present
+ * (USD/UAH, EUR/UAH) we take `rateBuy`; the cross rate is used only when it is
+ * the sole rate the entry provides (exotic pairs with no buy/sell quote).
  */
 const deriveRate = (entry: MonobankCurrencyRate): number | undefined => {
+  if (entry.rateBuy !== undefined && entry.rateSell !== undefined) {
+    return entry.rateBuy;
+  }
   if (entry.rateCross !== undefined) {
     return entry.rateCross;
-  }
-  if (entry.rateBuy !== undefined && entry.rateSell !== undefined) {
-    return (entry.rateBuy + entry.rateSell) / 2;
   }
   return entry.rateSell ?? entry.rateBuy;
 };
