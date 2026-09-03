@@ -63,7 +63,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const openAccountMenu = (accountId: string): void => {
     const account = accountsById.get(accountId);
     if (account && !isSyncedAccount(account)) {
-      showDeleteActionSheet(() => accountsRepo.remove(accountId));
+      showDeleteActionSheet(account.name, () => accountsRepo.remove(accountId));
     }
   };
 
@@ -95,6 +95,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           <Box testID="accounts-grid">
             <Sortable.Grid
               data={activeAccounts}
+              sortEnabled={activeAccounts.length > 1}
               columns={1}
               rowGap={theme.spacing(4)}
               keyExtractor={(account) => account.id}

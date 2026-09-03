@@ -196,7 +196,7 @@ describe('AccountsScreen', () => {
       });
     });
     expect(actionSheetSpy).toHaveBeenCalledWith(
-      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      { options: ['Delete "Cash"', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
       expect.any(Function),
     );
     expect(mockAccountRemove).toHaveBeenCalledWith('a');

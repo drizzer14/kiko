@@ -5,7 +5,7 @@ import { Alert, TextInput } from 'react-native';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
-import type { AccountRow, HoldingRow } from '../../db/schema';
+import type { AccountRow } from '../../db/schema';
 import { formatDateTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
@@ -18,7 +18,6 @@ import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
-import { holdingValue } from '../../holdings/holding-value';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
@@ -59,14 +58,6 @@ const actionPresentation = (
     icon: 'arrow.triangle.2.circlepath',
   };
 };
-
-// Zero-value holdings sink to the end of the grid: a holding worth nothing as of
-// `now` (a spent jar, a redeemed bond) is the least interesting tile, so it
-// sorts after every holding that still carries value. Its computed worth — not
-// the stored balance — decides, so a deposit/bond that has accrued value stays
-// among the non-zero holdings.
-const isZeroValue = (holding: HoldingRow, now: number): boolean =>
-  holdingValue(holding, now).isZero();
 
 // The account's own metadata, edited here rather than on the tiny accounts-list
 // row: the icon opens the shared picker (with remove-to-default) under one
@@ -150,26 +141,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const now = Date.now();
   const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings, now);
-  // Order the holdings grid by the user-controlled `sortOrder` (the drag-and-drop
-  // order the `listByAccountQuery` already applies). Zero-value-last is kept only
-  // as a TIEBREAK: it decides between two holdings that share a `sortOrder` (e.g.
-  // before any manual reorder, or in tests seeded without one) so a spent jar
-  // sinks below a still-valuable holding — but a manual reorder (distinct
-  // `sortOrder`s) always wins. `?? 0` guards rows seeded without a sortOrder.
-  const sortedHoldings = [...activeHoldings].sort((first, second) => {
-    const orderDelta = (first.sortOrder ?? 0) - (second.sortOrder ?? 0);
-    if (orderDelta !== 0) {
-      return orderDelta;
-    }
-
-    const firstZero = isZeroValue(first, now);
-    const secondZero = isZeroValue(second, now);
-    if (firstZero === secondZero) {
-      return 0;
-    }
-
-    return firstZero ? 1 : -1;
-  });
+  // The grid renders in the query's order — `listByAccountQuery` already sorts by
+  // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
+  // order is the sole ordering key and no screen-level re-sort is needed.
   const holdingsById = new Map(activeHoldings.map((holding) => [holding.id, holding]));
 
   // Long-press-in-place on a holding card opens its delete menu — but only for a
@@ -178,7 +152,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const openHoldingMenu = (holdingId: string): void => {
     const holding = holdingsById.get(holdingId);
     if (holding && !isSyncedHolding(holding)) {
-      showDeleteActionSheet(() => holdingsRepo.remove(holdingId));
+      showDeleteActionSheet(holding.name, () => holdingsRepo.remove(holdingId));
     }
   };
   const isBankAccount = account?.kind === 'bank';
@@ -345,11 +319,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               opens the holding; a long-press lifts a card to drag (reorder), and
               a long-press released in place opens the delete menu — see
               `onGridDragEnd`. `sortEnabled` is off with a single holding, where
-              there is nothing to reorder (the long-press-to-delete gesture still
-              works because the card's own tap and the grid coexist). */}
+              there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
-              data={sortedHoldings}
+              data={activeHoldings}
+              sortEnabled={activeHoldings.length > 1}
               columns={2}
               rowGap={theme.spacing(3)}
               columnGap={theme.spacing(3)}

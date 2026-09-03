@@ -42,12 +42,14 @@ export const onGridDragEnd = (
 
 /**
  * The long-press-in-place context menu shared by both grids: a single
- * destructive Delete (which IS the confirmation) plus Cancel. `onDelete` runs
- * only when Delete (index 0) is chosen; Cancel (index 1) does nothing.
+ * destructive `Delete "<name>"` (which IS the confirmation) plus Cancel. The
+ * target's display name is spelled out on the destructive button so an
+ * accidental long-press does not delete an unnamed item. `onDelete` runs only
+ * when Delete (index 0) is chosen; Cancel (index 1) does nothing.
  */
-export const showDeleteActionSheet = (onDelete: () => void): void => {
+export const showDeleteActionSheet = (name: string, onDelete: () => void): void => {
   ActionSheetIOS.showActionSheetWithOptions(
-    { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+    { options: [`Delete "${name}"`, 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
     (buttonIndex) => {
       if (buttonIndex === 0) {
         onDelete();

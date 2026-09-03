@@ -94,6 +94,7 @@ type Holding = {
   currency: string;
   balanceMinorUnits: number;
   closedAt?: number | null;
+  sortOrder?: number;
   type?: string;
   metadata?: Record<string, unknown> | null;
 };
@@ -243,22 +244,23 @@ describe('AccountDetailScreen', () => {
     expect(StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio).toBe(1);
   });
 
-  it('sorts zero-value holdings after non-zero ones, keeping the non-zero order', async () => {
+  it('renders holdings in the query sort_order, with no zero-value auto-sink', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
-        // A zero-value holding is listed first in the raw data...
-        { id: 'z', name: 'Empty jar', currency: 'UAH', balanceMinorUnits: 0 },
-        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        // `listByAccountQuery` already returns rows ordered by sort_order, and
+        // manual drag order is the sole ordering key: a zero-value holding the
+        // user dragged to the front (sort_order 0) stays at the front rather
+        // than sinking below a still-valuable holding.
+        { id: 'z', name: 'Empty jar', currency: 'UAH', balanceMinorUnits: 0, sortOrder: 0 },
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000, sortOrder: 1 },
       ],
     });
     const { getAllByTestId } = await renderScreen();
 
-    // ...yet the non-zero 'Black card' renders in the first card and the
-    // zero-value 'Empty jar' sinks to the last.
     const cards = getAllByTestId('holding-card');
-    expect(within(cards[0]).getByText('Black card')).toBeTruthy();
-    expect(within(cards[1]).getByText('Empty jar')).toBeTruthy();
+    expect(within(cards[0]).getByText('Empty jar')).toBeTruthy();
+    expect(within(cards[1]).getByText('Black card')).toBeTruthy();
   });
 
   it('shows the holding icon as a display-only glyph, not an editable icon control', async () => {
@@ -507,7 +509,11 @@ describe('AccountDetailScreen', () => {
       });
     });
     expect(actionSheetSpy).toHaveBeenCalledWith(
-      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      {
+        options: ['Delete "Black card"', 'Cancel'],
+        destructiveButtonIndex: 0,
+        cancelButtonIndex: 1,
+      },
       expect.any(Function),
     );
     expect(mockRemove).toHaveBeenCalledWith('h1');

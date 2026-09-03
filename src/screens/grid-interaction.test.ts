@@ -32,15 +32,19 @@ describe('onGridDragEnd', () => {
 });
 
 describe('showDeleteActionSheet', () => {
-  it('offers a destructive Delete plus Cancel', () => {
+  it('names the target on the destructive button, alongside Cancel', () => {
     const spy = jest
       .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
       .mockImplementation(() => undefined);
 
-    showDeleteActionSheet(jest.fn());
+    showDeleteActionSheet('Black card', jest.fn());
 
     expect(spy).toHaveBeenCalledWith(
-      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      {
+        options: ['Delete "Black card"', 'Cancel'],
+        destructiveButtonIndex: 0,
+        cancelButtonIndex: 1,
+      },
       expect.any(Function),
     );
     spy.mockRestore();
@@ -52,7 +56,7 @@ describe('showDeleteActionSheet', () => {
       .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
       .mockImplementation((_options, callback) => callback(0));
 
-    showDeleteActionSheet(onDelete);
+    showDeleteActionSheet('Black card', onDelete);
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     spy.mockRestore();
@@ -64,7 +68,7 @@ describe('showDeleteActionSheet', () => {
       .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
       .mockImplementation((_options, callback) => callback(1));
 
-    showDeleteActionSheet(onDelete);
+    showDeleteActionSheet('Black card', onDelete);
 
     expect(onDelete).not.toHaveBeenCalled();
     spy.mockRestore();
