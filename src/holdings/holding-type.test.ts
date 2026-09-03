@@ -31,8 +31,4 @@ describe('holdingTypesForAccountKind', () => {
   it('constrains a crypto account to crypto_asset holdings only', () => {
     expect(holdingTypesForAccountKind.crypto).toEqual(['crypto_asset']);
   });
-
-  it('allows a broker account the term_deposit, bond, and crypto_asset holdings', () => {
-    expect(holdingTypesForAccountKind.broker).toEqual(['term_deposit', 'bond', 'crypto_asset']);
-  });
 });

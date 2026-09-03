@@ -29,7 +29,6 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   bank: 'Bank',
   cash: 'Cash',
   crypto: 'Crypto',
-  broker: 'Broker',
 };
 
 // Leading SF Symbol per account kind, mirroring KIND_LABEL. Exported so the
@@ -39,7 +38,6 @@ export const KIND_ICON: Record<AccountRow['kind'], string> = {
   bank: 'building.columns',
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
-  broker: 'chart.line.uptrend.xyaxis',
 };
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {

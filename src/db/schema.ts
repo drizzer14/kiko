@@ -4,7 +4,7 @@ import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  kind: text('kind', { enum: ['bank', 'cash', 'crypto', 'broker'] }).notNull(),
+  kind: text('kind', { enum: ['bank', 'cash', 'crypto'] }).notNull(),
   institution: text('institution'),
   icon: text('icon'),
   sortOrder: integer('sort_order').notNull().default(0),
