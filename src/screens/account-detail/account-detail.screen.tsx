@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Alert, TextInput } from 'react-native';
+import { Alert } from 'react-native';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -27,7 +27,7 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import ColorPicker from '../forms/color-picker';
-import IconEditor from '../icon-editor';
+import HoldingIdentityField from '../forms/holding-identity-field';
 import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
 import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
@@ -67,7 +67,6 @@ const actionPresentation = (
 // rename commits once on end-of-editing (return-key submit or blur) via the
 // generic accountsRepo.update, and an empty or unchanged name is never written.
 const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
-  const { theme } = useUnistyles();
   const [name, setName] = useState(account.name);
 
   const commitName = (): void => {
@@ -85,31 +84,21 @@ const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
 
   return (
     <Box gap={4}>
-      <Box direction="row" gap={3} style={styles.metadataHeader}>
-        <IconEditor
-          label="Icon"
-          icon={account.icon}
-          fallbackIcon={KIND_ICON[account.kind]}
-          iconColor={effectiveColor}
-          onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
-          onRemove={() => accountsRepo.setIcon(account.id, null)}
-        />
-
-        <Box gap={1} style={styles.metadataNameBlock}>
-          <Text variant="caption" tone="textSecondary">
-            Name
-          </Text>
-
-          <TextInput
-            accessibilityLabel={`${account.name} name`}
-            value={name}
-            onChangeText={setName}
-            onEndEditing={commitName}
-            placeholderTextColor={theme.colors.textSecondary}
-            style={styles.nameField}
-          />
-        </Box>
-      </Box>
+      {/* The same shared icon+name identity block the holding-detail header and
+          the create forms use — a fixed-height icon chip beside a labelled name
+          field, so the account and holding sides present one identical control
+          rather than a bespoke input here. */}
+      <HoldingIdentityField
+        icon={account.icon}
+        fallbackIcon={KIND_ICON[account.kind]}
+        iconColor={effectiveColor}
+        name={name}
+        onChangeName={setName}
+        onSelectIcon={(icon) => accountsRepo.setIcon(account.id, icon)}
+        onRemoveIcon={() => accountsRepo.setIcon(account.id, null)}
+        nameAccessibilityLabel={`${account.name} name`}
+        onEndEditingName={commitName}
+      />
 
       <ColorPicker
         label="Color"

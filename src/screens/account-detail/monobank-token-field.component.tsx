@@ -1,11 +1,11 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, Text as RNText, TextInput } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { Linking, Pressable, Text as RNText } from 'react-native';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import TextField from '../../design-system/components/text-field';
 import { fetchClientInfo } from '../../monobank/monobank.client';
 import { readToken, saveToken } from '../../monobank/token';
 import { styles } from './account-detail.styles';
@@ -32,7 +32,6 @@ type MonobankTokenFieldProps = {
 // token-entry controls (link, input, Save) disappear — the Connect/Sync/
 // Disconnect actions live on the parent account-detail screen instead.
 const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
-  const { theme } = useUnistyles();
   const [token, setToken] = useState('');
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>({ kind: 'idle' });
   const hasUserEditedToken = useRef(false);
@@ -115,16 +114,17 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
       </Pressable>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
-        <TextInput
-          value={token}
-          onChangeText={handleChangeToken}
-          placeholder="Monobank token"
-          placeholderTextColor={theme.colors.textSecondary}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.textField}
-        />
+        <Box style={styles.tokenFieldColumn}>
+          <TextField
+            label="Token"
+            value={token}
+            onChangeText={handleChangeToken}
+            placeholder="Monobank token"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </Box>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Paste from clipboard"

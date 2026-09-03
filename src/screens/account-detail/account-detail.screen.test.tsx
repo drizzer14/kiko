@@ -122,7 +122,11 @@ const setLiveData = (data: {
       return { data: connected };
     }
     if (tables[0] === 'holdings') {
-      return { data: data.holdings ?? [] };
+      // A real holding row always carries a `type`; default it here so a fixture
+      // that only cares about name/currency/balance still yields a valid type
+      // for the card's color/icon derivation (an undefined type has no default
+      // color and would throw in the tint helper).
+      return { data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })) };
     }
     if (tables[0] === 'currency_rates') {
       return { data: data.rates ?? [] };
