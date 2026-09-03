@@ -3,6 +3,7 @@ import type { FC } from 'react';
 import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountsScreen from '../screens/accounts/accounts.screen';
 import AccountFormScreen from '../screens/forms/account-form.screen';
+import ContributionFormScreen from '../screens/forms/contribution-form.screen';
 import HoldingFormScreen from '../screens/forms/holding-form.screen';
 import TransactionFormScreen from '../screens/forms/transaction-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
@@ -39,6 +40,11 @@ const AccountsStack: FC = () => (
       name="TransactionForm"
       component={TransactionFormScreen}
       options={{ title: 'Add Transaction' }}
+    />
+    <Stack.Screen
+      name="ContributionForm"
+      component={ContributionFormScreen}
+      options={{ title: 'Add Contribution' }}
     />
   </Stack.Navigator>
 );

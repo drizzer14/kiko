@@ -29,6 +29,10 @@ export type AccountsStackParamList = {
   AccountForm: { accountId?: string };
   HoldingForm: { accountId: string; holdingId?: string };
   TransactionForm: TransactionFormParams;
+  // Add a top-up ("contribution") to a term deposit, reached from the holding's
+  // detail screen. Bonds record a contribution as a plain TransactionForm entry
+  // instead; only deposits take a dedicated contribution form.
+  ContributionForm: { holdingId: string };
 };
 
 export type SettingsStackParamList = {

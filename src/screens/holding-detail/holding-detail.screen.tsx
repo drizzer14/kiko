@@ -1,12 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable, TextInput } from 'react-native';
+import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { HoldingRow } from '../../db/schema';
 import { Money } from '../../currency/money';
 import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
-import { formatDateTime, parseLocalDate } from '../../dates/format';
+import { formatDateTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -18,7 +18,6 @@ import { useSwipePopGuard } from '../../design-system/components/swipeable-row/u
 import Text from '../../design-system/components/text';
 import { isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, type EntryTone, derivedEntries } from '../../holdings/derived-entries';
-import LedgerAmount from './ledger-amount';
 import { asBondMeta } from '../../holdings/holding-metadata';
 import {
   bondExpectedProfitMinor,
@@ -30,7 +29,6 @@ import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { defaultTransactionDescription } from '../../transactions/default-description';
-import { parseAmount } from '../../currency/parse';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
 import ColorPicker from '../forms/color-picker';
@@ -93,8 +91,11 @@ const breakdownRows = (
 ): { label: string; money: Money; tone?: EntryTone }[] => [
   { label: type === 'bond' ? 'Cost' : 'Principal', money: breakdown.principalOrCost },
   { label: 'Gross value', money: breakdown.gross },
-  { label: 'Interest earned', money: breakdown.interest },
-  { label: 'Tax withheld', money: breakdown.tax },
+  // Interest and tax carry a fixed tone by KIND (interest always green, tax
+  // always red), the same rule the derived ledger rows use — not the sign-only
+  // balance coloring, which would leave a positive interest/tax magnitude white.
+  { label: 'Interest earned', money: breakdown.interest, tone: 'positive' },
+  { label: 'Tax withheld', money: breakdown.tax, tone: 'negative' },
   // Bonds surface the whole-life expected profit: sum of net coupons + nominal
   // redeemed, less the price paid (the figure the bank statement shows). It
   // reads green as the holding's expected gain.
@@ -154,12 +155,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // reads accordingly.
   const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
 
-  // Local add-contribution form state. Kept collapsed until the user opens it so
-  // the detail screen stays a read view by default.
-  const [addingContribution, setAddingContribution] = useState(false);
-  const [contributionAmount, setContributionAmount] = useState('');
-  const [contributionDate, setContributionDate] = useState('');
-
   // The stack sets no static title for this screen, so drive the header title
   // from the holding's own name once it loads — otherwise the header falls
   // back to the raw "HoldingDetail" route name. Skip until the name is known
@@ -171,51 +166,18 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     }
   }, [navigation, holdingName]);
 
-  const submitContribution = async (): Promise<void> => {
-    if (!holding) {
-      return;
-    }
-    // parseAmount (accepting a comma decimal) yields NaN for a blank or junk
-    // field, and `!(NaN > 0)` rejects it: require a strictly positive major
-    // amount and a parseable date. Anything else keeps the form open (no
-    // zero-amount or invalid-date contribution).
-    const majorAmount = parseAmount(contributionAmount);
-    // Parse the typed YYYY-MM-DD as LOCAL midnight (matching DateField and the
-    // interest boundaries), not the UTC midnight Date.parse would give — which
-    // would shift the contribution a day off in a +2/+3 zone.
-    const date = parseLocalDate(contributionDate);
-    if (!(majorAmount > 0) || Number.isNaN(date)) {
-      return;
-    }
-    const amountMinorUnits = Money.fromMajor(currency, majorAmount).minorUnits;
-    try {
-      await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
-    } catch {
-      // Keep the form open on failure so the entered values are not lost.
-      Alert.alert('Could not add contribution', 'Please try again.');
-      return;
-    }
-    setContributionAmount('');
-    setContributionDate('');
-    setAddingContribution(false);
-  };
-
-  const inputStyle = [
-    styles.input,
-    { color: theme.colors.textPrimary, borderColor: theme.colors.surfaceHigh },
-  ];
-
   return (
     <Screen
       scroll
       footer={
-        // A large, full-width primary action. For a deposit it opens the inline
-        // top-up form; for a bond (also a "contribution") and every other
-        // holding it opens the shared Transaction form to record the movement.
+        // A large, full-width primary action. A deposit opens the dedicated
+        // Contribution form to record a top-up; a bond (also a "contribution")
+        // and every other holding open the shared Transaction form to record
+        // the movement.
         <Button
           onPress={() =>
             isDeposit
-              ? setAddingContribution(true)
+              ? navigation.navigate('ContributionForm', { holdingId })
               : navigation.navigate('TransactionForm', { holdingId })
           }
         >
@@ -242,41 +204,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     <Text variant="caption" tone="textSecondary">
                       {detail.label}
                     </Text>
-                    {detail.tone ? (
-                      <LedgerAmount money={detail.money} tone={detail.tone} />
-                    ) : (
-                      <MoneyText money={detail.money} />
-                    )}
+                    <MoneyText money={detail.money} tone={detail.tone} />
                   </Box>
                 ))}
               </Box>
             )}
-          </Box>
-        )}
-
-        {isDeposit && addingContribution && (
-          <Box gap={2}>
-            <Text variant="heading">New contribution</Text>
-            <TextInput
-              accessibilityLabel="Contribution amount"
-              value={contributionAmount}
-              onChangeText={setContributionAmount}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={inputStyle}
-            />
-            <TextInput
-              accessibilityLabel="Contribution date"
-              value={contributionDate}
-              onChangeText={setContributionDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={inputStyle}
-            />
-            <Button variant="primary" size="compact" fullWidth={false} onPress={submitContribution}>
-              Save contribution
-            </Button>
           </Box>
         )}
 
@@ -307,7 +239,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       <Text variant="body">{row.entry.label}</Text>
                     </Box>
                     <Box style={styles.rowAmount}>
-                      <LedgerAmount
+                      <MoneyText
                         money={Money.of(currency, row.entry.amountMinorUnits)}
                         tone={row.entry.tone}
                       />
@@ -430,12 +362,6 @@ const styles = StyleSheet.create((theme) => ({
   // no matter how long the description grows.
   rowAmount: {
     flexShrink: 0,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(3),
-    ...theme.typography.body,
   },
 }));
 

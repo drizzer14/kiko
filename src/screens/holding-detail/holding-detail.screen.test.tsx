@@ -1,27 +1,37 @@
 import { Alert } from 'react-native';
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import HoldingDetailScreen from './holding-detail.screen';
 
+// The Text primitive's tone -> color mapping lives inside a unistyles variant
+// that the project Jest mock strips before a test can inspect it, so a money
+// amount's resolved color is not observable. Mock MoneyText to expose the
+// `tone` prop it is handed via a testID instead, while still rendering the
+// formatted amount underneath (so the trailing ₴ that `amountForLabel` scans
+// for is present). The ledger's derived rows and the interest/tax breakdown
+// lines pass an explicit tone, which is exactly what these tests assert.
+jest.mock('../../design-system/components/money-text', () => {
+  const { Text: RNText } = require('react-native');
+  const { formatMoney } = require('../../currency/format');
+
+  return {
+    __esModule: true,
+    default: ({ money, tone }: { money: Parameters<typeof formatMoney>[0]; tone?: string }) => (
+      <RNText testID={`money-tone-${tone ?? 'auto'}`}>{formatMoney(money)}</RNText>
+    ),
+  };
+});
+
 // The test-renderer instance type, derived from RNTL's own query rather than
 // imported from react-test-renderer directly (which is not a declared dep).
 type TextNode = ReturnType<ReturnType<typeof render>['getByText']>;
 
-// Flatten a Text node's style array down to its resolved inline `color` (the
-// LedgerAmount tone color; unistyles variant styles are stripped by the mock,
-// but an inline color survives). Used to assert a ledger row's money tone.
-const colorOf = (node: TextNode): unknown => {
-  const style = node.props.style as unknown;
-  const parts = (Array.isArray(style) ? style : [style]).flat(Number.POSITIVE_INFINITY);
-  return Object.assign({}, ...parts.filter(Boolean)).color;
-};
-
 // The tightest ancestor of `label` that contains a money amount (UAH formats
-// with a trailing ₴), scoped to a single ledger/breakdown row — its amount Text
-// is what carries the tone color.
+// with a trailing ₴), scoped to a single ledger/breakdown row — the mocked
+// MoneyText node whose `money-tone-*` testID carries the resolved tone.
 const amountForLabel = (label: TextNode): TextNode => {
   let node = label.parent;
 
@@ -153,15 +163,6 @@ const seed = (holding: unknown, transactions: unknown[] = [], categories: unknow
 };
 
 const renderScreen = () => render(<HoldingDetailScreen navigation={navigation} route={route} />);
-
-// Seeds a deposit, renders, and opens the add-contribution form so a test can
-// go straight to filling and submitting it.
-const openContributionForm = async () => {
-  seed(depositHolding);
-  const utils = await renderScreen();
-  await fireEvent.press(utils.getByText('Add contribution'));
-  return utils;
-};
 
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
@@ -486,12 +487,25 @@ describe('HoldingDetailScreen', () => {
 
     // The 18% income-tax withholding line reads in the negative (red) tone; the
     // interest accrual reads in the positive (green) tone — by KIND, via the
-    // derived entry's tone, not merely by the sign of the amount.
+    // derived entry's tone passed through MoneyText, not merely by the amount's
+    // sign.
     const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
-    expect(colorOf(taxAmount)).toBe(darkTheme.colors.negative);
+    expect(taxAmount.props.testID).toBe('money-tone-negative');
 
     const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
-    expect(colorOf(interestAmount)).toBe(darkTheme.colors.positive);
+    expect(interestAmount.props.testID).toBe('money-tone-positive');
+  });
+
+  it('colors the interest-earned and tax-withheld value breakdown lines by kind', async () => {
+    seed(depositHolding);
+
+    const { getByText } = await renderScreen();
+
+    // The summary breakdown at the top of the screen colors interest green and
+    // tax red by KIND, matching the ledger rows — not the sign-only balance
+    // coloring that used to leave these positive magnitudes white.
+    expect(amountForLabel(getByText('Interest earned')).props.testID).toBe('money-tone-positive');
+    expect(amountForLabel(getByText('Tax withheld')).props.testID).toBe('money-tone-negative');
   });
 
   it('colors a bond coupon green and the expected-profit line green', async () => {
@@ -501,64 +515,22 @@ describe('HoldingDetailScreen', () => {
 
     // A net coupon (money in) reads green as an interest payment.
     const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
-    expect(colorOf(couponAmount)).toBe(darkTheme.colors.positive);
+    expect(couponAmount.props.testID).toBe('money-tone-positive');
 
     // The whole-life expected-profit breakdown line reads green as the expected gain.
     const expectedProfitAmount = amountForLabel(getByText('Expected profit'));
-    expect(colorOf(expectedProfitAmount)).toBe(darkTheme.colors.positive);
+    expect(expectedProfitAmount.props.testID).toBe('money-tone-positive');
   });
 
-  it('appends a contribution through the add-contribution action', async () => {
+  it('routes the deposit add-contribution action to the dedicated contribution form', async () => {
     seed(depositHolding);
 
-    const { getByText, getByLabelText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
+    // A deposit top-up now opens its own screen (no inline form on the detail
+    // screen); the contribution is filled and persisted there.
     await fireEvent.press(getByText('Add contribution'));
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '1000');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
 
-    // The typed YYYY-MM-DD lands at LOCAL midnight of that day (matching
-    // DateField and the interest boundaries), not the UTC midnight Date.parse
-    // would give — which shifts a day off in a +2/+3 zone.
-    expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith('h-1', {
-      amountMinorUnits: 100_000,
-      date: new Date(2025, 5, 1).getTime(),
-    });
-  });
-
-  it('does not append when the amount is blank', async () => {
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
-  });
-
-  it('does not append when the amount is zero', async () => {
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '0');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
-  });
-
-  it('surfaces an alert and keeps the form open when the append fails', async () => {
-    (holdingsRepo.appendDepositContribution as jest.Mock).mockRejectedValueOnce(new Error('boom'));
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '1000');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    // The form stays open on failure so the entered values are not lost.
-    expect(getByText('Save contribution')).toBeTruthy();
-    alertSpy.mockRestore();
+    expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
   });
 });
