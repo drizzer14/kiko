@@ -19,9 +19,9 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  * A single multi-select filter over one dimension, rendered as a custom
  * dropdown rather than a native menu. Tapping a row toggles it and the sheet
  * stays open, so several values can be checked in one pass; it closes only on an
- * explicit tap-outside. (The native @react-native-menu/menu rebuilds — and so
- * dismisses — its UIMenu whenever the actions array changes on toggle, which no
- * prop reliably prevents, so a pure-JS sheet owns this behaviour instead.)
+ * explicit tap-outside. (A native iOS UIMenu rebuilds — and so dismisses —
+ * itself whenever its actions change on toggle, which no prop reliably prevents,
+ * so a pure-JS sheet owns this behaviour instead.)
  */
 const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, testID }) => {
   const [open, setOpen] = useState(false);

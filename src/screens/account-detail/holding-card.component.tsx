@@ -15,9 +15,10 @@ import GlassSurface from '../../design-system/components/glass-surface';
 
 // One holding rendered as a square grid card: its icon at the top, its name and
 // computed value at the bottom. A plain tap opens the holding detail. Reordering
-// and delete are owned by the enclosing `Sortable.Grid`: a long-press activates
-// a drag (move to reorder), and releasing in place opens the delete menu, so
-// this card intentionally carries no long-press handler of its own. The value is
+// and delete are owned by the enclosing grid and `CardContextMenu`: a hold that
+// moves activates a drag (reorder), and a hold that stays still opens the
+// deep-press (haptic) delete menu, so this card intentionally carries no
+// long-press handler of its own. The value is
 // the holding's COMPUTED worth as of `now` (deposits/bonds accrue over time and
 // carry a stored balance of 0), matching the account headline and the
 // holding-detail page.

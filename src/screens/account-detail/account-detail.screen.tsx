@@ -320,8 +320,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           <Text variant="heading">Holdings</Text>
 
           {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
-              opens the holding; a touch-and-hold on a manual card opens the
-              native context menu (Delete); a hold-and-move drags to reorder —
+              opens the holding; a touch-and-hold-still on a manual card opens the
+              deep-press (haptic) delete menu; a hold-and-move drags to reorder —
               see `CardContextMenu` and `onGridDragEnd`. `scrollableRef` +
               `autoScrollActivationOffset` let a drag near an edge scroll the
               parent list (F9). `sortEnabled` is off with a single holding, where

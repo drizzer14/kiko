@@ -87,9 +87,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           </Box>
         ) : (
           // A single-column drag-and-drop grid of the existing wide account
-          // cards. A plain tap opens the account; a touch-and-hold on a manual
-          // card opens the native context menu (Delete); a hold-and-move drags
-          // to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
+          // cards. A plain tap opens the account; a touch-and-hold-still on a
+          // manual card opens the deep-press (haptic) delete menu; a hold-and-move
+          // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
           // + `autoScrollActivationOffset` let a drag near an edge scroll the
           // parent list (F9).
           <Box testID="accounts-grid">

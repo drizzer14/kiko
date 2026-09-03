@@ -1,10 +1,20 @@
-import { Alert, StyleSheet } from 'react-native';
+import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
 import AccountDetailScreen from './account-detail.screen';
+
+// A grid card's delete menu is a react-native-gesture-handler long-press, so
+// the screen must mount under a GestureHandlerRootView (the app supplies one at
+// its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
 // variant that the project's Jest mock strips before a test can inspect it.
@@ -167,7 +177,9 @@ const multiCurrencyData = {
  */
 const renderScreen = async () => {
   const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
-  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />);
+  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />, {
+    wrapper: gestureRootWrapper,
+  });
   return { ...view, navigation };
 };
 
@@ -488,28 +500,31 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the native context menu Delete action', async () => {
+  it('deletes a manual holding via the deep-press delete menu confirm', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { getByTestId } = await renderScreen();
-    // The manual holding card wraps in the native touch-and-hold context menu
-    // offering a single destructive Delete "Black card"; driving its
-    // onPressAction with the delete action id removes the holding.
-    const menu = getByTestId('card-context-menu');
-    expect(menu.props.actions).toEqual([
-      {
-        id: 'delete',
-        title: 'Delete "Black card"',
-        attributes: { destructive: true },
-        image: 'trash',
-      },
-    ]);
+    const sheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
+    await renderScreen();
+    // The manual holding card is wrapped in the deep-press long-press. A hold
+    // that stays still opens the destructive delete sheet; confirming its
+    // destructive index removes the holding.
     await act(async () => {
-      menu.props.onPressAction({ nativeEvent: { event: 'delete' } });
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
+    expect(sheetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ options: ['Cancel', 'Delete "Black card"'] }),
+      expect.any(Function),
+    );
     expect(mockRemove).toHaveBeenCalledWith('h1');
+    sheetSpy.mockRestore();
   });
 
   it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {

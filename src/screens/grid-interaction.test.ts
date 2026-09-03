@@ -1,9 +1,8 @@
-import {
-  DELETE_ACTION_ID,
-  deleteMenuActions,
-  onGridDragEnd,
-  onMenuAction,
-} from './grid-interaction';
+import { ActionSheetIOS } from 'react-native';
+import { trigger } from 'react-native-haptic-feedback';
+import { onGridDragEnd, openDeleteMenu } from './grid-interaction';
+
+jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));
 
 describe('onGridDragEnd', () => {
   it('persists the new order when the item actually moved (fromIndex !== toIndex)', () => {
@@ -17,7 +16,7 @@ describe('onGridDragEnd', () => {
     expect(persistOrder).toHaveBeenCalledWith(['b', 'a', 'c']);
   });
 
-  it('does nothing when the drag ended where it started — a hold-still opens the native menu, it is not a reorder', () => {
+  it('does nothing when the drag ended where it started — a hold-still opens the delete menu, it is not a reorder', () => {
     const persistOrder = jest.fn();
 
     onGridDragEnd(
@@ -29,33 +28,39 @@ describe('onGridDragEnd', () => {
   });
 });
 
-describe('deleteMenuActions', () => {
-  it('offers a single destructive Delete "<name>" carrying the trash SF Symbol', () => {
-    expect(deleteMenuActions('Black card')).toEqual([
-      {
-        id: DELETE_ACTION_ID,
-        title: 'Delete "Black card"',
-        attributes: { destructive: true },
-        image: 'trash',
-      },
-    ]);
-  });
-});
-
-describe('onMenuAction', () => {
-  it('runs onDelete when the pressed action is the delete action', () => {
+describe('openDeleteMenu', () => {
+  it('fires a medium-impact haptic and presents a destructive Delete "<name>" sheet, routing confirm to onDelete', () => {
     const onDelete = jest.fn();
+    const spy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
 
-    onMenuAction(DELETE_ACTION_ID, onDelete);
+    openDeleteMenu('Black card', onDelete);
 
+    expect(trigger).toHaveBeenCalledWith('impactMedium');
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: ['Cancel', 'Delete "Black card"'],
+        destructiveButtonIndex: 1,
+        cancelButtonIndex: 0,
+      }),
+      expect.any(Function),
+    );
     expect(onDelete).toHaveBeenCalledTimes(1);
+
+    spy.mockRestore();
   });
 
-  it('ignores an unrelated action id', () => {
+  it('does not delete when the sheet is cancelled', () => {
     const onDelete = jest.fn();
+    const spy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(0));
 
-    onMenuAction('something-else', onDelete);
+    openDeleteMenu('Cash', onDelete);
 
     expect(onDelete).not.toHaveBeenCalled();
+
+    spy.mockRestore();
   });
 });

@@ -1,9 +1,20 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import type { ReactNode } from 'react';
+import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { entityTintBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
 import AccountsScreen from './accounts.screen';
+
+// A grid card's delete menu is a react-native-gesture-handler long-press, so
+// the screen must mount under a GestureHandlerRootView (the app supplies one at
+// its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
 const START = Date.UTC(2024, 0, 1);
@@ -85,7 +96,9 @@ const setLiveData = (data: {
 const navigation = { navigate: jest.fn() } as never;
 
 const renderAccounts = (): ReturnType<typeof render> =>
-  render(<AccountsScreen navigation={navigation} route={{} as never} />);
+  render(<AccountsScreen navigation={navigation} route={{} as never} />, {
+    wrapper: gestureRootWrapper,
+  });
 
 describe('AccountsScreen', () => {
   beforeEach(() => {
@@ -175,25 +188,28 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the native context menu Delete action', async () => {
+  it('deletes a manual account via the deep-press delete menu confirm', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    const { getByTestId } = await renderAccounts();
-    // The manual card wraps in the native touch-and-hold context menu offering a
-    // single destructive Delete "Cash". Driving its onPressAction with the
-    // delete action id removes the account.
-    const menu = getByTestId('card-context-menu');
-    expect(menu.props.actions).toEqual([
-      {
-        id: 'delete',
-        title: 'Delete "Cash"',
-        attributes: { destructive: true },
-        image: 'trash',
-      },
-    ]);
+    const sheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
+    await renderAccounts();
+    // The manual card is wrapped in the deep-press long-press. A hold that stays
+    // still opens the destructive delete sheet; confirming its destructive index
+    // removes the account.
     await act(async () => {
-      menu.props.onPressAction({ nativeEvent: { event: 'delete' } });
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
+    expect(sheetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ options: ['Cancel', 'Delete "Cash"'] }),
+      expect.any(Function),
+    );
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
+    sheetSpy.mockRestore();
   });
 
   it('opens the account (does not delete) on a plain tap of the card', async () => {

@@ -1,4 +1,5 @@
-import type { MenuAction } from '@react-native-menu/menu';
+import { ActionSheetIOS } from 'react-native';
+import { trigger } from 'react-native-haptic-feedback';
 
 // The subset of react-native-sortables' `onDragEnd` params this app reads. The
 // library also passes `keyToIndex`; it is not needed here. Kept local (callers
@@ -20,8 +21,9 @@ type GridDragEnd = {
  * - long-press then MOVE (`fromIndex !== toIndex`): a reorder — persist the new
  *   front-to-back order (`indexToKey`, already the reordered key list).
  * - long-press then RELEASE IN PLACE (`fromIndex === toIndex`): the user held
- *   without dragging. That gesture now belongs to the native iOS context menu
- *   (see `CardContextMenu`), so a release-in-place persists nothing here.
+ *   without dragging. That gesture belongs to the card's deep-press (haptic)
+ *   delete menu (see `CardContextMenu`), so a release-in-place persists nothing
+ *   here.
  *
  * A quick tap never activates a drag, so `onDragEnd` never fires for it and the
  * card's own `onPress` (open detail) handles it.
@@ -35,34 +37,31 @@ export const onGridDragEnd = (
   }
 };
 
-// The id carried by the single Delete action, matched back in `onMenuAction`
-// when the native menu reports the pressed action.
-export const DELETE_ACTION_ID = 'delete';
-
 /**
- * The actions for a card's native iOS context menu (touch-and-hold): a single
- * destructive `Delete "<name>"` carrying the `trash` SF Symbol. The target's
- * display name is spelled out on the destructive row so an accidental hold does
- * not delete an unnamed item. A synced (Monobank) entity never reaches here —
- * `CardContextMenu` renders no menu at all for it — so this always describes a
- * deletable, manual entity.
+ * Open the card's deep-press (haptic) delete menu.
+ *
+ * Fired from a touch-and-hold that stays still (the `LongPress` gesture in
+ * `CardContextMenu`; movement cancels it so the sortables drag wins instead).
+ * It plays a medium-impact haptic and presents a native `ActionSheetIOS` with a
+ * single destructive `Delete "<name>"` and a `Cancel`. The target's display
+ * name is spelled out on the destructive row so an accidental hold does not
+ * delete an unnamed item; only the destructive index routes to `onDelete`, so
+ * Cancel (and the sheet dismiss) deletes nothing. A synced (Monobank) entity
+ * never reaches here — `CardContextMenu` renders no gesture for it — so this
+ * always describes a deletable, manual entity.
  */
-export const deleteMenuActions = (name: string): MenuAction[] => [
-  {
-    id: DELETE_ACTION_ID,
-    title: `Delete "${name}"`,
-    attributes: { destructive: true },
-    image: 'trash',
-  },
-];
-
-/**
- * Route a native menu's pressed-action id to the delete callback. Only the
- * Delete action runs `onDelete`; any other id is ignored, so adding a future
- * non-destructive action cannot accidentally delete the item.
- */
-export const onMenuAction = (actionId: string, onDelete: () => void): void => {
-  if (actionId === DELETE_ACTION_ID) {
-    onDelete();
-  }
+export const openDeleteMenu = (name: string, onDelete: () => void): void => {
+  trigger('impactMedium');
+  ActionSheetIOS.showActionSheetWithOptions(
+    {
+      options: ['Cancel', `Delete "${name}"`],
+      destructiveButtonIndex: 1,
+      cancelButtonIndex: 0,
+    },
+    (buttonIndex) => {
+      if (buttonIndex === 1) {
+        onDelete();
+      }
+    },
+  );
 };

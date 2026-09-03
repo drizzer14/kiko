@@ -1529,27 +1529,6 @@ PODS:
     - ReactNativeDependencies
     - SwiftUIIntrospect (~> 1.0)
     - Yoga
-  - react-native-menu (2.0.0):
-    - hermes-engine
-    - RCTRequired
-    - RCTTypeSafety
-    - React-bridging
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - Yoga
   - react-native-safe-area-context (5.9.1):
     - hermes-engine
     - RCTRequired
@@ -2051,6 +2030,27 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNReactNativeHapticFeedback (3.0.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - RNReanimated (4.6.0):
     - hermes-engine
     - RCTRequired
@@ -2382,7 +2382,6 @@ DEPENDENCIES:
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - React-mutationobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
   - react-native-bottom-tabs (from `../node_modules/react-native-bottom-tabs`)
-  - "react-native-menu (from `../node_modules/@react-native-menu/menu`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2423,6 +2422,7 @@ DEPENDENCIES:
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
+  - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
@@ -2539,8 +2539,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
   react-native-bottom-tabs:
     :path: "../node_modules/react-native-bottom-tabs"
-  react-native-menu:
-    :path: "../node_modules/@react-native-menu/menu"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   React-NativeModulesApple:
@@ -2621,6 +2619,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-gesture-handler"
   RNKeychain:
     :path: "../node_modules/react-native-keychain"
+  RNReactNativeHapticFeedback:
+    :path: "../node_modules/react-native-haptic-feedback"
   RNReanimated:
     :path: "../node_modules/react-native-reanimated"
   RNScreens:
@@ -2688,7 +2688,6 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: 1c893921a22c435d7f51b15d80cbd23e1d7da22b
   React-mutationobservernativemodule: fda8f4e5db7e4634e10f07cf6d32e6db770f8dc5
   react-native-bottom-tabs: ca7e51ba14599638dbc8e28495711dfd9154953d
-  react-native-menu: 4e7857f834f55465445db48c703e9985eff28bc9
   react-native-safe-area-context: e2e8878d32c222a0cb76f034e8997486eca4725c
   React-NativeModulesApple: 8fbe4c2233d7fd9c89ad99432f58ded499b15e21
   React-networking: 03d5d7def907a3dfb97b3a637c34bbb7d1721361
@@ -2729,6 +2728,7 @@ SPEC CHECKSUMS:
   RNCClipboard: 93375695275b24a6738ea21e78cb865e1ed869d9
   RNGestureHandler: 91b8290b2aa3724db5ebba0add1003aedd9c8ba4
   RNKeychain: 9a6ea3f5824cfeea8652d70f59a16d9e73e6c817
+  RNReactNativeHapticFeedback: d5dccf2dbb34bdc53d97c10b3d4e2c2f46cf7a1f
   RNReanimated: 7930cc50192b2b826f2101e2567f583a5c9e1ec3
   RNScreens: c5d695b642bf029514d108db2eb493a52bfd95a8
   RNSVG: 409e454bb3b6b625655f948faed2f178a61c7cfe
