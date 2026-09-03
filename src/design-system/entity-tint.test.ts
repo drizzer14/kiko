@@ -15,10 +15,6 @@ describe('entityTintBackground', () => {
     expect(entityTintBackground('#ff453a')).toBe(`rgba(255, 69, 58, ${ENTITY_TINT_OPACITY})`);
   });
 
-  it('honors an explicit opacity override', () => {
-    expect(entityTintBackground('#0A84FF', 0.12)).toBe('rgba(10, 132, 255, 0.12)');
-  });
-
   it('produces a distinct rgba() for every entity-color swatch in the theme', () => {
     const { entityColors } = darkTheme.colors;
     const tints = Object.values(entityColors).map((hex) => entityTintBackground(hex));

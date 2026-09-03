@@ -135,7 +135,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               testID={`net-worth-line-tick-${index}`}
               style={{ position: 'absolute', top: scales.y(tick.value) - LABEL_HALF_HEIGHT }}
             >
-              <Text variant="caption" tone="textSecondary">
+              <Text
+                variant="caption"
+                tone="textSecondary"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 {formatMoney(Money.fromMajor(baseCurrency, tick.value))}
               </Text>
             </View>

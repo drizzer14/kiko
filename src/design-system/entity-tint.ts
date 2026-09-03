@@ -2,9 +2,8 @@
 // own color (one of `theme.colors.entityColors`, see theme.ts) blended at a
 // low, consistent opacity over the card's surface, so a card reads as
 // "this entity's color" without the fully saturated hue pulling attention
-// the way a solid fill would. This module is the shared token + helper only
-// — no screen paints a card with it yet (a later batch wires account and
-// holding cards to it); this batch just proves the mechanism with a test.
+// the way a solid fill would. The account card (accounts.screen) and the
+// holding card (holding-card) both paint through this helper now.
 
 // The default tint opacity, in the middle of a deliberately narrow 8-14%
 // band: low enough that a light entity color (`white`, `khaki`) still reads
@@ -38,15 +37,10 @@ const parseHex = (hex: string): [red: number, green: number, blue: number] => {
 // Given an entity color hex, returns that color as a translucent
 // `rgba(...)` background: set as a card's own `backgroundColor` (layered
 // over `theme.colors.surface` beneath it), the surface shows through at
-// `1 - opacity` and the entity hue tints it at `opacity`. `opacity` defaults
-// to `ENTITY_TINT_OPACITY`; a caller may override it for a spot that needs a
-// stronger or weaker wash, but should stay inside the 8-14% band that
-// token documents.
-export const entityTintBackground = (
-  colorHex: string,
-  opacity: number = ENTITY_TINT_OPACITY,
-): string => {
+// `1 - ENTITY_TINT_OPACITY` and the entity hue tints it at
+// `ENTITY_TINT_OPACITY`.
+export const entityTintBackground = (colorHex: string): string => {
   const [red, green, blue] = parseHex(colorHex);
 
-  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+  return `rgba(${red}, ${green}, ${blue}, ${ENTITY_TINT_OPACITY})`;
 };

@@ -89,7 +89,13 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
       </View>
 
       <View testID={`pie-chart-legend-value-${slice.accountId}`} style={styles.legendValue}>
-        <MoneyText money={Money.of(baseCurrency, slice.amount)} context="balance" />
+        <MoneyText
+          money={Money.of(baseCurrency, slice.amount)}
+          context="balance"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        />
       </View>
 
       <View testID={`pie-chart-legend-percent-${slice.accountId}`} style={styles.legendPercent}>

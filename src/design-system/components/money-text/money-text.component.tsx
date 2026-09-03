@@ -43,11 +43,26 @@ const resolveTone = (context: MoneyTextContext, minorUnits: number, tone?: Money
   return 'textPrimary';
 };
 
-const MoneyText: FC<MoneyTextProps> = ({ money, style, context = 'balance', tone }) => {
+const MoneyText: FC<MoneyTextProps> = ({
+  money,
+  style,
+  context = 'balance',
+  tone,
+  numberOfLines,
+  adjustsFontSizeToFit,
+  minimumFontScale,
+}) => {
   const resolvedTone = resolveTone(context, money.minorUnits, tone);
 
   return (
-    <Text variant="body" tone={resolvedTone} style={style}>
+    <Text
+      variant="body"
+      tone={resolvedTone}
+      style={style}
+      numberOfLines={numberOfLines}
+      adjustsFontSizeToFit={adjustsFontSizeToFit}
+      minimumFontScale={minimumFontScale}
+    >
       {formatMoney(money)}
     </Text>
   );

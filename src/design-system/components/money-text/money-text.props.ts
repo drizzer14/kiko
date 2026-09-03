@@ -32,4 +32,11 @@ export type MoneyTextProps = {
   // (e.g. the Home balance header). `color` is intentionally excluded so the
   // money tone stays authoritative.
   style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign'>>;
+  // Forwarded to the underlying Text so a fixed-width column (a chart's money
+  // value) can keep the amount on a single line and shrink it to fit rather
+  // than wrap. Prefer shrink-to-fit over truncation for money: a truncated
+  // amount misleads. All optional; when absent, wrapping is unchanged.
+  numberOfLines?: number;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
 };

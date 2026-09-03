@@ -16,8 +16,27 @@ jest.mock('../text', () => {
 
   return {
     __esModule: true,
-    default: ({ tone, children }: { tone: string; children: ReactNode }) => (
-      <RNText testID={`money-text-tone-${tone}`}>{children}</RNText>
+    default: ({
+      tone,
+      children,
+      numberOfLines,
+      adjustsFontSizeToFit,
+      minimumFontScale,
+    }: {
+      tone: string;
+      children: ReactNode;
+      numberOfLines?: number;
+      adjustsFontSizeToFit?: boolean;
+      minimumFontScale?: number;
+    }) => (
+      <RNText
+        testID={`money-text-tone-${tone}`}
+        numberOfLines={numberOfLines}
+        adjustsFontSizeToFit={adjustsFontSizeToFit}
+        minimumFontScale={minimumFontScale}
+      >
+        {children}
+      </RNText>
     ),
   };
 });
@@ -102,5 +121,21 @@ describe('MoneyText', () => {
       <MoneyText money={Money.of('USD', 0)} context="transaction" tone="neutral" />,
     );
     expect(getByTestId('money-text-tone-textPrimary')).toBeTruthy();
+  });
+
+  it('forwards single-line shrink-to-fit props to the underlying Text', async () => {
+    const { getByTestId } = await render(
+      <MoneyText
+        money={Money.of('USD', 123456)}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      />,
+    );
+
+    const node = getByTestId('money-text-tone-textPrimary');
+    expect(node.props.numberOfLines).toBe(1);
+    expect(node.props.adjustsFontSizeToFit).toBe(true);
+    expect(node.props.minimumFontScale).toBe(0.7);
   });
 });
