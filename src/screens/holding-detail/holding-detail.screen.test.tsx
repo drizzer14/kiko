@@ -196,29 +196,26 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Tax withheld')).toBeTruthy();
   });
 
-  it('never labels a future schedule period with the word "projected"', async () => {
+  it('marks future lifecycle entries as Projected', async () => {
     seed(futureDepositHolding);
 
-    const { getByText, queryByText } = await renderScreen();
+    const { getAllByText } = await renderScreen();
 
-    // The schedule still renders (its future periods are dimmed via opacity),
-    // but the literal "projected" wording has been dropped from the period line.
-    expect(getByText('Schedule')).toBeTruthy();
-    expect(queryByText(/projected/i)).toBeNull();
+    // The separate schedule card is gone; the lifecycle renders inline. A brand-
+    // new deposit's future accruals render dimmed with a "Projected" marker.
+    expect(getAllByText(/^Projected ·/).length).toBeGreaterThan(0);
   });
 
-  it('renders a per-period lifecycle schedule for a deposit', async () => {
+  it('renders the deposit lifecycle inline in the transactions list', async () => {
     seed(depositHolding);
 
     const { getByText, getAllByText } = await renderScreen();
 
-    // The deposit (opened 2024-01-01, 24-month term) tabulates a row per annual
-    // period; the first anniversary closes on 2025-01-01. The builder is unit-
-    // tested separately, so the screen only needs to prove it renders the rows.
-    expect(getByText('Schedule')).toBeTruthy();
-    expect(getByText('01.01.2025')).toBeTruthy();
-    // One "Opening" figure label per period row.
-    expect(getAllByText('Opening').length).toBeGreaterThan(0);
+    // The lifecycle is inline ledger entries (no separate schedule card): the
+    // opening deposit, per-period interest accruals, and capitalizations.
+    expect(getByText('Opening deposit')).toBeTruthy();
+    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
+    expect(getAllByText('Capitalization').length).toBeGreaterThan(0);
   });
 
   it('shows the shared default description for a transaction with an empty description', async () => {
@@ -334,18 +331,19 @@ describe('HoldingDetailScreen', () => {
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
   });
 
-  it('renders computed derived entries (contribution, interest, tax) for a deposit, marked Computed', async () => {
+  it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {
     seed(depositHolding);
 
     const { getByText, getAllByText } = await renderScreen();
 
-    // derivedEntries yields a Contribution row plus Interest and Tax rows once
-    // the deposit has accrued. These read distinctly from the value-breakdown
+    // derivedEntries yields the opening deposit plus per-period interest and its
+    // two withholding lines. These read distinctly from the value-breakdown
     // labels ("Interest earned"/"Tax withheld").
-    expect(getByText('Contribution')).toBeTruthy();
-    expect(getByText('Interest')).toBeTruthy();
-    expect(getByText('Tax')).toBeTruthy();
-    // Every derived row carries a "Computed" marker so it reads as derived.
+    expect(getByText('Opening deposit')).toBeTruthy();
+    expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
+    expect(getAllByText('Income tax 18%').length).toBeGreaterThan(0);
+    expect(getAllByText('Military levy 5%').length).toBeGreaterThan(0);
+    // Every settled derived row carries a "Computed" marker so it reads as derived.
     expect(getAllByText(/^Computed ·/).length).toBeGreaterThanOrEqual(3);
   });
 
@@ -357,7 +355,7 @@ describe('HoldingDetailScreen', () => {
     // A derived-only deposit (no real transactions) offers no delete action at all.
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
     // Pressing a derived row's label opens no transaction form.
-    await fireEvent.press(getByText('Contribution'));
+    await fireEvent.press(getByText('Opening deposit'));
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
@@ -374,9 +372,9 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText, getByLabelText } = await renderScreen();
 
-    // Both the real transaction and the derived contribution render together.
+    // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
-    expect(getByText('Contribution')).toBeTruthy();
+    expect(getByText('Opening deposit')).toBeTruthy();
     // Only the real row is deletable; the derived rows expose no delete action.
     expect(getByLabelText('Delete', { includeHiddenElements: true })).toBeTruthy();
   });

@@ -1,11 +1,13 @@
 import type { BondCouponFrequency, CompoundingFrequency } from './holding-metadata';
+import { splitInterestTaxMinor } from './tax';
 
 const DAY_MS = 86_400_000;
 const DAYS_PER_YEAR = 365;
 
 // Calendar-anniversary compounding frequencies. `bi-weekly` is excluded: it is
-// opening-day-anchored semi-monthly, handled by its own engine
-// (`depositBiweeklyMajor`) rather than the whole-month `periodBoundary` path.
+// opening-day-anchored semi-monthly, whose period boundaries come from
+// `biweeklyCreditDates` rather than the whole-month `periodBoundary` path (both
+// feed the shared step-by-step `depositLedger` engine).
 type CalendarCompounding = Exclude<CompoundingFrequency, 'bi-weekly'>;
 
 export const periodsPerYear = (frequency: CompoundingFrequency): number => {
@@ -67,85 +69,10 @@ export const accruedMajor = (
   daysElapsed: number,
 ): number => (baseMajor * (annualRatePct / 100) * daysElapsed) / DAYS_PER_YEAR;
 
-// The value of a single contribution valued at `end`, compounded on the deposit
-// schedule anchored at `start` (the earliest contribution). A whole completed
-// period earns the nominal periodic rate (annualRatePct / periodsPerYear); the
-// trailing incomplete period — and the partial first period of a mid-term
-// top-up — accrues simple interest actual/365 (`accruedMajor`). A contribution
-// dated exactly on a boundary joins that period at full rate (no partial stub).
-const contributionValue = (
-  amountMajor: number,
-  contribDate: number,
-  start: number,
-  annualRatePct: number,
-  frequency: CalendarCompounding,
-  end: number,
-): number => {
-  if (end <= contribDate) {
-    return amountMajor;
-  }
-  const nominalPeriodRate = annualRatePct / 100 / periodsPerYear(frequency);
-
-  // The period that contains the contribution: `prevBoundary` opens it,
-  // `firstBoundary` is the first boundary strictly after the contribution.
-  let k = 1;
-  while (periodBoundary(start, frequency, k) <= contribDate) {
-    k += 1;
-  }
-  const firstBoundary = periodBoundary(start, frequency, k);
-  const prevBoundary = periodBoundary(start, frequency, k - 1);
-
-  let balance = amountMajor;
-  // `compoundFrom` is the boundary index from which whole periods compound.
-  let compoundFrom = k;
-  if (contribDate > prevBoundary) {
-    // Mid-period top-up: accrue the partial first period simple, actual/365.
-    const stubEnd = Math.min(firstBoundary, end);
-    balance += accruedMajor(amountMajor, annualRatePct, daysBetween(contribDate, stubEnd));
-    if (end <= firstBoundary) {
-      return balance;
-    }
-  } else {
-    // Dated exactly on a boundary: it opens a full period, so compound from it.
-    compoundFrom = k - 1;
-  }
-
-  let idx = compoundFrom;
-  while (periodBoundary(start, frequency, idx + 1) <= end) {
-    balance *= 1 + nominalPeriodRate;
-    idx += 1;
-  }
-  const trailingDays = daysBetween(periodBoundary(start, frequency, idx), end);
-  return balance * (1 + (annualRatePct / 100) * (trailingDays / DAYS_PER_YEAR));
-};
-
 type ContributionMajor = { amountMajor: number; date: number };
 
 export const depositMaturity = (contributions: { date: number }[], termMonths: number): number =>
   addMonths(Math.min(...contributions.map((c) => c.date)), termMonths);
-
-export const depositCompoundedMajor = (
-  contributions: ContributionMajor[],
-  annualRatePct: number,
-  frequency: CalendarCompounding,
-  termMonths: number,
-  now: number,
-): number => {
-  // A contribution dated after `now` is not yet credited — exclude it so a
-  // future top-up never inflates the present value.
-  const active = contributions.filter((c) => c.date <= now);
-  if (active.length === 0) {
-    return 0;
-  }
-  const maturity = depositMaturity(active, termMonths);
-  const start = Math.min(...active.map((c) => c.date));
-  const end = Math.min(now, maturity);
-  return active.reduce(
-    (sum, c) =>
-      sum + contributionValue(c.amountMajor, c.date, start, annualRatePct, frequency, end),
-    0,
-  );
-};
 
 // The number of days in the calendar month that `instant` falls in.
 const daysInMonth = (year: number, monthIndex: number): number =>
@@ -201,83 +128,183 @@ export const biweeklyCreditDates = (start: number, end: number): number[] => {
   return [...new Set(dates)].sort((a, b) => a - b);
 };
 
-type BiweeklyResult = {
-  principalMajor: number;
-  grossInterestMajor: number;
-  taxMajor: number;
-  netValueMajor: number;
+// The local-midnight instant one calendar day after `instant`. Every capital
+// tranche — a contribution or a block of capitalized interest — earns from the
+// day AFTER it lands: a deposit opened on the 11th earns from the 12th, a top-up
+// on the 10th earns from the 11th, interest capitalized on the 12th earns from
+// the 13th. Built with local Y/M/D arithmetic so it stays DST-safe (see
+// `daysBetween`).
+const dayAfter = (instant: number): number => {
+  const d = new Date(instant);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
 };
 
-// Opening-day-anchored semi-monthly ("bi-weekly") compounding. Walks the credit
-// dates from `start` to `end`; each period accrues simple actual/365 interest on
-// the running balance (plus any mid-period contribution weighted from its
-// landing date), withholds `taxRatePct` of that interest, and capitalizes the
-// NET remainder into the balance on the credit date — matching a Ukrainian bank
-// statement, which pays and compounds interest net of the 23% withholding. The
-// trailing partial period accrues to `end` (the current, not-yet-credited
-// interest). Returns principal, cumulative gross interest, cumulative tax, and
-// the net value (= principal + gross - tax = the running balance).
-export const depositBiweeklyMajor = (
-  contributions: ContributionMajor[],
-  annualRatePct: number,
-  taxRatePct: number,
+type DepositPeriod = { periodStart: number; periodEnd: number; capitalize: boolean };
+
+// The ordered accrual periods over a deposit's whole life (start .. maturity).
+// Each period ends on an accrual/credit instant and is flagged whether the
+// bank CAPITALIZES on that instant:
+//   - bi-weekly (default): two accruals a month — one on the 1st (the
+//     [12th..EOM] period, NOT capitalized) and one on the (openingDay+1)=12th
+//     (the [1st..11th] period, capitalized). Capitalization once a month.
+//   - monthly / quarterly / annually: a single accrual per calendar-anniversary
+//     period, capitalized on every boundary.
+// A trailing partial period runs to maturity and capitalizes there.
+const depositPeriods = (
   start: number,
-  end: number,
-): BiweeklyResult => {
-  const credits = biweeklyCreditDates(start, end);
-  const points =
-    credits.length > 0 && end > credits[credits.length - 1] ? [...credits, end] : credits;
+  maturity: number,
+  frequency: CompoundingFrequency,
+): DepositPeriod[] => {
+  const periods: DepositPeriod[] = [];
+  if (frequency === 'bi-weekly') {
+    const credits = biweeklyCreditDates(start, maturity);
+    const openingDay = new Date(start).getDate();
+    // credits[0] is where accrual begins (the day after opening); every later
+    // credit closes a period. A credit capitalizes iff it is the month's
+    // mid-month (openingDay+1) credit, not the 1st.
+    for (let i = 0; i < credits.length - 1; i += 1) {
+      const periodEnd = credits[i + 1];
+      const d = new Date(periodEnd);
+      const capitalize = periodEnd === midCredit(d.getFullYear(), d.getMonth(), openingDay);
+      periods.push({ periodStart: credits[i], periodEnd, capitalize });
+    }
+    const last = credits[credits.length - 1] ?? start;
+    if (maturity > last) {
+      periods.push({ periodStart: last, periodEnd: maturity, capitalize: true });
+    }
+    return periods;
+  }
+  let prev = start;
+  for (let k = 1; ; k += 1) {
+    const boundary = periodBoundary(start, frequency, k);
+    if (boundary >= maturity) {
+      break;
+    }
+    periods.push({ periodStart: prev, periodEnd: boundary, capitalize: true });
+    prev = boundary;
+  }
+  if (maturity > prev) {
+    periods.push({ periodStart: prev, periodEnd: maturity, capitalize: true });
+  }
+  return periods;
+};
+
+type DepositContributionMinor = { amountMinor: number; date: number };
+
+// One accrual event in the deposit ledger: the interest earned over a single
+// period, its two withholding lines (18% income + 5% military, each rounded to
+// the minor unit separately), the net, and — when the bank capitalizes on this
+// instant — the block of net interest folded into the balance and the resulting
+// capitalized balance. Amounts are all integer minor units.
+type DepositAccrual = {
+  date: number;
+  periodStart: number;
+  grossMinor: number;
+  incomeTaxMinor: number;
+  militaryLevyMinor: number;
+  netMinor: number;
+  capitalized: boolean;
+  capitalizationMinor: number;
+  balanceAfterMinor: number;
+};
+
+// The full deposit ledger, computed step by step against a real bank statement.
+// `accruals` spans the whole life (past and projected); `currentValueMinor` and
+// the capitalized totals are as of `now` (the in-progress, not-yet-capitalized
+// accrual is excluded from the value — that is the fix for the old overvaluation).
+type DepositLedger = {
+  accruals: DepositAccrual[];
+  principalMinor: number;
+  currentValueMinor: number;
+  capitalizedGrossMinor: number;
+  capitalizedTaxMinor: number;
+};
+
+// The step-by-step recap-ON deposit engine. Interest each period is computed on
+// the LAST CAPITALIZED balance (accrued-but-uncapitalized interest does not
+// earn): every capital tranche earns actual/365 from the day after it lands, so
+// the period gross is the sum over tranches of amount * rate * days / 365,
+// rounded to the minor unit. Tax is withheld as two separately-rounded levies
+// (18% + 5%). On a capitalization instant the net interest accrued since the
+// last capitalization is folded into the balance as a new tranche (earning from
+// the next day), so the following periods compound on it. The current value is
+// the last capitalized balance plus contributions landed by `now`.
+export const depositLedger = (
+  contributions: DepositContributionMinor[],
+  annualRatePct: number,
+  frequency: CompoundingFrequency,
+  termMonths: number,
+  now: number,
+): DepositLedger => {
   const sorted = [...contributions].sort((a, b) => a.date - b.date);
-  const firstAccrual = points[0] ?? end;
+  const start = sorted[0]?.date ?? now;
+  const maturity = addMonths(start, termMonths);
   const rate = annualRatePct / 100;
 
-  let balance = 0;
-  let principal = 0;
-  let grossInterest = 0;
-  let tax = 0;
-  let idx = 0;
+  const tranches: { amountMinor: number; earnFrom: number }[] = sorted.map((c) => ({
+    amountMinor: c.amountMinor,
+    earnFrom: dayAfter(c.date),
+  }));
+  const contributedBy = (at: number): number =>
+    sorted.filter((c) => c.date <= at).reduce((sum, c) => sum + c.amountMinor, 0);
 
-  // Opening principal: contributions deposited before the first accrual instant
-  // (i.e. on/before the opening day) join the balance and earn the first period.
-  while (idx < sorted.length && sorted[idx].date < firstAccrual) {
-    balance += sorted[idx].amountMajor;
-    principal += sorted[idx].amountMajor;
-    idx += 1;
-  }
+  const accruals: DepositAccrual[] = [];
+  let capitalizedInterestMinor = 0;
+  let pendingGrossMinor = 0;
+  let pendingTaxMinor = 0;
+  let pendingNetMinor = 0;
+  let capitalizedGrossMinor = 0;
+  let capitalizedTaxMinor = 0;
+  let capitalizedNetMinor = 0;
 
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const pStart = points[i];
-    const pEnd = points[i + 1];
-    let periodGross = balance * rate * (daysBetween(pStart, pEnd) / DAYS_PER_YEAR);
-    // Contributions landing inside [pStart, pEnd) earn from their own date and
-    // then join the running balance for subsequent periods.
-    while (idx < sorted.length && sorted[idx].date < pEnd) {
-      const c = sorted[idx];
-      const heldDays = daysBetween(Math.max(c.date, pStart), pEnd);
-      periodGross += c.amountMajor * rate * (heldDays / DAYS_PER_YEAR);
-      balance += c.amountMajor;
-      principal += c.amountMajor;
-      idx += 1;
+  for (const { periodStart, periodEnd, capitalize } of depositPeriods(start, maturity, frequency)) {
+    let grossExact = 0;
+    for (const tranche of tranches) {
+      const days = daysBetween(Math.max(tranche.earnFrom, periodStart), periodEnd);
+      grossExact += (tranche.amountMinor * rate * days) / DAYS_PER_YEAR;
     }
-    const periodTax = taxRatePct > 0 ? periodGross * (taxRatePct / 100) : 0;
-    grossInterest += periodGross;
-    tax += periodTax;
-    balance += periodGross - periodTax;
+    const grossMinor = Math.round(grossExact);
+    const { incomeMinor, militaryMinor, totalMinor } = splitInterestTaxMinor(grossMinor);
+    const netMinor = grossMinor - totalMinor;
+    pendingGrossMinor += grossMinor;
+    pendingTaxMinor += totalMinor;
+    pendingNetMinor += netMinor;
+
+    let capitalizationMinor = 0;
+    if (capitalize) {
+      capitalizationMinor = pendingNetMinor;
+      capitalizedInterestMinor += pendingNetMinor;
+      tranches.push({ amountMinor: pendingNetMinor, earnFrom: dayAfter(periodEnd) });
+      if (periodEnd <= now) {
+        capitalizedGrossMinor += pendingGrossMinor;
+        capitalizedTaxMinor += pendingTaxMinor;
+        capitalizedNetMinor += pendingNetMinor;
+      }
+      pendingGrossMinor = 0;
+      pendingTaxMinor = 0;
+      pendingNetMinor = 0;
+    }
+
+    accruals.push({
+      date: periodEnd,
+      periodStart,
+      grossMinor,
+      incomeTaxMinor: incomeMinor,
+      militaryLevyMinor: militaryMinor,
+      netMinor,
+      capitalized: capitalize,
+      capitalizationMinor,
+      balanceAfterMinor: contributedBy(periodEnd) + capitalizedInterestMinor,
+    });
   }
 
-  // Any remaining active contributions (dated at/after `end`, or after maturity)
-  // are still real deposits: count them as principal, but they earn no interest.
-  while (idx < sorted.length) {
-    balance += sorted[idx].amountMajor;
-    principal += sorted[idx].amountMajor;
-    idx += 1;
-  }
-
+  const principalMinor = contributedBy(now);
   return {
-    principalMajor: principal,
-    grossInterestMajor: grossInterest,
-    taxMajor: tax,
-    netValueMajor: balance,
+    accruals,
+    principalMinor,
+    currentValueMinor: principalMinor + capitalizedNetMinor,
+    capitalizedGrossMinor,
+    capitalizedTaxMinor,
   };
 };
 
@@ -357,32 +384,3 @@ export const bondCouponMajor = (
   couponPct: number,
   frequency: BondCouponFrequency,
 ): number => (nominalMajor * (couponPct / 100)) / (12 / monthsPerCouponPeriod(frequency));
-
-// Dirty-price coupon accrual (gross, major units): the portion of the next
-// coupon earned so far, pro-rated by days within the CURRENT coupon period. The
-// current period runs from the last coupon date at/before `now` (or the purchase
-// date, before the first coupon) to the next coupon date (or maturity). Accrues
-// nothing before purchase or at/after maturity — at maturity the nominal is
-// redeemed, so the held value drops to zero.
-export const bondAccruedGrossMajor = (
-  nominalMajor: number,
-  couponPct: number,
-  frequency: BondCouponFrequency,
-  purchaseDate: number,
-  maturityDate: number,
-  now: number,
-): number => {
-  if (purchaseDate > now || now >= maturityDate) {
-    return 0;
-  }
-  const coupons = bondCouponDates(purchaseDate, maturityDate, frequency);
-  const prior = coupons.filter((c) => c <= now);
-  const lastCoupon = prior.length > 0 ? prior[prior.length - 1] : purchaseDate;
-  const nextCoupon = coupons.find((c) => c > now) ?? maturityDate;
-  const periodDays = daysBetween(lastCoupon, nextCoupon);
-  if (periodDays === 0) {
-    return 0;
-  }
-  const sinceDays = daysBetween(lastCoupon, now);
-  return bondCouponMajor(nominalMajor, couponPct, frequency) * (sinceDays / periodDays);
-};

@@ -6,10 +6,10 @@ import type { Currency } from '../../currency/currency';
 import type { HoldingRow } from '../../db/schema';
 import { Money } from '../../currency/money';
 import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
-import { formatDate, formatDateTime, parseLocalDate } from '../../dates/format';
+import { formatDateTime, parseLocalDate } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import GlassSurface from '../../design-system/components/glass-surface';
+import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
@@ -18,13 +18,12 @@ import SwipeableRow from '../../design-system/components/swipeable-row';
 import Text from '../../design-system/components/text';
 import { isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries } from '../../holdings/derived-entries';
-import { asBondMeta, asTermDepositMeta } from '../../holdings/holding-metadata';
+import { asBondMeta } from '../../holdings/holding-metadata';
 import {
   bondExpectedProfitMinor,
   type HoldingValueBreakdown,
   holdingValueBreakdown,
 } from '../../holdings/holding-value';
-import { bondSchedule, depositSchedule } from '../../holdings/schedule';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
@@ -84,106 +83,6 @@ const breakdownRows = (
   ...(expectedProfit ? [{ label: 'Expected profit', money: expectedProfit }] : []),
 ];
 
-// One labelled figure inside a schedule card: a small caption over the amount,
-// so opening/added/interest read as named columns without a wide table.
-const ScheduleFigure: FC<{ label: string; money: Money }> = ({ label, money }) => (
-  <Box gap={1} style={styles.scheduleFigure}>
-    <Text variant="caption" tone="textSecondary">
-      {label}
-    </Text>
-    <MoneyText money={money} />
-  </Box>
-);
-
-// A per-period lifecycle table so the user can reconcile a deposit or bond one
-// period at a time against a bank statement. The rows come from the pure,
-// unit-tested `depositSchedule` / `bondSchedule` builders; this only renders
-// them. Future (projected) periods are dimmed.
-const HoldingSchedule: FC<{ holding: HoldingRow; now: number }> = ({ holding, now }) => {
-  const { currency } = holding;
-  const depositMeta = holding.type === 'term_deposit' ? asTermDepositMeta(holding.metadata) : null;
-  const bondMeta = holding.type === 'bond' ? asBondMeta(holding.metadata) : null;
-
-  if (depositMeta !== null) {
-    const rows = depositSchedule(depositMeta, currency, now);
-    if (rows.length === 0) {
-      return null;
-    }
-    return (
-      <Box gap={2}>
-        <Text variant="heading">Schedule</Text>
-        {rows.map((row) => (
-          <GlassSurface
-            key={row.periodEnd}
-            padding={3}
-            style={row.isFuture ? styles.futureRow : undefined}
-          >
-            <Box gap={2}>
-              <Box direction="row" style={styles.scheduleHeaderRow}>
-                <Text variant="body">{formatDate(row.periodEnd)}</Text>
-                <MoneyText money={Money.fromMajor(currency, row.closingMajor)} />
-              </Box>
-              <Box direction="row" gap={4} style={styles.scheduleFigures}>
-                <ScheduleFigure
-                  label="Opening"
-                  money={Money.fromMajor(currency, row.openingMajor)}
-                />
-                {row.contributionMajor > 0 && (
-                  <ScheduleFigure
-                    label="Added"
-                    money={Money.fromMajor(currency, row.contributionMajor)}
-                  />
-                )}
-                <ScheduleFigure
-                  label="Earned"
-                  money={Money.fromMajor(currency, row.interestMajor)}
-                />
-              </Box>
-            </Box>
-          </GlassSurface>
-        ))}
-      </Box>
-    );
-  }
-
-  if (bondMeta !== null) {
-    const rows = bondSchedule(bondMeta, currency, now);
-    if (rows.length === 0) {
-      return null;
-    }
-    return (
-      <Box gap={2}>
-        <Text variant="heading">Coupon schedule</Text>
-        {rows.map((row) => (
-          <GlassSurface
-            key={row.couponDate}
-            padding={3}
-            style={row.isFuture ? styles.futureRow : undefined}
-          >
-            <Box gap={2}>
-              <Box direction="row" style={styles.scheduleHeaderRow}>
-                <Text variant="body">{formatDate(row.couponDate)}</Text>
-                <MoneyText
-                  money={Money.fromMajor(currency, row.couponMajor)}
-                  context="transaction"
-                />
-              </Box>
-              <Box direction="row" gap={4} style={styles.scheduleFigures}>
-                <ScheduleFigure
-                  label="Cumulative"
-                  money={Money.fromMajor(currency, row.cumulativeMajor)}
-                />
-              </Box>
-            </Box>
-          </GlassSurface>
-        ))}
-      </Box>
-    );
-  }
-
-  return null;
-};
-
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
   const { theme } = useUnistyles();
@@ -227,6 +126,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ].sort((first, second) => second.time - first.time);
   const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
   const isDeposit = holding?.type === 'term_deposit';
+  // Deposits and bonds take "contributions" (a deposit top-up or a bond
+  // purchase); every other holding takes a plain transaction. The footer action
+  // reads accordingly.
+  const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
 
   // Local add-contribution form state. Kept collapsed until the user opens it so
   // the detail screen stays a read view by default.
@@ -283,12 +186,18 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     <Screen
       scroll
       footer={
-        <PressableButton
-          onPress={() => navigation.navigate('TransactionForm', { holdingId })}
-          backgroundColor={theme.colors.accent}
-          alignSelf="flex-start"
-          label="Add transaction"
-        />
+        // A large, full-width primary action. For a deposit it opens the inline
+        // top-up form; for a bond (also a "contribution") and every other
+        // holding it opens the shared Transaction form to record the movement.
+        <Button
+          onPress={() =>
+            isDeposit
+              ? setAddingContribution(true)
+              : navigation.navigate('TransactionForm', { holdingId })
+          }
+        >
+          {isContribution ? 'Add contribution' : 'Add transaction'}
+        </Button>
       }
     >
       <Box gap={4}>
@@ -318,19 +227,47 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           </Box>
         )}
 
-        {holding && showBreakdown && <HoldingSchedule holding={holding} now={now} />}
+        {isDeposit && addingContribution && (
+          <Box gap={2}>
+            <Text variant="heading">New contribution</Text>
+            <TextInput
+              accessibilityLabel="Contribution amount"
+              value={contributionAmount}
+              onChangeText={setContributionAmount}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={theme.colors.textSecondary}
+              style={inputStyle}
+            />
+            <TextInput
+              accessibilityLabel="Contribution date"
+              value={contributionDate}
+              onChangeText={setContributionDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.colors.textSecondary}
+              style={inputStyle}
+            />
+            <PressableButton
+              onPress={submitContribution}
+              backgroundColor={theme.colors.accent}
+              alignSelf="flex-start"
+              label="Save contribution"
+            />
+          </Box>
+        )}
 
         <Box gap={2}>
           <Text variant="heading">Transactions</Text>
           {ledger.map((row) => {
             if (row.kind === 'derived') {
-              // A computed entry (contribution/interest/tax/purchase/coupon/
-              // redemption): read-only — no SwipeableRow, not tappable — and
-              // marked "Computed" so it reads as derived, not a stored
-              // transaction. A projected (future-dated) entry — an upcoming
-              // coupon or the redemption — is dimmed to read as an estimate. The
-              // signed amount uses transaction sign coloring (positive green,
-              // negative red).
+              // A computed lifecycle entry (opening/top-up, interest accrual, the
+              // 18%/5% withholding lines, capitalization, or a bond
+              // purchase/coupon/redemption): read-only — no SwipeableRow, not
+              // tappable — and marked "Computed" so it reads as derived, not a
+              // stored transaction. A projected (future-dated) entry — an
+              // upcoming accrual, coupon, or redemption — is dimmed and marked
+              // "Projected". The signed amount uses transaction sign coloring
+              // (positive green, negative red).
               return (
                 <Box
                   key={row.entry.id}
@@ -417,64 +354,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             );
           })}
         </Box>
-
-        {isDeposit &&
-          (addingContribution ? (
-            <Box gap={2}>
-              <TextInput
-                accessibilityLabel="Contribution amount"
-                value={contributionAmount}
-                onChangeText={setContributionAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={theme.colors.textSecondary}
-                style={inputStyle}
-              />
-              <TextInput
-                accessibilityLabel="Contribution date"
-                value={contributionDate}
-                onChangeText={setContributionDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={theme.colors.textSecondary}
-                style={inputStyle}
-              />
-              <PressableButton
-                onPress={submitContribution}
-                backgroundColor={theme.colors.accent}
-                alignSelf="flex-start"
-                label="Save contribution"
-              />
-            </Box>
-          ) : (
-            <PressableButton
-              onPress={() => setAddingContribution(true)}
-              backgroundColor={theme.colors.surfaceHigh}
-              alignSelf="flex-start"
-              label="Add contribution"
-            />
-          ))}
       </Box>
     </Screen>
   );
 };
 
 const styles = StyleSheet.create((theme) => ({
-  // A schedule card's header line: the period/coupon date on the left, the
-  // closing balance (or period coupon) on the right, split by space-between.
-  scheduleHeaderRow: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  // The row of labelled figures (opening/added/interest, or days/cumulative)
-  // beneath a schedule card's header; wraps if the figures overflow the width.
-  scheduleFigures: {
-    flexWrap: 'wrap',
-  },
-  // One labelled figure within that row.
-  scheduleFigure: {
-    minWidth: theme.spacing(20),
-  },
-  // A projected (post-`now`) schedule period, dimmed so it reads as an estimate
+  // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
   // rather than a settled statement line.
   futureRow: {
     opacity: 0.5,

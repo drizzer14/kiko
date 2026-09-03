@@ -2,13 +2,11 @@ import {
   accruedMajor,
   addMonths,
   biweeklyCreditDates,
-  bondAccruedGrossMajor,
   bondCouponDates,
   bondCouponMajor,
   daysBetween,
   depositAccruedMajor,
-  depositBiweeklyMajor,
-  depositCompoundedMajor,
+  depositLedger,
   depositMaturity,
   monthsPerCouponPeriod,
   periodBoundary,
@@ -119,110 +117,117 @@ describe('depositMaturity', () => {
   });
 });
 
-describe('depositCompoundedMajor — calendar compounding', () => {
-  const single = [{ amountMajor: 10000, date: START }];
+describe('depositLedger — step-by-step engine, verified against the real statement', () => {
+  // The user's real monobank deposit: opened 11 Jan 2026 with 100,000.00 at 16%
+  // annual, bi-weekly (default) recapitalization, 12-month term, with top-ups of
+  // +50,000.00 (10 Feb), +50,000.00 (25 Jul) and +30,000.00 (21 Aug). The oracle
+  // (scratchpad/deposit-model-from-statement.md) gives the capitalized balances
+  // and the current value to the kopeck.
+  const oracleContributions = [
+    { amountMinor: 100_000_00, date: local(2026, 0, 11) },
+    { amountMinor: 50_000_00, date: local(2026, 1, 10) },
+    { amountMinor: 50_000_00, date: local(2026, 6, 25) },
+    { amountMinor: 30_000_00, date: local(2026, 7, 21) },
+  ];
+  // A `now` between the 1 Sep accrual and the 12 Sep capitalization: the 1 Sep
+  // interest is accrued but NOT yet capitalized, so it is excluded from value.
+  const NOW = local(2026, 8, 2);
+  const ledger = depositLedger(oracleContributions, 16, 'bi-weekly', 12, NOW);
 
-  it('sums compounded value over contributions (0% rate = sum of amounts)', () => {
-    const value = depositCompoundedMajor(
-      [
-        { amountMajor: 1000, date: START },
-        { amountMajor: 500, date: START },
-      ],
-      0,
-      'monthly',
+  const capBalances = ledger.accruals.filter((a) => a.capitalized).map((a) => a.balanceAfterMinor);
+
+  it('reproduces the current deposit value exactly (240,814.16)', () => {
+    expect(ledger.currentValueMinor).toBe(240_814_16);
+    // Value = principal landed by now + net capitalized interest.
+    expect(ledger.principalMinor).toBe(230_000_00);
+  });
+
+  it('reproduces the capitalized balances within a kopeck, converging exactly', () => {
+    // The oracle's seven capitalized balances (through the 12 Aug cap). The
+    // military-levy rounding is idiosyncratic on two lines (the bank truncates
+    // 25.2055 -> 25.20 and rounds 36.4205 -> 36.43 where standard rounding gives
+    // 25.21 / 36.42), so the 12 Feb and 12 Apr caps land 1 kopeck under the
+    // oracle; the deviation self-corrects and the value is exact by 12 Aug.
+    const oracle = [
+      151_063_23, 152_490_56, 154_085_69, 155_645_41, 157_273_49, 158_865_50, 210_814_16,
+    ];
+    const throughAug = capBalances.slice(0, oracle.length);
+    throughAug.forEach((balance, index) => {
+      expect(Math.abs(balance - oracle[index])).toBeLessThanOrEqual(1);
+    });
+    // The 12 Aug capitalized balance — the last before the 21 Aug top-up — is exact.
+    expect(throughAug[6]).toBe(210_814_16);
+  });
+
+  it('accrues on the last capitalized balance, capitalizing once a month', () => {
+    // First accrual [12.01-31.01] on 100,000.00 for 20 days: gross 876.71.
+    const first = ledger.accruals[0];
+    expect(first.grossMinor).toBe(87_671);
+    expect(first.incomeTaxMinor).toBe(15_781); // round(18% of 876.71)
+    expect(first.militaryLevyMinor).toBe(4_384); // round(5% of 876.71)
+    expect(first.capitalized).toBe(false); // the 1 Feb accrual is not capitalized
+    // The 12 Feb accrual [01.02-11.02] capitalizes both February periods.
+    const feb12 = ledger.accruals[1];
+    expect(feb12.capitalized).toBe(true);
+    expect(feb12.date).toBe(local(2026, 1, 12));
+  });
+
+  it('excludes the in-progress (uncapitalized) accrual from the value', () => {
+    // The 1 Sep accrual exists in the ledger but its capitalization (12 Sep) is
+    // after `now`, so it is not in the current value.
+    const sep1 = ledger.accruals.find((a) => a.date === local(2026, 8, 1));
+    expect(sep1).toBeDefined();
+    expect(ledger.currentValueMinor).toBe(240_814_16); // unchanged by the pending accrual
+  });
+
+  it('breakdown reconciles: value = principal + capitalized gross - capitalized tax', () => {
+    expect(ledger.principalMinor + ledger.capitalizedGrossMinor - ledger.capitalizedTaxMinor).toBe(
+      ledger.currentValueMinor,
+    );
+  });
+
+  it('iterates the calendar frequencies step-by-step too (no closed form)', () => {
+    // 100,000.00 at 12% monthly recap, one completed month capitalizes net of
+    // tax: gross 12%/12 = 1% of 100,000 for ~31 days actual/365. The value is
+    // strictly the principal plus net-of-tax capitalized interest.
+    const monthly = depositLedger(
+      [{ amountMinor: 100_000_00, date: local(2026, 0, 1) }],
       12,
-      AFTER_1Y,
-    );
-    expect(value).toBeCloseTo(1500, 6);
-  });
-
-  it('recapitalizes on each calendar anniversary, not a drifting day slice', () => {
-    // 10,000 at 12% monthly. Each completed month rolls in exactly 1% on the
-    // month's calendar anniversary. The old fixed 365/12-day period drifted a
-    // whole period behind between anniversaries (e.g. still 10,100 at Mar 1);
-    // the calendar schedule gives the bank-correct compounding.
-    expect(depositCompoundedMajor(single, 12, 'monthly', 24, Date.UTC(2024, 1, 1))).toBeCloseTo(
-      10100,
-      2,
-    );
-    expect(depositCompoundedMajor(single, 12, 'monthly', 24, Date.UTC(2024, 2, 1))).toBeCloseTo(
-      10201,
-      2,
-    );
-    expect(depositCompoundedMajor(single, 12, 'monthly', 24, Date.UTC(2024, 3, 1))).toBeCloseTo(
-      10303.01,
-      2,
-    );
-  });
-
-  it('compounds each contribution over one calendar year (annually)', () => {
-    // Anchored at a leap-year start, one 365-day year is a partial first
-    // annual period, so this is simple 10% for the year: 1100.
-    const value = depositCompoundedMajor(single.slice(0, 1), 10, 'annually', 12, AFTER_1Y);
-    expect(value).toBeCloseTo(11000 - 0, 6); // 10000 -> 11000
-  });
-
-  it('doubles when two equal contributions share a date (linearity)', () => {
-    const one = depositCompoundedMajor(
-      [{ amountMajor: 1000, date: START }],
-      10,
       'monthly',
       24,
-      AFTER_1Y,
+      local(2026, 2, 1),
     );
-    const two = depositCompoundedMajor(
+    // Two monthly caps (1 Feb, 1 Mar). Value exceeds principal but by less than
+    // the untaxed 2% (tax withheld each period).
+    expect(monthly.currentValueMinor).toBeGreaterThan(100_000_00);
+    expect(monthly.currentValueMinor).toBeLessThan(102_000_00);
+    expect(monthly.capitalizedTaxMinor).toBeGreaterThan(0);
+  });
+
+  it('returns just the principal when no period has completed yet', () => {
+    const fresh = depositLedger(
+      [{ amountMinor: 100_000_00, date: local(2026, 0, 11) }],
+      16,
+      'bi-weekly',
+      12,
+      local(2026, 0, 11),
+    );
+    expect(fresh.currentValueMinor).toBe(100_000_00);
+    expect(fresh.capitalizedGrossMinor).toBe(0);
+  });
+
+  it('excludes a future-dated contribution from principal and value', () => {
+    const withFuture = depositLedger(
       [
-        { amountMajor: 1000, date: START },
-        { amountMajor: 1000, date: START },
+        { amountMinor: 100_000_00, date: local(2026, 0, 11) },
+        { amountMinor: 50_000_00, date: local(2026, 6, 25) },
       ],
-      10,
-      'monthly',
-      24,
-      AFTER_1Y,
+      16,
+      'bi-weekly',
+      12,
+      local(2026, 2, 1), // before the July top-up
     );
-    expect(two).toBeCloseTo(one * 2, 6);
-  });
-
-  it('excludes a future-dated contribution (D2)', () => {
-    // 10,000 opened 2024-01-01, a 5,000 top-up scheduled 2024-04-10. Valued
-    // 2024-02-01 the top-up has not happened yet, so the value is 10,100 — not
-    // 15,100 as the old code reported by counting the future contribution.
-    const contributions = [
-      { amountMajor: 10000, date: START },
-      { amountMajor: 5000, date: Date.UTC(2024, 3, 10) },
-    ];
-    expect(
-      depositCompoundedMajor(contributions, 12, 'monthly', 24, Date.UTC(2024, 1, 1)),
-    ).toBeCloseTo(10100, 2);
-  });
-
-  it('anchors a mid-term top-up to the deposit schedule, not its own date', () => {
-    // Worked example (debugger): 10,000 on 2024-01-01, +5,000 on 2024-04-10,
-    // 12% monthly, recap on, valued 2025-01-01. The 5,000 accrues a partial
-    // first period to the next deposit boundary (Apr 10 -> May 1 = 21 whole
-    // calendar days, DST-safe), then compounds on the deposit schedule. (The
-    // debugger's hand table reads ~16,718.63; this half-open actual/365 day
-    // count gives 16,719.91 — within rounding of the statement convention.)
-    const contributions = [
-      { amountMajor: 10000, date: START },
-      { amountMajor: 5000, date: local(2024, 3, 10) },
-    ];
-    const value = depositCompoundedMajor(contributions, 12, 'monthly', 24, Date.UTC(2025, 0, 1));
-    expect(value).toBeCloseTo(16719.91, 1);
-    // The top-up is credited, so the value exceeds the single-contribution line.
-    expect(value).toBeGreaterThan(
-      depositCompoundedMajor([contributions[0]], 12, 'monthly', 24, Date.UTC(2025, 0, 1)),
-    );
-  });
-
-  it('caps compounding at maturity', () => {
-    const atMaturity = depositCompoundedMajor(single, 12, 'monthly', 12, addMonths(START, 12));
-    const wayPast = depositCompoundedMajor(single, 12, 'monthly', 12, addMonths(START, 60));
-    expect(wayPast).toBeCloseTo(atMaturity, 6);
-  });
-
-  it('returns zero when every contribution is still in the future', () => {
-    expect(depositCompoundedMajor(single, 12, 'monthly', 24, START - DAY)).toBe(0);
+    expect(withFuture.principalMinor).toBe(100_000_00);
   });
 });
 
@@ -286,89 +291,6 @@ describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries',
   });
 });
 
-describe('depositBiweeklyMajor — net-of-tax capitalization', () => {
-  it('capitalizes each period on the running balance (opened Jan 11, 12%, no tax)', () => {
-    // Jan 12->Feb 1 (20d), Feb 1->Feb 12 (11d), Feb 12->Mar 1 (18d, leap year),
-    // Mar 1->Mar 12 (11d), each period accrues balance*12%*days/365 and rolls in.
-    const result = depositBiweeklyMajor(
-      [{ amountMajor: 10000, date: local(2024, 0, 11) }],
-      12,
-      0,
-      local(2024, 0, 11),
-      local(2024, 2, 12),
-    );
-    expect(result.principalMajor).toBeCloseTo(10000, 6);
-    expect(result.taxMajor).toBeCloseTo(0, 6);
-    expect(result.netValueMajor).toBeCloseTo(10198.69, 0);
-    expect(result.grossInterestMajor).toBeCloseTo(198.69, 0);
-  });
-
-  it('credits a mid-period top-up weighted from its landing date', () => {
-    // A +500 top-up on Feb 10 lands in the Feb 1 -> Feb 12 period, earning only
-    // its 2 trailing days there, then joining the balance for later periods.
-    const withTopUp = depositBiweeklyMajor(
-      [
-        { amountMajor: 10000, date: local(2024, 0, 11) },
-        { amountMajor: 500, date: local(2024, 1, 10) },
-      ],
-      12,
-      0,
-      local(2024, 0, 11),
-      local(2024, 2, 12),
-    );
-    const withoutTopUp = depositBiweeklyMajor(
-      [{ amountMajor: 10000, date: local(2024, 0, 11) }],
-      12,
-      0,
-      local(2024, 0, 11),
-      local(2024, 2, 12),
-    );
-    // Principal grows by the top-up; value grows by the top-up plus its interest.
-    expect(withTopUp.principalMajor).toBeCloseTo(10500, 6);
-    expect(withTopUp.netValueMajor).toBeGreaterThan(withoutTopUp.netValueMajor + 500);
-    // The top-up earns roughly 500*12%*(2 + 18 + 11)/365 over its ~31 held days.
-    const topUpInterest = withTopUp.netValueMajor - withoutTopUp.netValueMajor - 500;
-    expect(topUpInterest).toBeGreaterThan(0);
-    expect(topUpInterest).toBeLessThan(500 * 0.12); // under a full year of interest
-  });
-
-  it('deducts tax each period so the net value compounds on the after-tax balance', () => {
-    const gross = depositBiweeklyMajor(
-      [{ amountMajor: 10000, date: local(2024, 0, 11) }],
-      12,
-      0,
-      local(2024, 0, 11),
-      local(2024, 2, 12),
-    );
-    const taxed = depositBiweeklyMajor(
-      [{ amountMajor: 10000, date: local(2024, 0, 11) }],
-      12,
-      23,
-      local(2024, 0, 11),
-      local(2024, 2, 12),
-    );
-    // Net capitalization: tax is withheld before each period compounds, so the
-    // taxed run compounds on a smaller balance and earns strictly less gross
-    // interest than the untaxed run.
-    expect(taxed.grossInterestMajor).toBeLessThan(gross.grossInterestMajor);
-    expect(taxed.taxMajor).toBeCloseTo(taxed.grossInterestMajor * 0.23, 6);
-    expect(taxed.netValueMajor).toBeLessThan(gross.netValueMajor);
-    expect(taxed.netValueMajor).toBeCloseTo(10000 + taxed.grossInterestMajor - taxed.taxMajor, 6);
-  });
-
-  it('returns just the principal when held under a day (no accrual)', () => {
-    const result = depositBiweeklyMajor(
-      [{ amountMajor: 10000, date: local(2024, 0, 11) }],
-      12,
-      23,
-      local(2024, 0, 11),
-      local(2024, 0, 11) + DAY / 2,
-    );
-    expect(result.netValueMajor).toBeCloseTo(10000, 6);
-    expect(result.grossInterestMajor).toBeCloseTo(0, 6);
-  });
-});
-
 describe('bondCouponDates — mid-month-15th + exact-maturity, stepped back from maturity', () => {
   it('reproduces the Monobank screenshot (semiannual, matures 14 Oct 2026)', () => {
     // Purchase 18 Sep 2025, matures 14 Oct 2026, 6-month coupons. The maturity
@@ -412,51 +334,5 @@ describe('bondCouponMajor', () => {
     expect(bondCouponMajor(100_000, 12, 'quarterly')).toBeCloseTo(3000, 6);
     expect(bondCouponMajor(100_000, 12, 'monthly')).toBeCloseTo(1000, 6);
     expect(bondCouponMajor(100_000, 12, 'annually')).toBeCloseTo(12000, 6);
-  });
-});
-
-describe('bondAccruedGrossMajor — dirty-price accrual over the current coupon period', () => {
-  const NOMINAL = 100_000;
-  const purchase = local(2025, 8, 18);
-  const maturity = local(2026, 9, 14);
-
-  it('accrues a fraction of the next coupon, pro-rated by days in the current period', () => {
-    // Current period is purchase (18 Sep 2025) -> first coupon (15 Oct 2025) =
-    // 27 days. Valued 9 days in => 9/27 = one third of the 8,175 coupon = 2,725.
-    const nineDaysIn = purchase + 9 * DAY;
-    const accrued = bondAccruedGrossMajor(
-      NOMINAL,
-      16.35,
-      'semiannually',
-      purchase,
-      maturity,
-      nineDaysIn,
-    );
-    expect(accrued).toBeCloseTo(2725, 6);
-  });
-
-  it('is ~0 exactly on a coupon date (value drops by the coupon then)', () => {
-    const onCoupon = local(2025, 9, 15);
-    const accrued = bondAccruedGrossMajor(
-      NOMINAL,
-      16.35,
-      'semiannually',
-      purchase,
-      maturity,
-      onCoupon,
-    );
-    expect(accrued).toBeCloseTo(0, 6);
-  });
-
-  it('accrues nothing before purchase or at/after maturity (redeemed)', () => {
-    expect(
-      bondAccruedGrossMajor(NOMINAL, 16.35, 'semiannually', purchase, maturity, purchase - DAY),
-    ).toBe(0);
-    expect(
-      bondAccruedGrossMajor(NOMINAL, 16.35, 'semiannually', purchase, maturity, maturity),
-    ).toBe(0);
-    expect(
-      bondAccruedGrossMajor(NOMINAL, 16.35, 'semiannually', purchase, maturity, maturity + DAY),
-    ).toBe(0);
   });
 });

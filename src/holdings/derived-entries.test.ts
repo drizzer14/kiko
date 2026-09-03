@@ -1,4 +1,3 @@
-import type { DerivedEntry, DerivedEntryKind } from './derived-entries';
 import { derivedEntries } from './derived-entries';
 import type { ValuableHolding } from './holding-value';
 
@@ -13,78 +12,86 @@ const local = (year: number, monthIndex: number, day: number): number =>
 type Holding = ValuableHolding & { id: string };
 
 describe('derivedEntries', () => {
-  it('derives contributions, interest and tax for a recap-on deposit', () => {
+  it('derives the full lifecycle inline for a recap-on deposit', () => {
+    // The real monobank deposit: opened 11 Jan 2026 with 100,000.00 at 16%
+    // bi-weekly, +50,000.00 on 10 Feb. The first accrual [12.01-31.01] is
+    // 876.71 gross with 157.81 income tax + 43.84 military levy; the 12 Feb
+    // accrual capitalizes both February periods (+1063.22 net here).
     const holding: Holding = {
       id: 'h1',
       type: 'term_deposit',
-      currency: 'USD',
-      balanceMinorUnits: 200_000,
+      currency: 'UAH',
+      balanceMinorUnits: 0,
       metadata: {
         contributions: [
-          { amountMinorUnits: 100_000, date: T0 },
-          { amountMinorUnits: 100_000, date: T0 + 30 * DAY },
+          { amountMinorUnits: 100_000_00, date: local(2026, 0, 11) },
+          { amountMinorUnits: 50_000_00, date: local(2026, 1, 10) },
         ],
-        annualRatePct: 10,
-        termMonths: 24,
+        annualRatePct: 16,
+        termMonths: 12,
         recapitalization: true,
-        compounding: 'annually',
+        compounding: 'bi-weekly',
       },
     };
-    const now = T0 + 400 * DAY;
+    const now = local(2026, 8, 2);
 
     const entries = derivedEntries(holding, now);
 
-    const expected: DerivedEntry[] = [
-      {
-        id: 'derived:h1:contribution:0',
-        time: T0,
-        amountMinorUnits: 100_000,
-        label: 'Contribution',
-        kind: 'contribution',
-        isFuture: false,
-        derived: true,
-      },
-      {
-        id: 'derived:h1:contribution:1',
-        time: T0 + 30 * DAY,
-        amountMinorUnits: 100_000,
-        label: 'Contribution',
-        kind: 'contribution',
-        isFuture: false,
-        derived: true,
-      },
-      {
-        id: 'derived:h1:interest:0',
-        time: now,
-        // Interest with calendar-anniversary compounding: the first 100,000
-        // completes one annual period (+10,000) then accrues the trailing
-        // ~35 days simple; the second 100,000 (dated T0+30d) accrues a partial
-        // first period actual/365 to the annual boundary, then the trailing
-        // partial. Total 21,280 — the old fixed-day compounding under-counted
-        // this at 20,000.
-        amountMinorUnits: 21_280,
-        label: 'Interest',
-        kind: 'interest',
-        isFuture: false,
-        derived: true,
-      },
-      {
-        id: 'derived:h1:tax:0',
-        time: now,
-        // floor(21,280 * 23%) = 4,894.
-        amountMinorUnits: -4_894,
-        label: 'Tax',
-        kind: 'tax',
-        isFuture: false,
-        derived: true,
-      },
-    ];
-    expect(entries).toEqual(expected);
+    // The opening deposit and the top-up lead, labelled distinctly.
+    const contributions = entries.filter((e) => e.kind === 'contribution');
+    expect(contributions.map((e) => e.label)).toEqual(['Opening deposit', 'Top-up']);
+    expect(contributions[0].amountMinorUnits).toBe(100_000_00);
 
-    // Rows are ordered by time: dated contributions precede the now-dated
-    // interest/tax pair, with tax last.
-    const kinds: DerivedEntryKind[] = entries.map((e) => e.kind);
-    expect(kinds).toEqual(['contribution', 'contribution', 'interest', 'tax']);
+    // The first interest accrual and its two withholding lines, dated 1 Feb.
+    const firstAccrual = entries.find((e) => e.kind === 'accrual');
+    expect(firstAccrual).toMatchObject({
+      time: local(2026, 1, 1),
+      amountMinorUnits: 87_671,
+      label: 'Interest accrual',
+      isFuture: false,
+      derived: true,
+    });
+    const firstIncome = entries.find((e) => e.kind === 'income-tax');
+    expect(firstIncome).toMatchObject({ amountMinorUnits: -15_781, label: 'Income tax 18%' });
+    const firstMilitary = entries.find((e) => e.kind === 'military-levy');
+    expect(firstMilitary).toMatchObject({ amountMinorUnits: -4_384, label: 'Military levy 5%' });
+
+    // The 12 Feb capitalization folds both February periods' net into the balance.
+    const firstCap = entries.find((e) => e.kind === 'capitalization');
+    expect(firstCap).toMatchObject({
+      time: local(2026, 1, 12),
+      amountMinorUnits: 106_322,
+      label: 'Capitalization',
+      isFuture: false,
+    });
+
+    // Accruals whose capitalization is still ahead are projected (dimmed): the
+    // deposit runs to Jan 2027, so late accruals are future-dated.
+    expect(entries.some((e) => e.kind === 'accrual' && e.isFuture)).toBe(true);
+  });
+
+  it('sorts the lifecycle oldest-first and keeps same-instant lines grouped', () => {
+    const holding: Holding = {
+      id: 'grp',
+      type: 'term_deposit',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        contributions: [{ amountMinorUnits: 100_000_00, date: local(2026, 0, 11) }],
+        annualRatePct: 16,
+        termMonths: 12,
+        recapitalization: true,
+        compounding: 'bi-weekly',
+      },
+    };
+    const entries = derivedEntries(holding, local(2026, 2, 1));
+    // Non-decreasing by time overall.
+    for (let i = 1; i < entries.length; i += 1) {
+      expect(entries[i].time).toBeGreaterThanOrEqual(entries[i - 1].time);
+    }
+    // The 1 Feb accrual line precedes its income and military lines (same instant).
+    const feb1 = entries.filter((e) => e.time === local(2026, 1, 1)).map((e) => e.kind);
+    expect(feb1).toEqual(['accrual', 'income-tax', 'military-levy']);
   });
 
   it('emits interest and tax rows for a recap-off deposit', () => {
@@ -110,7 +117,7 @@ describe('derivedEntries', () => {
     const interest = entries.find((e) => e.kind === 'interest');
     const tax = entries.find((e) => e.kind === 'tax');
     expect(interest?.amountMinorUnits).toBe(100_000); // 1000.00 cumulative interest
-    expect(tax?.amountMinorUnits).toBe(-23_000); // floor(23%) of 1000.00
+    expect(tax?.amountMinorUnits).toBe(-23_000); // round(18%) + round(5%) of 1000.00
   });
 
   it('returns [] for a term deposit with unparseable metadata', () => {

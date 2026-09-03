@@ -1,16 +1,8 @@
 import { Money, toMajor } from '../currency/money';
 import type { HoldingRow } from '../db/schema';
 import { asBondMeta, asTermDepositMeta, type BondMeta } from './holding-metadata';
-import {
-  bondAccruedGrossMajor,
-  bondCouponDates,
-  bondCouponMajor,
-  depositAccruedMajor,
-  depositBiweeklyMajor,
-  depositCompoundedMajor,
-  depositMaturity,
-} from './interest';
-import { INTEREST_TAX_RATE_PCT, taxOnInterestMinor } from './tax';
+import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from './interest';
+import { taxOnInterestMinor } from './tax';
 
 export type ValuableHolding = Pick<
   HoldingRow,
@@ -63,36 +55,16 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
   if (active.length === 0) {
     return flat(currency, 0);
   }
-  const contributionsMajor = active.map((c) => ({
-    amountMajor: toMajor(c.amountMinorUnits, currency),
-    date: c.date,
-  }));
-  const principalMinor = active.reduce((s, c) => s + c.amountMinorUnits, 0);
-
-  // Opening-day-anchored semi-monthly ("bi-weekly") deposits compound their own
-  // way: interest is capitalized NET of the 23% withholding on each credit date,
-  // so the engine returns the gross interest, the cumulative tax, and the net
-  // value directly rather than the gross-compound / tax-at-end path the calendar
-  // frequencies use.
-  if (meta.recapitalization && meta.compounding === 'bi-weekly') {
-    const start = Math.min(...active.map((c) => c.date));
-    const end = Math.min(now, depositMaturity(active, meta.termMonths));
-    const result = depositBiweeklyMajor(
-      contributionsMajor,
-      meta.annualRatePct,
-      INTEREST_TAX_RATE_PCT,
-      start,
-      end,
-    );
-    const interestMinor = Money.fromMajor(currency, result.grossInterestMajor).minorUnits;
-    const taxMinor = Money.fromMajor(currency, result.taxMajor).minorUnits;
-    return makeBreakdown(currency, principalMinor, interestMinor, taxMinor);
-  }
 
   if (!meta.recapitalization) {
     // Interest is paid out each period rather than compounded. We surface the
-    // CUMULATIVE interest accrued to date, net of tax, and count it in the
-    // deposit's value/net worth (principal + net interest).
+    // CUMULATIVE simple interest accrued to date, net of tax, and count it in
+    // the deposit's value/net worth (principal + net interest).
+    const contributionsMajor = active.map((c) => ({
+      amountMajor: toMajor(c.amountMinorUnits, currency),
+      date: c.date,
+    }));
+    const principalMinor = active.reduce((sum, c) => sum + c.amountMinorUnits, 0);
     const accruedMajorValue = depositAccruedMajor(
       contributionsMajor,
       meta.annualRatePct,
@@ -104,17 +76,26 @@ const depositBreakdown = (holding: ValuableHolding, now: number): HoldingValueBr
     return makeBreakdown(currency, principalMinor, interestMinor, taxMinor);
   }
 
-  const grossMajor = depositCompoundedMajor(
-    contributionsMajor,
+  // Recapitalizing deposits iterate the step-by-step engine (no closed form):
+  // per-period interest on the last capitalized balance, withheld net of the
+  // 18%+5% tax and capitalized on each anniversary (bi-weekly capitalizes once a
+  // month). The value is the last capitalized balance plus landed contributions
+  // — the in-progress accrual is excluded, which is the fix for the old
+  // overvaluation. `capitalizedGross`/`capitalizedTax` are the realized totals,
+  // so principal + gross - tax reconciles exactly to the net current value.
+  const ledger = depositLedger(
+    meta.contributions.map((c) => ({ amountMinor: c.amountMinorUnits, date: c.date })),
     meta.annualRatePct,
     meta.compounding,
     meta.termMonths,
     now,
   );
-  const grossMinor = Money.fromMajor(currency, grossMajor).minorUnits;
-  const interestMinor = Math.max(0, grossMinor - principalMinor);
-  const taxMinor = taxOnInterestMinor(interestMinor);
-  return makeBreakdown(currency, principalMinor, interestMinor, taxMinor);
+  return makeBreakdown(
+    currency,
+    ledger.principalMinor,
+    ledger.capitalizedGrossMinor,
+    ledger.capitalizedTaxMinor,
+  );
 };
 
 const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreakdown => {
@@ -124,6 +105,7 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   }
   const { currency } = holding;
   const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
+  const nominalMoney = Money.of(currency, nominalMinor);
   const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);
   const zero = Money.of(currency, 0);
   // A bond whose purchase date is in the future has not been bought yet, so it
@@ -136,26 +118,18 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   if (now >= meta.maturityDate) {
     return { gross: zero, principalOrCost: costMoney, interest: zero, tax: zero, net: zero };
   }
-  // Dirty-price value: nominal plus the coupon accrued so far in the current
-  // coupon period (net of the corporate 23% tax). It resets to nominal on each
-  // coupon date, so the value drops by one coupon whenever a coupon is paid.
-  const grossAccruedMajor = bondAccruedGrossMajor(
-    toMajor(nominalMinor, currency),
-    meta.couponPct,
-    meta.couponFrequency,
-    meta.purchaseDate,
-    meta.maturityDate,
-    now,
-  );
-  const accruedMinor = Money.fromMajor(currency, grossAccruedMajor).minorUnits;
-  const grossMinor = nominalMinor + accruedMinor;
-  const taxMinor = meta.bondKind === 'corporate' ? taxOnInterestMinor(accruedMinor) : 0;
+  // A live bond is worth its NOMINAL (quantity * faceValue), flat, until
+  // maturity. The bank pays each coupon out to a cash account on its discrete
+  // coupon date (see the ledger entries); it does NOT accrue a continuous
+  // dirty price into the held value between coupons, so there is no per-day
+  // accrual and no unwind on a coupon date. Interest/tax on the coupon stream
+  // are ledger events, not part of the held value.
   return {
-    gross: Money.of(currency, grossMinor),
+    gross: nominalMoney,
     principalOrCost: costMoney,
-    interest: Money.of(currency, accruedMinor),
-    tax: Money.of(currency, taxMinor),
-    net: Money.of(currency, grossMinor - taxMinor),
+    interest: zero,
+    tax: zero,
+    net: nominalMoney,
   };
 };
 

@@ -55,7 +55,7 @@ describe('holdingValue', () => {
     expect(holdingValue(holding, START).equals(Money.of('BTC', 200_000_000)).valueOf()).toBe(true);
   });
 
-  it('compounds a recapitalization-ON term deposit, net of tax', () => {
+  it('compounds a recapitalization-ON term deposit step-by-step, net of tax', () => {
     const holding: ValuableHolding = {
       ...base,
       type: 'term_deposit',
@@ -68,11 +68,17 @@ describe('holdingValue', () => {
         compounding: 'monthly',
       },
     };
-    // One year elapsed, 12 complete monthly periods at 1%.
-    const value = holdingValue(holding, START + 365 * day);
-    const grossMinor = Money.fromMajor('UAH', 1000 * 1.01 ** 12).minorUnits;
-    const taxMinor = Math.floor(((grossMinor - 100_000) * 23) / 100);
-    expect(value.equals(Money.of('UAH', grossMinor - taxMinor))).toBe(true);
+    // One year in, twelve monthly capitalizations, each accruing actual/365 on
+    // the last capitalized balance and withholding the 18%+5% tax net. The
+    // step-by-step engine (no closed form) yields 1096.12 net.
+    const b = holdingValueBreakdown(holding, START + 365 * day);
+    expect(b.principalOrCost.minorUnits).toBe(100_000);
+    expect(b.gross.minorUnits).toBe(112_481);
+    expect(b.interest.minorUnits).toBe(12_481);
+    expect(b.tax.minorUnits).toBe(2_869);
+    expect(b.net.minorUnits).toBe(109_612);
+    // Net reconciles: principal + gross interest - tax.
+    expect(b.net.minorUnits).toBe(b.gross.minorUnits - b.tax.minorUnits);
   });
 
   it('caps a term deposit at maturity', () => {
@@ -130,16 +136,17 @@ describe('holdingValue', () => {
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
 
-  it('values the screenshot bond at nominal plus the coupon accrued this period', () => {
-    // Current period purchase (18 Sep 2025) -> first coupon (15 Oct 2025) = 27
-    // days. Valued 9 days in => 9/27 of the 8,175.00 coupon = 2,725.00 accrued on
-    // top of the 100,000.00 nominal. Government bond => no tax.
+  it('values a live bond at its nominal, flat (no continuous dirty-price accrual)', () => {
+    // A live bond is worth its 100,000.00 nominal, flat, between coupon dates —
+    // the bank pays each coupon out on its discrete date rather than accruing a
+    // dirty price. Valued 9 days into the first coupon period it is still nominal.
     const value = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * day);
-    expect(value.equals(Money.of('UAH', 10_272_500))).toBe(true);
+    expect(value.equals(Money.of('UAH', 10_000_000))).toBe(true);
   });
 
-  it('drops the value back to nominal on a coupon date (coupon paid out)', () => {
-    // Exactly on the 15 Oct 2025 coupon date the accrual resets to ~0 => nominal.
+  it('stays at nominal on a coupon date (the coupon is a separate ledger entry)', () => {
+    // The value does not spike then unwind around a coupon: it is nominal before,
+    // on, and after the 15 Oct 2025 coupon date.
     const value = holdingValue(screenshotBond(), local(2025, 9, 15));
     expect(value.equals(Money.of('UAH', 10_000_000))).toBe(true);
   });
@@ -259,18 +266,22 @@ const bond = (bondKind: string): ValuableHolding => ({
 });
 
 describe('holdingValueBreakdown', () => {
-  it('taxes a recapitalizing deposit at 23% of interest', () => {
+  it('withholds the 18%+5% tax on a recapitalizing deposit, step-by-step', () => {
+    // deposit(): 100000 minor (1000.00) at 10% annually, one annual period to
+    // maturity. Interest accrues actual/365 from the day after opening (364 of
+    // 365 days), so gross interest is 99.73 (9973 minor), tax 22.94, net 1076.79.
     const b: HoldingValueBreakdown = holdingValueBreakdown(deposit({}), AFTER_1Y);
-    expect(b.gross.minorUnits).toBe(110000);
     expect(b.principalOrCost.minorUnits).toBe(100000);
-    expect(b.interest.minorUnits).toBe(10000);
-    expect(b.tax.minorUnits).toBe(2300);
-    expect(b.net.minorUnits).toBe(107700);
+    expect(b.gross.minorUnits).toBe(109973);
+    expect(b.interest.minorUnits).toBe(9973);
+    expect(b.tax.minorUnits).toBe(2294);
+    expect(b.net.minorUnits).toBe(107679);
+    expect(b.net.minorUnits).toBe(b.gross.minorUnits - b.tax.minorUnits);
   });
 
   it('surfaces cumulative accrued interest, net of tax, for a non-recapitalizing deposit', () => {
     // deposit(): 100000 minor (1000.00) at 10% annual, held one year => 100.00
-    // cumulative interest (10000 minor), tax floor(10000 * 23%) = 2300.
+    // cumulative interest (10000 minor), tax round(18%)+round(5%) = 2300.
     const b = holdingValueBreakdown(deposit({ recapitalization: false }), AFTER_1Y);
     expect(b.principalOrCost.minorUnits).toBe(100000);
     expect(b.interest.minorUnits).toBe(10000);
@@ -279,31 +290,30 @@ describe('holdingValueBreakdown', () => {
     expect(b.net.minorUnits).toBe(107700);
   });
 
-  // The first coupon period runs purchase (1 Jan 2026) -> first coupon
-  // (15 Jan 2026) = 14 days. Valued 7 days in => 7/14 = half of the 100.00
-  // annual coupon = 50.00 accrued (5000 minor), dirty-price. Cost is the price
-  // paid (par = 100,000 minor here).
+  // A live bond is valued at its nominal (100,000 minor here), flat, regardless
+  // of coupon accrual — the coupons are separate ledger entries. Cost is the
+  // price paid (par = 100,000 minor here).
   const BOND_AT = local(2026, 0, 1) + 7 * day;
 
-  it('does not tax a government bond', () => {
+  it('values a government bond at nominal with no held-value tax', () => {
     const b = holdingValueBreakdown(bond('government'), BOND_AT);
-    expect(b.gross.minorUnits).toBe(105000);
+    expect(b.gross.minorUnits).toBe(100000);
     expect(b.principalOrCost.minorUnits).toBe(100000);
-    expect(b.interest.minorUnits).toBe(5000);
+    expect(b.interest.minorUnits).toBe(0);
     expect(b.tax.minorUnits).toBe(0);
-    expect(b.net.minorUnits).toBe(105000);
+    expect(b.net.minorUnits).toBe(100000);
   });
 
-  it('taxes a corporate bond coupon at 23%', () => {
+  it('values a corporate bond at nominal too (coupon tax is a ledger entry, not held value)', () => {
     const b = holdingValueBreakdown(bond('corporate'), BOND_AT);
-    expect(b.gross.minorUnits).toBe(105000);
-    expect(b.interest.minorUnits).toBe(5000);
-    expect(b.tax.minorUnits).toBe(1150); // floor(5000 * 23 / 100)
-    expect(b.net.minorUnits).toBe(103850);
+    expect(b.gross.minorUnits).toBe(100000);
+    expect(b.interest.minorUnits).toBe(0);
+    expect(b.tax.minorUnits).toBe(0);
+    expect(b.net.minorUnits).toBe(100000);
   });
 
   it('holdingValue returns the net value', () => {
-    expect(holdingValue(deposit({}), AFTER_1Y).minorUnits).toBe(107700);
+    expect(holdingValue(deposit({}), AFTER_1Y).minorUnits).toBe(107679);
   });
 });
 
