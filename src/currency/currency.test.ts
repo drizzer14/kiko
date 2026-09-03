@@ -1,4 +1,10 @@
-import { isCurrency } from './currency';
+import { currencyOptions, isCurrency } from './currency';
+
+describe('currencyOptions', () => {
+  it('lists the currencies in the canonical display order UAH, USD, EUR, BTC', () => {
+    expect([...currencyOptions]).toEqual(['UAH', 'USD', 'EUR', 'BTC']);
+  });
+});
 
 describe('isCurrency', () => {
   it('accepts each of the four supported currency codes', () => {

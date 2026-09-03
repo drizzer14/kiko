@@ -1,13 +1,11 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import type { Currency } from '../../../currency/currency';
+import { currencyOptions } from '../../../currency/currency';
 import Box from '../box';
 import Text from '../text';
 import type { CurrencySwitchProps } from './currency-switch.props';
 import { styles } from './currency-switch.styles';
-
-const currencyOptions: Currency[] = ['BTC', 'USD', 'EUR', 'UAH'];
 
 // A segmented base-currency toggle, not an action button — so it stays a plain
 // Pressable pill rather than the shared Button (which owns primary/secondary/
