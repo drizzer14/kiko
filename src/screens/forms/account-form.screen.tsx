@@ -7,9 +7,11 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import TextField from '../../design-system/components/text-field';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import ChipRow from './chip-row';
+import ColorPicker from './color-picker';
 import HoldingIdentityField from './holding-identity-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
@@ -43,6 +45,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
   const [icon, setIcon] = useState<string | null>(null);
+  // Mirrors the icon's dirty pattern: null until the user taps a swatch. While
+  // null, the effective color follows the selected kind's default
+  // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
+  // switching kind moves it; once picked, the choice sticks.
+  const [color, setColor] = useState<string | null>(null);
+  const effectiveColor = color ?? defaultAccountColor[kind];
 
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
@@ -63,13 +71,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
         currency,
         initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
         icon,
+        color,
       });
       navigation.goBack();
 
       return;
     }
 
-    const newAccountId = await accountsRepo.create({ name: trimmedName, kind });
+    // Persist the color only when the user picked one (dirty); left null, the row
+    // follows its kind's default at display time, mirroring the icon fallback.
+    const newAccountId = await accountsRepo.create({ name: trimmedName, kind, color });
 
     // Persist the chosen icon on the freshly-created row, using the id the
     // create resolved to. Awaited so it commits before navigating away.
@@ -98,6 +109,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
         <HoldingIdentityField
           icon={icon}
           fallbackIcon={FALLBACK_ICON}
+          iconColor={effectiveColor}
           name={name}
           onChangeName={setName}
           onSelectIcon={setIcon}
@@ -112,6 +124,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
           onSelect={setKind}
           labels={KIND_LABELS}
         />
+
+        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
 
         {kind === 'cash' && (
           <>

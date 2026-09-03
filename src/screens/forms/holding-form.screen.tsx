@@ -13,6 +13,7 @@ import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
 import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
 import type { BondKind, CompoundingFrequency } from '../../holdings/holding-metadata';
 import {
@@ -24,6 +25,7 @@ import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import ChipRow from './chip-row';
+import ColorPicker from './color-picker';
 import DateField from './date-field';
 import HoldingIdentityField from './holding-identity-field';
 
@@ -94,6 +96,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // the user picks (icon !== null, "dirty"), that choice overrides the default
   // and type changes no longer move it.
   const [icon, setIcon] = useState<string | null>(null);
+  // The color mirrors the icon's dirty pattern: null until the user taps a
+  // swatch ("not dirty"). While null, the effective color follows the selected
+  // type's default (defaultHoldingColor[type]), so the ColorPicker highlights
+  // that swatch and switching type moves it. Once picked (color !== null,
+  // "dirty"), the choice sticks and type changes no longer move it.
+  const [color, setColor] = useState<string | null>(null);
+  const effectiveColor = color ?? defaultHoldingColor[type];
 
   // Keep the selected type valid for the account's kind. The account loads
   // asynchronously, so once its allowed set is known, a default (or previously
@@ -252,6 +261,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       currency,
       balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
       metadata,
+      // Persist the color only when the user picked one (dirty). Left null, the
+      // row follows its type's default at display time — the same fallback the
+      // icon uses — so a type-default color is not frozen onto the row.
+      color,
     });
 
     // Persist the chosen icon on the freshly-created row, using the id the
@@ -276,6 +289,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         <HoldingIdentityField
           icon={icon}
           fallbackIcon={holdingTypeIcon[type]}
+          iconColor={effectiveColor}
           name={name}
           onChangeName={setName}
           onSelectIcon={setIcon}
@@ -292,6 +306,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         />
 
         <ChipRow label="Currency" options={currencies} selected={currency} onSelect={setCurrency} />
+
+        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
 
         {type !== 'term_deposit' && type !== 'bond' && (
           <TextField

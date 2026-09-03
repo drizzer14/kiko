@@ -1,6 +1,9 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { darkTheme } from '../../design-system/theme';
 import AccountFormScreen from './account-form.screen';
+
+const { entityColors } = darkTheme.colors;
 
 const mockCreate = jest.fn();
 const mockCreateCashAccount = jest.fn();
@@ -54,7 +57,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Crypto'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Crypto', kind: 'crypto' });
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Crypto', kind: 'crypto', color: null });
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -66,7 +69,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Bank'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank' });
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -103,7 +106,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank' });
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
     expect(mockSetIcon).toHaveBeenCalledWith('new-account-id', 'banknote');
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -114,7 +117,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank' });
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
     expect(mockSetIcon).not.toHaveBeenCalled();
   });
 
@@ -156,9 +159,76 @@ describe('AccountFormScreen', () => {
       currency: 'EUR',
       // No icon was picked, so the create passes an explicit null.
       icon: null,
+      // No color was picked either, so the create passes an explicit null and the
+      // row follows its cash kind default at display time.
+      color: null,
       initialBalanceMinorUnits: 25050,
     });
     expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+});
+
+describe('AccountFormScreen color follows kind until dirty', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreate.mockResolvedValue('new-account-id');
+  });
+
+  it("selects the default kind's color before any pick (bank -> white)", async () => {
+    const { getByLabelText } = await renderForm();
+
+    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('re-derives the color to the newly selected kind default while not dirty', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    // bank default is white; switching to crypto swaps the selected default
+    // swatch to yellow, because the color has not been manually picked.
+    await fireEvent.press(getByText('Crypto'));
+
+    expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(true);
+    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('keeps a manually picked color when the kind changes afterwards (dirty)', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.press(getByLabelText('Color violet'));
+
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+
+    await fireEvent.press(getByText('Crypto'));
+
+    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('persists the manually picked color on a bank account', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(getByLabelText('Color violet'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith({
+      name: 'My Bank',
+      kind: 'bank',
+      color: entityColors.violet,
+    });
+  });
+
+  it('persists the manually picked color on a cash account', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('Cash'));
+    await fireEvent.press(getByLabelText('Color violet'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreateCashAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Wallet', color: entityColors.violet }),
+    );
   });
 });

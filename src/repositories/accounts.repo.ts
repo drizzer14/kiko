@@ -7,7 +7,7 @@ import { isSyncedAccount } from '../holdings/deletable';
 import type { Repository } from './repository';
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'institution' | 'sortOrder'>>;
+  Partial<Pick<AccountRow, 'institution' | 'sortOrder' | 'color'>>;
 
 type NewCashAccount = {
   name: string;
@@ -17,6 +17,10 @@ type NewCashAccount = {
   // transaction so a cash account created with a picked icon keeps it (the
   // create form now offers the icon picker for every kind, cash included).
   icon?: string | null;
+  // Optional entity color hex, persisted on the account row in the same
+  // transaction so a cash account created with a picked (or type-default) color
+  // keeps it (the create form offers the color picker for every kind).
+  color?: string | null;
 };
 
 export const accountsRepo = {
@@ -48,10 +52,12 @@ export const accountsRepo = {
    * partial failure (mirrors `transactionsRepo.recordManual`'s ledger +
    * balance atomicity).
    */
-  createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon }: NewCashAccount) =>
+  createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
     write(async (tx) => {
       const accountId = id();
-      await tx.insert(accounts).values({ id: accountId, name, kind: 'cash', icon: icon ?? null });
+      await tx
+        .insert(accounts)
+        .values({ id: accountId, name, kind: 'cash', icon: icon ?? null, color: color ?? null });
       await tx.insert(holdings).values({
         id: id(),
         accountId,

@@ -12,6 +12,7 @@ const SymbolIcon: FC<SymbolProps> = ({
   name,
   size = 20,
   tone = 'textSecondary',
+  color,
   accessibilityLabel,
 }) => {
   const { theme } = useUnistyles();
@@ -26,7 +27,7 @@ const SymbolIcon: FC<SymbolProps> = ({
       // back to a color that renders as an invisible black glyph on this
       // app's black background — easy to mistake for a layout bug since
       // nothing throws and the view is still there, just uncolored.
-      tintColor={toSFSymbolTintColor(theme.colors[tone])}
+      tintColor={toSFSymbolTintColor(color ?? theme.colors[tone])}
       accessibilityLabel={accessibilityLabel}
       // Fabric gives an SFSymbolView no intrinsic size, so with no explicit
       // frame Yoga lays it out at 0x0 and the glyph never paints. `size` is

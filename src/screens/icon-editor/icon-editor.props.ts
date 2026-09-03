@@ -5,6 +5,11 @@ export type IconEditorProps = {
   // The kind/type-derived default glyph shown when `icon` is not set. Keeps the
   // row visually complete before the user ever picks a custom icon.
   fallbackIcon: string;
+  // Optional tint color for the chip's glyph (the entity's effective color).
+  // When set the icon renders in this color instead of the default tone; the
+  // create forms and detail headers pass the entity's color (or its type/kind
+  // default) so the icon reads in the same hue the color picker shows.
+  iconColor?: string;
   // Optional field caption rendered above the chip (a `Text variant="caption"
   // tone="textSecondary"`, matching the form field-label treatment), so the one
   // labelled block reads identically in the create forms and the edit screens.
