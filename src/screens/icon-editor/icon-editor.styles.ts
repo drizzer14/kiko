@@ -15,6 +15,10 @@ export const styles = StyleSheet.create((theme) => ({
     // carries the same `minHeight` — otherwise the 20pt glyph makes the chip a
     // hair taller than the text input and the two boxes read as misaligned.
     minHeight: theme.spacing(11),
+    // Force the chip square: its width tracks its height (the shared control
+    // height above) so the icon input reads as a square button rather than a
+    // wider-or-narrower-than-tall chip beside the growing name field.
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

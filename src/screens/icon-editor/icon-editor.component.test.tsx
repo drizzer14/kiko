@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import IconEditor from '.';
 
@@ -80,6 +81,15 @@ describe('IconEditor', () => {
     await fireEvent.press(getByLabelText('Change Icon'));
 
     expect(queryByText('Remove')).toBeNull();
+  });
+
+  it('renders the icon chip as a square (width equals height via aspectRatio 1)', async () => {
+    const { getByLabelText } = await setup();
+
+    const chip = StyleSheet.flatten(getByLabelText('Change Icon').props.style);
+
+    expect(chip.aspectRatio).toBe(1);
+    expect(chip.minHeight).toBeGreaterThan(0);
   });
 
   it('uses an explicit iconAccessibilityLabel for the toggle over the caption default', async () => {
