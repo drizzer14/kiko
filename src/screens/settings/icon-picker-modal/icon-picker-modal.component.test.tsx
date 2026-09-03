@@ -74,9 +74,9 @@ describe('IconPickerModal', () => {
     }
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
-    // collapses to the sheet's own base spacing(6) = 24 — this only proves the
-    // inset is additive, not double-subtracted or dropped.
-    expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(24);
+    // collapses to the shared BottomSheet's single base spacing(4) = 16 — this
+    // only proves the inset is additive, not double-subtracted or dropped.
+    expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(16);
   });
 
   it('offers no Remove control when onRemove is not provided', async () => {

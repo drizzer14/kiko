@@ -1,7 +1,7 @@
 import type { FC } from 'react';
-import { Modal, Pressable, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import PressableButton from '../../../design-system/components/pressable-button';
 import SymbolIcon from '../../../design-system/components/symbol';
@@ -103,70 +103,58 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   onRemove,
 }) => {
   const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
 
   return (
-    <Modal
+    <BottomSheet
       visible={visible}
-      transparent
+      onDismiss={onDismiss}
       animationType="slide"
-      presentationStyle="overFullScreen"
-      onRequestClose={onDismiss}
+      maxHeight="80%"
+      backdropAccessibilityLabel="Dismiss icon picker"
     >
-      <Box style={styles.overlay}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss icon picker"
-          onPress={onDismiss}
-          style={styles.backdrop}
-        />
+      <Box direction="row" gap={3} style={styles.header}>
+        <Text variant="heading">Choose Icon</Text>
 
-        <Box background="surfaceHigh" gap={3} style={styles.sheet(insets.bottom)}>
-          <Box direction="row" gap={3} style={styles.header}>
-            <Text variant="heading">Choose Icon</Text>
+        <Box direction="row" gap={2}>
+          {onRemove !== undefined && (
+            <PressableButton
+              onPress={onRemove}
+              backgroundColor={theme.colors.surface}
+              label="Remove"
+            />
+          )}
 
-            <Box direction="row" gap={2}>
-              {onRemove !== undefined && (
-                <PressableButton
-                  onPress={onRemove}
-                  backgroundColor={theme.colors.surface}
-                  label="Remove"
-                />
-              )}
-
-              <PressableButton
-                onPress={onDismiss}
-                backgroundColor={theme.colors.surface}
-                label="Cancel"
-              />
-            </Box>
-          </Box>
-
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-            <Box direction="row" gap={2} style={styles.grid}>
-              {CURATED_ICONS.map((icon) => (
-                <Pressable
-                  key={icon}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Choose icon ${icon}`}
-                  accessibilityState={{ selected: icon === selectedIcon }}
-                  onPress={() => onSelect(icon)}
-                  style={[
-                    styles.option,
-                    {
-                      backgroundColor:
-                        icon === selectedIcon ? theme.colors.accent : theme.colors.surface,
-                    },
-                  ]}
-                >
-                  <SymbolIcon name={icon} tone="textSecondary" />
-                </Pressable>
-              ))}
-            </Box>
-          </ScrollView>
+          <PressableButton
+            onPress={onDismiss}
+            backgroundColor={theme.colors.surface}
+            label="Cancel"
+          />
         </Box>
       </Box>
-    </Modal>
+
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+        <Box direction="row" gap={2} style={styles.grid}>
+          {CURATED_ICONS.map((icon) => (
+            <Pressable
+              key={icon}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose icon ${icon}`}
+              accessibilityState={{ selected: icon === selectedIcon }}
+              onPress={() => onSelect(icon)}
+              style={[
+                styles.option,
+                {
+                  backgroundColor:
+                    icon === selectedIcon ? theme.colors.accent : theme.colors.surface,
+                },
+              ]}
+            >
+              <SymbolIcon name={icon} tone="textSecondary" />
+            </Pressable>
+          ))}
+        </Box>
+      </ScrollView>
+    </BottomSheet>
   );
 };
 

@@ -1,9 +1,9 @@
 import { type FC, useState } from 'react';
-import { Modal, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import type { DateData } from 'react-native-calendars';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { formatDate } from '../../../dates/format';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
@@ -102,7 +102,6 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   onClear,
 }) => {
   const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
@@ -192,34 +191,28 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         </Box>
       </Pressable>
 
-      {open && (
-        <Modal transparent visible animationType="fade" onRequestClose={() => setOpen(false)}>
-          <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-            <Box gap={4} style={styles.sheet(insets.bottom)} onStartShouldSetResponder={() => true}>
-              <Text variant="heading">Date Range</Text>
+      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
+        <Text variant="heading">Date Range</Text>
 
-              <PffCalendar
-                testID="date-range-calendar"
-                markingType="period"
-                markedDates={marks}
-                minDate={toCalendarKey(selectableFloor)}
-                maxDate={toCalendarKey(selectableCeiling)}
-                onDayPress={handleDayPress}
-              />
+        <PffCalendar
+          testID="date-range-calendar"
+          markingType="period"
+          markedDates={marks}
+          minDate={toCalendarKey(selectableFloor)}
+          maxDate={toCalendarKey(selectableCeiling)}
+          onDayPress={handleDayPress}
+        />
 
-              <Box direction="row" gap={3} style={styles.actions}>
-                <Button variant="secondary" fullWidth={false} onPress={handleClear}>
-                  Clear
-                </Button>
+        <Box direction="row" gap={3} style={styles.actions}>
+          <Button variant="secondary" fullWidth={false} onPress={handleClear}>
+            Clear
+          </Button>
 
-                <Button fullWidth={false} onPress={handleApply}>
-                  Apply
-                </Button>
-              </Box>
-            </Box>
-          </Pressable>
-        </Modal>
-      )}
+          <Button fullWidth={false} onPress={handleApply}>
+            Apply
+          </Button>
+        </Box>
+      </BottomSheet>
     </Box>
   );
 };

@@ -1,5 +1,6 @@
 import { type FC, useState } from 'react';
-import { Modal, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
@@ -43,39 +44,34 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         </Box>
       </Pressable>
 
-      {open && (
-        <Modal transparent visible animationType="fade" onRequestClose={() => setOpen(false)}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={2}
+        backdropTestID={`${testID}-backdrop`}
+      >
+        <Text variant="heading">{label}</Text>
+
+        {rows.map((value) => (
           <Pressable
-            style={styles.backdrop}
-            testID={`${testID}-backdrop`}
-            onPress={() => setOpen(false)}
+            key={value}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isChecked(value, selected) }}
+            testID={`${testID}-option-${value}`}
+            onPress={() => onToggle(value)}
           >
-            <Box gap={2} style={styles.sheet} onStartShouldSetResponder={() => true}>
-              <Text variant="heading">{label}</Text>
+            <Box direction="row" gap={2} style={styles.option}>
+              <Box style={styles.check}>
+                {isChecked(value, selected) && (
+                  <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
+                )}
+              </Box>
 
-              {rows.map((value) => (
-                <Pressable
-                  key={value}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: isChecked(value, selected) }}
-                  testID={`${testID}-option-${value}`}
-                  onPress={() => onToggle(value)}
-                >
-                  <Box direction="row" gap={2} style={styles.option}>
-                    <Box style={styles.check}>
-                      {isChecked(value, selected) && (
-                        <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
-                      )}
-                    </Box>
-
-                    <Text variant="body">{value}</Text>
-                  </Box>
-                </Pressable>
-              ))}
+              <Text variant="body">{value}</Text>
             </Box>
           </Pressable>
-        </Modal>
-      )}
+        ))}
+      </BottomSheet>
     </>
   );
 };
