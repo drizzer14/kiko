@@ -133,9 +133,10 @@ describe('AccountsScreen', () => {
     const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);
     const buttonBoxStyle = StyleSheet.flatten(getByTestId('add-account-footer').props.style);
 
-    // Clearance now lives on the Screen footer (base padding spacing(4) = 16 plus
-    // the mocked tab-bar height; the safe-area mock reports a 0 bottom inset).
-    expect(footerStyle.paddingBottom).toBe(16 + MOCK_TAB_BAR_HEIGHT);
+    // Clearance now lives on the Screen footer (its clamped breathing-room gap
+    // spacing(2) = 8 — trimmed from the old spacing(4) by 1.5 button heights —
+    // plus the mocked tab-bar height; the safe-area mock reports a 0 bottom inset).
+    expect(footerStyle.paddingBottom).toBe(8 + MOCK_TAB_BAR_HEIGHT);
     // The button box must not re-add its own clearance, or the footer would be
     // double-padded.
     expect(buttonBoxStyle.marginBottom).toBeUndefined();

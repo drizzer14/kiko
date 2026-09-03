@@ -23,9 +23,16 @@ jest.mock('react-native-bottom-tabs', () => ({
 const SCROLL_VIEW_TEST_ID = 'screen-scroll-view';
 const FOOTER_TEST_ID = 'screen-footer';
 const CONTENT_TEST_ID = 'screen-content';
-// The footer's and the plain content's base padding are both spacing(4) = 16;
-// the tab-bar clearance is added on top as extra bottom padding.
-const FOOTER_BASE_PADDING = 16;
+// The breathing-room gap a footer (or a content edge that owns the true bottom)
+// keeps above the floating tab bar, added on top of the tab-bar clearance.
+// Design feedback trimmed the old spacing(4) = 16 gap by 1.5 footer-button
+// heights (75); that over-reduces, so it clamps to the minimal safe spacing(2)
+// = 8 — the clearance still keeps the button clear of the nav.
+const FOOTER_GAP = 8;
+// When a footer or a bleedBottom child owns the true bottom edge instead, the
+// plain content keeps only its own internal base padding (spacing(4) = 16),
+// with no tab-bar clearance — the sibling/child reserves that.
+const CONTENT_BASE_PADDING = 16;
 
 describe('Screen', () => {
   it('renders children in a plain (non-scrolling) View by default', async () => {
@@ -75,8 +82,8 @@ describe('Screen', () => {
     const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
     // The safe-area mock reports a 0 bottom inset, so the clearance collapses to
-    // the mocked tab-bar height, added on top of the footer's base padding.
-    expect(footerStyle.paddingBottom).toBe(FOOTER_BASE_PADDING + MOCK_TAB_BAR_HEIGHT);
+    // the mocked tab-bar height, added on top of the footer's clamped gap.
+    expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
   });
 
   it('pads the plain (non-scrolling) content clear of the floating tab bar too', async () => {
@@ -89,9 +96,9 @@ describe('Screen', () => {
     const contentStyle = StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style);
 
     // Same clearance as the scroll+footer path: the mocked tab-bar height on
-    // top of the content's base padding (the safe-area mock reports a 0
+    // top of the content's clamped gap (the safe-area mock reports a 0
     // bottom inset).
-    expect(contentStyle.paddingBottom).toBe(FOOTER_BASE_PADDING + MOCK_TAB_BAR_HEIGHT);
+    expect(contentStyle.paddingBottom).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
   });
 
   it('omits the tab-bar clearance from plain content when bleedBottom is set (the child owns it)', async () => {
@@ -105,7 +112,7 @@ describe('Screen', () => {
 
     // The child (e.g. a SectionList) applies the clearance itself, so Screen
     // must not double-count it here: only the base padding remains.
-    expect(contentStyle.paddingBottom).toBe(FOOTER_BASE_PADDING);
+    expect(contentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
   });
 
   it('renders no hairline divider above the footer', async () => {
@@ -147,7 +154,7 @@ describe('Screen', () => {
 
     const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
-    expect(footerStyle.paddingBottom).toBe(FOOTER_BASE_PADDING + MOCK_TAB_BAR_HEIGHT);
+    expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
   });
 
   it('drops the plain content clearance to the base padding when a footer owns the bottom edge instead', async () => {
@@ -162,6 +169,23 @@ describe('Screen', () => {
     // The footer above already reserves the tab-bar clearance for the whole
     // screen; `content` keeps only its own base padding so the two don't
     // double-count the gap below the footer.
-    expect(contentStyle.paddingBottom).toBe(FOOTER_BASE_PADDING);
+    expect(contentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
+  });
+
+  it('clamps the footer gap to the minimal safe gap rather than the full base gap', async () => {
+    const { getByTestId } = await render(
+      <Screen scroll footer={<Text>footer content</Text>}>
+        <Text>content</Text>
+      </Screen>,
+    );
+
+    const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
+
+    // A 1.5-button-height (75) reduction over-shoots the old spacing(4) = 16
+    // gap, so the breathing room clamps to the minimal safe spacing(2) = 8 —
+    // strictly less than the original base gap, and still clearing the tab bar.
+    const originalBaseGap = 16;
+    expect(footerStyle.paddingBottom - MOCK_TAB_BAR_HEIGHT).toBe(FOOTER_GAP);
+    expect(footerStyle.paddingBottom - MOCK_TAB_BAR_HEIGHT).toBeLessThan(originalBaseGap);
   });
 });

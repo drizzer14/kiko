@@ -1,4 +1,20 @@
 import { StyleSheet } from 'react-native-unistyles';
+import { BUTTON_MIN_HEIGHT } from '../button/button.styles';
+
+// Design feedback: the footer action button sat too high above the floating
+// tab bar. Trim the breathing-room gap below it by 1.5 footer-button heights
+// (the footer holds a full-width primary Button, so its height is
+// BUTTON_MIN_HEIGHT). 1.5 * 50 = 75 exceeds the old base gap (spacing(4) = 16),
+// so the reduction is clamped to a minimal safe gap (spacing(2) = 8): the
+// separate tab-bar clearance below still keeps the button clear of the nav, so
+// this only shrinks the extra room above that clearance, never the clearance
+// itself — the button can never overlap the bar.
+const FOOTER_GAP_REDUCTION = BUTTON_MIN_HEIGHT * 1.5;
+
+// The clamped breathing-room gap kept above the tab-bar clearance, shared by
+// the footer slot and by a plain content edge that owns the true screen bottom.
+const clampedFooterGap = (spacing: (multiplier: number) => number): number =>
+  Math.max(spacing(4) - FOOTER_GAP_REDUCTION, spacing(2));
 
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
@@ -23,7 +39,9 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
-    paddingBottom: ownsClearance ? theme.spacing(4) + bottomClearance : theme.spacing(4),
+    paddingBottom: ownsClearance
+      ? clampedFooterGap(theme.spacing) + bottomClearance
+      : theme.spacing(4),
   }),
   // The scroll-mode content container: no `flex: 1` (a ScrollView's content
   // container sizes to its content, not the viewport), same padding as the
@@ -47,6 +65,6 @@ export const styles = StyleSheet.create((theme) => ({
   footer: (bottomClearance: number) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
-    paddingBottom: theme.spacing(4) + bottomClearance,
+    paddingBottom: clampedFooterGap(theme.spacing) + bottomClearance,
   }),
 }));

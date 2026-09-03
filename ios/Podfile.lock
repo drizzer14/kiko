@@ -2053,6 +2053,49 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNSVG (15.15.5):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - RNSVG/common (= 15.15.5)
+    - Yoga
+  - RNSVG/common (15.15.5):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - SocketRocket (0.7.1):
     - ReactNativeDependencies
   - SwiftUIIntrospect (1.3.0)
@@ -2173,6 +2216,7 @@ DEPENDENCIES:
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
   - RNKeychain (from `../node_modules/react-native-keychain`)
   - RNScreens (from `../node_modules/react-native-screens`)
+  - RNSVG (from `../node_modules/react-native-svg`)
   - SocketRocket (from `build/rndeps-facades/SocketRocket`)
   - Unistyles (from `../node_modules/react-native-unistyles`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -2365,6 +2409,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-keychain"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  RNSVG:
+    :path: "../node_modules/react-native-svg"
   SocketRocket:
     :path: build/rndeps-facades/SocketRocket
   Unistyles:
@@ -2464,6 +2510,7 @@ SPEC CHECKSUMS:
   RNCClipboard: 93375695275b24a6738ea21e78cb865e1ed869d9
   RNKeychain: 9a6ea3f5824cfeea8652d70f59a16d9e73e6c817
   RNScreens: c5d695b642bf029514d108db2eb493a52bfd95a8
+  RNSVG: 409e454bb3b6b625655f948faed2f178a61c7cfe
   SocketRocket: d57b1af80c029e12a75cd9b218287c67381e4593
   SwiftUIIntrospect: fee9aa07293ee280373a591e1824e8ddc869ba5d
   Unistyles: ae4b7b729e16d1287a6a6e7687d1e0b356f40815

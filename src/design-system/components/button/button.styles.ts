@@ -1,8 +1,14 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+// The shared primary/secondary Button's rendered height. Exported as the single
+// source of truth so layout that must reason about a footer button's height
+// (e.g. the Screen footer's tab-bar gap) derives from it rather than
+// re-hardcoding the same number.
+export const BUTTON_MIN_HEIGHT = 50;
+
 export const styles = StyleSheet.create((theme) => ({
   button: {
-    minHeight: 50,
+    minHeight: BUTTON_MIN_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radii.md,
