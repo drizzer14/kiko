@@ -336,4 +336,43 @@ describe('onOpenChange (native back-swipe guard)', () => {
     });
     expect(onOpenChange.mock.calls).toEqual([[true]]);
   });
+
+  // A row deleted while open unmounts without ever settling closed, so it never
+  // emits the closing `false` on its own — leaving the screen's pop-guard tally
+  // stuck ≥1 and the native back-swipe disabled for the life of the screen. The
+  // row emits a closing `false` on unmount when it was open, to balance the tally.
+  it('emits a closing change on unmount when the row was open (e.g. deleted while open)', async () => {
+    const onOpenChange = jest.fn();
+    const { getByTestId, unmount } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" onOpenChange={onOpenChange}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    const row = getByTestId('row');
+
+    await act(async () => {
+      swipe(row, 200, 60);
+    });
+    expect(onOpenChange.mock.calls).toEqual([[true]]);
+
+    await act(async () => {
+      unmount();
+    });
+    // Exactly one closing emit on unmount, balancing the earlier open.
+    expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('does not emit on unmount when the row was closed', async () => {
+    const onOpenChange = jest.fn();
+    const { unmount } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" onOpenChange={onOpenChange}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+
+    await act(async () => {
+      unmount();
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
 });

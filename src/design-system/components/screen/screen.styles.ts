@@ -1,20 +1,11 @@
 import { StyleSheet } from 'react-native-unistyles';
-import { BUTTON_MIN_HEIGHT } from '../button/button.styles';
 
-// Design feedback: the footer action button sat too high above the floating
-// tab bar. Trim the breathing-room gap below it by 1.5 footer-button heights
-// (the footer holds a full-width primary Button, so its height is
-// BUTTON_MIN_HEIGHT). 1.5 * 50 = 75 exceeds the old base gap (spacing(4) = 16),
-// so the reduction is clamped to a minimal safe gap (spacing(2) = 8): the
-// separate tab-bar clearance below still keeps the button clear of the nav, so
-// this only shrinks the extra room above that clearance, never the clearance
-// itself — the button can never overlap the bar.
-const FOOTER_GAP_REDUCTION = BUTTON_MIN_HEIGHT * 1.5;
-
-// The clamped breathing-room gap kept above the tab-bar clearance, shared by
-// the footer slot and by a plain content edge that owns the true screen bottom.
-const clampedFooterGap = (spacing: (multiplier: number) => number): number =>
-  Math.max(spacing(4) - FOOTER_GAP_REDUCTION, spacing(2));
+// The breathing-room gap kept above the separately-added tab-bar clearance,
+// shared by the footer slot and by a plain content edge that owns the true
+// screen bottom. Design feedback trimmed the old spacing(4) breathing room to
+// this minimal spacing(2) step; the button always clears the bar via the
+// separate `bottomClearance`, so this is purely the extra room above it.
+const FOOTER_GAP_STEP = 2;
 
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
@@ -40,7 +31,7 @@ export const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
     paddingBottom: ownsClearance
-      ? clampedFooterGap(theme.spacing) + bottomClearance
+      ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
   }),
   // The scroll-mode content container: no `flex: 1` (a ScrollView's content
@@ -55,16 +46,15 @@ export const styles = StyleSheet.create((theme) => ({
   // branches. Its bottom padding is lifted clear of the floating native glass
   // tab bar by `bottomClearance` (the bar's measured height plus the bottom
   // safe-area inset, computed at the call site from the library hook), plus
-  // one base `theme.spacing(4)` step of visible breathing room on top of that
-  // clearance — this `spacing(4)` step is the ideal bottom gap: the exact,
-  // measured distance a footer button sits above the tab bar. Any screen that
-  // manages its own bottom-clearance scrollable surface instead of routing
-  // through this slot (e.g. Home's SectionList, via `bleedBottom`) should add
-  // this same base step for a consistent gap. Horizontal and top padding stay
-  // at the base spacing step.
+  // the `FOOTER_GAP_STEP` of visible breathing room on top of that clearance —
+  // the exact, measured distance a footer button sits above the tab bar. Any
+  // screen that manages its own bottom-clearance scrollable surface instead of
+  // routing through this slot (e.g. Home's SectionList, via `bleedBottom`)
+  // should add this same step for a consistent gap. Horizontal and top padding
+  // stay at the base spacing step.
   footer: (bottomClearance: number) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
-    paddingBottom: clampedFooterGap(theme.spacing) + bottomClearance,
+    paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
 }));

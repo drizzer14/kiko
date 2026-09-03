@@ -25,9 +25,8 @@ const FOOTER_TEST_ID = 'screen-footer';
 const CONTENT_TEST_ID = 'screen-content';
 // The breathing-room gap a footer (or a content edge that owns the true bottom)
 // keeps above the floating tab bar, added on top of the tab-bar clearance.
-// Design feedback trimmed the old spacing(4) = 16 gap by 1.5 footer-button
-// heights (75); that over-reduces, so it clamps to the minimal safe spacing(2)
-// = 8 — the clearance still keeps the button clear of the nav.
+// Design feedback trimmed the old spacing(4) = 16 gap to the minimal spacing(2)
+// = 8 step — the separate clearance still keeps the button clear of the nav.
 const FOOTER_GAP = 8;
 // When a footer or a bleedBottom child owns the true bottom edge instead, the
 // plain content keeps only its own internal base padding (spacing(4) = 16),

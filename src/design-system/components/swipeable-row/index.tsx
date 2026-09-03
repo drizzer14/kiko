@@ -124,6 +124,22 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
     };
   }, [translateX]);
 
+  // A row deleted while open unmounts without ever settling closed, so it never
+  // emits the closing `false` from snapTo — leaving a screen's pop-guard tally
+  // stuck ≥1 and the native back-swipe disabled for the life of the screen. On
+  // unmount, if the row was still open, emit the closing change once to balance
+  // the tally. lastOpen is a ref (not state), so reading it in this
+  // mount-once cleanup sees the final value, and the empty deps mean it fires
+  // only on the real unmount, never on a re-render.
+  useEffect(
+    () => () => {
+      if (lastOpen.current) {
+        onOpenChangeRef.current?.(false);
+      }
+    },
+    [],
+  );
+
   // The pan responder closes over stable refs, so it is built once via a
   // lazy ref initializer rather than a memo (no dependency list to keep in
   // sync, no stale-closure risk). setIsOpen's identity is stable across

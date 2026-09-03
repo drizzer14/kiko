@@ -73,4 +73,28 @@ describe('useSwipePopGuard', () => {
       fullScreenGestureEnabled: true,
     });
   });
+
+  // A row deleted while open emits its closing `false` from an unmount cleanup
+  // rather than a settle-closed. From the guard's view that is an ordinary
+  // open-then-close pair, so the tally returns to 0 and the native back-swipe
+  // is restored — the open-while-unmounting row does not strand it disabled.
+  it('re-enables the gesture when an opened row reports its close on unmount', async () => {
+    const navigation = stubNavigation();
+    const { result } = await renderHook(() => useSwipePopGuard(navigation));
+
+    // The row opens (guard disables the gesture)...
+    await act(async () => {
+      result.current(true);
+    });
+    // ...then unmounts while open, emitting the balancing close.
+    await act(async () => {
+      result.current(false);
+    });
+
+    expect(navigation.setOptions).toHaveBeenCalledTimes(2);
+    expect(navigation.setOptions).toHaveBeenLastCalledWith({
+      gestureEnabled: true,
+      fullScreenGestureEnabled: true,
+    });
+  });
 });
