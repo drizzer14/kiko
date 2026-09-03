@@ -74,6 +74,31 @@ export const currencyRates = sqliteTable(
 
 export type CurrencyRateRow = typeof currencyRates.$inferSelect;
 
+export const currencyRateHistory = sqliteTable(
+  'currency_rate_history',
+  {
+    base: text('base', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    quote: text('quote', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    /**
+     * The rate's day, as a normalized UTC-midnight epoch value in
+     * MILLISECONDS (00:00:00.000 UTC of that calendar day). Same millisecond
+     * epoch convention as `transactions.time`; one row per (base, quote, day).
+     */
+    day: integer('day').notNull(),
+    rate: text('rate').notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
+  },
+  (table) => ({
+    pairDayUnique: uniqueIndex('currency_rate_history_pair_day').on(
+      table.base,
+      table.quote,
+      table.day,
+    ),
+  }),
+);
+
+export type CurrencyRateHistoryRow = typeof currencyRateHistory.$inferSelect;
+
 export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
   baseCurrency: text('base_currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] })
