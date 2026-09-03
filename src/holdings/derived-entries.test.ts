@@ -162,6 +162,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: -1_000_000, // defaults price to nominal (paid at par)
         label: 'Purchase',
         kind: 'purchase',
+        tone: 'neutral',
         isFuture: false,
         derived: true,
       },
@@ -171,6 +172,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: 50_000,
         label: 'Coupon',
         kind: 'coupon',
+        tone: 'positive',
         isFuture: false,
         derived: true,
       },
@@ -180,6 +182,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: 50_000,
         label: 'Coupon',
         kind: 'coupon',
+        tone: 'positive',
         isFuture: true,
         derived: true,
       },
@@ -189,6 +192,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: 50_000,
         label: 'Coupon',
         kind: 'coupon',
+        tone: 'positive',
         isFuture: true,
         derived: true,
       },
@@ -198,6 +202,7 @@ describe('derivedEntries', () => {
         amountMinorUnits: 1_000_000,
         label: 'Redemption',
         kind: 'redemption',
+        tone: 'neutral',
         isFuture: true,
         derived: true,
       },
@@ -234,6 +239,7 @@ describe('derivedEntries', () => {
       amountMinorUnits: -980_000,
       label: 'Purchase',
       kind: 'purchase',
+      tone: 'neutral',
       isFuture: false,
       derived: true,
     });
@@ -241,6 +247,78 @@ describe('derivedEntries', () => {
       38_500, 38_500, 38_500,
     ]);
     expect(entries.some((e) => e.kind === 'tax')).toBe(false);
+  });
+
+  it('tones a recap-on deposit: tax lines negative, interest/capitalization positive, contributions neutral', () => {
+    const holding: Holding = {
+      id: 'tone',
+      type: 'term_deposit',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        contributions: [{ amountMinorUnits: 100_000_00, date: local(2026, 0, 11) }],
+        annualRatePct: 16,
+        termMonths: 12,
+        recapitalization: true,
+        compounding: 'bi-weekly',
+      },
+    };
+
+    const entries = derivedEntries(holding, local(2026, 8, 2));
+    const toneOf = (kind: string): string | undefined => entries.find((e) => e.kind === kind)?.tone;
+
+    // Withholding lines read red (negative); interest accrual and capitalization
+    // read green (positive); the opening/top-up contribution stays neutral.
+    expect(toneOf('income-tax')).toBe('negative');
+    expect(toneOf('military-levy')).toBe('negative');
+    expect(toneOf('accrual')).toBe('positive');
+    expect(toneOf('capitalization')).toBe('positive');
+    expect(toneOf('contribution')).toBe('neutral');
+  });
+
+  it('tones a recap-off deposit: interest positive, tax negative', () => {
+    const holding: Holding = {
+      id: 'off-tone',
+      type: 'term_deposit',
+      currency: 'UAH',
+      balanceMinorUnits: 1_000_000,
+      metadata: {
+        contributions: [{ amountMinorUnits: 1_000_000, date: T0 }],
+        annualRatePct: 10,
+        termMonths: 24,
+        recapitalization: false,
+        compounding: 'monthly',
+      },
+    };
+
+    const entries = derivedEntries(holding, T0 + 365 * DAY);
+
+    expect(entries.find((e) => e.kind === 'interest')?.tone).toBe('positive');
+    expect(entries.find((e) => e.kind === 'tax')?.tone).toBe('negative');
+  });
+
+  it('tones a bond: coupons positive, purchase/redemption neutral', () => {
+    const holding: Holding = {
+      id: 'bond-tone',
+      type: 'bond',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 5,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate: local(2025, 0, 1),
+        maturityDate: local(2027, 0, 1),
+      },
+    };
+
+    const entries = derivedEntries(holding, local(2025, 5, 1));
+
+    expect(entries.find((e) => e.kind === 'coupon')?.tone).toBe('positive');
+    expect(entries.find((e) => e.kind === 'purchase')?.tone).toBe('neutral');
+    expect(entries.find((e) => e.kind === 'redemption')?.tone).toBe('neutral');
   });
 
   it('returns [] for non deposit/bond holdings', () => {

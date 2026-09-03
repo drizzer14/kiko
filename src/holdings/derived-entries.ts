@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { Money, toMajor } from '../currency/money';
 import { asBondMeta, asTermDepositMeta } from './holding-metadata';
 import { holdingValueBreakdown, type ValuableHolding } from './holding-value';
@@ -16,12 +17,27 @@ export type DerivedEntryKind =
   | 'coupon'
   | 'redemption';
 
+// The ledger tone a derived entry reads in: withholding lines are `negative`
+// (red), interest/coupon accruals are `positive` (green), and the principal
+// movements (a deposit contribution, a bond purchase/redemption) stay `neutral`
+// so only genuine gains and taxes carry color. Classified by KIND, not by the
+// sign of the amount, so an entry always reads the same regardless of sign.
+export type EntryTone = 'positive' | 'negative' | 'neutral';
+
+const toneForKind = (kind: DerivedEntryKind): EntryTone =>
+  match(kind)
+    .with('income-tax', 'military-levy', 'tax', (): EntryTone => 'negative')
+    .with('accrual', 'interest', 'capitalization', 'coupon', (): EntryTone => 'positive')
+    .with('contribution', 'purchase', 'redemption', (): EntryTone => 'neutral')
+    .exhaustive();
+
 export type DerivedEntry = {
   id: string;
   time: number;
   amountMinorUnits: number;
   label: string;
   kind: DerivedEntryKind;
+  tone: EntryTone;
   // A projected entry dated after `now` — a future accrual/coupon/capitalization
   // or a scheduled future contribution. The ledger renders these dimmed as
   // "Projected".
@@ -45,6 +61,7 @@ const makeEntry = (
   amountMinorUnits,
   label,
   kind,
+  tone: toneForKind(kind),
   isFuture: time > now,
   derived: true,
 });

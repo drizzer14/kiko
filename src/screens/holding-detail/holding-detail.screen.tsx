@@ -18,7 +18,8 @@ import SwipeableRow from '../../design-system/components/swipeable-row';
 import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import Text from '../../design-system/components/text';
 import { isSyncedTransaction } from '../../holdings/deletable';
-import { type DerivedEntry, derivedEntries } from '../../holdings/derived-entries';
+import { type DerivedEntry, type EntryTone, derivedEntries } from '../../holdings/derived-entries';
+import LedgerAmount from './ledger-amount';
 import { asBondMeta } from '../../holdings/holding-metadata';
 import {
   bondExpectedProfitMinor,
@@ -74,14 +75,17 @@ const breakdownRows = (
   breakdown: HoldingValueBreakdown,
   type: string,
   expectedProfit: Money | null,
-): { label: string; money: Money }[] => [
+): { label: string; money: Money; tone?: EntryTone }[] => [
   { label: type === 'bond' ? 'Cost' : 'Principal', money: breakdown.principalOrCost },
   { label: 'Gross value', money: breakdown.gross },
   { label: 'Interest earned', money: breakdown.interest },
   { label: 'Tax withheld', money: breakdown.tax },
   // Bonds surface the whole-life expected profit: sum of net coupons + nominal
-  // redeemed, less the price paid (the figure the bank statement shows).
-  ...(expectedProfit ? [{ label: 'Expected profit', money: expectedProfit }] : []),
+  // redeemed, less the price paid (the figure the bank statement shows). It
+  // reads green as the holding's expected gain.
+  ...(expectedProfit
+    ? [{ label: 'Expected profit', money: expectedProfit, tone: 'positive' as const }]
+    : []),
 ];
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
@@ -223,7 +227,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     <Text variant="caption" tone="textSecondary">
                       {detail.label}
                     </Text>
-                    <MoneyText money={detail.money} />
+                    {detail.tone ? (
+                      <LedgerAmount money={detail.money} tone={detail.tone} />
+                    ) : (
+                      <MoneyText money={detail.money} />
+                    )}
                   </Box>
                 ))}
               </Box>
@@ -270,8 +278,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               // tappable — and marked "Computed" so it reads as derived, not a
               // stored transaction. A projected (future-dated) entry — an
               // upcoming accrual, coupon, or redemption — is dimmed and marked
-              // "Projected". The signed amount uses transaction sign coloring
-              // (positive green, negative red).
+              // "Projected". The amount reads in its kind-derived tone (tax red,
+              // interest/coupon green, principal movements neutral/by-sign).
               return (
                 <Box
                   key={row.entry.id}
@@ -287,9 +295,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       <Text variant="body">{row.entry.label}</Text>
                     </Box>
                     <Box style={styles.rowAmount}>
-                      <MoneyText
+                      <LedgerAmount
                         money={Money.of(currency, row.entry.amountMinorUnits)}
-                        context="transaction"
+                        tone={row.entry.tone}
                       />
                     </Box>
                   </Box>

@@ -1,9 +1,59 @@
 import { Alert } from 'react-native';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { darkTheme } from '../../design-system/theme';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import HoldingDetailScreen from './holding-detail.screen';
+
+// The test-renderer instance type, derived from RNTL's own query rather than
+// imported from react-test-renderer directly (which is not a declared dep).
+type TextNode = ReturnType<ReturnType<typeof render>['getByText']>;
+
+// Flatten a Text node's style array down to its resolved inline `color` (the
+// LedgerAmount tone color; unistyles variant styles are stripped by the mock,
+// but an inline color survives). Used to assert a ledger row's money tone.
+const colorOf = (node: TextNode): unknown => {
+  const style = node.props.style as unknown;
+  const parts = (Array.isArray(style) ? style : [style]).flat(Number.POSITIVE_INFINITY);
+  return Object.assign({}, ...parts.filter(Boolean)).color;
+};
+
+// The tightest ancestor of `label` that contains a money amount (UAH formats
+// with a trailing ₴), scoped to a single ledger/breakdown row — its amount Text
+// is what carries the tone color.
+const amountForLabel = (label: TextNode): TextNode => {
+  let node = label.parent;
+
+  for (let depth = 0; depth < 8 && node; depth += 1) {
+    const matches = within(node).queryAllByText(/₴/);
+
+    if (matches.length > 0) {
+      return matches[0];
+    }
+
+    node = node.parent;
+  }
+
+  throw new Error('no amount found for label row');
+};
+
+const bondHolding = {
+  id: 'h-1',
+  name: 'Gov bond',
+  type: 'bond',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    quantity: 10,
+    faceValueMinorUnits: 100_000, // 1,000.00 each => 500.00 annual coupon
+    couponPct: 5,
+    couponFrequency: 'annually',
+    bondKind: 'government',
+    purchaseDate: Date.UTC(2024, 0, 1),
+    maturityDate: Date.UTC(2027, 0, 1),
+  },
+};
 
 const mockUseLiveQuery = jest.fn();
 
@@ -377,6 +427,35 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Opening deposit')).toBeTruthy();
     // Only the real row is deletable; the derived rows expose no delete action.
     expect(getByLabelText('Delete', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('colors a deposit tax row red and an interest accrual green in the ledger', async () => {
+    seed(depositHolding);
+
+    const { getAllByText } = await renderScreen();
+
+    // The 18% income-tax withholding line reads in the negative (red) tone; the
+    // interest accrual reads in the positive (green) tone — by KIND, via the
+    // derived entry's tone, not merely by the sign of the amount.
+    const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
+    expect(colorOf(taxAmount)).toBe(darkTheme.colors.negative);
+
+    const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
+    expect(colorOf(interestAmount)).toBe(darkTheme.colors.positive);
+  });
+
+  it('colors a bond coupon green and the expected-profit line green', async () => {
+    seed(bondHolding);
+
+    const { getAllByText, getByText } = await renderScreen();
+
+    // A net coupon (money in) reads green as an interest payment.
+    const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
+    expect(colorOf(couponAmount)).toBe(darkTheme.colors.positive);
+
+    // The whole-life expected-profit breakdown line reads green as the expected gain.
+    const expectedProfitAmount = amountForLabel(getByText('Expected profit'));
+    expect(colorOf(expectedProfitAmount)).toBe(darkTheme.colors.positive);
   });
 
   it('appends a contribution through the add-contribution action', async () => {
