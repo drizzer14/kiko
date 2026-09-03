@@ -15,15 +15,27 @@ const Screen: FC<ScreenProps> = ({ children, scroll = false, footer, bleedBottom
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
-  // Lift it by the bar's measured height plus the bottom safe-area inset.
-  // Every current Screen consumer is nested under the native tab navigator
-  // (see `root.navigator.tsx`), so the hook always has its context here; the
-  // global Jest manual mock returns 0 for standalone renders. Used by the
-  // scroll branch's `footer` below and by the plain branch's `content` —
-  // never both on one render, since `scroll` selects exactly one return path.
+  // Lift it by the bar's *measured* height. That height is
+  // `UITabBar.frame.size.height` (react-native-bottom-tabs measures the real
+  // frame; see its `TabViewImpl.swift`), which already spans the bottom
+  // safe-area inset — the bar's background extends to the screen's true bottom
+  // edge. So the clearance is the tab-bar height ALONE: adding `insets.bottom`
+  // on top double-counts the inset and lifts the footer a whole home-indicator
+  // strip too high (the "footer sits too high" bug). `Math.max` keeps a correct
+  // fallback for any future consumer rendered off the tab navigator, where the
+  // measured height is 0 and the bottom inset is the only chrome to clear. The
+  // tab bar remains visible on pushed native-stack screens (the SwiftUI TabView
+  // draws it independently of each tab's nested stack — you can still switch
+  // tabs from a pushed form, see `reset-tab-stack-on-blur.ts`), so this one
+  // clearance is correct on tab roots and pushed screens alike. Every current
+  // Screen consumer is nested under the native tab navigator (see
+  // `root.navigator.tsx`), so the hook always has its context here; the global
+  // Jest manual mock returns 0 for standalone renders. Used by the scroll
+  // branch's `footer` below and by the plain branch's `content` — never both on
+  // one render, since `scroll` selects exactly one return path.
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const bottomClearance = tabBarHeight + insets.bottom;
+  const bottomClearance = Math.max(tabBarHeight, insets.bottom);
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a

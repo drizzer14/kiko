@@ -16,6 +16,24 @@ jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
 }));
 
+// A device with a home indicator reports a non-zero bottom safe-area inset.
+// The measured tab-bar height (`UITabBar.frame.size.height`) already spans that
+// inset — the bar's background extends to the screen's true bottom edge — so
+// the footer clearance must be the tab-bar height ALONE, not the height *plus*
+// the inset a second time. Override the package's zero-inset global mock with a
+// concrete bottom inset so this file's clearance assertions prove the inset is
+// not double-counted (with a zero inset the two formulas are indistinguishable,
+// which is exactly why the earlier over-padding shipped unnoticed).
+const MOCK_BOTTOM_INSET = 34;
+jest.mock('react-native-safe-area-context', () => {
+  const { View } = require('react-native');
+  return {
+    SafeAreaView: View,
+    SafeAreaProvider: View,
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
+  };
+});
+
 // @testing-library/react-native v14 dropped the UNSAFE_ByType queries, so the
 // only way to tell a ScrollView root from a plain View root is a testID —
 // same pattern MoneyText's own test uses to probe an internal render
@@ -85,7 +103,7 @@ describe('Screen', () => {
     expect(within(footer).queryByText('footer content')).toBeTruthy();
   });
 
-  it('pads the footer clear of the floating tab bar (tab-bar height + bottom safe-area inset)', async () => {
+  it('pads the footer clear of the floating tab bar by the measured tab-bar height', async () => {
     const { getByTestId } = await render(
       <Screen scroll footer={<Text>footer content</Text>}>
         <Text>content</Text>
@@ -94,9 +112,30 @@ describe('Screen', () => {
 
     const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
-    // The safe-area mock reports a 0 bottom inset, so the clearance collapses to
-    // the mocked tab-bar height, added on top of the footer's clamped gap.
+    // The measured tab-bar height (> the bottom inset) already spans the
+    // safe-area inset, so the clearance is that height alone, on top of the
+    // footer's clamped gap — NOT the height plus the inset a second time.
     expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
+  });
+
+  it('does not double-count the bottom safe-area inset already spanned by the tab bar', async () => {
+    const { getByTestId } = await render(
+      <Screen scroll footer={<Text>footer content</Text>}>
+        <Text>content</Text>
+      </Screen>,
+    );
+
+    const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
+
+    // The regression this guards: `tabBarHeight + insets.bottom` over-pads by a
+    // whole safe-area inset because `UITabBar.frame.size.height` already spans
+    // it — the visible "footer sits too high" bug. With a 34pt inset mocked, the
+    // double-counting formula would give 8 + 80 + 34 = 122; the correct
+    // clearance is 8 + 80 = 88.
+    expect(footerStyle.paddingBottom).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
+    expect(footerStyle.paddingBottom).not.toBe(
+      FOOTER_GAP + MOCK_TAB_BAR_HEIGHT + MOCK_BOTTOM_INSET,
+    );
   });
 
   it('pads the plain (non-scrolling) content clear of the floating tab bar too', async () => {

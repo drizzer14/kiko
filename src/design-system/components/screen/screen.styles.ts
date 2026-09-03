@@ -15,8 +15,9 @@ export const styles = StyleSheet.create((theme) => ({
   // The plain (non-scroll) branch's content container. When it owns the
   // screen's true bottom edge itself (no `footer`, no `bleedBottom` child),
   // its bottom padding is lifted clear of the floating native glass tab bar by
-  // `bottomClearance` (the bar's measured height plus the bottom safe-area
-  // inset, computed at the call site), plus the same base `theme.spacing(4)`
+  // `bottomClearance` (the bar's measured frame height, which already spans the
+  // bottom safe-area inset, computed at the call site), plus the same base
+  // `theme.spacing(FOOTER_GAP_STEP)`
   // gap `footer` below adds on top of its own clearance — the ideal bottom
   // gap, standardized across every Screen bottom-edge path (see `footer`).
   // When a `footer` or a `bleedBottom` child owns the bottom edge instead,
@@ -44,8 +45,9 @@ export const styles = StyleSheet.create((theme) => ({
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see
   // `screen.component.tsx`), inside the bottom safe-area edge, in both
   // branches. Its bottom padding is lifted clear of the floating native glass
-  // tab bar by `bottomClearance` (the bar's measured height plus the bottom
-  // safe-area inset, computed at the call site from the library hook), plus
+  // tab bar by `bottomClearance` (the bar's measured frame height, which
+  // already spans the bottom safe-area inset, computed at the call site from
+  // the library hook), plus
   // the `FOOTER_GAP_STEP` of visible breathing room on top of that clearance —
   // the exact, measured distance a footer button sits above the tab bar. Any
   // screen that manages its own bottom-clearance scrollable surface instead of
