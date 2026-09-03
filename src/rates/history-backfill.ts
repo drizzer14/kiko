@@ -177,11 +177,28 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
 
   const spanStart = days[0];
   const btcDays = Math.ceil((today - spanStart) / DAY_MS) + 1;
-  const [nbu, btc] = await Promise.all([loadNbu(spanStart, today), loadBTC(btcDays)]);
+  // Settle the two providers independently: CoinGecko's free tier can 401 a
+  // long BTC span, and an all-or-nothing `Promise.all` would then discard the
+  // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
+  const [nbuResult, btcResult] = await Promise.allSettled([
+    loadNbu(spanStart, today),
+    loadBTC(btcDays),
+  ]);
+  const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
+  const btc = btcResult.status === 'fulfilled' ? btcResult.value : [];
 
   const rows = composeHistoryRows([...nbu, ...btc], days);
-  if (rows.length > 0) {
-    await upsertMany(rows);
+  if (rows.length === 0) {
+    // Nothing composed (both providers empty for the span), so nothing is
+    // persisted. Leave the resume cursor where it was rather than claiming the
+    // span is filled up to today — otherwise the next pass would skip these
+    // still-missing days and the line would never fill.
+    return { state: 'complete', lastDay: lastBackfilledDay };
   }
-  return { state: 'complete', lastDay: today };
+  await upsertMany(rows);
+  // Advance the cursor only to the newest day actually stored (usually today,
+  // but earlier if the latest days had no anchor yet), so a later pass resumes
+  // and fills the remaining gap instead of assuming today is done.
+  const lastPersisted = rows.reduce((max, row) => (row.day > max ? row.day : max), rows[0].day);
+  return { state: 'complete', lastDay: lastPersisted };
 };

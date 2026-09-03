@@ -22,14 +22,20 @@ export const groupAmount = (input: string): string => {
   // the decimal-pad never emits one, but a pasted/hydrated value can carry it.
   const sign = compact.startsWith('-') ? '-' : '';
   const body = compact.slice(sign.length);
-  const separator = body.match(/[.,]/);
+  // Pick the decimal mark by the LAST-occurring separator, exactly as parseAmount
+  // does. A value carrying BOTH a grouping and a decimal separator (a pasted or
+  // hydrated European "1.234,56") would otherwise be mangled by treating the
+  // first separator as the decimal; the other separator is grouping and is
+  // stripped from the integer part here so the two stay in lock-step.
+  const lastComma = body.lastIndexOf(',');
+  const lastDot = body.lastIndexOf('.');
 
-  if (separator === null) {
+  if (lastComma === -1 && lastDot === -1) {
     return sign.concat(groupDigits(body.replace(/\D/g, '')));
   }
 
-  const decimalMark = separator[0];
-  const decimalIndex = body.indexOf(decimalMark);
+  const decimalIndex = Math.max(lastComma, lastDot);
+  const decimalMark = body[decimalIndex];
   const integerDigits = body.slice(0, decimalIndex).replace(/\D/g, '');
   const fractionDigits = body.slice(decimalIndex + 1).replace(/\D/g, '');
 

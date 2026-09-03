@@ -9,6 +9,12 @@ import { type HistoryRateEntry, toUtcMidnight } from './history-entry';
  */
 const MARKET_CHART_ENDPOINT = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart';
 
+// CoinGecko's free/demo tier caps `market_chart` at ~365 days of history and
+// 401s on a longer span, so the request is clamped to this ceiling. A multi-year
+// account simply has no BTC history before the window; the composed series
+// carries the earliest available rate backward for those older days.
+const MAX_MARKET_CHART_DAYS = 365;
+
 /** The `market_chart` body: `prices` is a `[epochMs, price]` pair per day. */
 type MarketChart = { prices: [number, number][] };
 
@@ -22,15 +28,19 @@ const readChart = guard(
   (response: Response): Promise<MarketChart> => response.json(),
 );
 
+// No `interval` parameter: `interval=daily` is a paid-tier feature that 401s on
+// the free key. Omitted, CoinGecko auto-selects the granularity (daily past ~90
+// days); any finer intraday points collapse to one entry per day downstream.
 const chartUrl = (days: number): string =>
-  `${MARKET_CHART_ENDPOINT}?vs_currency=usd&days=${days}&interval=daily`;
+  `${MARKET_CHART_ENDPOINT}?vs_currency=usd&days=${Math.min(days, MAX_MARKET_CHART_DAYS)}`;
 
 /**
  * Fetch the daily BTC->USD price series for the last `days` days from CoinGecko
- * in a single request. Each `[ts, price]` point is normalized to its UTC day;
- * a trailing intraday point that lands on the same day as the last daily point
- * overwrites it (latest price wins). Non-finite prices are dropped. Entries are
- * returned in ascending day order.
+ * in a single request (clamped to the free tier's 365-day ceiling). Each
+ * `[ts, price]` point is normalized to its UTC day; a trailing intraday point
+ * that lands on the same day as the last daily point overwrites it (latest price
+ * wins). Non-finite prices are dropped. Entries are returned in ascending day
+ * order.
  */
 export const fetchBTCHistory = async (
   days: number,

@@ -60,6 +60,18 @@ describe('groupAmount', () => {
   it('preserves a leading minus and groups the magnitude', () => {
     expect(groupAmount('-50000')).toBe('-50 000');
   });
+
+  it('reads the LAST separator as the decimal mark on a mixed-punctuation value', () => {
+    // A pasted/hydrated European value carries BOTH a grouping dot and a decimal
+    // comma. Picking the first separator would treat the grouping dot as the
+    // decimal and mangle the number ("1.23456"); the last separator is the
+    // decimal, matching parseAmount, so the grouping dot is stripped.
+    expect(groupAmount('1.234,56')).toBe('1 234,56');
+  });
+
+  it('reads a trailing dot decimal as the mark when a grouping comma precedes it', () => {
+    expect(groupAmount('1,234.56')).toBe('1 234.56');
+  });
 });
 
 describe('groupAmount + parseAmount round-trip', () => {
@@ -77,5 +89,9 @@ describe('groupAmount + parseAmount round-trip', () => {
 
   it('round-trips a grouped fraction below one', () => {
     expect(parseAmount(groupAmount('0,99'))).toBe(0.99);
+  });
+
+  it('round-trips a European mixed-punctuation value', () => {
+    expect(parseAmount(groupAmount('1.234,56'))).toBe(1234.56);
   });
 });

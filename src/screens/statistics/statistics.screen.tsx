@@ -23,20 +23,24 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { buildAccountContribution } from '../../statistics/account-contribution';
-import { bucketDaysForSpan, type SeriesTransaction } from '../../statistics/currency-series';
+import { bucketDaysForSpan } from '../../statistics/buckets';
+import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL } from '../home/filter-menu';
 import { styles } from './statistics.styles';
 
-// Midnight (local) of the calendar day a timestamp falls on — the net-worth
-// line's range bounds snap to whole days so the same-day picks a user makes in
-// the date field map cleanly onto the daily buckets the series is computed over.
+// UTC-midnight of the LOCAL calendar day a timestamp falls on. The date field's
+// picks are local calendar days, but the rate history stores each day as its
+// UTC-midnight instant; mapping the picked local day onto that UTC-midnight (not
+// the local one) keeps the series' bucket lookups on the correct day. In a
+// positive-UTC-offset locale (e.g. UA) a local-midnight bound sits on the
+// previous UTC day, which would read the previous day's rate.
 const startOfLocalDay = (time: number): number => {
   const date = new Date(time);
 
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
 // The `FILTER_ALL` chip clears the account dimension; any other value toggles
@@ -225,8 +229,13 @@ const StatisticsScreen: FC = () => {
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
         bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
+        // Value today's rightmost point on the same live rates the bar/pie/
+        // headline use, so the line's "now" reconciles with them instead of
+        // sitting a few percent off on the day's NBU official rate.
+        liveRateTable: rateTable,
+        today: now,
       }),
-    [filtered, transactions, historyRows, baseCurrency, rangeFrom, rangeTo],
+    [filtered, transactions, historyRows, baseCurrency, rangeFrom, rangeTo, rateTable, now],
   );
 
   const slices = useMemo(

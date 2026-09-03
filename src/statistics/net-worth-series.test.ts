@@ -10,6 +10,7 @@ import type { SeriesHolding } from './holding-value-at';
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
 const DAY = 86_400_000;
+const HOUR = 3_600_000;
 const D0 = Date.UTC(2026, 0, 1);
 const D1 = D0 + DAY;
 const D2 = D0 + 2 * DAY;
@@ -89,6 +90,67 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.startReference).toBe(50);
     expect(series.startReference).toBe(series.points[0].amount);
+  });
+
+  it('carries the earliest stored rate backward to buckets before the first history day', () => {
+    // The UAH holding's only rate row starts on D1. Without carrying the earliest
+    // rate backward, the D0 bucket would omit UAH entirely and understate the
+    // start; instead D0 is priced at D1's (earliest) rate.
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    const historyRows = [uahUsd(D1, '0.05')];
+
+    const series = buildNetWorthSeries({
+      holdings,
+      txByHolding: new Map(),
+      historyRows,
+      baseCurrency: 'USD',
+      range: { from: D0, to: D1 },
+    });
+
+    // D0 carries D1's 0.05 backward: 4000 * 0.05 = $200 (not $0 from a dropped holding).
+    expect(series.points.map((point) => point.amount)).toEqual([200, 200]);
+    expect(series.startReference).toBe(200);
+  });
+
+  it('values the current-day bucket at the live rate table, not the historical one', () => {
+    // The line's historical rate for today (NBU official) differs from the app's
+    // live monobank BUY rate used by the headline/bar/pie. To reconcile, the most
+    // recent bucket is valued at the live table so its “now” point matches them.
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.025')];
+
+    const series = buildNetWorthSeries({
+      holdings,
+      txByHolding: new Map(),
+      historyRows,
+      baseCurrency: 'USD',
+      range: { from: D0, to: D1 },
+      liveRateTable: { 'UAH:USD': 0.05 },
+      today: D1,
+    });
+
+    // D0 (a past day) stays on the historical 0.025 -> $100; D1 (today) uses the
+    // live 0.05 -> $200.
+    expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
+  });
+
+  it('resolves the rate for an intraday bucket instant to that UTC day’s row', () => {
+    // History `day` is UTC-midnight; a bucket instant partway through the day must
+    // still resolve to that day's rate rather than sliding to an adjacent day.
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
+    const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.05')];
+
+    const series = buildNetWorthSeries({
+      holdings,
+      txByHolding: new Map(),
+      historyRows,
+      baseCurrency: 'USD',
+      range: { from: D0 + 13 * HOUR, to: D1 + 13 * HOUR },
+    });
+
+    // Both buckets sit 13h into their UTC day and pick up that day's rate:
+    // D0 -> 4000 * 0.025 = $100, D1 -> 4000 * 0.05 = $200.
+    expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
   it('returns an empty series when no history has been backfilled yet', () => {

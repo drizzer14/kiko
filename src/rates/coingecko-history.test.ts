@@ -19,8 +19,28 @@ describe('fetchBTCHistory', () => {
 
     await fetchBTCHistory(30, spyFetch);
 
+    // No `interval=daily`: that parameter is gated behind CoinGecko's paid tier
+    // and 401s on the free key. Omitting it lets CoinGecko pick the granularity
+    // (daily for a >90-day span); the intraday points collapse to one per day.
     expect(sentUrl).toBe(
-      'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30&interval=daily',
+      'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30',
+    );
+  });
+
+  it('clamps a multi-year span to the free tier’s 365-day ceiling', async () => {
+    let sentUrl = '';
+    const spyFetch = (async (url: string) => {
+      sentUrl = url;
+      return { ok: true, status: 200, json: async () => ({ prices: [] }) };
+    }) as unknown as typeof fetch;
+
+    // A 3-year request would 401 on the free tier (it caps ~365 days); the client
+    // clamps the span so the fetch stays inside the free window instead of voiding
+    // the whole backfill.
+    await fetchBTCHistory(3 * 365, spyFetch);
+
+    expect(sentUrl).toBe(
+      'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365',
     );
   });
 

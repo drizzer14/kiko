@@ -17,7 +17,7 @@ jest.mock('../db/client', () => {
 });
 
 import type { CurrencyRateHistoryRow } from '../db/schema';
-import { rateHistoryRepo, rateTableAt } from './rate-history.repo';
+import { earliestRateTable, rateHistoryRepo, rateTableAt } from './rate-history.repo';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
 
@@ -72,6 +72,45 @@ describe('rateHistoryRepo', () => {
 
     expect(store).toHaveLength(1);
     expect(store[0].rate).toBe('42.0');
+  });
+
+  it('chunks a large batch into insert statements under the SQLite variable limit', async () => {
+    // 12 cross pairs/day at 5 params each: a multi-year span produces tens of
+    // thousands of rows. A single insert would blow past SQLITE_MAX_VARIABLE_NUMBER
+    // (32766), so upsertMany must split the rows into bounded chunks.
+    const store: HistoryRow[] = [];
+    const chunkSizes: number[] = [];
+    const upsertStore = makeUpsertTx(store);
+    mockTx = {
+      insert: () => ({
+        values: (rows: HistoryRow[]) => {
+          chunkSizes.push(rows.length);
+          return (upsertStore as { insert: () => { values: (r: HistoryRow[]) => unknown } })
+            .insert()
+            .values(rows);
+        },
+      }),
+    };
+
+    const rows: HistoryRow[] = Array.from({ length: 5000 }, (_, index) => ({
+      base: 'USD',
+      quote: 'UAH',
+      day: friday + index * DAY,
+      rate: String(40 + index),
+      source: 'nbu',
+    }));
+
+    await rateHistoryRepo.upsertMany(rows);
+
+    // Every chunk stays well under the 32766 variable ceiling (chunk * 5 params).
+    expect(chunkSizes.length).toBeGreaterThan(1);
+    for (const size of chunkSizes) {
+      expect(size).toBeLessThanOrEqual(2000);
+      expect(size * 5).toBeLessThan(32_766);
+    }
+    // No row is lost or duplicated across the chunk boundaries.
+    expect(chunkSizes.reduce((sum, size) => sum + size, 0)).toBe(5000);
+    expect(store).toHaveLength(5000);
   });
 
   it('issues no insert for an empty batch', async () => {
@@ -135,5 +174,31 @@ describe('rateTableAt', () => {
       'EUR:UAH': 48.0,
       'BTC:USD': 65000,
     });
+  });
+});
+
+describe('earliestRateTable', () => {
+  it('resolves each pair to its earliest stored day', () => {
+    const rows: HistoryRow[] = [
+      { base: 'USD', quote: 'UAH', day: monday, rate: '43.0', source: 'nbu' },
+      { base: 'USD', quote: 'UAH', day: friday, rate: '41.5', source: 'nbu' },
+      { base: 'EUR', quote: 'UAH', day: sunday, rate: '48.0', source: 'nbu' },
+    ];
+    // USD's earliest is Friday (not the later Monday row); EUR's only day is Sunday.
+    expect(earliestRateTable(rows)).toEqual({
+      'USD:UAH': 41.5,
+      'EUR:UAH': 48.0,
+    });
+  });
+
+  it('skips a row whose stored rate does not parse to a finite number', () => {
+    const rows: HistoryRow[] = [
+      { base: 'USD', quote: 'UAH', day: friday, rate: 'not-a-number', source: 'nbu' },
+    ];
+    expect(earliestRateTable(rows)).toEqual({});
+  });
+
+  it('is empty for no rows', () => {
+    expect(earliestRateTable([])).toEqual({});
   });
 });

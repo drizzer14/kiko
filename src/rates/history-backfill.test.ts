@@ -175,6 +175,63 @@ describe('runBackfill', () => {
     expect(btcCalls[0]).toBeGreaterThanOrEqual(2);
   });
 
+  it('still stores NBU fiat when the CoinGecko BTC fetch fails', async () => {
+    // CoinGecko's free tier can 401 a multi-year request; because the fetches are
+    // settled independently, a BTC failure must not discard the fiat rates NBU
+    // already returned. The composed rows carry the fiat cross pairs; BTC pairs
+    // are simply absent for that pass.
+    const { deps, captured } = makeDeps({
+      fetchBTCHistory: async () => {
+        throw new Error('CoinGecko request failed: 401');
+      },
+    });
+
+    const status: BackfillStatus = await runBackfill(deps);
+
+    expect(captured).toHaveLength(1);
+    const stored = captured[0];
+    expect(stored.length).toBeGreaterThan(0);
+    // USD/EUR/UAH fiat pairs are present; no pair references BTC.
+    expect(stored.some((row) => row.base === 'USD' && row.quote === 'UAH')).toBe(true);
+    expect(stored.every((row) => row.base !== 'BTC' && row.quote !== 'BTC')).toBe(true);
+    expect(status).toEqual({ state: 'complete', lastDay: day(0) });
+  });
+
+  it('still composes when only the BTC fetch succeeds and NBU fails', async () => {
+    const { deps, captured } = makeDeps({
+      fetchNbuHistory: async () => {
+        throw new Error('NBU request failed: 500');
+      },
+    });
+
+    const status: BackfillStatus = await runBackfill(deps);
+
+    // Only BTC:USD anchors survive, so no fully-priced fiat cross pair composes;
+    // the pass still reports complete rather than throwing.
+    // With just BTC:USD priced, no cross pair among {BTC,USD,EUR,UAH} is emitted
+    // (USD alone is not enough to price a UAH-anchored pair), so nothing is stored,
+    // and the resume cursor stays at its prior value (null) rather than advancing.
+    expect(status).toEqual({ state: 'complete', lastDay: null });
+    expect(captured).toHaveLength(0);
+  });
+
+  it('does not advance the resume cursor when nothing is persisted', async () => {
+    // Both providers return no usable anchors for the missing span, so no row is
+    // stored. Reporting lastDay=today would falsely mark the span done and skip
+    // re-fetching it forever; the cursor must stay where it was.
+    const { deps, captured } = makeDeps({
+      lastBackfilledDay: day(0),
+      today: day(2),
+      fetchNbuHistory: async () => [],
+      fetchBTCHistory: async () => [],
+    });
+
+    const status: BackfillStatus = await runBackfill(deps);
+
+    expect(captured).toHaveLength(0);
+    expect(status).toEqual({ state: 'complete', lastDay: day(0) });
+  });
+
   it('does no work and reports complete when there are no missing days', async () => {
     const { deps, captured, nbuCalls, btcCalls } = makeDeps({
       lastBackfilledDay: day(0),
