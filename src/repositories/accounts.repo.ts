@@ -1,10 +1,23 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount } from '../holdings/deletable';
 import type { Repository } from './repository';
+
+// The next free grid slot for a new account: one past the current highest
+// `sortOrder` (or 0 when there are no accounts yet), so a freshly created
+// account appends to the end of the grid instead of tying with the first row.
+// Read inside the same write transaction as the insert so a concurrent create
+// cannot observe a stale maximum.
+const nextSortOrder = async (tx: typeof database): Promise<number> => {
+  const rows = await tx
+    .select({ value: sql<number>`coalesce(max(${accounts.sortOrder}), -1)` })
+    .from(accounts);
+
+  return (rows.at(0)?.value ?? -1) + 1;
+};
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
   Partial<Pick<AccountRow, 'institution' | 'sortOrder' | 'color'>>;
@@ -24,7 +37,11 @@ type NewCashAccount = {
 };
 
 export const accountsRepo = {
-  listQuery: () => database.select().from(accounts),
+  // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
+  // with `createdAt` as a stable tiebreak so any rows that happen to share a
+  // rank keep a deterministic order rather than flickering between renders.
+  listQuery: () =>
+    database.select().from(accounts).orderBy(asc(accounts.sortOrder), asc(accounts.createdAt)),
   byIdQuery: (accountId: string) =>
     database.select().from(accounts).where(eq(accounts.id, accountId)),
   /**
@@ -43,7 +60,8 @@ export const accountsRepo = {
   create: (input: NewAccount): Promise<string> =>
     write(async (tx) => {
       const accountId = id();
-      await tx.insert(accounts).values({ id: accountId, ...input });
+      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx));
+      await tx.insert(accounts).values({ id: accountId, ...input, sortOrder });
       return accountId;
     }),
   /**
@@ -55,9 +73,15 @@ export const accountsRepo = {
   createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
     write(async (tx) => {
       const accountId = id();
-      await tx
-        .insert(accounts)
-        .values({ id: accountId, name, kind: 'cash', icon: icon ?? null, color: color ?? null });
+      const sortOrder = await nextSortOrder(tx);
+      await tx.insert(accounts).values({
+        id: accountId,
+        name,
+        kind: 'cash',
+        icon: icon ?? null,
+        color: color ?? null,
+        sortOrder,
+      });
       await tx.insert(holdings).values({
         id: id(),
         accountId,
@@ -111,6 +135,24 @@ export const accountsRepo = {
     write((tx) =>
       tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
     ),
+  /**
+   * Persist a drag-and-drop reorder of the accounts grid. `orderedIds` is the
+   * full new front-to-back order of the visible accounts; each row's
+   * `sortOrder` is rewritten to its 0-based index in one transaction so the
+   * `listQuery` ordering matches the grid the user just arranged. Archived
+   * accounts are filtered out of the grid, so their (untouched) `sortOrder`
+   * may tie with a rewritten value — harmless, since they never render and the
+   * `createdAt` tiebreak keeps any tie deterministic.
+   */
+  reorder: (orderedIds: string[]) =>
+    write(async (tx) => {
+      for (let index = 0; index < orderedIds.length; index += 1) {
+        await tx
+          .update(accounts)
+          .set({ sortOrder: index })
+          .where(eq(accounts.id, orderedIds[index]));
+      }
+    }),
   /**
    * Delete a MANUAL account together with all of its holdings and every one of
    * their transactions, in ONE op-sqlite transaction so a partial failure can

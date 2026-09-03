@@ -25,6 +25,25 @@ import { holdings } from '../db/schema';
 import { captureSetTx } from './capture-set-tx';
 import { holdingsRepo } from './holdings.repo';
 
+// A fake write-transaction handle for the create paths. `create` (and the
+// insert branch of `upsertMonobank`) first read the account's current max
+// `sort_order` via `select(...).from(holdings).where(...)` (to append at
+// `max + 1`), then insert. This answers that max query with `maxSortOrder` and
+// captures every insert payload in issue order.
+const makeCreateTx = (maxSortOrder = -1): { tx: unknown; inserts: Record<string, unknown>[] } => {
+  const inserts: Record<string, unknown>[] = [];
+  const tx = {
+    select: () => ({ from: () => ({ where: () => Promise.resolve([{ value: maxSortOrder }]) }) }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        inserts.push(values);
+        return Promise.resolve();
+      },
+    }),
+  };
+  return { tx, inserts };
+};
+
 // A minimal in-memory fake for the transaction handle `write` hands the repo.
 // It keys operations off the drizzle table reference (`holdings`/`transactions`)
 // and mutates plain arrays, so the read-modify-write and cascade-delete paths
@@ -70,16 +89,20 @@ describe('holdingsRepo', () => {
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('holdings');
   });
 
+  it('allQuery orders by sortOrder', () => {
+    expect(holdingsRepo.allQuery().toSQL().sql.toLowerCase()).toContain('order by');
+    expect(holdingsRepo.allQuery().toSQL().sql).toContain('sort_order');
+  });
+
+  it('listByAccountQuery orders by sortOrder', () => {
+    const { sql } = holdingsRepo.listByAccountQuery('acc-1').toSQL();
+    expect(sql.toLowerCase()).toContain('order by');
+    expect(sql).toContain('sort_order');
+  });
+
   it('create inserts the holding and resolves to the generated id', async () => {
-    let insertedId: unknown;
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          insertedId = values.id;
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     const result = await holdingsRepo.create({
       accountId: 'acc-1',
@@ -90,19 +113,12 @@ describe('holdingsRepo', () => {
 
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
-    expect(result).toBe(insertedId);
+    expect(result).toBe(inserts[0].id);
   });
 
   it('create persists the chosen color on the inserted row', async () => {
-    let inserted: Record<string, unknown> | undefined;
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          inserted = values;
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     await holdingsRepo.create({
       accountId: 'acc-1',
@@ -112,7 +128,25 @@ describe('holdingsRepo', () => {
       color: '#FFD60A',
     });
 
-    expect(inserted).toMatchObject({ color: '#FFD60A' });
+    expect(inserts[0]).toMatchObject({ color: '#FFD60A' });
+  });
+
+  it("create appends the holding at the account's sortOrder = max + 1", async () => {
+    const { tx, inserts } = makeCreateTx(1);
+    mockTx = tx;
+
+    await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 2 });
+  });
+
+  it("create uses sortOrder 0 for an account's first holding", async () => {
+    const { tx, inserts } = makeCreateTx(-1);
+    mockTx = tx;
+
+    await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
 
   it('updateName writes the new name for the given holding id', async () => {
@@ -123,6 +157,26 @@ describe('holdingsRepo', () => {
 
     expect(captured.set).toEqual({ name: 'Renamed card' });
     expect(captured.whereCalled).toBe(true);
+  });
+});
+
+describe('holdingsRepo.reorder', () => {
+  it('rewrites each holding sortOrder to its 0-based index in the new order', async () => {
+    const sortOrders: unknown[] = [];
+    mockTx = {
+      update: () => ({
+        set: (set: Record<string, unknown>) => ({
+          where: () => {
+            sortOrders.push(set.sortOrder);
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await holdingsRepo.reorder(['h3', 'h1', 'h2']);
+
+    expect(sortOrders).toEqual([0, 1, 2]);
   });
 });
 

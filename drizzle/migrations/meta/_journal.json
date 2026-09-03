@@ -43,6 +43,13 @@
       "when": 1788430622536,
       "tag": "0005_add_entity_color",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788517022536,
+      "tag": "0006_backfill_sort_order",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,24 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type HoldingRow, holdings, transactions } from '../db/schema';
 import { isSyncedHolding } from '../holdings/deletable';
 import { asTermDepositMeta, type DepositContribution } from '../holdings/holding-metadata';
 import type { Repository } from './repository';
+
+// The next free grid slot for a new holding under one account: one past that
+// account's current highest `sortOrder` (or 0 when it has no holdings yet), so
+// a freshly created holding appends to the end of that account's grid. Scoped
+// per account because each account renders its own holdings grid. Read inside
+// the write transaction so a concurrent create cannot observe a stale maximum.
+const nextSortOrder = async (tx: typeof database, accountId: string): Promise<number> => {
+  const rows = await tx
+    .select({ value: sql<number>`coalesce(max(${holdings.sortOrder}), -1)` })
+    .from(holdings)
+    .where(eq(holdings.accountId, accountId));
+
+  return (rows.at(0)?.value ?? -1) + 1;
+};
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>>;
@@ -17,19 +31,29 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
 type MonobankHolding = NewHolding & { monobankId: string };
 
 export const holdingsRepo = {
-  allQuery: () => database.select().from(holdings),
+  // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
+  // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
+  // deterministic order rather than flickering between renders.
+  allQuery: () =>
+    database.select().from(holdings).orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
   listByAccountQuery: (accountId: string) =>
-    database.select().from(holdings).where(eq(holdings.accountId, accountId)),
+    database
+      .select()
+      .from(holdings)
+      .where(eq(holdings.accountId, accountId))
+      .orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
   /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
    * so a caller can immediately act on the new row (e.g. set its icon). The
    * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
-   * not this id, so it is not returned.
+   * not this id, so it is not returned. A new holding appends to the end of its
+   * account's grid via `sortOrder = max + 1` unless an explicit order is given.
    */
   create: (input: NewHolding): Promise<string> =>
     write(async (tx) => {
       const holdingId = id();
-      await tx.insert(holdings).values({ id: holdingId, ...input });
+      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.accountId));
+      await tx.insert(holdings).values({ id: holdingId, ...input, sortOrder });
       return holdingId;
     }),
   setBalance: (holdingId: string, minorUnits: number) =>
@@ -119,6 +143,24 @@ export const holdingsRepo = {
           .where(eq(holdings.id, current.id));
         return;
       }
-      await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged });
+      const sortOrder = rest.sortOrder ?? (await nextSortOrder(tx, rest.accountId));
+      await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged, sortOrder });
+    }),
+  /**
+   * Persist a drag-and-drop reorder of one account's holdings grid.
+   * `orderedIds` is the full new front-to-back order of that account's visible
+   * holdings; each row's `sortOrder` is rewritten to its 0-based index in one
+   * transaction so the `listByAccountQuery` ordering matches the grid the user
+   * just arranged. Only the passed holdings are touched, so other accounts'
+   * holdings are unaffected.
+   */
+  reorder: (orderedIds: string[]) =>
+    write(async (tx) => {
+      for (let index = 0; index < orderedIds.length; index += 1) {
+        await tx
+          .update(holdings)
+          .set({ sortOrder: index })
+          .where(eq(holdings.id, orderedIds[index]));
+      }
     }),
 } satisfies Repository;

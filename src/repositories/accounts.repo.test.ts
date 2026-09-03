@@ -20,6 +20,25 @@ import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
 import { accountsRepo } from './accounts.repo';
 import { captureSetTx } from './capture-set-tx';
 
+// A fake write-transaction handle for the create paths. Both `create` and
+// `createCashAccount` first read the current max `sort_order` via
+// `select(...).from(accounts)` (to append the new row at `max + 1`), then
+// insert. This answers that max query with `maxSortOrder` and captures every
+// insert payload in issue order.
+const makeCreateTx = (maxSortOrder = -1): { tx: unknown; inserts: Record<string, unknown>[] } => {
+  const inserts: Record<string, unknown>[] = [];
+  const tx = {
+    select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        inserts.push(values);
+        return Promise.resolve();
+      },
+    }),
+  };
+  return { tx, inserts };
+};
+
 describe('accountsRepo', () => {
   it('builds a list query against the accounts table', () => {
     expect(accountsRepo.listQuery().toSQL().sql).toContain('accounts');
@@ -39,49 +58,60 @@ describe('accountsRepo', () => {
   });
 
   it('create inserts the account and resolves to the generated id', async () => {
-    let insertedId: unknown;
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          insertedId = values.id;
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     const result = await accountsRepo.create({ name: 'Savings', kind: 'bank' });
 
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
-    expect(result).toBe(insertedId);
+    expect(result).toBe(inserts[0].id);
   });
 
   it('create persists the chosen color on the inserted account row', async () => {
-    let inserted: Record<string, unknown> | undefined;
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          inserted = values;
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     await accountsRepo.create({ name: 'Savings', kind: 'bank', color: '#FFFFFF' });
 
-    expect(inserted).toMatchObject({ color: '#FFFFFF' });
+    expect(inserts[0]).toMatchObject({ color: '#FFFFFF' });
+  });
+
+  it('create appends the new account at sortOrder = max + 1', async () => {
+    const { tx, inserts } = makeCreateTx(4);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 5 });
+  });
+
+  it('create uses sortOrder 0 for the first account (no existing rows)', async () => {
+    const { tx, inserts } = makeCreateTx(-1);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'First', kind: 'bank' });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 0 });
+  });
+
+  it('create honors an explicitly provided sortOrder', async () => {
+    const { tx, inserts } = makeCreateTx(4);
+    mockTx = tx;
+
+    await accountsRepo.create({ name: 'Pinned', kind: 'bank', sortOrder: 0 });
+
+    expect(inserts[0]).toMatchObject({ sortOrder: 0 });
+  });
+
+  it('listQuery orders by sortOrder', () => {
+    expect(accountsRepo.listQuery().toSQL().sql.toLowerCase()).toContain('order by');
+    expect(accountsRepo.listQuery().toSQL().sql).toContain('sort_order');
   });
 
   it('createCashAccount persists the chosen color on the account row', async () => {
-    const inserts: Record<string, unknown>[] = [];
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          inserts.push(values);
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -94,16 +124,22 @@ describe('accountsRepo', () => {
     expect(accountInsert).toMatchObject({ kind: 'cash', color: '#BDB76B' });
   });
 
+  it('createCashAccount appends the account at sortOrder = max + 1', async () => {
+    const { tx, inserts } = makeCreateTx(2);
+    mockTx = tx;
+
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'EUR',
+      initialBalanceMinorUnits: 1000,
+    });
+
+    expect(inserts[0]).toMatchObject({ kind: 'cash', sortOrder: 3 });
+  });
+
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
-    const inserts: Record<string, unknown>[] = [];
-    mockTx = {
-      insert: () => ({
-        values: (values: Record<string, unknown>) => {
-          inserts.push(values);
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
 
     await accountsRepo.createCashAccount({
       name: 'Wallet',
@@ -126,6 +162,26 @@ describe('accountsRepo', () => {
     });
     expect(typeof accountInsert.id).toBe('string');
     expect((accountInsert.id as string).length).toBeGreaterThan(0);
+  });
+});
+
+describe('accountsRepo.reorder', () => {
+  it('rewrites each account sortOrder to its 0-based index in the new order', async () => {
+    const sortOrders: unknown[] = [];
+    mockTx = {
+      update: () => ({
+        set: (set: Record<string, unknown>) => ({
+          where: () => {
+            sortOrders.push(set.sortOrder);
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await accountsRepo.reorder(['c', 'a', 'b']);
+
+    expect(sortOrders).toEqual([0, 1, 2]);
   });
 });
 
