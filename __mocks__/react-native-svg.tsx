@@ -27,6 +27,8 @@ export const Svg = SvgElement;
 
 export const Path = SvgElement;
 
+export const Rect = SvgElement;
+
 export const Polyline = SvgElement;
 
 export const Line = SvgElement;
