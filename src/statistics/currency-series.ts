@@ -7,10 +7,10 @@ import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from './ho
 export type { SeriesHolding, SeriesTransaction };
 
 /** A single point on a currency's line: `pct` = percent change vs the range start. */
-export type SeriesPoint = { t: number; pct: number };
+type SeriesPoint = { t: number; pct: number };
 
 /** One line: a currency and its day-bucketed, start-indexed percent-change points. */
-export type CurrencySeries = { currency: Currency; points: SeriesPoint[] };
+type CurrencySeries = { currency: Currency; points: SeriesPoint[] };
 
 // Past this line-window span the daily bucket count would grow unbounded, so
 // the series coarsens to a weekly bucket to keep the point count sane.

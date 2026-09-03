@@ -1,5 +1,25 @@
+// The rate-history repo opens the op-sqlite connection at module load (it is
+// imported for real so `rateTableAt`, which `buildNetWorthSeries` calls, stays
+// the real implementation). Stub the native module so it loads without a
+// database, mirroring the net-worth-series builder test.
+jest.mock('@op-engineering/op-sqlite', () => ({
+  open: () => ({ execute: () => ({ rows: [] }) }),
+}));
+
+// The backfill orchestration reaches the network. Keep the pure helpers
+// (`missingDays`, `deriveLastBackfilledDay`) real, but stub `runBackfill` with a
+// never-resolving promise so the screen's mount effect leaves the line in its
+// `loading` state without hitting NBU/CoinGecko.
+const mockRunBackfill = jest.fn(() => new Promise<never>(() => {}));
+
+jest.mock('../../rates/history-backfill', () => {
+  const actual = jest.requireActual('../../rates/history-backfill');
+
+  return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
+});
+
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { formatDate } from '../../dates/format';
+import { toUtcMidnight } from '../../rates/history-entry';
 import '../../design-system/unistyles';
 import StatisticsScreen from './statistics.screen';
 
@@ -37,16 +57,18 @@ type Holding = {
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
 type Transaction = { id: string; holdingId: string; time: number; amountMinorUnits: number };
+type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
 type LiveData = {
   accounts?: Account[];
   holdings?: Holding[];
   rates?: Rate[];
   settings?: Settings[];
   transactions?: Transaction[];
+  history?: HistoryRow[];
 };
 
-// Feed each `useLiveQuery` call by the first table name it watches, exactly as
-// the Home screen test does — the screen's five queries key off distinct tables.
+// Feed each `useLiveQuery` call by the first table name it watches — the screen's
+// six queries key off distinct tables.
 const setLiveData = (data: LiveData): void => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
@@ -54,6 +76,7 @@ const setLiveData = (data: LiveData): void => {
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
     transactions: data.transactions ?? [],
+    currency_rate_history: data.history ?? [],
   };
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
@@ -79,13 +102,14 @@ const USD_HOLDING: Holding = {
   id: 'h2',
   accountId: 'b',
   currency: 'USD',
-  type: 'cash',
+  type: 'card',
   balanceMinorUnits: 5_000,
   metadata: null,
   closedAt: null,
 };
 
-// USD converts to the UAH base so the Bank account produces a pie slice.
+// USD converts to the UAH base so the Bank account (a `card`) contributes to the
+// pie and its own by-type bar.
 const USD_UAH_RATE: Rate = { base: 'USD', quote: 'UAH', rate: '40' };
 
 const TRANSACTIONS: Transaction[] = [
@@ -94,18 +118,24 @@ const TRANSACTIONS: Transaction[] = [
   { id: 't3', holdingId: 'h2', time: now - 3 * DAY, amountMinorUnits: 5_000 },
 ];
 
+// A historical USD->UAH row dated before the transaction span, so `rateTableAt`
+// carries it forward to every bucket and the net-worth line has points to draw.
+const HISTORY: HistoryRow[] = [
+  { base: 'USD', quote: 'UAH', day: toUtcMidnight(now) - 5 * DAY, rate: '40', source: 'nbu' },
+];
+
 const seedFull = (): void =>
   setLiveData({
     accounts: [CASH, BANK],
     holdings: [UAH_HOLDING, USD_HOLDING],
     rates: [USD_UAH_RATE],
     transactions: TRANSACTIONS,
+    history: HISTORY,
   });
 
 const renderScreen = (): ReturnType<typeof render> => render(<StatisticsScreen />);
 
-// Open one filter menu, tap an option row, then dismiss via the backdrop —
-// self-contained so each call leaves the sheet closed. Mirrors the Home test.
+// Open one filter menu, tap an option row, then dismiss via the backdrop.
 const pressFilter = async (
   getByTestId: (id: string) => Parameters<typeof fireEvent.press>[0],
   menuTestID: string,
@@ -130,79 +160,75 @@ describe('StatisticsScreen', () => {
     seedFull();
   });
 
-  it('renders a line-chart series and legend per currency', async () => {
+  it('renders the three blocks in order: by-type bar, net-worth line, account pie', async () => {
     const { getByTestId } = await renderScreen();
 
-    expect(getByTestId('line-chart-series-UAH')).toBeTruthy();
-    expect(getByTestId('line-chart-series-USD')).toBeTruthy();
-    expect(getByTestId('line-chart-legend-UAH')).toBeTruthy();
-    expect(getByTestId('line-chart-legend-USD')).toBeTruthy();
+    const order = getByTestId('statistics-blocks')
+      .children.map((child) => (typeof child === 'string' ? undefined : child.props.testID))
+      .filter((id): id is string => typeof id === 'string' && id.startsWith('statistics-block-'));
+
+    expect(order).toEqual([
+      'statistics-block-bar',
+      'statistics-block-line',
+      'statistics-block-pie',
+    ]);
   });
 
-  it('renders a pie-chart arc and legend per contributing account', async () => {
+  it('renders a by-type bar, the net-worth polyline, and a pie arc per account', async () => {
     const { getByTestId } = await renderScreen();
 
+    expect(getByTestId('bar-chart-bar-cash')).toBeTruthy();
+    expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
+    expect(getByTestId('net-worth-line-polyline')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
-    expect(getByTestId('pie-chart-legend-a')).toBeTruthy();
-    expect(getByTestId('pie-chart-legend-b')).toBeTruthy();
   });
 
-  it('drops the deselected account from the pie when the account filter narrows', async () => {
+  it('shows the net-worth line loading state while history is empty and the backfill runs', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+
     const { getByTestId, queryByTestId } = await renderScreen();
 
+    expect(mockRunBackfill).toHaveBeenCalled();
+    expect(getByTestId('net-worth-line-loading')).toBeTruthy();
+    expect(queryByTestId('net-worth-line-polyline')).toBeNull();
+  });
+
+  it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
 
     await pressFilter(getByTestId, ACCOUNT_FILTER, 'Cash');
 
+    expect(getByTestId('bar-chart-bar-cash')).toBeTruthy();
+    expect(queryByTestId('bar-chart-bar-card')).toBeNull();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
   });
 
-  it('changes the line-chart geometry when the date range is applied', async () => {
-    const { getByTestId, getByLabelText, getByText } = await renderScreen();
-
-    const before = getByTestId('line-chart-series-UAH').props.points;
-
-    await act(async () => {
-      fireEvent.press(getByLabelText('Date range'));
-    });
-    await act(async () => {
-      fireEvent.press(getByText('Apply'));
-    });
-
-    const after = getByTestId('line-chart-series-UAH').props.points;
-    expect(after).not.toBe(before);
-  });
-
-  it('renders both empty charts without crashing when there is no data', async () => {
+  it('renders all three empty charts without crashing when there is no data', async () => {
     setLiveData({});
 
     const { getByTestId } = await renderScreen();
 
-    expect(getByTestId('line-chart-empty')).toBeTruthy();
+    expect(getByTestId('bar-chart-empty')).toBeTruthy();
+    expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
   });
 
-  it('lets the date picker span extend to today, not just the last transaction', async () => {
-    // The latest transaction is `now - DAY`, but the default line window runs to
-    // `now`, so the field's display span must show today as its upper bound.
-    const { getByText } = await renderScreen();
+  it('does not run the backfill when there are no transactions to bound the span', async () => {
+    setLiveData({});
 
-    const expectedSpan = `${formatDate(new Date(now - 3 * DAY))} – ${formatDate(new Date(now))}`;
-    expect(getByText(expectedSpan)).toBeTruthy();
-  });
+    await renderScreen();
 
-  it('memoizes the line series across a re-render with unchanged inputs', async () => {
-    const { getByTestId, rerender } = await renderScreen();
-
-    const before = getByTestId('line-chart-series-UAH').props.points;
-
-    await act(async () => {
-      rerender(<StatisticsScreen />);
-    });
-
-    const after = getByTestId('line-chart-series-UAH').props.points;
-    expect(after).toBe(before);
+    expect(mockRunBackfill).not.toHaveBeenCalled();
   });
 });
