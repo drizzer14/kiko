@@ -108,6 +108,18 @@ describe('TransactionFormScreen — add mode', () => {
     );
   });
 
+  it('groups the amount with spaces as the user types and still parses it on save', async () => {
+    const { getByLabelText, getByText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '1000000');
+    // The field reflects the grouped display value immediately as typed.
+    expect(getByLabelText('Amount').props.value).toBe('1 000 000');
+    await fireEvent.press(getByText('Save'));
+    // The grouped string round-trips through parseAmount: 1,000,000.00 UAH.
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ amountMinorUnits: 100_000_000 }),
+    );
+  });
+
   it('does not submit when the amount is empty', async () => {
     const { getByLabelText, getByText } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Description'), 'No amount');

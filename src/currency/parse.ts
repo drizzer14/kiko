@@ -22,22 +22,28 @@ export const parseAmount = (input: string): number => {
     return Number.NaN;
   }
 
-  const lastComma = trimmed.lastIndexOf(',');
-  const lastDot = trimmed.lastIndexOf('.');
+  // Strip interior grouping whitespace (the as-you-type formatter inserts a
+  // space between thousands, e.g. "1 000 000"), so the grouped display value
+  // parses back to its number. `\s` covers the regular, non-breaking, and
+  // narrow-no-break spaces a locale-grouped string might carry.
+  const compact = trimmed.replace(/\s/g, '');
+
+  const lastComma = compact.lastIndexOf(',');
+  const lastDot = compact.lastIndexOf('.');
 
   let normalized: string;
   if (lastComma === -1 && lastDot === -1) {
     // No separators at all: a plain integer (or non-numeric junk -> NaN below).
-    normalized = trimmed;
+    normalized = compact;
   } else if (lastComma > lastDot) {
     // The comma occurs last, so it is the decimal mark; any '.' before it is a
     // thousands grouping separator. Drop the dots, turn the (single) comma into
     // a dot. A stray extra comma leaves a second '.' behind -> NaN, as intended.
-    normalized = trimmed.replace(/\./g, '').replace(',', '.');
+    normalized = compact.replace(/\./g, '').replace(',', '.');
   } else {
     // The dot occurs last (or there is no comma), so it is the decimal mark;
     // any ',' is a thousands grouping separator to be stripped.
-    normalized = trimmed.replace(/,/g, '');
+    normalized = compact.replace(/,/g, '');
   }
 
   return Number(normalized);

@@ -10,6 +10,7 @@ import TextField from '../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import ChipRow from './chip-row';
+import { groupAmount } from './amount-format';
 import HoldingIdentityField from './holding-identity-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
@@ -125,7 +126,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ navigation }) => {
             <TextField
               label="Initial value"
               value={initialValue}
-              onChangeText={setInitialValue}
+              onChangeText={(text) => setInitialValue(groupAmount(text))}
               keyboardType="decimal-pad"
               placeholder="0.00"
             />

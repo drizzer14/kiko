@@ -4,6 +4,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
+import { groupAmount } from './amount-format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -100,7 +101,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   useEffect(() => {
     if (existing && holding && !hydrated) {
       const fields = toAmountFields(currency, existing.amountMinorUnits);
-      setAmount(fields.amount);
+      setAmount(groupAmount(fields.amount));
       setSign(fields.sign);
       setDescription(existing.description);
       setHydrated(true);
@@ -171,7 +172,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         <TextField
           label="Amount"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(text) => setAmount(groupAmount(text))}
           editable={!isReadOnly}
           keyboardType="decimal-pad"
           placeholder="0.00"

@@ -25,6 +25,7 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import ChipRow from './chip-row';
 import DateField from './date-field';
+import { groupAmount } from './amount-format';
 import HoldingIdentityField from './holding-identity-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
@@ -297,7 +298,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           <TextField
             label="Balance"
             value={openingBalance}
-            onChangeText={setOpeningBalance}
+            onChangeText={(text) => setOpeningBalance(groupAmount(text))}
             keyboardType="decimal-pad"
             placeholder="0.00"
           />
@@ -310,7 +311,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 <TextField
                   label={`Contribution ${index + 1} Amount`}
                   value={contribution.amount}
-                  onChangeText={(next) => updateContributionAmount(index, next)}
+                  onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
                 />
@@ -376,7 +377,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <TextField
               label="Quantity"
               value={quantity}
-              onChangeText={setQuantity}
+              onChangeText={(text) => setQuantity(groupAmount(text))}
               keyboardType="number-pad"
               placeholder="0"
             />
@@ -384,7 +385,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <TextField
               label="Face Value"
               value={faceValue}
-              onChangeText={setFaceValue}
+              onChangeText={(text) => setFaceValue(groupAmount(text))}
               keyboardType="decimal-pad"
               placeholder="0.00"
             />
@@ -400,7 +401,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <TextField
               label="Purchase Price (total paid)"
               value={purchasePrice}
-              onChangeText={setPurchasePrice}
+              onChangeText={(text) => setPurchasePrice(groupAmount(text))}
               keyboardType="decimal-pad"
               placeholder="Defaults to nominal"
             />

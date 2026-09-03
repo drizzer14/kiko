@@ -53,4 +53,14 @@ describe('parseAmount', () => {
   it('trims surrounding whitespace before parsing', () => {
     expect(parseAmount('  12,5  ')).toBe(12.5);
   });
+
+  it('strips space thousands-grouping the as-you-type formatter inserts', () => {
+    // The amount inputs group the integer part with spaces ("1 000 000") as the
+    // user types; parseAmount must strip that grouping so the round-trip holds.
+    expect(parseAmount('1 000 000')).toBe(1000000);
+  });
+
+  it('strips grouping spaces around a comma decimal', () => {
+    expect(parseAmount('1 234 567,89')).toBe(1234567.89);
+  });
 });
