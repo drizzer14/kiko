@@ -15,11 +15,13 @@ const Stack = createNativeStackNavigator<AccountsStackParamList>();
 /**
  * The Accounts tab's native stack. Every screen uses a large title, the
  * standard iOS pattern. The tab root ("Accounts") and the form screens carry
- * a static title here — the forms are add-only, so a constant "Add …" reads
- * correctly and belongs in the navigator config. The two detail screens set a
- * dynamic title (the account/holding name) from their own live-queried data
- * via `navigation.setOptions`, so they take no static title here; without one
- * a screen would otherwise show its raw camelCase route name.
+ * a static title here — the create case is the default, so a constant "Add …"
+ * reads correctly and belongs in the navigator config; the account/holding
+ * forms override it to "Edit …" via `navigation.setOptions` when opened in edit
+ * mode. The two detail screens set a dynamic title (the account/holding name)
+ * from their own live-queried data via `navigation.setOptions`, so they take no
+ * static title here; without one a screen would otherwise show its raw
+ * camelCase route name.
  */
 const AccountsStack: FC = () => (
   <Stack.Navigator screenOptions={{ headerLargeTitle: true }} screenListeners={resetTabStackOnBlur}>

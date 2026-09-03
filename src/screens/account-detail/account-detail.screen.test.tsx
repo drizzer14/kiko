@@ -204,7 +204,9 @@ describe('AccountDetailScreen', () => {
 
   it('sets the header title to the account name', async () => {
     const { navigation } = await renderScreen();
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Monobank' });
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Monobank' }),
+    );
   });
 
   it('shows the holding balance as money', async () => {
@@ -349,17 +351,19 @@ describe('AccountDetailScreen', () => {
     expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
-  it("drives the header title from the account's real name, with no in-body duplicate", async () => {
+  it("drives the header title from the account's real name and shows it in the view-only header", async () => {
     setLiveData({
       accounts: [account({ name: 'Ukrsibbank Card' })],
       holdings: [],
     });
-    const { queryByText, navigation } = await renderScreen();
-    // The name is the single (header) title, set via setOptions; it no longer
-    // also renders as an in-body <Text variant="title"> duplicate.
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Ukrsibbank Card' });
-    expect(queryByText('Ukrsibbank Card')).toBeNull();
-    expect(queryByText('Account')).toBeNull();
+    const { getByText, navigation } = await renderScreen();
+    // The name drives the dynamic header title (via setOptions) AND renders in
+    // the view-only identity header beside the icon — identity editing moved to
+    // the dedicated edit form, so the header only displays the name now.
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Ukrsibbank Card' }),
+    );
+    expect(getByText('Ukrsibbank Card')).toBeTruthy();
   });
 
   it('renders in scroll mode so the native large title renders and collapses', async () => {
@@ -596,78 +600,32 @@ describe('AccountDetailScreen', () => {
     expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
-  it("changes the account's own icon through the header icon editor, via accountsRepo.setIcon", async () => {
-    setLiveData({ accounts: [account({ name: 'Cash', kind: 'cash' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByLabelText('Choose icon basket'));
-    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', 'basket');
-  });
-
-  it("clears the account's own icon through the header icon editor Remove control", async () => {
+  it('renders a view-only header with no inline name, icon, or color editors', async () => {
     setLiveData({
-      accounts: [account({ name: 'Cash', kind: 'cash', icon: 'banknote' })],
+      accounts: [account({ name: 'Ukrsibbank Card', icon: 'banknote' })],
       holdings: [],
     });
-    const { getByLabelText, getByText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByText('Remove'));
-    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', null);
+    const { queryByLabelText } = await renderScreen();
+    // Identity editing moved to the dedicated edit form: the header no longer
+    // offers the icon-picker toggle, the editable name field, or the color
+    // swatch row it used to.
+    expect(queryByLabelText('Change Icon')).toBeNull();
+    expect(queryByLabelText('Ukrsibbank Card name')).toBeNull();
+    expect(queryByLabelText('Color violet')).toBeNull();
   });
 
-  it('hydrates the color picker with the account stored color as the selected swatch', async () => {
-    setLiveData({
-      accounts: [account({ color: darkTheme.colors.entityColors.violet })],
-      holdings: [],
-    });
-    const { getByLabelText } = await renderScreen();
-    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
-  });
-
-  it('hydrates the color picker with the kind default when no color is stored', async () => {
+  it('offers an Edit action in the header that opens the account edit form', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    // A `bank` account with no color highlights the bank kind default (white).
-    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
-  });
-
-  it("changes the account's own color through the header color picker, via accountsRepo.update", async () => {
-    setLiveData({ accounts: [account()], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Color violet'));
-    expect(mockAccountUpdate).toHaveBeenCalledWith('a', {
-      color: darkTheme.colors.entityColors.violet,
-    });
-  });
-
-  it("edits the account's own name in a header field and renames via accountsRepo.update on end-of-editing", async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText, getByDisplayValue } = await renderScreen();
-    // The name renders as a labelled, editable field pre-filled with the account
-    // name; the rename commits once on end-of-editing through the generic update.
-    const field = getByDisplayValue('Ukrsibbank Card');
-    expect(field.props.editable).not.toBe(false);
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent.changeText(input, 'Renamed account');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).toHaveBeenCalledWith('a', { name: 'Renamed account' });
-  });
-
-  it('does not save an empty account name', async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent.changeText(input, '   ');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).not.toHaveBeenCalled();
-  });
-
-  it('does not save an unchanged account name', async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).not.toHaveBeenCalled();
+    const { navigation } = await renderScreen();
+    // The Edit affordance sits at the header top-right (via setOptions
+    // headerRight). Render it and press it: it opens this account's edit form.
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.headerRight,
+    );
+    expect(call).toBeDefined();
+    const { getByText } = await render(call[0].headerRight());
+    await fireEvent.press(getByText('Edit'));
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
   it('offers a Disconnect Monobank action on a connected account and confirms before disconnecting', async () => {

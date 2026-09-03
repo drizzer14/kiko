@@ -28,8 +28,8 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import CardContextMenu from '../card-context-menu.component';
-import ColorPicker from '../forms/color-picker';
-import HoldingIdentityField from '../forms/holding-identity-field';
+import EditHeaderButton from '../edit-header-button.component';
+import EntityIdentityHeader from '../entity-identity-header.component';
 import { onGridDragEnd } from '../grid-interaction';
 import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
@@ -61,55 +61,14 @@ const actionPresentation = (
   };
 };
 
-// The account's own metadata, edited here rather than on the tiny accounts-list
-// row: the icon opens the shared picker (with remove-to-default) under one
-// labelled "Icon" block reused from the create form, and the name is a proper
-// labelled field. Local name state seeds from the account so keystrokes show
-// immediately while the persisted value flows back through the live query; the
-// rename commits once on end-of-editing (return-key submit or blur) via the
-// generic accountsRepo.update, and an empty or unchanged name is never written.
-const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
-  const [name, setName] = useState(account.name);
-
-  const commitName = (): void => {
-    const trimmed = name.trim();
-
-    if (trimmed !== '' && trimmed !== account.name) {
-      accountsRepo.update(account.id, { name: trimmed });
-    }
-  };
-
-  // The effective color: the account's own pick, or its kind default while
-  // unset — the same fallback the icon uses, so the picker highlights that
-  // swatch. Editing here mirrors the create form: a pick persists immediately.
-  const effectiveColor = account.color ?? defaultAccountColor[account.kind];
-
-  return (
-    <Box gap={4}>
-      {/* The same shared icon+name identity block the holding-detail header and
-          the create forms use — a fixed-height icon chip beside a labelled name
-          field, so the account and holding sides present one identical control
-          rather than a bespoke input here. */}
-      <HoldingIdentityField
-        icon={account.icon}
-        fallbackIcon={KIND_ICON[account.kind]}
-        iconColor={effectiveColor}
-        name={name}
-        onChangeName={setName}
-        onSelectIcon={(icon) => accountsRepo.setIcon(account.id, icon)}
-        onRemoveIcon={() => accountsRepo.setIcon(account.id, null)}
-        nameAccessibilityLabel={`${account.name} name`}
-        onEndEditingName={commitName}
-      />
-
-      <ColorPicker
-        label="Color"
-        value={effectiveColor}
-        onSelect={(color) => accountsRepo.update(account.id, { color })}
-      />
-    </Box>
-  );
-};
+// The account's display identity for the view-only header: its stored icon and
+// color, or the kind default when either is unset — the same fallback the
+// accounts-list row uses. Extracted so the two `??` fallbacks don't count
+// against the screen component's cognitive-complexity budget.
+const accountIdentity = (account: AccountRow): { icon: string; color: string } => ({
+  icon: account.icon ?? KIND_ICON[account.kind],
+  color: account.color ?? defaultAccountColor[account.kind],
+});
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -129,10 +88,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // so the header never flashes an empty title.
   const accountName = account?.name;
   useLayoutEffect(() => {
-    if (accountName !== undefined) {
-      navigation.setOptions({ title: accountName });
+    if (accountName === undefined) {
+      return;
     }
-  }, [navigation, accountName]);
+    // Drive the dynamic title and, at the top-right (opposite the back button),
+    // an Edit action that opens this account's edit form.
+    navigation.setOptions({
+      title: accountName,
+      headerRight: () => (
+        <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+      ),
+    });
+  }, [navigation, accountName, accountId]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
@@ -245,7 +212,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4}>
-        {account && <AccountMetadataHeader account={account} />}
+        {account && <EntityIdentityHeader name={account.name} {...accountIdentity(account)} />}
 
         <Box gap={1} style={styles.balanceBlock}>
           <Text variant="heading">Balance</Text>

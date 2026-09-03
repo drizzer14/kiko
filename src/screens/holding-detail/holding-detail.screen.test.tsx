@@ -2,7 +2,6 @@ import { Alert } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import HoldingDetailScreen from './holding-detail.screen';
 
@@ -180,61 +179,44 @@ describe('HoldingDetailScreen', () => {
   it('renders in scroll mode so the native large title renders and collapses', async () => {
     seed(cashHolding);
 
-    const { getByTestId, queryByText } = await renderScreen();
+    const { getByTestId, getByText } = await renderScreen();
 
     expect(getByTestId('screen-scroll-view')).toBeTruthy();
-    // The header large title is still the single heading title; the metadata
-    // header's name field holds the name as an input value (not a host Text), so
-    // queryByText finds no in-body heading duplicate.
-    expect(queryByText('My deposit')).toBeNull();
+    // The name drives the dynamic header title AND renders in the view-only
+    // identity header beside the icon (identity editing moved to the edit form).
+    expect(getByText('My deposit')).toBeTruthy();
   });
 
-  it('edits the holding name in a header field and renames via holdingsRepo.updateName on end-of-editing', async () => {
+  it('renders a view-only header with no inline name, icon, or color editors', async () => {
     seed(cardHolding);
 
-    const { getByLabelText } = await renderScreen();
+    const { queryByLabelText } = await renderScreen();
 
-    // The name is edited on this page now (relocated from the account-detail
-    // list row): a labelled field committed once on end-of-editing.
-    const input = getByLabelText('Everyday card name');
-    await fireEvent.changeText(input, 'Renamed card');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).toHaveBeenCalledWith('h-1', 'Renamed card');
+    // Identity editing moved to the dedicated edit form: the header no longer
+    // offers the icon-picker toggle, the editable name field, or the color row.
+    expect(queryByLabelText('Change Icon')).toBeNull();
+    expect(queryByLabelText('Everyday card name')).toBeNull();
+    expect(queryByLabelText('Color violet')).toBeNull();
   });
 
-  it('does not save an empty holding name', async () => {
-    seed(cardHolding);
+  it('offers an Edit action in the header that opens the holding edit form', async () => {
+    seed({ ...cardHolding, accountId: 'acc-1' });
 
-    const { getByLabelText } = await renderScreen();
+    await renderScreen();
 
-    const input = getByLabelText('Everyday card name');
-    await fireEvent.changeText(input, '   ');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
-  });
-
-  it('does not save an unchanged holding name', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    const input = getByLabelText('Everyday card name');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
-  });
-
-  it('changes the holding icon through the header icon editor, via holdingsRepo.setIcon', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByLabelText('Choose icon basket'));
-
-    expect(holdingsRepo.setIcon).toHaveBeenCalledWith('h-1', 'basket');
+    // The Edit affordance sits at the header top-right (via setOptions
+    // headerRight). Render it and press it: it opens this holding's edit form,
+    // passing the owning account so the form can constrain the type chips.
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.headerRight,
+    );
+    expect(call).toBeDefined();
+    const { getByText } = await render(call[0].headerRight());
+    await fireEvent.press(getByText('Edit'));
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+    });
   });
 
   it('tints the header icon with the holding stored color', async () => {
@@ -257,33 +239,6 @@ describe('HoldingDetailScreen', () => {
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
-  });
-
-  it('hydrates the color picker with the holding stored color as the selected swatch', async () => {
-    seed({ ...cardHolding, color: darkTheme.colors.entityColors.violet });
-
-    const { getByLabelText } = await renderScreen();
-
-    expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
-  });
-
-  it('hydrates the color picker with the type default when no color is stored', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    // A `card` holding with no color highlights the card type default (white).
-    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
-  });
-
-  it('changes the holding color through the header color picker, via holdingsRepo.setColor', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Color violet'));
-
-    expect(holdingsRepo.setColor).toHaveBeenCalledWith('h-1', darkTheme.colors.entityColors.violet);
   });
 
   it('shows gross, interest, and tax detail for a taxable deposit', async () => {

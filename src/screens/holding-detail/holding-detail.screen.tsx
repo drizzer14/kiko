@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useLayoutEffect, useState } from 'react';
+import { type FC, useLayoutEffect } from 'react';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -31,55 +31,19 @@ import { transactionsRepo } from '../../repositories/transactions.repo';
 import { defaultTransactionDescription } from '../../transactions/default-description';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
-import ColorPicker from '../forms/color-picker';
-import HoldingIdentityField from '../forms/holding-identity-field';
+import EditHeaderButton from '../edit-header-button.component';
+import EntityIdentityHeader from '../entity-identity-header.component';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
-// The holding's own metadata, edited here rather than on the tiny account-detail
-// list row: the shared identity control pairs the icon picker (with
-// remove-to-default) with a labelled name field. Local name state seeds from
-// the holding so keystrokes show immediately while the persisted value flows
-// back through the live query; the rename commits once on end-of-editing
-// (return-key submit or blur), and an empty or unchanged name is never written.
-const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
-  const [name, setName] = useState(holding.name);
-
-  const commitName = (): void => {
-    const trimmed = name.trim();
-
-    if (trimmed !== '' && trimmed !== holding.name) {
-      holdingsRepo.updateName(holding.id, trimmed);
-    }
-  };
-
-  // The effective color: the holding's own pick, or its type default while
-  // unset — the same fallback the icon uses, so the picker highlights that
-  // swatch. Editing here mirrors the create form: a pick persists immediately.
-  const effectiveColor = holding.color ?? defaultHoldingColor[holding.type];
-
-  return (
-    <Box gap={4}>
-      <HoldingIdentityField
-        icon={holding.icon}
-        fallbackIcon={holdingTypeIcon[holding.type]}
-        iconColor={effectiveColor}
-        name={name}
-        onChangeName={setName}
-        onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}
-        onRemoveIcon={() => holdingsRepo.setIcon(holding.id, null)}
-        nameAccessibilityLabel={`${holding.name} name`}
-        onEndEditingName={commitName}
-      />
-
-      <ColorPicker
-        label="Color"
-        value={effectiveColor}
-        onSelect={(color) => holdingsRepo.setColor(holding.id, color)}
-      />
-    </Box>
-  );
-};
+// The holding's display identity for the view-only header: its stored icon and
+// color, or the type default when either is unset — the same fallback the
+// holding card uses. Extracted so the two `??` fallbacks don't count against the
+// screen component's cognitive-complexity budget.
+const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
+  icon: holding.icon ?? holdingTypeIcon[holding.type],
+  color: holding.color ?? defaultHoldingColor[holding.type],
+});
 
 // Rows that break the headline net value into its parts. Only the deposit and
 // bond types accrue interest/tax, so the breakdown is meaningful there; other
@@ -160,11 +124,30 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // back to the raw "HoldingDetail" route name. Skip until the name is known
   // so the header never flashes an empty title.
   const holdingName = holding?.name;
+  // The holding's owning account, needed to open its edit form (the form reads
+  // the account's kind to constrain the type chips). Always present on a real
+  // row (accountId is NOT NULL); the header Edit action is gated on it.
+  const holdingAccountId = holding?.accountId;
   useLayoutEffect(() => {
-    if (holdingName !== undefined) {
-      navigation.setOptions({ title: holdingName });
+    if (holdingName === undefined) {
+      return;
     }
-  }, [navigation, holdingName]);
+    // Drive the dynamic title, and — once the owning account is known — an Edit
+    // action at the top-right (opposite the back button) that opens this
+    // holding's edit form.
+    navigation.setOptions({
+      title: holdingName,
+      ...(holdingAccountId !== undefined && {
+        headerRight: () => (
+          <EditHeaderButton
+            onPress={() =>
+              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId })
+            }
+          />
+        ),
+      }),
+    });
+  }, [navigation, holdingName, holdingAccountId, holdingId]);
 
   return (
     <Screen
@@ -186,7 +169,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4}>
-        {holding && <HoldingMetadataHeader holding={holding} />}
+        {holding && <EntityIdentityHeader name={holding.name} {...holdingIdentity(holding)} />}
 
         {holding && breakdown && (
           <Box gap={1}>

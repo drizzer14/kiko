@@ -26,6 +26,12 @@ export type AccountsStackParamList = {
   Accounts: undefined;
   AccountDetail: { accountId: string };
   HoldingDetail: { holdingId: string };
+  // The account/holding forms double as CREATE and EDIT screens. An entity id in
+  // the params (`accountId` here, `holdingId` on HoldingForm) switches the form
+  // to edit mode — it seeds every field from that entity and saves through the
+  // update path; absent, the form creates. HoldingForm always carries the owning
+  // `accountId` (its kind constrains the offered holding types) whether creating
+  // a new holding or editing an existing one.
   AccountForm: { accountId?: string };
   HoldingForm: { accountId: string; holdingId?: string };
   TransactionForm: TransactionFormParams;
