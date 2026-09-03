@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
@@ -217,6 +217,45 @@ describe('AccountDetailScreen', () => {
     // detail page.
     await fireEvent.press(getByText('Black card'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
+  });
+
+  it('lays the account holdings out as a 2-column grid of square cards', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+      ],
+    });
+    const { getByTestId, getAllByTestId } = await renderScreen();
+
+    // The grid container wraps its children onto multiple rows...
+    const gridStyle = StyleSheet.flatten(getByTestId('holdings-grid').props.style);
+    expect(gridStyle.flexWrap).toBe('wrap');
+
+    // ...into half-width items (two per row), each holding a square card.
+    const items = getAllByTestId('holding-grid-item');
+    expect(items).toHaveLength(2);
+    expect(StyleSheet.flatten(items[0].props.style).width).toBe('48%');
+    expect(StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio).toBe(1);
+  });
+
+  it('sorts zero-value holdings after non-zero ones, keeping the non-zero order', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        // A zero-value holding is listed first in the raw data...
+        { id: 'z', name: 'Empty jar', currency: 'UAH', balanceMinorUnits: 0 },
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+      ],
+    });
+    const { getAllByTestId } = await renderScreen();
+
+    // ...yet the non-zero 'Black card' renders in the first card and the
+    // zero-value 'Empty jar' sinks to the last.
+    const cards = getAllByTestId('holding-card');
+    expect(within(cards[0]).getByText('Black card')).toBeTruthy();
+    expect(within(cards[1]).getByText('Empty jar')).toBeTruthy();
   });
 
   it('shows the holding icon as a display-only glyph, not an editable icon control', async () => {

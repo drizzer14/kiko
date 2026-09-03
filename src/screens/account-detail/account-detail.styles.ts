@@ -7,12 +7,18 @@ export const styles = StyleSheet.create((theme) => ({
   statusLine: {
     alignItems: 'center',
   },
-  // The leading cluster of a holding row: the icon editor next to the holding
-  // name. Grows to fill the row width beside the trailing balance, so the inline
-  // rename field (flex: 1) has room to expand within it.
-  holdingLead: {
-    flex: 1,
-    alignItems: 'center',
+  // The holdings grid: a 2-up wrap of square cards. Items are ~half-width and
+  // laid out with space-between so two sit per row with a gutter between them;
+  // rowGap separates successive rows vertically as the grid wraps.
+  holdingsGrid: {
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: theme.spacing(3),
+  },
+  // One grid cell: just under half the row width, leaving the space-between
+  // gutter as the horizontal gap between the two columns.
+  holdingGridItem: {
+    width: '48%',
   },
   // The account's metadata header: the icon chip on the left, the name field
   // growing beside it. Bottom-aligned so the chip lines up with the field's

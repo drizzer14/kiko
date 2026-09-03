@@ -10,7 +10,6 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import ListRow from '../../design-system/components/list-row';
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
@@ -18,7 +17,6 @@ import SwipeableRow from '../../design-system/components/swipeable-row';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
-import { holdingTypeIcon } from '../../holdings/holding-icon';
 import { holdingValue } from '../../holdings/holding-value';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
@@ -33,6 +31,7 @@ import IconEditor from '../icon-editor';
 import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
 import { styles } from './account-detail.styles';
+import HoldingCard from './holding-card.component';
 import MonobankTokenField from './monobank-token-field.component';
 
 // The token input now lives on this screen, so a missing token points the user
@@ -59,38 +58,13 @@ const actionPresentation = (
   };
 };
 
-// One holding row: display-only and tappable to open the holding. The holding's
-// name and icon are now edited on HoldingDetail (not inline here), so the row
-// shows the icon (custom, or the type-default fallback) beside the name and the
-// balance — pressing anywhere opens the detail page. The row renders the
-// holding's COMPUTED value as of `now` (deposits/bonds accrue over time and
-// carry a stored balance of 0), matching the headline and holding-detail.
-const HoldingListRow: FC<{ holding: HoldingRow; now: number; onOpen: () => void }> = ({
-  holding,
-  now,
-  onOpen,
-}) => {
-  return (
-    <ListRow onPress={onOpen}>
-      <Box direction="row" gap={3} style={styles.holdingLead}>
-        <SymbolIcon
-          name={holding.icon ?? holdingTypeIcon[holding.type]}
-          accessibilityLabel={`${holding.name} icon`}
-        />
-
-        <Text variant="body">{holding.name}</Text>
-      </Box>
-      <Box
-        direction="row"
-        gap={2}
-        style={styles.statusLine}
-        testID={`holding-balance-${holding.id}`}
-      >
-        <MoneyText money={holdingValue(holding, now)} />
-      </Box>
-    </ListRow>
-  );
-};
+// Zero-value holdings sink to the end of the grid: a holding worth nothing as of
+// `now` (a spent jar, a redeemed bond) is the least interesting tile, so it
+// sorts after every holding that still carries value. Its computed worth — not
+// the stored balance — decides, so a deposit/bond that has accrued value stays
+// among the non-zero holdings.
+const isZeroValue = (holding: HoldingRow, now: number): boolean =>
+  holdingValue(holding, now).isZero();
 
 // The account's own metadata, edited here rather than on the tiny accounts-list
 // row: the icon opens the shared picker (with remove-to-default) under one
@@ -173,6 +147,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const now = Date.now();
   const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings, now);
+  // Order the holdings grid so zero-value holdings sink to the end; the stable
+  // sort leaves the non-zero holdings in their existing relative order.
+  const sortedHoldings = [...activeHoldings].sort((first, second) => {
+    const firstZero = isZeroValue(first, now);
+    const secondZero = isZeroValue(second, now);
+
+    if (firstZero === secondZero) {
+      return 0;
+    }
+
+    return firstZero ? 1 : -1;
+  });
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -332,20 +318,24 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         <Box gap={3}>
           <Text variant="heading">Holdings</Text>
-          {activeHoldings.map((holding) => (
-            <SwipeableRow
-              key={holding.id}
-              radius={theme.radii.sm}
-              disabled={isSyncedHolding(holding)}
-              onDelete={() => holdingsRepo.remove(holding.id)}
-            >
-              <HoldingListRow
-                holding={holding}
-                now={now}
-                onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
-              />
-            </SwipeableRow>
-          ))}
+
+          <Box direction="row" testID="holdings-grid" style={styles.holdingsGrid}>
+            {sortedHoldings.map((holding) => (
+              <Box key={holding.id} testID="holding-grid-item" style={styles.holdingGridItem}>
+                <SwipeableRow
+                  radius={theme.radii.md}
+                  disabled={isSyncedHolding(holding)}
+                  onDelete={() => holdingsRepo.remove(holding.id)}
+                >
+                  <HoldingCard
+                    holding={holding}
+                    now={now}
+                    onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
+                  />
+                </SwipeableRow>
+              </Box>
+            ))}
+          </Box>
         </Box>
       </Box>
     </Screen>
