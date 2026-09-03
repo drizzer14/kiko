@@ -66,26 +66,33 @@ const donutArc = (center: number, outerRadius: number, arc: ArcSlice): string =>
 
 const toPercent = (share: number): string => `${Math.round(share * 100)}%`;
 
-// One legend row: colour swatch + account name on the left, converted amount +
-// share on the right. The swatch wears the slice's own entity color, matching
-// its pie arc and the account card.
+// One legend row, laid out as three aligned table columns: the swatch + account
+// name fills the remaining width on the left, then a fixed-width right-aligned
+// value column, then a fixed-width right-aligned percent column — so the figures
+// line up vertically down the list regardless of magnitude. The swatch wears the
+// slice's own entity color, matching its pie arc and the account card.
 const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
   slice,
   baseCurrency,
 }) => {
   return (
-    <View testID={`pie-chart-legend-${slice.accountId}`} style={styles.legendEntry}>
-      <View style={styles.legendAccount}>
-        <View style={[styles.swatch, { backgroundColor: slice.color }]} />
+    <View testID={`pie-chart-legend-${slice.accountId}`} style={styles.legendRow}>
+      <View style={styles.legendName}>
+        <View
+          testID={`pie-chart-swatch-${slice.accountId}`}
+          style={[styles.swatch, { backgroundColor: slice.color }]}
+        />
 
         <Text variant="body" tone="textPrimary">
           {slice.name}
         </Text>
       </View>
 
-      <View style={styles.legendFigures}>
+      <View testID={`pie-chart-legend-value-${slice.accountId}`} style={styles.legendValue}>
         <MoneyText money={Money.of(baseCurrency, slice.amount)} context="balance" />
+      </View>
 
+      <View testID={`pie-chart-legend-percent-${slice.accountId}`} style={styles.legendPercent}>
         <Text variant="caption" tone="textSecondary">
           {toPercent(slice.share)}
         </Text>
