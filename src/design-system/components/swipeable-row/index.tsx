@@ -30,6 +30,12 @@ type SwipeableRowProps = {
   // GlassSurface card radius) — pass the wrapping card's actual radius
   // (e.g. theme.radii.md, theme.radii.sm) when it differs.
   radius?: number;
+  // Fired when the row settles OPEN (true) or CLOSED (false), on the actual
+  // open/closed flip only — never on mount and never twice for the same state.
+  // A native-stack screen uses this (via useSwipePopGuard) to disable its iOS
+  // back-swipe while a row is open, so a right-swipe that closes the row does
+  // not also pop the screen.
+  onOpenChange?: (open: boolean) => void;
 };
 
 const styles = StyleSheet.create((theme) => ({
@@ -82,6 +88,7 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   confirmMessage = 'This cannot be undone.',
   testID,
   radius,
+  onOpenChange,
 }) => {
   const { theme } = useUnistyles();
   // theme is only available inside the component body, so the radii.lg
@@ -89,6 +96,14 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   const cornerRadius = radius ?? theme.radii.lg;
   const translateX = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
+  // The pan responder is built once (lazy ref below) and closes over these
+  // refs, so onOpenChange is read through a ref that every render refreshes —
+  // the responder always calls the latest handler without being rebuilt. lastOpen
+  // records the last emitted state so a settle to the same state (e.g. a small
+  // drag that leaves an open row open) never double-fires.
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const lastOpen = useRef(false);
   // Whether the row is swiped open (delete action revealed). Gates the
   // action's presence in the accessibility tree so a screen reader cannot
   // reach "Delete" on a visually-closed row.
@@ -121,7 +136,14 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
     // resting partway.
     const snapTo = (value: number) => {
       offset.current = value;
-      setIsOpen(value !== 0);
+      const open = value !== 0;
+      setIsOpen(open);
+      // Emit only on an actual open<->closed flip, so a screen's pop-guard
+      // reference count stays balanced.
+      if (lastOpen.current !== open) {
+        lastOpen.current = open;
+        onOpenChangeRef.current?.(open);
+      }
       Animated.spring(translateX, {
         toValue: value,
         useNativeDriver: true,

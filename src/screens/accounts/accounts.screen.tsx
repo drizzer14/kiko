@@ -11,6 +11,7 @@ import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SwipeableRow from '../../design-system/components/swipeable-row';
+import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedAccount } from '../../holdings/deletable';
@@ -43,6 +44,9 @@ export const KIND_ICON: Record<AccountRow['kind'], string> = {
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { theme } = useUnistyles();
+  // Disable this screen's native back-swipe while any account row is open, so a
+  // right-swipe that closes a row does not also pop the screen.
+  const onOpenChange = useSwipePopGuard(navigation);
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -87,6 +91,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 radius={theme.radii.md}
                 disabled={isSyncedAccount(account)}
                 onDelete={() => accountsRepo.remove(account.id)}
+                onOpenChange={onOpenChange}
               >
                 <GlassSurface testID="account-card" padding={4}>
                   <Pressable

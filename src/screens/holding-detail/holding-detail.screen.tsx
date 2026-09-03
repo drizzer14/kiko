@@ -15,6 +15,7 @@ import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import SwipeableRow from '../../design-system/components/swipeable-row';
+import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import Text from '../../design-system/components/text';
 import { isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries } from '../../holdings/derived-entries';
@@ -86,6 +87,9 @@ const breakdownRows = (
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
   const { theme } = useUnistyles();
+  // Disable this screen's native back-swipe while any transaction row is open,
+  // so a right-swipe that closes a row does not also pop the screen.
+  const onOpenChange = useSwipePopGuard(navigation);
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
@@ -312,6 +316,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                 key={row.transaction.id}
                 disabled={isSyncedTransaction(row.transaction)}
                 onDelete={() => transactionsRepo.remove(row.transaction.id)}
+                onOpenChange={onOpenChange}
               >
                 <Pressable
                   accessibilityRole="button"

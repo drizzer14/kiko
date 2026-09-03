@@ -1,5 +1,5 @@
 import { Alert, Text } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 import {
   ACTION_WIDTH,
@@ -229,5 +229,111 @@ describe('SwipeableRow', () => {
       borderTopRightRadius: 10,
       borderBottomRightRadius: 10,
     });
+  });
+});
+
+// The PanResponder's gestureState is derived from the native event's
+// touchHistory (touch centroids across grant -> move -> release), which is the
+// only input that produces a real dx. Building a single-touch history that
+// slides from `fromPageX` to `toPageX` lets a test drive the JS responder
+// deterministically — exercising the row's own settle logic, not a native
+// gesture recognizer.
+type ResponderHandlers = Record<string, (event: unknown) => unknown>;
+
+const touchHistory = (fromPageX: number, toPageX: number) => ({
+  numberActiveTouches: 1,
+  indexOfSingleActiveTouch: 1,
+  mostRecentTimeStamp: 2,
+  touchBank: [
+    undefined,
+    {
+      touchActive: true,
+      startPageX: fromPageX,
+      startPageY: 0,
+      startTimeStamp: 1,
+      previousPageX: fromPageX,
+      previousPageY: 0,
+      previousTimeStamp: 1,
+      currentPageX: toPageX,
+      currentPageY: 0,
+      currentTimeStamp: 2,
+    },
+  ],
+});
+
+const swipeEvent = (fromPageX: number, toPageX: number) => ({
+  nativeEvent: { touches: [], changedTouches: [], timestamp: 2 },
+  touchHistory: touchHistory(fromPageX, toPageX),
+});
+
+// Drive a full horizontal swipe on the row's inner (pan-handled) view: the
+// content wrapper is the container's last child. A leftward drag (fromPageX >
+// toPageX) opens the row; a rightward one closes it.
+const swipe = (row: { children: ReadonlyArray<unknown> }, fromPageX: number, toPageX: number) => {
+  const inner = row.children[row.children.length - 1] as { props: ResponderHandlers };
+  const handlers = inner.props;
+  const grant = swipeEvent(fromPageX, fromPageX);
+  const move = swipeEvent(fromPageX, toPageX);
+  handlers.onResponderGrant?.(grant);
+  handlers.onMoveShouldSetResponder?.(move);
+  handlers.onResponderMove?.(move);
+  handlers.onResponderRelease?.(move);
+};
+
+// When a row is open and the user swipes right to close it, the native
+// back-swipe on a createNativeStackNavigator screen also fires. onOpenChange
+// lets a screen disable that native pop gesture while any row is open — so the
+// row must report every settle to open (true) and back to closed (false).
+describe('onOpenChange (native back-swipe guard)', () => {
+  it('does not fire on mount (a freshly rendered row is closed)', async () => {
+    const onOpenChange = jest.fn();
+    await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" onOpenChange={onOpenChange}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('fires open then closed as the row is swiped open and back closed', async () => {
+    const onOpenChange = jest.fn();
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" onOpenChange={onOpenChange}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    const row = getByTestId('row');
+
+    // A decisive leftward drag settles the row fully open.
+    await act(async () => {
+      swipe(row, 200, 60);
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+    // A decisive rightward drag settles it back closed.
+    await act(async () => {
+      swipe(row, 60, 200);
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('does not re-fire open when an already-open row settles open again', async () => {
+    const onOpenChange = jest.fn();
+    const { getByTestId } = await render(
+      <SwipeableRow onDelete={jest.fn()} testID="row" onOpenChange={onOpenChange}>
+        <Text>Row</Text>
+      </SwipeableRow>,
+    );
+    const row = getByTestId('row');
+
+    await act(async () => {
+      swipe(row, 200, 60);
+    });
+    // A second small leftward nudge keeps it open — no redundant open emit.
+    await act(async () => {
+      swipe(row, 60, 40);
+    });
+    expect(onOpenChange.mock.calls).toEqual([[true]]);
   });
 });
