@@ -38,6 +38,11 @@ const Screen: FC<ScreenProps> = ({ children, scroll = false, footer, bleedBottom
         <ScrollView
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
+          // Default "never" consumes the first tap to dismiss the keyboard, so
+          // focusing another input (or opening a date field) needs a second
+          // tap. "handled" fires a focusable/handled child on the first tap
+          // while still dismissing the keyboard on taps to inert areas.
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent}
         >
           {children}

@@ -57,6 +57,20 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
+  it('keeps the keyboard up so a tap on a child focuses on the first tap, not the second', async () => {
+    const { getByTestId } = await render(
+      <Screen scroll>
+        <Text>content</Text>
+      </Screen>,
+    );
+
+    // Default keyboardShouldPersistTaps is "never", which consumes the first
+    // tap to dismiss the keyboard so a focused-input-to-another-input tap needs
+    // a second tap. "handled" fires the child's onPress/focus on the first tap
+    // while still dismissing the keyboard on taps to inert areas.
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
   it('renders a footer outside the ScrollView when scroll and footer are set', async () => {
     const { getByTestId } = await render(
       <Screen scroll footer={<Text>footer content</Text>}>
