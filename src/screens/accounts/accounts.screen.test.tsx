@@ -1,5 +1,5 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import { entityTintBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
@@ -175,33 +175,35 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the long-press-in-place menu (drag ended where it started)', async () => {
+  it('deletes a manual account via the native context menu Delete action', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
-    // native action sheet opens.
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(0);
-      });
     const { getByTestId } = await renderAccounts();
-    // A long-press that lifts the card and releases it in place (fromIndex ===
-    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
-    // delete action sheet for that account.
+    // The manual card wraps in the native touch-and-hold context menu offering a
+    // single destructive Delete "Cash". Driving its onPressAction with the
+    // delete action id removes the account.
+    const menu = getByTestId('card-context-menu');
+    expect(menu.props.actions).toEqual([
+      {
+        id: 'delete',
+        title: 'Delete "Cash"',
+        attributes: { destructive: true },
+        image: 'trash',
+      },
+    ]);
     await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'a',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['a'],
-      });
+      menu.props.onPressAction({ nativeEvent: { event: 'delete' } });
     });
-    expect(actionSheetSpy).toHaveBeenCalledWith(
-      { options: ['Delete "Cash"', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
-      expect.any(Function),
-    );
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
-    actionSheetSpy.mockRestore();
+  });
+
+  it('opens the account (does not delete) on a plain tap of the card', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Wallet', kind: 'cash' }], holdings: [] });
+    const { getByText } = await renderAccounts();
+    // A tap reaches the card's own Pressable and navigates, without touching the
+    // context menu — the menu only opens on touch-and-hold.
+    await fireEvent.press(getByText('Wallet'));
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+    expect(mockAccountRemove).not.toHaveBeenCalled();
   });
 
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
@@ -226,28 +228,15 @@ describe('AccountsScreen', () => {
     expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a']);
   });
 
-  it('does not offer delete on a still-connected (monobank) account', async () => {
+  it('renders no context menu on a still-connected (monobank) account', async () => {
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', institution: 'monobank' }],
       holdings: [],
     });
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
-    const { getByTestId } = await renderAccounts();
+    const { queryByTestId } = await renderAccounts();
     // A connected account must be disconnected (from account-detail) before it
-    // can be deleted, so a long-press-in-place resolves to a synced row and
-    // opens no menu.
-    await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'a',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['a'],
-      });
-    });
-    expect(actionSheetSpy).not.toHaveBeenCalled();
-    actionSheetSpy.mockRestore();
+    // can be deleted, so its card renders bare with no native context menu.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
   it('shows the account icon as a display-only glyph, not an editable icon control', async () => {

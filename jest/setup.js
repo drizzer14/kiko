@@ -123,3 +123,19 @@ jest.mock('react-native-sortables', () => {
     default: { Grid, Flex: Passthrough, Layer: Passthrough, Handle: Passthrough },
   };
 });
+
+// @react-native-menu/menu's MenuView is a Fabric host component with no
+// software fallback — an unmocked render throws under react-test-renderer, the
+// same class of failure as the other native-binding mocks above. Mocked to a
+// plain View that forwards every prop (`testID`, `actions`,
+// `shouldOpenOnLongPress`, `onPressAction`) so a test can read the menu's
+// actions and drive `onPressAction` with a `{ nativeEvent: { event } }` object.
+// Registered globally because both grid screens render it transitively.
+jest.mock('@react-native-menu/menu', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  const MenuView = ({ children, ...rest }) => React.createElement(View, rest, children);
+
+  return { __esModule: true, MenuView };
+});

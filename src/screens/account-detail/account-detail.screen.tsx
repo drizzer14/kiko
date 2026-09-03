@@ -26,9 +26,10 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
+import CardContextMenu from '../card-context-menu.component';
 import ColorPicker from '../forms/color-picker';
 import HoldingIdentityField from '../forms/holding-identity-field';
-import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
+import { onGridDragEnd } from '../grid-interaction';
 import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
 import { styles } from './account-detail.styles';
@@ -146,17 +147,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
   // order is the sole ordering key and no screen-level re-sort is needed.
-  const holdingsById = new Map(activeHoldings.map((holding) => [holding.id, holding]));
-
-  // Long-press-in-place on a holding card opens its delete menu — but only for a
-  // manual holding; a synced (Monobank) holding is owned by the sync and offers
-  // no menu.
-  const openHoldingMenu = (holdingId: string): void => {
-    const holding = holdingsById.get(holdingId);
-    if (holding && !isSyncedHolding(holding)) {
-      showDeleteActionSheet(holding.name, () => holdingsRepo.remove(holdingId));
-    }
-  };
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -322,10 +312,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           <Text variant="heading">Holdings</Text>
 
           {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
-              opens the holding; a long-press lifts a card to drag (reorder), and
-              a long-press released in place opens the delete menu — see
-              `onGridDragEnd`. `sortEnabled` is off with a single holding, where
-              there is nothing to reorder. */}
+              opens the holding; a touch-and-hold on a manual card opens the
+              native context menu (Delete); a hold-and-move drags to reorder —
+              see `CardContextMenu` and `onGridDragEnd`. `sortEnabled` is off with
+              a single holding, where there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
@@ -336,19 +326,21 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               keyExtractor={(holding) => holding.id}
               renderItem={({ item }) => (
                 <Box testID="holding-grid-item">
-                  <HoldingCard
-                    holding={item}
-                    now={now}
-                    onOpen={() => navigation.navigate('HoldingDetail', { holdingId: item.id })}
-                  />
+                  <CardContextMenu
+                    name={item.name}
+                    deletable={!isSyncedHolding(item)}
+                    onDelete={() => holdingsRepo.remove(item.id)}
+                  >
+                    <HoldingCard
+                      holding={item}
+                      now={now}
+                      onOpen={() => navigation.navigate('HoldingDetail', { holdingId: item.id })}
+                    />
+                  </CardContextMenu>
                 </Box>
               )}
               onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd(
-                  { key, fromIndex, toIndex, indexToKey },
-                  holdingsRepo.reorder,
-                  openHoldingMenu,
-                )
+                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
               }
             />
           </Box>

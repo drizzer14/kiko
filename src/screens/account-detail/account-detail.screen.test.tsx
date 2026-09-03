@@ -1,4 +1,4 @@
-import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
@@ -488,40 +488,28 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the long-press-in-place menu (drag ended where it started)', async () => {
-    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
-    // native action sheet opens.
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(0);
-      });
+  it('deletes a manual holding via the native context menu Delete action', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
     const { getByTestId } = await renderScreen();
-    // A long-press that lifts the card and releases it in place (fromIndex ===
-    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
-    // delete action sheet for that holding.
-    await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'h1',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['h1'],
-      });
-    });
-    expect(actionSheetSpy).toHaveBeenCalledWith(
+    // The manual holding card wraps in the native touch-and-hold context menu
+    // offering a single destructive Delete "Black card"; driving its
+    // onPressAction with the delete action id removes the holding.
+    const menu = getByTestId('card-context-menu');
+    expect(menu.props.actions).toEqual([
       {
-        options: ['Delete "Black card"', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
+        id: 'delete',
+        title: 'Delete "Black card"',
+        attributes: { destructive: true },
+        image: 'trash',
       },
-      expect.any(Function),
-    );
+    ]);
+    await act(async () => {
+      menu.props.onPressAction({ nativeEvent: { event: 'delete' } });
+    });
     expect(mockRemove).toHaveBeenCalledWith('h1');
-    actionSheetSpy.mockRestore();
   });
 
   it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
@@ -558,10 +546,7 @@ describe('AccountDetailScreen', () => {
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
   });
 
-  it('does not offer the delete menu on a synced holding (monobankId)', async () => {
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
+  it('renders no context menu on a synced holding (monobankId)', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -574,19 +559,10 @@ describe('AccountDetailScreen', () => {
         },
       ],
     });
-    const { getByTestId } = await renderScreen();
-    // A synced holding is owned by the sync: a long-press-in-place resolves to a
-    // synced row, so the grid opens no delete menu.
-    await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'h1',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['h1'],
-      });
-    });
-    expect(actionSheetSpy).not.toHaveBeenCalled();
-    actionSheetSpy.mockRestore();
+    const { queryByTestId } = await renderScreen();
+    // A synced holding is owned by the sync, so its card renders bare with no
+    // native context menu to offer a delete.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
   it("changes the account's own icon through the header icon editor, via accountsRepo.setIcon", async () => {

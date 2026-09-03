@@ -22,7 +22,8 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
-import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
+import CardContextMenu from '../card-context-menu.component';
+import { onGridDragEnd } from '../grid-interaction';
 import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
@@ -56,17 +57,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // The grid renders in the query's `sortOrder` order (the drag-and-drop order),
   // filtered to the non-archived accounts.
   const activeAccounts = accounts.filter((account) => account.archivedAt == null);
-  const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
-
-  // Long-press-in-place on a card opens its delete menu — but only for a manual
-  // account; a still-connected (Monobank) account must be disconnected from
-  // account-detail first, so it offers no menu here.
-  const openAccountMenu = (accountId: string): void => {
-    const account = accountsById.get(accountId);
-    if (account && !isSyncedAccount(account)) {
-      showDeleteActionSheet(account.name, () => accountsRepo.remove(accountId));
-    }
-  };
 
   return (
     <Screen
@@ -90,9 +80,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           </Box>
         ) : (
           // A single-column drag-and-drop grid of the existing wide account
-          // cards. A plain tap opens the account; a long-press lifts a card to
-          // drag (reorder), and a long-press released in place opens the delete
-          // menu — see `onGridDragEnd`.
+          // cards. A plain tap opens the account; a touch-and-hold on a manual
+          // card opens the native context menu (Delete); a hold-and-move drags
+          // to reorder — see `CardContextMenu` and `onGridDragEnd`.
           <Box testID="accounts-grid">
             <Sortable.Grid
               data={activeAccounts}
@@ -107,40 +97,42 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
 
                 return (
-                  <GlassSurface
-                    testID="account-card"
-                    padding={4}
-                    tint={entityTintBackground(item.color ?? defaultAccountColor[item.kind])}
+                  <CardContextMenu
+                    name={item.name}
+                    deletable={!isSyncedAccount(item)}
+                    onDelete={() => accountsRepo.remove(item.id)}
                   >
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => navigation.navigate('AccountDetail', { accountId: item.id })}
-                      style={styles.row}
+                    <GlassSurface
+                      testID="account-card"
+                      padding={4}
+                      tint={entityTintBackground(item.color ?? defaultAccountColor[item.kind])}
                     >
-                      <Box direction="row" gap={3} style={styles.rowLead}>
-                        <SymbolIcon
-                          name={item.icon ?? KIND_ICON[item.kind]}
-                          color={item.color ?? defaultAccountColor[item.kind]}
-                          accessibilityLabel={`${item.name} icon`}
-                        />
-                        <Box gap={1}>
-                          <Text variant="body">{item.name}</Text>
-                          <Text variant="caption" tone="textSecondary">
-                            {KIND_LABEL[item.kind]}
-                          </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => navigation.navigate('AccountDetail', { accountId: item.id })}
+                        style={styles.row}
+                      >
+                        <Box direction="row" gap={3} style={styles.rowLead}>
+                          <SymbolIcon
+                            name={item.icon ?? KIND_ICON[item.kind]}
+                            color={item.color ?? defaultAccountColor[item.kind]}
+                            accessibilityLabel={`${item.name} icon`}
+                          />
+                          <Box gap={1}>
+                            <Text variant="body">{item.name}</Text>
+                            <Text variant="caption" tone="textSecondary">
+                              {KIND_LABEL[item.kind]}
+                            </Text>
+                          </Box>
                         </Box>
-                      </Box>
-                      <MoneyText money={balance} context="balance" />
-                    </Pressable>
-                  </GlassSurface>
+                        <MoneyText money={balance} context="balance" />
+                      </Pressable>
+                    </GlassSurface>
+                  </CardContextMenu>
                 );
               }}
               onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd(
-                  { key, fromIndex, toIndex, indexToKey },
-                  accountsRepo.reorder,
-                  openAccountMenu,
-                )
+                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
               }
             />
           </Box>
