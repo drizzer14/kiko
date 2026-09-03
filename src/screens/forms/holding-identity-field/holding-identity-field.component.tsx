@@ -25,6 +25,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   onRemoveIcon,
   nameAccessibilityLabel = 'Name',
   iconAccessibilityLabel,
+  iconColor,
   onEndEditingName,
   namePlaceholder,
   captioned = true,
@@ -38,6 +39,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
         iconAccessibilityLabel={iconAccessibilityLabel}
         icon={icon}
         fallbackIcon={fallbackIcon}
+        iconColor={iconColor}
         onSelect={onSelectIcon}
         onRemove={onRemoveIcon}
       />

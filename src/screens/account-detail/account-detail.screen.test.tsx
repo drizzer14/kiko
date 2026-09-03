@@ -3,6 +3,7 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
+import { darkTheme } from '../../design-system/theme';
 import AccountDetailScreen from './account-detail.screen';
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
@@ -83,6 +84,7 @@ type Account = {
   kind: string;
   institution?: string | null;
   icon?: string | null;
+  color?: string | null;
 };
 type Holding = {
   id: string;
@@ -264,6 +266,29 @@ describe('AccountDetailScreen', () => {
     // HoldingDetail), so its glyph is present but no "Change … icon" affordance.
     expect(getByLabelText('Black card icon')).toBeTruthy();
     expect(queryByLabelText('Change Black card icon')).toBeNull();
+  });
+
+  it('tints the header account icon with its stored color', async () => {
+    setLiveData({
+      accounts: [account({ color: darkTheme.colors.entityColors.violet })],
+      holdings: [],
+    });
+    const { getByLabelText } = await renderScreen();
+
+    // A bank account shows the building.columns glyph, tinted its stored violet.
+    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+      darkTheme.colors.entityColors.violet,
+    );
+  });
+
+  it('tints the header account icon with the kind default color when none is stored', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+
+    // A `bank` account with no color reads the bank kind default (white).
+    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
   });
 
   it('excludes closed holdings from the list', async () => {

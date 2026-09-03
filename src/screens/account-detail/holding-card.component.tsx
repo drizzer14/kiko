@@ -5,6 +5,7 @@ import { styles } from './holding-card.styles';
 import type { HoldingRow } from '../../db/schema';
 import Box from '../../design-system/components/box';
 import Text from '../../design-system/components/text';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingValue } from '../../holdings/holding-value';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
 import SymbolIcon from '../../design-system/components/symbol';
@@ -48,6 +49,7 @@ const HoldingCard: FC<{
       >
         <SymbolIcon
           name={holding.icon ?? holdingTypeIcon[holding.type]}
+          color={holding.color ?? defaultHoldingColor[holding.type]}
           accessibilityLabel={`${holding.name} icon`}
         />
 

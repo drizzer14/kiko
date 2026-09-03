@@ -235,6 +235,28 @@ describe('HoldingDetailScreen', () => {
     expect(holdingsRepo.setIcon).toHaveBeenCalledWith('h-1', 'basket');
   });
 
+  it('tints the header icon with the holding stored color', async () => {
+    seed({ ...cardHolding, color: darkTheme.colors.entityColors.violet });
+
+    const { getByLabelText } = await renderScreen();
+
+    // The card holding shows the creditcard glyph (no custom icon), tinted violet.
+    expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
+      darkTheme.colors.entityColors.violet,
+    );
+  });
+
+  it('tints the header icon with the type default color when no color is stored', async () => {
+    seed(cardHolding);
+
+    const { getByLabelText } = await renderScreen();
+
+    // A `card` holding with no color reads the card type default (white).
+    expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
   it('shows gross, interest, and tax detail for a taxable deposit', async () => {
     seed(depositHolding);
 

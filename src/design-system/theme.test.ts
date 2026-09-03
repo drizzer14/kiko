@@ -13,6 +13,26 @@ describe('darkTheme iOS dark palette', () => {
     expect(darkTheme.colors.border).toBe('#38383A');
   });
 
+  it('exposes the six named entity-color tokens as valid hex', () => {
+    const { entityColors } = darkTheme.colors;
+
+    expect(entityColors.white).toBe('#FFFFFF');
+    expect(entityColors.khaki).toBe('#BDB76B');
+    expect(entityColors.yellow).toBe('#FFD60A');
+    expect(entityColors.blue).toBe('#0A84FF');
+    expect(entityColors.green).toBe('#30D158');
+    expect(entityColors.violet).toBe('#BF5AF2');
+
+    for (const hue of Object.values(entityColors)) {
+      expect(hue).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+  });
+
+  it('keeps one source of truth: entity blue aliases accent, entity green aliases positive', () => {
+    expect(darkTheme.colors.entityColors.blue).toBe(darkTheme.colors.accent);
+    expect(darkTheme.colors.entityColors.green).toBe(darkTheme.colors.positive);
+  });
+
   it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {
     const { chartSeries } = darkTheme.colors;
 

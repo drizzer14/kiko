@@ -93,6 +93,28 @@ describe('holdingsRepo', () => {
     expect(result).toBe(insertedId);
   });
 
+  it('create persists the chosen color on the inserted row', async () => {
+    let inserted: Record<string, unknown> | undefined;
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          inserted = values;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await holdingsRepo.create({
+      accountId: 'acc-1',
+      name: 'Card',
+      type: 'card',
+      currency: 'EUR',
+      color: '#FFD60A',
+    });
+
+    expect(inserted).toMatchObject({ color: '#FFD60A' });
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
     const { captured, tx } = captureSetTx();
     mockTx = tx;

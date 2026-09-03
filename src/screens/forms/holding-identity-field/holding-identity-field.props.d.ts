@@ -24,6 +24,10 @@ export type HoldingIdentityFieldProps = {
   // shared IconEditor. A captionless caller (a category row) uses it to keep a
   // descriptive per-row toggle label such as "Change Groceries icon".
   iconAccessibilityLabel?: string;
+  // Optional tint color for the icon glyph (the entity's effective color).
+  // Forwarded to the shared IconEditor; when set the chip's icon renders in this
+  // color instead of the default tone.
+  iconColor?: string;
   // Optional commit-on-blur handler. The detail header renames on
   // end-of-editing; the create form commits via onChangeName and omits this.
   onEndEditingName?: () => void;

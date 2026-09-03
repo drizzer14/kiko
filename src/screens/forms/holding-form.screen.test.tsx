@@ -1,7 +1,10 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { darkTheme } from '../../design-system/theme';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import HoldingFormScreen from './holding-form.screen';
+
+const { entityColors } = darkTheme.colors;
 
 jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: { create: jest.fn().mockResolvedValue('new-holding-id'), setIcon: jest.fn() },
@@ -479,5 +482,62 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     // resets to the first allowed type (crypto_asset) — proven by the shown
     // default icon following to the crypto_asset glyph.
     expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
+  });
+});
+
+describe('HoldingFormScreen color follows type until dirty', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+  });
+
+  it("selects the default type's color before any pick (card -> white)", async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('re-derives the color to the newly selected type default while not dirty', async () => {
+    const screen = await renderScreen();
+
+    // card default is white; switching to bond swaps the selected default swatch
+    // to green, because the color has not been manually picked (not dirty).
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(screen.getByLabelText('Color green').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('Color white').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('keeps a manually picked color when the type changes afterwards (dirty)', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByLabelText('Color violet'));
+
+    expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+
+    // Once picked, the color is dirty: switching type no longer moves it off the
+    // user's choice onto the bond default (green).
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('Color green').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('persists the manually picked color on create', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My card');
+    await fireEvent.press(screen.getByLabelText('Color violet'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock.mock.calls[0][0].color).toBe(entityColors.violet);
+  });
+
+  it('persists a null color on create when the user never picks one', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My card');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock.mock.calls[0][0].color).toBeNull();
   });
 });

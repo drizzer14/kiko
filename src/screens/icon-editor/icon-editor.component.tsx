@@ -19,6 +19,7 @@ import { styles } from './icon-editor.styles';
 const IconEditor: FC<IconEditorProps> = ({
   icon,
   fallbackIcon,
+  iconColor,
   label,
   iconAccessibilityLabel,
   onSelect,
@@ -60,6 +61,7 @@ const IconEditor: FC<IconEditorProps> = ({
         <SymbolIcon
           name={displayIcon}
           tone="textSecondary"
+          color={iconColor}
           accessibilityLabel={`Icon ${displayIcon}`}
         />
       </Pressable>

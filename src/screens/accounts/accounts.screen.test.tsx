@@ -1,6 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { Alert, type AlertButton, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
+import { darkTheme } from '../../design-system/theme';
 import AccountsScreen from './accounts.screen';
 
 // 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
@@ -43,6 +44,7 @@ type Account = {
   kind: string;
   institution?: string | null;
   archivedAt?: number | null;
+  color?: string | null;
 };
 type Holding = {
   accountId: string;
@@ -205,6 +207,26 @@ describe('AccountsScreen', () => {
     // affordance is gone.
     expect(getByLabelText('Cash icon')).toBeTruthy();
     expect(queryByLabelText('Change Cash icon')).toBeNull();
+  });
+
+  it('tints the account icon with its stored color', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
+      ],
+      holdings: [],
+    });
+    const { getByLabelText } = await renderAccounts();
+
+    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.blue);
+  });
+
+  it('falls back to the kind default color when the account has no stored color', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByLabelText } = await renderAccounts();
+
+    // A `cash` account with no color reads the cash kind default (khaki).
+    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
   });
 
   it('reflects term-deposit growth in total net worth (now is passed)', async () => {

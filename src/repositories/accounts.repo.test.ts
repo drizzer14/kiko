@@ -56,6 +56,44 @@ describe('accountsRepo', () => {
     expect(result).toBe(insertedId);
   });
 
+  it('create persists the chosen color on the inserted account row', async () => {
+    let inserted: Record<string, unknown> | undefined;
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          inserted = values;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', color: '#FFFFFF' });
+
+    expect(inserted).toMatchObject({ color: '#FFFFFF' });
+  });
+
+  it('createCashAccount persists the chosen color on the account row', async () => {
+    const inserts: Record<string, unknown>[] = [];
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          inserts.push(values);
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'EUR',
+      initialBalanceMinorUnits: 25050,
+      color: '#BDB76B',
+    });
+
+    const [accountInsert] = inserts as [Record<string, unknown>];
+    expect(accountInsert).toMatchObject({ kind: 'cash', color: '#BDB76B' });
+  });
+
   it('createCashAccount inserts the account and its cash holding in one transaction', async () => {
     const inserts: Record<string, unknown>[] = [];
     mockTx = {

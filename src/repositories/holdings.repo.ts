@@ -7,7 +7,7 @@ import { asTermDepositMeta, type DepositContribution } from '../holdings/holding
 import type { Repository } from './repository';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
-  Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;
+  Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>>;
 
 /**
  * A Monobank-sourced holding carries the Monobank account/jar id in its

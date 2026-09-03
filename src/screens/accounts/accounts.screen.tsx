@@ -15,6 +15,7 @@ import { useSwipePopGuard } from '../../design-system/components/swipeable-row/u
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedAccount } from '../../holdings/deletable';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -29,7 +30,6 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   bank: 'Bank',
   cash: 'Cash',
   crypto: 'Crypto',
-  broker: 'Broker',
 };
 
 // Leading SF Symbol per account kind, mirroring KIND_LABEL. Exported so the
@@ -39,7 +39,6 @@ export const KIND_ICON: Record<AccountRow['kind'], string> = {
   bank: 'building.columns',
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
-  broker: 'chart.line.uptrend.xyaxis',
 };
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
@@ -102,6 +101,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     <Box direction="row" gap={3} style={styles.rowLead}>
                       <SymbolIcon
                         name={account.icon ?? KIND_ICON[account.kind]}
+                        color={account.color ?? defaultAccountColor[account.kind]}
                         accessibilityLabel={`${account.name} icon`}
                       />
                       <Box gap={1}>
