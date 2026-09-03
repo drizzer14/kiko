@@ -2,9 +2,8 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Svg, Polyline, Line, G } from 'react-native-svg';
+import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
-import { formatMoney } from '../../../currency/format';
-import { Money } from '../../../currency/money';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import Box from '../box';
 import Text from '../text';
@@ -122,6 +121,9 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
 
   const scales = buildScales(points, startReference, height);
   const ticks = buildTicks(points, startReference);
+  // One compact unit for the whole axis, chosen from the spread of tick values
+  // so adjacent labels stay distinct while staying short (see chooseCompactUnit).
+  const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
   const referenceY = scales.y(startReference);
   const baselineY = height - PADDING_Y;
 
@@ -142,7 +144,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                 adjustsFontSizeToFit
                 minimumFontScale={0.7}
               >
-                {formatMoney(Money.fromMajor(baseCurrency, tick.value))}
+                {formatCompactMoney(tick.value, baseCurrency, axisUnit)}
               </Text>
             </View>
           ))}
@@ -201,7 +203,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
         </View>
       </View>
 
-      <View style={styles.xAxis}>
+      <View testID="net-worth-line-x-axis-labels" style={styles.xAxis}>
         <Text variant="caption" tone="textSecondary">
           {formatAxisTime(points[0].t)}
         </Text>
