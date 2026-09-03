@@ -574,6 +574,19 @@ const cardHolding = {
   color: entityColors.violet,
 };
 
+// A synced (Monobank) card: its metadata carries the monobankId that marks the
+// balance as sync-owned, so editing it must not write a user balance back.
+const syncedCardHolding = {
+  id: 'h-2',
+  name: 'Monobank card',
+  type: 'card',
+  currency: 'UAH',
+  balanceMinorUnits: 500_00,
+  icon: null,
+  color: null,
+  metadata: { monobankId: 'card-123' },
+};
+
 const depositHolding = {
   id: 'h-1',
   name: 'My deposit',
@@ -662,6 +675,38 @@ describe('HoldingFormScreen edit mode', () => {
     expect(setIconMock).toHaveBeenCalledWith('h-1', 'banknote');
     expect(createMock).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('persists a cleared custom icon as null when saving in edit mode', async () => {
+    const screen = await renderEdit(cardHolding);
+
+    // The card starts with a custom icon; clearing it and saving must persist
+    // the removal (an explicit null), not silently keep the old glyph.
+    await fireEvent.press(screen.getByLabelText('Change Icon'));
+    await fireEvent.press(screen.getByText('Remove'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(setIconMock).toHaveBeenCalledWith('h-1', null);
+  });
+
+  it('hides the Balance input when editing a synced holding', async () => {
+    const screen = await renderEdit(syncedCardHolding);
+
+    // A synced holding's balance is owned by the sync, so the manual balance
+    // field is not offered in edit mode.
+    expect(screen.queryByLabelText('Balance')).toBeNull();
+  });
+
+  it('does not write balanceMinorUnits when editing a synced holding', async () => {
+    const screen = await renderEdit(syncedCardHolding);
+
+    await fill(screen, 'Name', 'Renamed monobank');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const patch = updateMock.mock.calls[0][1];
+    expect(patch.name).toBe('Renamed monobank');
+    // The synced balance must stay untouched until the next sync.
+    expect(patch.balanceMinorUnits).toBeUndefined();
   });
 
   it('seeds a term deposit and saves its edited metadata through update', async () => {

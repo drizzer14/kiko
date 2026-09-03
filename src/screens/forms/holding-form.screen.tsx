@@ -11,6 +11,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
 import TextField from '../../design-system/components/text-field';
+import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
 import {
@@ -52,19 +53,7 @@ const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribut
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
 // plain-number fields (quantity, coupon %) render verbatim.
-const seedBondFields = (
-  meta: BondMeta,
-  currency: Currency,
-): {
-  quantity: string;
-  faceValue: string;
-  couponPct: string;
-  purchasePrice: string;
-  purchaseDate: number;
-  maturityDate: number;
-  bondKind: BondKind;
-  couponFrequency: BondMeta['couponFrequency'];
-} => ({
+const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   quantity: groupAmount(String(meta.quantity)),
   faceValue: groupAmount(String(toMajor(meta.faceValueMinorUnits, currency))),
   couponPct: String(meta.couponPct),
@@ -78,7 +67,9 @@ const seedBondFields = (
 // The partial row an edit-mode save writes: always the editable identity fields
 // (name, color), plus the one value field that belongs to the type — a
 // deposit/bond's value derives from its metadata (its balance is not stored), so
-// those write metadata; every other type writes its edited balance.
+// those write metadata; every other type writes its edited balance. A synced
+// (Monobank) holding is the exception: its balance is owned by the sync, so the
+// patch omits balanceMinorUnits entirely and only touches the identity fields.
 const buildHoldingPatch = (params: {
   name: string;
   color: string | null;
@@ -86,11 +77,16 @@ const buildHoldingPatch = (params: {
   currency: Currency;
   openingBalance: string;
   metadata: Record<string, unknown> | undefined;
+  isSynced: boolean;
 }): Partial<HoldingRow> => {
-  const { name, color, type, currency, openingBalance, metadata } = params;
+  const { name, color, type, currency, openingBalance, metadata, isSynced } = params;
 
   if (type === 'term_deposit' || type === 'bond') {
     return { name, color, metadata };
+  }
+
+  if (isSynced) {
+    return { name, color };
   }
 
   return {
@@ -161,6 +157,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     'holdings',
   ]);
   const editingHolding = isEdit ? editHoldings.at(0) : undefined;
+  // A synced (Monobank) holding's balance is owned by the sync, not the user:
+  // its name/icon/color stay editable, but the balance field is hidden and never
+  // written back so an edit does not clobber the last synced balance.
+  const isSyncedEdit = editingHolding !== undefined && isSyncedHolding(editingHolding);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<HoldingType>('card');
@@ -398,12 +398,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // null), the same split the create path uses. Type/currency are read-only.
       await holdingsRepo.update(
         holdingId,
-        buildHoldingPatch({ name, color, type, currency, openingBalance, metadata }),
+        buildHoldingPatch({
+          name,
+          color,
+          type,
+          currency,
+          openingBalance,
+          metadata,
+          isSynced: isSyncedEdit,
+        }),
       );
 
-      if (icon !== null) {
-        await holdingsRepo.setIcon(holdingId, icon);
-      }
+      // Write the icon unconditionally in edit mode so clearing a custom icon
+      // (icon === null) persists the removal rather than leaving the old glyph.
+      await holdingsRepo.setIcon(holdingId, icon);
 
       navigation.goBack();
 
@@ -476,7 +484,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           disabled={isEdit}
         />
 
-        {type !== 'term_deposit' && type !== 'bond' && (
+        {type !== 'term_deposit' && type !== 'bond' && !isSyncedEdit && (
           <TextField
             label="Balance"
             value={openingBalance}

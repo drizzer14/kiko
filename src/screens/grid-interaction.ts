@@ -6,7 +6,6 @@ import { trigger } from 'react-native-haptic-feedback';
 // pass a matching object literal by structural typing) so it is not a dangling
 // public export.
 type GridDragEnd = {
-  key: string;
   fromIndex: number;
   toIndex: number;
   indexToKey: string[];
