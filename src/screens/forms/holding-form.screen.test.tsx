@@ -301,7 +301,7 @@ describe('HoldingFormScreen term deposit', () => {
     expect(metadataOfFirstCreate().recapitalization).toBe(true);
   });
 
-  it('renders a coupon-frequency selector defaulting to annually in the bond metadata', async () => {
+  it('renders a coupon-frequency selector defaulting to semiannually in the bond metadata', async () => {
     const screen = await renderScreen();
 
     await fillBondFields(screen);
@@ -310,7 +310,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(metadataOfFirstCreate().couponFrequency).toBe('annually');
+    expect(metadataOfFirstCreate().couponFrequency).toBe('semiannually');
   });
 
   it('stores the chosen coupon frequency', async () => {

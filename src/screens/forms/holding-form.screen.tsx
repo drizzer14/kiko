@@ -127,7 +127,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [purchaseDate, setPurchaseDate] = useState<number | null>(null);
   const [maturityDate, setMaturityDate] = useState<number | null>(null);
   const [bondKind, setBondKind] = useState<BondKind>('government');
-  const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('annually');
+  // Semiannual coupons are the common case for the government/corporate bonds
+  // this tracks (the Monobank statement default), so the picker starts there.
+  const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
