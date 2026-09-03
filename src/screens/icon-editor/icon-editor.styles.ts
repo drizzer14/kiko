@@ -10,15 +10,18 @@ export const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
-    // Pin the chip to the shared control height (the iOS 44pt minimum tap
-    // target) so it lines up exactly with the name field beside it, which
-    // carries the same `minHeight` — otherwise the 20pt glyph makes the chip a
-    // hair taller than the text input and the two boxes read as misaligned.
-    minHeight: theme.spacing(11),
-    // Force the chip square: its width tracks its height (the shared control
-    // height above) so the icon input reads as a square button rather than a
-    // wider-or-narrower-than-tall chip beside the growing name field.
-    aspectRatio: 1,
+    // A fixed square pinned to the shared control height (the iOS 44pt minimum
+    // tap target): explicit, equal `width` and `height` rather than a
+    // `minHeight` floor plus `aspectRatio`. The old aspectRatio resolved the
+    // chip's square from its measured cross-size, which — beside a name field
+    // held only by `minHeight`, under the row's `alignItems: 'flex-end'` — made
+    // both sizes measurement-dependent: a re-render (typing, a type/color
+    // change) could re-resolve the chip smaller, dropping the row height and
+    // collapsing the name field toward its single-line intrinsic height. A
+    // definite width === height decouples the chip from every layout pass, so it
+    // and the name field stay a stable 44pt tall.
+    width: theme.spacing(11),
+    height: theme.spacing(11),
     alignItems: 'center',
     justifyContent: 'center',
   },

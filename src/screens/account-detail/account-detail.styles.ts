@@ -20,13 +20,17 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // A labelled name field: a bordered, filled input matching the token field's
   // treatment, so the editable name reads as a proper field rather than a tiny
-  // inline control.
+  // inline control. Pinned to the shared control height (the iOS 44pt minimum
+  // tap target) with a fixed `height` so it stays level with the icon chip's
+  // fixed square beside it and never collapses toward its single-line intrinsic
+  // height when the header re-renders.
   nameField: {
     color: theme.colors.textPrimary,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
+    height: theme.spacing(11),
     ...theme.typography.body,
   },
   // The balance block sits directly under the large navigation title, so give

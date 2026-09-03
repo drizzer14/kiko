@@ -83,13 +83,18 @@ describe('IconEditor', () => {
     expect(queryByText('Remove')).toBeNull();
   });
 
-  it('renders the icon chip as a square (width equals height via aspectRatio 1)', async () => {
+  it('renders the icon chip as a fixed square (explicit width equals height, no sibling-coupled aspectRatio)', async () => {
     const { getByLabelText } = await setup();
 
     const chip = StyleSheet.flatten(getByLabelText('Change Icon').props.style);
 
-    expect(chip.aspectRatio).toBe(1);
-    expect(chip.minHeight).toBeGreaterThan(0);
+    // A fixed width === height square, not `aspectRatio` against a measured
+    // cross-size: the chip's size must not be recomputed from a sibling's height
+    // on re-render (that coupling collapsed the name field beside it), so it
+    // carries explicit, equal, definite dimensions and no `aspectRatio`.
+    expect(chip.width).toBeGreaterThan(0);
+    expect(chip.height).toBe(chip.width);
+    expect(chip.aspectRatio).toBeUndefined();
   });
 
   it('uses an explicit iconAccessibilityLabel for the toggle over the caption default', async () => {
