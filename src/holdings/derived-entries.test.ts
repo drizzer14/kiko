@@ -56,11 +56,13 @@ describe('derivedEntries', () => {
     const firstMilitary = entries.find((e) => e.kind === 'military-levy');
     expect(firstMilitary).toMatchObject({ amountMinorUnits: -4_384, label: 'Military levy 5%' });
 
-    // The 12 Feb capitalization folds both February periods' net into the balance.
+    // The 12 Feb capitalization folds both February periods' net into the balance:
+    // 675.06 ([12.01-31.01]) + 388.17 ([01.02-11.02], military levy 25.20 under the
+    // bank's cumulative withholding) = 1063.23, exactly the statement.
     const firstCap = entries.find((e) => e.kind === 'capitalization');
     expect(firstCap).toMatchObject({
       time: local(2026, 1, 12),
-      amountMinorUnits: 106_322,
+      amountMinorUnits: 106_323,
       label: 'Capitalization',
       isFuture: false,
     });

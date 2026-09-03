@@ -69,14 +69,16 @@ describe('holdingValue', () => {
       },
     };
     // One year in, twelve monthly capitalizations, each accruing actual/365 on
-    // the last capitalized balance and withholding the 18%+5% tax net. The
-    // step-by-step engine (no closed form) yields 1096.12 net.
+    // the last capitalized balance and withholding the 18%+5% tax net on the
+    // running CUMULATIVE basis the bank uses. Cumulative withholding telescopes to
+    // round(12481*18%)=2247 + round(12481*5%)=624 = 2869... 2871 total, netting
+    // 1096.10 (a per-period sum-of-rounds would land 2 kopecks lower).
     const b = holdingValueBreakdown(holding, START + 365 * day);
     expect(b.principalOrCost.minorUnits).toBe(100_000);
     expect(b.gross.minorUnits).toBe(112_481);
     expect(b.interest.minorUnits).toBe(12_481);
-    expect(b.tax.minorUnits).toBe(2_869);
-    expect(b.net.minorUnits).toBe(109_612);
+    expect(b.tax.minorUnits).toBe(2_871);
+    expect(b.net.minorUnits).toBe(109_610);
     // Net reconciles: principal + gross interest - tax.
     expect(b.net.minorUnits).toBe(b.gross.minorUnits - b.tax.minorUnits);
   });

@@ -250,6 +250,11 @@ export const depositLedger = (
 
   const accruals: DepositAccrual[] = [];
   let capitalizedInterestMinor = 0;
+  // The gross interest withheld against so far, across the deposit's whole life.
+  // The bank withholds each levy on this running cumulative basis (see
+  // `splitInterestTaxMinor`), which is what makes every ledger line match the
+  // statement to the kopeck rather than drifting ±1.
+  let cumulativeGrossMinor = 0;
   let pendingGrossMinor = 0;
   let pendingTaxMinor = 0;
   let pendingNetMinor = 0;
@@ -264,7 +269,11 @@ export const depositLedger = (
       grossExact += (tranche.amountMinor * rate * days) / DAYS_PER_YEAR;
     }
     const grossMinor = Math.round(grossExact);
-    const { incomeMinor, militaryMinor, totalMinor } = splitInterestTaxMinor(grossMinor);
+    const { incomeMinor, militaryMinor, totalMinor } = splitInterestTaxMinor(
+      grossMinor,
+      cumulativeGrossMinor,
+    );
+    cumulativeGrossMinor += grossMinor;
     const netMinor = grossMinor - totalMinor;
     pendingGrossMinor += grossMinor;
     pendingTaxMinor += totalMinor;

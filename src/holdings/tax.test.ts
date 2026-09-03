@@ -38,4 +38,28 @@ describe('tax', () => {
       totalMinor: 0,
     });
   });
+
+  describe('cumulative-basis withholding (matches the bank statement line by line)', () => {
+    // The bank keeps each levy's running total equal to round(cumulativeGross *
+    // rate); a period's withheld line is that rounded cumulative minus what was
+    // already withheld. This self-corrects the sub-kopeck drift that a naive
+    // per-period round(gross*rate) accumulates, so every ledger line matches the
+    // real statement.
+    it('defaults to the plain per-period rounding when no prior gross is given', () => {
+      // priorGrossMinor defaults to 0, so the cumulative reduces to round(gross*rate):
+      // identical to the single-shot behaviour every existing caller relies on.
+      expect(splitInterestTaxMinor(87_671, 0)).toEqual(splitInterestTaxMinor(87_671));
+    });
+
+    it('reconciles the statement 12 Feb military levy to 25.20, not a naive 25.21', () => {
+      // Second accrual: this-period gross 504.11 (50 411), prior cumulative gross
+      // 876.71 (87 671). Cumulative military = round(1380.82*5%)=6904 minus the
+      // 4384 already withheld = 2520 (25.20) — exactly the statement, where the
+      // naive round(504.11*5%) would over-withhold to 25.21.
+      const tax = splitInterestTaxMinor(50_411, 87_671);
+      expect(tax.incomeMinor).toBe(9_074); // round(138082*18%)=24855 - round(87671*18%)=15781
+      expect(tax.militaryMinor).toBe(2_520); // round(138082*5%)=6904 - round(87671*5%)=4384
+      expect(tax.totalMinor).toBe(11_594);
+    });
+  });
 });

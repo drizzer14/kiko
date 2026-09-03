@@ -16,15 +16,35 @@ type InterestTax = {
   totalMinor: number;
 };
 
+// A single levy line on a cumulative basis: the bank keeps each levy's running
+// total equal to round(cumulativeGross * rate), so a period's withheld amount is
+// that rounded cumulative minus everything already withheld for the levy. With
+// priorGrossMinor 0 this collapses to round(grossMinor * rate) — the single-shot
+// per-period rounding.
+const cumulativeLevyMinor = (
+  grossMinor: number,
+  priorGrossMinor: number,
+  ratePct: number,
+): number =>
+  Math.round(((priorGrossMinor + grossMinor) * ratePct) / 100) -
+  Math.round((priorGrossMinor * ratePct) / 100);
+
 // Split the withholding on a gross interest amount (minor units) into its income
 // and military components, each rounded to the minor unit separately. Zero or
 // negative interest is never taxed.
-export const splitInterestTaxMinor = (grossMinor: number): InterestTax => {
+//
+// `priorGrossMinor` is the gross interest already withheld against earlier in the
+// same running series (0 for a standalone one-off levy). The bank withholds each
+// levy on a CUMULATIVE basis — the line is round(cumulativeGross * rate) minus
+// what was already taken — which self-corrects the sub-kopeck drift a naive
+// per-period round accumulates, so every ledger line matches the real statement.
+export const splitInterestTaxMinor = (grossMinor: number, priorGrossMinor = 0): InterestTax => {
   if (grossMinor <= 0) {
     return { incomeMinor: 0, militaryMinor: 0, totalMinor: 0 };
   }
-  const incomeMinor = Math.round((grossMinor * INCOME_TAX_RATE_PCT) / 100);
-  const militaryMinor = Math.round((grossMinor * MILITARY_LEVY_RATE_PCT) / 100);
+  const cumFrom = Math.max(priorGrossMinor, 0);
+  const incomeMinor = cumulativeLevyMinor(grossMinor, cumFrom, INCOME_TAX_RATE_PCT);
+  const militaryMinor = cumulativeLevyMinor(grossMinor, cumFrom, MILITARY_LEVY_RATE_PCT);
   return { incomeMinor, militaryMinor, totalMinor: incomeMinor + militaryMinor };
 };
 

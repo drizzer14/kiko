@@ -142,21 +142,45 @@ describe('depositLedger — step-by-step engine, verified against the real state
     expect(ledger.principalMinor).toBe(230_000_00);
   });
 
-  it('reproduces the capitalized balances within a kopeck, converging exactly', () => {
-    // The oracle's seven capitalized balances (through the 12 Aug cap). The
-    // military-levy rounding is idiosyncratic on two lines (the bank truncates
-    // 25.2055 -> 25.20 and rounds 36.4205 -> 36.43 where standard rounding gives
-    // 25.21 / 36.42), so the 12 Feb and 12 Apr caps land 1 kopeck under the
-    // oracle; the deviation self-corrects and the value is exact by 12 Aug.
+  it('reproduces every capitalized balance EXACTLY (cumulative-basis withholding)', () => {
+    // The oracle's seven capitalized balances (through the 12 Aug cap). The bank
+    // withholds each levy on a running CUMULATIVE basis (round(cumGross*rate)
+    // minus what was already withheld), so every line lands to the kopeck — there
+    // is no ±1 drift to converge away. All seven balances are exact.
     const oracle = [
       151_063_23, 152_490_56, 154_085_69, 155_645_41, 157_273_49, 158_865_50, 210_814_16,
     ];
-    const throughAug = capBalances.slice(0, oracle.length);
-    throughAug.forEach((balance, index) => {
-      expect(Math.abs(balance - oracle[index])).toBeLessThanOrEqual(1);
-    });
-    // The 12 Aug capitalized balance — the last before the 21 Aug top-up — is exact.
-    expect(throughAug[6]).toBe(210_814_16);
+    expect(capBalances.slice(0, oracle.length)).toEqual(oracle);
+  });
+
+  it('reproduces every accrual line (gross, 18% income, 5% military) to the kopeck', () => {
+    // The full statement oracle: for each of the 15 accrual events through 31 Aug,
+    // [grossMinor, incomeTaxMinor, militaryLevyMinor]. These are the exact bank
+    // lines — the cumulative-basis withholding is what reconciles the two military
+    // lines a naive per-period round would miss (12 Feb 25.20 not 25.21; 12 Mar
+    // 36.43 not 36.42) plus the income lines that likewise drift (e.g. 12 Jul
+    // 136.51, 1 Aug 274.24, 12 Aug 181.29).
+    const oracle: [number, number, number][] = [
+      [87_671, 15_781, 4_384], // [12.01-31.01] credited 1 Feb
+      [50_411, 9_074, 2_520], // [01.02-11.02] credited 12 Feb (cap)
+      [112_527, 20_255, 5_626], // [12.02-28.02] credited 1 Mar
+      [72_841, 13_111, 3_643], // [01.03-11.03] credited 12 Mar (cap)
+      [133_628, 24_053, 6_681], // [12.03-31.03] credited 1 Apr
+      [73_530, 13_235, 3_676], // [01.04-11.04] credited 12 Apr (cap)
+      [128_264, 23_088, 6_414], // [12.04-30.04] credited 1 May
+      [74_299, 13_374, 3_715], // [01.05-11.05] credited 12 May (cap)
+      [136_388, 24_550, 6_819], // [12.05-31.05] credited 1 Jun
+      [75_051, 13_509, 3_753], // [01.06-11.06] credited 12 Jun (cap)
+      [130_918, 23_565, 6_545], // [12.06-30.06] credited 1 Jul
+      [75_836, 13_651, 3_792], // [01.07-11.07] credited 12 Jul (cap)
+      [152_360, 27_424, 7_618], // [12.07-31.07] credited 1 Aug
+      [100_713, 18_129, 5_036], // [01.08-11.08] credited 12 Aug (cap)
+      [197_889, 35_620, 9_894], // [12.08-31.08] credited 1 Sep
+    ];
+    const lines = ledger.accruals
+      .slice(0, oracle.length)
+      .map((a) => [a.grossMinor, a.incomeTaxMinor, a.militaryLevyMinor]);
+    expect(lines).toEqual(oracle);
   });
 
   it('accrues on the last capitalized balance, capitalizing once a month', () => {
