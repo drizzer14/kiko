@@ -1,5 +1,5 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
-import { Alert, type AlertButton, StyleSheet } from 'react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { ActionSheetIOS, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import AccountsScreen from './accounts.screen';
@@ -18,6 +18,7 @@ jest.mock('react-native-bottom-tabs', () => ({
 
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
+const mockAccountReorder = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -26,6 +27,7 @@ jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: {
     listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     remove: (...args: unknown[]) => mockAccountRemove(...args),
+    reorder: (...args: unknown[]) => mockAccountReorder(...args),
   },
 }));
 jest.mock('../../repositories/holdings.repo', () => ({
@@ -172,31 +174,79 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the swipe action', async () => {
+  it('deletes a manual account via the long-press-in-place menu (drag ended where it started)', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    // Auto-confirm the destructive button so the swipe action fires onDelete.
-    const alertSpy = jest
-      .spyOn(Alert, 'alert')
-      .mockImplementation((_t: string, _m?: string, buttons?: AlertButton[]) => {
-        (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
+    // native action sheet opens.
+    const actionSheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => {
+        callback(0);
       });
-    // The "Delete" action sits behind the closed row, so it is a11y-hidden
-    // until swiped open — query it including hidden elements.
-    const { getByLabelText } = await renderAccounts();
-    fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
+    const { getByTestId } = await renderAccounts();
+    // A long-press that lifts the card and releases it in place (fromIndex ===
+    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
+    // delete action sheet for that account.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'a',
+        fromIndex: 0,
+        toIndex: 0,
+        indexToKey: ['a'],
+      });
+    });
+    expect(actionSheetSpy).toHaveBeenCalledWith(
+      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      expect.any(Function),
+    );
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
-    alertSpy.mockRestore();
+    actionSheetSpy.mockRestore();
   });
 
-  it('does not offer delete on a still-connected (monobank) account row', async () => {
+  it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+    // A drag that moved (fromIndex !== toIndex) persists the new front-to-back
+    // order (indexToKey) rather than opening the menu.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'c',
+        fromIndex: 1,
+        toIndex: 0,
+        indexToKey: ['c', 'a'],
+      });
+    });
+    expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a']);
+  });
+
+  it('does not offer delete on a still-connected (monobank) account', async () => {
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', institution: 'monobank' }],
       holdings: [],
     });
-    const { queryByLabelText } = await renderAccounts();
+    const actionSheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation(() => undefined);
+    const { getByTestId } = await renderAccounts();
     // A connected account must be disconnected (from account-detail) before it
-    // can be swipe-deleted, so the SwipeableRow is disabled and offers no action.
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // can be deleted, so a long-press-in-place resolves to a synced row and
+    // opens no menu.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'a',
+        fromIndex: 0,
+        toIndex: 0,
+        indexToKey: ['a'],
+      });
+    });
+    expect(actionSheetSpy).not.toHaveBeenCalled();
+    actionSheetSpy.mockRestore();
   });
 
   it('shows the account icon as a display-only glyph, not an editable icon control', async () => {

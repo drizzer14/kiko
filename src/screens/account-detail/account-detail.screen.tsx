@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Alert, TextInput } from 'react-native';
+import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { AccountRow, HoldingRow } from '../../db/schema';
@@ -28,6 +29,7 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import IconEditor from '../icon-editor';
+import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
 import { useSync } from '../use-sync';
 import { KIND_ICON } from '../accounts/accounts.screen';
 import { styles } from './account-detail.styles';
@@ -148,18 +150,37 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const now = Date.now();
   const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings, now);
-  // Order the holdings grid so zero-value holdings sink to the end; the stable
-  // sort leaves the non-zero holdings in their existing relative order.
+  // Order the holdings grid by the user-controlled `sortOrder` (the drag-and-drop
+  // order the `listByAccountQuery` already applies). Zero-value-last is kept only
+  // as a TIEBREAK: it decides between two holdings that share a `sortOrder` (e.g.
+  // before any manual reorder, or in tests seeded without one) so a spent jar
+  // sinks below a still-valuable holding — but a manual reorder (distinct
+  // `sortOrder`s) always wins. `?? 0` guards rows seeded without a sortOrder.
   const sortedHoldings = [...activeHoldings].sort((first, second) => {
+    const orderDelta = (first.sortOrder ?? 0) - (second.sortOrder ?? 0);
+    if (orderDelta !== 0) {
+      return orderDelta;
+    }
+
     const firstZero = isZeroValue(first, now);
     const secondZero = isZeroValue(second, now);
-
     if (firstZero === secondZero) {
       return 0;
     }
 
     return firstZero ? 1 : -1;
   });
+  const holdingsById = new Map(activeHoldings.map((holding) => [holding.id, holding]));
+
+  // Long-press-in-place on a holding card opens its delete menu — but only for a
+  // manual holding; a synced (Monobank) holding is owned by the sync and offers
+  // no menu.
+  const openHoldingMenu = (holdingId: string): void => {
+    const holding = holdingsById.get(holdingId);
+    if (holding && !isSyncedHolding(holding)) {
+      showDeleteActionSheet(() => holdingsRepo.remove(holdingId));
+    }
+  };
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -320,19 +341,36 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={3}>
           <Text variant="heading">Holdings</Text>
 
-          <Box direction="row" testID="holdings-grid" style={styles.holdingsGrid}>
-            {sortedHoldings.map((holding) => (
-              <Box key={holding.id} testID="holding-grid-item" style={styles.holdingGridItem}>
-                <HoldingCard
-                  holding={holding}
-                  now={now}
-                  onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
-                  onDelete={
-                    isSyncedHolding(holding) ? undefined : () => holdingsRepo.remove(holding.id)
-                  }
-                />
-              </Box>
-            ))}
+          {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
+              opens the holding; a long-press lifts a card to drag (reorder), and
+              a long-press released in place opens the delete menu — see
+              `onGridDragEnd`. `sortEnabled` is off with a single holding, where
+              there is nothing to reorder (the long-press-to-delete gesture still
+              works because the card's own tap and the grid coexist). */}
+          <Box testID="holdings-grid">
+            <Sortable.Grid
+              data={sortedHoldings}
+              columns={2}
+              rowGap={theme.spacing(3)}
+              columnGap={theme.spacing(3)}
+              keyExtractor={(holding) => holding.id}
+              renderItem={({ item }) => (
+                <Box testID="holding-grid-item">
+                  <HoldingCard
+                    holding={item}
+                    now={now}
+                    onOpen={() => navigation.navigate('HoldingDetail', { holdingId: item.id })}
+                  />
+                </Box>
+              )}
+              onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
+                onGridDragEnd(
+                  { key, fromIndex, toIndex, indexToKey },
+                  holdingsRepo.reorder,
+                  openHoldingMenu,
+                )
+              }
+            />
           </Box>
         </Box>
       </Box>

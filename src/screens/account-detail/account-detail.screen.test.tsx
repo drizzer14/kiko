@@ -29,6 +29,7 @@ const mockReadToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
+const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
@@ -69,6 +70,7 @@ jest.mock('../../repositories/holdings.repo', () => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
     remove: (...args: unknown[]) => mockRemove(...args),
+    reorder: (...args: unknown[]) => mockReorder(...args),
   },
 }));
 jest.mock('../../repositories/rates.repo', () => ({
@@ -221,7 +223,7 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
   });
 
-  it('lays the account holdings out as a 2-column grid of square cards', async () => {
+  it('lays the account holdings out as a drag-and-drop grid of square cards', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -231,14 +233,13 @@ describe('AccountDetailScreen', () => {
     });
     const { getByTestId, getAllByTestId } = await renderScreen();
 
-    // The grid container wraps its children onto multiple rows...
-    const gridStyle = StyleSheet.flatten(getByTestId('holdings-grid').props.style);
-    expect(gridStyle.flexWrap).toBe('wrap');
-
-    // ...into half-width items (two per row), each holding a square card.
+    // The holdings render inside the sortable grid, one wrapper item per
+    // holding, each holding a square (aspectRatio 1) card. Column layout is now
+    // owned by Sortable.Grid (columns=2), so the item widths are no longer set
+    // by this screen's own styles.
+    expect(getByTestId('sortable-grid')).toBeTruthy();
     const items = getAllByTestId('holding-grid-item');
     expect(items).toHaveLength(2);
-    expect(StyleSheet.flatten(items[0].props.style).width).toBe('48%');
     expect(StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio).toBe(1);
   });
 
@@ -481,7 +482,7 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding through the long-press action menu (choosing Delete)', async () => {
+  it('deletes a manual holding via the long-press-in-place menu (drag ended where it started)', async () => {
     // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
     // native action sheet opens.
     const actionSheetSpy = jest
@@ -493,16 +494,46 @@ describe('AccountDetailScreen', () => {
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { getByText } = await renderScreen();
-    // Long-pressing anywhere on the card opens the iOS action sheet; the grid no
-    // longer wraps cards in a swipeable row.
-    await fireEvent(getByText('Black card'), 'longPress');
+    const { getByTestId } = await renderScreen();
+    // A long-press that lifts the card and releases it in place (fromIndex ===
+    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
+    // delete action sheet for that holding.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'h1',
+        fromIndex: 0,
+        toIndex: 0,
+        indexToKey: ['h1'],
+      });
+    });
     expect(actionSheetSpy).toHaveBeenCalledWith(
       { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
       expect.any(Function),
     );
     expect(mockRemove).toHaveBeenCalledWith('h1');
     actionSheetSpy.mockRestore();
+  });
+
+  it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+      ],
+    });
+    const { getByTestId } = await renderScreen();
+    // A drag that moved (fromIndex !== toIndex) persists the new front-to-back
+    // order (indexToKey) rather than opening the menu.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'h2',
+        fromIndex: 1,
+        toIndex: 0,
+        indexToKey: ['h2', 'h1'],
+      });
+    });
+    expect(mockReorder).toHaveBeenCalledWith(['h2', 'h1']);
   });
 
   it('replaces the swipe-to-delete row with a plain card (no SwipeableRow in the grid)', async () => {
@@ -533,9 +564,17 @@ describe('AccountDetailScreen', () => {
         },
       ],
     });
-    const { getByText } = await renderScreen();
-    // A synced holding wires no long-press handler, so its card opens no menu.
-    await fireEvent(getByText('Black card'), 'longPress');
+    const { getByTestId } = await renderScreen();
+    // A synced holding is owned by the sync: a long-press-in-place resolves to a
+    // synced row, so the grid opens no delete menu.
+    await act(async () => {
+      getByTestId('sortable-grid').props.onDragEnd({
+        key: 'h1',
+        fromIndex: 0,
+        toIndex: 0,
+        indexToKey: ['h1'],
+      });
+    });
     expect(actionSheetSpy).not.toHaveBeenCalled();
     actionSheetSpy.mockRestore();
   });

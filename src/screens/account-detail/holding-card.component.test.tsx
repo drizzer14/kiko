@@ -1,4 +1,4 @@
-import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { HoldingRow } from '../../db/schema';
 import '../../design-system/unistyles';
@@ -37,71 +37,6 @@ describe('HoldingCard', () => {
     );
     await fireEvent.press(getByText('Black card'));
     expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens an iOS action sheet offering Delete (destructive) and Cancel on long-press', async () => {
-    const spy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} onDelete={jest.fn()} />,
-    );
-
-    await fireEvent(getByText('Black card'), 'longPress');
-
-    expect(spy).toHaveBeenCalledWith(
-      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
-      expect.any(Function),
-    );
-    spy.mockRestore();
-  });
-
-  it('runs the delete handler when Delete (index 0) is chosen from the menu', async () => {
-    const onDelete = jest.fn();
-    const spy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(0);
-      });
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} onDelete={onDelete} />,
-    );
-
-    await fireEvent(getByText('Black card'), 'longPress');
-
-    expect(onDelete).toHaveBeenCalledTimes(1);
-    spy.mockRestore();
-  });
-
-  it('does not delete when Cancel (index 1) is chosen from the menu', async () => {
-    const onDelete = jest.fn();
-    const spy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(1);
-      });
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} onDelete={onDelete} />,
-    );
-
-    await fireEvent(getByText('Black card'), 'longPress');
-
-    expect(onDelete).not.toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('offers no menu on long-press when the card is not deletable (no onDelete)', async () => {
-    const spy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-    );
-
-    await fireEvent(getByText('Black card'), 'longPress');
-
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
   });
 
   it('tints the icon with the holding stored color', async () => {
