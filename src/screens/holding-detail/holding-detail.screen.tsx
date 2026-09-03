@@ -31,6 +31,7 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { defaultTransactionDescription } from '../../transactions/default-description';
 import { parseAmount } from '../../currency/parse';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeIcon } from '../../holdings/holding-icon';
 import HoldingIdentityField from '../forms/holding-identity-field';
 
@@ -57,6 +58,7 @@ const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
     <HoldingIdentityField
       icon={holding.icon}
       fallbackIcon={holdingTypeIcon[holding.type]}
+      iconColor={holding.color ?? defaultHoldingColor[holding.type]}
       name={name}
       onChangeName={setName}
       onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}

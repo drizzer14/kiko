@@ -104,6 +104,31 @@ describe('HoldingCard', () => {
     spy.mockRestore();
   });
 
+  it('tints the icon with the holding stored color', async () => {
+    const { getByLabelText } = await render(
+      <HoldingCard
+        holding={holding({ color: darkTheme.colors.entityColors.violet })}
+        now={NOW}
+        onOpen={jest.fn()}
+      />,
+    );
+
+    expect(getByLabelText('Black card icon').props.tintColor).toBe(
+      darkTheme.colors.entityColors.violet,
+    );
+  });
+
+  it('falls back to the type default color when the holding has no stored color', async () => {
+    const { getByLabelText } = await render(
+      <HoldingCard holding={holding({ color: null })} now={NOW} onOpen={jest.fn()} />,
+    );
+
+    // A `card` holding with no color reads the card type default (white).
+    expect(getByLabelText('Black card icon').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
   it('renders the value larger (heading step) and bold, above a wider gap from the name', async () => {
     const { getByText } = await render(
       <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,

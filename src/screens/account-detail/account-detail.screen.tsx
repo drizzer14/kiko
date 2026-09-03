@@ -16,6 +16,7 @@ import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import { holdingValue } from '../../holdings/holding-value';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
@@ -90,6 +91,7 @@ const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
         label="Icon"
         icon={account.icon}
         fallbackIcon={KIND_ICON[account.kind]}
+        iconColor={account.color ?? defaultAccountColor[account.kind]}
         onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
         onRemove={() => accountsRepo.setIcon(account.id, null)}
       />
