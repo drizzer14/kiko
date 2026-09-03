@@ -14,8 +14,14 @@ export const styles = StyleSheet.create((theme) => ({
     columnGap: theme.spacing(2),
   },
   // The Y-axis label column: tick labels distributed top (max) to bottom (min)
-  // so each reads against its gridline in the plot beside it.
+  // so each reads against its gridline in the plot beside it. The tick labels
+  // are absolutely positioned (each pinned to its gridline's `top`), so they
+  // contribute no intrinsic width and the column would otherwise collapse to
+  // zero — clipping the value labels off the card's left edge. A fixed width
+  // reserves room for the widest money label and pushes the plot to start after
+  // it; `alignItems: 'flex-end'` then flushes each label against the plot.
   yAxis: {
+    width: theme.spacing(20),
     justifyContent: 'space-between',
     alignItems: 'flex-end',
   },

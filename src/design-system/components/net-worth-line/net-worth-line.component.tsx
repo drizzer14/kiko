@@ -128,7 +128,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   return (
     <Box style={styles.container}>
       <View style={styles.plotRow}>
-        <View style={[styles.yAxis, { height }]}>
+        <View testID="net-worth-line-y-axis" style={[styles.yAxis, { height }]}>
           {ticks.map((tick, index) => (
             <View
               key={tick.key}
@@ -188,7 +188,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               testID="net-worth-line-polyline"
               points={toPolylinePoints(points, scales)}
               fill="none"
-              stroke={theme.colors.accent}
+              stroke={theme.colors.entityColors.white}
               strokeWidth={LINE_STROKE_WIDTH}
             />
           </Svg>

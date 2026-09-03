@@ -1,7 +1,15 @@
 import { render } from '@testing-library/react-native';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
+import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
+
+// Flatten a (possibly nested/array) style prop into its plain object layers so a
+// test can assert a single directive regardless of how Unistyles composed it.
+const styleLayers = (style: unknown): Record<string, unknown>[] =>
+  (Array.isArray(style) ? style.flat(Number.POSITIVE_INFINITY) : [style]).filter(
+    (layer): layer is Record<string, unknown> => layer != null && typeof layer === 'object',
+  );
 
 const points: NetWorthPoint[] = [
   { t: 0, amount: 100 },
@@ -47,6 +55,28 @@ describe('NetWorthLine', () => {
     expect(getByTestId('net-worth-line-tick-3')).toBeTruthy();
     expect(getByText(/\$300\.00/)).toBeTruthy();
     expect(getByText(/\$100\.00/)).toBeTruthy();
+  });
+
+  it('draws the net-worth line in white', async () => {
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
+    );
+
+    expect(getByTestId('net-worth-line-polyline').props.stroke).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('reserves a fixed-width Y-axis column so its value labels are fully visible', async () => {
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
+    );
+
+    const width = styleLayers(getByTestId('net-worth-line-y-axis').props.style)
+      .map((layer) => layer.width)
+      .find((value): value is number => typeof value === 'number');
+
+    expect(width).toBeGreaterThan(0);
   });
 
   it('renders a loading state when loading with no points yet', async () => {
