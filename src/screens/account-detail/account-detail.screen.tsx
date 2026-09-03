@@ -13,8 +13,6 @@ import CurrencyBreakdown from '../../design-system/components/currency-breakdown
 import MoneyText from '../../design-system/components/money-text';
 import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
-import SwipeableRow from '../../design-system/components/swipeable-row';
-import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { isSyncedHolding } from '../../holdings/deletable';
@@ -119,9 +117,6 @@ type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId } = route.params;
   const { theme } = useUnistyles();
-  // Disable this screen's native back-swipe while any holding row is open, so a
-  // right-swipe that closes a row does not also pop the screen.
-  const onOpenChange = useSwipePopGuard(navigation);
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: connectedAccounts } = useLiveQuery(accountsRepo.connectedQuery(), ['accounts']);
@@ -326,18 +321,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           <Box direction="row" testID="holdings-grid" style={styles.holdingsGrid}>
             {sortedHoldings.map((holding) => (
               <Box key={holding.id} testID="holding-grid-item" style={styles.holdingGridItem}>
-                <SwipeableRow
-                  radius={theme.radii.md}
-                  disabled={isSyncedHolding(holding)}
-                  onDelete={() => holdingsRepo.remove(holding.id)}
-                  onOpenChange={onOpenChange}
-                >
-                  <HoldingCard
-                    holding={holding}
-                    now={now}
-                    onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
-                  />
-                </SwipeableRow>
+                <HoldingCard
+                  holding={holding}
+                  now={now}
+                  onOpen={() => navigation.navigate('HoldingDetail', { holdingId: holding.id })}
+                  onDelete={
+                    isSyncedHolding(holding) ? undefined : () => holdingsRepo.remove(holding.id)
+                  }
+                />
               </Box>
             ))}
           </Box>

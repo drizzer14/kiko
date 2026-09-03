@@ -1,4 +1,4 @@
-import { Alert, StyleSheet } from 'react-native';
+import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import '../../design-system/unistyles';
@@ -456,24 +456,46 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the swipe action', async () => {
-    // Auto-confirm: fire the destructive button's handler as soon as the alert opens.
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
-    });
+  it('deletes a manual holding through the long-press action menu (choosing Delete)', async () => {
+    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
+    // native action sheet opens.
+    const actionSheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => {
+        callback(0);
+      });
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { getByLabelText } = await renderScreen();
-    // The delete action is a11y-hidden until the row is swiped open, so it must
-    // be queried through the hidden elements to reach it programmatically.
-    await fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
+    const { getByText } = await renderScreen();
+    // Long-pressing anywhere on the card opens the iOS action sheet; the grid no
+    // longer wraps cards in a swipeable row.
+    await fireEvent(getByText('Black card'), 'longPress');
+    expect(actionSheetSpy).toHaveBeenCalledWith(
+      { options: ['Delete', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      expect.any(Function),
+    );
     expect(mockRemove).toHaveBeenCalledWith('h1');
-    alertSpy.mockRestore();
+    actionSheetSpy.mockRestore();
   });
 
-  it('does not offer delete on a synced holding row (monobankId)', async () => {
+  it('replaces the swipe-to-delete row with a plain card (no SwipeableRow in the grid)', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { queryByTestId, queryByLabelText } = await renderScreen();
+    // SwipeableRow renders a `*-actions` layer and an a11y "Delete" affordance;
+    // neither should exist now that the grid uses a long-press menu instead.
+    expect(queryByTestId('swipeable-row-actions')).toBeNull();
+    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('does not offer the delete menu on a synced holding (monobankId)', async () => {
+    const actionSheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation(() => undefined);
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -486,9 +508,11 @@ describe('AccountDetailScreen', () => {
         },
       ],
     });
-    const { queryByLabelText } = await renderScreen();
-    // A synced holding renders no swipe delete action at all, hidden or not.
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    const { getByText } = await renderScreen();
+    // A synced holding wires no long-press handler, so its card opens no menu.
+    await fireEvent(getByText('Black card'), 'longPress');
+    expect(actionSheetSpy).not.toHaveBeenCalled();
+    actionSheetSpy.mockRestore();
   });
 
   it("changes the account's own icon through the header icon editor, via accountsRepo.setIcon", async () => {
