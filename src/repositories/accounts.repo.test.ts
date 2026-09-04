@@ -1,7 +1,3 @@
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `createCashAccount` runs its inserts through the `write` helper (one
 // op-sqlite transaction). Override `write` to run the callback against a
 // fake transaction handle so the test can capture every insert issued

@@ -3,15 +3,15 @@
 **Date:** 2026-09-01
 **Purpose:** The user asked that code-review feedback update Biome/Semgrep
 rules, not only skills. This is the inventory of mechanizable style rules that
-live in the PFF skills but are NOT yet enforced by Biome or Semgrep, plus the
-go-forward process. Source pass by `pff:explorer`.
+live in the Kiko skills but are NOT yet enforced by Biome or Semgrep, plus the
+go-forward process. Source pass by `kiko:explorer`.
 
 ## Key findings
 
 - The `feedback`-type memories are all agent-workflow rules (delegation,
   commit hygiene, review routing), not code style. No past review produced a
   mechanizable style rule that is currently missing. Every candidate below
-  comes from a skill, chiefly `pff-code-style`.
+  comes from a skill, chiefly `kiko-code-style`.
 - Already enforced, correctly dropped: single quotes / 2-space / 100-width /
   trailing commas / arrow-parens (Biome formatter), `noExplicitAny`,
   `noUnusedVariables` / `noUnusedImports`, `noExcessiveCognitiveComplexity`,
@@ -31,34 +31,34 @@ mechanize well; keep in the skill).
 
 | Rule | Source | Enforce via | Tier |
 |---|---|---|---|
-| Repositories are plain function modules, never classes | pff-architecture | Semgrep, `*.repo.ts` scope, ban `class` | Safe |
-| Repository typed `satisfies Repository`, never `: Repository` | pff-code-style | Semgrep, `const $X: Repository = {` | Safe |
-| Amount/balance columns integer minor-units, never `real`/`decimal` | pff-domain | Semgrep, `schema.ts` scope | Safe |
-| Every DB write wrapped in a transaction | pff-architecture | Semgrep, `pattern-not-inside` — must allow the repo `write(tx => ...)` helper | Cleanup-first (verify the `write` helper is recognized) |
-| Repository read functions return the query builder, never `await`/`.execute()` | pff-architecture | Semgrep, `*.repo.ts` scope | Safe |
-| Default export only in `*.component.tsx` / `*.screen.tsx`; named elsewhere | pff-code-style | Biome `noDefaultExport` via `overrides` glob | Cleanup-first (verify no stray default exports) |
-| Uppercase domain acronyms stay uppercase (`PAN`, `IBAN`, `MCC`, `ID`, `JSON`, `BTC`) | pff-code-style | Semgrep blocklist regex | Safe (blocklist is partial) |
-| Rest-props binding named `props`, not `rest`, in `*.component.tsx` | pff-design-system | Semgrep | Safe |
-| Primitive own-props spread after `{...props}` in JSX | pff-design-system | Semgrep, four primitive files | Safe |
-| Monobank token never written to DB or logged | pff-architecture | Semgrep, extend the AsyncStorage-secret rule | Safe |
-| Two-arg `first(result, toError)`; curried `first(toError)(result)` banned | pff-code-style | Semgrep, `first($X)($Y)` | Safe |
-| No hand-rolled `pipe`/`compose`; use `fnts` | pff-code-style | Semgrep | Safe |
-| Confirm `noNestedTernary` is enabled | pff-design-system | Biome | Verify only |
-| Blank line before every `return` | pff-code-style | Semgrep | Cleanup-first (likely many violations; noisy) |
-| Closed literal sets use `ts-pattern .exhaustive()`, not `switch` | pff-code-style, pff-domain, pff-architecture | Semgrep | Judgment — the codebase uses `switch`/`Record` in places (currency.ts, interest.ts, holding-value.ts, all reviewer-approved); do NOT mechanize without a decision |
-| `guard` over `if (!ok) throw` | pff-code-style | Semgrep (Class B) | Judgment (broad) |
-| No hand-rolled `try/catch` + Error normalization; use `fnts` either | pff-code-style | Semgrep (Class B) | Judgment (broad; documented exceptions) |
-| Hardcoded URL/config literals must live in `@env` | pff-code-style | Semgrep | Cleanup-first (false positives in tests/config) |
-| Components never hardcode raw color/spacing/radius; read theme tokens | pff-design-system | Semgrep | Cleanup-first (false-positive-prone) |
-| Full unabbreviated variable names | pff-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
+| Repositories are plain function modules, never classes | kiko-architecture | Semgrep, `*.repo.ts` scope, ban `class` | Safe |
+| Repository typed `satisfies Repository`, never `: Repository` | kiko-code-style | Semgrep, `const $X: Repository = {` | Safe |
+| Amount/balance columns integer minor-units, never `real`/`decimal` | kiko-domain | Semgrep, `schema.ts` scope | Safe |
+| Every DB write wrapped in a transaction | kiko-architecture | Semgrep, `pattern-not-inside` — must allow the repo `write(tx => ...)` helper | Cleanup-first (verify the `write` helper is recognized) |
+| Repository read functions return the query builder, never `await`/`.execute()` | kiko-architecture | Semgrep, `*.repo.ts` scope | Safe |
+| Default export only in `*.component.tsx` / `*.screen.tsx`; named elsewhere | kiko-code-style | Biome `noDefaultExport` via `overrides` glob | Cleanup-first (verify no stray default exports) |
+| Uppercase domain acronyms stay uppercase (`PAN`, `IBAN`, `MCC`, `ID`, `JSON`, `BTC`) | kiko-code-style | Semgrep blocklist regex | Safe (blocklist is partial) |
+| Rest-props binding named `props`, not `rest`, in `*.component.tsx` | kiko-design-system | Semgrep | Safe |
+| Primitive own-props spread after `{...props}` in JSX | kiko-design-system | Semgrep, four primitive files | Safe |
+| Monobank token never written to DB or logged | kiko-architecture | Semgrep, extend the AsyncStorage-secret rule | Safe |
+| Two-arg `first(result, toError)`; curried `first(toError)(result)` banned | kiko-code-style | Semgrep, `first($X)($Y)` | Safe |
+| No hand-rolled `pipe`/`compose`; use `fnts` | kiko-code-style | Semgrep | Safe |
+| Confirm `noNestedTernary` is enabled | kiko-design-system | Biome | Verify only |
+| Blank line before every `return` | kiko-code-style | Semgrep | Cleanup-first (likely many violations; noisy) |
+| Closed literal sets use `ts-pattern .exhaustive()`, not `switch` | kiko-code-style, kiko-domain, kiko-architecture | Semgrep | Judgment — the codebase uses `switch`/`Record` in places (currency.ts, interest.ts, holding-value.ts, all reviewer-approved); do NOT mechanize without a decision |
+| `guard` over `if (!ok) throw` | kiko-code-style | Semgrep (Class B) | Judgment (broad) |
+| No hand-rolled `try/catch` + Error normalization; use `fnts` either | kiko-code-style | Semgrep (Class B) | Judgment (broad; documented exceptions) |
+| Hardcoded URL/config literals must live in `@env` | kiko-code-style | Semgrep | Cleanup-first (false positives in tests/config) |
+| Components never hardcode raw color/spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone) |
+| Full unabbreviated variable names | kiko-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
 
-### Candidates — pff-ux-round review (2026-09-04, not yet enforced)
+### Candidates — kiko-ux-round review (2026-09-04, not yet enforced)
 
 | Rule | Source | Enforce via | Tier |
 |---|---|---|---|
-| A `SymbolIcon`/`SFSymbolView` `color=` fed a raw entity/category `.color` (or `?? undefined`), not wrapped in `resolveEntityColor`/`resolveCategoryColor` | pff-design-system, pff-domain | Semgrep | Cleanup-first (verify no existing raw-color call site) |
-| Import-boundary: `src/screens/**` must not import a value export from another `*.screen.tsx` | pff-code-style | Semgrep | Safe |
-| At most one `Record<HoldingType, string>` / `Record<AccountKind, string>` glyph map in the tree | pff-domain | Knip/lint guard | Judgment (needs a one-off script, not a stock rule) |
+| A `SymbolIcon`/`SFSymbolView` `color=` fed a raw entity/category `.color` (or `?? undefined`), not wrapped in `resolveEntityColor`/`resolveCategoryColor` | kiko-design-system, kiko-domain | Semgrep | Cleanup-first (verify no existing raw-color call site) |
+| Import-boundary: `src/screens/**` must not import a value export from another `*.screen.tsx` | kiko-code-style | Semgrep | Safe |
+| At most one `Record<HoldingType, string>` / `Record<AccountKind, string>` glyph map in the tree | kiko-domain | Knip/lint guard | Judgment (needs a one-off script, not a stock rule) |
 
 ### Judgment-only (correctly stay in skills)
 

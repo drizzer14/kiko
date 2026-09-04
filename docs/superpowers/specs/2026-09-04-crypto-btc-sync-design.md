@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 Status: draft, pending user approval
-Scope owner: PFF coordinator
+Scope owner: Kiko coordinator
 Source research: `docs/research/2026-09-04-crypto-exchange-sync.md`
 
 ## Problem
@@ -48,7 +48,7 @@ holding to sync the way a Monobank card/jar already does.
   `addTransactions` call and no statement pagination.
 - **Credential storage:** the Binance `{apiKey, secret}` pair is
   stored as a single JSON value in the iOS Keychain under
-  `service: 'pff.binance.credentials'`, with biometric access control
+  `service: 'kiko.binance.credentials'`, with biometric access control
   (`BIOMETRY_CURRENT_SET`) and `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. Never
   written to SQLite, `metadata`, or logs. The wallet provider has no
   secret to store — only the public address, which lives in the
@@ -163,7 +163,7 @@ balance sync is a single request (wallet) or a single signed request
     as `&signature=`.
   - `binance.credentials.ts`: mirrors `monobank/token.ts`'s
     `saveToken`/`readToken`/`clearToken` shape, but for a
-    `{apiKey, secret}` struct, `service: 'pff.binance.credentials'`,
+    `{apiKey, secret}` struct, `service: 'kiko.binance.credentials'`,
     with `accessControl: BIOMETRY_CURRENT_SET` and
     `securityLevel/accessible: WHEN_UNLOCKED_THIS_DEVICE_ONLY` passed
     to `Keychain.setGenericPassword`.

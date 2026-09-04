@@ -24,7 +24,7 @@ import { styles } from './bottom-sheet.styles';
  * blur (`LiquidGlassView`, `effect="regular"`, tinted with `theme.colors.scrim`)
  * on iOS 26+, a flat translucent-black `View` everywhere else, structurally
  * branched on `isLiquidGlassSupported` the same way `GlassSurface` branches —
- * see `pff-design-system`'s "GlassSurface `isLiquidGlassSupported` branch".
+ * see `kiko-design-system`'s "GlassSurface `isLiquidGlassSupported` branch".
  * `LiquidGlassView` never blocks the dismiss tap: it is a non-interactive
  * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
  * a11y, not the pressable target itself.

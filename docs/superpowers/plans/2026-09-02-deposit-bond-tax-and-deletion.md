@@ -14,8 +14,8 @@
 
 - **Hold all commits.** No task runs `git commit`. Each task ends after tests and checks pass. The coordinator presents the diff to the user; commits happen only on explicit user request. (This overrides the "Commit" step in the writing-plans template.)
 - **Never weaken a check.** `npm run check:all` stays green. No `|| true`, no bare `biome-ignore` (use `OVERRIDE(...)` only with a concrete reason), no global suppress.
-- **Every write goes through `db.transaction()`** — including single-statement writes — or live queries go stale (`pff-architecture`).
-- **Amounts are integer minor units.** Convert to/from `Money` at the repository boundary. Never a float column. `BTC` scale 8; `USD`/`EUR`/`UAH` scale 2 (`pff-domain`).
+- **Every write goes through `db.transaction()`** — including single-statement writes — or live queries go stale (`kiko-architecture`).
+- **Amounts are integer minor units.** Convert to/from `Money` at the repository boundary. Never a float column. `BTC` scale 8; `USD`/`EUR`/`UAH` scale 2 (`kiko-domain`).
 - **Currency mapping uses `ts-pattern` exhaustive `match`** over the currency literal type.
 - **Read functions return a Drizzle query builder** (for `useLiveQuery`); **write functions perform the transactional write**.
 - Run a single test file with `npx jest <path>`. Run everything with `npx jest`. Run the harness with `npm run check:all`.

@@ -1,10 +1,6 @@
 // `buildNetWorthSeries` uses `rateTableAt` from the rate-history repo, whose
 // module opens the op-sqlite connection at load. Stub the native module so the
 // (pure) builder can be exercised without a real database.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 import type { CurrencyRateHistoryRow, HoldingRow } from '../db/schema';
 import type { SeriesHolding } from './holding-value-at';
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';

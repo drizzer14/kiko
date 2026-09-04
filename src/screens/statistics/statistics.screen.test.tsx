@@ -2,10 +2,6 @@
 // imported for real so `rateTableAt`, which `buildNetWorthSeries` calls, stays
 // the real implementation). Stub the native module so it loads without a
 // database, mirroring the net-worth-series builder test.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // The backfill orchestration reaches the network. Keep the pure helpers
 // (`missingDays`, `deriveLastBackfilledDay`) real, but stub `runBackfill` with a
 // never-resolving promise so the screen's mount effect leaves the line in its

@@ -1,8 +1,8 @@
 # Redesign feedback review (extracted from session e2562572)
 
-# PFF Redesign — Feedback Round 1 Implementation Plan
+# Kiko Redesign — Feedback Round 1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each app-source task is delegated to a PFF role agent (developer/designer/qa); the coordinator never edits app files inline.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each app-source task is delegated to a Kiko role agent (developer/designer/qa); the coordinator never edits app files inline.
 
 **Goal:** Apply the user's Round 1 feedback on the redesigned app — money color rules, a per-currency breakdown, multi-select filters, spacing, a navigation fix, per-account bank settings, a Settings list layout, a stable tab bar, and a new categories management sub-screen.
 
@@ -24,7 +24,7 @@
 
 - **Location:** the phase-1 worktree (`/Users/drizzer14/orca/workspaces/pff-ios/pff-redesign-phase-1`). Hold all commits; do not commit, push, or merge without an explicit request. The held Phase 6 work stays uncommitted; new work mixes into the working tree.
 - **Harness rule:** fix the underlying issue; never weaken a check. Run `npm run check:all` green before a task is done.
-- **Style:** every `.ts`/`.tsx` change follows the `pff-code-style`, `pff-design-system`, `pff-domain`, and `pff-architecture` skills. Invoke the relevant skill before writing.
+- **Style:** every `.ts`/`.tsx` change follows the `kiko-code-style`, `kiko-design-system`, `kiko-domain`, and `kiko-architecture` skills. Invoke the relevant skill before writing.
 - **Design tokens only:** no hard-coded colors, spacing, or radii. Use `theme.colors.*`, `theme.spacing(n)`, `theme.radii.*`.
 - **No new dependency** is needed for any task here.
 - **Base currency:** the app already resolves a base currency for net worth (see `src/rates/net-worth-view.ts`); reuse it, do not introduce a second source.
@@ -115,11 +115,11 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] **Step 1: Write failing test for `sumByCurrency`.** Given holdings `[UAH 100, USD 50, UAH 25]`, expect `[UAH 125, USD 50]` (order by absolute value). Empty input → `[]`.
 - [ ] **Step 2: Run it; confirm it fails.** `npm test -- currency-totals`. Expected: FAIL.
-- [ ] **Step 3: Implement `sumByCurrency`** as a pure reduce over holdings into a `Map<CurrencyCode, number>`, then map to `Money.of(currency, minor)` and sort by `Math.abs(minorUnits)` descending. Follow `pff-domain` for `Money` construction.
+- [ ] **Step 3: Implement `sumByCurrency`** as a pure reduce over holdings into a `Map<CurrencyCode, number>`, then map to `Money.of(currency, minor)` and sort by `Math.abs(minorUnits)` descending. Follow `kiko-domain` for `Money` construction.
 - [ ] **Step 4: Run it; confirm it passes.** `npm test -- currency-totals`. Expected: PASS.
 - [ ] **Step 5: Write failing test for `CurrencyBreakdown`.** Given two `Money` items, expect two formatted rows rendered. Mirror existing RNTL component-test patterns.
 - [ ] **Step 6: Run it; confirm it fails.** `npm test -- currency-breakdown`. Expected: FAIL.
-- [ ] **Step 7: Implement `CurrencyBreakdown`** — a `Box` column with `gap` from `theme.spacing`, each row a caption-sized line. Amounts via `MoneyText context="balance"`. Follow `pff-design-system`.
+- [ ] **Step 7: Implement `CurrencyBreakdown`** — a `Box` column with `gap` from `theme.spacing`, each row a caption-sized line. Amounts via `MoneyText context="balance"`. Follow `kiko-design-system`.
 - [ ] **Step 8: Run it; confirm it passes.** `npm test -- currency-breakdown`. Expected: PASS.
 - [ ] **Step 9: `npm run check:lint`; `npm run check:knip`** (the new exports must be consumed by Tasks 5 and 9; if knip flags them as unused now, that is expected until those tasks land — note it, do not add ignores).
 
@@ -276,7 +276,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] **Step 1: Write failing tests.** (a) The bank account detail renders a token input and a save action. (b) Settings renders no token input. Keep the existing token-save behavior covered.
 - [ ] **Step 2: Run them; confirm they fail.** `npm test -- account-detail settings.screen`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Move the token block (input + paste + open-link + save + status) into `account-detail.screen.tsx` under the bank branch (`kind === 'bank'`). Remove it from `settings.screen.tsx`. Reuse the existing `readToken`/save helpers and the sync-status formatting; do not duplicate logic — extract a shared piece if both screens still need part of it. Follow `pff-architecture` for the token/Keychain path.
+- [ ] **Step 3: Implement.** Move the token block (input + paste + open-link + save + status) into `account-detail.screen.tsx` under the bank branch (`kind === 'bank'`). Remove it from `settings.screen.tsx`. Reuse the existing `readToken`/save helpers and the sync-status formatting; do not duplicate logic — extract a shared piece if both screens still need part of it. Follow `kiko-architecture` for the token/Keychain path.
 - [ ] **Step 4: Run them; confirm they pass.** Expected: PASS.
 - [ ] **Step 5:** `npm run check:lint`; `npm run check:dup` (the moved block must not become a duplicate — extract if needed).
 
@@ -290,7 +290,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] **Step 1: Write failing test.** Assert the section renders as stacked full-width rows, not a single horizontal `row` Box, and that each row is independently pressable.
 - [ ] **Step 2: Run it; confirm it fails.** `npm test -- settings.screen`. Expected: FAIL.
-- [ ] **Step 3: Implement** the list layout in `settings.screen.tsx` + `settings.styles.ts`. Reuse the `GlassSurface` grouped-list container; each row full-width with a hairline separator. Follow `pff-design-system`.
+- [ ] **Step 3: Implement** the list layout in `settings.screen.tsx` + `settings.styles.ts`. Reuse the `GlassSurface` grouped-list container; each row full-width with a hairline separator. Follow `kiko-design-system`.
 - [ ] **Step 4: Run it; confirm it passes.** Expected: PASS.
 - [ ] **Step 5:** `npm run check:lint`.
 
@@ -306,7 +306,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 **Files:**
 - Modify: `src/db/schema.ts`
-- Create: a new migration under `src/db/migrations/` (follow the existing drizzle migration flow and `pff-architecture`)
+- Create: a new migration under `src/db/migrations/` (follow the existing drizzle migration flow and `kiko-architecture`)
 - Create: `src/repositories/categories.repo.ts`
 - Test: `src/repositories/categories.repo.test.ts`
 
@@ -317,7 +317,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] **Step 1: Write failing test.** After migration, `categoriesRepo.allQuery()` returns one seeded row per canonical category with a non-empty title and icon; `updateTitle`/`updateIcon` persist.
 - [ ] **Step 2: Run it; confirm it fails.** `npm test -- categories.repo`. Expected: FAIL.
-- [ ] **Step 3: Implement** the schema table, the migration (with the seed insert), and the repo. Regenerate the migration through the project's drizzle flow — do not hand-write SQL that bypasses it. Follow `pff-architecture` for `db.transaction` and query shape (mind the op-sqlite read shim).
+- [ ] **Step 3: Implement** the schema table, the migration (with the seed insert), and the repo. Regenerate the migration through the project's drizzle flow — do not hand-write SQL that bypasses it. Follow `kiko-architecture` for `db.transaction` and query shape (mind the op-sqlite read shim).
 - [ ] **Step 4: Run it; confirm it passes.** Expected: PASS.
 - [ ] **Step 5:** `npm run check:lint`; `npm run check:knip`; `npm run check:deps`.
 
@@ -348,7 +348,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] **Step 1: Write failing tests.** (a) The screen lists all seeded categories. (b) Renaming a category calls `updateTitle` and shows the new title. (c) Choosing a new icon calls `updateIcon`.
 - [ ] **Step 2: Run them; confirm they fail.** `npm test -- categories.screen`. Expected: FAIL.
-- [ ] **Step 3: Implement** the screen (grouped list, `SymbolIcon` per row, an edit affordance with a text input and an icon picker from a curated SF Symbol list), the `Categories` route in the Settings stack + `types.ts`, and the navigating list row in Settings. Follow `pff-design-system`. For the icon picker, use a fixed curated array of SF Symbol names (no dynamic/user free-text), consistent with `symbol.color.ts`'s current safe scope.
+- [ ] **Step 3: Implement** the screen (grouped list, `SymbolIcon` per row, an edit affordance with a text input and an icon picker from a curated SF Symbol list), the `Categories` route in the Settings stack + `types.ts`, and the navigating list row in Settings. Follow `kiko-design-system`. For the icon picker, use a fixed curated array of SF Symbol names (no dynamic/user free-text), consistent with `symbol.color.ts`'s current safe scope.
 - [ ] **Step 4: Run them; confirm they pass.** Expected: PASS.
 - [ ] **Step 5:** `npm run check:all` (full fast+medium tier) must be green.
 
@@ -360,7 +360,7 @@ Update the props file with `context?: 'balance' | 'transaction'` and a comment t
 
 - [ ] `npm run check:all` green (lint, dup, knip, deps, security, secrets, overrides).
 - [ ] Full Jest suite green (`npm test`).
-- [ ] `pff:reviewer` `/ponytail-review` on the working-tree diff for correctness + over-engineering.
+- [ ] `kiko:reviewer` `/ponytail-review` on the working-tree diff for correctness + over-engineering.
 - [ ] Manual walkthrough on the iOS 26 simulator: Home (white net worth, currency breakdown, multi-select filters, roomier rows) → Accounts (no heading overlap, bottom Add button, per-currency account totals, correct back-nav) → account detail (Monobank token here) → Settings (list layout, Categories sub-screen) → tab bar stays stable.
 - [ ] `npm run check:deep` is optional here (slow, manual) and remains the user's call per the standing handoff.
 

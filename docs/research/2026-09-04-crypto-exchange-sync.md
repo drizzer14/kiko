@@ -59,7 +59,7 @@ today; other coins need the currency generalization).
 ## Provider abstraction
 A `BalanceProvider { id, kind:'exchange'|'wallet', fetchBalances(deps) }`
 with injected deps; a generic `runBalanceSync(provider,{targetAccountId})`;
-credentials keyed `service: 'pff.<provider>.credentials'` as a JSON
+credentials keyed `service: 'kiko.<provider>.credentials'` as a JSON
 struct with biometric access-control.
 
 ## Recommended sequence

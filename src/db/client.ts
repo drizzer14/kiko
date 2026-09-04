@@ -1,15 +1,20 @@
 import type { DB, Scalar } from '@op-engineering/op-sqlite';
-import { open } from '@op-engineering/op-sqlite';
 import { drizzle } from 'drizzle-orm/op-sqlite';
 
+import { migrateLegacyDatabase } from './migrate-legacy-db';
 import * as schema from './schema';
 
 /**
  * The raw op-sqlite connection handle. Exposed so reactive consumers
  * (the `useLiveQuery` hook in Task 8) can call `rawDatabase.reactiveExecute`.
  * All ORM access should go through `database`; all writes through `write`.
+ *
+ * `migrateLegacyDatabase` runs first, synchronously, at module load: it
+ * migrates an existing legacy on-device database into `kiko.db` (or leaves an
+ * already-migrated / fresh `kiko.db` untouched) and returns the connection the
+ * app must adopt, before any drizzle/write setup below touches it.
  */
-export const rawDatabase = open({ name: 'pff.db' });
+export const rawDatabase = migrateLegacyDatabase();
 
 // SQLite defaults foreign_keys OFF per connection and op-sqlite's open() does
 // not change it. Enable enforcement once at module load, on the raw connection,

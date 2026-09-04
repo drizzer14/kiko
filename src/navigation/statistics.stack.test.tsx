@@ -4,10 +4,6 @@ import { isValidElement } from 'react';
 // The real Statistics screen wired into this stack pulls in db/client, which
 // opens a real op-sqlite connection at module load. op-sqlite has no Jest
 // binary, so stub it the same way the root-navigator and repo tests do.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 import '../design-system/unistyles';
 import StatisticsStack from './statistics.stack';
 

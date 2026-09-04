@@ -1,4 +1,4 @@
-# PFF quality harness
+# Kiko quality harness
 
 This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
@@ -31,8 +31,8 @@ Composite scripts:
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint.
 
-Automatic wiring (`harness/pff/hooks/hooks.json`, via the
-`pff` plugin — see "Harness agents" below): the fast tier
+Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
+`kiko` plugin — see "Harness agents" below): the fast tier
 (`scripts/checks/fast.sh`: lint, security, secrets on the touched
 file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
@@ -154,7 +154,7 @@ verified usage, not dead weight:
   is a pure false positive on them. Only the generated `*_snapshot.json`
   files are excluded; the hand-authored `.sql` migrations and every
   other JSON file stay in scope.
-- **`.npmrc` `min-release-age-exclude`**: `PFF`, the first-party
+- **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an
   explicitly pinned core framework, not a freshly-published
@@ -171,7 +171,7 @@ verified usage, not dead weight:
 
 ```
 min-release-age=7
-min-release-age-exclude[]=PFF
+min-release-age-exclude[]=Kiko
 min-release-age-exclude[]=react-native
 ```
 
@@ -230,8 +230,8 @@ ESM-compatible or patched line.
 
 ## Harness agents
 
-The PFF agent harness is a local Claude Code plugin at
-`harness/pff/` (`pff` in the local
+The Kiko agent harness is a local Claude Code plugin at
+`harness/kiko/` (`kiko` in the local
 `harness/.claude-plugin/marketplace.json`). It ships ten role agents,
 four project skills that thin-wrap superpowers, one vendored review
 command, and the tier hooks documented above.
@@ -270,7 +270,7 @@ at spawn time, per the table above.
 ### Ponytail isolation
 
 The reviewer's `/ponytail-review` command vendors only the review
-prompt from ponytail 4.9.0 (`harness/pff/commands/ponytail-review.md`).
+prompt from ponytail 4.9.0 (`harness/kiko/commands/ponytail-review.md`).
 No ponytail hooks are registered anywhere (no `SessionStart`,
 `SubagentStart`, or `UserPromptSubmit` from ponytail). The ponytail
 persona applies only inside that command's own output; the STE style

@@ -8,7 +8,7 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import PffCalendar from '../../calendar';
+import KikoCalendar from '../../calendar';
 import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
 
@@ -21,7 +21,7 @@ import { styles } from './date-range-field.styles';
 // day that is both today and inside the range keeps `todayTextColor`
 // (accent-blue) over the accent-blue fill — invisible. Marking `selected`
 // makes that same accent-on-accent day fall back to the on-accent contrast
-// color instead, matching PffCalendar's `selectedDayTextColor` theme token.
+// color instead, matching KikoCalendar's `selectedDayTextColor` theme token.
 type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean; selected: true };
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
@@ -131,7 +131,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   // earliest a user may pick is the earliest-data day (`minDate`, which the Home
   // screen sets to the earliest transaction's day, or today when there are no
   // transactions); the latest is today, so future days are never selectable.
-  // These bounds are forwarded to PffCalendar as 'YYYY-MM-DD' min/max so
+  // These bounds are forwarded to KikoCalendar as 'YYYY-MM-DD' min/max so
   // react-native-calendars greys out the out-of-range days; `handleDayPress`
   // also rejects them at selection time as a belt-and-suspenders guard.
   const selectableFloor = atLocalMidnight(minDate);
@@ -207,7 +207,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
       <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
         <Text variant="heading">Date Range</Text>
 
-        <PffCalendar
+        <KikoCalendar
           testID="date-range-calendar"
           markingType="period"
           markedDates={marks}

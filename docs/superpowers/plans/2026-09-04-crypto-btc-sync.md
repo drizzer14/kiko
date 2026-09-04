@@ -15,9 +15,9 @@
 - **BTC only.** `holdings.currency` stays the closed `BTC | USD | EUR | UAH` enum; no currency-model change; every non-BTC asset, multi-asset Binance, other exchanges, EVM wallets, IP allowlisting, and a crypto transaction ledger are OUT of scope.
 - **Ship order:** provider abstraction + wallet provider (Tasks 1–6) before Binance (Tasks 7–10); UI last (Tasks 11–17).
 - **No schema change** except widening the `transactions.source` TS enum to `'manual' | 'monobank' | 'btc_wallet' | 'binance'`. SQLite text enums are TypeScript-only and the drizzle snapshots do not record them (verified: `drizzle/migrations/meta/0005_snapshot.json` contains no enum values), so `npx drizzle-kit generate` MUST report no changes — do not hand-author a migration.
-- **Secrets:** the Binance `{apiKey, secret}` pair lives only in the iOS Keychain under `service: 'pff.binance.credentials'` with `ACCESS_CONTROL.BIOMETRY_CURRENT_SET` + `ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`. Never in SQLite, `metadata`, `console`, or a test fixture that a `key|secret|token` binding name precedes (gitleaks `generic-api-key` keys on those words — see Task 7).
+- **Secrets:** the Binance `{apiKey, secret}` pair lives only in the iOS Keychain under `service: 'kiko.binance.credentials'` with `ACCESS_CONTROL.BIOMETRY_CURRENT_SET` + `ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`. Never in SQLite, `metadata`, `console`, or a test fixture that a `key|secret|token` binding name precedes (gitleaks `generic-api-key` keys on those words — see Task 7).
 - **Every DB write goes through `write()`** (`src/db/client.ts`) — the repo layer already does; add no direct writes.
-- **New public URLs go in `.env` + `.env.example` + `src/env.d.ts`** via `@env`, never as string literals in source (pff-code-style "Externalize hardcoded config"). If a Jest run reports a new `@env` key as missing, run `npx jest --clearCache` once — the Babel transform cache predates the `.env` edit.
+- **New public URLs go in `.env` + `.env.example` + `src/env.d.ts`** via `@env`, never as string literals in source (kiko-code-style "Externalize hardcoded config"). If a Jest run reports a new `@env` key as missing, run `npx jest --clearCache` once — the Babel transform cache predates the `.env` edit.
 - **Naming:** uppercase acronyms stay uppercase in identifiers (`isBTCBalance`, `BTC_EXPLORER_ENDPOINT`); avoid a leading acronym by spelling it out (`bitcoinWalletProvider`, `isValidBitcoinAddress`). Full unabbreviated names. Blank line before every `return`/`if`/`for`. Two import groups (external+aliased, then relative), each sorted shortest-line-first. `import type` for type-only imports.
 - **Components:** default export, `.component.tsx`, one component per file, explicit `return`, theme tokens only (no raw colors/spacing), `props` not `rest` for a rest binding, title-case UI headings, sibling JSX nodes separated by a blank line. Reuse shared components (`Box`, `Text`, `PressableButton`, `SymbolIcon`, `ChipRow`) — no hand-rolled equivalents.
 - **Closed literal mapping** uses `ts-pattern` `match(...).exhaustive()`; the literal set is derived from one `as const` tuple.
@@ -1845,7 +1845,7 @@ git commit -m "feat(crypto-sync): pure-JS HMAC-SHA256 query signer for Binance (
 
 **Interfaces:**
 - Consumes: `react-native-keychain` (`setGenericPassword`, `getGenericPassword`, `resetGenericPassword`, `ACCESS_CONTROL.BIOMETRY_CURRENT_SET`, `ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY` — all present in v10.0.0's `lib/typescript/enums.d.ts`); `eitherSync`, `isRight`, `bifold` from `fnts/either`.
-- Produces: `type BinanceCredentials = { apiKey: string; secret: string }`; `saveCredentials(credentials): Promise<void>`; `readCredentials(): Promise<BinanceCredentials | undefined>`; `clearCredentials(): Promise<void>`. Keychain `service: 'pff.binance.credentials'`, username `'binance'`, password = `JSON.stringify(credentials)`.
+- Produces: `type BinanceCredentials = { apiKey: string; secret: string }`; `saveCredentials(credentials): Promise<void>`; `readCredentials(): Promise<BinanceCredentials | undefined>`; `clearCredentials(): Promise<void>`. Keychain `service: 'kiko.binance.credentials'`, username `'binance'`, password = `JSON.stringify(credentials)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1892,7 +1892,7 @@ describe('binance credentials', () => {
     await saveCredentials(fixture);
 
     expect(mockSet).toHaveBeenCalledWith('binance', JSON.stringify(fixture), {
-      service: 'pff.binance.credentials',
+      service: 'kiko.binance.credentials',
       accessControl: 'BiometryCurrentSet',
       accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
     });
@@ -1903,7 +1903,7 @@ describe('binance credentials', () => {
 
     expect(await readCredentials()).toEqual(fixture);
     expect(mockGet).toHaveBeenCalledWith({
-      service: 'pff.binance.credentials',
+      service: 'kiko.binance.credentials',
       authenticationPrompt: { title: 'Unlock Binance credentials' },
     });
   });
@@ -1946,7 +1946,7 @@ Expected: FAIL — `Cannot find module './binance.credentials'`.
 import { bifold, eitherSync, isRight } from 'fnts/either';
 import * as Keychain from 'react-native-keychain';
 
-const service = 'pff.binance.credentials';
+const service = 'kiko.binance.credentials';
 
 export type BinanceCredentials = { apiKey: string; secret: string };
 
@@ -2001,7 +2001,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Lint, security scan, commit**
 
 Run: `npm run check:lint && npm run check:security && npm run check:secrets`
-Expected: silent (the semgrep `pff-secret-in-db-or-log` rule sees no `console.*(…secret…)` or `insert().values(…credential…)`).
+Expected: silent (the semgrep `kiko-secret-in-db-or-log` rule sees no `console.*(…secret…)` or `insert().values(…credential…)`).
 
 ```bash
 git add src/crypto-sync/binance/binance.credentials.ts src/crypto-sync/binance/binance.credentials.test.ts
@@ -3740,7 +3740,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
 export default BinanceCredentialsField;
 ```
 
-The `try/catch` pairs mirror the Monobank token field verbatim (a reviewed, accepted shape for this exact save flow); `pff-code-style` allows plain code where an `either` fold would read worse.
+The `try/catch` pairs mirror the Monobank token field verbatim (a reviewed, accepted shape for this exact save flow); `kiko-code-style` allows plain code where an `either` fold would read worse.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -4436,8 +4436,8 @@ Report to the coordinator: the check outputs, the Stryker score, the smoke resul
 
 ## Scribe follow-ups (not developer work)
 
-- `.claude/skills/pff-architecture/SKILL.md`: add a "Balance sync (wallet / Binance)" section next to the Monobank pipeline — the `BalanceProvider`/`runBalanceSync` shape, "fetch before mark", `syncedAt` on the holding (never `settings.lastSyncAt`), Keychain `pff.binance.credentials` with biometric access control.
-- `.claude/skills/pff-domain/SKILL.md`: `transactions.source` now `manual | monobank | btc_wallet | binance`; `holdings.metadata` gains `{ walletAddress, syncedAt }` / `{ binanceAsset: 'BTC', syncedAt }`; `accounts.institution` conventional values `monobank | btc_wallet | binance`.
+- `.claude/skills/kiko-architecture/SKILL.md`: add a "Balance sync (wallet / Binance)" section next to the Monobank pipeline — the `BalanceProvider`/`runBalanceSync` shape, "fetch before mark", `syncedAt` on the holding (never `settings.lastSyncAt`), Keychain `kiko.binance.credentials` with biometric access control.
+- `.claude/skills/kiko-domain/SKILL.md`: `transactions.source` now `manual | monobank | btc_wallet | binance`; `holdings.metadata` gains `{ walletAddress, syncedAt }` / `{ binanceAsset: 'BTC', syncedAt }`; `accounts.institution` conventional values `monobank | btc_wallet | binance`.
 
 ## Open questions deferred (flagged, not decided here)
 

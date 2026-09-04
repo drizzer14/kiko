@@ -11,7 +11,7 @@ surface: the Keychain token, the on-device SQLite DB, and two outbound
 TLS calls (Monobank, CoinGecko).
 
 ## Already good (do not regress)
-- ATS on, arbitrary loads off (`ios/PFF/Info.plist`).
+- ATS on, arbitrary loads off (`ios/Kiko/Info.plist`).
 - Token sent as `X-Token` header, never in a URL.
 - No analytics / crash / Flipper SDKs; no `console.*` in `src`.
 - Error messages are status-only (no token, no response body).

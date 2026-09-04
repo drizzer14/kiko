@@ -8,12 +8,12 @@
 
 **Tech Stack:** React Native 0.87, TypeScript, `@op-engineering/op-sqlite` + `drizzle-orm`, `drizzle-kit` (`driver: 'expo'`), Jest + React Native Testing Library.
 
-**Spec:** This document's "Design & Data Model" section below doubles as the short spec. Read it together with the `pff-architecture` and `pff-domain` skills before implementing.
+**Spec:** This document's "Design & Data Model" section below doubles as the short spec. Read it together with the `kiko-architecture` and `kiko-domain` skills before implementing.
 
 ## Global Constraints
 
 - Worktree `/Users/drizzer14/orca/workspaces/pff-ios/pff-ux-round`, branch `drizzer14/pff-ux-round`.
-- **Every write goes through `write()` / one `db.transaction`** — including a single-statement one (`pff-architecture`). Reactive live queries only fire for writes made inside a transaction.
+- **Every write goes through `write()` / one `db.transaction`** — including a single-statement one (`kiko-architecture`). Reactive live queries only fire for writes made inside a transaction.
 - Migrations are **generated** with `npx drizzle-kit generate`, never hand-edited. After generating, hand-add the new file's import to `drizzle/migrations/migrations.js` (that index is hand-maintained; drizzle-kit does not touch it). Never hand-edit `meta/_journal.json` or the `*_snapshot.json`.
 - Repositories are functional modules of exported functions, constrained with `satisfies Repository` (never a `: Repository` annotation). Read functions return a Drizzle query builder (not executed); write functions perform a transactional write.
 - Store amounts as integer minor units only. Category values on `transactions` and on the rule are the category's **stable slug `key`** (lowercase), never its title — see the data model.
@@ -664,7 +664,7 @@ Expected: PASS.
   2. If `categoryChanged`: the name the rule keys on is the synced row's own description when read-only, else the (possibly edited) `description` just saved. Show a confirm `Alert` (see copy below); on **Apply**, `await categoryOverridesRepo.upsertCategoryOverride(name, selectedCategory)` then `navigation.goBack()`; on **Cancel**, `navigation.goBack()` without applying (the manual edit from step 1 still stands).
   3. If not `categoryChanged`: `navigation.goBack()` after step 1.
 
-  Keep the async UI handler as plain `async`/`Alert` (the `pff-code-style` carve-out: `either`/`guard` are for the data layer, not a screen handler that shows an `Alert`).
+  Keep the async UI handler as plain `async`/`Alert` (the `kiko-code-style` carve-out: `either`/`guard` are for the data layer, not a screen handler that shows an `Alert`).
 
   Confirm copy (title case, per design system):
   - Title: `Apply Category to All`
@@ -732,7 +732,7 @@ Expected: FAIL — two chips / split match.
   });
 ```
 
-(`resolveCategoryDisplay`/`buildCategoryDisplayMap` are already imported at line 8; a helper closing over `categoryByKey` stays in the body per `pff-code-style` "Helper placement".)
+(`resolveCategoryDisplay`/`buildCategoryDisplayMap` are already imported at line 8; a helper closing over `categoryByKey` stays in the body per `kiko-code-style` "Helper placement".)
 
 - [ ] **Step 4: Run test to verify it passes**
 

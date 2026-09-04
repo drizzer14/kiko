@@ -11,8 +11,8 @@
 - fiat-only currencies UAH/USD/EUR (BTC excluded)
 - every DB write goes through db.transaction()
 - tests are colocated *.test.ts(x)
-- the PFF harness checks (check:all) must stay green and must not be weakened
-- follow pff-code-style / pff-architecture / pff-domain skills
+- the Kiko harness checks (check:all) must stay green and must not be weakened
+- follow kiko-code-style / kiko-architecture / kiko-domain skills
 - holdings.balanceMinorUnits stays 0 and unused for cash rows
 - non-cash holdings and holdingValue/holdingValueBreakdown are unchanged
 

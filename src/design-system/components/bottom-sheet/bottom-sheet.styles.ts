@@ -27,7 +27,7 @@ export const styles = StyleSheet.create((theme) => ({
   // the opaque sheet renders on top of it, so only the area above the sheet
   // takes a tap. Position/size only — no color here. The scrim's own
   // translucent-black/blur fill is `backdropGlass`/`backdropFallback`
-  // below, a child of this Pressable, per `pff-design-system`'s
+  // below, a child of this Pressable, per `kiko-design-system`'s
   // "GlassSurface `isLiquidGlassSupported` branch": the visual layer
   // structurally branches on the same `isLiquidGlassSupported` check
   // GlassSurface uses, not a single tree with a conditional style.
@@ -47,7 +47,7 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The non-liquid-glass fallback (older iOS, or Android): no real blur
   // material is available without a new native dependency (see
-  // `pff-design-system` / the harness's dependency-age guard), so this
+  // `kiko-design-system` / the harness's dependency-age guard), so this
   // stays a flat translucent-black dim — `theme.colors.scrim`, not the
   // opaque `background` token — enough contrast for the sheet on top
   // without ever reading as solid black.

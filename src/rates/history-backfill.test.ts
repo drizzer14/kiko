@@ -1,7 +1,3 @@
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 import type { HistoryRateEntry } from './history-entry';
 import {
   type BackfillDeps,

@@ -1,6 +1,6 @@
 rules:
   # ---- Class A: deterministic hard-fail (severity ERROR) ----
-  - id: pff-disabled-tls
+  - id: kiko-disabled-tls
     languages: [typescript, javascript]
     severity: ERROR
     message: >
@@ -9,7 +9,7 @@ rules:
     patterns:
       - pattern-either:
           - pattern: "rejectUnauthorized: false"
-  - id: pff-insecure-random-for-secrets
+  - id: kiko-insecure-random-for-secrets
     languages: [typescript, javascript]
     severity: ERROR
     message: >
@@ -17,7 +17,7 @@ rules:
       keys, or secrets. Use a CSPRNG (react-native-get-random-values / crypto).
     patterns:
       - pattern-regex: (token|secret|key|nonce|otp)\s*=\s*.*Math\.random
-  - id: pff-secret-in-asyncstorage
+  - id: kiko-secret-in-asyncstorage
     languages: [typescript, javascript]
     severity: ERROR
     message: >
@@ -29,7 +29,7 @@ rules:
       - metavariable-regex:
           metavariable: $K
           regex: (?i).*(token|secret|password|credential).*
-  - id: pff-secret-in-db-or-log
+  - id: kiko-secret-in-db-or-log
     languages: [typescript, javascript]
     severity: ERROR
     message: >
@@ -43,7 +43,7 @@ rules:
           metavariable: $TOKEN
           regex: (?i).*(token|secret|password|credential).*
   # ---- Class A: code-style conventions (deterministic hard-fail) ----
-  - id: pff-repo-no-class
+  - id: kiko-repo-no-class
     languages: [typescript]
     severity: ERROR
     message: >
@@ -54,7 +54,7 @@ rules:
         - "*.repo.ts"
     patterns:
       - pattern-regex: \bclass\s+\w
-  - id: pff-repo-satisfies-not-annotation
+  - id: kiko-repo-satisfies-not-annotation
     languages: [typescript]
     severity: ERROR
     message: >
@@ -65,7 +65,7 @@ rules:
         - "*.repo.ts"
     patterns:
       - pattern: "const $X: Repository = { ... }"
-  - id: pff-money-column-integer-minor-units
+  - id: kiko-money-column-integer-minor-units
     languages: [typescript]
     severity: ERROR
     message: >
@@ -82,7 +82,7 @@ rules:
       - metavariable-regex:
           metavariable: $NAME
           regex: (?i).*(minor_units|amount|balance).*
-  - id: pff-component-rest-props-named-props
+  - id: kiko-component-rest-props-named-props
     languages: [typescript]
     severity: ERROR
     message: >
@@ -93,7 +93,7 @@ rules:
         - "*.component.tsx"
     patterns:
       - pattern-regex: \.\.\.rest\b
-  - id: pff-first-two-arg-not-curried
+  - id: kiko-first-two-arg-not-curried
     languages: [typescript]
     severity: ERROR
     message: >
@@ -101,7 +101,7 @@ rules:
       `first(toError)(result)` form.
     patterns:
       - pattern: first($X)($Y)
-  - id: pff-no-handrolled-pipe-compose
+  - id: kiko-no-handrolled-pipe-compose
     languages: [typescript]
     severity: ERROR
     message: >
@@ -112,7 +112,7 @@ rules:
           - pattern: const pipe = $F
           - pattern: const compose = $F
   # ---- Class B: override-eligible finding (severity WARNING) ----
-  - id: pff-webview-injectedjs-dynamic
+  - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]
     severity: WARNING
     message: >

@@ -3,11 +3,11 @@
 - Status: approved design, pre-implementation
 - Date: 2026-09-02
 - Base branch: `drizzer14/pff-redesign-review`
-- Related skills: `pff-domain`, `pff-architecture`, `pff-code-style`, `pff-design-system`
+- Related skills: `kiko-domain`, `kiko-architecture`, `kiko-code-style`, `kiko-design-system`
 
 ## Goal
 
-Add three capabilities to PFF:
+Add three capabilities to Kiko:
 
 1. Term-deposit interest and tax, with support for multiple
    contributions (top-ups) over the deposit term.
@@ -42,7 +42,7 @@ These are user decisions, confirmed before design:
 - No full generic holding-edit screen. Deposit top-up is a single
   focused action, not a rewrite of the create form into an edit form.
 - No liabilities or debt (net worth stays assets-only, per
-  `pff-domain`).
+  `kiko-domain`).
 - Liquid tax-rate configuration per holding is out of scope. The 23%
   rate is a single shared constant for deposits and corporate bonds.
 
@@ -253,7 +253,7 @@ One source of truth for both UI and repositories:
 ### C2. Repository `remove` functions
 
 Each is a `db.transaction()` write, per the hard rule in
-`pff-architecture`.
+`kiko-architecture`.
 
 - `transactionsRepo.remove(id)`:
   - Refuse (typed error) when the transaction is synced.

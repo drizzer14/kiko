@@ -3,10 +3,6 @@
 // Mocking open() with a minimal handle lets Drizzle build query builders
 // (the unit under test here) without a live native database. Only
 // `.toSQL()` shape is asserted, so no execute behavior is needed.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `updateName` runs its update through the `write` helper (one op-sqlite
 // transaction). Override `write` to run the callback against a fake transaction
 // handle so the test can capture the update payload issued inside that single

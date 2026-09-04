@@ -1,5 +1,6 @@
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { migrateLegacyToken } from '../monobank/token';
 import { runMigrations } from './run-migrations';
 
 type MigrationState =
@@ -13,7 +14,12 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   useEffect(() => {
     let cancelled = false;
 
+    // Run the schema migrations, then migrate a legacy Keychain token, before
+    // reporting success. Because children (and thus the auto-sync hook that
+    // first reads the token) mount only on success, awaiting the token
+    // migration here guarantees it completes before any token read.
     runMigrations()
+      .then(() => migrateLegacyToken())
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

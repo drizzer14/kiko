@@ -8,7 +8,7 @@ No. 80), with compliance due 1 January 2026 and a transitional period
 into mid-2026. BUT every Open Banking API requires the CALLER to be an
 **NBU-authorised TPP (AISP)** — a licensed legal entity with audits.
 **A personal side-project cannot self-serve any of these APIs.**
-Monobank's self-issued personal token is the anomaly that makes PFF
+Monobank's self-issued personal token is the anomaly that makes Kiko
 possible; it is effectively the only self-serve personal bank API.
 
 ## Current sync architecture (the template)

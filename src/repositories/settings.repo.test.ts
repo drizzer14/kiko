@@ -1,7 +1,3 @@
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 import { settingsRepo } from './settings.repo';
 
 describe('settingsRepo', () => {

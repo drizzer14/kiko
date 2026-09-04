@@ -4,7 +4,7 @@
 
 **Goal:** Encrypt the SQLite database with SQLCipher behind a device-only Keychain key (migrating existing plaintext data once), harden the Monobank token's Keychain policy, pin `api.monobank.ua`, exclude the DB from backups, mechanize the no-`console` rule, and add a Face ID / passcode `LockGate` with a settings toggle, a foreground grace period, and a native app-switcher snapshot cover.
 
-**Architecture:** `src/db/client.ts` stops opening the database at module load and instead exposes a lazy connection handle plus an async `initDatabase()` that `MigrationsGate` awaits before `runMigrations()`. A new `src/db/encrypted-database.ts` owns the SQLCipher open and the one-time `sqlcipher_export` of the legacy plaintext `pff.db` into `pff-encrypted.db` (the key is persisted to the Keychain only after the export completes, so a crash never leaves an unreadable half-written file). A new `src/auth/` module wraps `@sbaiahmed1/react-native-biometrics`, holds the `useAppLock` hook (cold-launch lock + `AppState` grace math), and renders the `LockGate` that wraps the navigator inside `MigrationsGate`. Native changes (`AppDelegate.swift` privacy overlay + backup exclusion, `Info.plist` pins + Face ID string) are not unit-testable and carry explicit manual device-verification steps.
+**Architecture:** `src/db/client.ts` stops opening the database at module load and instead exposes a lazy connection handle plus an async `initDatabase()` that `MigrationsGate` awaits before `runMigrations()`. A new `src/db/encrypted-database.ts` owns the SQLCipher open and the one-time `sqlcipher_export` of the legacy plaintext `pff.db` into `kiko-encrypted.db` (the key is persisted to the Keychain only after the export completes, so a crash never leaves an unreadable half-written file). A new `src/auth/` module wraps `@sbaiahmed1/react-native-biometrics`, holds the `useAppLock` hook (cold-launch lock + `AppState` grace math), and renders the `LockGate` that wraps the navigator inside `MigrationsGate`. Native changes (`AppDelegate.swift` privacy overlay + backup exclusion, `Info.plist` pins + Face ID string) are not unit-testable and carry explicit manual device-verification steps.
 
 **Tech Stack:** React Native 0.87.1 (bare, Hermes, new arch), TypeScript, `@op-engineering/op-sqlite` 18.1.4 (SQLCipher build via `package.json` `"op-sqlite": { "sqlcipher": true }`), `drizzle-orm` 0.45.2 + `drizzle-kit`, `react-native-keychain` 10.0.0, new dependency `@sbaiahmed1/react-native-biometrics@0.16.0`, `fnts` 3, `ts-pattern` 5, `react-native-unistyles` 3, Jest 29 + `@testing-library/react-native` 14, Biome 2.5, Swift (AppDelegate).
 
@@ -16,10 +16,10 @@
 - Standing harness rule (root `CLAUDE.md`): **fix the underlying issue, never weaken a check.** No `|| true`, no bare `biome-ignore` (only `OVERRIDE(...)`-justified), no unjustified `knip.json` / `.depcheckrc.json` / `.gitleaks.toml` entries.
 - `npm run check:all` must be green at every task's commit checkpoint (`check:lint`, `check:dup`, `check:knip`, `check:deps`, `check:security`, `check:secrets`, `check:overrides`). `npm run check:deep` (Stryker mutation ≥ 60 + osv-scanner) runs once before declaring the feature done (Task 15). The 2 known `image-size` CVEs are accepted debt per `CLAUDE.md` — do not suppress them.
 - `.npmrc` `min-release-age=7`: the new dependency is pinned to the exact version `0.16.0`, published 2026-08-07 (verified with `npm view @sbaiahmed1/react-native-biometrics time`), so it clears the 7-day floor with no `.npmrc` exclude. Its only peer beyond `react`/`react-native` is `expo`, declared `optional: true` — no Expo runtime is pulled in.
-- Style rules from `.claude/skills/pff-code-style/SKILL.md` apply to every file: single quotes, 2-space indent, 100-char width, trailing commas, `(x) =>` parens; **blank line before every `return` / `if` / `for` / `while` / `switch`** (except as the first statement in a block); imports in two groups (external + aliased, then relative), each group sorted shortest-line-first; `import type` / inline `type` for types; `ts-pattern` `match(...).exhaustive()` for closed literal unions; `fnts` `either` / `eitherSync` / `isLeft` / `bifold` instead of `try`/`catch`; full unabbreviated names with uppercase acronyms (`DB`, `SQL`, `ID`); components are default exports in `<name>.component.tsx` inside their own folder with `.props.ts` / `.styles.ts` siblings, one component per file, explicit `return`; infrastructure React modules (gates, hooks) stay unsuffixed; helpers that close over nothing live at module scope; components read theme tokens only (no raw colors/spacing); blank line between sibling JSX nodes; UI headings in Title Case.
-- Repository rules (`pff-architecture`): every write goes through `write()` from `src/db/client.ts`; read functions return Drizzle query builders; repositories are plain modules with `satisfies Repository`.
+- Style rules from `.claude/skills/kiko-code-style/SKILL.md` apply to every file: single quotes, 2-space indent, 100-char width, trailing commas, `(x) =>` parens; **blank line before every `return` / `if` / `for` / `while` / `switch`** (except as the first statement in a block); imports in two groups (external + aliased, then relative), each group sorted shortest-line-first; `import type` / inline `type` for types; `ts-pattern` `match(...).exhaustive()` for closed literal unions; `fnts` `either` / `eitherSync` / `isLeft` / `bifold` instead of `try`/`catch`; full unabbreviated names with uppercase acronyms (`DB`, `SQL`, `ID`); components are default exports in `<name>.component.tsx` inside their own folder with `.props.ts` / `.styles.ts` siblings, one component per file, explicit `return`; infrastructure React modules (gates, hooks) stay unsuffixed; helpers that close over nothing live at module scope; components read theme tokens only (no raw colors/spacing); blank line between sibling JSX nodes; UI headings in Title Case.
+- Repository rules (`kiko-architecture`): every write goes through `write()` from `src/db/client.ts`; read functions return Drizzle query builders; repositories are plain modules with `satisfies Repository`.
 - Tests: Jest via `npx jest <path>`; RNTL `render`/`renderHook` are awaited (see existing tests). Test files sit beside the module (`<name>.test.ts[x]`). Test factories may only reference variables prefixed `mock` (babel-plugin-jest-hoist).
-- Copy for the user-facing strings in this plan is final: `"Unlock PFF with Face ID"` (Info.plist), `"Unlock PFF"` (biometric prompt title), `"App Lock"` (settings row), `"Lock again after"` (grace label), grace labels `Immediately` / `30 sec` / `1 min` / `5 min`.
+- Copy for the user-facing strings in this plan is final: `"Unlock Kiko with Face ID"` (Info.plist), `"Unlock Kiko"` (biometric prompt title), `"App Lock"` (settings row), `"Lock again after"` (grace label), grace labels `Immediately` / `30 sec` / `1 min` / `5 min`.
 
 ---
 
@@ -38,8 +38,8 @@
 | `src/db/client.ts` (+ `client.test.ts`) | modify | Lazy `rawDatabase` proxy, `initDatabase()`, proxy-based `wrapClientForDrizzle`. |
 | `src/db/migrations.gate.tsx` (+ new `migrations.gate.test.tsx`) | modify | `initDatabase()` then `runMigrations()`. |
 | `src/db/use-live-query.ts` (+ `.test.ts`) | modify | Add `isLoading` to the return shape. |
-| `ios/PFF/AppDelegate.swift` | modify | Privacy overlay on resign-active/background; backup exclusion of DB files. |
-| `ios/PFF/Info.plist` | modify | `NSPinnedDomains` for `api.monobank.ua`; `NSFaceIDUsageDescription`. |
+| `ios/Kiko/AppDelegate.swift` | modify | Privacy overlay on resign-active/background; backup exclusion of DB files. |
+| `ios/Kiko/Info.plist` | modify | `NSPinnedDomains` for `api.monobank.ua`; `NSFaceIDUsageDescription`. |
 | `docs/security/README.md` | create | Pin rotation runbook + accepted-risk register (jailbreak, pre-existing token, migration residuals). |
 | `jest/setup.js` | modify | Global mock for `@sbaiahmed1/react-native-biometrics`. |
 | `src/auth/biometrics.ts` (+ `.test.ts`) | create | Thin wrapper: `isSensorAvailable()` → `SensorStatus`, `authenticate()` → `AuthResult`. |
@@ -57,7 +57,7 @@
 
 Spec items with **no code change**, handled as verification steps: `monobank-token-field.component.tsx` prefill (Task 15 — the token has no `accessControl`, so its eager `readToken()` is a silent double *read*, not a prompt; existing tests already cover the prefill), `knip.json` / `.depcheckrc.json` (Task 9 verifies the new dependency is seen through `src/auth/biometrics.ts`; no exception is added), jailbreak detection (documented as accepted risk in Task 8's doc).
 
-Spec deviations, decided here: (1) `getOrCreateDbKey()` is split into `readDbKey` / `generateDbKey` / `storeDbKey` because the key must be persisted *after* the plaintext export succeeds — the composed "get or create" behavior (idempotent, generate-only-when-absent) is tested on `openEncryptedDatabase()` in Task 4. (2) The encrypted file is `pff-encrypted.db`, not `pff.db`: op-sqlite has no rename API, so the export writes to a new file and deletes the plaintext one. (3) `useAppLock` returns `{ isReady, isLocked, unlock }` — `isReady` is needed so `LockGate` never renders real data before `settings.lockEnabled` has loaded. (4) `LockGate` lives in `src/auth/lock-gate/` (component-folder convention) rather than flat `src/auth/lock-gate.component.tsx`. (5) `Screen` cannot be used by `LockGate` (its `useBottomTabBarHeight()` throws outside the tab navigator), so the gate composes `SafeAreaView` + `Box` directly.
+Spec deviations, decided here: (1) `getOrCreateDbKey()` is split into `readDbKey` / `generateDbKey` / `storeDbKey` because the key must be persisted *after* the plaintext export succeeds — the composed "get or create" behavior (idempotent, generate-only-when-absent) is tested on `openEncryptedDatabase()` in Task 4. (2) The encrypted file is `kiko-encrypted.db`, not `pff.db`: op-sqlite has no rename API, so the export writes to a new file and deletes the plaintext one. (3) `useAppLock` returns `{ isReady, isLocked, unlock }` — `isReady` is needed so `LockGate` never renders real data before `settings.lockEnabled` has loaded. (4) `LockGate` lives in `src/auth/lock-gate/` (component-folder convention) rather than flat `src/auth/lock-gate.component.tsx`. (5) `Screen` cannot be used by `LockGate` (its `useBottomTabBarHeight()` throws outside the tab navigator), so the gate composes `SafeAreaView` + `Box` directly.
 
 ---
 
@@ -283,7 +283,7 @@ git commit -m "feat(security): store the Monobank token WHEN_UNLOCKED_THIS_DEVIC
   export const toSQLCipherRawKey: (keyHex: string) => string;  // "x'<hex>'" — SQLCipher raw-key syntax
   ```
 
-Design note (why not `crypto.getRandomValues`): Hermes ships no WebCrypto — a `strings` scan of the RN 0.87 `hermesvm` binary under `ios/Pods/hermes-engine` finds no `getRandomValues`. SQLite's `randomblob()` is a ChaCha20 stream keyed with 44 bytes from the OS CSPRNG (`/dev/urandom` via the unix VFS) — CSPRNG-grade and already in the app. `Math.random` is banned for secrets by `rules/semgrep-mobile.yml` (`pff-insecure-random-for-secrets`). If review prefers the platform CSPRNG directly, the drop-in alternative is the `react-native-get-random-values` package (`SecRandomCopyBytes`); that is a new dependency and needs user approval.
+Design note (why not `crypto.getRandomValues`): Hermes ships no WebCrypto — a `strings` scan of the RN 0.87 `hermesvm` binary under `ios/Pods/hermes-engine` finds no `getRandomValues`. SQLite's `randomblob()` is a ChaCha20 stream keyed with 44 bytes from the OS CSPRNG (`/dev/urandom` via the unix VFS) — CSPRNG-grade and already in the app. `Math.random` is banned for secrets by `rules/semgrep-mobile.yml` (`kiko-insecure-random-for-secrets`). If review prefers the platform CSPRNG directly, the drop-in alternative is the `react-native-get-random-values` package (`SecRandomCopyBytes`); that is a new dependency and needs user approval.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -338,7 +338,7 @@ describe('db-key', () => {
   it('stores the key device-only and readable only while unlocked, under its own service', async () => {
     await storeDbKey(HEX_KEY);
 
-    expect(Keychain.setGenericPassword).toHaveBeenCalledWith('pff', HEX_KEY, {
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith('kiko', HEX_KEY, {
       service: 'pff.db.key',
       accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
     });
@@ -348,7 +348,7 @@ describe('db-key', () => {
     const keyHex = generateDbKey();
 
     expect(keyHex).toBe(HEX_KEY);
-    expect(open).toHaveBeenCalledWith({ name: 'pff-key-entropy', location: ':memory:' });
+    expect(open).toHaveBeenCalledWith({ name: 'kiko-key-entropy', location: ':memory:' });
     expect(mockExecuteSync).toHaveBeenCalledWith(expect.stringContaining('randomblob(?)'), [32]);
   });
 
@@ -384,7 +384,7 @@ import * as Keychain from 'react-native-keychain';
 /** Keychain service holding the SQLCipher key. Separate from the Monobank token's service. */
 export const DB_KEY_SERVICE = 'pff.db.key';
 
-const KEY_USERNAME = 'pff';
+const KEY_USERNAME = 'kiko';
 const KEY_BYTES = 32;
 const HEX_CHARS_PER_BYTE = 2;
 
@@ -413,7 +413,7 @@ export const storeDbKey = async (keyHex: string): Promise<void> => {
  * throwaway in-memory connection so no file is touched. Never `Math.random`.
  */
 export const generateDbKey = (): string => {
-  const entropy = open({ name: 'pff-key-entropy', location: ':memory:' });
+  const entropy = open({ name: 'kiko-key-entropy', location: ':memory:' });
   const result = entropy.executeSync('SELECT lower(hex(randomblob(?))) AS keyHex', [KEY_BYTES]);
   entropy.close();
   const keyHex = result.rows[0]?.keyHex;
@@ -465,14 +465,14 @@ This is the highest-risk task in the plan: it moves every existing user's data. 
 - Produces:
   ```ts
   export const PLAINTEXT_DATABASE_NAME = 'pff.db';
-  export const ENCRYPTED_DATABASE_NAME = 'pff-encrypted.db';
+  export const ENCRYPTED_DATABASE_NAME = 'kiko-encrypted.db';
   export const openEncryptedDatabase: () => Promise<DB>;
   ```
 
 Behavior contract of `openEncryptedDatabase()`:
 1. Throws if `isSQLCipher()` is false (misconfigured native build must fail loudly, never fall back to plaintext).
-2. Key present in Keychain → delete any leftover `pff.db` (a crash window from a previous run) → open `pff-encrypted.db` with the key.
-3. Key absent → generate → if `pff.db` exists (opened with `failOnCreate: true`): discard any stale partial `pff-encrypted.db`, then `ATTACH DATABASE <path> AS encrypted KEY <rawKey>` + `SELECT sqlcipher_export('encrypted')` + `DETACH DATABASE encrypted` on the plaintext connection → `storeDbKey` → `plaintext.delete()` → open encrypted. If `pff.db` does not exist (fresh install): `storeDbKey` → open encrypted.
+2. Key present in Keychain → delete any leftover `pff.db` (a crash window from a previous run) → open `kiko-encrypted.db` with the key.
+3. Key absent → generate → if `pff.db` exists (opened with `failOnCreate: true`): discard any stale partial `kiko-encrypted.db`, then `ATTACH DATABASE <path> AS encrypted KEY <rawKey>` + `SELECT sqlcipher_export('encrypted')` + `DETACH DATABASE encrypted` on the plaintext connection → `storeDbKey` → `plaintext.delete()` → open encrypted. If `pff.db` does not exist (fresh install): `storeDbKey` → open encrypted.
 4. Any export failure propagates (MigrationsGate shows it); the key is not stored and the plaintext is untouched, so the next launch retries from scratch.
 
 - [ ] **Step 1: Enable the SQLCipher backend in the native build**
@@ -743,10 +743,10 @@ export const PLAINTEXT_DATABASE_NAME = 'pff.db';
 /**
  * The SQLCipher-encrypted database. A different file name because op-sqlite
  * exposes no rename: the one-time export below writes here, then deletes the
- * plaintext file. Mirrored by name in `ios/PFF/AppDelegate.swift`
+ * plaintext file. Mirrored by name in `ios/Kiko/AppDelegate.swift`
  * (`excludeDatabaseFilesFromBackup`) — keep the two in sync.
  */
-export const ENCRYPTED_DATABASE_NAME = 'pff-encrypted.db';
+export const ENCRYPTED_DATABASE_NAME = 'kiko-encrypted.db';
 
 const ATTACHED_ALIAS = 'encrypted';
 
@@ -863,11 +863,11 @@ Upgrade path — existing data must survive:
 1. On the simulator or device, install the **current `main`** build (`git stash` / a separate checkout is fine), create at least one account + holding + a manual transaction, and note the exact balances.
 2. Install the feature build over it (do not delete the app). Launch.
 3. Expected: the app opens straight to Home with the same accounts, holdings, and balances. No "Migration error" text.
-4. Inspect the container: `xcrun simctl get_app_container booted com.dmytro.pff data` → `ls -la <container>/Library/` shows `pff-encrypted.db` (plus `-wal`/`-shm`) and **no** `pff.db`.
-5. `sqlite3 <container>/Library/pff-encrypted.db 'SELECT count(*) FROM accounts;'` from the Mac must print `Error: file is not a database` — proof the file is encrypted (the stock macOS `sqlite3` has no SQLCipher).
+4. Inspect the container: `xcrun simctl get_app_container booted com.dmytro.pff data` → `ls -la <container>/Library/` shows `kiko-encrypted.db` (plus `-wal`/`-shm`) and **no** `pff.db`.
+5. `sqlite3 <container>/Library/kiko-encrypted.db 'SELECT count(*) FROM accounts;'` from the Mac must print `Error: file is not a database` — proof the file is encrypted (the stock macOS `sqlite3` has no SQLCipher).
 
 Fresh-install path:
-6. Delete the app, install the feature build, launch. Expected: opens to an empty Home; `ls Library/` shows `pff-encrypted.db` only.
+6. Delete the app, install the feature build, launch. Expected: opens to an empty Home; `ls Library/` shows `kiko-encrypted.db` only.
 7. Kill and relaunch twice. Expected: no migration error; data persists (proves the stored key reopens the file).
 
 ---
@@ -1381,17 +1381,17 @@ Now perform Task 4 Step 7 (manual upgrade + fresh-install verification) — the 
 Not unit-testable; verified on the simulator/device.
 
 **Files:**
-- Modify: `ios/PFF/AppDelegate.swift:13-34`
+- Modify: `ios/Kiko/AppDelegate.swift:13-34`
 
 **Interfaces:**
-- Consumes: file names `pff-encrypted.db` / `pff.db` (Task 4 constants; mirrored as Swift literals).
+- Consumes: file names `kiko-encrypted.db` / `pff.db` (Task 4 constants; mirrored as Swift literals).
 - Produces: a black overlay over the key window whenever the app is not active (redacting the app-switcher snapshot); `NSURLIsExcludedFromBackupKey` set on every DB file present in `Library/`.
 
 Why native, per the spec's "check op-sqlite's own API first": op-sqlite 18.1.4 exposes no backup-exclusion or file-attribute API (verified against `lib/typescript/src/functions.d.ts` and `types.d.ts` — only `getDbPath`, `delete`, `moveAssetsDatabase`). Setting the attribute in the AppDelegate, which this task already edits for the overlay, avoids a new dependency or a hand-rolled native module for one flag.
 
 - [ ] **Step 1: Add the lifecycle hooks and helpers**
 
-In `ios/PFF/AppDelegate.swift`, inside `class AppDelegate`, add after the `application(_:didFinishLaunchingWithOptions:)` method (before the closing brace of the class):
+In `ios/Kiko/AppDelegate.swift`, inside `class AppDelegate`, add after the `application(_:didFinishLaunchingWithOptions:)` method (before the closing brace of the class):
 
 ```swift
   // MARK: - Privacy: app-switcher snapshot redaction
@@ -1440,7 +1440,7 @@ In `ios/PFF/AppDelegate.swift`, inside `class AppDelegate`, add after the `appli
   private func excludeDatabaseFilesFromBackup() {
     let fileManager = FileManager.default
     guard let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
-    let baseNames = ["pff-encrypted.db", "pff.db"]
+    let baseNames = ["kiko-encrypted.db", "pff.db"]
     let suffixes = ["", "-wal", "-shm", "-journal"]
     for baseName in baseNames {
       for suffix in suffixes {
@@ -1462,14 +1462,14 @@ Also add one line at the end of `application(_:didFinishLaunchingWithOptions:)`,
 
 - [ ] **Step 2: Build**
 
-Run: `npm run ios` (or `xcodebuild -workspace ios/PFF.xcworkspace -scheme PFF -sdk iphonesimulator -configuration Debug build`)
+Run: `npm run ios` (or `xcodebuild -workspace ios/Kiko.xcworkspace -scheme Kiko -sdk iphonesimulator -configuration Debug build`)
 Expected: compiles with no Swift errors or warnings in `AppDelegate.swift`.
 
 - [ ] **Step 3: MANUAL VERIFICATION — snapshot redaction**
 
 1. Launch the app on the simulator, navigate to Home with visible balances.
 2. Open the app switcher (Simulator: Device → App Switcher, or swipe up and hold).
-3. Expected: the PFF card is solid black — no balances, no account names visible.
+3. Expected: the Kiko card is solid black — no balances, no account names visible.
 4. Tap the card to return. Expected: the overlay is gone immediately and the UI is interactive.
 5. Pull down Control Center over the app and dismiss it. Expected: the app reappears with no lingering black cover.
 
@@ -1479,8 +1479,8 @@ Run (after the app has been backgrounded at least once):
 
 ```bash
 CONTAINER=$(xcrun simctl get_app_container booted com.dmytro.pff data)
-ls -la "$CONTAINER/Library/" | grep pff
-xattr -l "$CONTAINER/Library/pff-encrypted.db"
+ls -la "$CONTAINER/Library/" | grep kiko
+xattr -l "$CONTAINER/Library/kiko-encrypted.db"
 ```
 
 Expected: the `xattr` output lists a backup-exclusion attribute — `com.apple.MobileBackup` (iOS naming) or `com.apple.metadata:com_apple_backup_excludeItem` (macOS naming the simulator may use). If `-wal` / `-shm` files exist, `xattr -l` on them shows the same attribute.
@@ -1488,7 +1488,7 @@ Expected: the `xattr` output lists a backup-exclusion attribute — `com.apple.M
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ios/PFF/AppDelegate.swift
+git add ios/Kiko/AppDelegate.swift
 git commit -m "build(native): privacy overlay on resign-active and backup exclusion for the database"
 ```
 
@@ -1499,7 +1499,7 @@ git commit -m "build(native): privacy overlay on resign-active and backup exclus
 Not unit-testable; the plist is lint-checked and the pins are verified on device (positive and negative).
 
 **Files:**
-- Modify: `ios/PFF/Info.plist:29-35` (`NSAppTransportSecurity` dict)
+- Modify: `ios/Kiko/Info.plist:29-35` (`NSAppTransportSecurity` dict)
 - Create: `docs/security/README.md`
 
 **Interfaces:**
@@ -1562,8 +1562,8 @@ Replace the `NSAppTransportSecurity` dict (lines 29-35) with:
 	</dict>
 ```
 
-Run: `plutil -lint ios/PFF/Info.plist`
-Expected: `ios/PFF/Info.plist: OK`.
+Run: `plutil -lint ios/Kiko/Info.plist`
+Expected: `ios/Kiko/Info.plist: OK`.
 
 Run: `npm run check:secrets`
 Expected: silent success (verified with gitleaks 8.30.1 against a sample plist holding these exact values — no finding, so no `.gitleaks.toml` change is needed).
@@ -1573,7 +1573,7 @@ Expected: silent success (verified with gitleaks 8.30.1 against a sample plist h
 Create `docs/security/README.md`:
 
 ```markdown
-# PFF security posture
+# Kiko security posture
 
 Companion to `docs/superpowers/specs/2026-09-04-security-and-app-lock-design.md`.
 This file is the operational record: what is pinned, how to rotate it, and
@@ -1581,7 +1581,7 @@ which risks are accepted rather than mitigated.
 
 ## Certificate pinning — `api.monobank.ua`
 
-`ios/PFF/Info.plist` → `NSAppTransportSecurity` → `NSPinnedDomains` pins the
+`ios/Kiko/Info.plist` → `NSAppTransportSecurity` → `NSPinnedDomains` pins the
 Monobank API host (the only host that carries the personal token) with two
 CA SPKI-SHA256 pins under `NSPinnedCAIdentities`. CoinGecko is not pinned:
 that call carries no secret.
@@ -1619,7 +1619,7 @@ build, and immediately if a sync starts failing with a TLS error.
    pin at the next convenient release).
 3. If Monobank moved to a different CA: replace BOTH pins with the new
    root (primary) and new intermediate (backup), update the table above,
-   `plutil -lint ios/PFF/Info.plist`, rebuild, run the positive and negative
+   `plutil -lint ios/Kiko/Info.plist`, rebuild, run the positive and negative
    device checks below, ship.
 4. Positive check: on device, Monobank sync succeeds.
 5. Negative check: temporarily corrupt one character in BOTH pins, rebuild,
@@ -1662,7 +1662,7 @@ Run: `npm run check:secrets && npm run check:lint`
 Expected: silent success.
 
 ```bash
-git add ios/PFF/Info.plist docs/security/README.md
+git add ios/Kiko/Info.plist docs/security/README.md
 git commit -m "build(native): pin api.monobank.ua CA identities; add security runbook and accepted-risk register"
 ```
 
@@ -1673,7 +1673,7 @@ git commit -m "build(native): pin api.monobank.ua CA identities; add security ru
 **Files:**
 - Modify: `package.json` (dependencies), `package-lock.json`
 - Modify: `ios/Podfile.lock` (via `pod install`)
-- Modify: `ios/PFF/Info.plist` (add `NSFaceIDUsageDescription` after `NSAppTransportSecurity`)
+- Modify: `ios/Kiko/Info.plist` (add `NSFaceIDUsageDescription` after `NSAppTransportSecurity`)
 - Modify: `jest/setup.js` (global mock)
 - Create: `src/auth/biometrics.ts`
 - Create: `src/auth/biometrics.test.ts`
@@ -1709,14 +1709,14 @@ Expected: `ios/Podfile.lock` gains a `ReactNativeBiometrics` pod entry (the pack
 
 - [ ] **Step 2: Add the Face ID usage string**
 
-In `ios/PFF/Info.plist`, after the closing `</dict>` of `NSAppTransportSecurity`, add:
+In `ios/Kiko/Info.plist`, after the closing `</dict>` of `NSAppTransportSecurity`, add:
 
 ```xml
 	<key>NSFaceIDUsageDescription</key>
-	<string>Unlock PFF with Face ID</string>
+	<string>Unlock Kiko with Face ID</string>
 ```
 
-Run: `plutil -lint ios/PFF/Info.plist`
+Run: `plutil -lint ios/Kiko/Info.plist`
 Expected: `OK`.
 
 - [ ] **Step 3: Register a global Jest mock**
@@ -1803,10 +1803,10 @@ describe('authenticate', () => {
   it('always allows the device passcode as a fallback and titles the sheet with the prompt', async () => {
     mockAuthenticate.mockResolvedValue({ success: true });
 
-    await authenticate('Unlock PFF');
+    await authenticate('Unlock Kiko');
 
     expect(mockAuthenticate).toHaveBeenCalledWith({
-      title: 'Unlock PFF',
+      title: 'Unlock Kiko',
       allowDeviceCredentials: true,
       cancelLabel: 'Cancel',
       fallbackLabel: 'Use Passcode',
@@ -1815,35 +1815,35 @@ describe('authenticate', () => {
 
   it('maps success', async () => {
     mockAuthenticate.mockResolvedValue({ success: true });
-    expect(await authenticate('Unlock PFF')).toEqual({ kind: 'success' });
+    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'success' });
   });
 
   it.each(['USER_CANCEL', 'SYSTEM_CANCEL', 'USER_FALLBACK'])('maps %s to cancelled', async (errorCode) => {
     mockAuthenticate.mockResolvedValue({ success: false, errorCode });
-    expect(await authenticate('Unlock PFF')).toEqual({ kind: 'cancelled' });
+    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'cancelled' });
   });
 
   it.each(['BIOMETRY_LOCKOUT', 'BIOMETRY_LOCKOUT_PERMANENT', 'FACE_ID_LOCKOUT', 'TOUCH_ID_LOCKOUT'])(
     'maps %s to lockout',
     async (errorCode) => {
       mockAuthenticate.mockResolvedValue({ success: false, errorCode });
-      expect(await authenticate('Unlock PFF')).toEqual({ kind: 'lockout' });
+      expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'lockout' });
     },
   );
 
   it('maps PASSCODE_NOT_SET', async () => {
     mockAuthenticate.mockResolvedValue({ success: false, errorCode: 'PASSCODE_NOT_SET' });
-    expect(await authenticate('Unlock PFF')).toEqual({ kind: 'passcodeNotSet' });
+    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'passcodeNotSet' });
   });
 
   it('maps any other failure to failed with its code', async () => {
     mockAuthenticate.mockResolvedValue({ success: false, errorCode: 'AUTHENTICATION_FAILED' });
-    expect(await authenticate('Unlock PFF')).toEqual({ kind: 'failed', code: 'AUTHENTICATION_FAILED' });
+    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'failed', code: 'AUTHENTICATION_FAILED' });
   });
 
   it('maps a failure without a code to failed with undefined', async () => {
     mockAuthenticate.mockResolvedValue({ success: false });
-    expect(await authenticate('Unlock PFF')).toEqual({ kind: 'failed', code: undefined });
+    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'failed', code: undefined });
   });
 });
 ```
@@ -1959,7 +1959,7 @@ Run: `npm run check:all`
 Expected: silent success — `knip` and `depcheck` both see the import in `src/auth/biometrics.ts`, so no `knip.json` / `.depcheckrc.json` entry is added. If either tool reports the package, stop and diagnose (a resolver issue), do not add an ignore.
 
 ```bash
-git add package.json package-lock.json ios/Podfile.lock ios/PFF/Info.plist jest/setup.js src/auth/biometrics.ts src/auth/biometrics.test.ts
+git add package.json package-lock.json ios/Podfile.lock ios/Kiko/Info.plist jest/setup.js src/auth/biometrics.ts src/auth/biometrics.test.ts
 git commit -m "feat(auth): add react-native-biometrics and a typed authenticate/sensor wrapper"
 ```
 
@@ -2329,7 +2329,7 @@ git commit -m "feat(db): lockEnabled/lockGraceSeconds settings + migration + rep
   ```ts
   export const shouldRelock: (input: { backgroundedAt: number | undefined; now: number; graceSeconds: number }) => boolean;
   export const useAppLock: () => { isReady: boolean; isLocked: boolean; unlock: () => Promise<AuthResult> };
-  export const UNLOCK_PROMPT = 'Unlock PFF';
+  export const UNLOCK_PROMPT = 'Unlock Kiko';
   ```
   (The return shape is a module-private `type AppLock`; it is not exported because no other module names it, and Knip fails on an unused exported type.)
 
@@ -2579,7 +2579,7 @@ import { DEFAULT_LOCK_GRACE_SECONDS } from './lock-grace';
 import { type AuthResult, authenticate } from './biometrics';
 import { settingsRepo } from '../repositories/settings.repo';
 
-export const UNLOCK_PROMPT = 'Unlock PFF';
+export const UNLOCK_PROMPT = 'Unlock Kiko';
 
 const MILLISECONDS_PER_SECOND = 1000;
 
@@ -2857,7 +2857,7 @@ const unlockHint = (result: AuthResult | undefined): string =>
     .with('success', () => '')
     .with('cancelled', () => 'Authentication was cancelled.')
     .with('lockout', () => 'Face ID is locked. Use your device passcode instead.')
-    .with('passcodeNotSet', () => 'Set a device passcode to unlock PFF.')
+    .with('passcodeNotSet', () => 'Set a device passcode to unlock Kiko.')
     .with('failed', () => 'Authentication failed. Try again.')
     .exhaustive();
 
@@ -3535,7 +3535,7 @@ Expected: Stryker mutation score ≥ 60 (the `break` threshold); osv-scanner rep
 - [ ] **Step 4: Device checklist (all manual steps in one pass)**
 
 Build once (`npm run ios`, or via the ops agent) and walk:
-1. Task 4 Step 7 — upgrade with data (data intact, `pff.db` gone, `pff-encrypted.db` unreadable by stock `sqlite3`), fresh install, relaunch ×2.
+1. Task 4 Step 7 — upgrade with data (data intact, `pff.db` gone, `kiko-encrypted.db` unreadable by stock `sqlite3`), fresh install, relaunch ×2.
 2. Task 7 Steps 3-4 — app-switcher card is black; `xattr -l` shows the backup-exclusion attribute.
 3. Task 8 Step 4 — Monobank sync succeeds; with both pins corrupted it fails; reverted it succeeds.
 4. Task 13 Step 7 — cold-launch lock, Face ID match/non-match + passcode fallback, grace `Immediately` vs `30 sec`, lock off never locks, no stuck overlay after the Face ID sheet.
@@ -3543,4 +3543,4 @@ Build once (`npm run ios`, or via the ops agent) and walk:
 
 - [ ] **Step 5: Hand off**
 
-No commit is expected from this task unless Step 3 required test strengthening (`test(auth): …` / `test(db): …`). Report to the coordinator: the task list above, the manual checklist results, and the two documented decisions that may want a user call — `randomblob()` vs. a `react-native-get-random-values` dependency for the DB key, and `pff-encrypted.db` as the permanent file name.
+No commit is expected from this task unless Step 3 required test strengthening (`test(auth): …` / `test(db): …`). Report to the coordinator: the task list above, the manual checklist results, and the two documented decisions that may want a user call — `randomblob()` vs. a `react-native-get-random-values` dependency for the DB key, and `kiko-encrypted.db` as the permanent file name.

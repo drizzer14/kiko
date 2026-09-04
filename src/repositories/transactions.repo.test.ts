@@ -1,7 +1,3 @@
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `recordManual` runs its insert + balance read + balance update through
 // the `write` helper (one op-sqlite transaction). Override `write` to run
 // the callback against a fake transaction handle so the test can capture
