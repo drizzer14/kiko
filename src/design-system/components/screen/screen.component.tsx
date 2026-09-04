@@ -25,23 +25,35 @@ const Screen: FC<ScreenProps> = ({
   // `UITabBar.frame.size.height` (react-native-bottom-tabs measures the real
   // frame; see its `TabViewImpl.swift`), which already spans the bottom
   // safe-area inset — the bar's background extends to the screen's true bottom
-  // edge. So the clearance is the tab-bar height ALONE: adding `insets.bottom`
-  // on top double-counts the inset and lifts the footer a whole home-indicator
-  // strip too high (the "footer sits too high" bug). `Math.max` keeps a correct
-  // fallback for any future consumer rendered off the tab navigator, where the
-  // measured height is 0 and the bottom inset is the only chrome to clear. The
-  // tab bar remains visible on pushed native-stack screens (the SwiftUI TabView
-  // draws it independently of each tab's nested stack — you can still switch
-  // tabs from a pushed form, see `reset-tab-stack-on-blur.ts`), so this one
-  // clearance is correct on tab roots and pushed screens alike. Every current
-  // Screen consumer is nested under the native tab navigator (see
-  // `root.navigator.tsx`), so the hook always has its context here; the global
-  // Jest manual mock returns 0 for standalone renders. Used by the scroll
-  // branch's `footer` below and by the plain branch's `content` — never both on
-  // one render, since `scroll` selects exactly one return path.
+  // edge. The tab bar remains visible on pushed native-stack screens (the
+  // SwiftUI TabView draws it independently of each tab's nested stack — you
+  // can still switch tabs from a pushed form, see `reset-tab-stack-on-blur.ts`),
+  // so this one clearance is correct on tab roots and pushed screens alike.
+  // Every current Screen consumer is nested under the native tab navigator
+  // (see `root.navigator.tsx`), so the hook always has its context here; the
+  // global Jest manual mock returns 0 for standalone renders. Used by the
+  // scroll branch's `footer` below and by the plain branch's `content` — never
+  // both on one render, since `scroll` selects exactly one return path.
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const bottomClearance = Math.max(tabBarHeight, insets.bottom);
+  // Both `SafeAreaView` branches below already reserve `insets.bottom`
+  // themselves as real padding — `edges` includes `'bottom'` in the scroll
+  // branch's explicit list, and in the plain branch's default (an unset
+  // `edges` prop reserves every edge). `RNCSafeAreaViewShadowNode`'s
+  // `'additive'` edge mode literally adds the inset to whatever padding was
+  // already on the view (`insets.bottom + edgeValue`), so that reservation is
+  // real native padding one level up from `footer`/`content`, not merely a
+  // hook value nothing yet consumes. Since the tab bar's measured height
+  // above already spans that same inset, adding the FULL tab-bar height again
+  // here — on top of what `SafeAreaView` already reserved — double-counts the
+  // inset a second time and pushes the footer a whole home-indicator strip
+  // too high (the "bottom margin is bigger than the top margin" bug). Only
+  // the amount by which the tab bar exceeds what `SafeAreaView` already
+  // reserved needs adding here. `Math.max(..., 0)` keeps this from going
+  // negative on a tab-bar-less consumer where `tabBarHeight` is 0 and
+  // `insets.bottom` alone exceeds it — `SafeAreaView`'s own reservation is
+  // then already the full, correct clearance and this adds nothing on top.
+  const bottomClearance = Math.max(tabBarHeight - insets.bottom, 0);
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a

@@ -5,14 +5,14 @@ import {
 } from './category-display';
 
 describe('buildCategoryDisplayMap', () => {
-  it('keys each category display by its stable key', () => {
+  it('keys each category display by its stable key, carrying its stored color', () => {
     const map = buildCategoryDisplayMap([
-      { key: 'groceries', title: 'Groceries', icon: 'cart' },
+      { key: 'groceries', title: 'Groceries', icon: 'cart', color: '#FFCC00' },
       { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
     ]);
 
-    expect(map.get('groceries')).toEqual({ title: 'Groceries', icon: 'cart' });
-    expect(map.get('other')).toEqual({ title: 'Other', icon: 'square.grid.2x2' });
+    expect(map.get('groceries')).toEqual({ title: 'Groceries', icon: 'cart', color: '#FFCC00' });
+    expect(map.get('other')).toEqual({ title: 'Other', icon: 'square.grid.2x2', color: null });
   });
 });
 
@@ -26,6 +26,7 @@ describe('resolveCategoryDisplay', () => {
     expect(resolveCategoryDisplay('Groceries', byKey)).toEqual({
       title: 'Groceries',
       icon: 'cart',
+      color: null,
     });
   });
 
@@ -33,6 +34,7 @@ describe('resolveCategoryDisplay', () => {
     expect(resolveCategoryDisplay('NoSuchCategory', byKey)).toEqual({
       title: 'Other',
       icon: 'square.grid.2x2',
+      color: null,
     });
   });
 

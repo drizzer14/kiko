@@ -6,6 +6,9 @@ export const styles = StyleSheet.create((theme) => ({
     flexWrap: 'wrap',
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,

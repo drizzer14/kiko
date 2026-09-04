@@ -13,13 +13,6 @@ export const styles = StyleSheet.create((theme) => ({
   balanceBlock: {
     paddingTop: theme.spacing(2),
   },
-  // The account's primary number: larger than body so the total balance reads
-  // as the headline of the screen. Only size/weight live here — MoneyText still
-  // owns the tone color, so this deliberately omits `color`.
-  balance: {
-    fontSize: theme.typography.title.fontSize,
-    fontWeight: theme.typography.title.fontWeight,
-  },
   // Extra space above the per-currency breakdown so it reads as a distinct
   // block beneath the headline number rather than crowding right under it.
   breakdown: {

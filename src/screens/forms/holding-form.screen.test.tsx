@@ -98,7 +98,7 @@ const fillBondFields = async (screen: Screen): Promise<void> => {
 };
 
 const fillTermDepositFields = async (screen: Screen): Promise<void> => {
-  await fireEvent.press(screen.getByText('Term Deposit'));
+  await fireEvent.press(screen.getByText('Deposit'));
   await fill(screen, 'Name', 'My deposit');
   await fill(screen, 'Contribution 1 Amount', '1000');
   await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
@@ -123,32 +123,36 @@ describe('HoldingFormScreen term deposit', () => {
     expect(queryByText('Add Holding')).toBeNull();
   });
 
-  it('renders a visible text label above every default field', async () => {
+  it('renders a visible text label above every simple-holding field', async () => {
+    // A simple (cash) holding takes an opening balance, so Name, Type, Currency,
+    // Balance are all present. A bank create defaults to a term deposit instead
+    // (its own fields are covered below), so this uses a cash account.
+    mockAccountKind = 'cash';
     const { getByText } = await renderScreen();
 
-    // Card/cash/crypto/jar path: Name, Type, Currency, Balance are the fields.
     for (const label of ['Name', 'Type', 'Currency', 'Balance']) {
       expect(getByText(label)).toBeTruthy();
     }
   });
 
   it('does not render the opening Balance input for a term deposit', async () => {
-    const screen = await renderScreen();
+    // A simple (cash) holding shows the Balance input.
+    mockAccountKind = 'cash';
+    const cash = await renderScreen();
+    expect(cash.getByLabelText('Balance')).toBeTruthy();
 
-    // Card/cash/crypto/jar show the Balance input.
-    expect(screen.getByLabelText('Balance')).toBeTruthy();
-
-    await fireEvent.press(screen.getByText('Term Deposit'));
-
-    // A deposit's value derives from its contributions, not an opening balance,
-    // so the Balance input is dropped to avoid a dead, misleading field.
-    expect(screen.queryByLabelText('Balance')).toBeNull();
+    // A bank create defaults to a term deposit, whose value derives from its
+    // contributions, not an opening balance — so the Balance input is dropped to
+    // avoid a dead, misleading field.
+    mockAccountKind = 'bank';
+    const deposit = await renderScreen();
+    expect(deposit.queryByLabelText('Balance')).toBeNull();
   });
 
   it('renders a visible text label above every term-deposit field', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
 
     // The repeatable contributions list starts with one row.
     expect(screen.getByLabelText('Contribution 1 Amount')).toBeTruthy();
@@ -180,7 +184,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('saves a term_deposit with a single contribution in its metadata', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 Amount', '1000');
     await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
@@ -202,7 +206,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('creates a deposit with two contributions', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 Amount', '1000');
     await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
@@ -227,7 +231,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('persists only the filled row when a blank contribution row is left empty', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 Amount', '1000');
     await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
@@ -248,7 +252,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('does not save a deposit when no contribution row is valid', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Annual Rate %', '12');
     await fill(screen, 'Term (Months)', '12');
@@ -261,7 +265,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('removes a contribution row via its remove control', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fireEvent.press(screen.getByText('Add contribution'));
 
     expect(screen.getByLabelText('Contribution 2 Amount')).toBeTruthy();
@@ -357,7 +361,7 @@ describe('HoldingFormScreen save validation', () => {
   it('disables Save for a term deposit missing its contribution, rate, and term', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Term Deposit'));
+    await fireEvent.press(screen.getByText('Deposit'));
     await fill(screen, 'Name', 'My deposit');
 
     expect(screen.getByText('Save')).toBeDisabled();
@@ -416,9 +420,12 @@ describe('HoldingFormScreen icon', () => {
   });
 
   it('sets the picked icon on the new holding using the returned id', async () => {
+    // A cash holding is valid with just a name (a bank create defaults to a term
+    // deposit, which needs contributions), so it is the simplest create path.
+    mockAccountKind = 'cash';
     const screen = await renderScreen();
 
-    await fill(screen, 'Name', 'My card');
+    await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByLabelText('Change Icon'));
     await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
     await fireEvent.press(screen.getByText('Save'));
@@ -429,9 +436,10 @@ describe('HoldingFormScreen icon', () => {
   });
 
   it('does not set an icon when none is picked', async () => {
+    mockAccountKind = 'cash';
     const screen = await renderScreen();
 
-    await fill(screen, 'Name', 'My card');
+    await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(createMock).toHaveBeenCalled();
@@ -440,20 +448,23 @@ describe('HoldingFormScreen icon', () => {
 });
 
 describe('HoldingFormScreen icon follows type until dirty', () => {
-  it("shows the default type's icon before any pick (card -> creditcard)", async () => {
+  it("shows the default type's icon before any pick (bank -> term_deposit -> calendar)", async () => {
+    // A bank create defaults to a term deposit, so the not-dirty icon follows its
+    // default glyph (calendar).
     const screen = await renderScreen();
 
-    expect(screen.getByLabelText('Icon creditcard')).toBeTruthy();
+    expect(screen.getByLabelText('Icon calendar')).toBeTruthy();
   });
 
   it('re-derives the icon to the newly selected type default while not dirty', async () => {
     const screen = await renderScreen();
 
-    // card default is creditcard; switching to bond swaps the shown default to
-    // the bond glyph, because the icon has not been manually picked (not dirty).
+    // term_deposit default is calendar; switching to bond swaps the shown default
+    // to the bond glyph (receipt), because the icon has not been manually picked
+    // (not dirty).
     await fireEvent.press(screen.getByText('Bond'));
 
-    expect(screen.getByLabelText('Icon doc.text')).toBeTruthy();
+    expect(screen.getByLabelText('Icon receipt')).toBeTruthy();
   });
 
   it('keeps a manually picked icon when the type changes afterwards (dirty)', async () => {
@@ -469,18 +480,23 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
     await fireEvent.press(screen.getByText('Bond'));
 
     expect(screen.getByLabelText('Icon basket')).toBeTruthy();
-    expect(screen.queryByLabelText('Icon doc.text')).toBeNull();
+    expect(screen.queryByLabelText('Icon receipt')).toBeNull();
   });
 });
 
 describe('HoldingFormScreen type chips are constrained by the account kind', () => {
-  it('forbids cash and crypto_asset holding types on a bank account', async () => {
+  it('offers only the manually-creatable bank types (term_deposit, bond), excluding sync-only card and jar', async () => {
     mockAccountKind = 'bank';
 
     const screen = await renderScreen();
 
-    expect(screen.getByText('Card')).toBeTruthy();
-    expect(screen.getByText('Jar')).toBeTruthy();
+    // Monobank owns card + jar (its sync creates them), so the manual create form
+    // drops both; a bank create offers only term_deposit and bond. Cash and
+    // crypto_asset are forbidden under a bank regardless.
+    expect(screen.getByText('Deposit')).toBeTruthy();
+    expect(screen.getByText('Bond')).toBeTruthy();
+    expect(screen.queryByText('Card')).toBeNull();
+    expect(screen.queryByText('Jar')).toBeNull();
     expect(screen.queryByText('Cash')).toBeNull();
     expect(screen.queryByText('Crypto Asset')).toBeNull();
   });
@@ -492,7 +508,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
 
     expect(screen.getByText('Crypto Asset')).toBeTruthy();
     expect(screen.queryByText('Card')).toBeNull();
-    expect(screen.queryByText('Term Deposit')).toBeNull();
+    expect(screen.queryByText('Deposit')).toBeNull();
   });
 
   it('snaps an out-of-range default type into the account kind allowed set', async () => {
@@ -503,7 +519,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     // The default type is `card`, which a crypto account forbids, so the form
     // resets to the first allowed type (crypto_asset) — proven by the shown
     // default icon following to the crypto_asset glyph.
-    expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
+    expect(screen.getByLabelText('Icon bitcoinsign')).toBeTruthy();
   });
 });
 
@@ -512,21 +528,22 @@ describe('HoldingFormScreen color follows type until dirty', () => {
     createMock.mockClear();
   });
 
-  it("selects the default type's color before any pick (card -> white)", async () => {
+  it("selects the default type's color before any pick (bank -> term_deposit -> blue)", async () => {
+    // A bank create defaults to a term deposit, whose default swatch is blue.
     const screen = await renderScreen();
 
-    expect(screen.getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('Color blue').props.accessibilityState.selected).toBe(true);
   });
 
   it('re-derives the color to the newly selected type default while not dirty', async () => {
     const screen = await renderScreen();
 
-    // card default is white; switching to bond swaps the selected default swatch
-    // to green, because the color has not been manually picked (not dirty).
+    // term_deposit default is blue; switching to bond swaps the selected default
+    // swatch to green, because the color has not been manually picked (not dirty).
     await fireEvent.press(screen.getByText('Bond'));
 
     expect(screen.getByLabelText('Color green').props.accessibilityState.selected).toBe(true);
-    expect(screen.getByLabelText('Color white').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText('Color blue').props.accessibilityState.selected).toBe(false);
   });
 
   it('keeps a manually picked color when the type changes afterwards (dirty)', async () => {
@@ -545,9 +562,11 @@ describe('HoldingFormScreen color follows type until dirty', () => {
   });
 
   it('persists the manually picked color on create', async () => {
+    // A cash holding is valid with just a name (the simplest create path).
+    mockAccountKind = 'cash';
     const screen = await renderScreen();
 
-    await fill(screen, 'Name', 'My card');
+    await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByLabelText('Color violet'));
     await fireEvent.press(screen.getByText('Save'));
 
@@ -555,9 +574,10 @@ describe('HoldingFormScreen color follows type until dirty', () => {
   });
 
   it('persists a null color on create when the user never picks one', async () => {
+    mockAccountKind = 'cash';
     const screen = await renderScreen();
 
-    await fill(screen, 'Name', 'My card');
+    await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
     expect(createMock.mock.calls[0][0].color).toBeNull();
@@ -655,8 +675,27 @@ describe('HoldingFormScreen edit mode', () => {
   it('shows type and currency read-only (disabled) so neither can change', async () => {
     const { getByText } = await renderEdit(cardHolding);
 
+    // A synced card's type is dropped from the CREATE options, but edit mode uses
+    // the full set — so the Card chip still renders (read-only) rather than
+    // crashing on a type that is no longer manually creatable.
     expect(getByText('Card').parent?.props.accessibilityState.disabled).toBe(true);
     expect(getByText('UAH').parent?.props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('renders an existing synced jar holding read-only, though jar is not manually creatable', async () => {
+    const { getByText } = await renderEdit({
+      id: 'h-9',
+      name: 'Coffee jar',
+      type: 'jar',
+      currency: 'UAH',
+      balanceMinorUnits: 5_000,
+      icon: null,
+      color: null,
+    });
+
+    // Same as the card case: jar is sync-only (excluded from create), but edit
+    // mode's full set still shows the Jar chip read-only rather than crashing.
+    expect(getByText('Jar').parent?.props.accessibilityState.disabled).toBe(true);
   });
 
   it('saves a simple type through update with the edited name, color, and balance', async () => {

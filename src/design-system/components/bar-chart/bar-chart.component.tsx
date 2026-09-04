@@ -18,11 +18,11 @@ import { styles } from './bar-chart.styles';
  */
 type BarChartProps = { data: TypeSlice[]; baseCurrency: Currency; height?: number };
 
-// Human display text for the id-like holding types, so a bar reads "Term
-// Deposit" rather than "term_deposit".
+// Human display text for the id-like holding types, so a bar reads "Deposit"
+// rather than "term_deposit".
 const TYPE_LABELS: Record<HoldingType, string> = {
   card: 'Card',
-  term_deposit: 'Term Deposit',
+  term_deposit: 'Deposit',
   bond: 'Bond',
   cash: 'Cash',
   crypto_asset: 'Crypto Asset',

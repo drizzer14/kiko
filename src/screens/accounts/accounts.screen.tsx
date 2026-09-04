@@ -14,9 +14,10 @@ import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
-import { entityTintBackground } from '../../design-system/entity-tint';
+import { entityGradientStops, resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -33,15 +34,6 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   bank: 'Bank',
   cash: 'Cash',
   crypto: 'Crypto',
-};
-
-// Leading SF Symbol per account kind, mirroring KIND_LABEL. Exported so the
-// account-detail header reuses the same kind-default glyph without a second
-// copy of the map drifting out of sync.
-export const KIND_ICON: Record<AccountRow['kind'], string> = {
-  bank: 'building.columns',
-  cash: 'banknote',
-  crypto: 'bitcoinsign.circle',
 };
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
@@ -96,7 +88,15 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             <Sortable.Grid
               data={activeAccounts}
               sortEnabled={activeAccounts.length > 1}
+              // A subtle lift on touch-and-hold: the library default (1.1) pops
+              // the card up too much, so scale it just barely (see the account-
+              // detail grid, which uses the same value).
+              activeItemScale={1.03}
               columns={1}
+              // Keep a dragged card on its vertical axis — a single column has no
+              // horizontal move to make, so the library default ('both') only lets
+              // a card wander sideways off the list.
+              overDrag="vertical"
               rowGap={theme.spacing(4)}
               scrollableRef={scrollableRef}
               autoScrollActivationOffset={75}
@@ -106,6 +106,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   (holding) => holding.accountId === item.id && holding.closedAt == null,
                 );
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
+                const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
 
                 return (
                   <CardContextMenu
@@ -117,17 +118,22 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       testID="account-card"
                       padding={4}
                       bordered
-                      tint={entityTintBackground(item.color ?? defaultAccountColor[item.kind])}
+                      gradient={entityGradientStops(color)}
                     >
                       <Pressable
                         accessibilityRole="button"
-                        onPress={() => navigation.navigate('AccountDetail', { accountId: item.id })}
+                        onPress={() =>
+                          navigation.navigate('AccountDetail', {
+                            accountId: item.id,
+                            name: item.name,
+                          })
+                        }
                         style={styles.row}
                       >
                         <Box direction="row" gap={3} style={styles.rowLead}>
                           <SymbolIcon
-                            name={item.icon ?? KIND_ICON[item.kind]}
-                            color={item.color ?? defaultAccountColor[item.kind]}
+                            name={item.icon ?? accountKindSymbol[item.kind]}
+                            color={color}
                             accessibilityLabel={`${item.name} icon`}
                           />
                           <Box gap={1}>

@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { match } from 'ts-pattern';
 import { type Currency, currencyOptions } from '../../currency/currency';
+import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money, toMajor } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow } from '../../db/schema';
@@ -13,7 +14,7 @@ import Switch from '../../design-system/components/switch';
 import TextField from '../../design-system/components/text-field';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { holdingTypeIcon } from '../../holdings/holding-icon';
+import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import {
   asBondMeta,
   asTermDepositMeta,
@@ -24,6 +25,7 @@ import {
 } from '../../holdings/holding-metadata';
 import {
   type HoldingType,
+  creatableHoldingTypesForAccountKind,
   holdingTypes,
   holdingTypesForAccountKind,
 } from '../../holdings/holding-type';
@@ -100,7 +102,7 @@ const buildHoldingPatch = (params: {
 // underlying value on select.
 const TYPE_LABELS: Record<HoldingType, string> = {
   card: 'Card',
-  term_deposit: 'Term Deposit',
+  term_deposit: 'Deposit',
   bond: 'Bond',
   cash: 'Cash',
   crypto_asset: 'Crypto Asset',
@@ -148,7 +150,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const accountKind = accounts.at(0)?.kind;
+  // The full set of types this account kind may hold — used in EDIT mode so an
+  // existing synced (card/jar) row's type still renders read-only.
   const allowedTypes = accountKind ? holdingTypesForAccountKind[accountKind] : holdingTypes;
+  // The types a user may MANUALLY create here: the full set minus the sync-only
+  // types (card/jar under a bank, which Monobank creates itself). The create form
+  // offers only these; edit mode keeps the full set (above).
+  const creatableTypes = accountKind
+    ? creatableHoldingTypesForAccountKind[accountKind]
+    : holdingTypes;
+  // Create mode offers the manually-creatable subset; edit mode shows the full
+  // set (its chip is read-only) so a synced card/jar row still displays.
+  const typeOptions = isEdit ? allowedTypes : creatableTypes;
 
   // In edit mode, load the holding being edited so its fields can seed the form.
   // The query always runs (hooks can't be conditional); an empty id in create
@@ -163,11 +176,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isSyncedEdit = editingHolding !== undefined && isSyncedHolding(editingHolding);
 
   const [name, setName] = useState('');
+  // The selected type starts at `card`, then the effect below snaps it to the
+  // first CREATABLE type for the account's kind once it loads — so a bank create
+  // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
+  // an edit seeds the real type from the row.
   const [type, setType] = useState<HoldingType>('card');
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [openingBalance, setOpeningBalance] = useState('');
   // The icon is null until the user picks one ("not dirty"): while null, the
-  // chip shows the selected type's default glyph (holdingTypeIcon[type]) and
+  // chip shows the selected type's default glyph (holdingTypeSymbol[type]) and
   // switching type re-derives it, so an untouched icon follows the type. Once
   // the user picks (icon !== null, "dirty"), that choice overrides the default
   // and type changes no longer move it.
@@ -180,15 +197,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [color, setColor] = useState<string | null>(null);
   const effectiveColor = color ?? defaultHoldingColor[type];
 
-  // Keep the selected type valid for the account's kind. The account loads
-  // asynchronously, so once its allowed set is known, a default (or previously
-  // selected) type outside that set snaps to the first allowed type — which
-  // also re-derives the non-dirty icon to match.
+  // Keep the selected type valid for what the form currently OFFERS. The account
+  // loads asynchronously, so once its option set is known, a default (or
+  // previously selected) type outside that set snaps to the first offered type —
+  // which also re-derives the non-dirty icon to match. `typeOptions` is the
+  // creatable subset in create mode (so a bank create snaps `card` -> the first
+  // creatable type, `term_deposit`) and the full set in edit mode (so a seeded
+  // synced card/jar stays put).
   useEffect(() => {
-    if (!allowedTypes.includes(type)) {
-      setType(allowedTypes[0]);
+    if (!typeOptions.includes(type)) {
+      setType(typeOptions[0]);
     }
-  }, [allowedTypes, type]);
+  }, [typeOptions, type]);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -452,7 +472,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       <Box gap={4}>
         <HoldingIdentityField
           icon={icon}
-          fallbackIcon={holdingTypeIcon[type]}
+          fallbackIcon={holdingTypeSymbol[type]}
           iconColor={effectiveColor}
           name={name}
           onChangeName={setName}
@@ -466,13 +486,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {/* A holding's type shapes its metadata and value math, and its currency
             fixes the unit of every stored balance/transaction; no repo path
             re-shapes either, so both are read-only in edit mode — shown, but not
-            switchable. */}
+            switchable. `typeOptions` is the manually-creatable subset in create
+            mode: a bank drops the sync-only card/jar (Monobank owns those), so a
+            bank create offers only term_deposit / bond. Edit mode uses the full
+            set so an existing synced card/jar row still displays its (read-only)
+            type. */}
         <ChipRow
           label="Type"
-          options={allowedTypes}
+          options={typeOptions}
           selected={type}
           onSelect={setType}
           labels={TYPE_LABELS}
+          icons={holdingTypeSymbol}
           disabled={isEdit}
         />
 
@@ -481,6 +506,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           options={currencyOptions}
           selected={currency}
           onSelect={setCurrency}
+          icons={currencySignSymbol}
           disabled={isEdit}
         />
 

@@ -1,6 +1,8 @@
+import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import type { FC } from 'react';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles } from 'react-native-unistyles';
 import Box from '../box';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { styles } from './bottom-sheet.styles';
@@ -17,6 +19,15 @@ import { styles } from './bottom-sheet.styles';
  * a tap on the sheet never reaches the scrim's dismiss handler — the opaque
  * sheet simply sits on top of the scrim, and an inner ScrollView scrolls freely
  * (no `onStartShouldSetResponder` guard is needed).
+ *
+ * The scrim itself is a frosted dim, not opaque black: a real Liquid Glass
+ * blur (`LiquidGlassView`, `effect="regular"`, tinted with `theme.colors.scrim`)
+ * on iOS 26+, a flat translucent-black `View` everywhere else, structurally
+ * branched on `isLiquidGlassSupported` the same way `GlassSurface` branches —
+ * see `pff-design-system`'s "GlassSurface `isLiquidGlassSupported` branch".
+ * `LiquidGlassView` never blocks the dismiss tap: it is a non-interactive
+ * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
+ * a11y, not the pressable target itself.
  */
 const BottomSheet: FC<BottomSheetProps> = ({
   visible,
@@ -30,6 +41,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
   backdropAccessibilityLabel,
 }) => {
   const insets = useSafeAreaInsets();
+  const { theme } = useUnistyles();
 
   return (
     <Modal transparent visible={visible} animationType={animationType} onRequestClose={onDismiss}>
@@ -40,7 +52,19 @@ const BottomSheet: FC<BottomSheetProps> = ({
           testID={backdropTestID}
           accessibilityRole={backdropAccessibilityLabel === undefined ? undefined : 'button'}
           accessibilityLabel={backdropAccessibilityLabel}
-        />
+        >
+          {isLiquidGlassSupported ? (
+            <LiquidGlassView
+              effect="regular"
+              colorScheme="dark"
+              tintColor={theme.colors.scrim}
+              style={styles.backdropFill}
+              pointerEvents="none"
+            />
+          ) : (
+            <View style={[styles.backdropFill, styles.backdropFallback]} pointerEvents="none" />
+          )}
+        </Pressable>
 
         <Box gap={gap} style={styles.sheet(insets.bottom, maxHeight)} testID={testID}>
           {children}

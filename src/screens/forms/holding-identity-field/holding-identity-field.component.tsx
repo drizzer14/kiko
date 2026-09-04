@@ -28,6 +28,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   iconColor,
   onEndEditingName,
   namePlaceholder,
+  autoFocus = false,
   captioned = true,
 }) => {
   const { theme } = useUnistyles();
@@ -53,6 +54,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
 
         <TextInput
           accessibilityLabel={nameAccessibilityLabel}
+          autoFocus={autoFocus}
           value={name}
           onChangeText={onChangeName}
           onEndEditing={onEndEditingName}

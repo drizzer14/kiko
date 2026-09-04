@@ -13,7 +13,17 @@ module.exports = {
   // react-native-sortables all ship untranspiled ESM (`import`), so each is
   // exempted from the preset's transform-ignore list for the drag-and-drop
   // grids to load under Babel/Jest.
+  //
+  // react-native-calendars also ships untranspiled ESM ("main": "src/index.ts"
+  // in its own package.json, and the .js files under src/ use bare `import`/
+  // `export`). The app never renders it directly — jest/setup.js mocks the
+  // bare `'react-native-calendars'` specifier to a plain View for every other
+  // test — but the day-cell color-precedence regression test
+  // (pff-calendar.day-cell-color.test.tsx) deep-imports its real, unmocked
+  // Day components (a different module specifier, so unaffected by that
+  // mock) to prove the actual selected/today text-color precedence the
+  // library applies, not just the marks data PFF hands it.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars)/)',
   ],
 };

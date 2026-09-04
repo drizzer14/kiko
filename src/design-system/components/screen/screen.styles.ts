@@ -1,11 +1,17 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The breathing-room gap kept above the separately-added tab-bar clearance,
+// The breathing-room gap kept above `bottomClearance` (the call site's
+// tab-bar clearance, on top of what the enclosing `SafeAreaView` already
+// reserves for the bottom safe-area inset — see `screen.component.tsx`),
 // shared by the footer slot and by a plain content edge that owns the true
-// screen bottom. Design feedback trimmed the old spacing(4) breathing room to
-// this minimal spacing(2) step; the button always clears the bar via the
-// separate `bottomClearance`, so this is purely the extra room above it.
-const FOOTER_GAP_STEP = 2;
+// screen bottom. Design feedback iterated this down to a minimal step, then
+// back up: the bottom gap now MATCHES the footer button's own top margin (the
+// `footer` slot's `paddingTop: theme.spacing(4)` below) so the button sits
+// symmetrically — the same visual gap above it (content → button) and below
+// it (button → tab bar), roughly a capital letter's height. The button still
+// always clears the bar via `bottomClearance`; this is purely the extra room
+// above it, kept equal to the room above the button.
+const FOOTER_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
@@ -15,9 +21,10 @@ export const styles = StyleSheet.create((theme) => ({
   // The plain (non-scroll) branch's content container. When it owns the
   // screen's true bottom edge itself (no `footer`, no `bleedBottom` child),
   // its bottom padding is lifted clear of the floating native glass tab bar by
-  // `bottomClearance` (the bar's measured frame height, which already spans the
-  // bottom safe-area inset, computed at the call site), plus the same base
-  // `theme.spacing(FOOTER_GAP_STEP)`
+  // `bottomClearance` (the tab bar's measured height MINUS whatever the
+  // enclosing `SafeAreaView` already reserves for the bottom safe-area inset,
+  // computed at the call site — see `screen.component.tsx`), plus the same
+  // base `theme.spacing(FOOTER_GAP_STEP)`
   // gap `footer` below adds on top of its own clearance — the ideal bottom
   // gap, standardized across every Screen bottom-edge path (see `footer`).
   // When a `footer` or a `bleedBottom` child owns the bottom edge instead,
@@ -45,9 +52,12 @@ export const styles = StyleSheet.create((theme) => ({
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see
   // `screen.component.tsx`), inside the bottom safe-area edge, in both
   // branches. Its bottom padding is lifted clear of the floating native glass
-  // tab bar by `bottomClearance` (the bar's measured frame height, which
-  // already spans the bottom safe-area inset, computed at the call site from
-  // the library hook), plus
+  // tab bar by `bottomClearance` (the tab bar's measured height MINUS
+  // whatever the enclosing `SafeAreaView` already reserves for the bottom
+  // safe-area inset — the `SafeAreaView` reservation and this padding are two
+  // separate layout boxes that both sit between the button and the screen's
+  // true bottom edge, so `bottomClearance` must be only the REMAINDER, not
+  // the tab bar's full height, or the two double-count the inset), plus
   // the `FOOTER_GAP_STEP` of visible breathing room on top of that clearance —
   // the exact, measured distance a footer button sits above the tab bar. Any
   // screen that manages its own bottom-clearance scrollable surface instead of

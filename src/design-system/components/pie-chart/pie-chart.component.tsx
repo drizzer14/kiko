@@ -9,10 +9,24 @@ import Text from '../text';
 import MoneyText from '../money-text';
 import { styles } from './pie-chart.styles';
 
-/** A donut of per-account net-worth contribution. Empty when `slices=[]`. */
-type PieChartProps = { slices: AccountSlice[]; baseCurrency: Currency; size?: number };
+/**
+ * A donut of per-slice contribution. Empty when `slices=[]`. `testID` prefixes
+ * every rendered primitive (arc, legend row, empty state), so two pies on one
+ * screen — the account-contribution pie and the category-spending pie — never
+ * collide on the same hardcoded id; it defaults to `pie-chart`. `emptyLabel` is
+ * the empty-state copy, defaulting to the account-pie wording.
+ */
+type PieChartProps = {
+  slices: AccountSlice[];
+  baseCurrency: Currency;
+  size?: number;
+  testID?: string;
+  emptyLabel?: string;
+};
 
 const DEFAULT_SIZE = 200;
+const DEFAULT_TEST_ID = 'pie-chart';
+const DEFAULT_EMPTY_LABEL = 'No Accounts To Show';
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.
 const INNER_RATIO = 0.58;
 const FULL_TURN = 360;
@@ -71,15 +85,16 @@ const toPercent = (share: number): string => `${Math.round(share * 100)}%`;
 // value column, then a fixed-width right-aligned percent column — so the figures
 // line up vertically down the list regardless of magnitude. The swatch wears the
 // slice's own entity color, matching its pie arc and the account card.
-const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
+const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; testID: string }> = ({
   slice,
   baseCurrency,
+  testID,
 }) => {
   return (
-    <View testID={`pie-chart-legend-${slice.accountId}`} style={styles.legendRow}>
+    <View testID={`${testID}-legend-${slice.accountId}`} style={styles.legendRow}>
       <View style={styles.legendName}>
         <View
-          testID={`pie-chart-swatch-${slice.accountId}`}
+          testID={`${testID}-swatch-${slice.accountId}`}
           style={[styles.swatch, { backgroundColor: slice.color }]}
         />
 
@@ -88,7 +103,7 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
         </Text>
       </View>
 
-      <View testID={`pie-chart-legend-value-${slice.accountId}`} style={styles.legendValue}>
+      <View testID={`${testID}-legend-value-${slice.accountId}`} style={styles.legendValue}>
         <MoneyText
           money={Money.of(baseCurrency, slice.amount)}
           context="balance"
@@ -98,7 +113,7 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
         />
       </View>
 
-      <View testID={`pie-chart-legend-percent-${slice.accountId}`} style={styles.legendPercent}>
+      <View testID={`${testID}-legend-percent-${slice.accountId}`} style={styles.legendPercent}>
         <Text variant="caption" tone="textSecondary">
           {toPercent(slice.share)}
         </Text>
@@ -107,12 +122,18 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency }> = ({
   );
 };
 
-const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE }) => {
+const PieChart: FC<PieChartProps> = ({
+  slices,
+  baseCurrency,
+  size = DEFAULT_SIZE,
+  testID = DEFAULT_TEST_ID,
+  emptyLabel = DEFAULT_EMPTY_LABEL,
+}) => {
   if (slices.length === 0) {
     return (
-      <Box testID="pie-chart-empty" style={styles.empty}>
+      <Box testID={`${testID}-empty`} style={styles.empty}>
         <Text variant="body" tone="textSecondary">
-          No Accounts To Show
+          {emptyLabel}
         </Text>
       </Box>
     );
@@ -128,7 +149,7 @@ const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE
           {arcs.map((arc) => (
             <Path
               key={arc.accountId}
-              testID={`pie-chart-arc-${arc.accountId}`}
+              testID={`${testID}-arc-${arc.accountId}`}
               d={donutArc(center, center, arc)}
               fill={arc.color}
             />
@@ -138,7 +159,12 @@ const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE
 
       <Box style={styles.legend}>
         {slices.map((slice) => (
-          <PieLegendEntry key={slice.accountId} slice={slice} baseCurrency={baseCurrency} />
+          <PieLegendEntry
+            key={slice.accountId}
+            slice={slice}
+            baseCurrency={baseCurrency}
+            testID={testID}
+          />
         ))}
       </Box>
     </Box>

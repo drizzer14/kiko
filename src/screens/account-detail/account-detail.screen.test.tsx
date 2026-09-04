@@ -44,6 +44,22 @@ const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
 
+// HoldingCard (rendered inside this screen) subscribes to the native stack's
+// `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
+// until the push slide-in settles. These tests mount the screen with a spy
+// navigation *prop* and no NavigationContainer, so the real `useNavigation`
+// hook has no context and throws. Stub only `useNavigation` (keep the rest of
+// the module real) with a navigation whose `addListener` is an inert
+// noop-unsubscribe — the card simply never settles under test, which is fine.
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => ({
+    addListener: () => () => {},
+    navigate: jest.fn(),
+    setOptions: jest.fn(),
+    goBack: jest.fn(),
+  }),
+}));
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
@@ -239,10 +255,15 @@ describe('AccountDetailScreen', () => {
     // HoldingDetail), so pressing anywhere on it — the name included — opens the
     // detail page.
     await fireEvent.press(getByText('Black card'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
+    // The holding's name rides along so the detail screen's large title (and any
+    // back button pushed from it) reads immediately, before its own live query.
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      holdingId: 'h1',
+      name: 'Black card',
+    });
   });
 
-  it('lays the account holdings out as a drag-and-drop grid of square cards', async () => {
+  it('lays the account holdings out as a drag-and-drop vertical list of wide row cards', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -252,14 +273,17 @@ describe('AccountDetailScreen', () => {
     });
     const { getByTestId, getAllByTestId } = await renderScreen();
 
-    // The holdings render inside the sortable grid, one wrapper item per
-    // holding, each holding a square (aspectRatio 1) card. Column layout is now
-    // owned by Sortable.Grid (columns=2), so the item widths are no longer set
-    // by this screen's own styles.
-    expect(getByTestId('sortable-grid')).toBeTruthy();
+    // The holdings render inside the sortable grid, one wrapper item per holding,
+    // each a full-width row card (icon + name left, value right) — mirroring the
+    // accounts list. The grid is a single column, so the cards carry no square
+    // aspectRatio; a dragged card is pinned to its vertical axis.
+    const grid = getByTestId('sortable-grid');
+    expect(grid.props.overDrag).toBe('vertical');
     const items = getAllByTestId('holding-grid-item');
     expect(items).toHaveLength(2);
-    expect(StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio).toBe(1);
+    expect(
+      StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio,
+    ).toBeUndefined();
   });
 
   it('renders holdings in the query sort_order, with no zero-value auto-sink', async () => {
@@ -289,25 +313,39 @@ describe('AccountDetailScreen', () => {
     expect(queryByLabelText('Change Black card icon')).toBeNull();
   });
 
-  it('tints the header account icon with its stored color', async () => {
+  it('tints the account identity icon beside the Balance amount with its stored color', async () => {
     setLiveData({
       accounts: [account({ color: darkTheme.colors.entityColors.violet })],
       holdings: [],
     });
     const { getByLabelText } = await renderScreen();
 
-    // A bank account shows the building.columns glyph, tinted its stored violet.
-    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+    // The account icon now sits beside the Balance amount (the nav title shows the
+    // NAME only), tinted its stored violet — a bank shows the columns-fill glyph.
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
     );
   });
 
-  it('tints the header account icon with the kind default color when none is stored', async () => {
+  it('tints the account identity icon beside the Balance amount with the kind default color when none is stored', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
     const { getByLabelText } = await renderScreen();
 
     // A `bank` account with no color reads the bank kind default (white).
-    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the kind default', async () => {
+    // A stored color of '' (neither null nor undefined) slips past a bare
+    // `color ?? default`, leaving the header tinted with an invalid empty color
+    // while the card (via resolveEntityColor) shows the kind default. The header
+    // must resolve through the same helper so the identity color never diverges.
+    setLiveData({ accounts: [account({ color: '' })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
   });
@@ -351,19 +389,23 @@ describe('AccountDetailScreen', () => {
     expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
-  it("drives the header title from the account's real name and shows it in the view-only header", async () => {
+  it("drives the nav title from the account's real name, with no custom header title component", async () => {
     setLiveData({
       accounts: [account({ name: 'Ukrsibbank Card' })],
       holdings: [],
     });
-    const { getByText, navigation } = await renderScreen();
-    // The name drives the dynamic header title (via setOptions) AND renders in
-    // the view-only identity header beside the icon — identity editing moved to
-    // the dedicated edit form, so the header only displays the name now.
+    const { navigation } = await renderScreen();
+    // The name is the plain string `title` — the native large title — with NO
+    // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
+    // moved to the body), so the back button on any pushed screen reads it
+    // immediately and the large title never flashes collapsing on load.
     expect(navigation.setOptions).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Ukrsibbank Card' }),
     );
-    expect(getByText('Ukrsibbank Card')).toBeTruthy();
+    for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
+      expect(options.headerTitle).toBeUndefined();
+      expect(options.headerLargeTitle).toBeUndefined();
+    }
   });
 
   it('renders in scroll mode so the native large title renders and collapses', async () => {

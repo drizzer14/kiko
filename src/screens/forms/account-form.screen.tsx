@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type Currency, currencyOptions } from '../../currency/currency';
+import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -9,6 +10,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import TextField from '../../design-system/components/text-field';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { groupAmount } from './amount-format';
@@ -178,6 +180,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           selected={kind}
           onSelect={setKind}
           labels={KIND_LABELS}
+          icons={accountKindSymbol}
           disabled={isEdit}
         />
 
@@ -192,6 +195,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               options={currencyOptions}
               selected={currency}
               onSelect={setCurrency}
+              icons={currencySignSymbol}
             />
 
             <TextField

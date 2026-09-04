@@ -12,10 +12,10 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { disconnectMonobank } from '../../monobank/disconnect';
@@ -29,10 +29,11 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import CardContextMenu from '../card-context-menu.component';
 import EditHeaderButton from '../edit-header-button.component';
-import EntityIdentityHeader from '../entity-identity-header.component';
+import EntityAmountHeader from '../entity-amount-header.component';
+import EntityHeaderIcon from '../entity-header-icon.component';
 import { onGridDragEnd } from '../grid-interaction';
 import { useSync } from '../use-sync';
-import { KIND_ICON } from '../accounts/accounts.screen';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { styles } from './account-detail.styles';
 import HoldingCard from './holding-card.component';
 import MonobankTokenField from './monobank-token-field.component';
@@ -61,19 +62,23 @@ const actionPresentation = (
   };
 };
 
-// The account's display identity for the view-only header: its stored icon and
-// color, or the kind default when either is unset — the same fallback the
-// accounts-list row uses. Extracted so the two `??` fallbacks don't count
-// against the screen component's cognitive-complexity budget.
+// The account's display identity for the view-only header: its stored icon (or
+// the kind default), and its effective color resolved through the SAME
+// `resolveEntityColor` the accounts-list card uses — so the identity color on
+// the card and on this header can never diverge. A bare `color ?? default` here
+// let an empty-string stored color (neither null nor undefined) through, tinting
+// the header with an invalid empty color while the card showed the kind default.
+// Extracted so the fallbacks don't count against the screen component's
+// cognitive-complexity budget.
 const accountIdentity = (account: AccountRow): { icon: string; color: string } => ({
-  icon: account.icon ?? KIND_ICON[account.kind],
-  color: account.color ?? defaultAccountColor[account.kind],
+  icon: account.icon ?? accountKindSymbol[account.kind],
+  color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
 });
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId } = route.params;
+  const { accountId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
@@ -82,17 +87,20 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const account = accounts.at(0);
 
-  // The stack sets no static title for this screen, so drive the header title
-  // from the account's own name once it loads — otherwise the header falls
-  // back to the raw "AccountDetail" route name. Skip until the name is known
-  // so the header never flashes an empty title.
-  const accountName = account?.name;
+  // The nav title shows the account NAME only — the native large title, the
+  // standard iOS pattern (the identity icon now sits beside the Balance amount
+  // below, not in the title). The name is available from the route params at the
+  // FIRST render, so the large title (and the back button on any screen pushed
+  // from here) reads immediately; the live-queried name takes over once loaded so
+  // a rename flows back through. This drops the old async `headerLargeTitle: false`
+  // + custom `headerTitle` toggle, which briefly blanked the pushed screen's back
+  // button and flashed the large title collapsing on load.
+  const accountName = account?.name ?? initialName;
+  // The account's effective icon + color, rendered as the identity glyph beside
+  // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
+  // slot below) rather than in the nav title.
+  const identity = account ? accountIdentity(account) : undefined;
   useLayoutEffect(() => {
-    if (accountName === undefined) {
-      return;
-    }
-    // Drive the dynamic title and, at the top-right (opposite the back button),
-    // an Edit action that opens this account's edit form.
     navigation.setOptions({
       title: accountName,
       headerRight: () => (
@@ -212,11 +220,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4}>
-        {account && <EntityIdentityHeader name={account.name} {...accountIdentity(account)} />}
-
         <Box gap={1} style={styles.balanceBlock}>
-          <Text variant="heading">Balance</Text>
-          <MoneyText money={overallBalance} context="balance" style={styles.balance} />
+          <EntityAmountHeader
+            label="Balance"
+            money={overallBalance}
+            context="balance"
+            icon={<EntityHeaderIcon identity={identity} />}
+          />
           <Box style={styles.breakdown}>
             <CurrencyBreakdown items={breakdown} />
           </Box>
@@ -286,20 +296,26 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={3}>
           <Text variant="heading">Holdings</Text>
 
-          {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
-              opens the holding; a touch-and-hold-still on a manual card opens the
-              deep-press (haptic) delete menu; a hold-and-move drags to reorder —
-              see `CardContextMenu` and `onGridDragEnd`. `scrollableRef` +
-              `autoScrollActivationOffset` let a drag near an edge scroll the
-              parent list (F9). `sortEnabled` is off with a single holding, where
-              there is nothing to reorder. */}
+          {/* A single-column drag-and-drop list of wide holding row cards
+              (mirroring the accounts list). A plain tap opens the holding; a
+              touch-and-hold-still on a manual card opens the deep-press (haptic)
+              delete menu; a hold-and-move drags to reorder — see `CardContextMenu`
+              and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
+              its vertical axis (a single column has no horizontal move to make).
+              `scrollableRef` + `autoScrollActivationOffset` let a drag near an
+              edge scroll the parent list (F9). `sortEnabled` is off with a single
+              holding, where there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
               sortEnabled={activeHoldings.length > 1}
-              columns={2}
+              // A subtle lift on touch-and-hold: the library default (1.1) pops
+              // the card up too much, so scale it just barely (matches the
+              // accounts grid).
+              activeItemScale={1.03}
+              columns={1}
+              overDrag="vertical"
               rowGap={theme.spacing(3)}
-              columnGap={theme.spacing(3)}
               scrollableRef={scrollableRef}
               autoScrollActivationOffset={75}
               keyExtractor={(holding) => holding.id}
@@ -313,7 +329,12 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     <HoldingCard
                       holding={item}
                       now={now}
-                      onOpen={() => navigation.navigate('HoldingDetail', { holdingId: item.id })}
+                      onOpen={() =>
+                        navigation.navigate('HoldingDetail', {
+                          holdingId: item.id,
+                          name: item.name,
+                        })
+                      }
                     />
                   </CardContextMenu>
                 </Box>

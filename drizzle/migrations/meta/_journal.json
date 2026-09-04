@@ -50,6 +50,20 @@
       "when": 1788517022536,
       "tag": "0006_backfill_sort_order",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788510193092,
+      "tag": "0007_robust_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788514551234,
+      "tag": "0008_new_luminals",
+      "breakpoints": true
     }
   ]
 }

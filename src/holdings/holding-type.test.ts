@@ -1,4 +1,10 @@
-import { holdingTypes, holdingTypesForAccountKind } from './holding-type';
+import {
+  creatableHoldingTypesForAccountKind,
+  holdingTypes,
+  holdingTypesForAccountKind,
+  isSyncOnlyHoldingType,
+  syncOnlyHoldingTypes,
+} from './holding-type';
 
 describe('holdingTypesForAccountKind', () => {
   it('never allows a holding type outside the holdings enum for any account kind', () => {
@@ -30,5 +36,45 @@ describe('holdingTypesForAccountKind', () => {
 
   it('constrains a crypto account to crypto_asset holdings only', () => {
     expect(holdingTypesForAccountKind.crypto).toEqual(['crypto_asset']);
+  });
+});
+
+describe('sync-only holding types', () => {
+  it('marks exactly card and jar as sync-only (Monobank creates them)', () => {
+    expect([...syncOnlyHoldingTypes]).toEqual(['card', 'jar']);
+    expect(isSyncOnlyHoldingType('card')).toBe(true);
+    expect(isSyncOnlyHoldingType('jar')).toBe(true);
+  });
+
+  it('does not mark manually-created types as sync-only', () => {
+    expect(isSyncOnlyHoldingType('term_deposit')).toBe(false);
+    expect(isSyncOnlyHoldingType('bond')).toBe(false);
+    expect(isSyncOnlyHoldingType('cash')).toBe(false);
+    expect(isSyncOnlyHoldingType('crypto_asset')).toBe(false);
+  });
+});
+
+describe('creatableHoldingTypesForAccountKind', () => {
+  it('drops the sync-only card and jar from a bank, leaving term_deposit and bond', () => {
+    expect(creatableHoldingTypesForAccountKind.bank).toEqual(['term_deposit', 'bond']);
+  });
+
+  it('leaves the cash and crypto sets unchanged (their type is not sync-only)', () => {
+    expect(creatableHoldingTypesForAccountKind.cash).toEqual(['cash']);
+    expect(creatableHoldingTypesForAccountKind.crypto).toEqual(['crypto_asset']);
+  });
+
+  it('never offers an empty create set for any account kind', () => {
+    for (const creatable of Object.values(creatableHoldingTypesForAccountKind)) {
+      expect(creatable.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('never offers a sync-only type as manually creatable', () => {
+    for (const creatable of Object.values(creatableHoldingTypesForAccountKind)) {
+      for (const type of creatable) {
+        expect(isSyncOnlyHoldingType(type)).toBe(false);
+      }
+    }
   });
 });

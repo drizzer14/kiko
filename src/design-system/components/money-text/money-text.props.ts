@@ -9,11 +9,17 @@ export type MoneyTextContext = 'balance' | 'transaction';
 // still colors by sign (negative -> red, positive -> green, zero ->
 // textPrimary/white), applied the same way no matter which `context` is
 // passed — the case a ledger row with no enforced color (a contribution or
-// purchase) wants. Mirrors `EntryTone` in `src/holdings/derived-entries.ts`
-// (so a later batch can pass a derived entry's tone straight through)
-// without this module importing from the domain layer, keeping the design
-// system decoupled from `holdings`.
-export type MoneyTextTone = 'positive' | 'negative' | 'neutral';
+// purchase) wants. `muted` renders `textSecondary` (the same gray a caption
+// uses) unconditionally — the case a normally fixed-color figure (interest,
+// tax) reads as when its own amount is exactly zero, where "green" or "red"
+// would misleadingly imply a nonzero accrual/withholding. Mirrors `EntryTone`
+// in `src/holdings/derived-entries.ts` (so a later batch can pass a derived
+// entry's tone straight through) without this module importing from the
+// domain layer, keeping the design system decoupled from `holdings` — `muted`
+// has no `EntryTone` counterpart on purpose, since "is this amount zero" is a
+// presentation-level decision the call site makes, not a property of the
+// entry's kind.
+export type MoneyTextTone = 'positive' | 'negative' | 'neutral' | 'muted';
 
 export type MoneyTextProps = {
   money: Money;

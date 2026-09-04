@@ -13,12 +13,21 @@
 // entries by testID and read back the geometry props.
 
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 
 type SvgElementProps = Record<string, unknown> & { children?: ReactNode };
 
 const SvgElement = ({ children, ...props }: SvgElementProps): ReactNode => {
   return <View {...props}>{children}</View>;
+};
+
+// SVG `<Text>` differs from the other primitives above: it legally holds a raw
+// string child (the rendered number). A passthrough `<View>` cannot — RN throws
+// "Text strings must be rendered within a <Text>" — so the mock renders SVG
+// `<Text>` as an RN `<Text>` instead, still forwarding `testID` and every other
+// prop so a test can query it and read back its geometry/fill.
+const SvgTextElement = ({ children, ...props }: SvgElementProps): ReactNode => {
+  return <RNText {...props}>{children}</RNText>;
 };
 
 export default SvgElement;
@@ -37,4 +46,15 @@ export const G = SvgElement;
 
 export const Circle = SvgElement;
 
-export const Text = SvgElement;
+export const Text = SvgTextElement;
+
+// Added for GlassSurface's 45deg entity-color gradient wash (design system
+// item F3): `Defs`/`LinearGradient`/`Stop` render as the same passthrough
+// View, so a test can still query a `<Stop testID="..." stopColor="..." />`
+// by its testID and read back the resolved color, the same pattern the chart
+// components above already use for their own geometry props.
+export const Defs = SvgElement;
+
+export const LinearGradient = SvgElement;
+
+export const Stop = SvgElement;

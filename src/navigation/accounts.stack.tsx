@@ -13,15 +13,20 @@ import type { AccountsStackParamList } from './types';
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
 /**
- * The Accounts tab's native stack. Every screen uses a large title, the
- * standard iOS pattern. The tab root ("Accounts") and the form screens carry
+ * The Accounts tab's native stack. The list and form screens use a large title,
+ * the standard iOS pattern. The tab root ("Accounts") and the form screens carry
  * a static title here — the create case is the default, so a constant "Add …"
  * reads correctly and belongs in the navigator config; the account/holding
  * forms override it to "Edit …" via `navigation.setOptions` when opened in edit
  * mode. The two detail screens set a dynamic title (the account/holding name)
- * from their own live-queried data via `navigation.setOptions`, so they take no
- * static title here; without one a screen would otherwise show its raw
- * camelCase route name.
+ * from their own route params (the entity name, captured at navigation time) via
+ * `navigation.setOptions`, so they take no static title here; without one a
+ * screen would otherwise show its raw camelCase route name. The title is set
+ * from the param name at first render (a fresher live-queried name takes over
+ * once loaded), so the native large title — and the back button on any screen
+ * pushed from a detail screen — reads the name immediately, with no async
+ * large-title toggle. The entity's identity icon sits beside the Balance/Value
+ * amount in the body (`EntityHeaderIcon`), not in the nav title.
  */
 const AccountsStack: FC = () => (
   <Stack.Navigator screenOptions={{ headerLargeTitle: true }} screenListeners={resetTabStackOnBlur}>

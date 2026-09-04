@@ -50,13 +50,19 @@ const ensureMigrationsTable = async (): Promise<void> => {
   );
 };
 
-const readLastAppliedTimestamp = async (): Promise<number | undefined> => {
-  const result = await rawDatabase.execute(
-    `SELECT id, hash, created_at FROM ${MIGRATIONS_TABLE} ORDER BY created_at DESC LIMIT 1`,
-  );
-  const [lastRow] = result.rows;
+// Gate on the NUMBER of migrations already recorded, not on a MAX(created_at)
+// high-water mark. drizzle applies journal entries strictly in order and records
+// one row per applied migration, so "already applied" is exactly "the first N
+// journal entries", where N is the recorded row count. A timestamp gate breaks
+// the moment the journal's `when` values are non-monotonic — e.g. a later idx
+// generated in a different worktree with an earlier wall clock — because it then
+// treats those out-of-order entries as already applied and skips their schema.
+// Counting is the mechanism drizzle itself uses and is immune to that.
+const readAppliedCount = async (): Promise<number> => {
+  const result = await rawDatabase.execute(`SELECT COUNT(*) AS count FROM ${MIGRATIONS_TABLE}`);
+  const [row] = result.rows;
 
-  return lastRow === undefined ? undefined : Number(lastRow.created_at);
+  return row === undefined ? 0 : Number(row.count);
 };
 
 const resolveMigrationSql = (entry: MigrationJournalEntry): string => {
@@ -92,20 +98,16 @@ const applyMigration = async (entry: MigrationJournalEntry): Promise<void> => {
   });
 };
 
-const isPending = (
-  entry: MigrationJournalEntry,
-  lastAppliedTimestamp: number | undefined,
-): boolean => lastAppliedTimestamp === undefined || lastAppliedTimestamp < entry.when;
-
 const doRun = async (): Promise<void> => {
   await ensureMigrationsTable();
 
-  const lastAppliedTimestamp = await readLastAppliedTimestamp();
+  const appliedCount = await readAppliedCount();
 
-  for (const entry of migrationBundle.journal.entries) {
-    if (isPending(entry, lastAppliedTimestamp)) {
-      await applyMigration(entry);
-    }
+  // The first `appliedCount` journal entries are already recorded; apply every
+  // entry from that position to the end, in journal order. Slicing past the end
+  // yields nothing, so a fully-migrated database is a no-op.
+  for (const entry of migrationBundle.journal.entries.slice(appliedCount)) {
+    await applyMigration(entry);
   }
 };
 

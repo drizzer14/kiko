@@ -13,8 +13,16 @@ import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
 
 // A single period-marking entry for one calendar day. `color` fills the day;
-// `startingDay`/`endingDay` round the span's two ends.
-type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean };
+// `startingDay`/`endingDay` round the span's two ends. `selected: true` is
+// always set (every day this builds a mark for IS the selection) — without
+// it, react-native-calendars' PeriodDay never applies `selectedDayTextColor`
+// to the label (see calendar/day/period/index.js: the on-accent text color
+// only comes from `marking.selected`, not from the fill color alone), so a
+// day that is both today and inside the range keeps `todayTextColor`
+// (accent-blue) over the accent-blue fill — invisible. Marking `selected`
+// makes that same accent-on-accent day fall back to the on-accent contrast
+// color instead, matching PffCalendar's `selectedDayTextColor` theme token.
+type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean; selected: true };
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -55,7 +63,7 @@ const buildPeriodMarks = (
   }
 
   if (to === null) {
-    return { [toCalendarKey(from)]: { color, startingDay: true, endingDay: true } };
+    return { [toCalendarKey(from)]: { color, startingDay: true, endingDay: true, selected: true } };
   }
 
   const marks: Record<string, PeriodMark> = {};
@@ -68,7 +76,12 @@ const buildPeriodMarks = (
     cursor.setDate(cursor.getDate() + 1)
   ) {
     const key = toCalendarKey(cursor);
-    marks[key] = { color, startingDay: key === startKey, endingDay: key === endKey };
+    marks[key] = {
+      color,
+      startingDay: key === startKey,
+      endingDay: key === endKey,
+      selected: true,
+    };
   }
 
   return marks;

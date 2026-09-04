@@ -92,6 +92,16 @@ describe('Button', () => {
     expect(getByText('Save')).toBeTruthy();
   });
 
+  it('renders a trailing icon when a trailingIcon name is given', async () => {
+    const { getByText } = await render(
+      <Button onPress={() => {}} trailingIcon="pencil">
+        Edit
+      </Button>,
+    );
+    expect(getByText('icon:pencil')).toBeTruthy();
+    expect(getByText('Edit')).toBeTruthy();
+  });
+
   it('forwards an accessibilityLabel so identical labels stay distinguishable', async () => {
     const { getByLabelText } = await render(
       <Button onPress={() => {}} accessibilityLabel="Remove contribution 2">
@@ -99,5 +109,16 @@ describe('Button', () => {
       </Button>,
     );
     expect(getByLabelText('Remove contribution 2')).toBeTruthy();
+  });
+
+  it('overrides the label color when textColor is given', async () => {
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="ghost" textColor="#FF453A">
+        Cancel
+      </Button>,
+    );
+    // textColor is applied inline (not through the variant block the mock
+    // strips), so it survives into the flattened label style.
+    expect(flattenRoot(getByText('Cancel')).color).toBe('#FF453A');
   });
 });

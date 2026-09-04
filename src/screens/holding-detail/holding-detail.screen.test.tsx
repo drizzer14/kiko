@@ -173,18 +173,29 @@ describe('HoldingDetailScreen', () => {
 
     await renderScreen();
 
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'My deposit' });
+    // The name is the plain string `title` — the native large title the back
+    // button on any pushed screen reads.
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'My deposit' }),
+    );
   });
 
-  it('renders in scroll mode so the native large title renders and collapses', async () => {
+  it('renders in scroll mode and drives the nav title from the name, with no custom header title', async () => {
     seed(cashHolding);
 
-    const { getByTestId, getByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('screen-scroll-view')).toBeTruthy();
-    // The name drives the dynamic header title AND renders in the view-only
-    // identity header beside the icon (identity editing moved to the edit form).
-    expect(getByText('My deposit')).toBeTruthy();
+    // The name is the plain string `title` — the native large title — with NO
+    // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
+    // moved beside the Value amount in the body).
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'My deposit' }),
+    );
+    for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
+      expect(options.headerTitle).toBeUndefined();
+      expect(options.headerLargeTitle).toBeUndefined();
+    }
   });
 
   it('renders a view-only header with no inline name, icon, or color editors', async () => {
@@ -219,23 +230,38 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  it('tints the header icon with the holding stored color', async () => {
+  it('tints the holding identity icon beside the Value amount with the holding stored color', async () => {
     seed({ ...cardHolding, color: darkTheme.colors.entityColors.violet });
 
     const { getByLabelText } = await renderScreen();
 
-    // The card holding shows the creditcard glyph (no custom icon), tinted violet.
+    // The holding icon now sits beside the Value amount (the nav title shows the
+    // NAME only): a card shows the creditcard glyph, tinted its stored violet.
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
     );
   });
 
-  it('tints the header icon with the type default color when no color is stored', async () => {
+  it('tints the holding identity icon beside the Value amount with the type default color when no color is stored', async () => {
     seed(cardHolding);
 
     const { getByLabelText } = await renderScreen();
 
     // A `card` holding with no color reads the card type default (white).
+    expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the type default', async () => {
+    // A stored color of '' (neither null nor undefined) slips past a bare
+    // `color ?? default`, leaving the header tinted with an invalid empty color
+    // while the card (via resolveEntityColor) shows the type default. The header
+    // must resolve through the same helper so the identity color never diverges.
+    seed({ ...cardHolding, color: '' });
+
+    const { getByLabelText } = await renderScreen();
+
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
@@ -297,7 +323,7 @@ describe('HoldingDetailScreen', () => {
     expect(within(footer).getByText('Add transaction')).toBeTruthy();
   });
 
-  it('renders the resolved category icon on a transaction row', async () => {
+  it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
     seed(
       cardHolding,
       [
@@ -310,14 +336,19 @@ describe('HoldingDetailScreen', () => {
           source: 'manual',
         },
       ],
-      [{ key: 'food', title: 'Food', icon: 'fork.knife' }],
+      [{ key: 'food', title: 'Food', icon: 'fork.knife', color: '#FF5733' }],
     );
 
     const { getByLabelText } = await renderScreen();
 
     // The row resolves its stored `category` through the same shared mapping
-    // Home uses, so the icon follows the categories table (here `fork.knife`).
-    expect(getByLabelText('Food').props.name).toBe('fork.knife');
+    // Home uses, so the icon follows the categories table (here `fork.knife`)
+    // and carries the category's own color — mirroring Home's transaction row,
+    // rather than a flat neutral tone. A hex color passes through
+    // `toSFSymbolTintColor` unchanged to the SFSymbolView `tintColor`.
+    const icon = getByLabelText('Food');
+    expect(icon.props.name).toBe('fork.knife');
+    expect(icon.props.tintColor).toBe('#FF5733');
   });
 
   it('renders the neutral category icon for an empty or unknown category', async () => {

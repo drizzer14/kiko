@@ -24,7 +24,13 @@ const toCalendarKey = (timestamp: number): string => {
 // A single labeled date field that opens a one-day calendar sheet. Stores the
 // picked day as a local-midnight unix-millis timestamp and displays it as
 // DD.MM.YYYY, mirroring the Home date-range field's calendar chrome.
-const DateField: FC<DateFieldProps> = ({ label, value, onChange, placeholder }) => {
+const DateField: FC<DateFieldProps> = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+}) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
@@ -47,9 +53,11 @@ const DateField: FC<DateFieldProps> = ({ label, value, onChange, placeholder }) 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={() => setOpen(true)}
       >
-        <Box direction="row" gap={2} style={styles.field}>
+        <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
           <SymbolIcon name="calendar" size={18} tone="textSecondary" />
 
           <Text variant="body" tone={value === null ? 'textSecondary' : 'textPrimary'}>

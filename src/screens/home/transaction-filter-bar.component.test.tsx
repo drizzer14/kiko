@@ -22,8 +22,14 @@ const SPAN_END = new Date(2026, 8, 2);
 const renderBar = (props: BarProps = {}): ReturnType<typeof render> =>
   render(
     <TransactionFilterBar
-      accounts={['Monobank', 'PrivatBank']}
-      categories={['Food', 'Transport']}
+      accounts={[
+        { value: 'Monobank', icon: 'creditcard', color: '#FFFFFF' },
+        { value: 'PrivatBank', icon: 'building.columns', color: '#34C759' },
+      ]}
+      categories={[
+        { value: 'Food', icon: 'fork.knife', color: '#FF9F0A' },
+        { value: 'Transport', icon: 'car', color: '#0A84FF' },
+      ]}
       selectedAccount={props.selectedAccount ?? new Set<string>()}
       selectedCategory={props.selectedCategory ?? new Set<string>()}
       onToggleAccount={props.onToggleAccount ?? jest.fn()}

@@ -108,6 +108,19 @@ describe('HoldingIdentityField', () => {
     expect(getByLabelText('Change Groceries icon')).toBeTruthy();
   });
 
+  it('leaves the name field un-focused by default', async () => {
+    const { getByLabelText } = await setup();
+
+    // No caller opted into autoFocus, so the field must not grab focus on mount.
+    expect(getByLabelText('Name').props.autoFocus).toBe(false);
+  });
+
+  it('forwards autoFocus to the name input so an on-demand field focuses on mount', async () => {
+    const { getByLabelText } = await setup({ autoFocus: true });
+
+    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+  });
+
   it('suppresses the icon Remove control when no onRemoveIcon handler is given', async () => {
     const { getByLabelText, queryByText } = await setup({
       icon: 'banknote',

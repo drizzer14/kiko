@@ -26,4 +26,11 @@ export const styles = StyleSheet.create((theme) => ({
     width: 18,
     alignItems: 'center',
   },
+  // The fixed-width slot that holds an option's own icon (an account/category
+  // glyph), reserved on every row of an icon-bearing menu so the labels stay
+  // aligned whether or not a given row has an icon (the "All" row does not).
+  icon: {
+    width: 18,
+    alignItems: 'center',
+  },
 }));

@@ -41,6 +41,37 @@ describe('DateField', () => {
     expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(16);
   });
 
+  it('is inert and dimmed when disabled: a press does not open the calendar', async () => {
+    const { getByLabelText, queryByTestId } = await render(
+      <DateField label="Start Date" value={null} onChange={jest.fn()} disabled />,
+    );
+
+    const field = getByLabelText('Start Date');
+    // A disabled field reports its disabled a11y state and swallows the press so
+    // a synced (Monobank) transaction's date cannot be changed here.
+    expect(field.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(field);
+    expect(queryByTestId('Start Date calendar')).toBeNull();
+  });
+
+  it('dims the field to read as locked when disabled', async () => {
+    const { getByText } = await render(
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        placeholder="Pick a day"
+        disabled
+      />,
+    );
+
+    // The bordered field chip dims to opacity 0.5, matching the disabled
+    // TextField / ChipRow treatment; the field row is the parent of the
+    // placeholder Text (placeholder Text -> field Box).
+    const fieldRow = getByText('Pick a day').parent;
+    expect(StyleSheet.flatten(fieldRow?.props.style).opacity).toBe(0.5);
+  });
+
   it('opens the calendar and reports the picked day as a local-midnight timestamp', async () => {
     const onChange = jest.fn();
     const { getByLabelText, getByTestId } = await render(

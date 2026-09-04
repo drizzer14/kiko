@@ -5,7 +5,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
-import { entityTintBackground } from '../../design-system/entity-tint';
+import { entityGradientStops } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
 import AccountsScreen from './accounts.screen';
@@ -129,7 +129,12 @@ describe('AccountsScreen', () => {
   it('navigates to AccountDetail when a row is pressed', async () => {
     const { getByText } = await renderAccounts();
     await fireEvent.press(getByText('Monobank'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+    // The account's name rides along so the detail screen's large title (and any
+    // back button pushed from it) reads immediately, before its own live query.
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
   });
 
   it('navigates to AccountForm when "Add account" is pressed', async () => {
@@ -152,10 +157,11 @@ describe('AccountsScreen', () => {
     const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);
     const buttonBoxStyle = StyleSheet.flatten(getByTestId('add-account-footer').props.style);
 
-    // Clearance now lives on the Screen footer (its clamped breathing-room gap
-    // spacing(2) = 8 — trimmed from the old spacing(4) by 1.5 button heights —
-    // plus the mocked tab-bar height; the safe-area mock reports a 0 bottom inset).
-    expect(footerStyle.paddingBottom).toBe(8 + MOCK_TAB_BAR_HEIGHT);
+    // Clearance now lives on the Screen footer: its breathing-room gap now
+    // MATCHES the footer button's own top margin (spacing(4) = 16) so the button
+    // sits symmetrically, plus the mocked tab-bar height (the safe-area mock
+    // reports a 0 bottom inset).
+    expect(footerStyle.paddingBottom).toBe(16 + MOCK_TAB_BAR_HEIGHT);
     // The button box must not re-add its own clearance, or the footer would be
     // double-padded.
     expect(buttonBoxStyle.marginBottom).toBeUndefined();
@@ -219,7 +225,10 @@ describe('AccountsScreen', () => {
     // A tap reaches the card's own Pressable and navigates, without touching the
     // context menu — the menu only opens on touch-and-hold.
     await fireEvent.press(getByText('Wallet'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Wallet',
+    });
     expect(mockAccountRemove).not.toHaveBeenCalled();
   });
 
@@ -302,7 +311,7 @@ describe('AccountsScreen', () => {
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
   });
 
-  it('washes each account card with a subtle tint of its color on first render', async () => {
+  it('washes each account card with a 45deg gradient of its color on first render', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -311,21 +320,19 @@ describe('AccountsScreen', () => {
     });
     const { getByTestId } = await renderAccounts();
 
-    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
-    expect(cardStyle.backgroundColor).toBe(
-      entityTintBackground(darkTheme.colors.entityColors.blue),
-    );
+    const stops = entityGradientStops(darkTheme.colors.entityColors.blue);
+    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
+    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
   });
 
-  it('washes an uncolored account card with its kind default tint', async () => {
+  it('washes an uncolored account card with a gradient of its kind default', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId } = await renderAccounts();
 
     // A `cash` account with no color reads the cash kind default (khaki).
-    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
-    expect(cardStyle.backgroundColor).toBe(
-      entityTintBackground(darkTheme.colors.entityColors.khaki),
-    );
+    const stops = entityGradientStops(darkTheme.colors.entityColors.khaki);
+    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
+    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
   });
 
   it('draws the shared hairline card border on first render (G2)', async () => {

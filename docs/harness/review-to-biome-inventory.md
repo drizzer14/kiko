@@ -52,6 +52,14 @@ mechanize well; keep in the skill).
 | Components never hardcode raw color/spacing/radius; read theme tokens | pff-design-system | Semgrep | Cleanup-first (false-positive-prone) |
 | Full unabbreviated variable names | pff-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
 
+### Candidates — pff-ux-round review (2026-09-04, not yet enforced)
+
+| Rule | Source | Enforce via | Tier |
+|---|---|---|---|
+| A `SymbolIcon`/`SFSymbolView` `color=` fed a raw entity/category `.color` (or `?? undefined`), not wrapped in `resolveEntityColor`/`resolveCategoryColor` | pff-design-system, pff-domain | Semgrep | Cleanup-first (verify no existing raw-color call site) |
+| Import-boundary: `src/screens/**` must not import a value export from another `*.screen.tsx` | pff-code-style | Semgrep | Safe |
+| At most one `Record<HoldingType, string>` / `Record<AccountKind, string>` glyph map in the tree | pff-domain | Knip/lint guard | Judgment (needs a one-off script, not a stock rule) |
+
 ### Judgment-only (correctly stay in skills)
 
 Functional-first-vs-OOP boundary; single-source-of-truth literal union +

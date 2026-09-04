@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 import '../../unistyles';
+import { darkTheme } from '../../theme';
 import BottomSheet from '.';
 
 // A device with a home indicator reports a non-zero bottom safe-area inset. The
@@ -94,5 +95,26 @@ describe('BottomSheet', () => {
     const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
     expect(sheetStyle.maxHeight).toBe('80%');
+  });
+
+  // The scrim is a frosted dim, not opaque black: `theme.colors.scrim` (a
+  // translucent black), never the opaque `background` token. Jest always
+  // exercises the non-liquid-glass fallback branch (`@callstack/liquid-glass`
+  // is globally mocked with `isLiquidGlassSupported: false` — see
+  // `jest/setup.js`), so this asserts the fallback `View`'s own dim; the real
+  // `LiquidGlassView` blur branch only renders on an iOS 26+ device.
+  it('dims the scrim with the translucent scrim token, never opaque black', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} backdropTestID="sheet-backdrop">
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const backdropChildren = getByTestId('sheet-backdrop').props.children;
+    const backdropChild = Array.isArray(backdropChildren) ? backdropChildren[0] : backdropChildren;
+    const childStyle = StyleSheet.flatten(backdropChild.props.style);
+
+    expect(childStyle.backgroundColor).toBe(darkTheme.colors.scrim);
+    expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.background);
   });
 });

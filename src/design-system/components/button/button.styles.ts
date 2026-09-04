@@ -16,6 +16,12 @@ export const styles = StyleSheet.create((theme) => ({
         primary: { backgroundColor: theme.colors.accent },
         secondary: { backgroundColor: theme.colors.surfaceHigh },
         destructive: { backgroundColor: theme.colors.negative },
+        // No fill at all — see the `ghost` doc comment on `ButtonVariant`.
+        // Explicit `'transparent'` (not simply omitting the key) so switching
+        // to `ghost` at runtime (Unistyles' `useVariants`) always clears
+        // whatever fill another variant last painted, rather than leaving a
+        // stale `backgroundColor` from a previous variant on the same node.
+        ghost: { backgroundColor: 'transparent' },
       },
     },
   },
@@ -43,22 +49,17 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // A plain `Text as RNText`, not the design-system `Text` primitive: `Text`
   // intentionally excludes `color` from its style prop (see text.props.ts) so
-  // the tone token stays authoritative, but this label needs white-on-accent
-  // for `primary`/`destructive` and accent-on-surface for `secondary` — none is
-  // one of `Text`'s four tones. Every color still comes from a theme token.
+  // the tone token stays authoritative, but this label needs white on every
+  // fill (accent, gray surface, red) — none of `Text`'s four tones is "always
+  // white regardless of variant". The color still comes from a theme token,
+  // just not through a `Text` tone.
   label: {
     ...theme.typography.body,
     fontWeight: '600',
+    color: theme.colors.textPrimary,
     // Every call site passes a sentence-case label ("Add holding") — force
     // title case here, once, so button copy reads consistently without
     // editing each call site.
     textTransform: 'capitalize',
-    variants: {
-      variant: {
-        primary: { color: theme.colors.textPrimary },
-        secondary: { color: theme.colors.accent },
-        destructive: { color: theme.colors.textPrimary },
-      },
-    },
   },
 }));

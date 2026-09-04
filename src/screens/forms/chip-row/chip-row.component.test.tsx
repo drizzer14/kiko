@@ -33,6 +33,49 @@ describe('ChipRow', () => {
     expect(onSelect).toHaveBeenCalledWith('crypto');
   });
 
+  it('renders a SymbolIcon before each label when the icons map is provided', async () => {
+    const icons = {
+      bank: 'building.columns',
+      cash: 'banknote',
+      crypto: 'bitcoinsign',
+    } as const;
+
+    const { getByText, toJSON } = await render(
+      <ChipRow options={options} selected="bank" onSelect={jest.fn()} icons={icons} />,
+    );
+
+    // Every option still shows its label text...
+    expect(getByText('bank')).toBeTruthy();
+    // ...and each option's SF Symbol glyph renders. The mocked SFSymbolView
+    // forwards `name` to a host View, so each glyph name appears in the tree.
+    const tree = JSON.stringify(toJSON());
+    expect(tree).toContain('building.columns');
+    expect(tree).toContain('banknote');
+    expect(tree).toContain('bitcoinsign');
+  });
+
+  it('renders no glyph when the icons map is absent (text-only default)', async () => {
+    const { getByText, toJSON } = await render(
+      <ChipRow
+        options={options}
+        selected="bank"
+        onSelect={jest.fn()}
+        icons={{ bank: 'building.columns' }}
+      />,
+    );
+
+    const { toJSON: toJSONTextOnly } = await render(
+      <ChipRow options={options} selected="bank" onSelect={jest.fn()} />,
+    );
+
+    // The icons prop is what introduces a glyph: present here, absent below.
+    expect(getByText('bank')).toBeTruthy();
+    expect(JSON.stringify(toJSON())).toContain('building.columns');
+    // Without `icons`, the row stays exactly as its text-only default: no
+    // SFSymbolView (which forwards a `name` prop) is rendered for any chip.
+    expect(JSON.stringify(toJSONTextOnly())).not.toContain('building.columns');
+  });
+
   it('marks the selected chip via accessibilityState', async () => {
     const { getByText } = await render(
       <ChipRow options={options} selected="cash" onSelect={jest.fn()} />,

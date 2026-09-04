@@ -1,6 +1,6 @@
 ---
 name: pff-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, or any of the shared primitives (Screen, Box, Text, MoneyText). Read before adding a color, spacing, typography, or radius value, and before styling a new screen.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, SwipeableRow, Switch, TextField, CurrencyBreakdown, CurrencySwitch), an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # PFF design system
@@ -64,27 +64,135 @@ components against the theme's tokens, not literal values, so a
 future theme refinement (the follow-up sub-project) only touches the
 theme module.
 
-## Primitive set
+## Component set
 
-Four minimal primitives for this sub-project — build only these,
-resist adding more until a real screen needs it:
+The primitive set has grown well past the original four. This is the
+real set — enumerated at `src/design-system/components/`; read that
+directory listing directly rather than trusting a copy of it here, a
+new component can land between reviews of this skill:
 
-- **Screen** — the top-level container for a screen: true-black
-  background, safe-area handling, standard screen padding from the
-  spacing scale.
-- **Box** — a generic layout container reading spacing/color tokens
-  (padding, margin, gap, background).
-- **Text** — the base text primitive reading the typography and text
+- **Screen** — the top-level screen container: true-black background,
+  safe-area handling per mode (`scroll` drops the top safe-area edge
+  under a large-title header), and a footer slot that clears the
+  native glass tab bar's measured height.
+- **Box** — a generic layout container reading spacing/color/direction
+  tokens (padding, gap, background, `direction="row"`).
+- **Text** — the base text primitive reading the typography and tone
   color tokens; other text usage composes on top of this.
-- **MoneyText** — formats a `Money` value (see `pff-domain`) using
-  its `format(locale)` method, and applies the positive/negative
-  money color token based on the value's sign. This is the only
-  primitive that knows about `Money` — plain `Text` never receives a
-  `Money` object directly.
+- **MoneyText** — formats a `Money` value (see `pff-domain`) and
+  applies the positive/negative/neutral money color token from its
+  sign. This is the only primitive that knows about `Money` — plain
+  `Text` never receives a `Money` object directly.
+- **Button** — the one action button: primary/secondary/destructive
+  variants, an optional leading/trailing SF Symbol icon tinted to a
+  single fixed color regardless of variant.
+- **GlassSurface** — the shared card-grouping surface: real Liquid
+  Glass on iOS 26+, a themed flat fallback everywhere else, an
+  optional `bordered` edge, and an optional entity-color gradient
+  wash — see "Entity color and tint" below.
+- **BottomSheet** — the one bottom-sheet primitive: a transparent
+  `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
+  card owning its own safe-area-aware bottom padding. Every sheet in
+  the app routes through this rather than hand-rolling
+  `Modal + backdrop + Box` again.
+- **SymbolIcon** — wraps an SF Symbol glyph
+  (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
+  below before passing it a color.
+- **SwipeableRow** — a swipe-to-reveal-delete list row; its gesture
+  arbitration and settle math are pure functions in `gesture.ts` — see
+  `pff-gestures`.
+- **Switch** — a labeled toggle wrapping RN's `Switch` with theme
+  track/thumb colors.
+- **TextField** — a labeled text input wrapping RN's `TextInput` with
+  theme tokens.
+- **CurrencyBreakdown** — a two-column per-currency amount grid (code
+  left, formatted `MoneyText` right), filled row-major.
+- **CurrencySwitch** — a segmented base-currency toggle pill; not a
+  `Button` (it is a selection control, not an action, and needs a
+  transparent selected-state fill `Button` does not support).
+- **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
+  visualization components; see the dedicated `pff-charts` skill for
+  their coordinate-space and testID conventions before touching any
+  of the three.
+
+## Entity color and tint
+
+An account or holding's color is never a raw hex literal at the call
+site — it goes through one shared pipeline so a swatch reads
+identically everywhere that entity appears (its card, its icon tint,
+its chart legend). Read `src/holdings/entity-colors.ts` and
+`src/design-system/entity-tint.ts` directly for the exact functions
+and their current shape; do not copy their signatures into prose here
+where they can drift. As of this writing the pipeline is:
+
+- `defaultAccountColor` / `defaultHoldingColor`
+  (`src/holdings/entity-colors.ts`) — the kind/type-keyed default
+  swatch a newly-created entity gets before a user overrides it.
+- `resolveEntityColor` (`entity-tint.ts`) — the one function that
+  picks an entity's EFFECTIVE color: the stored override if it is a
+  valid hex, else the kind/type default if that resolves, else a safe
+  gray fallback. Always call this rather than a bare
+  `stored ?? typeDefault` — that pattern misses an empty-string stored
+  value and an unmapped kind/type default (e.g. a row written under a
+  since-removed enum member), both of which throw downstream instead
+  of silently falling back.
+- `entityGradientStops` (`entity-tint.ts`) — the two `rgba(...)` stops
+  for a card's 45deg gradient wash: the resolved color's flat tint as
+  the first stop, that same color lightened as the second, so the
+  gradient reads as one subtle diagonal wash of a single hue.
+- `entityTintBackground` / `lightenHex` (`entity-tint.ts`) — the
+  lower-level building blocks `entityGradientStops` composes; reach
+  for them directly only when you need one flat tint or one lightened
+  hex, not both gradient stops.
+
+**One hue, several renderings.** An entity has exactly one color, but
+that color is rendered several different ways depending on context —
+a flat translucent tint behind a card, a two-stop diagonal gradient
+wash on a `GlassSurface`, an opaque SF Symbol tint, a chart fill, a
+pastel-over-white blend (`blendOverWhite`). Never introduce a second,
+parallel way to derive one of these renderings from a hex, and never
+add a second hex parser either — `entity-tint.ts` owns the one
+unexported `parseHex`. Extend `entity-tint.ts` with a new named
+function instead, so every rendering of an entity's color still
+traces back to the same `resolveEntityColor` call. `blendOverWhite`
+and a duplicated `parseHex` were once added under `money-text/` and
+had to be moved back into `entity-tint.ts` for exactly this reason.
+
+## SF Symbol `tintColor` gotcha
+
+`react-native-nitro-sfsymbols`'s `SFSymbolView.tintColor` accepts only
+`#RGB`/`#RRGGBB`/`#RRGGBBAA` hex — the native bridge parses hex
+directly with no CSS color parser behind it. Most theme tokens are
+already hex, but `theme.colors.textSecondary` is an `rgba(...)`
+string (the iOS `secondaryLabel` translucency convention), which
+`Text`/`MoneyText` handle fine (they go through React Native's own
+color parser) but which `SFSymbolView` cannot parse — handed an
+`rgba()` string, it silently renders the glyph in a fallback color
+instead of throwing, which on this app's black background looks like
+a fully invisible glyph, easy to mistake for a layout bug. Convert any
+`rgba()`/`rgb()` color through `toSFSymbolTintColor`
+(`symbol/symbol.color.ts`) before it reaches `tintColor` — `SymbolIcon`
+already does this for both its `tone` and its explicit `color` prop;
+a caller building a raw `SFSymbolView` outside `SymbolIcon` must do
+the same conversion itself.
+
+## GlassSurface `isLiquidGlassSupported` branch
+
+`GlassSurface` renders two structurally different trees, not one tree
+with a conditional prop: `isLiquidGlassSupported` (from
+`@callstack/liquid-glass`) picks between a real `LiquidGlassView` (iOS
+26+) and a plain `View` with an explicit fallback background/radius.
+`isLiquidGlassSupported` being `false` does **not** mean
+`LiquidGlassView` is unavailable — on unsupported iOS it still renders
+as a plain `View` with no glass effect — so the fallback styling lives
+in the `else` branch's `View`, not as a style merged onto
+`LiquidGlassView` "just in case." A new prop that changes the surface's
+appearance (a new gradient wash, a new border style) must be applied
+to **both** branches, or it silently only works on iOS 26+.
 
 ## Wrapping a React Native primitive
 
-Each of the four primitives wraps a real React Native component
+Each of these primitives wraps a real React Native component
 (`View`, `Text`, ...), so widen the prop type from that underlying
 component's own props (`Pick` the ones that make sense, or extend the
 full set) rather than redeclaring a parallel prop shape by hand.

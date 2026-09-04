@@ -75,6 +75,12 @@ plain module of exported functions, not a class.
 - Repositories are the only place raw Drizzle rows are converted
   to/from domain types (e.g. `balanceMinorUnits` -> `Money`,
   see `pff-domain`).
+- A full-list `sortOrder` rewrite (persisting a drag-and-drop reorder)
+  is one `db.transaction()` wrapping a loop that updates every row's
+  `sortOrder` to its new index — see `accounts.repo.ts`'s `reorder()`
+  for the canonical shape. Do not write each row's `sortOrder` in its
+  own separate transaction; a partial write would leave the stored
+  order inconsistent with what the grid showed.
 
 ## Monobank sync pipeline (functional)
 

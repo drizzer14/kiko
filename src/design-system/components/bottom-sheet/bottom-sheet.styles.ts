@@ -22,18 +22,37 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     justifyContent: 'flex-end',
   },
-  // The full-bleed dismiss scrim behind the sheet. True-black (the OLED
-  // background token) is on-brand for the dark theme; a tap anywhere on the
-  // exposed area above the sheet dismisses. It fills the whole overlay and the
-  // opaque sheet renders on top of it, so only the area above the sheet takes a
-  // tap.
+  // The full-bleed dismiss scrim behind the sheet: a tap anywhere on the
+  // exposed area above the sheet dismisses. It fills the whole overlay and
+  // the opaque sheet renders on top of it, so only the area above the sheet
+  // takes a tap. Position/size only — no color here. The scrim's own
+  // translucent-black/blur fill is `backdropGlass`/`backdropFallback`
+  // below, a child of this Pressable, per `pff-design-system`'s
+  // "GlassSurface `isLiquidGlassSupported` branch": the visual layer
+  // structurally branches on the same `isLiquidGlassSupported` check
+  // GlassSurface uses, not a single tree with a conditional style.
   backdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.colors.background,
+  },
+  // Fills the backdrop Pressable's own bounds for either branch below —
+  // shared sizing so the LiquidGlassView (iOS 26+, real blur material via
+  // its own `effect`/`colorScheme`/`tintColor` props) and the plain-View
+  // fallback cover the Pressable identically.
+  backdropFill: {
+    flex: 1,
+  },
+  // The non-liquid-glass fallback (older iOS, or Android): no real blur
+  // material is available without a new native dependency (see
+  // `pff-design-system` / the harness's dependency-age guard), so this
+  // stays a flat translucent-black dim — `theme.colors.scrim`, not the
+  // opaque `background` token — enough contrast for the sheet on top
+  // without ever reading as solid black.
+  backdropFallback: {
+    backgroundColor: theme.colors.scrim,
   },
   // The sheet card: flush to the screen's left/right/bottom edges with only its
   // top corners rounded — a clean bottom sheet, no floating frame. The Modal

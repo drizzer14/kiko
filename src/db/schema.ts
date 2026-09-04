@@ -122,6 +122,28 @@ export const categories = sqliteTable('categories', {
   key: text('key').primaryKey(),
   title: text('title').notNull(),
   icon: text('icon').notNull(),
+  // Nullable per-category color (#RRGGBB, an `entityColors` token). Null means
+  // "no color picked" — the display/chart layer falls back to the stable per-key
+  // palette hash (see resolveCategoryColor in statistics/category-breakdown.ts),
+  // mirroring accounts/holdings' nullable `color`.
+  color: text('color'),
 });
 
 export type CategoryRow = typeof categories.$inferSelect;
+
+/**
+ * A name→category override rule. Editing any transaction's category upserts a
+ * rule keyed by the JS-normalized name (see normalizeTransactionName), which
+ * (1) rewrites every existing same-name transaction and (2) is re-applied to
+ * every future synced insert with that name. `category` is a categories.key
+ * (slug); `displayName` is the last-seen human name, shown to the user.
+ */
+export const categoryOverrides = sqliteTable('category_overrides', {
+  normalizedName: text('normalized_name').primaryKey(),
+  category: text('category').notNull(),
+  displayName: text('display_name').notNull(),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+});
+
+export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;

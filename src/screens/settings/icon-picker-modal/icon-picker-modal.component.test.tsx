@@ -27,7 +27,7 @@ describe('IconPickerModal', () => {
   it('renders the full curated icon pool as pressable choices when visible', async () => {
     const { getAllByLabelText, getByLabelText } = await setup();
 
-    // The whole 60-icon pool is offered at once inside the scrollable grid.
+    // The whole 138-icon pool is offered at once inside the scrollable grid.
     expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
     expect(getByLabelText('Choose icon basket')).toBeTruthy();
   });

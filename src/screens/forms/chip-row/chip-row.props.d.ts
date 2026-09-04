@@ -9,6 +9,11 @@ export type ChipRowProps<Option extends string> = {
   // (`term_deposit`, `crypto_asset`) shows human text while `onSelect` still
   // reports the underlying value. A value absent from the map renders verbatim.
   labels?: Partial<Record<Option, string>>;
+  // Optional value -> SF Symbol name map. When supplied, each chip renders the
+  // named glyph before its label; only the ENTITY selects use this (account
+  // Kind, holding Type). A value absent from the map renders text-only, so an
+  // omitted `icons` prop leaves the row exactly as its text-only default.
+  icons?: Partial<Record<Option, string>>;
   // When true, the row is read-only: presses are inert and the chips are dimmed.
   // The edit forms use this for a field the domain forbids changing after
   // creation (an account's kind, a holding's type/currency) — it still SHOWS the

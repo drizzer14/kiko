@@ -15,4 +15,10 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },
+  // A read-only (synced) date field: dimmed to read as locked, matching the
+  // disabled TextField (`inputDisabled`) and ChipRow (`disabled`) opacity so a
+  // field a synced transaction cannot change looks the same everywhere.
+  fieldDisabled: {
+    opacity: 0.5,
+  },
 }));

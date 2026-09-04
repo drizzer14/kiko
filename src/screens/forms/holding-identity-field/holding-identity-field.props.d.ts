@@ -33,6 +33,12 @@ export type HoldingIdentityFieldProps = {
   onEndEditingName?: () => void;
   // Optional placeholder shown while the name is empty.
   namePlaceholder?: string;
+  // Focus the name input as soon as it mounts. A caller that reveals this field
+  // on demand (the inline "Add category" row, which only mounts the field once
+  // its form expands) passes `true` so the keyboard opens straight onto the
+  // name field without a second tap. Forwarded to the inner TextInput's
+  // `autoFocus`; omit it (the default) for an always-mounted field.
+  autoFocus?: boolean;
   // Whether to render the "Icon"/"Name" field captions above the two controls
   // (defaults to true, the form treatment). A dense list row (a category row)
   // passes `false` for a bare, caption-free icon+name pair, vertically centered

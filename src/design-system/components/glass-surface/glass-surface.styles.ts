@@ -6,18 +6,18 @@ export const styles = StyleSheet.create((theme) => ({
   surface: {
     overflow: 'hidden',
   },
-  // Only applied on the fallback branch (isLiquidGlassSupported === false),
-  // where there is no native glass material to supply a background.
-  fallback: {
+  // The opaque themed base, used in two places:
+  //   - the non-glass fallback branch (isLiquidGlassSupported === false),
+  //     where there is no native glass material to supply a background;
+  //   - the constant backdrop painted UNDER the real glass for a tinted
+  //     entity card (a `gradient` is set), so the translucent
+  //     backdrop-sampling glass refracts a FIXED opaque color instead of
+  //     whatever live screen content sits behind the card. Sampling live
+  //     content was the root cause of the card tint shifting lightness on
+  //     scroll/reorder/navigation — a constant backdrop pins it.
+  opaqueBase: {
     backgroundColor: theme.colors.surface,
   },
-  // The entity-color wash, applied when `tint` is set. A Unistyles-managed
-  // dynamic member (not a plain inline object): this keeps the tint inside the
-  // set of styles Unistyles writes to the native ShadowNode, so it paints on
-  // the first frame rather than only after a re-render — see the `tint` prop.
-  tinted: (background: string) => ({
-    backgroundColor: background,
-  }),
   // The card edge, applied when `bordered` is set. A Unistyles-managed member
   // (not a plain inline object) for the same reason as `tinted`: Unistyles
   // writes it straight to the native ShadowNode, so the hairline separator

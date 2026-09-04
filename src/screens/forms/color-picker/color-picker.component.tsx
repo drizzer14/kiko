@@ -12,7 +12,12 @@ import { styles } from './color-picker.styles';
 // whose hex equals `value`) carries a ring, and tapping a swatch reports its hex
 // through `onSelect`. Presentational: the caller owns the state and the
 // default-follows-type wiring, exactly as it does for the ChipRow pickers.
-const ColorPicker = ({ value, onSelect, label }: ColorPickerProps): ReactElement => {
+const ColorPicker = ({
+  value,
+  onSelect,
+  label,
+  accessibilityLabelPrefix = 'Color',
+}: ColorPickerProps): ReactElement => {
   const { theme } = useUnistyles();
   const swatches = Object.entries(theme.colors.entityColors);
 
@@ -33,7 +38,7 @@ const ColorPicker = ({ value, onSelect, label }: ColorPickerProps): ReactElement
               key={name}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`Color ${name}`}
+              accessibilityLabel={`${accessibilityLabelPrefix} ${name}`}
               onPress={() => onSelect(hex)}
               style={[styles.swatchRing, selected && { borderColor: theme.colors.textPrimary }]}
             >

@@ -8,6 +8,8 @@ import m0003 from './0003_special_the_phantom.sql';
 import m0004 from './0004_abnormal_energizer.sql';
 import m0005 from './0005_add_entity_color.sql';
 import m0006 from './0006_backfill_sort_order.sql';
+import m0007 from './0007_robust_karen_page.sql';
+import m0008 from './0008_new_luminals.sql';
 
 export default {
   journal,
@@ -19,5 +21,7 @@ export default {
     m0004,
     m0005,
     m0006,
+    m0007,
+    m0008,
   },
 };

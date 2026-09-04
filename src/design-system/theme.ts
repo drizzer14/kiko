@@ -27,20 +27,31 @@ export const darkTheme = {
     positive, // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
     border: '#38383A', // separator (dark)
-    // Named palette a user picks from to color an account or holding. Twelve
-    // distinct swatches drawn from Apple's dark-mode system color family, each
-    // legible on the true-black background and visually distinct from its
-    // neighbours. `blue` and `green` alias the `accent` / `positive` tones
-    // above to keep one source of truth; the default kind/type -> color
-    // mappings live in src/holdings/entity-colors.ts and reference these
-    // tokens. Only appended to below the original six (never remove/rename a
+    // The translucent-black dismiss scrim behind a modal/bottom-sheet
+    // overlay (BottomSheet). NOT the opaque `background` token: a modal
+    // scrim reads as a frosted dim over whatever screen is behind it — real
+    // blur via LiquidGlassView where iOS 26+ supports it, this flat
+    // translucent black as the scrim's own tint (layered under the glass
+    // material) and as the non-liquid-glass fallback's dim. 0.55 keeps
+    // enough contrast for the sheet on top without ever reading as solid
+    // black.
+    scrim: 'rgba(0,0,0,0.55)',
+    // Named palette a user picks from to color an account or holding.
+    // Fourteen distinct swatches drawn from Apple's dark-mode system color
+    // family, each legible on the true-black background and visually
+    // distinct from its neighbours. `blue` and `green` alias the `accent` /
+    // `positive` tones above to keep one source of truth; the default
+    // kind/type -> color mappings live in src/holdings/entity-colors.ts and
+    // reference these tokens. Only ever grow this set (never remove/rename a
     // key) so an existing default mapping never dangles.
     entityColors: {
       white: '#FFFFFF',
       khaki: '#BDB76B',
+      brown: '#AC8E68', // systemBrown (dark)
       yellow: '#FFD60A', // systemYellow (dark)
       blue: accent,
       green: positive,
+      mint: '#66D4CF', // systemMint (dark)
       violet: '#BF5AF2', // systemPurple (dark)
       red: '#FF453A', // systemRed (dark)
       orange: '#FF9F0A', // systemOrange (dark)

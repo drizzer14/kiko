@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { match } from 'ts-pattern';
 import { formatMoney } from '../../../currency/format';
 import Text from '../text';
 import type { MoneyTextContext, MoneyTextProps, MoneyTextTone } from './money-text.props';
@@ -29,7 +30,11 @@ const signTone = (minorUnits: number) => {
 // context/sign resolution meant for a plain balance or transaction amount.
 const resolveTone = (context: MoneyTextContext, minorUnits: number, tone?: MoneyTextTone) => {
   if (tone !== undefined) {
-    return tone === 'neutral' ? signTone(minorUnits) : tone;
+    return match(tone)
+      .with('neutral', () => signTone(minorUnits))
+      .with('muted', () => 'textSecondary' as const)
+      .with('positive', 'negative', (fixedTone) => fixedTone)
+      .exhaustive();
   }
 
   if (isNegative(minorUnits)) {

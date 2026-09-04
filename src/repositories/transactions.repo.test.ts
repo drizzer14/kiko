@@ -17,7 +17,7 @@ jest.mock('../db/client', () => {
   };
 });
 
-import { holdings, transactions } from '../db/schema';
+import { categoryOverrides, holdings, transactions } from '../db/schema';
 import { transactionsRepo } from './transactions.repo';
 
 // Build a fake transaction handle for `update`. `select(...).from(...).where
@@ -261,6 +261,94 @@ const makeRemoveTx = (opts: {
   };
   return { tx, captured };
 };
+
+// Fake tx for addManyDedup: a rule lookup (select->from->where resolving the
+// rules) then an insert (values captured, onConflictDoNothing).
+const makeAddManyTx = (
+  rules: { normalizedName: string; category: string }[],
+): {
+  tx: unknown;
+  captured: { inserted?: Record<string, unknown>[] };
+} => {
+  const captured: { inserted?: Record<string, unknown>[] } = {};
+  const tx = {
+    select: () => ({ from: () => ({ where: () => Promise.resolve(rules) }) }),
+    insert: (table: unknown) => ({
+      values: (values: Record<string, unknown>[]) => {
+        if (table !== categoryOverrides) {
+          captured.inserted = values;
+        }
+
+        return { onConflictDoNothing: () => Promise.resolve() };
+      },
+    }),
+  };
+
+  return { tx, captured };
+};
+
+describe('transactionsRepo.addManyDedup category overrides', () => {
+  it('applies a matching rule to an incoming synced row at insert time', async () => {
+    const { tx, captured } = makeAddManyTx([
+      { normalizedName: 'atb market', category: 'groceries' },
+    ]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h1',
+        amountMinorUnits: -500,
+        time: 1,
+        source: 'monobank',
+        description: 'ATB Market',
+        category: 'Other',
+        externalId: 'e1',
+      },
+      {
+        holdingId: 'h1',
+        amountMinorUnits: -700,
+        time: 2,
+        source: 'monobank',
+        description: 'Coffee',
+        category: 'Dining',
+        externalId: 'e2',
+      },
+    ]);
+
+    const inserted = captured.inserted ?? [];
+    expect(inserted[0]).toMatchObject({ description: 'ATB Market', category: 'groceries' });
+    // no rule for Coffee — its mapped category is left untouched
+    expect(inserted[1]).toMatchObject({ description: 'Coffee', category: 'Dining' });
+  });
+
+  it('matches a Cyrillic case-variant name against its rule', async () => {
+    const { tx, captured } = makeAddManyTx([{ normalizedName: 'атб', category: 'groceries' }]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h1',
+        amountMinorUnits: -500,
+        time: 1,
+        source: 'monobank',
+        description: 'АТБ',
+        category: 'Other',
+        externalId: 'e1',
+      },
+    ]);
+
+    const inserted = captured.inserted ?? [];
+    expect(inserted[0]).toMatchObject({ description: 'АТБ', category: 'groceries' });
+  });
+
+  it('skips empty-description rows and inserts nothing when the input is empty', async () => {
+    const { tx, captured } = makeAddManyTx([]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([]);
+    expect(captured.inserted).toBeUndefined();
+  });
+});
 
 describe('transactionsRepo.remove', () => {
   it('deletes a manual transaction and reverses its balance effect', async () => {

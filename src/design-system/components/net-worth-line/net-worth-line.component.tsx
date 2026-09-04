@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { View } from 'react-native';
+import { type DimensionValue, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Svg, Polyline, Line, G } from 'react-native-svg';
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
@@ -39,12 +39,21 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
+// The evenly-spaced fractions of the time range the X-axis labels the timeline
+// at: the two extremes plus three interior dates, so the axis reads as a real
+// timeline rather than just its endpoints.
+const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 // The dashed pattern for the start-reference baseline.
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
 
-type Scales = { x: (t: number) => number; y: (value: number) => number };
+type Scales = {
+  x: (t: number) => number;
+  y: (value: number) => number;
+  minTime: number;
+  maxTime: number;
+};
 
 const buildScales = (points: NetWorthPoint[], startReference: number, height: number): Scales => {
   const times = points.map((point) => point.t);
@@ -65,7 +74,7 @@ const buildScales = (points: NetWorthPoint[], startReference: number, height: nu
   const y = (value: number): number =>
     PADDING_Y + (1 - (value - paddedMin) / paddedSpan) * plotHeight;
 
-  return { x, y };
+  return { x, y, minTime, maxTime };
 };
 
 // One Y-axis tick: its value plus a stable key from its fractional position, so
@@ -86,11 +95,59 @@ const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => 
   });
 };
 
+// One X-axis (time) tick: its timestamp, its horizontal position as a percentage
+// of the plot width (so a label anchors under its gridline), whether it is one of
+// the two range extremes (drawn flush to an edge, not centred), and — for an edge
+// — whether it is the START extreme (flush left) versus the END one (flush
+// right). `isStart` is keyed off the fraction, not `leftPercent === 0`: the
+// start's `leftPercent` is the plot's left padding (PADDING_X / VIEW_WIDTH), never
+// exactly 0, so a `=== 0` test would misclassify the start as the end and stack
+// both range labels at the right edge.
+type XTick = { key: string; time: number; leftPercent: number; isEdge: boolean; isStart: boolean };
+
+// The X-axis time ticks across the range. A single-instant range (one point, or
+// every point at the same time) collapses to a lone start label — the evenly
+// spaced set would otherwise stack every date on the same x.
+const buildXTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
+  }
+
+  return X_TICK_FRACTIONS.map((fraction) => {
+    const time = scales.minTime + fraction * timeSpan;
+
+    return {
+      key: fraction.toFixed(2),
+      time,
+      leftPercent: (scales.x(time) / VIEW_WIDTH) * 100,
+      isEdge: fraction === 0 || fraction === 1,
+      isStart: fraction === 0,
+    };
+  });
+};
+
 const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
 const formatAxisTime = (t: number): string =>
   new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// The `%` left offset for an interior label, as an RN dimension. Built from a
+// runtime number, so it widens to `string` and needs the cast onto the
+// percentage side of `DimensionValue`.
+const leftPercentOf = (percent: number): DimensionValue => `${percent}%` as DimensionValue;
+
+// The absolute-position style for an X-axis date label: the two range extremes
+// flush to the plot's left/right edge, every interior date centred on its
+// gridline via a zero-width anchor pinned to that gridline's x.
+const xLabelStyle = (tick: XTick) => {
+  if (!tick.isEdge) {
+    return [styles.xLabelMid, { left: leftPercentOf(tick.leftPercent) }];
+  }
+
+  return tick.isStart ? styles.xLabelStart : styles.xLabelEnd;
+};
 
 const StatusMessage: FC<{ testID: string; message: string }> = ({ testID, message }) => {
   return (
@@ -121,6 +178,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
 
   const scales = buildScales(points, startReference, height);
   const ticks = buildTicks(points, startReference);
+  const xTicks = buildXTicks(scales);
   // One compact unit for the whole axis, chosen from the spread of tick values
   // so adjacent labels stay distinct while staying short (see chooseCompactUnit).
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
@@ -171,6 +229,23 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               ))}
             </G>
 
+            <G>
+              {xTicks
+                .filter((tick) => !tick.isEdge)
+                .map((tick) => (
+                  <Line
+                    key={tick.key}
+                    testID={`net-worth-line-x-grid-${tick.key}`}
+                    x1={scales.x(tick.time)}
+                    y1={PADDING_Y}
+                    x2={scales.x(tick.time)}
+                    y2={baselineY}
+                    stroke={theme.colors.border}
+                    strokeWidth={GRID_STROKE_WIDTH}
+                  />
+                ))}
+            </G>
+
             <Line
               testID="net-worth-line-x-axis"
               x1={PADDING_X}
@@ -204,13 +279,29 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
       </View>
 
       <View testID="net-worth-line-x-axis-labels" style={styles.xAxis}>
-        <Text variant="caption" tone="textSecondary">
-          {formatAxisTime(points[0].t)}
-        </Text>
+        {/* Mirror the plot row above: a fixed-width spacer standing in for the
+            Y-axis label column, then a flex:1 track that lines up exactly with
+            the SVG plot. The interior labels position by a percentage `left`
+            inside this track — and a flex:1 child has a definite laid-out width
+            (the same way the plot's own SVG does), so those percentages resolve
+            on device instead of collapsing to 0 and stacking every intermediate
+            date at the track's left edge (the bug this fixes). A plain marginLeft
+            on a row of only-absolute children gave the track no such width. */}
+        <View testID="net-worth-line-x-axis-spacer" style={styles.xAxisSpacer} />
 
-        <Text variant="caption" tone="textSecondary">
-          {formatAxisTime(points[points.length - 1].t)}
-        </Text>
+        <View style={styles.xAxisTrack}>
+          {xTicks.map((tick) => (
+            <View
+              key={tick.key}
+              testID={`net-worth-line-x-tick-${tick.key}`}
+              style={xLabelStyle(tick)}
+            >
+              <Text variant="caption" tone="textSecondary">
+                {formatAxisTime(tick.time)}
+              </Text>
+            </View>
+          ))}
+        </View>
       </View>
     </Box>
   );

@@ -25,7 +25,7 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-label-card')).toBeTruthy();
     expect(getByTestId('bar-chart-label-term_deposit')).toBeTruthy();
     expect(getByText('Card')).toBeTruthy();
-    expect(getByText('Term Deposit')).toBeTruthy();
+    expect(getByText('Deposit')).toBeTruthy();
     expect(getByText('Crypto Asset')).toBeTruthy();
   });
 

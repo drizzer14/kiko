@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import Box from '../../../design-system/components/box';
+import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import type { ChipRowProps } from './chip-row.props';
 import { styles } from './chip-row.styles';
@@ -18,6 +19,7 @@ const ChipRow = <Option extends string>({
   onSelect,
   label,
   labels,
+  icons,
   disabled = false,
 }: ChipRowProps<Option>): ReactElement => {
   const { theme } = useUnistyles();
@@ -31,21 +33,36 @@ const ChipRow = <Option extends string>({
       )}
 
       <Box style={[styles.chipRow, disabled && styles.disabled]} gap={2}>
-        {options.map((option) => (
-          <Pressable
-            key={option}
-            accessibilityRole="button"
-            accessibilityState={{ selected: selected === option, disabled }}
-            disabled={disabled}
-            onPress={() => onSelect(option)}
-            style={[
-              styles.chip,
-              { backgroundColor: selected === option ? theme.colors.accent : theme.colors.surface },
-            ]}
-          >
-            <Text variant="body">{labels?.[option] ?? option}</Text>
-          </Pressable>
-        ))}
+        {options.map((option) => {
+          const isSelected = selected === option;
+          const icon = icons?.[option];
+
+          return (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected, disabled }}
+              disabled={disabled}
+              onPress={() => onSelect(option)}
+              style={[
+                styles.chip,
+                { backgroundColor: isSelected ? theme.colors.accent : theme.colors.surface },
+              ]}
+            >
+              {icon !== undefined && (
+                // Only the entity selects (account Kind, holding Type) pass
+                // `icons`; the glyph tints like CategoryField's chip icon so it
+                // reads on both the accent-selected and surface-unselected chip.
+                <SymbolIcon
+                  name={icon}
+                  size={18}
+                  tone={isSelected ? 'textPrimary' : 'textSecondary'}
+                />
+              )}
+              <Text variant="body">{labels?.[option] ?? option}</Text>
+            </Pressable>
+          );
+        })}
       </Box>
     </Box>
   );

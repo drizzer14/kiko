@@ -123,6 +123,13 @@ describe('MoneyText', () => {
     expect(getByTestId('money-text-tone-textPrimary')).toBeTruthy();
   });
 
+  it('renders tone="muted" as textSecondary (gray) regardless of sign or context', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', 0)} context="transaction" tone="muted" />,
+    );
+    expect(getByTestId('money-text-tone-textSecondary')).toBeTruthy();
+  });
+
   it('forwards single-line shrink-to-fit props to the underlying Text', async () => {
     const { getByTestId } = await render(
       <MoneyText

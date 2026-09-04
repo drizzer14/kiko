@@ -4,7 +4,7 @@ import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import type { FilterMenuProps } from './filter-menu.props';
+import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 import { styles } from './filter-menu.styles';
 
 /** The default option in every filter menu — selecting it clears that dimension. */
@@ -27,7 +27,14 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
   const [open, setOpen] = useState(false);
 
   const buttonLabel = selected.size > 0 ? `${label} · ${selected.size}` : label;
-  const rows = [FILTER_ALL, ...options];
+  // Prepend the synthetic "All" row (no icon) to the real options. Every row is
+  // a FilterOption so the render path is uniform; matching still keys on `value`.
+  const rows: FilterOption[] = [{ value: FILTER_ALL }, ...options];
+  // Reserve a fixed-width leading icon slot on every row only when at least one
+  // option carries an icon, so labels stay aligned between icon and icon-less
+  // rows (the "All" row, or any option with no icon) without adding dead space
+  // to a menu whose options are all icon-less.
+  const hasIcons = options.some((option) => option.icon != null);
 
   return (
     <>
@@ -52,22 +59,35 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
       >
         <Text variant="heading">{label}</Text>
 
-        {rows.map((value) => (
+        {rows.map((option) => (
           <Pressable
-            key={value}
+            key={option.value}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: isChecked(value, selected) }}
-            testID={`${testID}-option-${value}`}
-            onPress={() => onToggle(value)}
+            accessibilityState={{ checked: isChecked(option.value, selected) }}
+            testID={`${testID}-option-${option.value}`}
+            onPress={() => onToggle(option.value)}
           >
             <Box direction="row" gap={2} style={styles.option}>
               <Box style={styles.check}>
-                {isChecked(value, selected) && (
+                {isChecked(option.value, selected) && (
                   <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
                 )}
               </Box>
 
-              <Text variant="body">{value}</Text>
+              {hasIcons && (
+                <Box style={styles.icon}>
+                  {option.icon != null && (
+                    <SymbolIcon
+                      name={option.icon}
+                      color={option.color}
+                      size={18}
+                      accessibilityLabel={option.value}
+                    />
+                  )}
+                </Box>
+              )}
+
+              <Text variant="body">{option.value}</Text>
             </Box>
           </Pressable>
         ))}
