@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Writes implementation plans for PFF. Use to turn a spec or a feature request into a step-by-step plan.
-model: fable
+model: opus
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 <!-- effort: high (launch with: claude --effort high) -->
