@@ -136,7 +136,14 @@ verified usage, not dead weight:
   picks these up even though `ios/build/` never enters git — same
   false-positive class as the `ios/Podfile.lock`/`.superpowers/`
   entries above, path-allowlisted the same way as
-  `node_modules`/`ios/Pods`/`vendor`.
+  `node_modules`/`ios/Pods`/`vendor`. Also a `regexes` entry for the
+  bech32 address `bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq` — the
+  canonical BIP-173 example, used as test data throughout
+  `docs/superpowers/plans/2026-09-04-crypto-btc-sync.md` (16
+  occurrences); a public documentation example, not a secret, that
+  trips `generic-api-key` only on the `metadataKey: '...'` line.
+  Allowlisting the exact value is narrower than a path allowlist and
+  keeps real-secret scanning of every tracked file intact.
 - **`.jscpd.json` `ignore`**: `**/drizzle/migrations/meta/*_snapshot.json`
   — drizzle-kit's schema snapshots are tool-generated and *cumulative*:
   each `NNNN_snapshot.json` embeds the entire prior schema plus that

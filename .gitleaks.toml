@@ -17,4 +17,13 @@ paths = [
   # _usePropsWithDefaults2) that trip generic-api-key. Never committed.
   '''ios/build/.*''',
 ]
+regexes = [
+  # The canonical BIP-173 example bech32 address, used as test data
+  # throughout docs/superpowers/plans/2026-09-04-crypto-btc-sync.md (16
+  # occurrences). A public documentation example, not a secret; it trips
+  # generic-api-key only on the `metadataKey: '...'` line (the rule keys
+  # on "key"-like names). Allowlisting the exact value is the narrowest
+  # fix and does not weaken scanning of any tracked file's real secrets.
+  '''bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq''',
+]
 # See CLAUDE.md "Documented exceptions" for why .superpowers/ is allowlisted.
