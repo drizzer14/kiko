@@ -186,7 +186,12 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   have to change shape.
 - Don't force this where idiomatic code already reads better — a
   React early-return guard (`migrations-gate`) was correctly left as
-  plain JSX rather than routed through `maybe`/`fold`.
+  plain JSX rather than routed through `maybe`/`fold`. A screen's
+  async UI-action handler that must preserve local component state or
+  show an `Alert` on failure is the same carve-out — it stays plain
+  `try`/`catch` (see `contribution-form.screen.tsx`,
+  `account-detail.screen.tsx`); `either`/`guard` is for the data
+  layer, not for a handler whose job is UI feedback.
 - Inference gotcha: annotate a `bifold` result's type explicitly
   wherever a narrowed `Right` value leaves nothing for TypeScript to
   infer `LeftValue` from.
@@ -271,6 +276,14 @@ exports — a named export is greppable and re-exportable, and a
 default export only earns its keep where the framework (React,
 React Navigation) expects one. This mirrors `@ovpn/ui`'s convention.
 
+## No shared constants exported from a screen module
+
+A `*.screen.tsx` must not `export` a runtime constant for another
+module to import — a shared constant belongs in a domain or
+design-system module. `KIND_ICON` exported from `accounts.screen.tsx`
+and imported by `account-detail` was the seam that let it drift from
+the domain's own glyph map (see `pff-domain`'s "Entity glyphs" rule).
+
 ## File suffixes
 
 - A React UI component file: `<name>.component.tsx`, its test
@@ -346,6 +359,25 @@ anything that must stay private. A dependency this introduces (for
 example an unused-looking `.env` import under knip or depcheck) gets
 documented as an ignore entry in the root `CLAUDE.md`, per that file's
 "Documented exceptions" convention — not silently suppressed.
+
+## Testing a native/ESM dependency
+
+Jest's React Native preset transforms only `node_modules` packages
+matched by `jest.config.js`'s `transformIgnorePatterns` allow-list —
+everything else in `node_modules` is assumed pre-transformed CommonJS
+and skipped. A new dependency that ships raw TypeScript, a native
+Fabric/Nitro binding, or an ESM-only build fails to parse under Jest
+until it is added to that allow-list; a dependency with no software
+renderer under `react-test-renderer` (an SVG host view, a native
+symbol view) additionally needs a manual mock under `__mocks__/` so a
+component test can render it at all. `__mocks__/react-native-svg.tsx`
+is the template: it renders every primitive the app imports as a
+passthrough `View` that preserves `testID` and props, picked up
+automatically by Jest with no `jest.mock()` call needed. Read
+`jest.config.js`'s current `transformIgnorePatterns` regex before
+assuming a package is already covered — a package added to
+`package.json` without also being added there will fail its first
+test with an unhelpful parse error, not an obviously-related one.
 
 ## Reviewed, and deliberately not changed
 

@@ -16,8 +16,27 @@ jest.mock('../text', () => {
 
   return {
     __esModule: true,
-    default: ({ tone, children }: { tone: string; children: ReactNode }) => (
-      <RNText testID={`money-text-tone-${tone}`}>{children}</RNText>
+    default: ({
+      tone,
+      children,
+      numberOfLines,
+      adjustsFontSizeToFit,
+      minimumFontScale,
+    }: {
+      tone: string;
+      children: ReactNode;
+      numberOfLines?: number;
+      adjustsFontSizeToFit?: boolean;
+      minimumFontScale?: number;
+    }) => (
+      <RNText
+        testID={`money-text-tone-${tone}`}
+        numberOfLines={numberOfLines}
+        adjustsFontSizeToFit={adjustsFontSizeToFit}
+        minimumFontScale={minimumFontScale}
+      >
+        {children}
+      </RNText>
     ),
   };
 });
@@ -67,5 +86,63 @@ describe('MoneyText', () => {
 
   it('defaults to balance context when none is given (positive stays textPrimary)', async () => {
     await expectTone(123456, undefined, 'textPrimary');
+  });
+
+  it('renders a positive amount as negative (red) when tone="negative" overrides it', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', 123456)} context="balance" tone="negative" />,
+    );
+    expect(getByTestId('money-text-tone-negative')).toBeTruthy();
+  });
+
+  it('renders a negative amount as positive (green) when tone="positive" overrides it', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', -123456)} context="transaction" tone="positive" />,
+    );
+    expect(getByTestId('money-text-tone-positive')).toBeTruthy();
+  });
+
+  it('colors tone="neutral" by sign regardless of context (positive -> green)', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', 123456)} context="balance" tone="neutral" />,
+    );
+    expect(getByTestId('money-text-tone-positive')).toBeTruthy();
+  });
+
+  it('colors tone="neutral" by sign regardless of context (negative -> red)', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', -123456)} context="balance" tone="neutral" />,
+    );
+    expect(getByTestId('money-text-tone-negative')).toBeTruthy();
+  });
+
+  it('colors tone="neutral" zero as textPrimary (white)', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', 0)} context="transaction" tone="neutral" />,
+    );
+    expect(getByTestId('money-text-tone-textPrimary')).toBeTruthy();
+  });
+
+  it('renders tone="muted" as textSecondary (gray) regardless of sign or context', async () => {
+    const { getByTestId } = await render(
+      <MoneyText money={Money.of('USD', 0)} context="transaction" tone="muted" />,
+    );
+    expect(getByTestId('money-text-tone-textSecondary')).toBeTruthy();
+  });
+
+  it('forwards single-line shrink-to-fit props to the underlying Text', async () => {
+    const { getByTestId } = await render(
+      <MoneyText
+        money={Money.of('USD', 123456)}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      />,
+    );
+
+    const node = getByTestId('money-text-tone-textPrimary');
+    expect(node.props.numberOfLines).toBe(1);
+    expect(node.props.adjustsFontSizeToFit).toBe(true);
+    expect(node.props.minimumFontScale).toBe(0.7);
   });
 });

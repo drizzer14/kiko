@@ -13,23 +13,6 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
   },
-  // The full-screen scrim behind the bottom sheet. True-black is on-brand for
-  // the OLED theme; a tap on it dismisses the sheet. The sheet is pinned to the
-  // bottom edge so it reads as a flush bottom sheet, not a floating card.
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: theme.colors.background,
-  },
-  // The checkable sheet: flush to the screen's left/right/bottom edges with only
-  // its top corners rounded, no surrounding border or inset — a clean sheet.
-  sheet: {
-    borderTopLeftRadius: theme.radii.lg,
-    borderTopRightRadius: theme.radii.lg,
-    backgroundColor: theme.colors.surfaceHigh,
-    paddingVertical: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
-  },
   // A single checkable option row: a leading check slot then the option label.
   // Vertical padding gives each row a comfortable tap target; the sheet stays
   // open as rows are toggled, so several can be checked in one pass.
@@ -40,6 +23,13 @@ export const styles = StyleSheet.create((theme) => ({
   // The fixed-width leading slot that holds the checkmark when an option is
   // selected, so every label starts at the same x whether checked or not.
   check: {
+    width: 18,
+    alignItems: 'center',
+  },
+  // The fixed-width slot that holds an option's own icon (an account/category
+  // glyph), reserved on every row of an icon-bearing menu so the labels stay
+  // aligned whether or not a given row has an icon (the "All" row does not).
+  icon: {
     width: 18,
     alignItems: 'center',
   },

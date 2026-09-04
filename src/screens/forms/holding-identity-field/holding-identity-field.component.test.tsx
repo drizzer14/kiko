@@ -75,11 +75,15 @@ describe('HoldingIdentityField', () => {
     expect(onEndEditingName).toHaveBeenCalledTimes(1);
   });
 
-  it('sizes the icon control and the name field to the same box height', async () => {
+  it('pins the icon control and the name field to the same fixed box height', async () => {
     const { getByLabelText } = await setup();
 
-    const chipHeight = StyleSheet.flatten(getByLabelText('Change Icon').props.style).minHeight;
-    const fieldHeight = StyleSheet.flatten(getByLabelText('Name').props.style).minHeight;
+    // Both controls carry a fixed, explicit `height` (not a `minHeight` floor):
+    // the name field's height must not be measurement-dependent, or a re-render
+    // (typing, a type/color change) can collapse it toward its single-line
+    // intrinsic content height. A definite equal height keeps it stable.
+    const chipHeight = StyleSheet.flatten(getByLabelText('Change Icon').props.style).height;
+    const fieldHeight = StyleSheet.flatten(getByLabelText('Name').props.style).height;
 
     expect(chipHeight).toBeGreaterThan(0);
     expect(fieldHeight).toBe(chipHeight);
@@ -102,6 +106,19 @@ describe('HoldingIdentityField', () => {
     });
 
     expect(getByLabelText('Change Groceries icon')).toBeTruthy();
+  });
+
+  it('leaves the name field un-focused by default', async () => {
+    const { getByLabelText } = await setup();
+
+    // No caller opted into autoFocus, so the field must not grab focus on mount.
+    expect(getByLabelText('Name').props.autoFocus).toBe(false);
+  });
+
+  it('forwards autoFocus to the name input so an on-demand field focuses on mount', async () => {
+    const { getByLabelText } = await setup({ autoFocus: true });
+
+    expect(getByLabelText('Name').props.autoFocus).toBe(true);
   });
 
   it('suppresses the icon Remove control when no onRemoveIcon handler is given', async () => {

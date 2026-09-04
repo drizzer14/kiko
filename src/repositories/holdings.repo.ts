@@ -36,6 +36,8 @@ export const holdingsRepo = {
   // deterministic order rather than flickering between renders.
   allQuery: () =>
     database.select().from(holdings).orderBy(asc(holdings.sortOrder), asc(holdings.createdAt)),
+  byIdQuery: (holdingId: string) =>
+    database.select().from(holdings).where(eq(holdings.id, holdingId)),
   listByAccountQuery: (accountId: string) =>
     database
       .select()
@@ -63,12 +65,30 @@ export const holdingsRepo = {
   updateName: (holdingId: string, name: string) =>
     write((tx) => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
   /**
+   * Generic partial update for a holding row (name, color, balance, metadata),
+   * mirroring `accountsRepo.update`. The edit form saves an existing holding's
+   * editable fields through this in ONE transaction — the icon still routes
+   * through `setIcon` (so a cleared icon persists an explicit null), the same
+   * split the create form uses.
+   */
+  update: (holdingId: string, patch: Partial<HoldingRow>) =>
+    write((tx) => tx.update(holdings).set(patch).where(eq(holdings.id, holdingId))),
+  /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back
    * to no custom icon. The display layer falls back to a type-derived default
    * when the stored icon is null.
    */
   setIcon: (holdingId: string, icon: string | null) =>
     write((tx) => tx.update(holdings).set({ icon }).where(eq(holdings.id, holdingId))),
+  /**
+   * Sets the holding's color (an entity-color hex) or, with `null`, clears it
+   * back to no custom color. The display layer falls back to a type-derived
+   * default when the stored color is null — the same fallback the icon uses.
+   * Mirrors `setIcon` so the detail header can edit the color exactly as the
+   * create form does.
+   */
+  setColor: (holdingId: string, color: string | null) =>
+    write((tx) => tx.update(holdings).set({ color }).where(eq(holdings.id, holdingId))),
   /**
    * Appends one contribution to a term deposit and rewrites its metadata in a
    * single transaction. Metadata is rebuilt cleanly from the parsed meta, so

@@ -1,15 +1,15 @@
 import type { FC } from 'react';
 import Box from '../../design-system/components/box';
 import DateRangeField from './date-range-field';
-import FilterMenu from './filter-menu';
+import FilterMenu, { type FilterOption } from './filter-menu';
 
 // Re-exported so the Home screen keeps a single import site for the sentinel
 // while the checkable-menu logic lives with the FilterMenu that owns it.
 export { FILTER_ALL } from './filter-menu';
 
 type TransactionFilterBarProps = {
-  accounts: string[];
-  categories: string[];
+  accounts: FilterOption[];
+  categories: FilterOption[];
   selectedAccount: Set<string>;
   selectedCategory: Set<string>;
   onToggleAccount: (value: string) => void;

@@ -1,9 +1,9 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 import { Svg, Rect } from 'react-native-svg';
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
+import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { HoldingType } from '../../../holdings/holding-type';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
 import Box from '../box';
@@ -18,11 +18,11 @@ import { styles } from './bar-chart.styles';
  */
 type BarChartProps = { data: TypeSlice[]; baseCurrency: Currency; height?: number };
 
-// Human display text for the id-like holding types, so a bar reads "Term
-// Deposit" rather than "term_deposit".
+// Human display text for the id-like holding types, so a bar reads "Deposit"
+// rather than "term_deposit".
 const TYPE_LABELS: Record<HoldingType, string> = {
   card: 'Card',
-  term_deposit: 'Term Deposit',
+  term_deposit: 'Deposit',
   bond: 'Bond',
   cash: 'Cash',
   crypto_asset: 'Crypto Asset',
@@ -81,8 +81,6 @@ const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; max: number; color:
 };
 
 const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
-  const { theme } = useUnistyles();
-
   if (data.length === 0) {
     return (
       <Box testID="bar-chart-empty" style={styles.empty}>
@@ -93,19 +91,20 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
     );
   }
 
-  const palette = theme.colors.chartSeries;
   // Data is sorted descending, so the first entry is the largest.
   const max = data[0].amount;
 
   return (
     <Box style={styles.container}>
-      {data.map((slice, index) => (
+      {data.map((slice) => (
         <BarRow
           key={slice.type}
           slice={slice}
           baseCurrency={baseCurrency}
           max={max}
-          color={palette[index % palette.length]}
+          // Match the holding cards: each type's bar wears the same entity color
+          // its holdings do, keyed off the slice's type.
+          color={defaultHoldingColor[slice.type]}
         />
       ))}
     </Box>

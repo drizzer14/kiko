@@ -24,11 +24,27 @@ export type HomeStackParamList = {
 
 export type AccountsStackParamList = {
   Accounts: undefined;
-  AccountDetail: { accountId: string };
-  HoldingDetail: { holdingId: string };
+  // `name` is the entity's name captured at navigation time from the row the
+  // user tapped, so the detail screen's native large title (and the back button
+  // on any screen pushed from it) shows the name from the FIRST render — before
+  // the screen's own live query resolves — with no async title toggle that would
+  // briefly blank the back button. The screen still prefers its live-queried
+  // name once loaded, so a rename made on the edit form flows back through.
+  AccountDetail: { accountId: string; name: string };
+  HoldingDetail: { holdingId: string; name: string };
+  // The account/holding forms double as CREATE and EDIT screens. An entity id in
+  // the params (`accountId` here, `holdingId` on HoldingForm) switches the form
+  // to edit mode — it seeds every field from that entity and saves through the
+  // update path; absent, the form creates. HoldingForm always carries the owning
+  // `accountId` (its kind constrains the offered holding types) whether creating
+  // a new holding or editing an existing one.
   AccountForm: { accountId?: string };
   HoldingForm: { accountId: string; holdingId?: string };
   TransactionForm: TransactionFormParams;
+  // Add a top-up ("contribution") to a term deposit, reached from the holding's
+  // detail screen. Bonds record a contribution as a plain TransactionForm entry
+  // instead; only deposits take a dedicated contribution form.
+  ContributionForm: { holdingId: string };
 };
 
 export type SettingsStackParamList = {

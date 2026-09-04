@@ -1,8 +1,21 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
+import { entityGradientStops } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
 import AccountsScreen from './accounts.screen';
+
+// A grid card's delete menu is a react-native-gesture-handler long-press, so
+// the screen must mount under a GestureHandlerRootView (the app supplies one at
+// its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
 const START = Date.UTC(2024, 0, 1);
@@ -84,7 +97,9 @@ const setLiveData = (data: {
 const navigation = { navigate: jest.fn() } as never;
 
 const renderAccounts = (): ReturnType<typeof render> =>
-  render(<AccountsScreen navigation={navigation} route={{} as never} />);
+  render(<AccountsScreen navigation={navigation} route={{} as never} />, {
+    wrapper: gestureRootWrapper,
+  });
 
 describe('AccountsScreen', () => {
   beforeEach(() => {
@@ -114,7 +129,12 @@ describe('AccountsScreen', () => {
   it('navigates to AccountDetail when a row is pressed', async () => {
     const { getByText } = await renderAccounts();
     await fireEvent.press(getByText('Monobank'));
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId: 'a' });
+    // The account's name rides along so the detail screen's large title (and any
+    // back button pushed from it) reads immediately, before its own live query.
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
   });
 
   it('navigates to AccountForm when "Add account" is pressed', async () => {
@@ -137,10 +157,11 @@ describe('AccountsScreen', () => {
     const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);
     const buttonBoxStyle = StyleSheet.flatten(getByTestId('add-account-footer').props.style);
 
-    // Clearance now lives on the Screen footer (its clamped breathing-room gap
-    // spacing(2) = 8 — trimmed from the old spacing(4) by 1.5 button heights —
-    // plus the mocked tab-bar height; the safe-area mock reports a 0 bottom inset).
-    expect(footerStyle.paddingBottom).toBe(8 + MOCK_TAB_BAR_HEIGHT);
+    // Clearance now lives on the Screen footer: its breathing-room gap now
+    // MATCHES the footer button's own top margin (spacing(4) = 16) so the button
+    // sits symmetrically, plus the mocked tab-bar height (the safe-area mock
+    // reports a 0 bottom inset).
+    expect(footerStyle.paddingBottom).toBe(16 + MOCK_TAB_BAR_HEIGHT);
     // The button box must not re-add its own clearance, or the footer would be
     // double-padded.
     expect(buttonBoxStyle.marginBottom).toBeUndefined();
@@ -174,33 +195,57 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the long-press-in-place menu (drag ended where it started)', async () => {
+  it('deletes a manual account via the deep-press delete menu confirm', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
-    // native action sheet opens.
-    const actionSheetSpy = jest
+    const sheetSpy = jest
       .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(0);
-      });
-    const { getByTestId } = await renderAccounts();
-    // A long-press that lifts the card and releases it in place (fromIndex ===
-    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
-    // delete action sheet for that account.
+      .mockImplementation((_options, callback) => callback(1));
+    await renderAccounts();
+    // The manual card is wrapped in the deep-press long-press. A hold that stays
+    // still opens the destructive delete sheet; confirming its destructive index
+    // removes the account.
     await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'a',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['a'],
-      });
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
-    expect(actionSheetSpy).toHaveBeenCalledWith(
-      { options: ['Delete "Cash"', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+    expect(sheetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ options: ['Cancel', 'Delete "Cash"'] }),
       expect.any(Function),
     );
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
-    actionSheetSpy.mockRestore();
+    sheetSpy.mockRestore();
+  });
+
+  it('opens the account (does not delete) on a plain tap of the card', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Wallet', kind: 'cash' }], holdings: [] });
+    const { getByText } = await renderAccounts();
+    // A tap reaches the card's own Pressable and navigates, without touching the
+    // context menu — the menu only opens on touch-and-hold.
+    await fireEvent.press(getByText('Wallet'));
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Wallet',
+    });
+    expect(mockAccountRemove).not.toHaveBeenCalled();
+  });
+
+  it('wires an auto-scroll ref and an edge activation offset to the grid (F9)', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Monobank', kind: 'bank' },
+        { id: 'c', name: 'Privat', kind: 'bank' },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+    const grid = getByTestId('sortable-grid');
+    // The grid receives the parent scroll view's animated ref plus a positive
+    // edge offset, so a drag near the top/bottom edge auto-scrolls the list.
+    expect(grid.props.scrollableRef).toBeDefined();
+    expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
   });
 
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
@@ -225,28 +270,15 @@ describe('AccountsScreen', () => {
     expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a']);
   });
 
-  it('does not offer delete on a still-connected (monobank) account', async () => {
+  it('renders no context menu on a still-connected (monobank) account', async () => {
     setLiveData({
       accounts: [{ id: 'a', name: 'Monobank', kind: 'bank', institution: 'monobank' }],
       holdings: [],
     });
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
-    const { getByTestId } = await renderAccounts();
+    const { queryByTestId } = await renderAccounts();
     // A connected account must be disconnected (from account-detail) before it
-    // can be deleted, so a long-press-in-place resolves to a synced row and
-    // opens no menu.
-    await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'a',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['a'],
-      });
-    });
-    expect(actionSheetSpy).not.toHaveBeenCalled();
-    actionSheetSpy.mockRestore();
+    // can be deleted, so its card renders bare with no native context menu.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
   it('shows the account icon as a display-only glyph, not an editable icon control', async () => {
@@ -277,6 +309,39 @@ describe('AccountsScreen', () => {
 
     // A `cash` account with no color reads the cash kind default (khaki).
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
+  });
+
+  it('washes each account card with a 45deg gradient of its color on first render', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+
+    const stops = entityGradientStops(darkTheme.colors.entityColors.blue);
+    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
+    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
+  });
+
+  it('washes an uncolored account card with a gradient of its kind default', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByTestId } = await renderAccounts();
+
+    // A `cash` account with no color reads the cash kind default (khaki).
+    const stops = entityGradientStops(darkTheme.colors.entityColors.khaki);
+    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
+    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
+  });
+
+  it('draws the shared hairline card border on first render (G2)', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+    const { getByTestId } = await renderAccounts();
+
+    const cardStyle = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(cardStyle.borderWidth).toBe(UnistylesStyleSheet.hairlineWidth);
+    expect(cardStyle.borderColor).toBe(darkTheme.colors.border);
   });
 
   it('reflects term-deposit growth in total net worth (now is passed)', async () => {

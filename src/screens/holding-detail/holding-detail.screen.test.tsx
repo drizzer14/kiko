@@ -1,27 +1,36 @@
 import { Alert } from 'react-native';
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import HoldingDetailScreen from './holding-detail.screen';
+
+// The Text primitive's tone -> color mapping lives inside a unistyles variant
+// that the project Jest mock strips before a test can inspect it, so a money
+// amount's resolved color is not observable. Mock MoneyText to expose the
+// `tone` prop it is handed via a testID instead, while still rendering the
+// formatted amount underneath (so the trailing ₴ that `amountForLabel` scans
+// for is present). The ledger's derived rows and the interest/tax breakdown
+// lines pass an explicit tone, which is exactly what these tests assert.
+jest.mock('../../design-system/components/money-text', () => {
+  const { Text: RNText } = require('react-native');
+  const { formatMoney } = require('../../currency/format');
+
+  return {
+    __esModule: true,
+    default: ({ money, tone }: { money: Parameters<typeof formatMoney>[0]; tone?: string }) => (
+      <RNText testID={`money-tone-${tone ?? 'auto'}`}>{formatMoney(money)}</RNText>
+    ),
+  };
+});
 
 // The test-renderer instance type, derived from RNTL's own query rather than
 // imported from react-test-renderer directly (which is not a declared dep).
 type TextNode = ReturnType<ReturnType<typeof render>['getByText']>;
 
-// Flatten a Text node's style array down to its resolved inline `color` (the
-// LedgerAmount tone color; unistyles variant styles are stripped by the mock,
-// but an inline color survives). Used to assert a ledger row's money tone.
-const colorOf = (node: TextNode): unknown => {
-  const style = node.props.style as unknown;
-  const parts = (Array.isArray(style) ? style : [style]).flat(Number.POSITIVE_INFINITY);
-  return Object.assign({}, ...parts.filter(Boolean)).color;
-};
-
 // The tightest ancestor of `label` that contains a money amount (UAH formats
-// with a trailing ₴), scoped to a single ledger/breakdown row — its amount Text
-// is what carries the tone color.
+// with a trailing ₴), scoped to a single ledger/breakdown row — the mocked
+// MoneyText node whose `money-tone-*` testID carries the resolved tone.
 const amountForLabel = (label: TextNode): TextNode => {
   let node = label.parent;
 
@@ -66,6 +75,7 @@ jest.mock('../../repositories/holdings.repo', () => ({
     appendDepositContribution: jest.fn(),
     updateName: jest.fn(),
     setIcon: jest.fn(),
+    setColor: jest.fn(),
   },
 }));
 jest.mock('../../repositories/transactions.repo', () => ({
@@ -153,15 +163,6 @@ const seed = (holding: unknown, transactions: unknown[] = [], categories: unknow
 
 const renderScreen = () => render(<HoldingDetailScreen navigation={navigation} route={route} />);
 
-// Seeds a deposit, renders, and opens the add-contribution form so a test can
-// go straight to filling and submitting it.
-const openContributionForm = async () => {
-  seed(depositHolding);
-  const utils = await renderScreen();
-  await fireEvent.press(utils.getByText('Add contribution'));
-  return utils;
-};
-
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -172,86 +173,95 @@ describe('HoldingDetailScreen', () => {
 
     await renderScreen();
 
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'My deposit' });
+    // The name is the plain string `title` — the native large title the back
+    // button on any pushed screen reads.
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'My deposit' }),
+    );
   });
 
-  it('renders in scroll mode so the native large title renders and collapses', async () => {
+  it('renders in scroll mode and drives the nav title from the name, with no custom header title', async () => {
     seed(cashHolding);
 
-    const { getByTestId, queryByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('screen-scroll-view')).toBeTruthy();
-    // The header large title is still the single heading title; the metadata
-    // header's name field holds the name as an input value (not a host Text), so
-    // queryByText finds no in-body heading duplicate.
-    expect(queryByText('My deposit')).toBeNull();
+    // The name is the plain string `title` — the native large title — with NO
+    // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
+    // moved beside the Value amount in the body).
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'My deposit' }),
+    );
+    for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
+      expect(options.headerTitle).toBeUndefined();
+      expect(options.headerLargeTitle).toBeUndefined();
+    }
   });
 
-  it('edits the holding name in a header field and renames via holdingsRepo.updateName on end-of-editing', async () => {
+  it('renders a view-only header with no inline name, icon, or color editors', async () => {
     seed(cardHolding);
 
-    const { getByLabelText } = await renderScreen();
+    const { queryByLabelText } = await renderScreen();
 
-    // The name is edited on this page now (relocated from the account-detail
-    // list row): a labelled field committed once on end-of-editing.
-    const input = getByLabelText('Everyday card name');
-    await fireEvent.changeText(input, 'Renamed card');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).toHaveBeenCalledWith('h-1', 'Renamed card');
+    // Identity editing moved to the dedicated edit form: the header no longer
+    // offers the icon-picker toggle, the editable name field, or the color row.
+    expect(queryByLabelText('Change Icon')).toBeNull();
+    expect(queryByLabelText('Everyday card name')).toBeNull();
+    expect(queryByLabelText('Color violet')).toBeNull();
   });
 
-  it('does not save an empty holding name', async () => {
-    seed(cardHolding);
+  it('offers an Edit action in the header that opens the holding edit form', async () => {
+    seed({ ...cardHolding, accountId: 'acc-1' });
 
-    const { getByLabelText } = await renderScreen();
+    await renderScreen();
 
-    const input = getByLabelText('Everyday card name');
-    await fireEvent.changeText(input, '   ');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
+    // The Edit affordance sits at the header top-right (via setOptions
+    // headerRight). Render it and press it: it opens this holding's edit form,
+    // passing the owning account so the form can constrain the type chips.
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.headerRight,
+    );
+    expect(call).toBeDefined();
+    const { getByText } = await render(call[0].headerRight());
+    await fireEvent.press(getByText('Edit'));
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+    });
   });
 
-  it('does not save an unchanged holding name', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    const input = getByLabelText('Everyday card name');
-    await fireEvent(input, 'endEditing');
-
-    expect(holdingsRepo.updateName).not.toHaveBeenCalled();
-  });
-
-  it('changes the holding icon through the header icon editor, via holdingsRepo.setIcon', async () => {
-    seed(cardHolding);
-
-    const { getByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByLabelText('Choose icon basket'));
-
-    expect(holdingsRepo.setIcon).toHaveBeenCalledWith('h-1', 'basket');
-  });
-
-  it('tints the header icon with the holding stored color', async () => {
+  it('tints the holding identity icon beside the Value amount with the holding stored color', async () => {
     seed({ ...cardHolding, color: darkTheme.colors.entityColors.violet });
 
     const { getByLabelText } = await renderScreen();
 
-    // The card holding shows the creditcard glyph (no custom icon), tinted violet.
+    // The holding icon now sits beside the Value amount (the nav title shows the
+    // NAME only): a card shows the creditcard glyph, tinted its stored violet.
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
     );
   });
 
-  it('tints the header icon with the type default color when no color is stored', async () => {
+  it('tints the holding identity icon beside the Value amount with the type default color when no color is stored', async () => {
     seed(cardHolding);
 
     const { getByLabelText } = await renderScreen();
 
     // A `card` holding with no color reads the card type default (white).
+    expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the type default', async () => {
+    // A stored color of '' (neither null nor undefined) slips past a bare
+    // `color ?? default`, leaving the header tinted with an invalid empty color
+    // while the card (via resolveEntityColor) shows the type default. The header
+    // must resolve through the same helper so the identity color never diverges.
+    seed({ ...cardHolding, color: '' });
+
+    const { getByLabelText } = await renderScreen();
+
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
@@ -313,7 +323,7 @@ describe('HoldingDetailScreen', () => {
     expect(within(footer).getByText('Add transaction')).toBeTruthy();
   });
 
-  it('renders the resolved category icon on a transaction row', async () => {
+  it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
     seed(
       cardHolding,
       [
@@ -326,14 +336,19 @@ describe('HoldingDetailScreen', () => {
           source: 'manual',
         },
       ],
-      [{ key: 'food', title: 'Food', icon: 'fork.knife' }],
+      [{ key: 'food', title: 'Food', icon: 'fork.knife', color: '#FF5733' }],
     );
 
     const { getByLabelText } = await renderScreen();
 
     // The row resolves its stored `category` through the same shared mapping
-    // Home uses, so the icon follows the categories table (here `fork.knife`).
-    expect(getByLabelText('Food').props.name).toBe('fork.knife');
+    // Home uses, so the icon follows the categories table (here `fork.knife`)
+    // and carries the category's own color — mirroring Home's transaction row,
+    // rather than a flat neutral tone. A hex color passes through
+    // `toSFSymbolTintColor` unchanged to the SFSymbolView `tintColor`.
+    const icon = getByLabelText('Food');
+    expect(icon.props.name).toBe('fork.knife');
+    expect(icon.props.tintColor).toBe('#FF5733');
   });
 
   it('renders the neutral category icon for an empty or unknown category', async () => {
@@ -458,12 +473,25 @@ describe('HoldingDetailScreen', () => {
 
     // The 18% income-tax withholding line reads in the negative (red) tone; the
     // interest accrual reads in the positive (green) tone — by KIND, via the
-    // derived entry's tone, not merely by the sign of the amount.
+    // derived entry's tone passed through MoneyText, not merely by the amount's
+    // sign.
     const taxAmount = amountForLabel(getAllByText('Income tax 18%')[0]);
-    expect(colorOf(taxAmount)).toBe(darkTheme.colors.negative);
+    expect(taxAmount.props.testID).toBe('money-tone-negative');
 
     const interestAmount = amountForLabel(getAllByText('Interest accrual')[0]);
-    expect(colorOf(interestAmount)).toBe(darkTheme.colors.positive);
+    expect(interestAmount.props.testID).toBe('money-tone-positive');
+  });
+
+  it('colors the interest-earned and tax-withheld value breakdown lines by kind', async () => {
+    seed(depositHolding);
+
+    const { getByText } = await renderScreen();
+
+    // The summary breakdown at the top of the screen colors interest green and
+    // tax red by KIND, matching the ledger rows — not the sign-only balance
+    // coloring that used to leave these positive magnitudes white.
+    expect(amountForLabel(getByText('Interest earned')).props.testID).toBe('money-tone-positive');
+    expect(amountForLabel(getByText('Tax withheld')).props.testID).toBe('money-tone-negative');
   });
 
   it('colors a bond coupon green and the expected-profit line green', async () => {
@@ -473,64 +501,22 @@ describe('HoldingDetailScreen', () => {
 
     // A net coupon (money in) reads green as an interest payment.
     const couponAmount = amountForLabel(getAllByText('Coupon')[0]);
-    expect(colorOf(couponAmount)).toBe(darkTheme.colors.positive);
+    expect(couponAmount.props.testID).toBe('money-tone-positive');
 
     // The whole-life expected-profit breakdown line reads green as the expected gain.
     const expectedProfitAmount = amountForLabel(getByText('Expected profit'));
-    expect(colorOf(expectedProfitAmount)).toBe(darkTheme.colors.positive);
+    expect(expectedProfitAmount.props.testID).toBe('money-tone-positive');
   });
 
-  it('appends a contribution through the add-contribution action', async () => {
+  it('routes the deposit add-contribution action to the dedicated contribution form', async () => {
     seed(depositHolding);
 
-    const { getByText, getByLabelText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
+    // A deposit top-up now opens its own screen (no inline form on the detail
+    // screen); the contribution is filled and persisted there.
     await fireEvent.press(getByText('Add contribution'));
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '1000');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
 
-    // The typed YYYY-MM-DD lands at LOCAL midnight of that day (matching
-    // DateField and the interest boundaries), not the UTC midnight Date.parse
-    // would give — which shifts a day off in a +2/+3 zone.
-    expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith('h-1', {
-      amountMinorUnits: 100_000,
-      date: new Date(2025, 5, 1).getTime(),
-    });
-  });
-
-  it('does not append when the amount is blank', async () => {
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
-  });
-
-  it('does not append when the amount is zero', async () => {
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '0');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
-  });
-
-  it('surfaces an alert and keeps the form open when the append fails', async () => {
-    (holdingsRepo.appendDepositContribution as jest.Mock).mockRejectedValueOnce(new Error('boom'));
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-
-    const { getByText, getByLabelText } = await openContributionForm();
-
-    await fireEvent.changeText(getByLabelText('Contribution amount'), '1000');
-    await fireEvent.changeText(getByLabelText('Contribution date'), '2025-06-01');
-    await fireEvent.press(getByText('Save contribution'));
-
-    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    // The form stays open on failure so the entered values are not lost.
-    expect(getByText('Save contribution')).toBeTruthy();
-    alertSpy.mockRestore();
+    expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
   });
 });

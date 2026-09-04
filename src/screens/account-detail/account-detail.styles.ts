@@ -7,40 +7,11 @@ export const styles = StyleSheet.create((theme) => ({
   statusLine: {
     alignItems: 'center',
   },
-  // The account's metadata header: the icon chip on the left, the name field
-  // growing beside it. Bottom-aligned so the chip lines up with the field's
-  // input row (which sits below its caption label) rather than its caption.
-  metadataHeader: {
-    alignItems: 'flex-end',
-  },
-  // The name field's column: grows to fill the row beside the fixed-width icon
-  // chip, so a long account name has room to render.
-  metadataNameBlock: {
-    flex: 1,
-  },
-  // A labelled name field: a bordered, filled input matching the token field's
-  // treatment, so the editable name reads as a proper field rather than a tiny
-  // inline control.
-  nameField: {
-    color: theme.colors.textPrimary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(2),
-    ...theme.typography.body,
-  },
   // The balance block sits directly under the large navigation title, so give
   // it breathing room at the top rather than crowding the heading against the
   // header — matching the roomier feel of the rest of the screen.
   balanceBlock: {
     paddingTop: theme.spacing(2),
-  },
-  // The account's primary number: larger than body so the total balance reads
-  // as the headline of the screen. Only size/weight live here — MoneyText still
-  // owns the tone color, so this deliberately omits `color`.
-  balance: {
-    fontSize: theme.typography.title.fontSize,
-    fontWeight: theme.typography.title.fontWeight,
   },
   // Extra space above the per-currency breakdown so it reads as a distinct
   // block beneath the headline number rather than crowding right under it.
@@ -55,25 +26,20 @@ export const styles = StyleSheet.create((theme) => ({
     marginVertical: theme.spacing(2),
     backgroundColor: theme.colors.border,
   },
-  // A bordered, filled text field affordance shared by the Monobank token entry
-  // and the inline holding-title rename. Grows to fill its row beside a trailing
-  // icon button.
-  textField: {
+  // The token field's column: grows to fill the row beside the trailing paste
+  // icon button, so the shared TextField stretches to the available width.
+  tokenFieldColumn: {
     flex: 1,
-    color: theme.colors.textPrimary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(2),
-    ...theme.typography.body,
   },
   // The token-entry row: the field grows while its trailing paste icon button
-  // stays vertically centered against it.
+  // aligns to the field's input row (the shared TextField sits below its caption
+  // label), so the button lines up with the input rather than floating against
+  // the taller captioned block.
   fieldRow: {
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   // A bare icon button (paste, edit) — padding gives a comfortable tap target
-  // without the filled-button chrome of PressableButton.
+  // without the filled chrome of the shared Button.
   iconButton: {
     padding: theme.spacing(2),
   },

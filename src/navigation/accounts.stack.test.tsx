@@ -36,6 +36,7 @@ describe('AccountsStack', () => {
     expect(titles.AccountForm).toBe('Add Account');
     expect(titles.HoldingForm).toBe('Add Holding');
     expect(titles.TransactionForm).toBe('Add Transaction');
+    expect(titles.ContributionForm).toBe('Add Contribution');
   });
 
   it('leaves the detail screens without a static title (they set it dynamically)', () => {

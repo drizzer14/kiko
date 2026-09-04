@@ -1,4 +1,6 @@
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
+import { buildCategoryDisplayMap } from '../../categories/category-display';
+import { excludeSelfTransfers } from '../../statistics/exclude-self-transfers';
 import type { Currency } from '../../currency/currency';
 import { DAY_MS } from '../../dates/duration';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -9,6 +11,8 @@ import NetWorthLine from '../../design-system/components/net-worth-line';
 import PieChart from '../../design-system/components/pie-chart';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
@@ -17,18 +21,24 @@ import {
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
+import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { rateHistoryRepo } from '../../repositories/rate-history.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
-import { buildAccountContribution } from '../../statistics/account-contribution';
+import { type AccountSlice, buildAccountContribution } from '../../statistics/account-contribution';
 import { bucketDaysForSpan } from '../../statistics/buckets';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  type CategorySlice,
+} from '../../statistics/category-breakdown';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import DateRangeField from '../home/date-range-field';
-import FilterMenu, { FILTER_ALL } from '../home/filter-menu';
+import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
 import { styles } from './statistics.styles';
 
 // UTC-midnight of the LOCAL calendar day a timestamp falls on. The date field's
@@ -43,9 +53,22 @@ const startOfLocalDay = (time: number): number => {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
-// The `FILTER_ALL` chip clears the account dimension; any other value toggles
-// in/out. A fresh Set keeps the state update immutable.
-const toggleAccount =
+// Adapt a category spending slice onto the shared `PieChart` slice shape: the
+// category KEY is the slice identity (its React key + testID suffix), its title
+// the legend label. Same donut, a spending-by-category dimension instead of
+// per-account contribution.
+const toPieSlice = (slice: CategorySlice): AccountSlice => ({
+  accountId: slice.key,
+  name: slice.title,
+  amount: slice.amount,
+  share: slice.share,
+  color: slice.color,
+});
+
+// A FilterMenu toggle for either dimension (accounts, categories): the
+// `FILTER_ALL` row clears the dimension; any other value toggles in/out. A fresh
+// Set keeps the state update immutable.
+const toggleFilter =
   (setSelected: (updater: (previous: Set<string>) => Set<string>) => void) =>
   (value: string): void => {
     if (value === FILTER_ALL) {
@@ -103,9 +126,16 @@ const StatisticsScreen: FC = () => {
   const { data: historyRows } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), [
     'currency_rate_history',
   ]);
+  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
 
   // An empty set means "all accounts"; any names in it narrow all three charts.
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+
+  // The spending pie's own category filter, in the SAME "empty means all" model
+  // the account FilterMenu uses: an empty set includes every category; any
+  // category titles in it narrow the pie to just those. Scoped to that chart
+  // alone — the account filter and date range do not touch it, nor it them.
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
   // A null bound leaves that side of the line's window at its default (earliest
   // transaction on the `from` side, now on the `to` side).
@@ -250,7 +280,102 @@ const StatisticsScreen: FC = () => {
     [filtered, rateTable, baseCurrency, now],
   );
 
-  const accountNames = filtered.visibleAccounts.map((account) => account.name);
+  // The spending pie sums EXPENSE transactions (negative amounts) by category, in
+  // the base currency. A transaction has no currency of its own — its amount is
+  // in its holding's currency — so join each transaction to its (account-scoped,
+  // open) holding for the currency, dropping any whose holding is filtered out.
+  // The category display map is built here so a rename flows straight through.
+  const categoryByKey = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
+
+  const breakdownTransactions = useMemo<BreakdownTransaction[]>(() => {
+    const currencyByHolding = new Map(
+      filtered.visibleHoldings.map((holding) => [holding.id, holding.currency]),
+    );
+
+    // Card-to-card SELF-TRANSFERS (a matched -X / +X pair across two of the
+    // user's own holdings) are not spending, so drop both legs before the
+    // category breakdown consumes them. Scoped to THIS chart only — every other
+    // view (net worth, by-type, account pie) still sees the full ledger.
+    return excludeSelfTransfers(transactions).flatMap((transaction) => {
+      const currency = currencyByHolding.get(transaction.holdingId);
+      if (currency === undefined) {
+        return [];
+      }
+
+      return [
+        {
+          category: transaction.category,
+          amountMinorUnits: transaction.amountMinorUnits,
+          currency,
+        },
+      ];
+    });
+  }, [transactions, filtered]);
+
+  // The unfiltered breakdown of every spending category: it feeds the filter
+  // menu's option list, and — translated below — the exclusion the pie applies.
+  const allCategorySlices = useMemo(
+    () =>
+      buildCategoryBreakdown({
+        transactions: breakdownTransactions,
+        categoryDisplay: categoryByKey,
+        rateTable,
+        baseCurrency,
+      }),
+    [breakdownTransactions, categoryByKey, rateTable, baseCurrency],
+  );
+
+  // The FilterMenu speaks category TITLES (the human-readable label a slug
+  // resolves to); the breakdown groups by key. The menu's options are the
+  // distinct titles, and a selection is translated back into the set of KEYS to
+  // EXCLUDE from the pie: an empty selection excludes nothing (all included),
+  // otherwise every category whose title is not selected is excluded. Each
+  // option carries the slice's own icon + color for the menu row; matching still
+  // keys on `option.value` (the title). De-duplicated by title, first-seen-wins.
+  const categoryOptions = useMemo(() => {
+    const byTitle = new Map<string, FilterOption>();
+    for (const slice of allCategorySlices) {
+      if (byTitle.has(slice.title)) {
+        continue;
+      }
+      byTitle.set(slice.title, { value: slice.title, icon: slice.icon, color: slice.color });
+    }
+
+    return Array.from(byTitle.values());
+  }, [allCategorySlices]);
+
+  const excludedCategoryKeys = useMemo(() => {
+    if (selectedCategories.size === 0) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      allCategorySlices
+        .filter((slice) => !selectedCategories.has(slice.title))
+        .map((slice) => slice.key),
+    );
+  }, [allCategorySlices, selectedCategories]);
+
+  const categorySlices = useMemo(
+    () =>
+      buildCategoryBreakdown({
+        transactions: breakdownTransactions,
+        categoryDisplay: categoryByKey,
+        rateTable,
+        baseCurrency,
+        excludedCategories: excludedCategoryKeys,
+      }),
+    [breakdownTransactions, categoryByKey, rateTable, baseCurrency, excludedCategoryKeys],
+  );
+
+  // One option per visible account, each carrying its seeded icon + resolved
+  // entity color for the menu row; matching still keys on `option.value` (the
+  // account name, compared to `account.name` in the `filtered` memo above).
+  const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
+    value: account.name,
+    icon: account.icon ?? undefined,
+    color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+  }));
 
   return (
     <Screen scroll>
@@ -259,9 +384,9 @@ const StatisticsScreen: FC = () => {
           <FilterMenu
             label="Accounts"
             testID="statistics-account-filter"
-            options={accountNames}
+            options={accountOptions}
             selected={selectedAccounts}
-            onToggle={toggleAccount(setSelectedAccounts)}
+            onToggle={toggleFilter(setSelectedAccounts)}
           />
 
           <DateRangeField
@@ -306,6 +431,27 @@ const StatisticsScreen: FC = () => {
             </Text>
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
+          </Box>
+        </GlassSurface>
+
+        <GlassSurface testID="statistics-block-category" padding={4} radius="lg">
+          <Box gap={3}>
+            <Box direction="row" gap={3} style={styles.filterBar}>
+              <FilterMenu
+                label="Categories"
+                testID="statistics-category-filter"
+                options={categoryOptions}
+                selected={selectedCategories}
+                onToggle={toggleFilter(setSelectedCategories)}
+              />
+            </Box>
+
+            <PieChart
+              slices={categorySlices.map(toPieSlice)}
+              baseCurrency={baseCurrency}
+              testID="category-pie"
+              emptyLabel="No Spending To Show"
+            />
           </Box>
         </GlassSurface>
       </Box>

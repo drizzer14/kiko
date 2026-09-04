@@ -17,6 +17,8 @@ import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
@@ -26,7 +28,9 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { defaultTransactionDescription } from '../../transactions/default-description';
+import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
 
@@ -216,19 +220,51 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Every active (non-archived) account, so a newly-added account with no
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
-  // Transaction matching still keys off `row.accountName` below.
-  const distinctAccountNames = Array.from(
-    new Set(
-      accounts.filter((account) => account.archivedAt == null).map((account) => account.name),
-    ),
-  );
-  const distinctCategories = Array.from(
-    new Set(transactions.map((row) => row.category ?? 'Uncategorized')),
-  );
+  // Each option carries its own seeded icon + resolved entity color for the
+  // menu row; transaction matching still keys off `option.value` (the account
+  // name, matched against `row.accountName` below). De-duplicated by name,
+  // first-seen-wins, preserving the old `Set`-based distinctness.
+  const accountOptionsByName = new Map<string, FilterOption>();
+  for (const account of accounts) {
+    if (account.archivedAt != null || accountOptionsByName.has(account.name)) {
+      continue;
+    }
+    accountOptionsByName.set(account.name, {
+      value: account.name,
+      icon: account.icon ?? undefined,
+      color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+    });
+  }
+  const accountOptions = Array.from(accountOptionsByName.values());
+  // Group and match the category filter by the RESOLVED display title, not the
+  // raw stored value: an override stores the lowercase slug key (`groceries`)
+  // while un-overridden synced rows still store the capitalized MCC name
+  // (`Groceries`). Both resolve to the same title, so keying on the title
+  // collapses them into one nicely-labeled chip instead of splitting them.
+  const categoryLabel = (raw: string | null): string =>
+    raw ? resolveCategoryDisplay(raw, categoryByKey).title : 'Uncategorized';
+  // One option per distinct resolved title, first-seen-wins (the same
+  // distinctness the old `Set` gave), each carrying the category's resolved icon
+  // and effective color for the menu row. Matching still keys on `option.value`
+  // (the title, compared to `categoryLabel(row.category)` below).
+  const categoryOptionsByTitle = new Map<string, FilterOption>();
+  for (const row of transactions) {
+    const display = resolveCategoryDisplay(row.category, categoryByKey);
+    if (categoryOptionsByTitle.has(display.title)) {
+      continue;
+    }
+    const key = row.category?.toLowerCase() || 'uncategorized';
+    categoryOptionsByTitle.set(display.title, {
+      value: display.title,
+      icon: display.icon,
+      color: resolveCategoryColor(display.color, key),
+    });
+  }
+  const categoryOptions = Array.from(categoryOptionsByTitle.values());
   const filteredTransactions = transactions.filter((row) => {
     const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
     const matchesCategory =
-      selectedCategories.size === 0 || selectedCategories.has(row.category ?? 'Uncategorized');
+      selectedCategories.size === 0 || selectedCategories.has(categoryLabel(row.category));
     const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
 
     return matchesAccount && matchesCategory && matchesDate;
@@ -260,6 +296,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 name={category.icon}
                 size={18}
                 tone="textSecondary"
+                color={resolveCategoryColor(
+                  category.color,
+                  item.category?.toLowerCase() || 'uncategorized',
+                )}
                 accessibilityLabel={category.title}
               />
               <Box style={styles.rowDescription}>
@@ -317,8 +357,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           <Box style={styles.divider} />
           <Box style={styles.filterBar}>
             <TransactionFilterBar
-              accounts={distinctAccountNames}
-              categories={distinctCategories}
+              accounts={accountOptions}
+              categories={categoryOptions}
               selectedAccount={selectedAccounts}
               selectedCategory={selectedCategories}
               onToggleAccount={toggleFilter(setSelectedAccounts)}

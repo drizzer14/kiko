@@ -1,10 +1,20 @@
 import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
 import AccountDetailScreen from './account-detail.screen';
+
+// A grid card's delete menu is a react-native-gesture-handler long-press, so
+// the screen must mount under a GestureHandlerRootView (the app supplies one at
+// its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // The Text primitive's tone -> color mapping lives in a react-native-unistyles
 // variant that the project's Jest mock strips before a test can inspect it.
@@ -34,6 +44,22 @@ const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
 
+// HoldingCard (rendered inside this screen) subscribes to the native stack's
+// `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
+// until the push slide-in settles. These tests mount the screen with a spy
+// navigation *prop* and no NavigationContainer, so the real `useNavigation`
+// hook has no context and throws. Stub only `useNavigation` (keep the rest of
+// the module real) with a navigation whose `addListener` is an inert
+// noop-unsubscribe — the card simply never settles under test, which is fine.
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => ({
+    addListener: () => () => {},
+    navigate: jest.fn(),
+    setOptions: jest.fn(),
+    goBack: jest.fn(),
+  }),
+}));
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
@@ -122,7 +148,11 @@ const setLiveData = (data: {
       return { data: connected };
     }
     if (tables[0] === 'holdings') {
-      return { data: data.holdings ?? [] };
+      // A real holding row always carries a `type`; default it here so a fixture
+      // that only cares about name/currency/balance still yields a valid type
+      // for the card's color/icon derivation (an undefined type has no default
+      // color and would throw in the tint helper).
+      return { data: (data.holdings ?? []).map((holding) => ({ type: 'card', ...holding })) };
     }
     if (tables[0] === 'currency_rates') {
       return { data: data.rates ?? [] };
@@ -163,7 +193,9 @@ const multiCurrencyData = {
  */
 const renderScreen = async () => {
   const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
-  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />);
+  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />, {
+    wrapper: gestureRootWrapper,
+  });
   return { ...view, navigation };
 };
 
@@ -188,7 +220,9 @@ describe('AccountDetailScreen', () => {
 
   it('sets the header title to the account name', async () => {
     const { navigation } = await renderScreen();
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Monobank' });
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Monobank' }),
+    );
   });
 
   it('shows the holding balance as money', async () => {
@@ -221,10 +255,15 @@ describe('AccountDetailScreen', () => {
     // HoldingDetail), so pressing anywhere on it — the name included — opens the
     // detail page.
     await fireEvent.press(getByText('Black card'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', { holdingId: 'h1' });
+    // The holding's name rides along so the detail screen's large title (and any
+    // back button pushed from it) reads immediately, before its own live query.
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      holdingId: 'h1',
+      name: 'Black card',
+    });
   });
 
-  it('lays the account holdings out as a drag-and-drop grid of square cards', async () => {
+  it('lays the account holdings out as a drag-and-drop vertical list of wide row cards', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -234,14 +273,17 @@ describe('AccountDetailScreen', () => {
     });
     const { getByTestId, getAllByTestId } = await renderScreen();
 
-    // The holdings render inside the sortable grid, one wrapper item per
-    // holding, each holding a square (aspectRatio 1) card. Column layout is now
-    // owned by Sortable.Grid (columns=2), so the item widths are no longer set
-    // by this screen's own styles.
-    expect(getByTestId('sortable-grid')).toBeTruthy();
+    // The holdings render inside the sortable grid, one wrapper item per holding,
+    // each a full-width row card (icon + name left, value right) — mirroring the
+    // accounts list. The grid is a single column, so the cards carry no square
+    // aspectRatio; a dragged card is pinned to its vertical axis.
+    const grid = getByTestId('sortable-grid');
+    expect(grid.props.overDrag).toBe('vertical');
     const items = getAllByTestId('holding-grid-item');
     expect(items).toHaveLength(2);
-    expect(StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio).toBe(1);
+    expect(
+      StyleSheet.flatten(getAllByTestId('holding-card')[0].props.style).aspectRatio,
+    ).toBeUndefined();
   });
 
   it('renders holdings in the query sort_order, with no zero-value auto-sink', async () => {
@@ -271,25 +313,39 @@ describe('AccountDetailScreen', () => {
     expect(queryByLabelText('Change Black card icon')).toBeNull();
   });
 
-  it('tints the header account icon with its stored color', async () => {
+  it('tints the account identity icon beside the Balance amount with its stored color', async () => {
     setLiveData({
       accounts: [account({ color: darkTheme.colors.entityColors.violet })],
       holdings: [],
     });
     const { getByLabelText } = await renderScreen();
 
-    // A bank account shows the building.columns glyph, tinted its stored violet.
-    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+    // The account icon now sits beside the Balance amount (the nav title shows the
+    // NAME only), tinted its stored violet — a bank shows the columns-fill glyph.
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
     );
   });
 
-  it('tints the header account icon with the kind default color when none is stored', async () => {
+  it('tints the account identity icon beside the Balance amount with the kind default color when none is stored', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
     const { getByLabelText } = await renderScreen();
 
     // A `bank` account with no color reads the bank kind default (white).
-    expect(getByLabelText('Icon building.columns').props.tintColor).toBe(
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
+      darkTheme.colors.entityColors.white,
+    );
+  });
+
+  it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the kind default', async () => {
+    // A stored color of '' (neither null nor undefined) slips past a bare
+    // `color ?? default`, leaving the header tinted with an invalid empty color
+    // while the card (via resolveEntityColor) shows the kind default. The header
+    // must resolve through the same helper so the identity color never diverges.
+    setLiveData({ accounts: [account({ color: '' })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
   });
@@ -333,17 +389,23 @@ describe('AccountDetailScreen', () => {
     expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
-  it("drives the header title from the account's real name, with no in-body duplicate", async () => {
+  it("drives the nav title from the account's real name, with no custom header title component", async () => {
     setLiveData({
       accounts: [account({ name: 'Ukrsibbank Card' })],
       holdings: [],
     });
-    const { queryByText, navigation } = await renderScreen();
-    // The name is the single (header) title, set via setOptions; it no longer
-    // also renders as an in-body <Text variant="title"> duplicate.
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Ukrsibbank Card' });
-    expect(queryByText('Ukrsibbank Card')).toBeNull();
-    expect(queryByText('Account')).toBeNull();
+    const { navigation } = await renderScreen();
+    // The name is the plain string `title` — the native large title — with NO
+    // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
+    // moved to the body), so the back button on any pushed screen reads it
+    // immediately and the large title never flashes collapsing on load.
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Ukrsibbank Card' }),
+    );
+    for (const [options] of (navigation.setOptions as jest.Mock).mock.calls) {
+      expect(options.headerTitle).toBeUndefined();
+      expect(options.headerLargeTitle).toBeUndefined();
+    }
   });
 
   it('renders in scroll mode so the native large title renders and collapses', async () => {
@@ -484,40 +546,47 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the long-press-in-place menu (drag ended where it started)', async () => {
-    // Auto-confirm: pick the destructive Delete option (index 0) as soon as the
-    // native action sheet opens.
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => {
-        callback(0);
-      });
+  it('deletes a manual holding via the deep-press delete menu confirm', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { getByTestId } = await renderScreen();
-    // A long-press that lifts the card and releases it in place (fromIndex ===
-    // toIndex) stands in for the context menu: the grid's onDragEnd opens the
-    // delete action sheet for that holding.
+    const sheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
+    await renderScreen();
+    // The manual holding card is wrapped in the deep-press long-press. A hold
+    // that stays still opens the destructive delete sheet; confirming its
+    // destructive index removes the holding.
     await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'h1',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['h1'],
-      });
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
-    expect(actionSheetSpy).toHaveBeenCalledWith(
-      {
-        options: ['Delete "Black card"', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
-      },
+    expect(sheetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ options: ['Cancel', 'Delete "Black card"'] }),
       expect.any(Function),
     );
     expect(mockRemove).toHaveBeenCalledWith('h1');
-    actionSheetSpy.mockRestore();
+    sheetSpy.mockRestore();
+  });
+
+  it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
+      ],
+    });
+    const { getByTestId } = await renderScreen();
+    const grid = getByTestId('sortable-grid');
+    // The grid receives the parent scroll view's animated ref plus a positive
+    // edge offset, so a drag near the top/bottom edge auto-scrolls the list.
+    expect(grid.props.scrollableRef).toBeDefined();
+    expect(grid.props.autoScrollActivationOffset).toBeGreaterThan(0);
   });
 
   it('persists a reorder to holdingsRepo.reorder when a holding is dragged to a new slot', async () => {
@@ -554,10 +623,7 @@ describe('AccountDetailScreen', () => {
     expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
   });
 
-  it('does not offer the delete menu on a synced holding (monobankId)', async () => {
-    const actionSheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation(() => undefined);
+  it('renders no context menu on a synced holding (monobankId)', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [
@@ -570,68 +636,38 @@ describe('AccountDetailScreen', () => {
         },
       ],
     });
-    const { getByTestId } = await renderScreen();
-    // A synced holding is owned by the sync: a long-press-in-place resolves to a
-    // synced row, so the grid opens no delete menu.
-    await act(async () => {
-      getByTestId('sortable-grid').props.onDragEnd({
-        key: 'h1',
-        fromIndex: 0,
-        toIndex: 0,
-        indexToKey: ['h1'],
-      });
-    });
-    expect(actionSheetSpy).not.toHaveBeenCalled();
-    actionSheetSpy.mockRestore();
+    const { queryByTestId } = await renderScreen();
+    // A synced holding is owned by the sync, so its card renders bare with no
+    // native context menu to offer a delete.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
-  it("changes the account's own icon through the header icon editor, via accountsRepo.setIcon", async () => {
-    setLiveData({ accounts: [account({ name: 'Cash', kind: 'cash' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByLabelText('Choose icon basket'));
-    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', 'basket');
-  });
-
-  it("clears the account's own icon through the header icon editor Remove control", async () => {
+  it('renders a view-only header with no inline name, icon, or color editors', async () => {
     setLiveData({
-      accounts: [account({ name: 'Cash', kind: 'cash', icon: 'banknote' })],
+      accounts: [account({ name: 'Ukrsibbank Card', icon: 'banknote' })],
       holdings: [],
     });
-    const { getByLabelText, getByText } = await renderScreen();
-    await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByText('Remove'));
-    expect(mockAccountSetIcon).toHaveBeenCalledWith('a', null);
+    const { queryByLabelText } = await renderScreen();
+    // Identity editing moved to the dedicated edit form: the header no longer
+    // offers the icon-picker toggle, the editable name field, or the color
+    // swatch row it used to.
+    expect(queryByLabelText('Change Icon')).toBeNull();
+    expect(queryByLabelText('Ukrsibbank Card name')).toBeNull();
+    expect(queryByLabelText('Color violet')).toBeNull();
   });
 
-  it("edits the account's own name in a header field and renames via accountsRepo.update on end-of-editing", async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText, getByDisplayValue } = await renderScreen();
-    // The name renders as a labelled, editable field pre-filled with the account
-    // name; the rename commits once on end-of-editing through the generic update.
-    const field = getByDisplayValue('Ukrsibbank Card');
-    expect(field.props.editable).not.toBe(false);
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent.changeText(input, 'Renamed account');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).toHaveBeenCalledWith('a', { name: 'Renamed account' });
-  });
-
-  it('does not save an empty account name', async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent.changeText(input, '   ');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).not.toHaveBeenCalled();
-  });
-
-  it('does not save an unchanged account name', async () => {
-    setLiveData({ accounts: [account({ name: 'Ukrsibbank Card' })], holdings: [] });
-    const { getByLabelText } = await renderScreen();
-    const input = getByLabelText('Ukrsibbank Card name');
-    await fireEvent(input, 'endEditing');
-    expect(mockAccountUpdate).not.toHaveBeenCalled();
+  it('offers an Edit action in the header that opens the account edit form', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+    const { navigation } = await renderScreen();
+    // The Edit affordance sits at the header top-right (via setOptions
+    // headerRight). Render it and press it: it opens this account's edit form.
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.headerRight,
+    );
+    expect(call).toBeDefined();
+    const { getByText } = await render(call[0].headerRight());
+    await fireEvent.press(getByText('Edit'));
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
   it('offers a Disconnect Monobank action on a connected account and confirms before disconnecting', async () => {

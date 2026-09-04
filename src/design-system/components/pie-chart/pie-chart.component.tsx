@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 import { Svg, Path } from 'react-native-svg';
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -10,10 +9,24 @@ import Text from '../text';
 import MoneyText from '../money-text';
 import { styles } from './pie-chart.styles';
 
-/** A donut of per-account net-worth contribution. Empty when `slices=[]`. */
-type PieChartProps = { slices: AccountSlice[]; baseCurrency: Currency; size?: number };
+/**
+ * A donut of per-slice contribution. Empty when `slices=[]`. `testID` prefixes
+ * every rendered primitive (arc, legend row, empty state), so two pies on one
+ * screen — the account-contribution pie and the category-spending pie — never
+ * collide on the same hardcoded id; it defaults to `pie-chart`. `emptyLabel` is
+ * the empty-state copy, defaulting to the account-pie wording.
+ */
+type PieChartProps = {
+  slices: AccountSlice[];
+  baseCurrency: Currency;
+  size?: number;
+  testID?: string;
+  emptyLabel?: string;
+};
 
 const DEFAULT_SIZE = 200;
+const DEFAULT_TEST_ID = 'pie-chart';
+const DEFAULT_EMPTY_LABEL = 'No Accounts To Show';
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.
 const INNER_RATIO = 0.58;
 const FULL_TURN = 360;
@@ -67,26 +80,40 @@ const donutArc = (center: number, outerRadius: number, arc: ArcSlice): string =>
 
 const toPercent = (share: number): string => `${Math.round(share * 100)}%`;
 
-// One legend row: colour swatch + account name on the left, converted amount +
-// share on the right.
-const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; color: string }> = ({
+// One legend row, laid out as three aligned table columns: the swatch + account
+// name fills the remaining width on the left, then a fixed-width right-aligned
+// value column, then a fixed-width right-aligned percent column — so the figures
+// line up vertically down the list regardless of magnitude. The swatch wears the
+// slice's own entity color, matching its pie arc and the account card.
+const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; testID: string }> = ({
   slice,
   baseCurrency,
-  color,
+  testID,
 }) => {
   return (
-    <View testID={`pie-chart-legend-${slice.accountId}`} style={styles.legendEntry}>
-      <View style={styles.legendAccount}>
-        <View style={[styles.swatch, { backgroundColor: color }]} />
+    <View testID={`${testID}-legend-${slice.accountId}`} style={styles.legendRow}>
+      <View style={styles.legendName}>
+        <View
+          testID={`${testID}-swatch-${slice.accountId}`}
+          style={[styles.swatch, { backgroundColor: slice.color }]}
+        />
 
         <Text variant="body" tone="textPrimary">
           {slice.name}
         </Text>
       </View>
 
-      <View style={styles.legendFigures}>
-        <MoneyText money={Money.of(baseCurrency, slice.amount)} context="balance" />
+      <View testID={`${testID}-legend-value-${slice.accountId}`} style={styles.legendValue}>
+        <MoneyText
+          money={Money.of(baseCurrency, slice.amount)}
+          context="balance"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        />
+      </View>
 
+      <View testID={`${testID}-legend-percent-${slice.accountId}`} style={styles.legendPercent}>
         <Text variant="caption" tone="textSecondary">
           {toPercent(slice.share)}
         </Text>
@@ -95,20 +122,23 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; color: s
   );
 };
 
-const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE }) => {
-  const { theme } = useUnistyles();
-
+const PieChart: FC<PieChartProps> = ({
+  slices,
+  baseCurrency,
+  size = DEFAULT_SIZE,
+  testID = DEFAULT_TEST_ID,
+  emptyLabel = DEFAULT_EMPTY_LABEL,
+}) => {
   if (slices.length === 0) {
     return (
-      <Box testID="pie-chart-empty" style={styles.empty}>
+      <Box testID={`${testID}-empty`} style={styles.empty}>
         <Text variant="body" tone="textSecondary">
-          No Accounts To Show
+          {emptyLabel}
         </Text>
       </Box>
     );
   }
 
-  const palette = theme.colors.chartSeries;
   const center = size / 2;
   const arcs = withAngles(slices);
 
@@ -116,24 +146,24 @@ const PieChart: FC<PieChartProps> = ({ slices, baseCurrency, size = DEFAULT_SIZE
     <Box style={styles.container}>
       <View style={styles.chart}>
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {arcs.map((arc, index) => (
+          {arcs.map((arc) => (
             <Path
               key={arc.accountId}
-              testID={`pie-chart-arc-${arc.accountId}`}
+              testID={`${testID}-arc-${arc.accountId}`}
               d={donutArc(center, center, arc)}
-              fill={palette[index % palette.length]}
+              fill={arc.color}
             />
           ))}
         </Svg>
       </View>
 
       <Box style={styles.legend}>
-        {slices.map((slice, index) => (
+        {slices.map((slice) => (
           <PieLegendEntry
             key={slice.accountId}
             slice={slice}
             baseCurrency={baseCurrency}
-            color={palette[index % palette.length]}
+            testID={testID}
           />
         ))}
       </Box>

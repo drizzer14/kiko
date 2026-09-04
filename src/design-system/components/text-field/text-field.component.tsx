@@ -17,6 +17,7 @@ const TextField: FC<TextFieldProps> = ({
   autoCapitalize,
   autoCorrect,
   multiline,
+  secureTextEntry,
 }) => {
   const { theme } = useUnistyles();
 
@@ -37,6 +38,7 @@ const TextField: FC<TextFieldProps> = ({
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         multiline={multiline}
+        secureTextEntry={secureTextEntry}
         style={[styles.input, editable === false && styles.inputDisabled]}
       />
     </Box>

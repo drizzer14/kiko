@@ -15,5 +15,13 @@ export type TextProps = {
   // excluded so the `tone` token stays authoritative and a caller can never
   // override the money tone (zero=white / negative=red / positive=green).
   style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign' | 'textTransform'>>;
+  // Single-line / shrink-to-fit controls forwarded straight to the underlying
+  // RN Text. A fixed-width column (a chart's money value or Y-axis tick) sets
+  // `numberOfLines={1}` with `adjustsFontSizeToFit` + `minimumFontScale` so a
+  // large amount shrinks to fit rather than wrapping and breaking alignment.
+  // All optional; when absent, wrapping behavior is unchanged.
+  numberOfLines?: number;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
   children: ReactNode;
 };

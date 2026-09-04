@@ -77,13 +77,15 @@ jest.mock('react-native/Libraries/Modal/Modal', () => {
   return { __esModule: true, default: Modal };
 });
 
-// react-native-reanimated ships an official Jest mock that replaces its
-// worklet/native-driven animation runtime with synchronous JS stubs, so any
-// component that imports it (react-native-sortables, GestureHandlerRootView's
-// tree) renders under react-test-renderer without the native worklets binary.
+// react-native-reanimated's own Jest mock (`react-native-reanimated/mock`)
+// transitively requires the real reanimated index, which loads the native
+// `react-native-worklets` binding and throws under react-test-renderer on the
+// New Architecture. A grid screen imports `useAnimatedRef` from reanimated
+// directly (the drag auto-scroll ref), which triggers this factory, so it
+// resolves to a self-contained stub instead — see `jest/reanimated-mock.js`.
 // Registered globally because the accounts / holdings grids reach it
 // transitively from App.tsx / navigator tests.
-jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('react-native-reanimated', () => require('./reanimated-mock'));
 
 // react-native-gesture-handler's jestSetup self-registers mocks for its native
 // gesture recognizers (it calls jest.mock internally as a side effect of being
@@ -103,10 +105,14 @@ jest.mock('react-native-sortables', () => {
   const React = require('react');
   const { View } = require('react-native');
 
-  const Grid = ({ data, renderItem, keyExtractor, onDragEnd }) =>
+  // `data`/`renderItem`/`keyExtractor`/`onDragEnd` drive the rendered order and
+  // reorder handle; every other prop (`scrollableRef`, `autoScrollActivationOffset`,
+  // `columns`, `sortEnabled`, ...) is spread onto the host View so a test can
+  // read the auto-scroll wiring off `sortable-grid`'s props.
+  const Grid = ({ data, renderItem, keyExtractor, onDragEnd, ...rest }) =>
     React.createElement(
       View,
-      { testID: 'sortable-grid', onDragEnd },
+      { testID: 'sortable-grid', onDragEnd, ...rest },
       (data ?? []).map((item, index) =>
         React.createElement(
           React.Fragment,
@@ -123,3 +129,11 @@ jest.mock('react-native-sortables', () => {
     default: { Grid, Flex: Passthrough, Layer: Passthrough, Handle: Passthrough },
   };
 });
+
+// react-native-haptic-feedback's `trigger` calls a native TurboModule that does
+// not exist under react-test-renderer, so an unmocked call throws — the same
+// class of failure as the other native-binding mocks above. The card's
+// deep-press delete menu (`CardContextMenu` -> `openDeleteMenu`) plays a haptic,
+// and both grid screens reach it transitively, so stub `trigger` to a no-op
+// spy globally. Its named `trigger` export is the only surface app code uses.
+jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));

@@ -3,10 +3,17 @@ import type { AccountSlice } from '../../../statistics/account-contribution';
 import '../../unistyles';
 import PieChart from './pie-chart.component';
 
+// Flatten a (possibly nested/array) style prop into its plain object layers so a
+// test can assert a single directive regardless of how Unistyles composed it.
+const styleLayers = (style: unknown): Record<string, unknown>[] =>
+  (Array.isArray(style) ? style.flat(Number.POSITIVE_INFINITY) : [style]).filter(
+    (layer): layer is Record<string, unknown> => layer != null && typeof layer === 'object',
+  );
+
 const slices: AccountSlice[] = [
-  { accountId: 'a1', name: 'Monobank', amount: 600_00, share: 0.6 },
-  { accountId: 'a2', name: 'Cash', amount: 300_00, share: 0.3 },
-  { accountId: 'a3', name: 'Revolut', amount: 100_00, share: 0.1 },
+  { accountId: 'a1', name: 'Monobank', amount: 600_00, share: 0.6, color: '#FF375F' },
+  { accountId: 'a2', name: 'Cash', amount: 300_00, share: 0.3, color: '#30D158' },
+  { accountId: 'a3', name: 'Revolut', amount: 100_00, share: 0.1, color: '#0A84FF' },
 ];
 
 describe('PieChart', () => {
@@ -30,6 +37,46 @@ describe('PieChart', () => {
     expect(getByText(/\$600\.00/)).toBeTruthy();
     expect(getByText('60%')).toBeTruthy();
     expect(getByText('10%')).toBeTruthy();
+  });
+
+  it("colors each arc and its legend swatch with the slice's entity color", async () => {
+    const { getByTestId } = await render(<PieChart slices={slices} baseCurrency="USD" />);
+
+    expect(getByTestId('pie-chart-arc-a1').props.fill).toBe('#FF375F');
+    expect(getByTestId('pie-chart-arc-a2').props.fill).toBe('#30D158');
+
+    const swatchColor = styleLayers(getByTestId('pie-chart-swatch-a1').props.style)
+      .map((layer) => layer.backgroundColor)
+      .find((value): value is string => typeof value === 'string');
+    expect(swatchColor).toBe('#FF375F');
+  });
+
+  it('lays the legend out as aligned columns: a name, a fixed-width value, and a percent', async () => {
+    const { getByTestId } = await render(<PieChart slices={slices} baseCurrency="USD" />);
+
+    // Every row's value column carries the same fixed width, and its percent
+    // column another, so the figures line up vertically regardless of magnitude.
+    const valueWidths = slices.map((slice) =>
+      styleLayers(getByTestId(`pie-chart-legend-value-${slice.accountId}`).props.style)
+        .map((layer) => layer.width)
+        .find((value): value is number => typeof value === 'number'),
+    );
+    expect(new Set(valueWidths).size).toBe(1);
+    expect(valueWidths[0]).toBeGreaterThan(0);
+
+    const percentWidths = slices.map((slice) =>
+      styleLayers(getByTestId(`pie-chart-legend-percent-${slice.accountId}`).props.style)
+        .map((layer) => layer.width)
+        .find((value): value is number => typeof value === 'number'),
+    );
+    expect(new Set(percentWidths).size).toBe(1);
+    expect(percentWidths[0]).toBeGreaterThan(0);
+
+    // Both figure columns are right-aligned so their trailing digits align.
+    const valueAlign = styleLayers(getByTestId('pie-chart-legend-value-a1').props.style)
+      .map((layer) => layer.alignItems)
+      .find((value): value is string => typeof value === 'string');
+    expect(valueAlign).toBe('flex-end');
   });
 
   it('emits a closed donut-wedge arc path: move-to, an A arc command, and a Z cap', async () => {

@@ -1,9 +1,10 @@
 import { type FC, useState } from 'react';
-import { Modal, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import type { FilterMenuProps } from './filter-menu.props';
+import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 import { styles } from './filter-menu.styles';
 
 /** The default option in every filter menu — selecting it clears that dimension. */
@@ -18,15 +19,22 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  * A single multi-select filter over one dimension, rendered as a custom
  * dropdown rather than a native menu. Tapping a row toggles it and the sheet
  * stays open, so several values can be checked in one pass; it closes only on an
- * explicit tap-outside. (The native @react-native-menu/menu rebuilds — and so
- * dismisses — its UIMenu whenever the actions array changes on toggle, which no
- * prop reliably prevents, so a pure-JS sheet owns this behaviour instead.)
+ * explicit tap-outside. (A native iOS UIMenu rebuilds — and so dismisses —
+ * itself whenever its actions change on toggle, which no prop reliably prevents,
+ * so a pure-JS sheet owns this behaviour instead.)
  */
 const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, testID }) => {
   const [open, setOpen] = useState(false);
 
   const buttonLabel = selected.size > 0 ? `${label} · ${selected.size}` : label;
-  const rows = [FILTER_ALL, ...options];
+  // Prepend the synthetic "All" row (no icon) to the real options. Every row is
+  // a FilterOption so the render path is uniform; matching still keys on `value`.
+  const rows: FilterOption[] = [{ value: FILTER_ALL }, ...options];
+  // Reserve a fixed-width leading icon slot on every row only when at least one
+  // option carries an icon, so labels stay aligned between icon and icon-less
+  // rows (the "All" row, or any option with no icon) without adding dead space
+  // to a menu whose options are all icon-less.
+  const hasIcons = options.some((option) => option.icon != null);
 
   return (
     <>
@@ -43,39 +51,47 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         </Box>
       </Pressable>
 
-      {open && (
-        <Modal transparent visible animationType="fade" onRequestClose={() => setOpen(false)}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={2}
+        backdropTestID={`${testID}-backdrop`}
+      >
+        <Text variant="heading">{label}</Text>
+
+        {rows.map((option) => (
           <Pressable
-            style={styles.backdrop}
-            testID={`${testID}-backdrop`}
-            onPress={() => setOpen(false)}
+            key={option.value}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isChecked(option.value, selected) }}
+            testID={`${testID}-option-${option.value}`}
+            onPress={() => onToggle(option.value)}
           >
-            <Box gap={2} style={styles.sheet} onStartShouldSetResponder={() => true}>
-              <Text variant="heading">{label}</Text>
+            <Box direction="row" gap={2} style={styles.option}>
+              <Box style={styles.check}>
+                {isChecked(option.value, selected) && (
+                  <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
+                )}
+              </Box>
 
-              {rows.map((value) => (
-                <Pressable
-                  key={value}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: isChecked(value, selected) }}
-                  testID={`${testID}-option-${value}`}
-                  onPress={() => onToggle(value)}
-                >
-                  <Box direction="row" gap={2} style={styles.option}>
-                    <Box style={styles.check}>
-                      {isChecked(value, selected) && (
-                        <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
-                      )}
-                    </Box>
+              {hasIcons && (
+                <Box style={styles.icon}>
+                  {option.icon != null && (
+                    <SymbolIcon
+                      name={option.icon}
+                      color={option.color}
+                      size={18}
+                      accessibilityLabel={option.value}
+                    />
+                  )}
+                </Box>
+              )}
 
-                    <Text variant="body">{value}</Text>
-                  </Box>
-                </Pressable>
-              ))}
+              <Text variant="body">{option.value}</Text>
             </Box>
           </Pressable>
-        </Modal>
-      )}
+        ))}
+      </BottomSheet>
     </>
   );
 };

@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Alert, TextInput } from 'react-native';
+import { Alert, type ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -11,11 +12,10 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import MoneyText from '../../design-system/components/money-text';
-import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { disconnectMonobank } from '../../monobank/disconnect';
@@ -27,10 +27,13 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
-import IconEditor from '../icon-editor';
-import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
+import CardContextMenu from '../card-context-menu.component';
+import EditHeaderButton from '../edit-header-button.component';
+import EntityAmountHeader from '../entity-amount-header.component';
+import EntityHeaderIcon from '../entity-header-icon.component';
+import { onGridDragEnd } from '../grid-interaction';
 import { useSync } from '../use-sync';
-import { KIND_ICON } from '../accounts/accounts.screen';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { styles } from './account-detail.styles';
 import HoldingCard from './holding-card.component';
 import MonobankTokenField from './monobank-token-field.component';
@@ -59,58 +62,23 @@ const actionPresentation = (
   };
 };
 
-// The account's own metadata, edited here rather than on the tiny accounts-list
-// row: the icon opens the shared picker (with remove-to-default) under one
-// labelled "Icon" block reused from the create form, and the name is a proper
-// labelled field. Local name state seeds from the account so keystrokes show
-// immediately while the persisted value flows back through the live query; the
-// rename commits once on end-of-editing (return-key submit or blur) via the
-// generic accountsRepo.update, and an empty or unchanged name is never written.
-const AccountMetadataHeader: FC<{ account: AccountRow }> = ({ account }) => {
-  const { theme } = useUnistyles();
-  const [name, setName] = useState(account.name);
-
-  const commitName = (): void => {
-    const trimmed = name.trim();
-
-    if (trimmed !== '' && trimmed !== account.name) {
-      accountsRepo.update(account.id, { name: trimmed });
-    }
-  };
-
-  return (
-    <Box direction="row" gap={3} style={styles.metadataHeader}>
-      <IconEditor
-        label="Icon"
-        icon={account.icon}
-        fallbackIcon={KIND_ICON[account.kind]}
-        iconColor={account.color ?? defaultAccountColor[account.kind]}
-        onSelect={(icon) => accountsRepo.setIcon(account.id, icon)}
-        onRemove={() => accountsRepo.setIcon(account.id, null)}
-      />
-
-      <Box gap={1} style={styles.metadataNameBlock}>
-        <Text variant="caption" tone="textSecondary">
-          Name
-        </Text>
-
-        <TextInput
-          accessibilityLabel={`${account.name} name`}
-          value={name}
-          onChangeText={setName}
-          onEndEditing={commitName}
-          placeholderTextColor={theme.colors.textSecondary}
-          style={styles.nameField}
-        />
-      </Box>
-    </Box>
-  );
-};
+// The account's display identity for the view-only header: its stored icon (or
+// the kind default), and its effective color resolved through the SAME
+// `resolveEntityColor` the accounts-list card uses — so the identity color on
+// the card and on this header can never diverge. A bare `color ?? default` here
+// let an empty-string stored color (neither null nor undefined) through, tinting
+// the header with an invalid empty color while the card showed the kind default.
+// Extracted so the fallbacks don't count against the screen component's
+// cognitive-complexity budget.
+const accountIdentity = (account: AccountRow): { icon: string; color: string } => ({
+  icon: account.icon ?? accountKindSymbol[account.kind],
+  color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+});
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId } = route.params;
+  const { accountId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
@@ -119,16 +87,27 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const account = accounts.at(0);
 
-  // The stack sets no static title for this screen, so drive the header title
-  // from the account's own name once it loads — otherwise the header falls
-  // back to the raw "AccountDetail" route name. Skip until the name is known
-  // so the header never flashes an empty title.
-  const accountName = account?.name;
+  // The nav title shows the account NAME only — the native large title, the
+  // standard iOS pattern (the identity icon now sits beside the Balance amount
+  // below, not in the title). The name is available from the route params at the
+  // FIRST render, so the large title (and the back button on any screen pushed
+  // from here) reads immediately; the live-queried name takes over once loaded so
+  // a rename flows back through. This drops the old async `headerLargeTitle: false`
+  // + custom `headerTitle` toggle, which briefly blanked the pushed screen's back
+  // button and flashed the large title collapsing on load.
+  const accountName = account?.name ?? initialName;
+  // The account's effective icon + color, rendered as the identity glyph beside
+  // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
+  // slot below) rather than in the nav title.
+  const identity = account ? accountIdentity(account) : undefined;
   useLayoutEffect(() => {
-    if (accountName !== undefined) {
-      navigation.setOptions({ title: accountName });
-    }
-  }, [navigation, accountName]);
+    navigation.setOptions({
+      title: accountName,
+      headerRight: () => (
+        <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+      ),
+    });
+  }, [navigation, accountName, accountId]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
@@ -144,17 +123,12 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
   // order is the sole ordering key and no screen-level re-sort is needed.
-  const holdingsById = new Map(activeHoldings.map((holding) => [holding.id, holding]));
 
-  // Long-press-in-place on a holding card opens its delete menu — but only for a
-  // manual holding; a synced (Monobank) holding is owned by the sync and offers
-  // no menu.
-  const openHoldingMenu = (holdingId: string): void => {
-    const holding = holdingsById.get(holdingId);
-    if (holding && !isSyncedHolding(holding)) {
-      showDeleteActionSheet(holding.name, () => holdingsRepo.remove(holdingId));
-    }
-  };
+  // The parent ScrollView's animated ref, shared with the sortable grid so a
+  // drag near the top/bottom edge auto-scrolls the list (the grid is nested
+  // inside this Screen's ScrollView, so it cannot scroll it without the ref).
+  const scrollableRef = useAnimatedRef<ScrollView>();
+
   const isBankAccount = account?.kind === 'bank';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
@@ -234,6 +208,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Button
           variant="primary"
@@ -245,11 +220,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4}>
-        {account && <AccountMetadataHeader account={account} />}
-
         <Box gap={1} style={styles.balanceBlock}>
-          <Text variant="heading">Balance</Text>
-          <MoneyText money={overallBalance} context="balance" style={styles.balance} />
+          <EntityAmountHeader
+            label="Balance"
+            money={overallBalance}
+            context="balance"
+            icon={<EntityHeaderIcon identity={identity} />}
+          />
           <Box style={styles.breakdown}>
             <CurrencyBreakdown items={breakdown} />
           </Box>
@@ -261,16 +238,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {showActionButton && (
           <Box direction="row" gap={2} style={styles.statusLine}>
-            <PressableButton
+            <Button
+              variant="primary"
+              size="compact"
+              fullWidth={false}
               onPress={() => {
                 handlePress();
               }}
               disabled={isSyncing}
-              backgroundColor={theme.colors.accent}
-              alignSelf="flex-start"
-              icon={<SymbolIcon name={actionIcon} tone="textPrimary" />}
-              label={actionLabel}
-            />
+              icon={actionIcon}
+            >
+              {actionLabel}
+            </Button>
             {isConnectedToMonobank && (
               <Box direction="row" gap={2} style={styles.statusLine}>
                 <SymbolIcon name="clock" tone="textSecondary" />
@@ -283,13 +262,15 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         )}
 
         {isConnectedToMonobank && (
-          <PressableButton
+          <Button
+            variant="secondary"
+            size="compact"
+            fullWidth={false}
             onPress={confirmDisconnect}
-            backgroundColor={theme.colors.surfaceHigh}
-            alignSelf="flex-start"
-            icon={<SymbolIcon name="link.badge.plus" tone="textPrimary" />}
-            label="Disconnect Monobank"
-          />
+            icon="link.badge.plus"
+          >
+            Disconnect Monobank
+          </Button>
         )}
 
         {showConnectedElsewhereHint && (
@@ -315,34 +296,51 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={3}>
           <Text variant="heading">Holdings</Text>
 
-          {/* A drag-and-drop 2-column grid of square holding cards. A plain tap
-              opens the holding; a long-press lifts a card to drag (reorder), and
-              a long-press released in place opens the delete menu — see
-              `onGridDragEnd`. `sortEnabled` is off with a single holding, where
-              there is nothing to reorder. */}
+          {/* A single-column drag-and-drop list of wide holding row cards
+              (mirroring the accounts list). A plain tap opens the holding; a
+              touch-and-hold-still on a manual card opens the deep-press (haptic)
+              delete menu; a hold-and-move drags to reorder — see `CardContextMenu`
+              and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
+              its vertical axis (a single column has no horizontal move to make).
+              `scrollableRef` + `autoScrollActivationOffset` let a drag near an
+              edge scroll the parent list (F9). `sortEnabled` is off with a single
+              holding, where there is nothing to reorder. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
               sortEnabled={activeHoldings.length > 1}
-              columns={2}
+              // A subtle lift on touch-and-hold: the library default (1.1) pops
+              // the card up too much, so scale it just barely (matches the
+              // accounts grid).
+              activeItemScale={1.03}
+              columns={1}
+              overDrag="vertical"
               rowGap={theme.spacing(3)}
-              columnGap={theme.spacing(3)}
+              scrollableRef={scrollableRef}
+              autoScrollActivationOffset={75}
               keyExtractor={(holding) => holding.id}
               renderItem={({ item }) => (
                 <Box testID="holding-grid-item">
-                  <HoldingCard
-                    holding={item}
-                    now={now}
-                    onOpen={() => navigation.navigate('HoldingDetail', { holdingId: item.id })}
-                  />
+                  <CardContextMenu
+                    name={item.name}
+                    deletable={!isSyncedHolding(item)}
+                    onDelete={() => holdingsRepo.remove(item.id)}
+                  >
+                    <HoldingCard
+                      holding={item}
+                      now={now}
+                      onOpen={() =>
+                        navigation.navigate('HoldingDetail', {
+                          holdingId: item.id,
+                          name: item.name,
+                        })
+                      }
+                    />
+                  </CardContextMenu>
                 </Box>
               )}
               onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd(
-                  { key, fromIndex, toIndex, indexToKey },
-                  holdingsRepo.reorder,
-                  openHoldingMenu,
-                )
+                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
               }
             />
           </Box>

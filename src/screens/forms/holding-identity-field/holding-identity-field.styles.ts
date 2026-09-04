@@ -20,16 +20,18 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // A labelled name field: a bordered, filled input so the editable name reads
   // as a proper field rather than a tiny inline control. Pinned to the shared
-  // control height (the iOS 44pt minimum tap target) so it matches the icon
-  // chip beside it exactly — the chip carries the same `minHeight`, so the two
-  // boxes are identical in height instead of the chip reading a hair taller.
+  // control height (the iOS 44pt minimum tap target) with a fixed `height`, not
+  // a `minHeight` floor — a single-line input floored only by `minHeight` sizes
+  // to its ~37pt intrinsic content and can snap to that shorter height when a
+  // re-render re-measures the row, so an explicit height keeps it a stable 44pt
+  // matching the icon chip's fixed square beside it.
   nameField: {
     color: theme.colors.textPrimary,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),
-    minHeight: theme.spacing(11),
+    height: theme.spacing(11),
     ...theme.typography.body,
   },
 }));

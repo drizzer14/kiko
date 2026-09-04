@@ -1,9 +1,9 @@
 import type { FC } from 'react';
-import { Modal, Pressable, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import PressableButton from '../../../design-system/components/pressable-button';
+import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import type { IconPickerModalProps } from './icon-picker-modal.props';
@@ -13,81 +13,167 @@ import { styles } from './icon-picker-modal.styles';
 // an icon is deliberately a pick from this closed list rather than free text:
 // the app renders every category icon through SymbolIcon/SFSymbolView, whose
 // tint path (see symbol.color.ts) only handles known-good names, so an
-// arbitrary user string could resolve to an invisible/blank glyph. The seed
-// icons (see __fixtures__/seeded-categories) are all included so a category's
-// current icon always appears selected. Grouped by personal-finance theme for
+// arbitrary user string could resolve to an invisible/blank glyph. This is
+// the user's final "Kiko" curation (138 symbols; a handful of the original
+// 153 were dropped after rendering empty on device, including 8 very-new SF
+// Symbols — the *.building.classical variants (including
+// building.classical.columns.fill, confirmed invisible on this device),
+// numero.sign, number.sign, and pizza.slice — that render blank on the
+// device's older iOS) — a category seeded with
+// an icon that predates this set (see __fixtures__/seeded-categories) still
+// renders its own icon fine via SymbolIcon; it just will not show as the
+// selected swatch inside this picker's grid. Grouped by theme for
 // readability; every entry is a real SF Symbol identifier. Lives here, the
 // modal that is the pool's only consumer, so the list has one home.
 const CURATED_ICONS = [
-  // Food & dining
-  'cart',
-  'basket',
-  'fork.knife',
-  'cup.and.saucer',
-  'wineglass',
-  'takeoutbag.and.cup.and.straw',
-  // Transport & travel
-  'car',
-  'fuelpump',
-  'bus',
-  'tram',
-  'bicycle',
-  'airplane',
-  'suitcase',
-  'map',
-  'globe',
-  // Home & utilities
-  'house',
-  'bolt',
-  'lightbulb',
-  'drop',
-  'flame',
-  'wifi',
-  // Health & fitness
-  'cross.case',
-  'pills',
-  'stethoscope',
-  'heart',
-  'dumbbell',
-  'figure.run',
-  // Education
-  'book',
-  'graduationcap',
-  'backpack',
-  // Entertainment & subscriptions
-  'gamecontroller',
-  'tv',
-  'film',
-  'music.note',
-  'headphones',
-  'ticket',
-  'calendar',
-  // Shopping & clothing
-  'bag',
-  'tshirt',
-  'handbag',
-  'gift',
-  'giftcard',
-  // Family & pets
-  'pawprint',
-  'teddybear',
-  // Money, finance & bills
+  // Money & finance
+  'building.columns.fill',
   'banknote',
   'creditcard',
-  'dollarsign.circle',
-  'chart.line.uptrend.xyaxis',
-  'building.columns',
+  'wallet.bifold',
+  'dollarsign',
+  'eurosign',
+  'hryvniasign',
+  'bitcoinsign',
   'percent',
-  'briefcase',
-  'shield',
-  'wallet.pass',
-  'chart.pie',
-  // Transfers & other
+  'paragraphsign',
+  'sum',
+  'receipt',
+  'giftcard',
+  'gift',
   'arrow.left.arrow.right',
-  'hands.sparkles',
-  'wrench.and.screwdriver',
-  'tag',
-  'square.grid.2x2',
+  // Transport & travel
+  'airplane',
+  'airplane.ticket',
+  'car',
+  'bus',
+  'bicycle',
+  'scooter',
+  'moped',
+  'motorcycle',
+  'tram',
+  'tram.card',
+  'lightrail',
+  'cablecar',
+  'ferry',
+  'sailboat',
+  'truck.box',
+  'fuelpump',
+  'ev.charger',
+  'parkingsign',
+  'skateboard',
+  'ticket',
+  // Shopping & bags
+  'cart',
+  'basket',
+  'bag',
+  'handbag',
+  'duffle.bag',
+  'backpack',
+  'shoe.2',
+  'tshirt',
+  'sunglasses',
+  'eyeglasses',
+  // Home & office
+  'house',
+  'building',
+  'bed.double',
+  'sofa',
+  'key',
+  'lock',
+  'hammer',
+  'lightbulb',
+  'printer',
+  'scanner',
+  'faxmachine',
+  'clipboard',
+  'document',
+  'list.bullet',
+  'shippingbox',
+  'server.rack',
+  'cable.connector',
+  // Tech & electronics
+  'laptopcomputer',
+  'pc',
+  'display',
+  'keyboard',
+  'headphones',
+  'headset',
+  'av.remote',
+  'cellularbars',
+  'simcard',
+  'camera',
+  'mediastick',
+  // Food & drink
+  'fork.knife',
+  'cup.and.saucer',
+  'cup.and.heat.waves',
+  'wineglass',
+  'popcorn',
+  // Health & body
+  'heart',
+  'stethoscope',
+  'pill',
+  'bandage',
+  'cross',
+  'cross.case',
+  'thermometer.variable',
+  'mouth',
+  'mustache',
+  'dumbbell',
+  'figure.run',
+  // Animals
+  'cat',
+  'dog',
+  'bird',
+  'fish',
+  'hare',
+  'pawprint',
+  // Sports & recreation
+  'basketball',
+  'soccerball',
+  'tennisball',
+  'tennis.racket',
+  'volleyball',
+  'hockey.puck',
+  'skis',
+  'snowboard',
+  'dice',
+  'gamecontroller',
+  'formfitting.gamecontroller',
+  'puzzlepiece',
+  'tent',
+  'trophy',
+  // Arts, work & misc.
+  'book.closed',
+  'briefcase',
+  'pencil',
+  'paintbrush',
+  'paintbrush.pointed',
+  'paintpalette',
+  'scissors',
+  'wand.and.sparkles',
+  'movieclapper',
+  'pianokeys',
+  'tv',
+  'phone',
+  'photo',
+  'envelope',
+  'envelope.front',
+  'calendar',
+  'alarm',
+  'hourglass',
+  'clock.arrow.trianglehead.2.counterclockwise.rotate.90',
+  'map',
+  'pin',
+  'person',
+  'person.line.dotted.person',
+  'infinity',
+  'repeat',
+  'trash',
+  'nosign',
+  'scope',
+  'xmark.triangle.circle.square',
 ] as const;
 
 // A bottom-sheet modal presenting the full curated icon pool in a scrollable
@@ -103,70 +189,54 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   onRemove,
 }) => {
   const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
 
   return (
-    <Modal
+    <BottomSheet
       visible={visible}
-      transparent
+      onDismiss={onDismiss}
       animationType="slide"
-      presentationStyle="overFullScreen"
-      onRequestClose={onDismiss}
+      maxHeight="80%"
+      backdropAccessibilityLabel="Dismiss icon picker"
     >
-      <Box style={styles.overlay}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss icon picker"
-          onPress={onDismiss}
-          style={styles.backdrop}
-        />
+      <Box direction="row" gap={3} style={styles.header}>
+        <Text variant="heading">Choose Icon</Text>
 
-        <Box background="surfaceHigh" gap={3} style={styles.sheet(insets.bottom)}>
-          <Box direction="row" gap={3} style={styles.header}>
-            <Text variant="heading">Choose Icon</Text>
+        <Box direction="row" gap={2}>
+          {onRemove !== undefined && (
+            <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
+              Remove
+            </Button>
+          )}
 
-            <Box direction="row" gap={2}>
-              {onRemove !== undefined && (
-                <PressableButton
-                  onPress={onRemove}
-                  backgroundColor={theme.colors.surface}
-                  label="Remove"
-                />
-              )}
-
-              <PressableButton
-                onPress={onDismiss}
-                backgroundColor={theme.colors.surface}
-                label="Cancel"
-              />
-            </Box>
-          </Box>
-
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-            <Box direction="row" gap={2} style={styles.grid}>
-              {CURATED_ICONS.map((icon) => (
-                <Pressable
-                  key={icon}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Choose icon ${icon}`}
-                  accessibilityState={{ selected: icon === selectedIcon }}
-                  onPress={() => onSelect(icon)}
-                  style={[
-                    styles.option,
-                    {
-                      backgroundColor:
-                        icon === selectedIcon ? theme.colors.accent : theme.colors.surface,
-                    },
-                  ]}
-                >
-                  <SymbolIcon name={icon} tone="textSecondary" />
-                </Pressable>
-              ))}
-            </Box>
-          </ScrollView>
+          <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
+            Cancel
+          </Button>
         </Box>
       </Box>
-    </Modal>
+
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+        <Box direction="row" gap={2} style={styles.grid}>
+          {CURATED_ICONS.map((icon) => (
+            <Pressable
+              key={icon}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose icon ${icon}`}
+              accessibilityState={{ selected: icon === selectedIcon }}
+              onPress={() => onSelect(icon)}
+              style={[
+                styles.option,
+                {
+                  backgroundColor:
+                    icon === selectedIcon ? theme.colors.accent : theme.colors.surface,
+                },
+              ]}
+            >
+              <SymbolIcon name={icon} tone="textSecondary" />
+            </Pressable>
+          ))}
+        </Box>
+      </ScrollView>
+    </BottomSheet>
   );
 };
 

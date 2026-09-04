@@ -1,9 +1,9 @@
 import { type FC, useState } from 'react';
-import { Modal, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import type { DateData } from 'react-native-calendars';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { formatDate } from '../../../dates/format';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
@@ -13,8 +13,16 @@ import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
 
 // A single period-marking entry for one calendar day. `color` fills the day;
-// `startingDay`/`endingDay` round the span's two ends.
-type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean };
+// `startingDay`/`endingDay` round the span's two ends. `selected: true` is
+// always set (every day this builds a mark for IS the selection) — without
+// it, react-native-calendars' PeriodDay never applies `selectedDayTextColor`
+// to the label (see calendar/day/period/index.js: the on-accent text color
+// only comes from `marking.selected`, not from the fill color alone), so a
+// day that is both today and inside the range keeps `todayTextColor`
+// (accent-blue) over the accent-blue fill — invisible. Marking `selected`
+// makes that same accent-on-accent day fall back to the on-accent contrast
+// color instead, matching PffCalendar's `selectedDayTextColor` theme token.
+type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean; selected: true };
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -55,7 +63,7 @@ const buildPeriodMarks = (
   }
 
   if (to === null) {
-    return { [toCalendarKey(from)]: { color, startingDay: true, endingDay: true } };
+    return { [toCalendarKey(from)]: { color, startingDay: true, endingDay: true, selected: true } };
   }
 
   const marks: Record<string, PeriodMark> = {};
@@ -68,7 +76,12 @@ const buildPeriodMarks = (
     cursor.setDate(cursor.getDate() + 1)
   ) {
     const key = toCalendarKey(cursor);
-    marks[key] = { color, startingDay: key === startKey, endingDay: key === endKey };
+    marks[key] = {
+      color,
+      startingDay: key === startKey,
+      endingDay: key === endKey,
+      selected: true,
+    };
   }
 
   return marks;
@@ -102,7 +115,6 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   onClear,
 }) => {
   const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
@@ -192,34 +204,28 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         </Box>
       </Pressable>
 
-      {open && (
-        <Modal transparent visible animationType="fade" onRequestClose={() => setOpen(false)}>
-          <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-            <Box gap={4} style={styles.sheet(insets.bottom)} onStartShouldSetResponder={() => true}>
-              <Text variant="heading">Date Range</Text>
+      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
+        <Text variant="heading">Date Range</Text>
 
-              <PffCalendar
-                testID="date-range-calendar"
-                markingType="period"
-                markedDates={marks}
-                minDate={toCalendarKey(selectableFloor)}
-                maxDate={toCalendarKey(selectableCeiling)}
-                onDayPress={handleDayPress}
-              />
+        <PffCalendar
+          testID="date-range-calendar"
+          markingType="period"
+          markedDates={marks}
+          minDate={toCalendarKey(selectableFloor)}
+          maxDate={toCalendarKey(selectableCeiling)}
+          onDayPress={handleDayPress}
+        />
 
-              <Box direction="row" gap={3} style={styles.actions}>
-                <Button variant="secondary" fullWidth={false} onPress={handleClear}>
-                  Clear
-                </Button>
+        <Box direction="row" gap={3} style={styles.actions}>
+          <Button variant="secondary" fullWidth={false} onPress={handleClear}>
+            Clear
+          </Button>
 
-                <Button fullWidth={false} onPress={handleApply}>
-                  Apply
-                </Button>
-              </Box>
-            </Box>
-          </Pressable>
-        </Modal>
-      )}
+          <Button fullWidth={false} onPress={handleApply}>
+            Apply
+          </Button>
+        </Box>
+      </BottomSheet>
     </Box>
   );
 };

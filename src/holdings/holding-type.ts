@@ -23,9 +23,31 @@ type AccountKind = AccountRow['kind'];
 // holds cards/deposits/bonds/jars but never physical cash or a crypto asset; a
 // cash stash holds only cash; a crypto wallet holds only crypto assets. The
 // holding form filters its type chips through this map by the account's kind so
-// an impossible pairing can never be created.
+// an impossible pairing can never be created. This is the FULL set (used for
+// edit mode and as the source for the create-only subset below).
 export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingType[]> = {
   bank: ['card', 'term_deposit', 'bond', 'jar'],
   cash: ['cash'],
   crypto: ['crypto_asset'],
+};
+
+// The holding types the Monobank sync pipeline OWNS: it creates a `card` per
+// bank card and a `jar` per jar programmatically (see src/monobank/sync.ts), so
+// a user never manually creates one. The manual create form drops these from its
+// options; editing an existing synced row still works (its type is read-only and
+// stays whatever the sync wrote).
+export const syncOnlyHoldingTypes = ['card', 'jar'] as const satisfies readonly HoldingType[];
+
+export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
+  (syncOnlyHoldingTypes as readonly HoldingType[]).includes(type);
+
+// The holding types a user may MANUALLY CREATE under each account kind: the
+// kind's full set minus the sync-only types above. For a bank this drops card
+// and jar, leaving term_deposit and bond; cash and crypto are unchanged (their
+// single type is not sync-only). Derived from the two maps above so the rule has
+// one source of truth.
+export const creatableHoldingTypesForAccountKind: Record<AccountKind, readonly HoldingType[]> = {
+  bank: holdingTypesForAccountKind.bank.filter((type) => !isSyncOnlyHoldingType(type)),
+  cash: holdingTypesForAccountKind.cash.filter((type) => !isSyncOnlyHoldingType(type)),
+  crypto: holdingTypesForAccountKind.crypto.filter((type) => !isSyncOnlyHoldingType(type)),
 };

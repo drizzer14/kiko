@@ -12,5 +12,9 @@ paths = [
   # (fingerprint ios/Podfile.lock:generic-api-key:1966).
   '''ios/Podfile\.lock''',
   '''\.superpowers/.*''',
+  # Generated, gitignored Release build output. Its minified
+  # main.jsbundle contains minified identifiers (e.g. obj2Keys.length,
+  # _usePropsWithDefaults2) that trip generic-api-key. Never committed.
+  '''ios/build/.*''',
 ]
 # See CLAUDE.md "Documented exceptions" for why .superpowers/ is allowlisted.

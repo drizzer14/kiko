@@ -1,8 +1,15 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
-import { accounts, holdings, type TransactionRow, transactions } from '../db/schema';
+import {
+  accounts,
+  categoryOverrides,
+  holdings,
+  type TransactionRow,
+  transactions,
+} from '../db/schema';
 import { isSyncedTransaction } from '../holdings/deletable';
+import { normalizeTransactionName } from '../transactions/normalize-name';
 import type { Repository } from './repository';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
@@ -149,12 +156,31 @@ export const transactionsRepo = {
       if (inputs.length === 0) {
         return;
       }
+      // Apply name→category override rules at insert time. Normalize each
+      // incoming description in JS (never SQL) and look the rules up by exact
+      // equality on the already-normalized key.
+      const keys = Array.from(
+        new Set(inputs.map((input) => normalizeTransactionName(input.description ?? ''))),
+      ).filter((key) => key !== '');
+      const rules =
+        keys.length > 0
+          ? await tx
+              .select()
+              .from(categoryOverrides)
+              .where(inArray(categoryOverrides.normalizedName, keys))
+          : [];
+      const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
+      const withOverrides = inputs.map((input) => {
+        const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+
+        return override ? { ...input, category: override } : input;
+      });
       // Dedup re-imported statement items against the (source, external_id)
       // unique index — a repeated Monobank statement id is skipped, not
       // duplicated. Manual rows with a null externalId are never conflated.
       await tx
         .insert(transactions)
-        .values(inputs.map((input) => ({ id: id(), ...input })))
+        .values(withOverrides.map((input) => ({ id: id(), ...input })))
         .onConflictDoNothing();
     }),
 } satisfies Repository;

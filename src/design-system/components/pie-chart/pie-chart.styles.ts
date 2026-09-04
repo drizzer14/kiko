@@ -14,26 +14,35 @@ export const styles = StyleSheet.create((theme) => ({
   legend: {
     rowGap: theme.spacing(2),
   },
-  // One legend row: the account (swatch + name) pushed to the left edge, the
-  // figures (amount + percent) to the right, so amounts align down the column.
-  legendEntry: {
+  // One legend row, a three-column table line: the name column flexes to fill
+  // the row, then the two fixed-width figure columns sit at the right so their
+  // values and percents align vertically down the list.
+  legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(2),
+    columnGap: theme.spacing(2),
   },
-  // The account side of a legend row: colour swatch beside the account name.
-  legendAccount: {
+  // The name column: colour swatch beside the account name, growing to fill the
+  // width left of the figure columns. `minWidth: 0` lets a long name wrap within
+  // the column rather than shove the figures out of alignment.
+  legendName: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing(2),
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
   },
-  // The figures side of a legend row: converted amount beside its share.
-  legendFigures: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(2),
+  // The value column: a fixed width shared by every row, right-aligned so the
+  // converted amounts line up on their trailing digits regardless of magnitude.
+  legendValue: {
+    width: theme.spacing(28),
+    alignItems: 'flex-end',
+  },
+  // The percent column: a narrower fixed width, right-aligned for the same
+  // vertical alignment as the value column beside it.
+  legendPercent: {
+    width: theme.spacing(11),
+    alignItems: 'flex-end',
   },
   // The small square swatch; its background colour is filled per-entry from
   // the slice palette, so only the shared shape lives here.

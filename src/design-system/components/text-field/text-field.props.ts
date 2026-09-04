@@ -2,7 +2,14 @@ import type { TextInputProps } from 'react-native';
 
 export type TextFieldProps = Pick<
   TextInputProps,
-  'placeholder' | 'keyboardType' | 'autoCapitalize' | 'autoCorrect' | 'multiline'
+  | 'placeholder'
+  | 'keyboardType'
+  | 'autoCapitalize'
+  | 'autoCorrect'
+  | 'multiline'
+  // Masks the input (a secret like the Monobank token). Off by default, so an
+  // ordinary field is never masked unless the caller opts in.
+  | 'secureTextEntry'
 > & {
   label: string;
   value: string;

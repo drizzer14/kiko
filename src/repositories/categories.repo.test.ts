@@ -99,6 +99,48 @@ describe('categoriesRepo', () => {
     expect(captured.set).toEqual({ icon: 'basket' });
     expect(captured.whereCalled).toBe(true);
   });
+
+  it('updateColor writes the new color for the given key', async () => {
+    const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
+      whereCalled: false,
+    };
+    mockTx = {
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          captured.set = values;
+          return {
+            where: () => {
+              captured.whereCalled = true;
+              return Promise.resolve();
+            },
+          };
+        },
+      }),
+    };
+
+    await categoriesRepo.updateColor('groceries', '#FFCC00');
+
+    expect(captured.set).toEqual({ color: '#FFCC00' });
+    expect(captured.whereCalled).toBe(true);
+  });
+
+  it('create persists the picked color when supplied, and null when omitted', async () => {
+    const captured: { values?: Record<string, unknown> } = {};
+    mockTx = {
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          captured.values = values;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await categoriesRepo.create({ title: 'Travel', icon: 'airplane', color: '#33AAFF' });
+    expect(captured.values).toMatchObject({ title: 'Travel', icon: 'airplane', color: '#33AAFF' });
+
+    await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
+    expect(captured.values).toMatchObject({ color: null });
+  });
 });
 
 describe('categories seed migration', () => {
@@ -160,5 +202,16 @@ describe('categories seed migration', () => {
     // the primary-key conflict.
     const insertCount = (sql.match(/INSERT OR IGNORE INTO `categories`/g) ?? []).length;
     expect(insertCount).toBe(CANONICAL_SEED.length);
+  });
+
+  it('adds a nullable color column to the categories table in a later migration', () => {
+    const files = migrationFiles();
+    const create = createMigration();
+    const alter = files.find(({ sql }) => /ALTER TABLE `categories` ADD `color` text/i.test(sql));
+
+    expect(alter).toBeDefined();
+    // The ALTER must be its own, later migration than the create — a DB that already
+    // recorded the create timestamp only picks up the column via a distinct later entry.
+    expect((alter as { name: string }).name > create.name).toBe(true);
   });
 });

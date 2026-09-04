@@ -3,10 +3,24 @@ import '../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 import CategoriesScreen from './categories.screen';
 
+const mockScrollToEnd = jest.fn();
+
+// Override the suite-wide reanimated stub for this file so the animated ref the
+// Screen hands its ScrollView exposes a spy-able `scrollToEnd` — the global mock
+// returns `{ current: null }`, which the optional chain would swallow. A
+// function ref keeps its `.current` when React attaches the host node.
+jest.mock('react-native-reanimated', () => ({
+  __esModule: true,
+  useAnimatedRef: () =>
+    Object.assign(() => undefined, { current: { scrollToEnd: mockScrollToEnd } }),
+}));
+
 const mockUpdateTitle = jest.fn();
 const mockUpdateIcon = jest.fn();
+const mockUpdateColor = jest.fn();
 const mockCreate = jest.fn();
-let mockLiveQueryData: Array<{ key: string; title: string; icon: string }> = [];
+let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
+  [];
 
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: {
@@ -14,6 +28,7 @@ jest.mock('../../repositories/categories.repo', () => ({
     create: (...args: unknown[]) => mockCreate(...args),
     updateTitle: (...args: unknown[]) => mockUpdateTitle(...args),
     updateIcon: (...args: unknown[]) => mockUpdateIcon(...args),
+    updateColor: (...args: unknown[]) => mockUpdateColor(...args),
   },
 }));
 jest.mock('../../db/use-live-query', () => ({
@@ -32,6 +47,16 @@ describe('CategoriesScreen', () => {
     for (const category of SEEDED_CATEGORIES) {
       expect(getByDisplayValue(category.title)).toBeTruthy();
     }
+  });
+
+  it('renders each category as its own card, plus one trailing add-category card', async () => {
+    const { getAllByTestId, getByTestId } = await render(<CategoriesScreen />);
+
+    // One GlassSurface card per category — not a single shared surface housing
+    // every row.
+    expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
+    // The add-category affordance is its own trailing card in the same stack.
+    expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
   it('renames a category via updateTitle and shows the new title in the field', async () => {
@@ -116,6 +141,33 @@ describe('CategoriesScreen', () => {
     expect(getByLabelText('Name')).toBeTruthy();
   });
 
+  it('auto-focuses the name field when the add-category form is revealed', async () => {
+    const { getByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    // The freshly mounted name field grabs focus on mount, so the keyboard opens
+    // straight onto it.
+    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+  });
+
+  it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {
+    // The scroll is deferred to the next frame so the just-revealed fields are
+    // measured first; run that frame synchronously to assert the effect.
+    const rafSpy = jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+
+    const { getByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
+
+    rafSpy.mockRestore();
+  });
+
   it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
 
@@ -123,10 +175,40 @@ describe('CategoriesScreen', () => {
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
     await fireEvent.press(getByText('Save'));
 
-    // The default icon seeds the new category until the user picks another.
-    expect(mockCreate).toHaveBeenCalledWith({ title: 'Travel', icon: 'square.grid.2x2' });
+    // The default icon seeds the new category until the user picks another, and
+    // with no swatch tapped the color persists as null (the "not picked" state).
+    expect(mockCreate).toHaveBeenCalledWith({
+      title: 'Travel',
+      icon: 'square.grid.2x2',
+      color: null,
+    });
     // The form collapses (clears) on a successful add.
     expect(queryByLabelText('Name')).toBeNull();
+  });
+
+  it('creates a category with the picked color when a swatch is tapped', async () => {
+    const { getByLabelText, getByText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+    // The add-form picker scopes its swatch labels with its own prefix, so this
+    // targets it unambiguously despite the per-row pickers already on screen.
+    await fireEvent.press(getByLabelText('New category color yellow'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Travel', color: expect.stringMatching(/^#/) }),
+    );
+  });
+
+  it('recolors a category via updateColor when a row swatch is tapped', async () => {
+    const { getByLabelText } = await render(<CategoriesScreen />);
+
+    // Each row's picker prefixes its swatch labels with the category title, so
+    // the Groceries row's yellow swatch is addressable on its own.
+    await fireEvent.press(getByLabelText('Groceries color yellow'));
+
+    expect(mockUpdateColor).toHaveBeenCalledWith('groceries', expect.stringMatching(/^#/));
   });
 
   it('does not create a category when the name is empty', async () => {
@@ -159,20 +241,19 @@ describe('CategoriesScreen', () => {
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
 
-    // The pool grew well beyond the original 20-icon set.
+    // The 137-icon "Kiko" curation is offered at once.
     expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
 
-    // A spread of the newly added, finance-relevant SF Symbols is present,
-    // alongside every original seed icon.
+    // A spread of finance-relevant SF Symbols is present.
     for (const icon of [
       'cart',
       'fuelpump',
-      'graduationcap',
-      'dollarsign.circle',
-      'chart.line.uptrend.xyaxis',
-      'building.columns',
+      'dollarsign',
+      'percent',
+      'building',
       'cup.and.saucer',
       'tshirt',
+      'receipt',
     ]) {
       expect(getByLabelText(`Choose icon ${icon}`)).toBeTruthy();
     }

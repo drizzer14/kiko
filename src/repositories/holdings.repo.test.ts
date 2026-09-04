@@ -89,6 +89,12 @@ describe('holdingsRepo', () => {
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('holdings');
   });
 
+  it('builds a single-holding query filtered by id', () => {
+    const { sql, params } = holdingsRepo.byIdQuery('h1').toSQL();
+    expect(sql).toContain('holdings');
+    expect(params).toContain('h1');
+  });
+
   it('allQuery orders by sortOrder', () => {
     expect(holdingsRepo.allQuery().toSQL().sql.toLowerCase()).toContain('order by');
     expect(holdingsRepo.allQuery().toSQL().sql).toContain('sort_order');
@@ -157,6 +163,29 @@ describe('holdingsRepo', () => {
 
     expect(captured.set).toEqual({ name: 'Renamed card' });
     expect(captured.whereCalled).toBe(true);
+  });
+
+  it('update writes the given partial patch for the holding id', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await holdingsRepo.update('h1', {
+      name: 'Renamed',
+      color: '#BF5AF2',
+      balanceMinorUnits: 5000,
+    });
+
+    expect(captured.set).toEqual({ name: 'Renamed', color: '#BF5AF2', balanceMinorUnits: 5000 });
+    expect(captured.whereCalled).toBe(true);
+  });
+
+  it('update can clear the color back to null (kind/type default)', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await holdingsRepo.update('h1', { color: null });
+
+    expect(captured.set).toEqual({ color: null });
   });
 });
 

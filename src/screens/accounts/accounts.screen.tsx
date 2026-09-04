@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, type ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
@@ -13,15 +14,18 @@ import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
+import { entityGradientStops, resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
-import { onGridDragEnd, showDeleteActionSheet } from '../grid-interaction';
+import CardContextMenu from '../card-context-menu.component';
+import { onGridDragEnd } from '../grid-interaction';
 import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
@@ -30,15 +34,6 @@ const KIND_LABEL: Record<AccountRow['kind'], string> = {
   bank: 'Bank',
   cash: 'Cash',
   crypto: 'Crypto',
-};
-
-// Leading SF Symbol per account kind, mirroring KIND_LABEL. Exported so the
-// account-detail header reuses the same kind-default glyph without a second
-// copy of the map drifting out of sync.
-export const KIND_ICON: Record<AccountRow['kind'], string> = {
-  bank: 'building.columns',
-  cash: 'banknote',
-  crypto: 'bitcoinsign.circle',
 };
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
@@ -55,21 +50,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // The grid renders in the query's `sortOrder` order (the drag-and-drop order),
   // filtered to the non-archived accounts.
   const activeAccounts = accounts.filter((account) => account.archivedAt == null);
-  const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
 
-  // Long-press-in-place on a card opens its delete menu — but only for a manual
-  // account; a still-connected (Monobank) account must be disconnected from
-  // account-detail first, so it offers no menu here.
-  const openAccountMenu = (accountId: string): void => {
-    const account = accountsById.get(accountId);
-    if (account && !isSyncedAccount(account)) {
-      showDeleteActionSheet(account.name, () => accountsRepo.remove(accountId));
-    }
-  };
+  // The parent ScrollView's animated ref, shared with the sortable grid so a
+  // drag near the top/bottom edge auto-scrolls the list (the grid is nested
+  // inside this Screen's ScrollView, so it cannot scroll it without the ref).
+  const scrollableRef = useAnimatedRef<ScrollView>();
 
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Box testID="add-account-footer" style={styles.addAccountButton}>
           <Button
@@ -89,53 +79,78 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           </Box>
         ) : (
           // A single-column drag-and-drop grid of the existing wide account
-          // cards. A plain tap opens the account; a long-press lifts a card to
-          // drag (reorder), and a long-press released in place opens the delete
-          // menu — see `onGridDragEnd`.
+          // cards. A plain tap opens the account; a touch-and-hold-still on a
+          // manual card opens the deep-press (haptic) delete menu; a hold-and-move
+          // drags to reorder — see `CardContextMenu` and `onGridDragEnd`. `scrollableRef`
+          // + `autoScrollActivationOffset` let a drag near an edge scroll the
+          // parent list (F9).
           <Box testID="accounts-grid">
             <Sortable.Grid
               data={activeAccounts}
               sortEnabled={activeAccounts.length > 1}
+              // A subtle lift on touch-and-hold: the library default (1.1) pops
+              // the card up too much, so scale it just barely (see the account-
+              // detail grid, which uses the same value).
+              activeItemScale={1.03}
               columns={1}
+              // Keep a dragged card on its vertical axis — a single column has no
+              // horizontal move to make, so the library default ('both') only lets
+              // a card wander sideways off the list.
+              overDrag="vertical"
               rowGap={theme.spacing(4)}
+              scrollableRef={scrollableRef}
+              autoScrollActivationOffset={75}
               keyExtractor={(account) => account.id}
               renderItem={({ item }) => {
                 const accountHoldings = holdings.filter(
                   (holding) => holding.accountId === item.id && holding.closedAt == null,
                 );
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
+                const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
 
                 return (
-                  <GlassSurface testID="account-card" padding={4}>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => navigation.navigate('AccountDetail', { accountId: item.id })}
-                      style={styles.row}
+                  <CardContextMenu
+                    name={item.name}
+                    deletable={!isSyncedAccount(item)}
+                    onDelete={() => accountsRepo.remove(item.id)}
+                  >
+                    <GlassSurface
+                      testID="account-card"
+                      padding={4}
+                      bordered
+                      gradient={entityGradientStops(color)}
                     >
-                      <Box direction="row" gap={3} style={styles.rowLead}>
-                        <SymbolIcon
-                          name={item.icon ?? KIND_ICON[item.kind]}
-                          color={item.color ?? defaultAccountColor[item.kind]}
-                          accessibilityLabel={`${item.name} icon`}
-                        />
-                        <Box gap={1}>
-                          <Text variant="body">{item.name}</Text>
-                          <Text variant="caption" tone="textSecondary">
-                            {KIND_LABEL[item.kind]}
-                          </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() =>
+                          navigation.navigate('AccountDetail', {
+                            accountId: item.id,
+                            name: item.name,
+                          })
+                        }
+                        style={styles.row}
+                      >
+                        <Box direction="row" gap={3} style={styles.rowLead}>
+                          <SymbolIcon
+                            name={item.icon ?? accountKindSymbol[item.kind]}
+                            color={color}
+                            accessibilityLabel={`${item.name} icon`}
+                          />
+                          <Box gap={1}>
+                            <Text variant="body">{item.name}</Text>
+                            <Text variant="caption" tone="textSecondary">
+                              {KIND_LABEL[item.kind]}
+                            </Text>
+                          </Box>
                         </Box>
-                      </Box>
-                      <MoneyText money={balance} context="balance" />
-                    </Pressable>
-                  </GlassSurface>
+                        <MoneyText money={balance} context="balance" />
+                      </Pressable>
+                    </GlassSurface>
+                  </CardContextMenu>
                 );
               }}
               onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd(
-                  { key, fromIndex, toIndex, indexToKey },
-                  accountsRepo.reorder,
-                  openAccountMenu,
-                )
+                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
               }
             />
           </Box>

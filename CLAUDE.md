@@ -127,7 +127,16 @@ verified usage, not dead weight:
   `.superpowers/` ever enters git history (the threat the secrets
   check guards against) — same class as `node_modules`/`ios/Pods`/
   `vendor`, so it is path-allowlisted the same way. Do not quote a
-  literal 40-character hex checksum value in any tracked file.
+  literal 40-character hex checksum value in any tracked file. Also
+  `ios/build/.*` — the generated, gitignored Release device build
+  output. Its minified `main.jsbundle` (produced by a Release
+  `-iphoneos` build) contains minified identifiers such as
+  `obj2Keys.length` and `_usePropsWithDefaults2` that trip
+  `generic-api-key`. gitleaks scans the filesystem (`--no-git`) and
+  picks these up even though `ios/build/` never enters git — same
+  false-positive class as the `ios/Podfile.lock`/`.superpowers/`
+  entries above, path-allowlisted the same way as
+  `node_modules`/`ios/Pods`/`vendor`.
 - **`.jscpd.json` `ignore`**: `**/drizzle/migrations/meta/*_snapshot.json`
   — drizzle-kit's schema snapshots are tool-generated and *cumulative*:
   each `NNNN_snapshot.json` embeds the entire prior schema plus that
@@ -194,6 +203,16 @@ patched release exists upstream yet, so there is nothing to pin via
 `overrides`. This is accepted debt, not a suppressed finding — do
 not silence it. Re-run `npm run check:deep` periodically and upgrade
 `image-size` (via `overrides`) the moment a fixed version ships.
+
+`check:deep` also flags `decode-uri-component` 0.2.2, advisory
+GHSA-vcc3-ghjq-m6fr (CVSS 6.6), pulled transitively via
+`@react-navigation/native` -> `@react-navigation/core` ->
+`query-string` -> `decode-uri-component`. The fixed release (0.5.0)
+is ESM-only and breaks `query-string@7.1.3` (CommonJS) and Jest, so
+it cannot be pinned via `overrides` today. Accepted as tracked debt,
+same class as the `image-size` CVEs above — do not suppress it;
+re-check periodically and pin once `query-string` ships an
+ESM-compatible or patched line.
 
 ## Future stubs (disabled — do not enable without discussion)
 

@@ -1,4 +1,5 @@
-import type { HoldingRow } from '../db/schema';
+import type { AccountRow, HoldingRow } from '../db/schema';
+import { defaultAccountColor } from '../holdings/entity-colors';
 import {
   buildAccountContribution,
   type ContributionAccount,
@@ -7,7 +8,11 @@ import {
 
 const NOW = Date.UTC(2026, 0, 1);
 
-const account = (id: string, name: string): ContributionAccount => ({ id, name });
+const account = (
+  id: string,
+  name: string,
+  over: Partial<Pick<AccountRow, 'kind' | 'color'>> = {},
+): ContributionAccount => ({ id, name, kind: 'bank', color: null, ...over });
 
 const holding = (
   over: Partial<HoldingRow> & Pick<HoldingRow, 'accountId'>,
@@ -64,6 +69,28 @@ describe('buildAccountContribution', () => {
 
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
     expect(slices[0].share).toBe(1);
+  });
+
+  it("resolves each slice's color to the account's own color, else the kind default", () => {
+    const accounts = [
+      account('a', 'Cash', { kind: 'cash', color: null }),
+      account('b', 'Custom', { kind: 'bank', color: '#123456' }),
+    ];
+    const holdings = [
+      holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }),
+      holding({ accountId: 'b', currency: 'UAH', balanceMinorUnits: 100_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices.find((slice) => slice.accountId === 'a')?.color).toBe(defaultAccountColor.cash);
+    expect(slices.find((slice) => slice.accountId === 'b')?.color).toBe('#123456');
   });
 
   it('filters out an account with zero net worth', () => {

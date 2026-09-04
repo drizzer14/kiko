@@ -1,25 +1,25 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable, TextInput } from 'react-native';
+import { type FC, useLayoutEffect } from 'react';
+import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { HoldingRow } from '../../db/schema';
 import { Money } from '../../currency/money';
 import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
-import { formatDateTime, parseLocalDate } from '../../dates/format';
+import { formatDateTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
-import PressableButton from '../../design-system/components/pressable-button';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import SwipeableRow from '../../design-system/components/swipeable-row';
 import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import Text from '../../design-system/components/text';
+import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, type EntryTone, derivedEntries } from '../../holdings/derived-entries';
-import LedgerAmount from './ledger-amount';
 import { asBondMeta } from '../../holdings/holding-metadata';
 import {
   bondExpectedProfitMinor,
@@ -31,44 +31,40 @@ import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { defaultTransactionDescription } from '../../transactions/default-description';
-import { parseAmount } from '../../currency/parse';
+import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { holdingTypeIcon } from '../../holdings/holding-icon';
-import HoldingIdentityField from '../forms/holding-identity-field';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import EditHeaderButton from '../edit-header-button.component';
+import EntityAmountHeader from '../entity-amount-header.component';
+import EntityHeaderIcon from '../entity-header-icon.component';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
-// The holding's own metadata, edited here rather than on the tiny account-detail
-// list row: the shared identity control pairs the icon picker (with
-// remove-to-default) with a labelled name field. Local name state seeds from
-// the holding so keystrokes show immediately while the persisted value flows
-// back through the live query; the rename commits once on end-of-editing
-// (return-key submit or blur), and an empty or unchanged name is never written.
-const HoldingMetadataHeader: FC<{ holding: HoldingRow }> = ({ holding }) => {
-  const [name, setName] = useState(holding.name);
+// The holding's display identity for the view-only header: its stored icon (or
+// the type default), and its effective color resolved through the SAME
+// `resolveEntityColor` the holding card uses — so the identity color on the card
+// and on this header can never diverge. A bare `color ?? default` here let an
+// empty-string stored color (neither null nor undefined) through, tinting the
+// header with an invalid empty color while the card showed the type default.
+// Extracted so the fallbacks don't count against the screen component's
+// cognitive-complexity budget.
+const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
+  icon: holding.icon ?? holdingTypeSymbol[holding.type],
+  color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
+});
 
-  const commitName = (): void => {
-    const trimmed = name.trim();
+const isZero = (minorUnits: number): boolean => minorUnits === 0;
 
-    if (trimmed !== '' && trimmed !== holding.name) {
-      holdingsRepo.updateName(holding.id, trimmed);
-    }
-  };
-
-  return (
-    <HoldingIdentityField
-      icon={holding.icon}
-      fallbackIcon={holdingTypeIcon[holding.type]}
-      iconColor={holding.color ?? defaultHoldingColor[holding.type]}
-      name={name}
-      onChangeName={setName}
-      onSelectIcon={(icon) => holdingsRepo.setIcon(holding.id, icon)}
-      onRemoveIcon={() => holdingsRepo.setIcon(holding.id, null)}
-      nameAccessibilityLabel={`${holding.name} name`}
-      onEndEditingName={commitName}
-    />
-  );
-};
+// A ledger amount fixed to a color BY KIND (interest always green, tax always
+// red) misleadingly implies a nonzero accrual/withholding when the amount
+// itself is exactly zero (e.g. before a deposit's first interest period has
+// elapsed) — override those two to the muted/gray tone instead. A `neutral`
+// entry already resolves a zero amount to textPrimary/white via MoneyText's
+// own sign-based fallback, so it is left untouched here. Shared by the
+// breakdown summary and the transaction ledger below so the "zero reads gray"
+// rule has one source of truth across both.
+const ledgerTone = (tone: EntryTone, minorUnits: number): MoneyTextTone =>
+  tone !== 'neutral' && isZero(minorUnits) ? 'muted' : tone;
 
 // Rows that break the headline net value into its parts. Only the deposit and
 // bond types accrue interest/tax, so the breakdown is meaningful there; other
@@ -77,11 +73,24 @@ const breakdownRows = (
   breakdown: HoldingValueBreakdown,
   type: string,
   expectedProfit: Money | null,
-): { label: string; money: Money; tone?: EntryTone }[] => [
+): { label: string; money: Money; tone?: MoneyTextTone }[] => [
   { label: type === 'bond' ? 'Cost' : 'Principal', money: breakdown.principalOrCost },
   { label: 'Gross value', money: breakdown.gross },
-  { label: 'Interest earned', money: breakdown.interest },
-  { label: 'Tax withheld', money: breakdown.tax },
+  // Interest and tax carry a fixed tone by KIND (interest always green, tax
+  // always red), the same rule the derived ledger rows use — not the sign-only
+  // balance coloring, which would leave a positive interest/tax magnitude
+  // white — except when the amount is exactly zero, where `ledgerTone` mutes
+  // it to gray instead.
+  {
+    label: 'Interest earned',
+    money: breakdown.interest,
+    tone: ledgerTone('positive', breakdown.interest.minorUnits),
+  },
+  {
+    label: 'Tax withheld',
+    money: breakdown.tax,
+    tone: ledgerTone('negative', breakdown.tax.minorUnits),
+  },
   // Bonds surface the whole-life expected profit: sum of net coupons + nominal
   // redeemed, less the price paid (the figure the bank statement shows). It
   // reads green as the holding's expected gain.
@@ -91,7 +100,7 @@ const breakdownRows = (
 ];
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
-  const { holdingId } = route.params;
+  const { holdingId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   // Disable this screen's native back-swipe while any transaction row is open,
   // so a right-swipe that closes a row does not also pop the screen.
@@ -141,68 +150,50 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // reads accordingly.
   const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
 
-  // Local add-contribution form state. Kept collapsed until the user opens it so
-  // the detail screen stays a read view by default.
-  const [addingContribution, setAddingContribution] = useState(false);
-  const [contributionAmount, setContributionAmount] = useState('');
-  const [contributionDate, setContributionDate] = useState('');
-
-  // The stack sets no static title for this screen, so drive the header title
-  // from the holding's own name once it loads — otherwise the header falls
-  // back to the raw "HoldingDetail" route name. Skip until the name is known
-  // so the header never flashes an empty title.
-  const holdingName = holding?.name;
+  // The nav title shows the holding NAME only — the native large title, the
+  // standard iOS pattern (the identity icon now sits beside the Value amount
+  // below, not in the title). The name is available from the route params at the
+  // FIRST render, so the large title (and the back button on any screen pushed
+  // from here) reads immediately; the live-queried name takes over once loaded so
+  // a rename flows back through. This drops the old async `headerLargeTitle: false`
+  // + custom `headerTitle` toggle, which briefly blanked the pushed screen's back
+  // button and flashed the large title collapsing on load.
+  const holdingName = holding?.name ?? initialName;
+  // The holding's effective icon + color, rendered as the identity glyph beside
+  // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
+  // below) rather than in the nav title.
+  const identity = holding ? holdingIdentity(holding) : undefined;
+  // The holding's owning account, needed to open its edit form (the form reads
+  // the account's kind to constrain the type chips). Always present on a real
+  // row (accountId is NOT NULL); the header Edit action is gated on it.
+  const holdingAccountId = holding?.accountId;
   useLayoutEffect(() => {
-    if (holdingName !== undefined) {
-      navigation.setOptions({ title: holdingName });
-    }
-  }, [navigation, holdingName]);
-
-  const submitContribution = async (): Promise<void> => {
-    if (!holding) {
-      return;
-    }
-    // parseAmount (accepting a comma decimal) yields NaN for a blank or junk
-    // field, and `!(NaN > 0)` rejects it: require a strictly positive major
-    // amount and a parseable date. Anything else keeps the form open (no
-    // zero-amount or invalid-date contribution).
-    const majorAmount = parseAmount(contributionAmount);
-    // Parse the typed YYYY-MM-DD as LOCAL midnight (matching DateField and the
-    // interest boundaries), not the UTC midnight Date.parse would give — which
-    // would shift the contribution a day off in a +2/+3 zone.
-    const date = parseLocalDate(contributionDate);
-    if (!(majorAmount > 0) || Number.isNaN(date)) {
-      return;
-    }
-    const amountMinorUnits = Money.fromMajor(currency, majorAmount).minorUnits;
-    try {
-      await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
-    } catch {
-      // Keep the form open on failure so the entered values are not lost.
-      Alert.alert('Could not add contribution', 'Please try again.');
-      return;
-    }
-    setContributionAmount('');
-    setContributionDate('');
-    setAddingContribution(false);
-  };
-
-  const inputStyle = [
-    styles.input,
-    { color: theme.colors.textPrimary, borderColor: theme.colors.surfaceHigh },
-  ];
+    navigation.setOptions({
+      title: holdingName,
+      ...(holdingAccountId !== undefined && {
+        headerRight: () => (
+          <EditHeaderButton
+            onPress={() =>
+              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId })
+            }
+          />
+        ),
+      }),
+    });
+  }, [navigation, holdingName, holdingAccountId, holdingId]);
 
   return (
     <Screen
       scroll
       footer={
-        // A large, full-width primary action. For a deposit it opens the inline
-        // top-up form; for a bond (also a "contribution") and every other
-        // holding it opens the shared Transaction form to record the movement.
+        // A large, full-width primary action. A deposit opens the dedicated
+        // Contribution form to record a top-up; a bond (also a "contribution")
+        // and every other holding open the shared Transaction form to record
+        // the movement.
         <Button
           onPress={() =>
             isDeposit
-              ? setAddingContribution(true)
+              ? navigation.navigate('ContributionForm', { holdingId })
               : navigation.navigate('TransactionForm', { holdingId })
           }
         >
@@ -211,14 +202,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4}>
-        {holding && <HoldingMetadataHeader holding={holding} />}
-
         {holding && breakdown && (
           <Box gap={1}>
-            <Text variant="caption" tone="textSecondary">
-              Value
-            </Text>
-            <MoneyText money={breakdown.net} style={styles.headlineValue} />
+            <EntityAmountHeader
+              label="Value"
+              money={breakdown.net}
+              icon={<EntityHeaderIcon identity={identity} />}
+            />
             {showBreakdown && (
               <Box gap={1} style={styles.breakdown}>
                 {breakdownRows(breakdown, holding.type, expectedProfit).map((detail) => (
@@ -229,11 +219,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     <Text variant="caption" tone="textSecondary">
                       {detail.label}
                     </Text>
-                    {detail.tone ? (
-                      <LedgerAmount money={detail.money} tone={detail.tone} />
-                    ) : (
-                      <MoneyText money={detail.money} />
-                    )}
+                    <MoneyText money={detail.money} tone={detail.tone} />
                   </Box>
                 ))}
               </Box>
@@ -241,34 +227,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           </Box>
         )}
 
-        {isDeposit && addingContribution && (
-          <Box gap={2}>
-            <Text variant="heading">New contribution</Text>
-            <TextInput
-              accessibilityLabel="Contribution amount"
-              value={contributionAmount}
-              onChangeText={setContributionAmount}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={inputStyle}
-            />
-            <TextInput
-              accessibilityLabel="Contribution date"
-              value={contributionDate}
-              onChangeText={setContributionDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={inputStyle}
-            />
-            <PressableButton
-              onPress={submitContribution}
-              backgroundColor={theme.colors.accent}
-              alignSelf="flex-start"
-              label="Save contribution"
-            />
-          </Box>
-        )}
+        <Box style={styles.divider} />
 
         <Box gap={2}>
           <Text variant="heading">Transactions</Text>
@@ -297,9 +256,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       <Text variant="body">{row.entry.label}</Text>
                     </Box>
                     <Box style={styles.rowAmount}>
-                      <LedgerAmount
+                      <MoneyText
                         money={Money.of(currency, row.entry.amountMinorUnits)}
-                        tone={row.entry.tone}
+                        tone={ledgerTone(row.entry.tone, row.entry.amountMinorUnits)}
                       />
                     </Box>
                   </Box>
@@ -341,6 +300,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                           name={category.icon}
                           size={18}
                           tone="textSecondary"
+                          color={resolveCategoryColor(
+                            category.color,
+                            row.transaction.category?.toLowerCase() || 'uncategorized',
+                          )}
                           accessibilityLabel={category.title}
                         />
                         <Box style={styles.rowDescription}>
@@ -380,17 +343,19 @@ const styles = StyleSheet.create((theme) => ({
   futureRow: {
     opacity: 0.5,
   },
-  // The holding's headline net value: rendered at the title type scale so it
-  // reads as the primary figure of the screen. Only size/weight live here —
-  // MoneyText still owns the tone color, so this omits `color`.
-  headlineValue: {
-    fontSize: theme.typography.title.fontSize,
-    fontWeight: theme.typography.title.fontWeight,
-  },
   // Extra space above the value breakdown so the headline number sits clearly
   // apart from the principal/gross/interest/tax rows beneath it.
   breakdown: {
     marginTop: theme.spacing(3),
+  },
+  // A hairline rule separating the Value block from the Transactions list — the
+  // same standard hairline treatment the account-detail sections use
+  // (account-detail.styles.ts `divider`), drawn in the theme's separator color
+  // with vertical margin so each section has room to breathe.
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: theme.spacing(2),
+    backgroundColor: theme.colors.border,
   },
   row: {
     padding: theme.spacing(3),
@@ -420,12 +385,6 @@ const styles = StyleSheet.create((theme) => ({
   // no matter how long the description grows.
   rowAmount: {
     flexShrink: 0,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.radii.sm,
-    padding: theme.spacing(3),
-    ...theme.typography.body,
   },
 }));
 

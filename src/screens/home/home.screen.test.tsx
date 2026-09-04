@@ -237,9 +237,10 @@ describe('HomeScreen', () => {
       holdings: [{ accountId: 'a', currency: 'USD', balanceMinorUnits: 10000 }],
       rates: [{ base: 'USD', quote: 'UAH', rate: '40' }],
     });
-    const { getAllByText } = await renderHome();
-    // 100.00 USD * 40 = 4,000.00 UAH
-    expect(getAllByText(/4,000\.00 ₴/).length).toBeGreaterThan(0);
+    const { getByText } = await renderHome();
+    // 100.00 USD * 40 = 4,000.00 UAH. The converted headline is the plain solid
+    // MoneyText number.
+    expect(getByText('4,000.00 ₴')).toBeTruthy();
   });
 
   it('does not crash when a holding has no rate; excludes it from the total but still lists it', async () => {
@@ -285,12 +286,21 @@ describe('HomeScreen', () => {
     expect(getByText('BTC')).toBeTruthy();
   });
 
-  it('renders a positive net worth in the balance tone (white / textPrimary)', async () => {
-    const { getAllByText } = await renderHome();
-    // The headline amount is rendered before the breakdown lines, so the first
-    // match is the net-worth MoneyText — assert its resolved balance tone.
+  it('renders the net-worth number as a plain solid MoneyText with no wash', async () => {
+    const { getAllByText, queryByTestId } = await renderHome();
+    // The headline is a plain, solid, non-croppable MoneyText (positive balance
+    // -> textPrimary/white). There is no gradient wash behind it.
     const [netWorth] = getAllByText(/1,000\.00 ₴/);
     expect(netWorth.props.testID).toBe('text-tone-textPrimary');
+    expect(queryByTestId('net-worth-wash-svg')).toBeNull();
+  });
+
+  it('renders the zero net-worth number as a plain solid MoneyText with no wash', async () => {
+    seed({ holdings: [] });
+    const { getAllByText, queryByTestId } = await renderHome();
+    const [netWorth] = getAllByText(/0\.00 ₴/);
+    expect(netWorth.props.testID).toBe('text-tone-textPrimary');
+    expect(queryByTestId('net-worth-wash-svg')).toBeNull();
   });
 
   it('excludes holdings whose parent account is archived from the total', async () => {
@@ -352,14 +362,14 @@ describe('HomeScreen', () => {
   it('keeps both categories active and shows transactions from either when two are toggled on', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
+        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
-        transaction({ id: 't3', category: 'Housing', description: 'Rent' }),
+        transaction({ id: 't3', category: 'Utilities', description: 'Rent' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
     await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
 
     expect(getByText('Coffee')).toBeTruthy();
@@ -370,15 +380,15 @@ describe('HomeScreen', () => {
   it('removes a category from the set when its action is toggled off again', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
+        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
     await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
-    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
 
     expect(queryByText('Coffee')).toBeNull();
     expect(getByText('Groceries')).toBeTruthy();
@@ -387,13 +397,13 @@ describe('HomeScreen', () => {
   it('clears the category dimension and shows every transaction when All is pressed', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
+        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Food');
+    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
     expect(queryByText('Groceries')).toBeNull();
 
     await pressFilter(getByTestId, 'category-filter-menu', FILTER_ALL);
@@ -405,9 +415,9 @@ describe('HomeScreen', () => {
   it('keeps the category dropdown open through several toggles and applies them all', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Food', description: 'Coffee' }),
+        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
         transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
-        transaction({ id: 't3', category: 'Housing', description: 'Rent' }),
+        transaction({ id: 't3', category: 'Utilities', description: 'Rent' }),
       ],
     });
     const { getByText, queryByText, getByTestId, queryByTestId } = await renderHome();
@@ -418,14 +428,14 @@ describe('HomeScreen', () => {
       fireEvent.press(getByTestId('category-filter-menu'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-Food'));
+      fireEvent.press(getByTestId('category-filter-menu-option-Dining'));
     });
     expect(queryByTestId('category-filter-menu-option-Transport')).toBeTruthy();
 
     await act(async () => {
       fireEvent.press(getByTestId('category-filter-menu-option-Transport'));
     });
-    expect(queryByTestId('category-filter-menu-option-Housing')).toBeTruthy();
+    expect(queryByTestId('category-filter-menu-option-Utilities')).toBeTruthy();
 
     // Dismiss and confirm both selections took effect.
     await act(async () => {
@@ -434,6 +444,44 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
     expect(queryByText('Rent')).toBeNull();
+  });
+
+  it('collapses an overridden slug and a capitalized synced value with the same resolved title into one filter entry', async () => {
+    // After an override some rows store the lowercase slug key (`groceries`)
+    // while un-overridden synced rows still store the capitalized MCC name
+    // (`Groceries`). Both resolve to the same title, so the filter must show a
+    // single `Groceries` entry, not one chip per raw stored value.
+    seed({
+      transactions: [
+        transaction({ id: 't1', category: 'Groceries', description: 'SyncedRow' }),
+        transaction({ id: 't2', category: 'groceries', description: 'OverriddenRow' }),
+      ],
+    });
+    const { getByTestId, queryByTestId } = await renderHome();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    expect(getByTestId('category-filter-menu-option-Groceries')).toBeTruthy();
+    expect(queryByTestId('category-filter-menu-option-groceries')).toBeNull();
+  });
+
+  it('filters both the overridden slug row and the capitalized synced row in when the resolved category is selected', async () => {
+    seed({
+      transactions: [
+        transaction({ id: 't1', category: 'Groceries', description: 'SyncedRow' }),
+        transaction({ id: 't2', category: 'groceries', description: 'OverriddenRow' }),
+        transaction({ id: 't3', category: 'Transport', description: 'OtherRow' }),
+      ],
+    });
+    const { getByText, queryByText, getByTestId } = await renderHome();
+
+    await pressFilter(getByTestId, 'category-filter-menu', 'Groceries');
+
+    expect(getByText('SyncedRow')).toBeTruthy();
+    expect(getByText('OverriddenRow')).toBeTruthy();
+    expect(queryByText('OtherRow')).toBeNull();
   });
 
   it('displays the full transaction date span in the date-range field without filtering', async () => {

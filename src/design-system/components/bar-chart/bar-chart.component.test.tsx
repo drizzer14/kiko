@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react-native';
+import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
 import '../../unistyles';
 import BarChart from './index';
@@ -24,7 +25,7 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-label-card')).toBeTruthy();
     expect(getByTestId('bar-chart-label-term_deposit')).toBeTruthy();
     expect(getByText('Card')).toBeTruthy();
-    expect(getByText('Term Deposit')).toBeTruthy();
+    expect(getByText('Deposit')).toBeTruthy();
     expect(getByText('Crypto Asset')).toBeTruthy();
   });
 
@@ -43,6 +44,18 @@ describe('BarChart', () => {
     const halfWidth: number = getByTestId('bar-chart-bar-term_deposit').props.width;
 
     expect(halfWidth / fullWidth).toBeCloseTo(0.5);
+  });
+
+  it("colors each bar with its holding type's entity color", async () => {
+    const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
+
+    expect(getByTestId('bar-chart-bar-card').props.fill).toBe(defaultHoldingColor.card);
+    expect(getByTestId('bar-chart-bar-term_deposit').props.fill).toBe(
+      defaultHoldingColor.term_deposit,
+    );
+    expect(getByTestId('bar-chart-bar-crypto_asset').props.fill).toBe(
+      defaultHoldingColor.crypto_asset,
+    );
   });
 
   it('renders an empty-state message when there is no data', async () => {

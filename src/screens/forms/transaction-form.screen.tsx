@@ -1,17 +1,26 @@
 import { type FC, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable } from 'react-native';
+import { Alert } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { groupAmount } from './amount-format';
+import CategoryField from './category-field';
+import ChipRow from './chip-row';
+import DateField from './date-field';
 import { useLiveQuery } from '../../db/use-live-query';
+import BottomSheet from '../../design-system/components/bottom-sheet';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
 import type { TransactionFormParams } from '../../navigation/types';
+import { categoriesRepo } from '../../repositories/categories.repo';
+import { categoryOverridesRepo } from '../../repositories/category-overrides.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 
@@ -26,6 +35,10 @@ type TransactionFormScreenProps = {
 };
 
 type Sign = 'income' | 'expense';
+
+const SIGN_OPTIONS: readonly Sign[] = ['income', 'expense'];
+
+const SIGN_LABELS: Record<Sign, string> = { income: 'Income', expense: 'Expense' };
 
 // The message shown on a synced row: its amount is owned by the bank import, so
 // the form opens read-only rather than pretending an edit would stick.
@@ -62,6 +75,29 @@ const toAmountFields = (
   };
 };
 
+// Resolve the pending override's category into the icon name and the confirm
+// copy the "Apply Category to All" sheet shows. The sheet renders the glyph
+// white (textPrimary), not its category color, so only the icon name is needed
+// here. Kept module-level so its null branch stays out of the screen
+// component's cognitive-complexity budget.
+type PendingCategoryView = { icon: string; message: string };
+
+const resolvePendingCategory = (
+  pendingOverride: { name: string; category: string } | null,
+  categoryByKey: Parameters<typeof resolveCategoryDisplay>[1],
+): PendingCategoryView | null => {
+  if (pendingOverride === null) {
+    return null;
+  }
+
+  const display = resolveCategoryDisplay(pendingOverride.category, categoryByKey);
+
+  return {
+    icon: display.icon,
+    message: `Apply “${display.title}” to all transactions named “${pendingOverride.name.trim()}”? This also applies to future imports.`,
+  };
+};
+
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { theme } = useUnistyles();
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -79,6 +115,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
   const existing = editingId ? matchedTransactions.at(0) : undefined;
 
+  // The category picker's options come from the categories live query (a rename
+  // flows straight through), and the confirm copy resolves the picked key to its
+  // display title through the same map every screen uses.
+  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const categoryOptions = categories.map((category) => ({
+    key: category.key,
+    title: category.title,
+    icon: category.icon,
+    color: resolveCategoryColor(category.color, category.key),
+  }));
+  const categoryByKey = buildCategoryDisplayMap(categories);
+
   const holdingId =
     existing?.holdingId ?? ('holdingId' in route.params ? route.params.holdingId : undefined);
   const holding = holdings.find((candidate) => candidate.id === holdingId);
@@ -93,7 +141,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [sign, setSign] = useState<Sign>('income');
+  // The transaction's time, defaulting to now for a fresh add so a manual row
+  // can be BACKDATED via the DateField below. Edit mode hydrates the existing
+  // time; picking a day sets it to that day's local midnight.
+  const [time, setTime] = useState<number>(() => Date.now());
+  // The picked category key (a categories.key slug, lowercase). Null = no
+  // category yet. Editing it ALWAYS propagates to every same-name transaction
+  // via the override rule — there is no single-row-only category edit.
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  // The pending category-override confirmation. Non-null while the themed
+  // confirm modal is up (carrying the affected name + picked category key);
+  // null when no confirmation is in flight.
+  const [pendingOverride, setPendingOverride] = useState<{
+    name: string;
+    category: string;
+  } | null>(null);
 
   // Seed the fields once, when BOTH the transaction and its holding have loaded
   // (the holding's currency scale is needed to render the amount). The `hydrated`
@@ -104,38 +167,93 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setAmount(groupAmount(fields.amount));
       setSign(fields.sign);
       setDescription(existing.description);
+      setTime(existing.time);
+      // Lowercase the stored value to a slug key — the same normalization the
+      // display resolver applies — so it lines up with the picker's option keys.
+      setSelectedCategory(existing.category ? existing.category.toLowerCase() : null);
       setHydrated(true);
     }
   }, [existing, holding, hydrated, currency]);
+
+  // The row's category at open, keyed the same way, so an edit is detectable.
+  // Derived (not stored) so it always reflects the persisted value even before
+  // the hydration latch closes.
+  const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
+  const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
 
   const title = headerTitle(isReadOnly, isEditing);
   useLayoutEffect(() => {
     navigation.setOptions({ title });
   }, [navigation, title]);
 
-  const save = async (): Promise<void> => {
-    // Guard: reject an empty or non-numeric amount — no zero-amount row.
-    if (amount.trim() === '' || Number.isNaN(parseAmount(amount))) {
-      return;
-    }
+  // Persist the amount/description edit on a manual row (edit vs. add), leaving
+  // the category to the always-propagating override path below.
+  const writeManual = async (): Promise<void> => {
     const amountMinorUnits = signedMinorUnits(currency, amount, sign);
+
     if (editingId) {
-      // A synced row never reaches here (its footer/Save is not rendered), and
-      // the repo refuses a monobank update regardless.
       await transactionsRepo.update({
         transactionId: editingId,
         amountMinorUnits,
-        time: existing?.time ?? Date.now(),
+        time,
         description,
       });
-    } else if (holdingId) {
-      await transactionsRepo.recordManual({
-        holdingId,
-        amountMinorUnits,
-        time: Date.now(),
-        description,
-      });
+
+      return;
     }
+
+    if (holdingId) {
+      await transactionsRepo.recordManual({ holdingId, amountMinorUnits, time, description });
+    }
+  };
+
+  // Editing a category ALWAYS propagates to every same-name transaction (and to
+  // future imports), so surface the blast radius in a themed confirm modal
+  // before writing the rule. Both paths return to the list (the manual edit, if
+  // any, has already been written); only "Apply" also writes the override rule.
+  const applyOverride = async (): Promise<void> => {
+    if (pendingOverride === null) {
+      return;
+    }
+    await categoryOverridesRepo.upsertCategoryOverride(
+      pendingOverride.name,
+      pendingOverride.category,
+    );
+    navigation.goBack();
+  };
+
+  const cancelOverride = (): void => {
+    navigation.goBack();
+  };
+
+  // The picked category's resolved icon name + confirm copy for the sheet. The
+  // sheet renders the glyph white (textPrimary), not its category color, by
+  // design. Bundled by a module-level helper so the JSX gates on a single
+  // nullable and the branch stays out of the component body.
+  const pendingCategory = resolvePendingCategory(pendingOverride, categoryByKey);
+  const overrideMessage = pendingCategory?.message ?? '';
+
+  const save = async (): Promise<void> => {
+    // A synced row is bank-owned: only its category may change, so skip the
+    // amount write entirely and fall through to the category confirm below.
+    if (!isReadOnly) {
+      // Guard: reject an empty or non-numeric amount — no zero-amount row.
+      if (amount.trim() === '' || Number.isNaN(parseAmount(amount))) {
+        return;
+      }
+
+      await writeManual();
+    }
+
+    if (categoryChanged && selectedCategory !== null) {
+      // The rule keys on the synced row's own description (read-only) or the
+      // just-saved manual description.
+      const name = isReadOnly ? (existing?.description ?? '') : description;
+      setPendingOverride({ name, category: selectedCategory });
+
+      return;
+    }
+
     navigation.goBack();
   };
 
@@ -159,65 +277,98 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   return (
-    <Screen scroll footer={isReadOnly ? undefined : <Button onPress={save}>Save</Button>}>
-      <Box gap={4}>
-        {isReadOnly && (
-          <Box padding={3} style={[styles.notice, { backgroundColor: theme.colors.surfaceHigh }]}>
-            <Text variant="caption" tone="textSecondary">
-              {MONOBANK_NOTICE}
-            </Text>
-          </Box>
-        )}
+    <>
+      <Screen
+        scroll
+        footer={!isReadOnly || categoryChanged ? <Button onPress={save}>Save</Button> : undefined}
+      >
+        <Box gap={4}>
+          {isReadOnly && (
+            <Box padding={3} style={[styles.notice, { backgroundColor: theme.colors.surfaceHigh }]}>
+              <Text variant="caption" tone="textSecondary">
+                {MONOBANK_NOTICE}
+              </Text>
+            </Box>
+          )}
 
-        <TextField
-          label="Amount"
-          value={amount}
-          onChangeText={(text) => setAmount(groupAmount(text))}
-          editable={!isReadOnly}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-        />
+          <TextField
+            label="Amount"
+            value={amount}
+            onChangeText={(text) => setAmount(groupAmount(text))}
+            editable={!isReadOnly}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+          />
 
-        <TextField
-          label="Description"
-          value={description}
-          onChangeText={setDescription}
-          editable={!isReadOnly}
-          placeholder="Description"
-        />
+          <TextField
+            label="Description"
+            value={description}
+            onChangeText={setDescription}
+            editable={!isReadOnly}
+            placeholder="Description"
+          />
 
-        <Box style={styles.toggleRow} gap={2}>
-          {(['income', 'expense'] as const).map((option) => {
-            const isSelected = sign === option;
+          <DateField label="Date" value={time} onChange={setTime} disabled={isReadOnly} />
 
-            return (
-              <Pressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: isReadOnly }}
-                disabled={isReadOnly}
-                onPress={() => setSign(option)}
-                style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}
-              >
-                <Text variant="body" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
-                  {option === 'income' ? 'Income' : 'Expense'}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {/* Income/expense sign as a shared two-option chip row. On a read-only
+            (synced) row the row is `disabled`: presses are inert AND the chips
+            dim, matching how the Amount/Description/Date fields render locked, so
+            a synced transaction's bank-owned sign cannot be toggled here. */}
+          <ChipRow
+            options={SIGN_OPTIONS}
+            selected={sign}
+            onSelect={setSign}
+            labels={SIGN_LABELS}
+            disabled={isReadOnly}
+          />
+
+          {/* The category picker is ALWAYS editable — even on a synced row — since
+            a category edit propagates to every same-name transaction and to
+            future imports (decision 3), unlike the bank-owned amount/sign. */}
+          <CategoryField
+            label="Category"
+            options={categoryOptions}
+            selectedKey={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+
+          {isEditing && !isReadOnly && (
+            <Button variant="destructive" size="compact" fullWidth={false} onPress={confirmDelete}>
+              Delete
+            </Button>
+          )}
+        </Box>
+      </Screen>
+
+      {/* The category-override confirmation, as a themed sheet rather than a
+          native Alert (which cannot be styled). "Apply" is the accent-filled
+          primary; "Cancel" is a transparent ghost with a red label. Dismissing
+          the sheet (scrim/back) behaves like Cancel — it returns to the list. */}
+      <BottomSheet
+        visible={pendingOverride !== null}
+        onDismiss={cancelOverride}
+        gap={3}
+        testID="category-override-sheet"
+      >
+        <Box direction="row" gap={2} style={styles.confirmHeader}>
+          {pendingCategory !== null && (
+            <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
+          )}
+
+          <Text variant="heading">Apply Category to All</Text>
         </Box>
 
-        {isEditing && !isReadOnly && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={confirmDelete}
-            style={[styles.button, { backgroundColor: theme.colors.negative }]}
-          >
-            <Text variant="body">Delete</Text>
-          </Pressable>
-        )}
-      </Box>
-    </Screen>
+        <Text variant="body" tone="textSecondary">
+          {overrideMessage}
+        </Text>
+
+        <Button onPress={applyOverride}>Apply</Button>
+
+        <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
+          Cancel
+        </Button>
+      </BottomSheet>
+    </>
   );
 };
 
@@ -225,33 +376,10 @@ const styles = StyleSheet.create((theme) => ({
   notice: {
     borderRadius: theme.radii.sm,
   },
-  toggleRow: {
-    flexDirection: 'row',
-  },
-  // Each option is an equal-width segment so the pair reads as one segmented
-  // control rather than two free-floating buttons.
-  chip: {
-    flex: 1,
+  // Vertically centers the category glyph against the sheet's heading, so the
+  // colored icon reads on the same baseline as "Apply Category to All".
+  confirmHeader: {
     alignItems: 'center',
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-  // The chosen option is clearly active: a solid accent fill behind white text.
-  chipSelected: {
-    backgroundColor: theme.colors.accent,
-  },
-  // The other option reads as inactive/disabled: a muted, dimmed surface behind
-  // secondary-tone text, so it is unambiguous which side is selected.
-  chipUnselected: {
-    backgroundColor: theme.colors.surfaceHigh,
-    opacity: 0.5,
-  },
-  button: {
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-    alignSelf: 'flex-start',
   },
 }));
 
