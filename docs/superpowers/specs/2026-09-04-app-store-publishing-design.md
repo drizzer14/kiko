@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 Status: draft (fixed decisions below; not implemented, not committed)
-Scope owner: PFF coordinator
+Scope owner: Kiko coordinator
 Source: `docs/research/2026-09-04-app-store-publishing.md`
 
 ## Problem
@@ -19,20 +19,20 @@ Guideline 3.2.1(viii) review-risk mitigation — that has not been done.
 Two of the blockers below are **already fixed, but only on
 `drizzer14/pff-ux-round`, not on `main`**:
 
-- **App icon.** On `main`, `ios/PFF/Images.xcassets/AppIcon.appiconset/`
+- **App icon.** On `main`, `ios/Kiko/Images.xcassets/AppIcon.appiconset/`
   has a `Contents.json` but zero PNGs (HARD BLOCKER — Xcode will not
-  archive). On `pff-ux-round` it has three wired PNGs
+  archive). On `kiko-ux-round` it has three wired PNGs
   (`AppIcon-Default-1024.png`, `AppIcon-Dark-1024.png`,
   `AppIcon-Tinted-1024.png`, light/dark/tinted per the Xcode 16 single-
   size format) and a `Contents.json` that references all three.
-- **`CFBundleDisplayName`.** On `main`, `ios/PFF/Info.plist` still says
-  `PFF`. On `pff-ux-round`, it is already `Кіко`. Note `app.json`
-  (`{"name": "PFF", "displayName": "PFF"}`) is **unchanged on both
+- **`CFBundleDisplayName`.** On `main`, `ios/Kiko/Info.plist` still says
+  `Kiko`. On `kiko-ux-round`, it is already `Кіко`. Note `app.json`
+  (`{"name": "Kiko", "displayName": "Kiko"}`) is **unchanged on both
   branches** — it still needs the display-name edit regardless of
   which branch lands first.
 
 Whoever implements this must land on top of (or merge in) the icon +
-display-name state from `pff-ux-round`, not redo it from `main`.
+display-name state from `kiko-ux-round`, not redo it from `main`.
 
 ## Config changes (code)
 
@@ -40,15 +40,15 @@ Verified directly against `main` (2026-09-04):
 
 | Item | Current (`main`) | Target |
 |---|---|---|
-| `CFBundleDisplayName` (`ios/PFF/Info.plist`) | `PFF` | `Кіко` (already done on `pff-ux-round`) |
-| `app.json` `displayName` | `PFF` | `Кіко` (not done on either branch yet) |
+| `CFBundleDisplayName` (`ios/Kiko/Info.plist`) | `Kiko` | `Кіко` (already done on `kiko-ux-round`) |
+| `app.json` `displayName` | `Kiko` | `Кіко` (not done on either branch yet) |
 | `uk.lproj/InfoPlist.strings` | absent | add, with `CFBundleDisplayName = "Кіко";` |
 | `ITSAppUsesNonExemptEncryption` (`Info.plist`) | absent | add, `= false` |
 | `NSLocationWhenInUseUsageDescription` (`Info.plist`) | present, value `""` (stray/unused) | remove the key entirely |
 | `IPHONEOS_DEPLOYMENT_TARGET` (`project.pbxproj`, all 4 build configs) | `15.1` | align to one value (see below) |
 | `platform :ios` (`Podfile`) | `16.0` | align to the same value |
 | `TARGETED_DEVICE_FAMILY` (`project.pbxproj`, Debug + Release configs) | `"1,2"` (iPhone + iPad) | `"1"` (iPhone-only) |
-| App icon PNGs | zero on `main`; three (Default/Dark/Tinted) on `pff-ux-round` | carry `pff-ux-round`'s three PNGs + `Contents.json` forward |
+| App icon PNGs | zero on `main`; three (Default/Dark/Tinted) on `kiko-ux-round` | carry `kiko-ux-round`'s three PNGs + `Contents.json` forward |
 
 Decisions for the alignment items:
 
@@ -83,7 +83,7 @@ Verified but already correct — do not touch:
   signing, marketing version `1.0`, Hermes, bitcode `NO`, New Arch on
   (`RCTNewArchEnabled = true`), ATS on (`NSAllowsArbitraryLoads =
   false`).
-- `ios/PFF/PrivacyInfo.xcprivacy` — present, three required-reason API
+- `ios/Kiko/PrivacyInfo.xcprivacy` — present, three required-reason API
   categories declared (`FileTimestamp`, `UserDefaults`,
   `SystemBootTime`), `NSPrivacyTracking = false`,
   `NSPrivacyCollectedDataTypes` empty. Matches the "Data Not Collected"
@@ -99,7 +99,7 @@ a hard blocker.
    2FA-gated, historically ~24–48h to clear. Blocks every step below
    that needs a team/signing identity. See "Assumptions to confirm".
 2. **Land the config changes above** (this spec's "Config changes"
-   section) on top of `pff-ux-round`'s icon + display-name work.
+   section) on top of `kiko-ux-round`'s icon + display-name work.
 3. **Distribution signing** — automatic, on the first archive (Xcode
    handles provisioning once enrollment clears and the team is
    selected in the project).
@@ -189,7 +189,7 @@ can guarantee away.
 
 ### Other risks carried from the research (lower priority, already mitigated or N/A)
 
-- Missing app icon — cleared on `pff-ux-round`; must be carried
+- Missing app icon — cleared on `kiko-ux-round`; must be carried
   forward when this lands (see "Branch note").
 - Account-deletion (Guideline 5.1.1(v)) — **N/A**, the app has no
   account creation. Disconnecting Monobank already clears the token
@@ -239,15 +239,15 @@ can guarantee away.
 
 ## Affected files (initial map)
 
-- `ios/PFF/Info.plist` — display name, `ITSAppUsesNonExemptEncryption`,
+- `ios/Kiko/Info.plist` — display name, `ITSAppUsesNonExemptEncryption`,
   remove the location-usage key.
-- `ios/PFF/uk.lproj/InfoPlist.strings` — new file.
+- `ios/Kiko/uk.lproj/InfoPlist.strings` — new file.
 - `app.json` — `displayName`.
-- `ios/PFF.xcodeproj/project.pbxproj` — `IPHONEOS_DEPLOYMENT_TARGET`
+- `ios/Kiko.xcodeproj/project.pbxproj` — `IPHONEOS_DEPLOYMENT_TARGET`
   (all 4 configs), `TARGETED_DEVICE_FAMILY` (Debug + Release configs).
 - `ios/Podfile` — confirm/keep `platform :ios, "16.0"` (no change if
   the app target is raised to match, per the decision above).
-- `ios/PFF/Images.xcassets/AppIcon.appiconset/` — carry forward the
+- `ios/Kiko/Images.xcassets/AppIcon.appiconset/` — carry forward the
   three PNGs + `Contents.json` from `drizzer14/pff-ux-round`.
 - A new privacy-policy static page/URL (outside this repo's `ios/`
   tree — hosting location not yet decided, needed for App Store

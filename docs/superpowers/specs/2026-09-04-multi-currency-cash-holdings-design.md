@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 Status: approved (user pre-approved), pending implementation plan
-Scope owner: PFF coordinator
+Scope owner: Kiko coordinator
 
 ## Problem
 

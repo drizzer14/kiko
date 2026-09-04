@@ -2,10 +2,6 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
 import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';

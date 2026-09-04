@@ -20,10 +20,10 @@ fi
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
-  "$TARGET" 2>/tmp/pff-security-stderr.$$)"
+  "$TARGET" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
-stderr_out="$(cat /tmp/pff-security-stderr.$$ 2>/dev/null)"
-rm -f /tmp/pff-security-stderr.$$
+stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
+rm -f /tmp/kiko-security-stderr.$$
 
 if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
   print_block \

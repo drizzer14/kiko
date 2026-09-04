@@ -4,10 +4,6 @@ import { render, within } from '@testing-library/react-native';
 // The real Settings screen (wired into RootNavigator) pulls in db/client,
 // which opens a real op-sqlite connection at module load. op-sqlite has no
 // Jest binary, so stub it the same way every repo test does.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `@bottom-tabs/react-navigation` (native tab navigator) is stubbed by the
 // manual mock at `__mocks__/@bottom-tabs/react-navigation.tsx`, which Jest
 // applies automatically for every test that pulls it in transitively — see

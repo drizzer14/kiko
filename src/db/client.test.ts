@@ -1,12 +1,8 @@
 import type { DB } from '@op-engineering/op-sqlite';
 
-// client.ts opens a real op-sqlite handle at module load; stub `open`
-// so importing the pure `wrapClientForDrizzle` factory under test does
-// not touch the native module (mirrors the repository tests' stub).
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
+// @op-engineering/op-sqlite is mocked globally in jest/setup.js (client.ts
+// opens a handle and runs the legacy-db migration at module load); that mock
+// reports kiko.db as already populated so the migration no-ops here.
 import { wrapClientForDrizzle } from './client';
 
 describe('wrapClientForDrizzle', () => {

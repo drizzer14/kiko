@@ -1,8 +1,8 @@
 // iOS dark system palette.
 //
 // Re-derived from Apple's dark-mode system colors (see
-// docs/superpowers/specs/2026-08-30-pff-foundation-design.md and
-// .claude/skills/pff-design-system/SKILL.md):
+// docs/superpowers/specs/2026-08-30-kiko-foundation-design.md and
+// .claude/skills/kiko-design-system/SKILL.md):
 // - true-black background (systemBackground, dark)
 // - secondary/tertiary system background levels for elevated surfaces
 // - label / secondaryLabel for primary and secondary text

@@ -1,7 +1,3 @@
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `upsertMany` runs its insert through the `write` helper (one op-sqlite
 // transaction). Override `write` to run the callback against a fake
 // transaction handle backed by an in-memory store, so a test can prove the

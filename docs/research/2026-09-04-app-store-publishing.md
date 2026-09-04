@@ -12,7 +12,7 @@ with 3 required-reason APIs.
 Blocking / to fix:
 - **App icon** — on `main` the appiconset had zero PNGs (HARD BLOCKER).
   Now set on the branch (single `kiko.png`). ✓
-- **Display name "Кіко" never set** — `CFBundleDisplayName` says "PFF";
+- **Display name "Кіко" never set** — `CFBundleDisplayName` says "Kiko";
   set it (and localize).
 - `ITSAppUsesNonExemptEncryption` absent — add `= false`.
 - Stray empty `NSLocationWhenInUseUsageDescription` — remove it.

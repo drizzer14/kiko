@@ -3,7 +3,7 @@
 Date: 2026-09-04
 Status: proposed (from `docs/research/2026-09-04-security-pass.md` +
 `docs/research/2026-09-04-biometric-app-lock.md`), pending implementation plan
-Scope owner: PFF coordinator
+Scope owner: Kiko coordinator
 
 ## Problem
 
@@ -98,9 +98,9 @@ model, so this spec covers both in one document.
   `RootNavigator`. `AppRoot` calls `settingsRepo.ensure()` and
   `useAutoSync()` before rendering the navigator — confirmed no lock
   gate exists today.
-- `ios/PFF/Info.plist` has ATS on with `NSAllowsArbitraryLoads: false`
+- `ios/Kiko/Info.plist` has ATS on with `NSAllowsArbitraryLoads: false`
   and no `NSPinnedDomains` block yet; no `NSFaceIDUsageDescription`.
-- `ios/PFF/AppDelegate.swift` is the stock RN 0.87 template — no
+- `ios/Kiko/AppDelegate.swift` is the stock RN 0.87 template — no
   snapshot-redaction overlay exists.
 - `biome.json`'s `linter.rules` has no `no-console` rule configured
   today (only `suspicious.noExplicitAny`, `correctness.*`,
@@ -157,7 +157,7 @@ model, so this spec covers both in one document.
 
 ## Certificate pinning
 
-- `ios/PFF/Info.plist`: add `NSPinnedDomains` under
+- `ios/Kiko/Info.plist`: add `NSPinnedDomains` under
   `NSAppTransportSecurity` for `api.monobank.ua` with two
   `NSPinnedCAIdentities` / SPKI-hash entries — the current leaf/
   intermediate pin and one backup pin (a different CA in the chain, or
@@ -223,9 +223,9 @@ model, so this spec covers both in one document.
   `isSensorAvailable()` first; if `PASSCODE_NOT_SET` or no hardware,
   disable the toggle with an explanatory hint instead of silently
   failing.
-- **`ios/PFF/Info.plist`**: add `NSFaceIDUsageDescription` with a short
-  user-facing string ("Unlock PFF with Face ID").
-- **`ios/PFF/AppDelegate.swift`**: add a snapshot-redaction overlay —
+- **`ios/Kiko/Info.plist`**: add `NSFaceIDUsageDescription` with a short
+  user-facing string ("Unlock Kiko with Face ID").
+- **`ios/Kiko/AppDelegate.swift`**: add a snapshot-redaction overlay —
   a plain `UIView` (solid background, or the launch screen) added to
   the key window on `applicationWillResignActive`/
   `applicationDidEnterBackground` and removed on
@@ -307,8 +307,8 @@ Unit tests, written before the implementation:
 - `src/db/run-migrations.ts` or a new sibling — the one-time DB
   migration logic.
 - `src/monobank/token.ts` — `accessible` option on `saveToken`.
-- `ios/PFF/Info.plist` — `NSPinnedDomains`, `NSFaceIDUsageDescription`.
-- `ios/PFF/AppDelegate.swift` — snapshot-redaction overlay.
+- `ios/Kiko/Info.plist` — `NSPinnedDomains`, `NSFaceIDUsageDescription`.
+- `ios/Kiko/AppDelegate.swift` — snapshot-redaction overlay.
 - `biome.json` — `no-console` rule.
 - `src/db/schema.ts` — `lockEnabled`, `lockGraceSeconds` columns + new
   migration.
@@ -348,7 +348,7 @@ Unit tests, written before the implementation:
    version published in the last 7 days, so the exact version string
    used in `package.json` must be confirmed ≥7 days old at
    implementation time (or added to `min-release-age-exclude` with the
-   same category of justification as the existing `PFF`/
+   same category of justification as the existing `Kiko`/
    `react-native` entries, if warranted).
 3. **`BIOMETRY_CURRENT_SET` invalidation** (the user adds/removes a
    fingerprint or Face ID enrollment after the app already gated a

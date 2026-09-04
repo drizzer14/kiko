@@ -1,11 +1,11 @@
 {
-  "name": "pff-marketplace",
-  "owner": { "name": "PFF" },
+  "name": "kiko-marketplace",
+  "owner": { "name": "Kiko" },
   "plugins": [
     {
-      "name": "pff",
-      "source": "./pff",
-      "description": "PFF agent harness: ten role agents, isolated ponytail review, and tiered quality hooks."
+      "name": "kiko",
+      "source": "./kiko",
+      "description": "Kiko agent harness: ten role agents, isolated ponytail review, and tiered quality hooks."
     }
   ]
 }

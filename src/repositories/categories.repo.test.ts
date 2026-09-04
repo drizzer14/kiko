@@ -1,10 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 // `updateTitle`/`updateIcon` run their update through the `write` helper (one
 // op-sqlite transaction). Override `write` to run the callback against a fake
 // transaction handle so the test can capture the update payload issued inside

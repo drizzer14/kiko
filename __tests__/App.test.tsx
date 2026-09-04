@@ -16,10 +16,6 @@ jest.mock('../src/db/migrations.gate', () => ({
 // also pulls in db/client directly (via useLiveQuery), which opens a real
 // op-sqlite connection at module load. Stub it the same way every repo test
 // does.
-jest.mock('@op-engineering/op-sqlite', () => ({
-  open: () => ({ execute: () => ({ rows: [] }) }),
-}));
-
 const mockEnsure = jest.fn(() => Promise.resolve());
 jest.mock('../src/repositories/settings.repo', () => ({
   settingsRepo: {

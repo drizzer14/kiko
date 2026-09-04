@@ -10,6 +10,13 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   open: () => ({
     execute: () => ({ rows: [] }),
     executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
+    // client.ts runs the legacy-db migration at module load; executeSync
+    // reports one existing table so it treats kiko.db as already populated
+    // and no-ops (its own branches are covered by migrate-legacy-db.test.ts).
+    executeSync: () => ({ rows: [{ n: 1 }] }),
+    getDbPath: () => '/mock/Documents/kiko.db',
+    close: () => {},
+    delete: () => {},
   }),
 }));
 

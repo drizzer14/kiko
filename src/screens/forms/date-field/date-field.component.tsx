@@ -7,7 +7,7 @@ import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import PffCalendar from '../../calendar';
+import KikoCalendar from '../../calendar';
 import type { DateFieldProps } from './date-field.props';
 import { styles } from './date-field.styles';
 
@@ -69,7 +69,7 @@ const DateField: FC<DateFieldProps> = ({
       <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
         <Text variant="heading">{label}</Text>
 
-        <PffCalendar
+        <KikoCalendar
           testID={`${label} calendar`}
           markedDates={markedDates}
           onDayPress={handleDayPress}

@@ -50,6 +50,25 @@ jest.mock('react-native-nitro-sfsymbols', () => {
   return { SFSymbolView: View };
 });
 
+// @op-engineering/op-sqlite is a native SQLite module with no software
+// fallback under react-test-renderer. `src/db/client.ts` opens a handle and
+// runs the legacy-database migration (`src/db/migrate-legacy-db.ts`) at module
+// load, so every test that transitively imports client.ts (each repository,
+// screen, and navigator test) needs it mocked. Registered globally here rather
+// than duplicated per-file. `executeSync` reports one existing table so the
+// migration treats kiko.db as already populated and no-ops; the migration's
+// own branches are covered by migrate-legacy-db.test.ts, which registers its
+// own richer per-file mock that overrides this one.
+jest.mock('@op-engineering/op-sqlite', () => ({
+  open: () => ({
+    execute: () => ({ rows: [] }),
+    executeSync: () => ({ rows: [{ n: 1 }] }),
+    getDbPath: () => '/mock/Documents/kiko.db',
+    close: () => {},
+    delete: () => {},
+  }),
+}));
+
 // react-native-calendars' Calendar is a pure-JS component, but it pulls in
 // XDate/recyclerlistview machinery that is noisy under react-test-renderer and
 // gives a test no direct handle on day selection. Mocked to a plain View that
