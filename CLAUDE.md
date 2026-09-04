@@ -229,7 +229,7 @@ gap — it does not do the task itself.
 | developer | Writes all TypeScript/React Native code | opus | high | `claude --agent developer --effort high` |
 | planner | Writes implementation plans from a spec or feature request | fable | high | `claude --agent planner --effort high` |
 | debugger | Isolates faults, writes no code | opus | high | `claude --agent debugger --effort high` |
-| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | fable | high | `claude --agent reviewer --effort high` |
+| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
 | qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | high | `claude --agent qa --effort high` |
 | designer | Owns theme tokens and shared styled components | sonnet | high | `claude --agent designer --effort high` |
 | explorer | Read-only codebase search | sonnet | medium | `claude --agent explorer --effort medium` |
