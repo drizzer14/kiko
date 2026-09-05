@@ -1,6 +1,8 @@
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { FC } from 'react';
+
 import { darkTheme } from '../design-system/theme';
+
 import AccountsStack from './accounts.stack';
 import HomeStack from './home.stack';
 import SettingsStack from './settings.stack';

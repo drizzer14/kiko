@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+
 import HoldingFormScreen from './holding-form.screen';
 
 const { entityColors } = darkTheme.colors;

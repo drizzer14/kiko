@@ -1,11 +1,33 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import type { FC } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { type FC, useEffect } from 'react';
+import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
+
 import Box from '../box';
+
+import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { styles } from './bottom-sheet.styles';
+
+// Every sheet caps at 66% of the current window height, no exceptions — a
+// tall sheet scrolls past that point instead of growing over the status bar /
+// into the notch, via the shared `ScrollView` this primitive wraps `children`
+// in by default (see the `scrollable` prop). This lives here, in the ONE
+// shared primitive, rather than as a per-call-site prop, so no sheet can
+// drift past it the way the icon picker (80%) and the category field (70%)
+// each used to hand-roll their own, looser cap.
+const MAX_HEIGHT_RATIO = 0.66;
+
+// The spring the sheet settles back on when a drag is released short of the
+// dismiss threshold: a snappy, non-bouncy return to rest (translateY 0).
+const SHEET_SPRING = { damping: 20, stiffness: 220 } as const;
+
+// The drag gesture's jest test id, exported so the component test can look the
+// Pan up with `getByGestureTestId` and drive it past / short of the threshold.
+export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
 
 /**
  * The one bottom-sheet primitive: a transparent Modal, a full-bleed dismiss
@@ -17,8 +39,9 @@ import { styles } from './bottom-sheet.styles';
  *
  * The scrim and the sheet are siblings inside the overlay, not parent/child, so
  * a tap on the sheet never reaches the scrim's dismiss handler — the opaque
- * sheet simply sits on top of the scrim, and an inner ScrollView scrolls freely
- * (no `onStartShouldSetResponder` guard is needed).
+ * sheet simply sits on top of the scrim, and the sheet's ScrollView (shared or
+ * a call site's own — see `scrollable`) scrolls freely (no
+ * `onStartShouldSetResponder` guard is needed).
  *
  * The scrim itself is a frosted dim, not opaque black: a real Liquid Glass
  * blur (`LiquidGlassView`, `effect="regular"`, tinted with `theme.colors.scrim`)
@@ -36,16 +59,87 @@ const BottomSheet: FC<BottomSheetProps> = ({
   gap = 3,
   animationType = 'fade',
   maxHeight,
+  scrollable = true,
   testID,
   backdropTestID,
   backdropAccessibilityLabel,
 }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
+  // `useWindowDimensions` (not a one-shot `Dimensions.get`) so the 66% cap
+  // recomputes on rotation, per the design-system requirement.
+  const windowHeight = useWindowDimensions().height;
+  // The 66% cap is the absolute ceiling — a call site's own `maxHeight` can
+  // only tighten it further, never loosen it past 66%.
+  const capHeight = windowHeight * MAX_HEIGHT_RATIO;
+  const resolvedMaxHeight = maxHeight === undefined ? capHeight : Math.min(maxHeight, capHeight);
+
+  // The sheet card's live vertical offset, driven by the top grabber's Pan. It
+  // rests at 0; a downward drag follows the finger (clamped so it never rises
+  // above rest), and a release either dismisses or springs it back.
+  const translateY = useSharedValue(0);
+  // The sheet's measured height, used to turn the drag distance into the
+  // dismiss threshold (a fraction of it). Seeded to the resolved cap so the
+  // very first drag — before onLayout has fired — still has a sane threshold.
+  const sheetHeight = useSharedValue(resolvedMaxHeight);
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  // A reopened sheet must start at rest even if it was left mid-drag when it
+  // dismissed (the Modal keeps this subtree mounted while hidden), so snap the
+  // offset back to 0 whenever the sheet becomes visible again.
+  useEffect(() => {
+    if (visible) {
+      translateY.value = 0;
+    }
+  }, [visible, translateY]);
+
+  // The Pan is attached to the grabber region ONLY (never the scrollable body),
+  // so it never competes with the sheet's own ScrollView. `.runOnJS(true)`
+  // keeps its handlers on the JS thread, per the "runOnJS for non-worklet
+  // callbacks" rule — `onEnd` reaches `onDismiss`, a plain prop, not a worklet.
+  const dragToDismiss = Gesture.Pan()
+    .runOnJS(true)
+    .withTestId(SHEET_DRAG_GESTURE_TEST_ID)
+    .onUpdate((event) => {
+      translateY.value = clampSheetTranslate(event.translationY);
+    })
+    .onEnd((event) => {
+      if (shouldDismissSheet(event.translationY, event.velocityY, sheetHeight.value)) {
+        onDismiss();
+      } else {
+        translateY.value = withSpring(0, SHEET_SPRING);
+      }
+    });
+  // F5 device bug fix: the 66% cap above is forced on every sheet, but a
+  // plain-Box sheet rendered no scroll container of its own, so content
+  // taller than the cap was simply CLIPPED rather than scrollable. The
+  // default path wraps `children` in a `ScrollView` so every sheet scrolls
+  // its overflow; `scrollable={false}` opts a sheet that needs its own
+  // pinned header/footer/ref-controlled scroll region out of this (see the
+  // prop's own docs).
+  const body = scrollable ? (
+    <ScrollView
+      style={styles.scrollBody}
+      contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
+      showsVerticalScrollIndicator={false}
+      testID={testID && `${testID}-scroll`}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <Box gap={gap} style={styles.box}>
+      {children}
+    </Box>
+  );
 
   return (
     <Modal transparent visible={visible} animationType={animationType} onRequestClose={onDismiss}>
-      <View style={styles.overlay}>
+      {/* A Modal portals to its own native root OUTSIDE the app's root
+          GestureHandlerRootView, so the sheet's drag Pan would never be
+          recognized without this local root wrapping the overlay. */}
+      <GestureHandlerRootView style={styles.overlay}>
         <Pressable
           style={styles.backdrop}
           onPress={onDismiss}
@@ -66,10 +160,22 @@ const BottomSheet: FC<BottomSheetProps> = ({
           )}
         </Pressable>
 
-        <Box gap={gap} style={styles.sheet(insets.bottom, maxHeight)} testID={testID}>
-          {children}
-        </Box>
-      </View>
+        <Animated.View
+          style={[styles.sheet(insets.bottom, resolvedMaxHeight), sheetAnimatedStyle]}
+          onLayout={(event) => {
+            sheetHeight.value = event.nativeEvent.layout.height;
+          }}
+          testID={testID}
+        >
+          <GestureDetector gesture={dragToDismiss}>
+            <View style={styles.grabberRegion} testID={testID && `${testID}-grabber`}>
+              <View style={styles.grabber} />
+            </View>
+          </GestureDetector>
+
+          {body}
+        </Animated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 };

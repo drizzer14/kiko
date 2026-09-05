@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
+
 import { formatDate } from '../../../dates/format';
 import '../../../design-system/unistyles';
 import DateRangeField from './date-range-field.component';

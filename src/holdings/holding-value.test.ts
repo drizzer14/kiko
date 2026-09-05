@@ -1,9 +1,10 @@
 import { Money } from '../currency/money';
+
 import { asBondMeta } from './holding-metadata';
 import {
   bondExpectedProfitMinor,
-  holdingValue,
   type HoldingValueBreakdown,
+  holdingValue,
   holdingValueBreakdown,
   type ValuableHolding,
 } from './holding-value';

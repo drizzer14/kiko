@@ -9,6 +9,7 @@ import { render, within } from '@testing-library/react-native';
 // applies automatically for every test that pulls it in transitively — see
 // that file for why and what it renders.
 import { darkTheme } from '../design-system/theme';
+
 import { navigationDarkTheme } from './dark-theme';
 import '../design-system/unistyles';
 import RootNavigator from './root.navigator';

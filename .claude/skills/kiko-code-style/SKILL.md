@@ -57,6 +57,34 @@ export const toHex = (color: string): string => {
 };
 ```
 
+### Arrow body: block form for a genuinely hard-to-scan expression
+
+Judgment call, not mechanized — there is no Biome/Semgrep rule for
+this, and none is planned. A syntactically faithful rule (flag every
+arrow whose concise body contains `&&`/`||`/`?:`) was tried during
+review and matched 62 arrows against the ~15 actually worth
+converting, with identical shapes intentionally treated oppositely
+(`isSyncedAccount` in `src/holdings/deletable.ts` was converted to a
+block body; `isBalanceProviderId` in `src/crypto-sync/provider.ts`
+stayed concise) — no low-false-positive syntactic rule exists, so
+this stays a human/agent judgment call, applied in code and in
+review.
+
+Convert an arrow's concise body to a block body with an explicit
+`return` when the expression is genuinely hard to scan — a nested
+logical/ternary expression, including one hidden inside an
+object-literal property value or a template-literal interpolation.
+Leave it concise when it is a short idiomatic predicate, a
+type-guard, a one-line ternary, or a single `as const` narrowing on a
+literal — those always stay concise.
+
+### Blank line between adjacent JSX sibling nodes
+
+Not mechanized — Biome and the formatter are whitespace-insensitive
+inside JSX, so there is no check for this. Separate adjacent JSX
+sibling expression nodes with a blank line, the same way statement
+blocks get one (see above).
+
 ### `.concat` over a multi-part template literal
 
 When building a string from many parts with no separators between
@@ -198,26 +226,13 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 
 ## Import ordering and `import type`
 
-Two groups, separated by a blank line: external + path-aliased
-imports first, then local (relative) imports.
-
-Within each group, sort import statements by line length, shortest
-first (this matches `@ovpn/ui`). For a component file's local group,
-this puts the `.styles` import before the `.props` import, because
-the styles line is shorter:
-
-```ts
-import { Text, View } from 'react-native';
-import { Children, isValidElement, type ReactElement } from 'react';
-```
-
-Biome's import-organizing assist (`organizeImports`) is deliberately
-**disabled** in `biome.json` so this length-first order can hold —
-Biome's own `organizeImports` sorts by module path instead, and would
-fight this rule if it ran. Because it is disabled, no check enforces
-any of this: the two-group split and the shortest-first order within
-each group are both a manual convention. Apply it by hand when you
-write imports, and check it in review.
+Import grouping and ordering is mechanized: Biome's `organizeImports`
+assist, configured in `biome.json`'s
+`assist.actions.source.organizeImports`, groups and sorts every
+import automatically. Run `npm run check:lint` rather than
+hand-ordering imports, and read that config directly for the current
+group definitions and order — don't restate them here, they'd only
+drift from the file that actually governs them.
 
 Use `import type` when the entire import is types:
 
@@ -297,24 +312,40 @@ navigator stays unsuffixed. `@ovpn/ui` follows the same split: it
 names providers/contexts `*.context.tsx` rather than
 `*.component.tsx`.
 
-A type-only file — one that exports only types, no runtime value —
-uses the `.d.ts` extension: `<name>.props.d.ts`, not `<name>.props.ts`.
-A props file holding only a props type is the canonical case. Import
-it with `import type` so the build erases it.
+A type-only file — one that exports only types, no runtime value, no
+ambient side effect — uses the `.d.ts` extension: `<name>.props.d.ts`,
+not `<name>.props.ts`. A props file holding only a props type is the
+canonical case. Import it with `import type` so the build erases it.
+Exception: a file that also exports a runtime value or runs a side
+effect stays `.ts` even if most of its content is types — for example
+`src/statistics/holding-value-at.ts` and
+`src/design-system/unistyles.ts`.
+
+The repo-wide rename of existing type-only files to `.d.ts` is DONE —
+every type-only props file under `src/design-system/components/` and
+elsewhere is now `.props.d.ts`, not `.props.ts`. Don't trust that as
+a fixed count restated here, though: check the actual suffix on the
+file you're touching (`find src -name '*.props.ts'` should return
+nothing; a stray hit means either a genuine runtime/side-effect file
+exempted above, or new drift to fix).
 
 ## One component per file, each in its own folder
 
 Define exactly one React component per file. When a file grows a
 second component, move it to its own file.
 
-Each component gets its own folder named after it, holding the
-component and its siblings:
+Each component gets its own folder named after it, holding its
+`.component.tsx`, `.props` (or `.props.d.ts`, see above), `.styles`,
+and `.component.test.tsx`, plus an `index.ts` barrel that re-exports
+the component as the folder's default export:
 
 ```
 currency-breakdown/
   currency-breakdown.component.tsx
+  currency-breakdown.component.test.tsx
   currency-breakdown.props.d.ts
   currency-breakdown.styles.ts
+  index.ts
 ```
 
 A function that returns JSX is a component, even a small "render row"

@@ -1,8 +1,9 @@
-import { Alert } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+
 import HoldingDetailScreen from './holding-detail.screen';
 
 // The Text primitive's tone -> color mapping lives inside a unistyles variant

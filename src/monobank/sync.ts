@@ -5,6 +5,7 @@ import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
 import { settingsRepo } from '../repositories/settings.repo';
 import { transactionsRepo } from '../repositories/transactions.repo';
+
 import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
@@ -17,7 +18,12 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
 type MonobankHolding = NewHolding & { monobankId: string };
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
-  Partial<Pick<TransactionRow, 'description' | 'category' | 'mcc' | 'comment' | 'externalId'>>;
+  Partial<
+    Pick<
+      TransactionRow,
+      'description' | 'category' | 'mcc' | 'counterIban' | 'comment' | 'externalId'
+    >
+  >;
 
 /** Monobank statement window ceiling: 31 days, expressed in seconds. */
 const MAX_WINDOW_SECONDS = 31 * 24 * 60 * 60;
@@ -97,6 +103,7 @@ export const mapStatementItem = (
   time: item.time * 1000,
   description: item.description ?? '',
   mcc: item.mcc,
+  counterIban: item.counterIban ?? null,
   category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
@@ -162,9 +169,9 @@ const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
     // idempotent re-sync and stays allowed; a DIFFERENT already-connected
     // account is rejected so its cards/jars are never imported twice (which
     // would double-count net worth).
-    const otherConnected = accounts.find(
-      (account) => account.institution === 'monobank' && account.id !== deps.targetAccountId,
-    );
+    const otherConnected = accounts.find((account) => {
+      return account.institution === 'monobank' && account.id !== deps.targetAccountId;
+    });
     if (otherConnected) {
       throw new Error('A Monobank account is already connected');
     }

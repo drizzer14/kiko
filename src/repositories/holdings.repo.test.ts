@@ -18,6 +18,7 @@ jest.mock('../db/client', () => {
 });
 
 import { holdings } from '../db/schema';
+
 import { captureSetTx } from './capture-set-tx';
 import { holdingsRepo } from './holdings.repo';
 
@@ -52,7 +53,9 @@ type Store = {
 };
 
 const makeTx = (store: Store) => {
-  const keyOf = (table: unknown): keyof Store => (table === holdings ? 'holdings' : 'transactions');
+  const keyOf = (table: unknown): keyof Store => {
+    return table === holdings ? 'holdings' : 'transactions';
+  };
   return {
     select: () => ({
       from: (table: unknown) => ({
@@ -311,6 +314,165 @@ describe('appendDepositContribution', () => {
     await expect(
       holdingsRepo.appendDepositContribution('h1', { amountMinorUnits: 500, date: 500 }),
     ).rejects.toThrow(/invalid deposit metadata/);
+  });
+});
+
+// A fake write-transaction handle for the metadata-key upserts. The helper
+// first selects the matching holding (`select(...).from().where().limit(1)`),
+// then — on a miss — reads the account's max `sort_order` (`where()` awaited
+// directly) and inserts; on a hit it updates. `selectResults` answers the two
+// reads in that order; every insert/update payload is captured.
+const makeUpsertTx = (
+  matchRows: { id: string }[],
+  maxSortOrder = -1,
+): { tx: unknown; inserts: Record<string, unknown>[]; updates: Record<string, unknown>[] } => {
+  const inserts: Record<string, unknown>[] = [];
+  const updates: Record<string, unknown>[] = [];
+  const selectResults: unknown[][] = [matchRows, [{ value: maxSortOrder }]];
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          const rows = selectResults.shift() ?? [];
+          return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        inserts.push(values);
+        return Promise.resolve();
+      },
+    }),
+    update: () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => {
+          updates.push(values);
+          return Promise.resolve();
+        },
+      }),
+    }),
+  };
+  return { tx, inserts, updates };
+};
+
+describe('holdingsRepo.upsertExchange', () => {
+  const walletHolding = {
+    accountId: 'acc-crypto',
+    name: 'BTC Wallet',
+    type: 'crypto_asset' as const,
+    currency: 'BTC' as const,
+    balanceMinorUnits: 12_345_678,
+    metadata: { syncedAt: 1_704_326_400_000 },
+    metadataField: 'walletAddress' as const,
+    metadataKey: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+  };
+
+  it('updates balance and metadata in place when a holding with the key exists', async () => {
+    const { tx, inserts, updates } = makeUpsertTx([{ id: 'h-existing' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertExchange(walletHolding);
+
+    expect(inserts).toHaveLength(0);
+    expect(updates).toEqual([
+      {
+        balanceMinorUnits: 12_345_678,
+        metadata: {
+          syncedAt: 1_704_326_400_000,
+          walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+        },
+      },
+    ]);
+  });
+
+  it('inserts a crypto_asset holding with the key merged into metadata and a fresh sortOrder on a miss', async () => {
+    const { tx, inserts, updates } = makeUpsertTx([], 2);
+    mockTx = tx;
+
+    await holdingsRepo.upsertExchange(walletHolding);
+
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({
+      accountId: 'acc-crypto',
+      name: 'BTC Wallet',
+      type: 'crypto_asset',
+      currency: 'BTC',
+      balanceMinorUnits: 12_345_678,
+      sortOrder: 3,
+      metadata: {
+        syncedAt: 1_704_326_400_000,
+        walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      },
+    });
+    expect(typeof inserts[0].id).toBe('string');
+  });
+
+  it('keys a Binance holding on binanceAsset', async () => {
+    const { tx, inserts } = makeUpsertTx([]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertExchange({
+      ...walletHolding,
+      name: 'Binance BTC',
+      metadataField: 'binanceAsset',
+      metadataKey: 'BTC',
+    });
+
+    expect(inserts[0]).toMatchObject({
+      metadata: { binanceAsset: 'BTC', syncedAt: 1_704_326_400_000 },
+    });
+  });
+
+  it('defaults a missing balance to 0 on update', async () => {
+    const { tx, updates } = makeUpsertTx([{ id: 'h-existing' }]);
+    mockTx = tx;
+
+    const { balanceMinorUnits: _omitted, ...withoutBalance } = walletHolding;
+    await holdingsRepo.upsertExchange(withoutBalance);
+
+    expect(updates[0]).toMatchObject({ balanceMinorUnits: 0 });
+  });
+});
+
+describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () => {
+  const cardHolding = {
+    accountId: 'acc-bank',
+    name: 'Black card',
+    type: 'card' as const,
+    currency: 'UAH' as const,
+    balanceMinorUnits: 100_000,
+    metadata: { iban: 'UA123', maskedPan: ['537541******1234'] },
+    monobankId: 'mono-card-1',
+  };
+
+  it('updates an existing card in place, merging monobankId into its metadata', async () => {
+    const { tx, inserts, updates } = makeUpsertTx([{ id: 'h-card' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertMonobank(cardHolding);
+
+    expect(inserts).toHaveLength(0);
+    expect(updates).toEqual([
+      {
+        balanceMinorUnits: 100_000,
+        metadata: { iban: 'UA123', maskedPan: ['537541******1234'], monobankId: 'mono-card-1' },
+      },
+    ]);
+  });
+
+  it('inserts a new card with monobankId merged and sortOrder = max + 1 on a miss', async () => {
+    const { tx, inserts } = makeUpsertTx([], 0);
+    mockTx = tx;
+
+    await holdingsRepo.upsertMonobank(cardHolding);
+
+    expect(inserts[0]).toMatchObject({
+      type: 'card',
+      sortOrder: 1,
+      metadata: { iban: 'UA123', maskedPan: ['537541******1234'], monobankId: 'mono-card-1' },
+    });
   });
 });
 

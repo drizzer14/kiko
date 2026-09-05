@@ -1,5 +1,6 @@
 import type { AccountRow } from '../db/schema';
 import { darkTheme } from '../design-system/theme';
+
 import { defaultAccountColor, defaultHoldingColor } from './entity-colors';
 import { holdingTypes, holdingTypesForAccountKind } from './holding-type';
 

@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `default_category_key` text DEFAULT 'other' NOT NULL;

@@ -1,0 +1,63 @@
+import type { ReactElement } from 'react';
+import { Pressable, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
+
+import Box from '../box';
+import SymbolIcon from '../symbol';
+import Text from '../text';
+
+import type { OptionPillsProps } from './option-pills.props';
+import { styles } from './option-pills.styles';
+
+// A wrapping grid of selectable pills for a small closed set of options (base
+// currency, lock grace period). Only the selected pill paints a raised surface;
+// the rest stay transparent so the glass card behind shows through. Generic over
+// the option type, so it is a plain function component (an `FC` cannot carry a
+// type parameter).
+const OptionPills = <T extends string | number>({
+  options,
+  selected,
+  onSelect,
+  label = String,
+  icon,
+}: OptionPillsProps<T>): ReactElement => {
+  const { theme } = useUnistyles();
+
+  return (
+    <Box style={styles.grid}>
+      {options.map((option) => {
+        const isSelected = selected === option;
+
+        return (
+          <View key={String(option)} style={styles.cell}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              onPress={() => onSelect(option)}
+              // Only the selected option paints a (raised) surface; the others
+              // stay transparent so the glass card behind them shows through.
+              style={[
+                styles.pill,
+                { backgroundColor: isSelected ? theme.colors.surfaceHigh : 'transparent' },
+              ]}
+            >
+              {icon !== undefined && (
+                <SymbolIcon
+                  name={icon(option)}
+                  size={18}
+                  tone={isSelected ? 'textPrimary' : 'textSecondary'}
+                />
+              )}
+
+              <Text variant="body" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
+                {label(option)}
+              </Text>
+            </Pressable>
+          </View>
+        );
+      })}
+    </Box>
+  );
+};
+
+export default OptionPills;

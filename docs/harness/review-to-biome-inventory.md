@@ -17,6 +17,9 @@ go-forward process. Source pass by `kiko:explorer`.
   `noUnusedVariables` / `noUnusedImports`, `noExcessiveCognitiveComplexity`,
   `useImportType` (Biome recommended), and the Semgrep TLS / `Math.random` /
   AsyncStorage-secret / WebView rules.
+- 2026-09-05: `suspicious/noConsole` ("error") added to `biome.json` by the
+  security-and-app-lock plan, mechanizing the "no `console.*` in `src`"
+  convention that previously relied on manual review. No `allow` list.
 
 ## Risk triage (coordinator)
 

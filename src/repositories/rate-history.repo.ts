@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
+
 import { database, write } from '../db/client';
 import { type CurrencyRateHistoryRow, currencyRateHistory } from '../db/schema';
 import type { RateTable } from '../rates/conversion';
+
 import type { Repository } from './repository';
 
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;

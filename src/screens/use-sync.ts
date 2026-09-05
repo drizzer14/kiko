@@ -5,27 +5,36 @@ import { runSync } from '../monobank/sync';
 import { refreshRates } from '../rates/rates-refresh';
 import { ratesRepo } from '../repositories/rates.repo';
 
+export type SyncAction<Input> = {
+  isSyncing: boolean;
+  error: string | undefined;
+  /** Resolves `true` on success, `false` when the run or the rate refresh failed (the failure is in `error`). */
+  sync: (input: Input) => Promise<boolean>;
+};
+
 type UseSync = {
   isSyncing: boolean;
   error: string | undefined;
-  sync: (targetAccountId?: string) => Promise<void>;
+  sync: (targetAccountId?: string) => Promise<boolean>;
 };
 
 /**
- * Encapsulates the shared Sync flow used by Home and Settings: run the Monobank
- * sync, then refresh rates, tracking a syncing flag and surfacing any failure as
- * an error string instead of throwing.
+ * The shared state machine behind every user-triggered sync (Monobank, wallet,
+ * Binance): run the given sync, then refresh rates, tracking a syncing flag and
+ * surfacing any failure as an error string instead of throwing.
  */
-export const useSync = (): UseSync => {
+export const useSyncAction = <Input>(
+  run: (input: Input) => Promise<unknown>,
+): SyncAction<Input> => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
-  const sync = async (targetAccountId?: string): Promise<void> => {
+  const sync = async (input: Input): Promise<boolean> => {
     setIsSyncing(true);
     setError(undefined);
 
     const result = await either<unknown, void>(async () => {
-      await runSync({ targetAccountId });
+      await run(input);
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
     });
@@ -37,8 +46,21 @@ export const useSync = (): UseSync => {
     if (isLeft(result)) {
       const caught = bifold(result);
       setError(caught instanceof Error ? caught.message : String(caught));
+
+      return false;
     }
+
+    return true;
   };
 
   return { isSyncing, error, sync };
+};
+
+/** The Monobank sync action used by Home, Settings and the bank account detail. */
+export const useSync = (): UseSync => {
+  const action = useSyncAction((targetAccountId: string | undefined) =>
+    runSync({ targetAccountId }),
+  );
+
+  return { ...action, sync: (targetAccountId?: string) => action.sync(targetAccountId) };
 };

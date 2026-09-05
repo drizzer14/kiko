@@ -1,8 +1,9 @@
+import { MONOBANK_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
 
 import type { MonobankClientInfo, MonobankStatementItem } from './monobank.types';
 
-const base = 'https://api.monobank.ua';
+const base = MONOBANK_API_ENDPOINT;
 
 /**
  * Read a Monobank JSON body, or throw on a non-ok response. The ok-check is a

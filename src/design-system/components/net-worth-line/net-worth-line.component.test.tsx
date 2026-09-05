@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react-native';
+
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';

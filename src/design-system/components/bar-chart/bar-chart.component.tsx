@@ -1,14 +1,16 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { Svg, Rect } from 'react-native-svg';
+import { Rect, Svg } from 'react-native-svg';
+
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { HoldingType } from '../../../holdings/holding-type';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
 import Box from '../box';
-import Text from '../text';
 import MoneyText from '../money-text';
+import Text from '../text';
+
 import { styles } from './bar-chart.styles';
 
 /**

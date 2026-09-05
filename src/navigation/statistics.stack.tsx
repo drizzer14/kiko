@@ -1,6 +1,8 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+
 import StatisticsScreen from '../screens/statistics/statistics.screen';
+
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { StatisticsStackParamList } from './types';
 

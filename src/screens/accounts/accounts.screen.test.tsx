@@ -1,13 +1,14 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { ActionSheetIOS, StyleSheet } from 'react-native';
-import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
-import { entityGradientStops } from '../../design-system/entity-tint';
+import { entityCardBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
-import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
+
 import AccountsScreen from './accounts.screen';
 
 // A grid card's delete menu is a react-native-gesture-handler long-press, so
@@ -27,6 +28,15 @@ const START = Date.UTC(2024, 0, 1);
 const MOCK_TAB_BAR_HEIGHT = 80;
 jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+}));
+
+// The active-tab re-tap → scroll-to-top hook reads the navigation context, which
+// a standalone screen render lacks; stand it in with a spy so this test can
+// assert the screen hands it its scroll view's ref (the same animated ref the
+// grid auto-scrolls off).
+const mockUseScrollToTopOnTabPress = jest.fn();
+jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -113,6 +123,26 @@ describe('AccountsScreen', () => {
       rates: [],
       settings: [{ baseCurrency: 'UAH' }],
     });
+  });
+
+  it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
+    // Spy on the animated-ref factory so we can prove the ref handed to the
+    // scroll-to-top hook is one the screen actually created — i.e. the shared
+    // ScrollView ref, the same one the sortable grid auto-scrolls off — rather
+    // than any stray object.
+    const reanimated = require('react-native-reanimated') as {
+      useAnimatedRef: () => unknown;
+    };
+    const animatedRefSpy = jest.spyOn(reanimated, 'useAnimatedRef');
+
+    await renderAccounts();
+
+    expect(mockUseScrollToTopOnTabPress).toHaveBeenCalled();
+    const createdRefs = animatedRefSpy.mock.results.map((result) => result.value);
+    const hookRef = mockUseScrollToTopOnTabPress.mock.calls.at(-1)?.[0];
+    expect(createdRefs).toContain(hookRef);
+
+    animatedRefSpy.mockRestore();
   });
 
   it('renders an active account with its name and balance', async () => {
@@ -311,7 +341,7 @@ describe('AccountsScreen', () => {
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
   });
 
-  it('washes each account card with a 45deg gradient of its color on first render', async () => {
+  it('washes each account card with a flat darkened background of its color on first render', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -320,19 +350,17 @@ describe('AccountsScreen', () => {
     });
     const { getByTestId } = await renderAccounts();
 
-    const stops = entityGradientStops(darkTheme.colors.entityColors.blue);
-    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
-    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
+    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
+    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.blue));
   });
 
-  it('washes an uncolored account card with a gradient of its kind default', async () => {
+  it('washes an uncolored account card with a flat darkened background of its kind default', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId } = await renderAccounts();
 
     // A `cash` account with no color reads the cash kind default (khaki).
-    const stops = entityGradientStops(darkTheme.colors.entityColors.khaki);
-    expect(getByTestId('account-card-gradient-from').props.stopColor).toBe(stops.from);
-    expect(getByTestId('account-card-gradient-to').props.stopColor).toBe(stops.to);
+    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
+    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.khaki));
   });
 
   it('draws the shared hairline card border on first render (G2)', async () => {

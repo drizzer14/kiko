@@ -15,6 +15,7 @@ jest.mock('../../rates/history-backfill', () => {
 });
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+
 import { toUtcMidnight } from '../../rates/history-entry';
 import '../../design-system/unistyles';
 import StatisticsScreen from './statistics.screen';
@@ -43,6 +44,14 @@ jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
+// The active-tab re-tap → scroll-to-top hook reads the navigation context, which
+// a standalone screen render lacks; stand it in with a spy so this test can
+// assert the screen hands it the scroll view's own ref.
+const mockUseScrollToTopOnTabPress = jest.fn();
+jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
+}));
+
 type Account = {
   id: string;
   name: string;
@@ -67,6 +76,8 @@ type Transaction = {
   time: number;
   amountMinorUnits: number;
   category?: string | null;
+  mcc?: number | null;
+  counterIban?: string | null;
 };
 type CategoryRow = { key: string; title: string; icon: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -230,6 +241,66 @@ const seedSpendingWithTransfer = (): void =>
     categories: CATEGORIES,
   });
 
+// A UAH card whose stored metadata carries the user's OWN IBAN, so a 4829
+// transfer whose counterIban matches it reads as an own-account transfer.
+const OWN_IBAN = 'UA-OWN-CARD';
+const UAH_OWN_CARD: Holding = {
+  id: 'h4',
+  accountId: 'a',
+  currency: 'UAH',
+  type: 'card',
+  balanceMinorUnits: 0,
+  metadata: { iban: OWN_IBAN },
+  closedAt: null,
+};
+
+const CASH_CATEGORY: CategoryRow = { key: 'cash', title: 'Cash', icon: 'banknote' };
+
+// MCC-classified movements that the pie must drop by rule (not by matched pair):
+//   - a cash-out (mcc 6011), always excluded — categorized 'cash' so its absence
+//     from the pie is observable;
+//   - an own-account transfer (mcc 4829) to the user's OWN card IBAN, excluded;
+//   - a genuine P2P payment (mcc 4829) to a THIRD-PARTY IBAN, KEPT as spending.
+const MCC_MOVEMENTS: Transaction[] = [
+  {
+    id: 'm-cash',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -500_00,
+    category: 'cash',
+    mcc: 6011,
+    counterIban: null,
+  },
+  {
+    id: 'm-own',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -200_00,
+    category: 'transfers',
+    mcc: 4829,
+    counterIban: OWN_IBAN,
+  },
+  {
+    id: 'm-p2p',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -150_00,
+    category: 'transfers',
+    mcc: 4829,
+    counterIban: 'UA-SOMEONE-ELSE',
+  },
+];
+
+const seedSpendingWithMccMovements = (): void =>
+  setLiveData({
+    accounts: [CASH, BANK],
+    holdings: [UAH_HOLDING, USD_HOLDING, UAH_OWN_CARD],
+    rates: [USD_UAH_RATE],
+    transactions: [...EXPENSES, ...MCC_MOVEMENTS],
+    history: HISTORY,
+    categories: [...CATEGORIES, CASH_CATEGORY],
+  });
+
 const renderScreen = (): ReturnType<typeof render> => render(<StatisticsScreen />);
 
 // Open one filter menu, tap an option row, then dismiss via the backdrop.
@@ -252,22 +323,66 @@ const pressFilter = async (
 const ACCOUNT_FILTER = 'statistics-account-filter';
 const CATEGORY_FILTER = 'statistics-category-filter';
 
+// A rendered tree node, as `render(...).toJSON()` returns it (host elements
+// only — composite components are already resolved away).
+type JSONNode = {
+  type: string;
+  props: Record<string, unknown>;
+  children: (JSONNode | string)[] | null;
+};
+
+// Every host node in the tree, in PRE-ORDER (a node before its own children,
+// each child before its next sibling) — the same order the tree paints in on
+// screen, top to bottom. Used to assert one element renders visually ABOVE
+// another without depending on how many host `View`s a design-system
+// component happens to wrap its content in.
+const flattenPreOrder = (node: JSONNode): JSONNode[] => [
+  node,
+  ...(node.children ?? []).flatMap((child) =>
+    typeof child === 'string' ? [] : flattenPreOrder(child),
+  ),
+];
+
+const renderOrder = (root: ReturnType<typeof render>): JSONNode[] => {
+  const tree = root.toJSON();
+  if (tree === null) {
+    return [];
+  }
+
+  return (Array.isArray(tree) ? tree : [tree]).flatMap(flattenPreOrder);
+};
+
 describe('StatisticsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seedFull();
   });
 
-  it('renders the four blocks in order: by-type bar, net-worth line, account pie, category pie', async () => {
+  it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
+    await renderScreen();
+
+    expect(mockUseScrollToTopOnTabPress).toHaveBeenCalled();
+    // The ref handed to the hook is the SAME one the Screen mounts on its
+    // ScrollView — after render it resolves to that live scroll view, so an
+    // active-tab re-tap has a real scrollable to return to the top. The screen
+    // re-renders as its backfill status settles, so read the latest call's ref.
+    const scrollRef = mockUseScrollToTopOnTabPress.mock.calls.at(-1)?.[0];
+    expect(typeof scrollRef?.current?.scrollTo).toBe('function');
+  });
+
+  it('renders the four blocks in order: net-worth line, by-type bar, account pie, category pie', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
       .children.map((child) => (typeof child === 'string' ? undefined : child.props.testID))
       .filter((id): id is string => typeof id === 'string' && id.startsWith('statistics-block-'));
 
+    // The net-worth line leads the screen, ahead of the by-type/category
+    // charts — it is the one chart every other block on this screen relates
+    // back to (a snapshot of the same net worth it plots over time).
     expect(order).toEqual([
-      'statistics-block-bar',
       'statistics-block-line',
+      'statistics-block-bar',
       'statistics-block-pie',
       'statistics-block-category',
     ]);
@@ -346,6 +461,38 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-legend-groceries')).toBeTruthy();
   });
 
+  it('titles the category donut "Expenses by Category", with its filter below the title and above the chart', async () => {
+    seedSpending();
+
+    const root = await renderScreen();
+    const { getByText } = root;
+
+    expect(getByText('Expenses by Category')).toBeTruthy();
+
+    const order = renderOrder(root);
+    const titleIndex = order.findIndex((node) =>
+      (node.children ?? []).includes('Expenses by Category'),
+    );
+    const filterIndex = order.findIndex((node) => node.props.testID === CATEGORY_FILTER);
+    const chartIndex = order.findIndex(
+      (node) => node.props.testID === 'category-pie-arc-groceries',
+    );
+
+    expect(titleIndex).toBeGreaterThan(-1);
+    expect(filterIndex).toBeGreaterThan(titleIndex);
+    expect(chartIndex).toBeGreaterThan(filterIndex);
+  });
+
+  it('shows the summed category total, in the base currency, at the donut center', async () => {
+    seedSpending();
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    // Groceries (300.00) + Transport (100.00) = 400.00 UAH, the base currency.
+    expect(getByTestId('category-pie-center-total')).toBeTruthy();
+    expect(getByText('400.00 ₴')).toBeTruthy();
+  });
+
   it('renders each category filter option with the slice icon, tinted with its color', async () => {
     seedSpending();
 
@@ -374,6 +521,22 @@ describe('StatisticsScreen', () => {
     // matched self-transfer and are dropped — so no "transfers" wedge appears.
     expect(queryByTestId('category-pie-arc-transfers')).toBeNull();
     // Genuine spending in other categories is untouched.
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('drops a cash-out and an OWN-account transfer by mcc/IBAN while keeping a P2P payment', async () => {
+    seedSpendingWithMccMovements();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // The cash-out (mcc 6011) is excluded, so its 'cash' wedge never appears.
+    expect(queryByTestId('category-pie-arc-cash')).toBeNull();
+    // The 4829 transfer to the user's OWN card IBAN is dropped, but the 4829 to
+    // a THIRD-PARTY IBAN stays — so a 'transfers' wedge still exists (from the
+    // kept P2P payment alone).
+    expect(getByTestId('category-pie-arc-transfers')).toBeTruthy();
+    // Genuine spending in the other categories is untouched.
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });

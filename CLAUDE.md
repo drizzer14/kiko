@@ -201,6 +201,14 @@ esbuild <0.25.0, pulled in transitively by drizzle-kit's deprecated
 `@esbuild-kit/core-utils`. Same pattern as the other three: pinned
 via the `overrides` block in `package.json` to `^0.25.12`.
 
+### `.env` is public-only
+
+`react-native-dotenv` inlines every `.env` value into the JS bundle at
+build time, so anything placed there ships in plaintext to every device.
+Only public, non-secret values (a public API URL, a feature flag) belong
+in `.env`. Secrets live in the iOS Keychain (`react-native-keychain`),
+never in `.env`, `.env.local`, the database, or a log.
+
 ### Known dependency CVEs
 
 `check:deep` will continue to flag 2 `image-size` advisories

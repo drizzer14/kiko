@@ -1,1 +1,1 @@
-export { default } from './kiko-calendar.component';
+export { default } from './kiko-calendar';

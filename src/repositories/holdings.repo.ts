@@ -1,9 +1,16 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
+
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type HoldingRow, holdings, transactions } from '../db/schema';
 import { isSyncedHolding } from '../holdings/deletable';
-import { asTermDepositMeta, type DepositContribution } from '../holdings/holding-metadata';
+import {
+  asTermDepositMeta,
+  type DepositContribution,
+  type ExchangeMetadataField,
+  type SyncedMetadataField,
+} from '../holdings/holding-metadata';
+
 import type { Repository } from './repository';
 
 // The next free grid slot for a new holding under one account: one past that
@@ -24,11 +31,50 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>>;
 
 /**
- * A Monobank-sourced holding carries the Monobank account/jar id in its
- * metadata. Upserts match on `metadata->>'monobankId'` so a re-synced
- * bank account updates its balance in place instead of duplicating.
+ * A synced holding carries its source key in `metadata[metadataField]`:
+ * `monobankId` for a Monobank card/jar, `walletAddress` / `binanceAsset` for a
+ * balance provider. Upserts match on that key so a re-sync updates the balance
+ * in place instead of duplicating the holding.
  */
+type SyncedHolding = NewHolding & { metadataField: SyncedMetadataField; metadataKey: string };
+
 type MonobankHolding = NewHolding & { monobankId: string };
+
+export type ExchangeHolding = NewHolding & {
+  metadataField: ExchangeMetadataField;
+  metadataKey: string;
+};
+
+// Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
+// update balance + metadata in place on a hit, insert with a fresh sortOrder on
+// a miss. The JSON path is bound as a parameter (json_extract takes any text
+// expression), so this one helper serves every synced field. The holding's
+// name is written only on insert — a user rename survives a re-sync.
+const upsertByMetadataKey = async (
+  tx: typeof database,
+  { metadataField, metadataKey, metadata, ...rest }: SyncedHolding,
+): Promise<void> => {
+  const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
+  const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
+  const existing = await tx
+    .select({ id: holdings.id })
+    .from(holdings)
+    .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
+    .limit(1);
+  const current = existing.at(0);
+
+  if (current) {
+    await tx
+      .update(holdings)
+      .set({ balanceMinorUnits: rest.balanceMinorUnits ?? 0, metadata: merged })
+      .where(eq(holdings.id, current.id));
+
+    return;
+  }
+
+  const sortOrder = rest.sortOrder ?? (await nextSortOrder(tx, rest.accountId));
+  await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged, sortOrder });
+};
 
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
@@ -146,26 +192,16 @@ export const holdingsRepo = {
       await tx.delete(transactions).where(eq(transactions.holdingId, holdingId));
       await tx.delete(holdings).where(eq(holdings.id, holdingId));
     }),
-  upsertMonobank: ({ monobankId, metadata, ...rest }: MonobankHolding) =>
-    write(async (tx) => {
-      const merged = { ...(metadata as Record<string, unknown> | null), monobankId };
-      const monobankMatch = sql`json_extract(${holdings.metadata}, '$.monobankId') = ${monobankId}`;
-      const existing = await tx
-        .select({ id: holdings.id })
-        .from(holdings)
-        .where(and(eq(holdings.accountId, rest.accountId), monobankMatch))
-        .limit(1);
-      const current = existing.at(0);
-      if (current) {
-        await tx
-          .update(holdings)
-          .set({ balanceMinorUnits: rest.balanceMinorUnits ?? 0, metadata: merged })
-          .where(eq(holdings.id, current.id));
-        return;
-      }
-      const sortOrder = rest.sortOrder ?? (await nextSortOrder(tx, rest.accountId));
-      await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged, sortOrder });
-    }),
+  upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
+    write((tx) =>
+      upsertByMetadataKey(tx, { ...rest, metadataField: 'monobankId', metadataKey: monobankId }),
+    ),
+  /**
+   * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot
+   * per provider, matched on `walletAddress` / `binanceAsset`. No transaction
+   * import — a wallet or exchange gives a number, not a statement.
+   */
+  upsertExchange: (holding: ExchangeHolding) => write((tx) => upsertByMetadataKey(tx, holding)),
   /**
    * Persist a drag-and-drop reorder of one account's holdings grid.
    * `orderedIds` is the full new front-to-back order of that account's visible

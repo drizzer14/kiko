@@ -1,12 +1,13 @@
 import { darkTheme } from './theme';
 
-// A subtle color-tint background for an account/holding card: the entity's
-// own color (one of `theme.colors.entityColors`, see theme.ts) blended at a
-// low, consistent opacity over the card's surface, so a card reads as
-// "this entity's color" without the fully saturated hue pulling attention
-// the way a solid fill would. The account card (accounts.screen) and the
-// holding card (holding-card) both paint through this helper now, as the two
-// stops of the card's 45deg gradient wash — see `entityGradientStops` below.
+// A subtle color-tint background: the entity's own color (one of
+// `theme.colors.entityColors`, see theme.ts) blended at a low, consistent
+// opacity, for any consumer that wants a translucent wash OVER an existing
+// surface rather than a card's own opaque fill. The account card
+// (accounts.screen) and the holding card (holding-card) do NOT paint through
+// this helper — see `entityCardBackground` below, an intentionally separate,
+// fully OPAQUE derivation, and its doc comment for why a translucent tint is
+// the wrong shape for a card background.
 
 // The default tint opacity, in the middle of a deliberately narrow 8-14%
 // band: low enough that a light entity color (`white`, `khaki`) still reads
@@ -22,7 +23,7 @@ const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 // hand-rolling a second copy — every entity-hue derivation lives here, in one
 // place, per the design-system rule. Not exported: nothing outside this
 // module needs a raw RGB triple, only the higher-level derivations built on
-// top of it (`entityTintBackground`, `lightenHex`, etc.). An
+// top of it (`entityTintBackground`, `darkenHex`, etc.). An
 // unparsable input means the caller passed something that was never a theme
 // token — failing loudly beats silently rendering an invisible or wrong tint.
 const parseHex = (hex: string): [red: number, green: number, blue: number] => {
@@ -57,7 +58,7 @@ const isValidHex = (value: string | null | undefined): value is string =>
 
 // The guaranteed-safe swatch `resolveEntityColor` falls back to when BOTH the
 // stored color and the kind/type default are unusable — a neutral gray that
-// always exists on `theme.colors.entityColors`, so a card's gradient can
+// always exists on `theme.colors.entityColors`, so a card's background can
 // never throw or vanish.
 const FALLBACK_ENTITY_COLOR = darkTheme.colors.entityColors.gray;
 
@@ -82,8 +83,8 @@ const FALLBACK_ENTITY_COLOR = darkTheme.colors.entityColors.gray;
 // "a card sometimes has no background at all" actually manifested: not a
 // silently blank tint, but the one throwing card's whole row failing to
 // render. This resolves BOTH gaps and falls back one more level to
-// `FALLBACK_ENTITY_COLOR` so a card's gradient always has a valid pair of
-// stops.
+// `FALLBACK_ENTITY_COLOR` so a card's background always has a valid color to
+// resolve.
 export const resolveEntityColor = (
   storedColor: string | null | undefined,
   typeDefault: string | undefined,
@@ -99,42 +100,51 @@ export const resolveEntityColor = (
   return FALLBACK_ENTITY_COLOR;
 };
 
-// Lightens a `#RRGGBB` hex toward white by `percent` (0-100): each channel
-// moves `percent`% of the remaining distance to 255. Used to derive the
-// second stop of a card's 45deg gradient wash — a subtle shift toward white
-// from the base entity hue, not a desaturated pastel.
-export const lightenHex = (hex: string, percent: number): string => {
+// Darkens a `#RRGGBB` hex toward black by `percent` (0-100): each channel
+// moves `percent`% of the way to 0. Used to derive a card's flat background —
+// a subtle shift toward black from the base entity hue, not a desaturated
+// pastel.
+export const darkenHex = (hex: string, percent: number): string => {
   const [red, green, blue] = parseHex(hex);
-  const lighten = (channel: number): string =>
-    Math.round(channel + (255 - channel) * (percent / 100))
+  const darken = (channel: number): string =>
+    Math.round(channel * (1 - percent / 100))
       .toString(16)
       .padStart(2, '0');
 
-  return `#${lighten(red)}${lighten(green)}${lighten(blue)}`;
+  return `#${darken(red)}${darken(green)}${darken(blue)}`;
 };
 
-// The middle of the requested 8-12% "keep it subtle" lighten band (F3/design
-// review), used for every card's gradient second stop.
-const GRADIENT_LIGHTEN_PERCENT = 10;
-
-// The two rgba() stops for a card's 45deg entity-color gradient wash: the
-// existing flat `entityTintBackground` wash as the first stop, and that same
-// wash over a slightly lighter version of the same hue as the second — same
-// opacity both stops, only the underlying hue shifts, so the gradient reads
-// as one subtle diagonal wash rather than two competing colors.
+// DEVICE BUG (F4): a card used to look at `CARD_DARKEN_PERCENT = 10` fed
+// through `entityTintBackground` at the shared `ENTITY_TINT_OPACITY = 0.1` —
+// darkening a color that is then stamped at 10% opacity only shifts the
+// FINAL on-screen pixel by ~1% (<=2/255 per channel): imperceptible. A card
+// read as plain `theme.colors.surface` no matter which entity color it held.
 //
-// `opacity` is returned alongside `from`/`to` (rather than left for a
-// consumer to re-parse out of the rgba() strings) because `GlassSurface` must
-// hand it to `react-native-svg`'s `<Stop stopOpacity>` prop SEPARATELY from
-// `stopColor` — the library's native gradient extractor masks off whatever
-// alpha channel is embedded in a `stopColor` rgba() string and substitutes
-// `stopOpacity` (1, i.e. fully opaque, when absent) instead, so an rgba()
-// string alone silently renders fully opaque regardless of its own alpha.
-// See `GradientWash` in `glass-surface.component.tsx`.
-export const entityGradientStops = (
-  colorHex: string,
-): { from: string; to: string; opacity: number } => ({
-  from: entityTintBackground(colorHex),
-  to: entityTintBackground(lightenHex(colorHex, GRADIENT_LIGHTEN_PERCENT)),
-  opacity: ENTITY_TINT_OPACITY,
-});
+// Fixed by dropping the translucency entirely for the card path: this darken
+// percent alone now has to do the FULL job of turning a bright, saturated
+// swatch (`white`, `yellow`, ...) into a card-toned color, because the result
+// is painted OPAQUE (see `entityCardBackground` below) with nothing further
+// diluting it. 90% is deliberately near-black — pulling `#FFFFFF` down to
+// `#191919` and `#FFD60A` down to `#191501`, for example — so every swatch
+// resolves into a near-black card tone that still carries just a hint of the
+// entity hue, with white body text comfortably legible on top, while staying
+// far enough apart per swatch to read as "this entity's color". Raised from
+// an initial 55% (device review: still read too light), to 70% (device
+// review: plainly darker), to 90% (device review: near-black with a hint of
+// hue, the chosen target).
+const CARD_DARKEN_PERCENT = 90;
+
+// A card's flat, OPAQUE background: the resolved entity hue, darkened
+// (`CARD_DARKEN_PERCENT`) and used as-is — a plain `#RRGGBB`, not passed
+// through `entityTintBackground`'s alpha compositing. A card's wash is
+// painted as a `View` sibling over an already-opaque base (the flat themed
+// surface on the fallback path, the Liquid Glass material on the glass
+// path — see `GlassSurface`), so an opaque fill FULLY replaces whatever is
+// underneath: the visible result is identical on both paths and cannot be
+// diluted by a base layer it never blends with. This replaced a 45deg
+// two-stop gradient wash (design review: a plain darker solid reads calmer
+// and is simpler to reason about than a diagonal blend of two
+// near-identical hues), then a translucent flat wash (the F4 device bug
+// above). Feed the result straight to `GlassSurface`'s `tint` prop.
+export const entityCardBackground = (colorHex: string): string =>
+  darkenHex(colorHex, CARD_DARKEN_PERCENT);

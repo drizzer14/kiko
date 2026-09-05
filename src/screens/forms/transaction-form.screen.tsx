@@ -1,15 +1,15 @@
 import { type FC, useEffect, useLayoutEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
+
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '../../categories/category-display';
 import { type Currency, currencyScale } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { groupAmount } from './amount-format';
-import CategoryField from './category-field';
-import ChipRow from './chip-row';
-import DateField from './date-field';
 import { useLiveQuery } from '../../db/use-live-query';
 import BottomSheet from '../../design-system/components/bottom-sheet';
 import Box from '../../design-system/components/box';
@@ -23,6 +23,12 @@ import { categoriesRepo } from '../../repositories/categories.repo';
 import { categoryOverridesRepo } from '../../repositories/category-overrides.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
+
+import { groupAmount } from './amount-format';
+import CategoryField from './category-field';
+import ChipRow from './chip-row';
+import DateField from './date-field';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
@@ -90,7 +96,14 @@ const resolvePendingCategory = (
     return null;
   }
 
-  const display = resolveCategoryDisplay(pendingOverride.category, categoryByKey);
+  // `pendingOverride.category` is always a user-PICKED, valid category key, so
+  // the default-category fallback is never consulted here — the shared constant
+  // is passed only to satisfy the resolver's signature (no settings read needed).
+  const display = resolveCategoryDisplay(
+    pendingOverride.category,
+    categoryByKey,
+    DEFAULT_CATEGORY_KEY,
+  );
 
   return {
     icon: display.icon,

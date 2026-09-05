@@ -13,6 +13,7 @@ jest.mock('../db/client', () => {
 });
 
 import type { CurrencyRateHistoryRow } from '../db/schema';
+
 import { earliestRateTable, rateHistoryRepo, rateTableAt } from './rate-history.repo';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;

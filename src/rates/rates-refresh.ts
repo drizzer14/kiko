@@ -1,5 +1,6 @@
 import type { Currency } from '../currency/currency';
 import { ratesRepo } from '../repositories/rates.repo';
+
 import { fetchBTCPrice } from './coingecko';
 import type { RateEntry } from './conversion';
 import { fetchFiatRates } from './monobank-rates';

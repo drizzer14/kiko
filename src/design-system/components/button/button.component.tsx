@@ -1,7 +1,9 @@
 import type { FC } from 'react';
 import { Pressable, Text as RNText } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import SymbolIcon from '../symbol';
+
 import type { ButtonProps } from './button.props';
 import { styles } from './button.styles';
 

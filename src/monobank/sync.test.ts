@@ -3,6 +3,7 @@
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+
 import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
@@ -37,6 +38,20 @@ describe('mapStatementItem', () => {
     const transaction = mapStatementItem(groceryItem, 'holding-1');
     expect(groceryItem.mcc).toBe(5411);
     expect(transaction.category).toBe('Groceries');
+  });
+
+  it('persists the counterparty IBAN when the statement item carries one', () => {
+    const withCounterIban = statement[2];
+    const transaction = mapStatementItem(withCounterIban, 'holding-1');
+    expect(withCounterIban.counterIban).toBe('UA733220010000026201112223334');
+    expect(transaction.counterIban).toBe('UA733220010000026201112223334');
+  });
+
+  it('defaults counterIban to null when the statement item has none', () => {
+    const withoutCounterIban = statement[0];
+    const transaction = mapStatementItem(withoutCounterIban, 'holding-1');
+    expect(withoutCounterIban.counterIban).toBeUndefined();
+    expect(transaction.counterIban).toBeNull();
   });
 
   it('keeps an existing comment', () => {

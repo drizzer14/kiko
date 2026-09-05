@@ -1,5 +1,6 @@
 import type { HoldingRow } from '../db/schema';
 import type { RateTable } from '../rates/conversion';
+
 import { type BreakdownHolding, buildTypeBreakdown, type TypeSlice } from './type-breakdown';
 
 const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'type'>): BreakdownHolding => ({

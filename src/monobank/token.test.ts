@@ -11,6 +11,7 @@ jest.mock('react-native-keychain', () => {
   const store: Record<string, { username: string; password: string }> = {};
   const key = (options?: { service?: string }): string => options?.service ?? 'default';
   return {
+    ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
     setGenericPassword: jest.fn(
       async (username: string, password: string, options?: { service?: string }) => {
         store[key(options)] = { username, password };
@@ -89,11 +90,43 @@ describe('migrateLegacyToken', () => {
     // The copy write happened exactly once (first run only).
     expect(Keychain.setGenericPassword).toHaveBeenCalledWith('monobank', 'legacy-token', {
       service: NEW_SERVICE,
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
     });
     expect(
       (Keychain.setGenericPassword as jest.Mock).mock.calls.filter(
         ([, , options]) => options?.service === NEW_SERVICE,
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe('monobank token hardening', () => {
+  it('stores the token readable only while unlocked and never migrated off-device', async () => {
+    await saveToken('secret-token');
+
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith('monobank', 'secret-token', {
+      service: NEW_SERVICE,
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
+    });
+  });
+
+  it('adds no accessControl (a biometric prompt would break the silent auto-sync read)', async () => {
+    await saveToken('secret-token');
+
+    const [, , options] = (Keychain.setGenericPassword as jest.Mock).mock.calls.at(-1) ?? [];
+
+    expect(options).not.toHaveProperty('accessControl');
+  });
+
+  it('hardens the token when migrating it from the legacy service', async () => {
+    await Keychain.setGenericPassword('monobank', 'legacy-token', { service: LEGACY_SERVICE });
+
+    await migrateLegacyToken();
+
+    expect(Keychain.setGenericPassword).toHaveBeenLastCalledWith('monobank', 'legacy-token', {
+      service: NEW_SERVICE,
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
+    });
+    expect(await readToken()).toBe('legacy-token');
   });
 });

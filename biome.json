@@ -20,7 +20,18 @@
   "assist": {
     "actions": {
       "source": {
-        "organizeImports": "off"
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              [":ALIAS:", ":BUN:", ":NODE:", ":PACKAGE:", ":PACKAGE_WITH_PROTOCOL:", ":URL:"],
+              ":BLANK_LINE:",
+              "../**",
+              ":BLANK_LINE:",
+              ["./**", "."]
+            ]
+          }
+        }
       }
     }
   },
@@ -28,7 +39,7 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "suspicious": { "noExplicitAny": "error" },
+      "suspicious": { "noExplicitAny": "error", "noConsole": "error" },
       "correctness": {
         "noUnusedVariables": "error",
         "noUnusedImports": "error"

@@ -1,11 +1,13 @@
 import type { FC } from 'react';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+
 import type { IconPickerModalProps } from './icon-picker-modal.props';
 import { styles } from './icon-picker-modal.styles';
 
@@ -191,12 +193,17 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { theme } = useUnistyles();
 
   return (
+    // `scrollable={false}`: the Remove/Cancel header below must stay pinned
+    // above the grid regardless of scroll position — BottomSheet's shared
+    // ScrollView (F5 fix) would otherwise sweep the header into the same
+    // scrollable region as the grid below it, along with nesting a second
+    // same-axis ScrollView around this component's own.
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
       animationType="slide"
-      maxHeight="80%"
       backdropAccessibilityLabel="Dismiss icon picker"
+      scrollable={false}
     >
       <Box direction="row" gap={3} style={styles.header}>
         <Text variant="heading">Choose Icon</Text>

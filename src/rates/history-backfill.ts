@@ -1,6 +1,7 @@
 import type { Currency } from '../currency/currency';
 import type { CurrencyRateHistoryRow } from '../db/schema';
 import { rateHistoryRepo } from '../repositories/rate-history.repo';
+
 import { fetchBTCHistory } from './coingecko-history';
 import { type HistoryRateEntry, toUtcMidnight } from './history-entry';
 import { fetchNbuHistory } from './nbu-history';
@@ -40,7 +41,9 @@ export type BackfillDeps = {
 export const deriveLastBackfilledDay = (
   rows: Pick<CurrencyRateHistoryRow, 'day'>[],
 ): number | null =>
-  rows.reduce<number | null>((max, row) => (max === null || row.day > max ? row.day : max), null);
+  rows.reduce<number | null>((max, row) => {
+    return max === null || row.day > max ? row.day : max;
+  }, null);
 
 /**
  * The ascending list of UTC-midnight days still to fill: from `earliestDay`
@@ -199,6 +202,8 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // Advance the cursor only to the newest day actually stored (usually today,
   // but earlier if the latest days had no anchor yet), so a later pass resumes
   // and fills the remaining gap instead of assuming today is done.
-  const lastPersisted = rows.reduce((max, row) => (row.day > max ? row.day : max), rows[0].day);
+  const lastPersisted = rows.reduce((max, row) => {
+    return row.day > max ? row.day : max;
+  }, rows[0].day);
   return { state: 'complete', lastDay: lastPersisted };
 };

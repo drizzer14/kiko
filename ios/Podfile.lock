@@ -81,6 +81,7 @@ PODS:
     - Yoga
   - op-sqlite (18.1.4):
     - hermes-engine
+    - OpenSSL-Universal
     - RCTRequired
     - RCTTypeSafety
     - React-bridging
@@ -100,6 +101,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - OpenSSL-Universal (3.6.2000)
   - RCT-Folly (2024.11.18.00):
     - RCT-Folly/Default (= 2024.11.18.00)
     - ReactNativeDependencies
@@ -1965,6 +1967,27 @@ PODS:
     - React-perflogger (= 0.87.1)
     - React-utils (= 0.87.1)
     - ReactNativeDependencies
+  - ReactNativeBiometrics (0.16.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - ReactNativeDependencies (0.87.1)
   - RNCClipboard (1.16.3):
     - hermes-engine
@@ -2418,6 +2441,7 @@ DEPENDENCIES:
   - ReactAppDependencyProvider (from `build/generated/ios/ReactAppDependencyProvider`)
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - "ReactNativeBiometrics (from `../node_modules/@sbaiahmed1/react-native-biometrics`)"
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
@@ -2433,6 +2457,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - OpenSSL-Universal
     - SwiftUIIntrospect
 
 EXTERNAL SOURCES:
@@ -2611,6 +2636,8 @@ EXTERNAL SOURCES:
     :path: build/generated/ios/ReactCodegen
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  ReactNativeBiometrics:
+    :path: "../node_modules/@sbaiahmed1/react-native-biometrics"
   ReactNativeDependencies:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCClipboard:
@@ -2647,7 +2674,8 @@ SPEC CHECKSUMS:
   LiquidGlass: c26730b4e5ee25c451cbf4ddeac695ba675d4e72
   NitroModules: a49338b7145841b30c4354b3406550e93b135688
   NitroSfsymbols: 1c27934f4afbfa69556408f6b2028484abccaa1d
-  op-sqlite: 9dc63e5d13af9b07ff2587940b99df2df51d7517
+  op-sqlite: 66d722d0e3b3096a226f515a13f870030f11f431
+  OpenSSL-Universal: ecee7b138fa75a74ecf00d7ffd248fb584739b9e
   RCT-Folly: d173e541eeb78cad5c81011c1bbf62d5b86b9778
   RCTDeprecation: 057ea6e16ea6d380a2d7806715a200bdbea820db
   RCTRequired: eea08534f94489887bbc67e2fee917096bdc9820
@@ -2724,6 +2752,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 531dee09fa5ac21ef8a236a0c4767c3b2f9db977
   ReactCodegen: 9c427052a48db15ccdc3f96c2747fcf549f9fdd3
   ReactCommon: 59c2e19772dfac038571c93ed25fcb9c3b318227
+  ReactNativeBiometrics: 0bb07c42709936f7bc750a020d8838e547178a55
   ReactNativeDependencies: 94c922c39e0e6150ee9ad05e2ca1946e0ef55783
   RNCClipboard: 93375695275b24a6738ea21e78cb865e1ed869d9
   RNGestureHandler: 91b8290b2aa3724db5ebba0add1003aedd9c8ba4

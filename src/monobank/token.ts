@@ -9,8 +9,23 @@ const service = 'kiko.monobank.token';
  */
 const LEGACY_SERVICE = 'pff.monobank.token';
 
+/**
+ * Storage-at-rest policy for the token: readable only while the device is
+ * unlocked, and bound to this device (never restored onto another one from an
+ * encrypted backup). Deliberately NO `accessControl` — a biometric prompt on
+ * this item would break the silent background auto-sync read
+ * (`useAutoSync` -> `readToken`). The app-wide biometric gate is `LockGate`
+ * (`src/auth`), not the Keychain item. A token saved before this shipped keeps
+ * its old (default) policy until the user reconnects, or until it is migrated
+ * across from the legacy service below — see docs/security/README.md.
+ */
+const HARDENED: Keychain.SetOptions = {
+  service,
+  accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
 export const saveToken = async (token: string): Promise<void> => {
-  await Keychain.setGenericPassword('monobank', token, { service });
+  await Keychain.setGenericPassword('monobank', token, HARDENED);
 };
 
 export const readToken = async (): Promise<string | undefined> => {
@@ -44,6 +59,6 @@ export const migrateLegacyToken = async (): Promise<void> => {
     return;
   }
 
-  await Keychain.setGenericPassword(legacy.username, legacy.password, { service });
+  await Keychain.setGenericPassword(legacy.username, legacy.password, HARDENED);
   await Keychain.resetGenericPassword({ service: LEGACY_SERVICE });
 };

@@ -1,7 +1,9 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+
 import CategoriesScreen from '../screens/settings/categories.screen';
 import SettingsScreen from '../screens/settings/settings.screen';
+
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { SettingsStackParamList } from './types';
 

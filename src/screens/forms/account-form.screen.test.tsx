@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
+
 import AccountFormScreen from './account-form.screen';
 
 const { entityColors } = darkTheme.colors;

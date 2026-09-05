@@ -1,7 +1,9 @@
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
-import { buildCategoryDisplayMap } from '../../categories/category-display';
-import { excludeSelfTransfers } from '../../statistics/exclude-self-transfers';
+import type { ScrollView } from 'react-native';
+
+import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
+import { Money } from '../../currency/money';
 import { DAY_MS } from '../../dates/duration';
 import { useLiveQuery } from '../../db/use-live-query';
 import BarChart from '../../design-system/components/bar-chart';
@@ -13,6 +15,8 @@ import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { ibanOf } from '../../holdings/holding-metadata';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
@@ -35,10 +39,16 @@ import {
   type CategorySlice,
 } from '../../statistics/category-breakdown';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
+import { internalTransferTxIds } from '../../statistics/internal-transfers';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
+import {
+  descriptionExcludedTransferTxIds,
+  mccExcludedTransferTxIds,
+} from '../../statistics/transfer-exclusion';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+
 import { styles } from './statistics.styles';
 
 // UTC-midnight of the LOCAL calendar day a timestamp falls on. The date field's
@@ -106,18 +116,35 @@ const groupByHolding = (
   return byHolding;
 };
 
+// The category-spending donut's ring is thinner than the default (a higher
+// hole-radius-to-outer-radius ratio) than PieChart's own default, opening
+// enough center room for its total figure — see `centerTotal` below. The
+// account-contribution pie keeps PieChart's default ring; its own total
+// already reads elsewhere on this screen (the by-type bar / net-worth line),
+// so it renders no center total and has no need to thin its ring for one.
+const CATEGORY_DONUT_INNER_RATIO = 0.78;
+
 /**
- * The Statistics tab: three blocks, in order — a by-type horizontal bar chart of
- * current value, a converted net-worth line over time (historical rates), and a
- * per-account pie of current net worth. A shared account multi-select and a date
- * range scope all three; the date range additionally bounds the line's window.
- * The bar and pie are "now" snapshots on the current rate table and render
- * immediately; the line reads the historical rate-history table and shows a
- * loading state while an incremental, non-blocking backfill fills it in. All the
- * chart math lives in `src/statistics/`; this screen only shapes repository rows,
- * holds the filter state, and drives the backfill.
+ * The Statistics tab: four blocks, in order — a converted net-worth line over
+ * time (historical rates), a by-type horizontal bar chart of current value, a
+ * per-account pie of current net worth, and an "Expenses by Category" donut. A
+ * shared account multi-select and a date range scope the first three; the date
+ * range additionally bounds the line's window. The category donut has its own,
+ * separate category filter (title, then filter, then chart) and shows the
+ * summed spend at its center. The bar and pies are "now" snapshots on the
+ * current rate table and render immediately; the line reads the historical
+ * rate-history table and shows a loading state while an incremental,
+ * non-blocking backfill fills it in. All the chart math lives in
+ * `src/statistics/`; this screen only shapes repository rows, holds the filter
+ * state, and drives the backfill.
  */
 const StatisticsScreen: FC = () => {
+  // Re-tapping the Statistics tab while already on it returns this scrolling
+  // page to the top (the standard iOS active-tab re-tap), driven off the native
+  // tab navigator's `tabPress`.
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnTabPress(scrollRef);
+
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -153,6 +180,9 @@ const StatisticsScreen: FC = () => {
   };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  // The configurable catch-all: a null/empty category folds into this category's
+  // slice. Read from settings (seeded to `other`), passed into the breakdown.
+  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   // `now` is fixed at mount: the default line window, the backfill's "today", and
   // every memo below key on it, and a fresh `Date.now()` each render would defeat
@@ -166,13 +196,13 @@ const StatisticsScreen: FC = () => {
   // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
-    const filteredAccounts = visibleAccounts.filter(
-      (account) => selectedAccounts.size === 0 || selectedAccounts.has(account.name),
-    );
+    const filteredAccounts = visibleAccounts.filter((account) => {
+      return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
+    });
     const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
-    const visibleHoldings = holdings.filter(
-      (holding) => holding.closedAt == null && filteredAccountIds.has(holding.accountId),
-    );
+    const visibleHoldings = holdings.filter((holding) => {
+      return holding.closedAt == null && filteredAccountIds.has(holding.accountId);
+    });
 
     return { visibleAccounts, filteredAccounts, visibleHoldings };
   }, [accounts, holdings, selectedAccounts]);
@@ -287,30 +317,87 @@ const StatisticsScreen: FC = () => {
   // The category display map is built here so a rename flows straight through.
   const categoryByKey = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
 
-  const breakdownTransactions = useMemo<BreakdownTransaction[]>(() => {
+  // Join each transaction to its (account-scoped, open) holding for the currency
+  // its amount is in — a transaction row has no currency of its own — dropping
+  // any whose holding is filtered out. BOTH signs are kept so the internal-
+  // transfer matcher below can see the credit legs.
+  const transactionsWithCurrency = useMemo(() => {
     const currencyByHolding = new Map(
       filtered.visibleHoldings.map((holding) => [holding.id, holding.currency]),
     );
 
-    // Card-to-card SELF-TRANSFERS (a matched -X / +X pair across two of the
-    // user's own holdings) are not spending, so drop both legs before the
-    // category breakdown consumes them. Scoped to THIS chart only — every other
-    // view (net worth, by-type, account pie) still sees the full ledger.
-    return excludeSelfTransfers(transactions).flatMap((transaction) => {
+    return transactions.flatMap((transaction) => {
       const currency = currencyByHolding.get(transaction.holdingId);
       if (currency === undefined) {
         return [];
       }
 
-      return [
-        {
-          category: transaction.category,
-          amountMinorUnits: transaction.amountMinorUnits,
-          currency,
-        },
-      ];
+      return [{ ...transaction, currency }];
     });
   }, [transactions, filtered]);
+
+  // INTERNAL TRANSFERS (a matched -X / +X pair across two of the user's own
+  // holdings, same currency, near-simultaneous) are not spending. Their debit
+  // legs are dropped from the category breakdown by id below; the credit legs
+  // are already ignored as income. Scoped to THIS chart only — every other view
+  // (net worth, by-type, account pie) still sees the full ledger.
+  const internalTransferIds = useMemo(
+    () => internalTransferTxIds(transactionsWithCurrency),
+    [transactionsWithCurrency],
+  );
+
+  const breakdownTransactions = useMemo<BreakdownTransaction[]>(
+    () =>
+      transactionsWithCurrency.map((transaction) => ({
+        id: transaction.id,
+        category: transaction.category,
+        amountMinorUnits: transaction.amountMinorUnits,
+        mcc: transaction.mcc,
+        counterIban: transaction.counterIban,
+        description: transaction.description,
+        currency: transaction.currency,
+      })),
+    [transactionsWithCurrency],
+  );
+
+  // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
+  // bank transfer to one of these is an own-account transfer (excluded from the
+  // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
+  const ownIbans = useMemo(() => {
+    const ibans = new Set<string>();
+    for (const holding of holdings) {
+      const iban = ibanOf(holding.metadata);
+      if (iban !== undefined) {
+        ibans.add(iban);
+      }
+    }
+
+    return ibans;
+  }, [holdings]);
+
+  // Cash-outs and OWN-account transfers, classified by mcc (+ counterIban for
+  // the ambiguous 4829). This catches the single-legged movements the matched-
+  // pair matcher structurally cannot (a cash-out has no synced credit leg).
+  const mccExcludedIds = useMemo(
+    () => mccExcludedTransferTxIds(breakdownTransactions, ownIbans),
+    [breakdownTransactions, ownIbans],
+  );
+
+  // Internal transfers that carry a plain description instead of a transfer MCC
+  // (e.g. "Поповнення депозиту", "На чорну картку", the FOP top-up). The mcc
+  // rule structurally cannot see these; the description rule catches them.
+  const descriptionExcludedIds = useMemo(
+    () => descriptionExcludedTransferTxIds(breakdownTransactions),
+    [breakdownTransactions],
+  );
+
+  // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
+  // and the cheap secondary matched-pair matcher. A row is dropped from the
+  // spending pie if ANY rule catches it.
+  const excludedTransactionIds = useMemo(
+    () => new Set([...internalTransferIds, ...mccExcludedIds, ...descriptionExcludedIds]),
+    [internalTransferIds, mccExcludedIds, descriptionExcludedIds],
+  );
 
   // The unfiltered breakdown of every spending category: it feeds the filter
   // menu's option list, and — translated below — the exclusion the pie applies.
@@ -321,8 +408,17 @@ const StatisticsScreen: FC = () => {
         categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
+        defaultCategoryKey,
+        excludedTransactionIds,
       }),
-    [breakdownTransactions, categoryByKey, rateTable, baseCurrency],
+    [
+      breakdownTransactions,
+      categoryByKey,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      excludedTransactionIds,
+    ],
   );
 
   // The FilterMenu speaks category TITLES (the human-readable label a slug
@@ -363,9 +459,32 @@ const StatisticsScreen: FC = () => {
         categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
+        defaultCategoryKey,
         excludedCategories: excludedCategoryKeys,
+        excludedTransactionIds,
       }),
-    [breakdownTransactions, categoryByKey, rateTable, baseCurrency, excludedCategoryKeys],
+    [
+      breakdownTransactions,
+      categoryByKey,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      excludedCategoryKeys,
+      excludedTransactionIds,
+    ],
+  );
+
+  // The donut's own center figure: every VISIBLE slice's spend summed back
+  // together, in the base currency — the total the ring's wedges add up to
+  // right now, so it always reconciles with what is actually drawn (narrowed
+  // by the category filter the same way the wedges are).
+  const categoryTotal = useMemo(
+    () =>
+      Money.of(
+        baseCurrency,
+        categorySlices.reduce((sum, slice) => sum + slice.amount, 0),
+      ),
+    [categorySlices, baseCurrency],
   );
 
   // One option per visible account, each carrying its seeded icon + resolved
@@ -378,7 +497,7 @@ const StatisticsScreen: FC = () => {
   }));
 
   return (
-    <Screen scroll>
+    <Screen scroll scrollableRef={scrollRef}>
       <Box gap={4} testID="statistics-blocks">
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
@@ -399,16 +518,6 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-bar" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              By Type
-            </Text>
-
-            <BarChart data={typeSlices} baseCurrency={baseCurrency} />
-          </Box>
-        </GlassSurface>
-
         <GlassSurface testID="statistics-block-line" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
@@ -424,6 +533,16 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
+        <GlassSurface testID="statistics-block-bar" padding={4} radius="lg">
+          <Box gap={3}>
+            <Text variant="heading" style={styles.cardTitle}>
+              By Type
+            </Text>
+
+            <BarChart data={typeSlices} baseCurrency={baseCurrency} />
+          </Box>
+        </GlassSurface>
+
         <GlassSurface testID="statistics-block-pie" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
@@ -436,6 +555,10 @@ const StatisticsScreen: FC = () => {
 
         <GlassSurface testID="statistics-block-category" padding={4} radius="lg">
           <Box gap={3}>
+            <Text variant="heading" style={styles.cardTitle}>
+              Expenses by Category
+            </Text>
+
             <Box direction="row" gap={3} style={styles.filterBar}>
               <FilterMenu
                 label="Categories"
@@ -451,6 +574,8 @@ const StatisticsScreen: FC = () => {
               baseCurrency={baseCurrency}
               testID="category-pie"
               emptyLabel="No Spending To Show"
+              innerRatio={CATEGORY_DONUT_INNER_RATIO}
+              centerTotal={categoryTotal}
             />
           </Box>
         </GlassSurface>

@@ -1,4 +1,5 @@
 import { Money } from '../currency/money';
+
 import { convert } from './conversion';
 import { fetchFiatRates } from './monobank-rates';
 

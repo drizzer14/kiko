@@ -5,9 +5,9 @@ import { Alert, type ScrollView } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
+
 import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
-import { formatDateTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -18,6 +18,7 @@ import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
@@ -27,23 +28,22 @@ import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
-import CardContextMenu from '../card-context-menu.component';
-import EditHeaderButton from '../edit-header-button.component';
-import EntityAmountHeader from '../entity-amount-header.component';
-import EntityHeaderIcon from '../entity-header-icon.component';
+import CardContextMenu from '../card-context-menu';
+import EditHeaderButton from '../edit-header-button';
+import EntityAmountHeader from '../entity-amount-header';
+import EntityHeaderIcon from '../entity-header-icon';
 import { onGridDragEnd } from '../grid-interaction';
 import { useSync } from '../use-sync';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
+
 import { styles } from './account-detail.styles';
-import HoldingCard from './holding-card.component';
-import MonobankTokenField from './monobank-token-field.component';
+import CryptoSyncSection from './crypto-sync-section';
+import { formatLastSyncAt } from './format-last-sync';
+import HoldingCard from './holding-card';
+import MonobankTokenField from './monobank-token-field';
 
 // The token input now lives on this screen, so a missing token points the user
 // up to that field rather than off to global Settings.
 const NO_TOKEN_MESSAGE = 'Add your Monobank token above before connecting.';
-
-const formatLastSyncAt = (lastSyncAt: number | null): string =>
-  lastSyncAt === null ? 'Never' : formatDateTime(lastSyncAt);
 
 // Connect (mark institution + first import) and Sync now (re-import) are the
 // same action; only the label and glyph differ. A link glyph while the action
@@ -68,12 +68,17 @@ const actionPresentation = (
 // the card and on this header can never diverge. A bare `color ?? default` here
 // let an empty-string stored color (neither null nor undefined) through, tinting
 // the header with an invalid empty color while the card showed the kind default.
-// Extracted so the fallbacks don't count against the screen component's
-// cognitive-complexity budget.
-const accountIdentity = (account: AccountRow): { icon: string; color: string } => ({
-  icon: account.icon ?? accountKindSymbol[account.kind],
-  color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-});
+// Extracted so the fallbacks — and the not-yet-loaded (undefined) case — don't
+// count against the screen component's cognitive-complexity budget.
+const accountIdentity = (
+  account: AccountRow | undefined,
+): { icon: string; color: string } | undefined =>
+  account === undefined
+    ? undefined
+    : {
+        icon: account.icon ?? accountKindSymbol[account.kind],
+        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+      };
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -99,7 +104,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The account's effective icon + color, rendered as the identity glyph beside
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
-  const identity = account ? accountIdentity(account) : undefined;
+  const identity = accountIdentity(account);
   useLayoutEffect(() => {
     navigation.setOptions({
       title: accountName,
@@ -130,6 +135,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const scrollableRef = useAnimatedRef<ScrollView>();
 
   const isBankAccount = account?.kind === 'bank';
+  const isCryptoAccount = account?.kind === 'crypto';
   const isConnectedToMonobank = account?.institution === 'monobank';
   // The single-connection invariant: another account already holds the one
   // Monobank connection, so this one may not connect a second.
@@ -231,6 +237,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             <CurrencyBreakdown items={breakdown} />
           </Box>
         </Box>
+
+        {isCryptoAccount && account && (
+          <>
+            <Box style={styles.divider} />
+            <CryptoSyncSection account={account} holdings={activeHoldings} />
+          </>
+        )}
 
         {showActionButton && <Box style={styles.divider} />}
 

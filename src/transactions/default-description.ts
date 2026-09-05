@@ -7,4 +7,6 @@
 export const defaultTransactionDescription = (
   holdingName: string,
   amountMinorUnits: number,
-): string => `${holdingName} ${amountMinorUnits < 0 ? 'expense' : 'income'}`;
+): string => {
+  return `${holdingName} ${amountMinorUnits < 0 ? 'expense' : 'income'}`;
+};

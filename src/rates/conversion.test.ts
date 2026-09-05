@@ -1,4 +1,5 @@
 import { Money } from '../currency/money';
+
 import { convert, netWorth } from './conversion';
 
 const rates = {

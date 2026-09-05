@@ -1,6 +1,6 @@
-import { useCallback, useRef } from 'react';
 import type { ParamListBase } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useRef } from 'react';
 
 // The stacks use createNativeStackNavigator, so the iOS interactive back-swipe
 // is a NATIVE pop gesture — a JS PanResponder inside a SwipeableRow cannot

@@ -1,5 +1,6 @@
 import { buildCategoryDisplayMap } from '../categories/category-display';
 import { darkTheme } from '../design-system/theme';
+
 import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
@@ -11,11 +12,16 @@ const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
   { key: 'transport', title: 'Transport', icon: 'car' },
   { key: 'salary', title: 'Salary', icon: 'banknote' },
+  { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
 ]);
 
 const tx = (over: Partial<BreakdownTransaction>): BreakdownTransaction => ({
+  id: 'tx',
   category: 'groceries',
   amountMinorUnits: -10_00,
+  mcc: null,
+  counterIban: null,
+  description: '',
   currency: 'UAH',
   ...over,
 });
@@ -31,6 +37,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     // transport (40_00) sorts before groceries (50_00)? No: groceries 50_00 > transport 40_00.
@@ -48,6 +55,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     expect(slices.map((slice) => slice.key)).toEqual(['groceries']);
@@ -63,6 +71,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     expect(slices[0].share).toBeCloseTo(0.75, 6);
@@ -76,6 +85,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: { 'USD:UAH': 40 },
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     // 10 USD * 40 = 400 UAH = 400_00 minor units.
@@ -91,12 +101,13 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     expect(slices.map((slice) => slice.key)).toEqual(['transport']);
   });
 
-  it('groups a null category under a stable "uncategorized" key with the neutral display', () => {
+  it('folds null-category spending into the default category (no separate uncategorized bucket)', () => {
     const slices = buildCategoryBreakdown({
       transactions: [
         tx({ category: null, amountMinorUnits: -10_00 }),
@@ -105,12 +116,43 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     expect(slices).toHaveLength(1);
-    expect(slices[0].key).toBe('uncategorized');
-    expect(slices[0].title).toBe('Uncategorized');
+    expect(slices[0].key).toBe('other');
+    expect(slices[0].title).toBe('Other');
     expect(slices[0].amount).toBe(15_00);
+  });
+
+  it('merges null-category spending into the SAME slice as explicit default-category spending', () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [
+        tx({ category: 'other', amountMinorUnits: -10_00 }),
+        tx({ category: null, amountMinorUnits: -5_00 }),
+      ],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+    });
+
+    expect(slices).toHaveLength(1);
+    expect(slices[0].key).toBe('other');
+    expect(slices[0].amount).toBe(15_00);
+  });
+
+  it('folds null spending into the CONFIGURED default key, not a hardcoded one', () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [tx({ category: null, amountMinorUnits: -10_00 })],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'salary',
+    });
+
+    expect(slices[0].key).toBe('salary');
+    expect(slices[0].title).toBe('Salary');
   });
 
   it('resolves each slice title and icon through the display map', () => {
@@ -119,6 +161,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     expect(slices[0].title).toBe('Transport');
@@ -134,6 +177,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH' as const,
+      defaultCategoryKey: 'other' as const,
     };
 
     const slices = buildCategoryBreakdown({
@@ -143,6 +187,24 @@ describe('buildCategoryBreakdown', () => {
 
     expect(slices.map((slice) => slice.key)).toEqual(['groceries']);
     // The lone remaining slice reshares to the whole of the visible total.
+    expect(slices[0].share).toBeCloseTo(1, 6);
+  });
+
+  it('drops the transactions whose id is in excludedTransactionIds and reshares the remainder', () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [
+        tx({ id: 'transfer-debit', category: 'groceries', amountMinorUnits: -75_00 }),
+        tx({ id: 'kept', category: 'transport', amountMinorUnits: -25_00 }),
+      ],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      excludedTransactionIds: new Set(['transfer-debit']),
+    });
+
+    expect(slices.map((slice) => slice.key)).toEqual(['transport']);
+    // The remaining slice reshares to the whole of the visible total.
     expect(slices[0].share).toBeCloseTo(1, 6);
   });
 
@@ -160,6 +222,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: colored,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     const byKey = new Map(slices.map((slice) => [slice.key, slice.color]));
@@ -176,6 +239,7 @@ describe('buildCategoryBreakdown', () => {
       categoryDisplay: DISPLAY,
       rateTable: {},
       baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
     });
 
     for (const slice of slices) {

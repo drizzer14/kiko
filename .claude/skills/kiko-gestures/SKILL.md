@@ -9,7 +9,8 @@ Source files: `src/screens/grid-interaction.ts`,
 `src/screens/card-context-menu.component.tsx`,
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
-`src/design-system/components/swipeable-row/gesture.ts`.
+`src/design-system/components/swipeable-row/gesture.ts`,
+`src/design-system/components/bottom-sheet/bottom-sheet.gesture.ts`.
 
 ## LongPress-vs-Sortables-drag arbitration
 
@@ -88,9 +89,16 @@ here — it would only add a competing gesture with no benefit.
 and settle math — `shouldClaimSwipe`, `clampTranslate`, `resolveSnap`,
 `shouldMergeEdge` — as plain functions with no dependency on
 `PanResponder` or any native gesture object. The component
-(`swipeable-row/index.tsx`) wires these pure functions into a
+(`swipeable-row/swipeable-row.component.tsx`, with `index.ts` as its
+barrel — not `index.tsx`) wires these pure functions into a
 `PanResponder`; the math itself is unit-tested in isolation with plain
 numbers, no gesture simulation needed. Follow this split for any new
 gesture with resting-state or activation-threshold logic: extract the
 decision/threshold math to a pure, synchronously-testable module first,
 then wire it into the native gesture object as a thin adapter.
+
+`bottom-sheet/bottom-sheet.gesture.ts` is a second example of the same
+split: `clampSheetTranslate` and `shouldDismissSheet` (the sheet's
+drag-to-close distance/velocity decision) are plain functions with no
+`Gesture` dependency, wired into a `Gesture.Pan()` by the component as
+a thin adapter — see `kiko-design-system`'s BottomSheet entry.

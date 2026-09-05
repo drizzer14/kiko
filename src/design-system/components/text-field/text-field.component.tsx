@@ -1,8 +1,10 @@
 import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import Box from '../box';
 import Text from '../text';
+
 import type { TextFieldProps } from './text-field.props';
 import { styles } from './text-field.styles';
 

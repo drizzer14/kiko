@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
 

@@ -4,6 +4,7 @@ import { Pressable, type ScrollView } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
+
 import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -14,18 +15,20 @@ import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
-import { entityGradientStops, resolveEntityColor } from '../../design-system/entity-tint';
+import { entityCardBackground, resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
-import CardContextMenu from '../card-context-menu.component';
+import CardContextMenu from '../card-context-menu';
 import { onGridDragEnd } from '../grid-interaction';
+
 import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
@@ -55,6 +58,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
   const scrollableRef = useAnimatedRef<ScrollView>();
+
+  // Re-tapping the Accounts tab while already on it returns this scrolling list
+  // to the top (the standard iOS active-tab re-tap), driven off the native tab
+  // navigator's `tabPress`. It reuses the same ScrollView ref the grid holds.
+  useScrollToTopOnTabPress(scrollableRef);
 
   return (
     <Screen
@@ -102,9 +110,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               autoScrollActivationOffset={75}
               keyExtractor={(account) => account.id}
               renderItem={({ item }) => {
-                const accountHoldings = holdings.filter(
-                  (holding) => holding.accountId === item.id && holding.closedAt == null,
-                );
+                const accountHoldings = holdings.filter((holding) => {
+                  return holding.accountId === item.id && holding.closedAt == null;
+                });
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
                 const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
 
@@ -118,7 +126,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       testID="account-card"
                       padding={4}
                       bordered
-                      gradient={entityGradientStops(color)}
+                      tint={entityCardBackground(color)}
                     >
                       <Pressable
                         accessibilityRole="button"

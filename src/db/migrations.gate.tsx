@@ -1,6 +1,9 @@
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+
 import { migrateLegacyToken } from '../monobank/token';
+
+import { initDatabase } from './client';
 import { runMigrations } from './run-migrations';
 
 type MigrationState =
@@ -14,12 +17,13 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   useEffect(() => {
     let cancelled = false;
 
-    // Run the schema migrations, then migrate a legacy Keychain token, before
-    // reporting success. Because children (and thus the auto-sync hook that
-    // first reads the token) mount only on success, awaiting the token
-    // migration here guarantees it completes before any token read.
-    runMigrations()
-      .then(() => migrateLegacyToken())
+    // The encrypted connection (and, on the first launch after encryption
+    // shipped, the plaintext -> encrypted export) must exist before the schema
+    // migrator runs; the legacy Keychain-token migration runs last, before any
+    // token read (the auto-sync hook mounts only on success).
+    initDatabase()
+      .then(runMigrations)
+      .then(migrateLegacyToken)
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

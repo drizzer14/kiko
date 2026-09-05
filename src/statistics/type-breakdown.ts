@@ -1,8 +1,8 @@
 import type { Currency } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow } from '../db/schema';
-import { holdingValue } from '../holdings/holding-value';
 import { type HoldingType, holdingTypes } from '../holdings/holding-type';
+import { holdingValue } from '../holdings/holding-value';
 import { convert, type RateTable } from '../rates/conversion';
 import { canConvert } from '../rates/net-worth-view';
 

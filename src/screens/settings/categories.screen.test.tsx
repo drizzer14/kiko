@@ -1,26 +1,39 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
+
 import CategoriesScreen from './categories.screen';
 
 const mockScrollToEnd = jest.fn();
 
-// Override the suite-wide reanimated stub for this file so the animated ref the
-// Screen hands its ScrollView exposes a spy-able `scrollToEnd` — the global mock
-// returns `{ current: null }`, which the optional chain would swallow. A
-// function ref keeps its `.current` when React attaches the host node.
-jest.mock('react-native-reanimated', () => ({
-  __esModule: true,
-  useAnimatedRef: () =>
-    Object.assign(() => undefined, { current: { scrollToEnd: mockScrollToEnd } }),
-}));
+// Override ONLY `useAnimatedRef` for this file so the animated ref the Screen
+// hands its ScrollView exposes a spy-able `scrollToEnd` (the shared stub returns
+// `{ current: null }`, which the optional chain would swallow). Everything else
+// delegates to the shared reanimated stub (`jest/reanimated-mock`) so the rest
+// of its surface — the shared values / animated style / animated `View` the
+// transitively-imported `BottomSheet` uses, and the `default.createAnimatedComponent`
+// gesture-handler's detector reads at import — stays intact. A function ref
+// keeps its `.current` when React attaches the host node.
+jest.mock('react-native-reanimated', () => {
+  const stub = require('../../../jest/reanimated-mock');
+  return new Proxy(stub, {
+    get: (target, prop) =>
+      prop === 'useAnimatedRef'
+        ? () => Object.assign(() => undefined, { current: { scrollToEnd: mockScrollToEnd } })
+        : target[prop],
+  });
+});
 
 const mockUpdateTitle = jest.fn();
 const mockUpdateIcon = jest.fn();
 const mockUpdateColor = jest.fn();
 const mockCreate = jest.fn();
+const mockDelete = jest.fn();
+const mockSetDefault = jest.fn();
+const mockOpenDeleteMenu = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
   [];
+let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: {
@@ -29,16 +42,34 @@ jest.mock('../../repositories/categories.repo', () => ({
     updateTitle: (...args: unknown[]) => mockUpdateTitle(...args),
     updateIcon: (...args: unknown[]) => mockUpdateIcon(...args),
     updateColor: (...args: unknown[]) => mockUpdateColor(...args),
+    delete: (...args: unknown[]) => mockDelete(...args),
   },
 }));
+jest.mock('../../repositories/settings.repo', () => ({
+  settingsRepo: {
+    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
+  },
+}));
+// The delete confirm routes through the shared native action sheet
+// (`openDeleteMenu`), unit-tested on its own; here it is mocked so the screen
+// test can assert the wiring — the category title and the delete callback —
+// without presenting a real sheet.
+jest.mock('../grid-interaction', () => ({
+  ...jest.requireActual('../grid-interaction'),
+  openDeleteMenu: (...args: unknown[]) => mockOpenDeleteMenu(...args),
+}));
 jest.mock('../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockLiveQueryData }),
+  useLiveQuery: (_query: unknown, keys: string[]) =>
+    keys?.[0] === 'settings' ? { data: mockSettingsRows } : { data: mockLiveQueryData },
 }));
 
 describe('CategoriesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+    // `other` is the seeded default catch-all.
+    mockSettingsRows = [{ defaultCategoryKey: 'other' }];
   });
 
   it('lists every seeded category by its title', async () => {
@@ -257,5 +288,46 @@ describe('CategoriesScreen', () => {
     ]) {
       expect(getByLabelText(`Choose icon ${icon}`)).toBeTruthy();
     }
+  });
+
+  it('hides the delete button on the default category card and shows a filled star instead', async () => {
+    const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
+
+    // `other` is the default: no delete, a filled star (`star.fill`) instead.
+    expect(queryByLabelText('Delete Other')).toBeNull();
+    expect(getByLabelText('Other is the default category')).toBeTruthy();
+    // A non-default category still offers delete.
+    expect(getByLabelText('Delete Groceries')).toBeTruthy();
+  });
+
+  it('hides the "Set as default" control on the default card and shows it on the others', async () => {
+    const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
+
+    expect(queryByLabelText('Set Other as default')).toBeNull();
+    expect(getByLabelText('Set Groceries as default')).toBeTruthy();
+  });
+
+  it('sets a category as the default when its "Set as default" is pressed', async () => {
+    const { getByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Set Groceries as default'));
+
+    expect(mockSetDefault).toHaveBeenCalledWith('groceries');
+  });
+
+  it('confirms via the native action sheet before deleting, then deletes by key on confirm', async () => {
+    const { getByLabelText } = await render(<CategoriesScreen />);
+
+    await fireEvent.press(getByLabelText('Delete Groceries'));
+
+    // The confirm sheet is opened with the category's title; nothing is deleted yet.
+    expect(mockOpenDeleteMenu).toHaveBeenCalledWith('Groceries', expect.any(Function));
+    expect(mockDelete).not.toHaveBeenCalled();
+
+    // Confirming (invoking the callback the sheet was handed) deletes by key.
+    const onConfirm = mockOpenDeleteMenu.mock.calls[0][1] as () => void;
+    onConfirm();
+
+    expect(mockDelete).toHaveBeenCalledWith('groceries');
   });
 });

@@ -78,19 +78,33 @@ render under Jest** — extend `__mocks__/react-native-svg.tsx` with the
 new primitive in the same passthrough style before writing the chart's
 test, not after chasing a mysterious render failure.
 
-## `GlassSurface` gradient technique
+## An SVG gradient, if one is ever needed again
 
-`glass-surface.component.tsx`'s `GradientWash` is the template for any
-SVG gradient in this app: an absolutely-positioned, `pointerEvents="none"`
-`<Svg>` containing a `<Defs><LinearGradient id="..."><Stop .../><Stop
-.../></LinearGradient></Defs>` plus a single `<Rect fill="url(#...)" />`
-sized to `100%`/`100%`. The gradient id only needs to be unique within
-its own `<Svg>` (each `<Svg>` is an isolated rendering root), so reusing
-the same literal id across many simultaneously-rendered cards is safe.
-Each `<Stop>` carries its own `testID` suffix (`-gradient-from`/
-`-gradient-to`) so a test can assert the resolved stop color without
-touching native SVG internals — the same `testID`-per-primitive rule as
-the charts above.
+`GlassSurface` no longer uses an SVG gradient for its entity-color wash —
+it renders one flat `entityCardBackground` color as a plain `View`
+`backgroundColor` (see `kiko-design-system`'s "Entity color and tint"),
+so there is currently no `<LinearGradient>` usage anywhere in the app to
+follow as a template. If a future chart genuinely needs an SVG gradient,
+the general `react-native-svg` shape is: an absolutely-positioned,
+`pointerEvents="none"` `<Svg>` containing a `<Defs><LinearGradient
+id="..."><Stop .../><Stop .../></LinearGradient></Defs>` plus a single
+`<Rect fill="url(#...)" />` sized to `100%`/`100%`, with each `<Stop>`
+carrying its own `testID` suffix so a test can assert the resolved stop
+color without touching native SVG internals — the same
+`testID`-per-primitive rule as the charts above. Remember to set
+`stopOpacity` explicitly from whatever opacity value you intend: the
+native gradient extractor masks off any alpha embedded in an rgba()
+`stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
+instead, so an rgba() color alone silently renders fully opaque.
+
+## PieChart donut mode
+
+`PieChart` (`src/design-system/components/pie-chart/pie-chart.component.tsx`)
+supports an `innerRatio` prop (thins the ring, opening a larger center
+hole) and a `centerTotal` prop (a `Money` value rendered centered in
+that hole) — the Expenses-by-Category donut is the current caller.
+Read that file directly for the default ratio and exact prop shape
+rather than trusting a restated number here.
 
 ## Reuse the entity-color system for fills
 
@@ -100,7 +114,7 @@ per-entity override exists); `pie-chart` colors each donut wedge and its
 legend swatch with the same slice's resolved entity color. See
 `kiko-design-system`'s "Entity color and tint" section for the full color
 pipeline (`defaultAccountColor`/`defaultHoldingColor`,
-`resolveEntityColor`, `entityGradientStops`) — a new chart follows the
+`resolveEntityColor`, `entityCardBackground`) — a new chart follows the
 same pipeline rather than inventing its own color set, so a swatch in a
 chart legend always matches that same entity's color everywhere else in
 the app (its card, its icon tint).

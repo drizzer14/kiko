@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../unistyles';
 import { currencyOptions } from '../../../currency/currency';
 import { currencySignSymbol } from '../../../currency/currency-symbols';
+
 import CurrencySwitch from '.';
 
 describe('CurrencySwitch', () => {

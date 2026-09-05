@@ -124,6 +124,29 @@ when no color is stored. The raw-fallback pattern renders gray for an
 uncolored category while a chip for that same category shows a
 palette hue — a past transaction-row icon regressed this way.
 
+## Spending-exclusion pipeline
+
+An internal money movement (cash-out, own-account transfer, one leg of
+a same-user transfer between holdings) is excluded from the spending
+view — read `src/statistics/transfer-exclusion.ts` (MCC/description
+based, backed by `transactions.counterIban` and
+`settings.defaultCategoryKey`) and `src/statistics/internal-transfers.ts`
+(the matched-pair fallback) directly rather than trusting a restated
+MCC list here; see `kiko-architecture` for the same pointer.
+
+## App lock / security settings
+
+`settings.lockEnabled` is LIVE — wired through `src/auth/use-app-lock.ts`
+and the `AppLockSetting` component
+(`src/screens/settings/app-lock-setting/`). `settings.lockGraceSeconds`
+is LEGACY/DEAD: it defaults to 30 and has no reader anywhere in `src/`
+(a grace-period-after-backgrounding design was built, then replaced
+with a cold-launch-only lock; the column was intentionally left in
+place rather than dropped via a migration). Treat it as legacy — do
+not re-wire it without a deliberate decision to resurrect the grace
+period, and re-check `src/db/schema.ts` before relying on this
+description if the lock design changes again.
+
 ## Net worth
 
 Net worth is **assets-only** — liabilities and debt are out of scope

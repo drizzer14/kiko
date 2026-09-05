@@ -1,5 +1,5 @@
-import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import '../../design-system/unistyles';
 import TransactionFormScreen from './transaction-form.screen';
 

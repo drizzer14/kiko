@@ -1,12 +1,14 @@
 import type { FC } from 'react';
 import { type DimensionValue, View } from 'react-native';
+import { G, Line, Polyline, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
-import { Svg, Polyline, Line, G } from 'react-native-svg';
+
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import Box from '../box';
 import Text from '../text';
+
 import { styles } from './net-worth-line.styles';
 
 /**

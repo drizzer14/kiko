@@ -2,24 +2,31 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useLayoutEffect } from 'react';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
-import type { HoldingRow } from '../../db/schema';
 import { Money } from '../../currency/money';
-import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
 import { formatDateTime } from '../../dates/format';
+import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
+import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
 import SwipeableRow from '../../design-system/components/swipeable-row';
 import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
+import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
-import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedTransaction } from '../../holdings/deletable';
-import { type DerivedEntry, type EntryTone, derivedEntries } from '../../holdings/derived-entries';
+import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
+import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { asBondMeta } from '../../holdings/holding-metadata';
 import {
   bondExpectedProfitMinor,
@@ -29,14 +36,13 @@ import {
 import type { AccountsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
-import { defaultTransactionDescription } from '../../transactions/default-description';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import EditHeaderButton from '../edit-header-button.component';
-import EntityAmountHeader from '../entity-amount-header.component';
-import EntityHeaderIcon from '../entity-header-icon.component';
+import { defaultTransactionDescription } from '../../transactions/default-description';
+import EditHeaderButton from '../edit-header-button';
+import EntityAmountHeader from '../entity-amount-header';
+import EntityHeaderIcon from '../entity-header-icon';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
 
@@ -113,10 +119,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     'transactions',
   ]);
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
   const categoryByKey = buildCategoryDisplayMap(categories);
+  // The configurable catch-all: a null/empty category resolves to this category
+  // (seeded to `other`), matching Home and the statistics breakdown.
+  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
@@ -273,7 +283,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // The row's stored category resolves to its icon + title through the
             // same shared mapping Home uses; a null/unknown category falls back
             // to the neutral display.
-            const category = resolveCategoryDisplay(row.transaction.category, categoryByKey);
+            const category = resolveCategoryDisplay(
+              row.transaction.category,
+              categoryByKey,
+              defaultCategoryKey,
+            );
 
             // Every real row is tappable: it opens the shared Transaction form
             // for this id. A manual row edits; a synced (Monobank) row opens
@@ -302,7 +316,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                           tone="textSecondary"
                           color={resolveCategoryColor(
                             category.color,
-                            row.transaction.category?.toLowerCase() || 'uncategorized',
+                            row.transaction.category?.toLowerCase() || defaultCategoryKey,
                           )}
                           accessibilityLabel={category.title}
                         />

@@ -2,13 +2,18 @@ import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
-import { useState } from 'react';
-import { Pressable, SectionList } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { buildCategoryDisplayMap, resolveCategoryDisplay } from '../../categories/category-display';
+
+import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
-import { formatDate } from '../../dates/format';
+import { formatDate, formatTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
@@ -20,6 +25,7 @@ import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -30,9 +36,11 @@ import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { defaultTransactionDescription } from '../../transactions/default-description';
+import { useSyncAll } from '../use-sync-all';
+
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
+import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
@@ -128,6 +136,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const tabBarHeight = useBottomTabBarHeight();
   const listBottomClearance = tabBarHeight;
 
+  // Re-tapping the Home tab while already on it returns this transaction list to
+  // the top (the standard iOS active-tab re-tap), driven off the native tab
+  // navigator's `tabPress`.
+  const listRef = useRef<SectionList>(null);
+  useScrollToTopOnTabPress(listRef);
+
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -141,6 +155,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   type TransactionRow = (typeof transactions)[number];
 
   const categoryByKey = buildCategoryDisplayMap(categories);
+
+  // Pull-to-refresh fans out a fresh sync over every syncable account (the
+  // connected Monobank account plus each connected crypto account) at once,
+  // bypassing the auto-sync throttle. `failures` names any account that failed
+  // so a partial success can still surface which one(s) did not update.
+  const { isSyncing, failures, syncAll } = useSyncAll(accounts);
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -187,6 +207,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  // The configurable catch-all category: a null/empty transaction category folds
+  // into it (its filter chip, its row label, its color) instead of a separate
+  // "Uncategorized" bucket. Read from settings (seeded to `other`).
+  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const rateTable = buildRateTable(rates);
 
   // A holding counts toward net worth only when it is open AND its parent
@@ -194,9 +218,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const archivedAccountIds = new Set(
     accounts.filter((account) => account.archivedAt != null).map((account) => account.id),
   );
-  const activeHoldings = holdings.filter(
-    (holding) => holding.closedAt == null && !archivedAccountIds.has(holding.accountId),
-  );
+  const activeHoldings = holdings.filter((holding) => {
+    return holding.closedAt == null && !archivedAccountIds.has(holding.accountId);
+  });
   const now = Date.now();
   const total = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
   const breakdown = sumByCurrency(activeHoldings);
@@ -241,19 +265,22 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // while un-overridden synced rows still store the capitalized MCC name
   // (`Groceries`). Both resolve to the same title, so keying on the title
   // collapses them into one nicely-labeled chip instead of splitting them.
+  // A null/empty category resolves to the DEFAULT category's title (not a
+  // separate "Uncategorized" label), so uncategorized rows share the default's
+  // filter chip.
   const categoryLabel = (raw: string | null): string =>
-    raw ? resolveCategoryDisplay(raw, categoryByKey).title : 'Uncategorized';
+    resolveCategoryDisplay(raw, categoryByKey, defaultCategoryKey).title;
   // One option per distinct resolved title, first-seen-wins (the same
   // distinctness the old `Set` gave), each carrying the category's resolved icon
   // and effective color for the menu row. Matching still keys on `option.value`
   // (the title, compared to `categoryLabel(row.category)` below).
   const categoryOptionsByTitle = new Map<string, FilterOption>();
   for (const row of transactions) {
-    const display = resolveCategoryDisplay(row.category, categoryByKey);
+    const display = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
     if (categoryOptionsByTitle.has(display.title)) {
       continue;
     }
-    const key = row.category?.toLowerCase() || 'uncategorized';
+    const key = row.category?.toLowerCase() || defaultCategoryKey;
     categoryOptionsByTitle.set(display.title, {
       value: display.title,
       icon: display.icon,
@@ -276,7 +303,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const sections = groupByDay(filteredTransactions, now);
 
   const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => {
-    const category = resolveCategoryDisplay(item.category, categoryByKey);
+    const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
     const description =
       item.description || defaultTransactionDescription(item.holdingName, item.amountMinorUnits);
 
@@ -298,7 +325,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 tone="textSecondary"
                 color={resolveCategoryColor(
                   category.color,
-                  item.category?.toLowerCase() || 'uncategorized',
+                  item.category?.toLowerCase() || defaultCategoryKey,
                 )}
                 accessibilityLabel={category.title}
               />
@@ -313,9 +340,16 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
               />
             </Box>
           </Box>
-          <Text variant="caption" tone="textSecondary">
-            {`${item.accountName} · ${category.title}`}
-          </Text>
+          <Box direction="row" gap={2} style={styles.rowFooter}>
+            <Box style={styles.rowFooterMeta}>
+              <Text variant="caption" tone="textSecondary">
+                {`${item.accountName} · ${category.title}`}
+              </Text>
+            </Box>
+            <Text variant="caption" tone="textSecondary">
+              {formatTime(item.time)}
+            </Text>
+          </Box>
         </Box>
       </Pressable>
     );
@@ -348,6 +382,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           </Box>
         </GlassSurface>
 
+        {failures.length > 0 && (
+          <Text variant="body" tone="negative">
+            {`Couldn't sync ${failures.join(', ')}`}
+          </Text>
+        )}
+
         {/* The divider and the filter row are grouped so the content column's
             `gap(4)` lands only above the divider (net-worth card → divider). The
             filter row keeps its own `marginTop(4)`, which now serves as the
@@ -374,6 +414,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         </Box>
 
         <SectionList
+          ref={listRef}
+          testID="home-transactions"
           sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={renderTransaction}
@@ -381,6 +423,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           stickySectionHeadersEnabled={false}
           style={styles.list}
           contentContainerStyle={styles.listContent(listBottomClearance)}
+          refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncAll} />}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">No transactions</Text>

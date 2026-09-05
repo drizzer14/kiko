@@ -6,6 +6,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { type FC, useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import LockGate from './src/auth/lock-gate/lock-gate.component';
 import MigrationsGate from './src/db/migrations.gate';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
@@ -42,7 +44,12 @@ export default function App(): React.JSX.Element {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <MigrationsGate>
-          <AppRoot />
+          {/* Inside MigrationsGate: the gate reads settings.lockEnabled, so the
+              database must be open and migrated first. Around AppRoot: while
+              locked, nothing below (navigator, auto-sync, ensure) mounts. */}
+          <LockGate>
+            <AppRoot />
+          </LockGate>
         </MigrationsGate>
       </SafeAreaProvider>
     </GestureHandlerRootView>

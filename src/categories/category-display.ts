@@ -1,3 +1,10 @@
+// The seeded catch-all category key. It is the INITIAL value of the
+// user-configurable `settings.defaultCategoryKey` (see the schema/migration),
+// and the single fallback a screen uses when the settings row has not been read
+// yet — so `'other'` lives in ONE place, never scattered across call sites. The
+// pure resolvers take the resolved key as a parameter and never reference this.
+export const DEFAULT_CATEGORY_KEY = 'other';
+
 // A transaction stores a category as a stable key (the MCC category name,
 // lowercased — see Task 13's slug convention). The categories table maps that
 // key to the user-editable title + icon + optional color, so the display
@@ -6,10 +13,12 @@
 // then falls back to the per-key palette hash via resolveCategoryColor).
 type CategoryDisplay = { title: string; icon: string; color: string | null };
 
-// Shown when a category cannot be resolved and the table has no seeded `other`
-// row (e.g. before the seed migration runs). A null/empty category also lands
-// here so its label matches the filter bar's own "Uncategorized" chip. `color`
-// is null so the chart falls back to the neutral key's palette hue.
+// The ultimate fallback, shown only when a category cannot be resolved AND the
+// table has no default-category row either (e.g. before the seed migration
+// runs). In normal operation a null/empty/unknown category folds into the
+// DEFAULT category instead (see `resolveCategoryDisplay`), so there is no
+// separate "Uncategorized" bucket. `color` is null so the chart falls back to
+// the neutral key's palette hue.
 export const NEUTRAL_CATEGORY: CategoryDisplay = {
   title: 'Uncategorized',
   icon: 'creditcard',
@@ -31,15 +40,21 @@ export const buildCategoryDisplayMap = (
     ]),
   );
 
+/**
+ * Resolve a transaction's stored category to its display. A null, empty, or
+ * unresolved category folds into the DEFAULT category (`defaultKey`, a
+ * `categories.key` read from settings at the call site — never hardcoded here),
+ * so uncategorized spending merges into the default's slice rather than a
+ * separate bucket. `NEUTRAL_CATEGORY` is the last resort only when the default
+ * key itself is not in the map (e.g. before the seed runs).
+ */
 export const resolveCategoryDisplay = (
   category: string | null,
   byKey: ReadonlyMap<string, CategoryDisplay>,
+  defaultKey: string,
 ): CategoryDisplay => {
   const key = category?.toLowerCase();
+  const resolved = key ? byKey.get(key) : undefined;
 
-  if (!key) {
-    return NEUTRAL_CATEGORY;
-  }
-
-  return byKey.get(key) ?? byKey.get('other') ?? NEUTRAL_CATEGORY;
+  return resolved ?? byKey.get(defaultKey) ?? NEUTRAL_CATEGORY;
 };

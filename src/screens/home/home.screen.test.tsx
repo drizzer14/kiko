@@ -5,8 +5,9 @@ import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-catego
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';
+
 import HomeScreen from './home.screen';
-import { FILTER_ALL } from './transaction-filter-bar.component';
+import { FILTER_ALL } from './transaction-filter-bar';
 
 jest.mock('../../design-system/components/text', () => ({
   __esModule: true,
@@ -35,6 +36,20 @@ jest.mock('../../repositories/transactions.repo', () => ({
 }));
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+
+const mockSyncAll = jest.fn();
+const mockUseSyncAll = jest.fn();
+jest.mock('../use-sync-all', () => ({
+  useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
+}));
+
+// The active-tab re-tap → scroll-to-top hook reads the navigation context, which
+// a standalone screen render has none of; stand it in with a spy so this test
+// can assert the screen hands it the transaction list's own ref.
+const mockUseScrollToTopOnTabPress = jest.fn();
+jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
@@ -141,11 +156,23 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
+    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
   });
 
   it('renders the net worth caption', async () => {
     const { getByText } = await renderHome();
     expect(getByText('Net worth')).toBeTruthy();
+  });
+
+  it('wires the transaction list to scroll to top on an active-tab re-tap', async () => {
+    await renderHome();
+
+    expect(mockUseScrollToTopOnTabPress).toHaveBeenCalledTimes(1);
+    // The ref handed to the hook is the SAME one mounted on the transactions
+    // SectionList — after render it resolves to that live list instance, so an
+    // active-tab re-tap has a real scrollable to return to the top.
+    const listRef = mockUseScrollToTopOnTabPress.mock.calls[0]?.[0];
+    expect(typeof listRef?.current?.scrollToLocation).toBe('function');
   });
 
   it('renders the total net worth in the base currency', async () => {
@@ -156,6 +183,13 @@ describe('HomeScreen', () => {
   it('renders a transaction description', async () => {
     const { getByText } = await renderHome();
     expect(getByText('Coffee')).toBeTruthy();
+  });
+
+  it('renders the transaction time as zero-padded HH:MM', async () => {
+    const at = new Date(2026, 0, 5, 9, 5).getTime();
+    seed({ transactions: [transaction({ time: at })] });
+    const { getByText } = await renderHome();
+    expect(getByText('09:05')).toBeTruthy();
   });
 
   it('renders the account-name and the resolved category title for a transaction', async () => {
@@ -214,7 +248,9 @@ describe('HomeScreen', () => {
     });
     const { getByText } = await renderHome();
     expect(getByText('Card expense')).toBeTruthy();
-    expect(getByText('Monobank · Uncategorized')).toBeTruthy();
+    // A null category folds into the default category ("Other"), not a separate
+    // "Uncategorized" bucket.
+    expect(getByText('Monobank · Other')).toBeTruthy();
   });
 
   it('renders the default "{holding} income" description for an empty positive transaction', async () => {
@@ -600,5 +636,34 @@ describe('HomeScreen', () => {
       'settings',
       'transactions',
     ]);
+  });
+
+  it('runs a full sync when the transaction list is pulled to refresh', async () => {
+    const { getByTestId } = await renderHome();
+
+    await act(async () => {
+      getByTestId('home-transactions').props.refreshControl.props.onRefresh();
+    });
+
+    expect(mockSyncAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('reflects the syncing state on the refresh control', async () => {
+    mockUseSyncAll.mockReturnValue({ isSyncing: true, failures: [], syncAll: mockSyncAll });
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(true);
+  });
+
+  it('surfaces a message naming the accounts that failed to sync', async () => {
+    mockUseSyncAll.mockReturnValue({
+      isSyncing: false,
+      failures: ['Binance', 'Cold storage'],
+      syncAll: mockSyncAll,
+    });
+    const { getByText } = await renderHome();
+
+    expect(getByText(/Binance/)).toBeTruthy();
+    expect(getByText(/Cold storage/)).toBeTruthy();
   });
 });

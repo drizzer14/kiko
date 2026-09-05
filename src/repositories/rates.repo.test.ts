@@ -20,6 +20,19 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   }),
 }));
 
+// The connection is now opened lazily behind `initDatabase()` (the SQLCipher
+// key is async), so the executing reads below need a live connection. Mock the
+// encrypted-open to hand back the same op-sqlite fake this file already models,
+// then `initDatabase()` once so `rawDatabase` forwards `executeRaw` to the mock.
+jest.mock('../db/encrypted-database', () => ({
+  openEncryptedDatabase: async () => ({
+    execute: async () => ({ rows: [], rowsAffected: 0 }),
+    executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
+  }),
+}));
+
+import { initDatabase } from '../db/client';
+
 import { ratesRepo } from './rates.repo';
 
 const rawResult = (rawRows: unknown[][]) => ({
@@ -29,6 +42,10 @@ const rawResult = (rawRows: unknown[][]) => ({
 });
 
 describe('ratesRepo', () => {
+  beforeAll(async () => {
+    await initDatabase();
+  });
+
   it('builds an all-rates query against the currency_rates table', () => {
     expect(ratesRepo.allQuery().toSQL().sql).toContain('currency_rates');
   });

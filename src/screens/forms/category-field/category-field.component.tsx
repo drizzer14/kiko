@@ -1,10 +1,12 @@
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+
 import type { CategoryFieldProps } from './category-field.props';
 import { styles } from './category-field.styles';
 
@@ -36,6 +38,11 @@ const CategoryField = ({
   // (a wrapped title runs taller), so a measured offset map lands the selected
   // row accurately where a uniform row-height estimate would drift.
   const rowOffsets = useRef<Record<string, number>>({});
+  // One-shot guard: the auto-scroll fires exactly once per open. It is set the
+  // moment we jump to the selection and re-armed when the sheet closes, so a
+  // manual scroll is never yanked back by a late measurement pass, and a
+  // reopen still lands on the selection.
+  const hasScrolledToSelected = useRef(false);
 
   const selected = options.find((option) => option.key === selectedKey) ?? null;
 
@@ -44,28 +51,35 @@ const CategoryField = ({
     setOpen(false);
   };
 
-  // When the sheet opens onto an existing selection, jump the list so the
-  // selected row is already on screen instead of always starting at the top.
-  // Deferred a frame so the rows' onLayout offsets are recorded before the
-  // scroll reads them. Guarded: no selection, or an unknown/top (0) offset,
-  // leaves the list at the top.
+  // Re-arm the one-shot as the sheet closes so the next open scrolls afresh.
+  // The Modal keeps this subtree mounted, so the ref must be reset explicitly.
   useEffect(() => {
-    if (!open || selectedKey === null) {
+    if (!open) {
+      hasScrolledToSelected.current = false;
+    }
+  }, [open]);
+
+  // Jump the list so the selected row is already on screen instead of starting
+  // at the top. Driven off the ScrollView's real measurement signals
+  // (onContentSizeChange, and the selected row's own onLayout) rather than a
+  // fixed single-frame defer: the heavier BottomSheet finalizes layout an
+  // unknown number of frames late, so the scroll must wait for the content to
+  // actually be measured. Guarded: not open, no selection, an unknown/top (0)
+  // offset, or an already-consumed one-shot all leave the list where it is.
+  const scrollToSelected = (): void => {
+    if (!open || selectedKey === null || hasScrolledToSelected.current) {
       return;
     }
 
-    const frame = requestAnimationFrame(() => {
-      const offset = rowOffsets.current[selectedKey];
+    const offset = rowOffsets.current[selectedKey];
 
-      if (offset === undefined || offset === 0) {
-        return;
-      }
+    if (offset === undefined || offset === 0) {
+      return;
+    }
 
-      scrollRef.current?.scrollTo({ y: offset, animated: false });
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, [open, selectedKey]);
+    hasScrolledToSelected.current = true;
+    scrollRef.current?.scrollTo({ y: offset, animated: false });
+  };
 
   return (
     <Box gap={1}>
@@ -92,10 +106,24 @@ const CategoryField = ({
         </Box>
       </Pressable>
 
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={2} maxHeight="70%">
+      {/* `scrollable={false}`: this sheet owns its OWN inner ScrollView (via
+          `scrollRef`, to jump straight to the already-selected row on open) —
+          BottomSheet's shared ScrollView (F5 fix) would otherwise nest a
+          second same-axis ScrollView around it, and would also sweep the
+          heading below into the scrollable region along with `scrollRef`'s
+          own offsets. */}
+      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={2} scrollable={false}>
         <Text variant="heading">{label}</Text>
 
-        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} style={styles.scroll}>
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          style={styles.scroll}
+          // Primary trigger: fire the auto-scroll once the content size is
+          // finalized (after every row has laid out), regardless of how many
+          // frames the heavier sheet took to settle.
+          onContentSizeChange={scrollToSelected}
+        >
           {options.map((option) => {
             const isSelected = option.key === selectedKey;
 
@@ -108,6 +136,12 @@ const CategoryField = ({
                 onPress={() => handleSelect(option.key)}
                 onLayout={(event: LayoutChangeEvent) => {
                   rowOffsets.current[option.key] = event.nativeEvent.layout.y;
+                  // Secondary trigger: if the SELECTED row's offset lands after
+                  // the content-size pass, jump the moment it is recorded. The
+                  // one-shot guard keeps the two triggers to a single scroll.
+                  if (option.key === selectedKey) {
+                    scrollToSelected();
+                  }
                 }}
                 style={[
                   styles.option,

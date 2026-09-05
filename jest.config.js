@@ -12,7 +12,8 @@ module.exports = {
   // in the package's own ESM source), react-native-worklets, and
   // react-native-sortables all ship untranspiled ESM (`import`), so each is
   // exempted from the preset's transform-ignore list for the drag-and-drop
-  // grids to load under Babel/Jest.
+  // grids to load under Babel/Jest. @noble/hashes (the Binance HMAC signer) is
+  // ESM-only ("type": "module") for the same reason.
   //
   // react-native-calendars also ships untranspiled ESM ("main": "src/index.ts"
   // in its own package.json, and the .js files under src/ use bare `import`/
@@ -24,6 +25,6 @@ module.exports = {
   // mock) to prove the actual selected/today text-color precedence the
   // library applies, not just the marks data Kiko hands it.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars|@noble)/)',
   ],
 };

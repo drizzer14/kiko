@@ -1,9 +1,11 @@
 import type { ReactElement } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+
 import type { ChipRowProps } from './chip-row.props';
 import { styles } from './chip-row.styles';
 

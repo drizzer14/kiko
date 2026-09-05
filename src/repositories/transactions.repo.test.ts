@@ -14,6 +14,7 @@ jest.mock('../db/client', () => {
 });
 
 import { categoryOverrides, holdings, transactions } from '../db/schema';
+
 import { transactionsRepo } from './transactions.repo';
 
 // Build a fake transaction handle for `update`. `select(...).from(...).where

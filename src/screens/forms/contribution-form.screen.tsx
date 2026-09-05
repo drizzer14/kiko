@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { Alert } from 'react-native';
+
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
@@ -11,6 +12,7 @@ import Screen from '../../design-system/components/screen';
 import TextField from '../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+
 import { groupAmount } from './amount-format';
 import DateField from './date-field';
 

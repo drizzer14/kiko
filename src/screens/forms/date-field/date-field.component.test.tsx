@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { formatDate } from '../../../dates/format';
+
 import DateField from './date-field.component';
 
 describe('DateField', () => {

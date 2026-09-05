@@ -32,7 +32,33 @@
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<!-- Certificate pinning for the token-bearing host only. CA (not leaf)
+		     pins: primary = root CA (Amazon Root CA 1), backup = current
+		     intermediate (Amazon RSA 2048 M01). Rotation runbook:
+		     docs/security/README.md. CoinGecko is deliberately unpinned
+		     (public price data, no secret). -->
+		<key>NSPinnedDomains</key>
+		<dict>
+			<key>api.monobank.ua</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+				<key>NSPinnedCAIdentities</key>
+				<array>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>++MBgDH5WGvL9Bcn5Be30cRcL0f5O+NyoXuWtQdX1aI=</string>
+					</dict>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>DxH4tt40L+eduF6szpY6TONlxhZhBd+pJ9wbHlQ2fuw=</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
 	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Kiko uses Face ID to unlock the app and your saved credentials.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>RCTNewArchEnabled</key>

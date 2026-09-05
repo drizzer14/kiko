@@ -1,8 +1,10 @@
 import type { FC } from 'react';
+
 import type { Money } from '../../../currency/money';
 import Box from '../box';
 import MoneyText from '../money-text';
 import Text from '../text';
+
 import type { CurrencyBreakdownProps } from './currency-breakdown.props';
 import { styles } from './currency-breakdown.styles';
 

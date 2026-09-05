@@ -1,4 +1,4 @@
-import { fireEvent, render, type RenderResult } from '@testing-library/react-native';
+import { fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import { ScrollView } from 'react-native';
 import '../../../design-system/unistyles';
 import CategoryField from './category-field.component';
@@ -171,37 +171,40 @@ describe('CategoryField', () => {
     expect(diningRow.props.accessibilityState.selected).toBe(false);
   });
 
-  // NOTE ON TEST ORDER: the one case that actually scrolls (calls the
-  // ScrollView ref's `scrollTo`) is placed LAST. Invoking that imperative host
-  // method — even mocked — inside a manually-run frame leaves React 19's
-  // concurrent test-act environment dirty, which breaks the *next* test that
-  // opens the sheet. The no-scroll cases never call `scrollTo`, so they run
-  // first and safely; the scrolling case runs last with nothing after it.
+  // NOTE ON TEST ORDER: the cases that actually scroll (call the ScrollView
+  // ref's `scrollTo`) are placed LAST. Invoking that imperative host method —
+  // even mocked — leaves React 19's concurrent test-act environment dirty,
+  // which breaks the *next* test that opens the sheet. The no-scroll cases
+  // never call `scrollTo`, so they run first and safely; the scrolling cases
+  // run last with nothing after them.
+  //
+  // The scroll-to-selected is driven off the inner ScrollView's REAL
+  // measurement signal (`onContentSizeChange`, fired once the content size is
+  // finalized) rather than a fixed single `requestAnimationFrame` defer, so it
+  // lands the row regardless of how many frames the heavier BottomSheet takes
+  // to finalize layout. Each test therefore records the row offsets
+  // (`emitRowLayout`) and THEN fires the content-size signal — the real order:
+  // mount, per-row layout, content-size finalization.
   describe('scrolls the selected row into view on open', () => {
     let scrollToSpy: jest.SpyInstance;
-    let frames: FrameRequestCallback[];
 
     beforeEach(() => {
       scrollToSpy = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
-      // Capture the queued scroll frame instead of running it, so a test can
-      // seed the row offsets (emitRowLayout) before flushing it — mirroring the
-      // real order: mount, layout, then the deferred scroll.
-      frames = [];
-      jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb) => {
-        frames.push(cb);
-        return frames.length;
-      });
-      jest.spyOn(global, 'cancelAnimationFrame').mockImplementation(() => {});
     });
 
     afterEach(() => {
       jest.restoreAllMocks();
     });
 
-    const flushFrames = (): void => {
-      for (const frame of frames) {
-        frame(0);
-      }
+    // Fires the inner ScrollView's onContentSizeChange — the moment its content
+    // size is finalized, after the rows have laid out. Only that ScrollView
+    // carries `showsVerticalScrollIndicator === false` (the sheet runs
+    // `scrollable={false}`, so BottomSheet mounts no ScrollView of its own).
+    const emitContentSizeChange = (utils: RenderResult, height = 200): void => {
+      const scroll = utils.root
+        ?.queryAll((node) => node.props.showsVerticalScrollIndicator === false)
+        .at(0);
+      scroll?.props.onContentSizeChange(320, height);
     };
 
     it('stays at the top when nothing is selected', async () => {
@@ -215,9 +218,10 @@ describe('CategoryField', () => {
       );
 
       await fireEvent.press(utils.getByLabelText('Category'));
-      flushFrames();
+      emitContentSizeChange(utils);
 
-      // No selection means no target offset — the list is left at the top.
+      // No selection means no target offset — the list is left at the top even
+      // once the content has been measured.
       expect(scrollToSpy).not.toHaveBeenCalled();
     });
 
@@ -233,14 +237,15 @@ describe('CategoryField', () => {
 
       await fireEvent.press(utils.getByLabelText('Category'));
 
-      // The selected row's offset is 0 (top): there is nothing to scroll to.
+      // The selected row's offset is 0 (top): there is nothing to scroll to,
+      // even after the content-size signal fires.
       emitRowLayout(utils.getByRole('button', { name: 'Groceries' }), 0);
-      flushFrames();
+      emitContentSizeChange(utils);
 
       expect(scrollToSpy).not.toHaveBeenCalled();
     });
 
-    it('scrolls to the selected row offset when the sheet opens', async () => {
+    it('scrolls to the selected row once its content size is measured', async () => {
       const utils = await render(
         <CategoryField
           label="Category"
@@ -252,13 +257,75 @@ describe('CategoryField', () => {
 
       await fireEvent.press(utils.getByLabelText('Category'));
 
-      // The layout pass records the selected 'Dining' row's vertical offset,
-      // which sits below the first row.
+      // The layout pass records the selected 'Dining' row's vertical offset
+      // (below the first row) BEFORE the content-size signal fires.
       emitRowLayout(utils.getByRole('button', { name: 'Dining' }), 48);
-      flushFrames();
+      emitContentSizeChange(utils);
 
-      // The deferred frame reads the offset map and jumps the list straight to
-      // the selected row, so the sheet appears already scrolled to it.
+      // The measured content-size signal reads the offset map and jumps the
+      // list straight to the selected row, so the sheet appears already
+      // scrolled to it — no matter how late the sheet finalized its layout.
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 48, animated: false });
+    });
+
+    it('scrolls exactly once per open even if the content size settles twice', async () => {
+      const utils = await render(
+        <CategoryField
+          label="Category"
+          options={OPTIONS}
+          selectedKey="dining"
+          onSelect={jest.fn()}
+        />,
+      );
+
+      await fireEvent.press(utils.getByLabelText('Category'));
+      // The selected row's onLayout records its offset and performs the single
+      // jump. Clear the shared prototype spy right after — an awaited press can
+      // flush a prior test's leaked ScrollView.scrollTo into this same spy, and
+      // the count below must measure only what the synchronous signals below do.
+      emitRowLayout(utils.getByRole('button', { name: 'Dining' }), 48);
+      scrollToSpy.mockClear();
+
+      // The content size can settle more than once (a wrapped title, a late
+      // measurement pass). The one-shot guard keeps the jump consumed, so these
+      // repeat signals never re-scroll and a manual scroll is never yanked back.
+      emitContentSizeChange(utils);
+      emitContentSizeChange(utils);
+
+      expect(scrollToSpy).not.toHaveBeenCalled();
+    });
+
+    it('re-arms the scroll when the sheet closes and reopens', async () => {
+      const utils = await render(
+        <CategoryField
+          label="Category"
+          options={OPTIONS}
+          selectedKey="dining"
+          onSelect={jest.fn()}
+        />,
+      );
+
+      // First open: measure and jump to the selected row.
+      await fireEvent.press(utils.getByLabelText('Category'));
+      emitRowLayout(utils.getByRole('button', { name: 'Dining' }), 48);
+      emitContentSizeChange(utils);
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 48, animated: false });
+
+      // Picking a row closes the sheet (onSelect leaves the selection intact),
+      // then reopen it.
+      await fireEvent.press(utils.getByRole('button', { name: 'Dining' }));
+      await fireEvent.press(utils.getByLabelText('Category'));
+
+      // Clear the spy AFTER the awaited presses (which can flush leaked scrolls
+      // into the shared prototype spy) so the count measures only the reopen's
+      // own synchronous re-measure.
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByRole('button', { name: 'Dining' }), 48);
+      emitContentSizeChange(utils);
+
+      // The one-shot guard re-armed on close, so the reopen jumps to the
+      // selection again instead of opening at the top.
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
       expect(scrollToSpy).toHaveBeenCalledWith({ y: 48, animated: false });
     });
   });

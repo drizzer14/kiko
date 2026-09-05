@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 import { useUnistyles } from 'react-native-unistyles';
+
 import { toSFSymbolTintColor } from './symbol.color';
 import type { SymbolProps } from './symbol.props';
 

@@ -1,5 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+
 import { type Currency, currencyOptions } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
@@ -13,6 +14,7 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
+
 import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';

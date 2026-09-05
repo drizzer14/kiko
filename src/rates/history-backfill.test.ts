@@ -1,4 +1,3 @@
-import type { HistoryRateEntry } from './history-entry';
 import {
   type BackfillDeps,
   type BackfillStatus,
@@ -7,6 +6,7 @@ import {
   missingDays,
   runBackfill,
 } from './history-backfill';
+import type { HistoryRateEntry } from './history-entry';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS; // 2026-09-01 + n

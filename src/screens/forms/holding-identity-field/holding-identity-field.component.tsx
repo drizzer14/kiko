@@ -1,9 +1,11 @@
 import type { FC } from 'react';
 import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import IconEditor from '../../icon-editor';
+
 import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 import { styles } from './holding-identity-field.styles';
 

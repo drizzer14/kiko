@@ -1,7 +1,9 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
+
 import { formatMoney } from '../../../currency/format';
 import Text from '../text';
+
 import type { MoneyTextContext, MoneyTextProps, MoneyTextTone } from './money-text.props';
 
 const isNegative = (minorUnits: number): boolean => minorUnits < 0;

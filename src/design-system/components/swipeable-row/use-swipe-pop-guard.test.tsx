@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+
 import { nextOpenCount, useSwipePopGuard } from './use-swipe-pop-guard';
 
 // The native-stack interactive back-swipe is a native gesture a JS

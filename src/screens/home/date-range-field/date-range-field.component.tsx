@@ -1,7 +1,8 @@
 import { type FC, useState } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, ScrollView } from 'react-native';
 import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
+
 import { formatDate } from '../../../dates/format';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
@@ -9,6 +10,7 @@ import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import KikoCalendar from '../../calendar';
+
 import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
 
@@ -204,17 +206,29 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         </Box>
       </Pressable>
 
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
-        <Text variant="heading">Date Range</Text>
+      {/* `scrollable={false}`: the Clear/Apply row below must stay reachable
+          regardless of scroll position (F5 fix requires every sheet's
+          overflow to scroll, but never at the cost of hiding its actions), so
+          this sheet owns its own inner ScrollView around just the heading +
+          calendar rather than the shared one BottomSheet would otherwise wrap
+          ALL of children in. */}
+      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4} scrollable={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text variant="heading">Date Range</Text>
 
-        <KikoCalendar
-          testID="date-range-calendar"
-          markingType="period"
-          markedDates={marks}
-          minDate={toCalendarKey(selectableFloor)}
-          maxDate={toCalendarKey(selectableCeiling)}
-          onDayPress={handleDayPress}
-        />
+          <KikoCalendar
+            testID="date-range-calendar"
+            markingType="period"
+            markedDates={marks}
+            minDate={toCalendarKey(selectableFloor)}
+            maxDate={toCalendarKey(selectableCeiling)}
+            onDayPress={handleDayPress}
+          />
+        </ScrollView>
 
         <Box direction="row" gap={3} style={styles.actions}>
           <Button variant="secondary" fullWidth={false} onPress={handleClear}>

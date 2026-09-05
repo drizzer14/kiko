@@ -1,5 +1,6 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
 import { defaultAccountColor } from '../holdings/entity-colors';
+
 import {
   buildAccountContribution,
   type ContributionAccount,

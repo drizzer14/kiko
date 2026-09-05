@@ -13,6 +13,7 @@ jest.mock('../db/client', () => {
 
 import { accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
+
 import { accountsRepo } from './accounts.repo';
 import { captureSetTx } from './capture-set-tx';
 
@@ -46,11 +47,16 @@ describe('accountsRepo', () => {
     expect(query.params).toContain('a1');
   });
 
-  it('builds a connected query filtered on institution=monobank', () => {
+  it('builds a connected query filtered on institution=monobank by default', () => {
     const query = accountsRepo.connectedQuery().toSQL();
     expect(query.sql).toContain('accounts');
     expect(query.sql).toContain('institution');
     expect(query.params).toContain('monobank');
+  });
+
+  it('builds a connected query for a balance-provider institution', () => {
+    expect(accountsRepo.connectedQuery('btc_wallet').toSQL().params).toContain('btc_wallet');
+    expect(accountsRepo.connectedQuery('binance').toSQL().params).toContain('binance');
   });
 
   it('create inserts the account and resolves to the generated id', async () => {
@@ -225,7 +231,7 @@ const makeRemoveTx = (opts: {
   return { tx, captured };
 };
 
-// Build a fake transaction handle for `disconnectMonobank`. The first
+// Build a fake transaction handle for `disconnect`. The first
 // `update(...).set(...).where(...)` clears the account's institution; a
 // `select(holdings).from().where()` yields the account's holdings; each
 // subsequent `update(holdings).set({ metadata }).where()` rewrites one
@@ -254,7 +260,7 @@ const makeDisconnectTx = (
   return { tx, captured };
 };
 
-describe('accountsRepo.disconnectMonobank', () => {
+describe('accountsRepo.disconnect', () => {
   it('clears the account institution and strips monobankId from each synced holding', async () => {
     const { tx, captured } = makeDisconnectTx([
       { id: 'card-1', metadata: { monobankId: 'mono-card', iban: 'UA123', maskedPan: ['1234'] } },
@@ -262,7 +268,7 @@ describe('accountsRepo.disconnectMonobank', () => {
     ]);
     mockTx = tx;
 
-    await accountsRepo.disconnectMonobank('acc-1');
+    await accountsRepo.disconnect('acc-1');
 
     // First write clears the account's institution.
     expect(captured.updates[0]).toEqual({ table: accounts, set: { institution: null } });
@@ -283,7 +289,7 @@ describe('accountsRepo.disconnectMonobank', () => {
     ]);
     mockTx = tx;
 
-    await accountsRepo.disconnectMonobank('acc-1');
+    await accountsRepo.disconnect('acc-1');
 
     // Only the institution clear and the synced-holding rewrite are issued.
     expect(captured.updates).toEqual([
@@ -296,7 +302,7 @@ describe('accountsRepo.disconnectMonobank', () => {
     const { tx, captured } = makeDisconnectTx([]);
     mockTx = tx;
 
-    await accountsRepo.disconnectMonobank('acc-1');
+    await accountsRepo.disconnect('acc-1');
 
     expect(captured.updates).toEqual([{ table: accounts, set: { institution: null } }]);
   });
@@ -308,7 +314,7 @@ describe('accountsRepo.disconnectMonobank', () => {
     ]);
     mockTx = tx;
 
-    await accountsRepo.disconnectMonobank('acc-1');
+    await accountsRepo.disconnect('acc-1');
 
     // Reconstruct the account and holdings as disconnect left them, then prove
     // the deletability predicates flip to false — the exact contract remove relies on.
@@ -329,6 +335,37 @@ describe('accountsRepo.disconnectMonobank', () => {
     await accountsRepo.remove('acc-1');
 
     expect(removeCaptured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
+  });
+
+  it('strips walletAddress and syncedAt from a wallet-synced holding, emptying its metadata', async () => {
+    const { tx, captured } = makeDisconnectTx([
+      {
+        id: 'btc-1',
+        metadata: {
+          walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+          syncedAt: 1_704_326_400_000,
+        },
+      },
+    ]);
+    mockTx = tx;
+
+    await accountsRepo.disconnect('acc-crypto');
+
+    expect(captured.updates).toEqual([
+      { table: accounts, set: { institution: null } },
+      { table: holdings, set: { metadata: null } },
+    ]);
+  });
+
+  it('strips binanceAsset and syncedAt but keeps unrelated metadata keys', async () => {
+    const { tx, captured } = makeDisconnectTx([
+      { id: 'bnb-1', metadata: { binanceAsset: 'BTC', syncedAt: 1_704_326_400_000, note: 'spot' } },
+    ]);
+    mockTx = tx;
+
+    await accountsRepo.disconnect('acc-crypto');
+
+    expect(captured.updates[1]).toEqual({ table: holdings, set: { metadata: { note: 'spot' } } });
   });
 });
 

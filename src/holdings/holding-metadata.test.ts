@@ -1,5 +1,5 @@
 import type { BondMeta, CompoundingFrequency, TermDepositMeta } from './holding-metadata';
-import { asBondMeta, asTermDepositMeta } from './holding-metadata';
+import { asBondMeta, asTermDepositMeta, syncedAtOf, walletAddressOf } from './holding-metadata';
 
 describe('asTermDepositMeta', () => {
   const compounding: CompoundingFrequency = 'monthly';
@@ -146,5 +146,35 @@ describe('asBondMeta couponFrequency', () => {
   it('defaults a missing or invalid frequency to annually (back-compat)', () => {
     expect(asBondMeta({ ...base })?.couponFrequency).toBe('annually');
     expect(asBondMeta({ ...base, couponFrequency: 'weekly' })?.couponFrequency).toBe('annually');
+  });
+});
+
+describe('walletAddressOf', () => {
+  it('reads a string walletAddress', () => {
+    expect(walletAddressOf({ walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' })).toBe(
+      'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    );
+  });
+
+  it('returns undefined for null, non-object, or non-string metadata', () => {
+    expect(walletAddressOf(null)).toBeUndefined();
+    expect(walletAddressOf('bc1q')).toBeUndefined();
+    expect(walletAddressOf({ walletAddress: 42 })).toBeUndefined();
+    expect(walletAddressOf({ monobankId: 'x' })).toBeUndefined();
+  });
+});
+
+describe('syncedAtOf', () => {
+  it('reads a finite syncedAt timestamp', () => {
+    expect(syncedAtOf({ walletAddress: 'bc1q', syncedAt: 1_704_326_400_000 })).toBe(
+      1_704_326_400_000,
+    );
+  });
+
+  it('returns null when absent, non-numeric, or not an object', () => {
+    expect(syncedAtOf({ walletAddress: 'bc1q' })).toBeNull();
+    expect(syncedAtOf({ syncedAt: 'yesterday' })).toBeNull();
+    expect(syncedAtOf({ syncedAt: Number.NaN })).toBeNull();
+    expect(syncedAtOf(null)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+
 import { useLiveQuery } from './use-live-query';
 
 const mockUnsubscribe = jest.fn();
@@ -110,5 +111,53 @@ describe('useLiveQuery', () => {
     });
 
     expect(result.current.data).toEqual([{ id: 'newest' }]);
+  });
+
+  it('reports isLoading until the first query settles', async () => {
+    let resolveRows!: (rows: unknown[]) => void;
+    const pending = new Promise<unknown[]>((resolve) => {
+      resolveRows = resolve;
+    });
+    const slowQuery = {
+      toSQL: fakeQuery.toSQL,
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery` — the hook awaits the query builder itself.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return pending.then(onfulfilled, onrejected);
+      },
+    };
+
+    const { result } = await renderHook(() => useLiveQuery(slowQuery, ['accounts']));
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toEqual([]);
+
+    await act(async () => {
+      resolveRows([{ id: 'a' }]);
+      await pending;
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+  });
+
+  it('clears isLoading when the first query fails', async () => {
+    const failingQuery = {
+      toSQL: fakeQuery.toSQL,
+      // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) same rationale as `fakeQuery`.
+      then<TResult1 = unknown[], TResult2 = never>(
+        onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) {
+        return Promise.reject(new Error('boom')).then(onfulfilled, onrejected);
+      },
+    };
+
+    const { result } = await renderHook(() => useLiveQuery(failingQuery, ['accounts']));
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error?.message).toBe('boom');
   });
 });

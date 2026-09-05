@@ -39,9 +39,17 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'flex-end',
   },
   // A bare icon button (paste, edit) — padding gives a comfortable tap target
-  // without the filled chrome of the shared Button.
+  // without the filled chrome of the shared Button. `height` mirrors the
+  // SAME `theme.spacing(11)` token TextField's `input` style uses (see
+  // `text-field.styles.ts`), and the glyph is centered within it: bottom-
+  // aligning this (via `fieldRow`'s `alignItems: 'flex-end'`) against the
+  // taller captioned TextField column then lands the icon on the input's
+  // vertical center, not merely its bottom edge.
   iconButton: {
+    height: theme.spacing(11),
     padding: theme.spacing(2),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // The link's touch target: hugs its text at the leading edge rather than
   // stretching across the column.

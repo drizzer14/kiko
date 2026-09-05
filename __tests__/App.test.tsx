@@ -12,6 +12,13 @@ jest.mock('../src/db/migrations.gate', () => ({
   default: ({ children }: { children: ReactNode }) => children,
 }));
 
+// LockGate reads settings through useLiveQuery; stub it as a passthrough so the
+// boot smoke test reaches Home exactly as MigrationsGate is stubbed.
+jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
+  __esModule: true,
+  default: ({ children }: { children: ReactNode }) => children,
+}));
+
 // The real Settings screen (wired into RootNavigator, rendered inside App)
 // also pulls in db/client directly (via useLiveQuery), which opens a real
 // op-sqlite connection at module load. Stub it the same way every repo test

@@ -82,6 +82,19 @@ export const styles = StyleSheet.create((theme) => ({
   rowAmount: {
     flexShrink: 0,
   },
+  // The row's secondary line: the account · category meta on the left, the
+  // transaction time pinned to the bottom-right. `flex-end` keeps the time on
+  // the last baseline even if the meta caption wraps onto a second line.
+  rowFooter: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  // The meta caption cell: `flex: 1` bounds it to the space left of the time so
+  // a long account · category label wraps within it instead of pushing the time
+  // off the row.
+  rowFooterMeta: {
+    flex: 1,
+  },
   // Bounds the FlatList to the remaining space below the fixed header/filter
   // bar so it scrolls instead of growing to content height.
   list: {

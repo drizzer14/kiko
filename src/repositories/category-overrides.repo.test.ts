@@ -13,6 +13,7 @@ jest.mock('../db/client', () => {
 });
 
 import { categoryOverrides, transactions } from '../db/schema';
+
 import { categoryOverridesRepo } from './category-overrides.repo';
 
 // Fake tx: the rule upsert (insert->values->onConflictDoUpdate), the

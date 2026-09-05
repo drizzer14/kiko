@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime, parseLocalDate } from './format';
+import { formatDate, formatDateTime, formatTime, parseLocalDate } from './format';
 
 describe('formatDate', () => {
   it('formats a Date as zero-padded DD.MM.YYYY', () => {
@@ -29,6 +29,30 @@ describe('formatDateTime', () => {
     const timestamp = new Date(2026, 5, 7, 0, 0).getTime();
 
     expect(formatDateTime(timestamp)).toBe('07.06.2026 00:00');
+  });
+});
+
+describe('formatTime', () => {
+  it('formats a Date as zero-padded HH:MM in 24-hour time', () => {
+    expect(formatTime(new Date(2026, 0, 5, 9, 5))).toBe('09:05');
+  });
+
+  it('zero-pads a single-digit hour and minute', () => {
+    expect(formatTime(new Date(2026, 5, 7, 3, 7))).toBe('03:07');
+  });
+
+  it('renders midnight as 00:00', () => {
+    expect(formatTime(new Date(2026, 5, 7, 0, 0))).toBe('00:00');
+  });
+
+  it('renders afternoon time in 24-hour form', () => {
+    expect(formatTime(new Date(2026, 11, 31, 23, 59))).toBe('23:59');
+  });
+
+  it('accepts a numeric timestamp', () => {
+    const timestamp = new Date(2026, 8, 2, 14, 30).getTime();
+
+    expect(formatTime(timestamp)).toBe('14:30');
   });
 });
 

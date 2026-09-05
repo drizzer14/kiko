@@ -1,8 +1,10 @@
 import type { ReactElement } from 'react';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
+
 import type { ColorPickerProps } from './color-picker.props';
 import { styles } from './color-picker.styles';
 

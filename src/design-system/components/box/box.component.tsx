@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import type { BoxProps } from './box.props';
 import { styles } from './box.styles';
 

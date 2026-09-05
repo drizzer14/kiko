@@ -1,5 +1,6 @@
 import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
+
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
@@ -8,6 +9,7 @@ import Text from '../../../design-system/components/text';
 import { categoriesRepo } from '../../../repositories/categories.repo';
 import ColorPicker from '../../forms/color-picker';
 import HoldingIdentityField from '../../forms/holding-identity-field';
+
 import { styles } from './add-category-row.styles';
 
 // The default icon a new category starts with — a neutral grid glyph from the

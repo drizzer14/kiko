@@ -2,6 +2,12 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import SettingsScreen from './settings.screen';
 
+// APP_LOCK_ENABLED is now ON by default. This suite covers the disabled/hidden
+// App Lock path, so it pins the flag OFF locally — the mirror of
+// settings.screen.app-lock.test.tsx, which pins it ON to cover the visible-card
+// path. Both paths stay covered without relying on the shipped default.
+jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
+
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
 
@@ -15,10 +21,29 @@ jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData }),
 }));
 
+// The active-tab re-tap → scroll-to-top hook reads the navigation context, which
+// a standalone screen render lacks; stand it in with a spy so this test can
+// assert the screen hands it the scroll view's own ref.
+const mockUseScrollToTopOnTabPress = jest.fn();
+jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
+}));
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+  });
+
+  it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
+    await render(<SettingsScreen />);
+
+    expect(mockUseScrollToTopOnTabPress).toHaveBeenCalled();
+    // The ref handed to the hook is the SAME one the Screen mounts on its
+    // ScrollView — after render it resolves to that live scroll view, so an
+    // active-tab re-tap has a real scrollable to return to the top.
+    const scrollRef = mockUseScrollToTopOnTabPress.mock.calls.at(-1)?.[0];
+    expect(typeof scrollRef?.current?.scrollTo).toBe('function');
   });
 
   it('does not render an in-screen "Settings" title (the native header provides it)', async () => {
@@ -78,6 +103,11 @@ describe('SettingsScreen', () => {
     const { getByText } = await render(<SettingsScreen />);
     await fireEvent.press(getByText('USD'));
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
+  });
+
+  it('hides the App Lock card while APP_LOCK_ENABLED is off (pinned off in this suite)', async () => {
+    const { queryByTestId } = await render(<SettingsScreen />);
+    expect(queryByTestId('settings-card-app-lock')).toBeNull();
   });
 
   it('no longer renders the Monobank token input (it lives on the bank account now)', async () => {

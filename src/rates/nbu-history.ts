@@ -1,6 +1,7 @@
 import { guard } from 'fnts';
 
 import type { Currency } from '../currency/currency';
+
 import { type HistoryRateEntry, toUtcMidnight } from './history-entry';
 
 /**

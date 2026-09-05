@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { match } from 'ts-pattern';
+
 import { type Currency, currencyOptions } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money, toMajor } from '../../currency/money';
@@ -24,18 +25,19 @@ import {
   type TermDepositMeta,
 } from '../../holdings/holding-metadata';
 import {
-  type HoldingType,
   creatableHoldingTypesForAccountKind,
+  type HoldingType,
   holdingTypes,
   holdingTypesForAccountKind,
 } from '../../holdings/holding-type';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+
+import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';
 import DateField from './date-field';
-import { groupAmount } from './amount-format';
 import HoldingIdentityField from './holding-identity-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
@@ -302,12 +304,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const updateContributionAmount = (index: number, next: string): void => {
     setContributions((rows) =>
-      rows.map((row, i) => (i === index ? { ...row, amount: next } : row)),
+      rows.map((row, i) => {
+        return i === index ? { ...row, amount: next } : row;
+      }),
     );
   };
 
   const updateContributionDate = (index: number, next: number): void => {
-    setContributions((rows) => rows.map((row, i) => (i === index ? { ...row, date: next } : row)));
+    setContributions((rows) =>
+      rows.map((row, i) => {
+        return i === index ? { ...row, date: next } : row;
+      }),
+    );
   };
 
   // Drop blank/partial rows: keep only a positive amount paired with a picked date.

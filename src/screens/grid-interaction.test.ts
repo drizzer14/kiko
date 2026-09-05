@@ -1,5 +1,6 @@
 import { ActionSheetIOS } from 'react-native';
 import { trigger } from 'react-native-haptic-feedback';
+
 import { onGridDragEnd, openDeleteMenu } from './grid-interaction';
 
 jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));

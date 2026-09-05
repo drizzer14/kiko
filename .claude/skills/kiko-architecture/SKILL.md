@@ -110,6 +110,48 @@ Confirm exact Monobank field names against the live API during
 implementation — the spec's shape is a best-effort description, not
 a verified schema.
 
+## DB encryption + flag gate
+
+The SQLCipher database-encryption migration (cluster 2) is flag-gated
+off by default. Read these files directly rather than trusting a
+restated summary here, since the flag values and the migration's exact
+steps are the kind of thing that changes as the rollout progresses:
+
+- `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED` and
+  `APP_LOCK_ENABLED`, the two master switches. Read the comment above
+  each for what stays inert while its flag is off.
+- `src/db/encrypted-database.ts` — `openEncryptedDatabase()`, the
+  one-time plaintext -> SQLCipher export. Its crash-safety ordering is
+  the load-bearing fact: export first, persist the key second, delete
+  the plaintext file last — a crash at any point leaves a resumable
+  state rather than data loss.
+- `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
+  `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
+  `Math.random` or a WebCrypto call Hermes doesn't have.
+- `src/db/client.ts` — the lazy `rawDatabase` Proxy (the connection
+  can't open at module load anymore, since the Keychain read is async)
+  and `initDatabase()`/`openConnection()`, gated on
+  `DB_ENCRYPTION_ENABLED`. Also documents a drizzle/op-sqlite
+  `executeRawAsync` shape landmine — read that file's comment on
+  `DrizzleOPSQLiteClient`/`wrapClientForDrizzle` before touching the
+  read path.
+- `src/db/migrations.gate.tsx` — the launch sequencing:
+  `initDatabase()` -> `runMigrations()` -> `migrateLegacyToken()`.
+
+## Spending-exclusion pipeline
+
+A transaction that is really an internal money movement (a cash-out,
+an own-account transfer, one leg of a same-user transfer) must not
+count as spending on the category chart. Two files own this, read
+them directly rather than restating their exact MCC/matching logic
+here:
+
+- `src/statistics/transfer-exclusion.ts` — the MCC/description-based
+  rule (own-IBAN-aware; backed by `transactions.counterIban` and
+  `settings.defaultCategoryKey`).
+- `src/statistics/internal-transfers.ts` — the matched-pair fallback
+  for transfers the MCC rule can't see (paired by amount/time/holding).
+
 ## Price data
 
 - Fiat cross rates: `GET /bank/currency` (public Monobank endpoint,

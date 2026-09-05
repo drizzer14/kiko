@@ -1,4 +1,5 @@
 import { DarkTheme } from '@react-navigation/native';
+
 import { darkTheme } from '../design-system/theme';
 
 /**

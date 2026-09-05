@@ -4,7 +4,9 @@
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
-const toDate = (input: number | Date): Date => (input instanceof Date ? input : new Date(input));
+const toDate = (input: number | Date): Date => {
+  return input instanceof Date ? input : new Date(input);
+};
 
 // "DD.MM.YYYY" in the device's local timezone, every field zero-padded.
 export const formatDate = (input: number | Date): string => {
@@ -13,11 +15,20 @@ export const formatDate = (input: number | Date): string => {
   return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}`;
 };
 
+// "HH:MM" in the device's local timezone, 24-hour time, both fields
+// zero-padded (e.g. 09:05, 00:00, 23:59). The time-of-day component only —
+// used to stamp a transaction row with when it happened.
+export const formatTime = (input: number | Date): string => {
+  const date = toDate(input);
+
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+};
+
 // "DD.MM.YYYY HH:mm" in the device's local timezone, 24-hour time.
 export const formatDateTime = (input: number | Date): string => {
   const date = toDate(input);
 
-  return `${formatDate(date)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  return `${formatDate(date)} ${formatTime(date)}`;
 };
 
 // Parses a 'YYYY-MM-DD' calendar day into a LOCAL-midnight timestamp, matching

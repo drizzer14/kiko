@@ -1,4 +1,5 @@
 import { desc, eq, inArray } from 'drizzle-orm';
+
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import {
@@ -10,10 +11,16 @@ import {
 } from '../db/schema';
 import { isSyncedTransaction } from '../holdings/deletable';
 import { normalizeTransactionName } from '../transactions/normalize-name';
+
 import type { Repository } from './repository';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
-  Partial<Pick<TransactionRow, 'description' | 'category' | 'mcc' | 'comment' | 'externalId'>>;
+  Partial<
+    Pick<
+      TransactionRow,
+      'description' | 'category' | 'mcc' | 'counterIban' | 'comment' | 'externalId'
+    >
+  >;
 
 type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>>;

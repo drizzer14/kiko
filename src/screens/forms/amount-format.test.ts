@@ -1,4 +1,5 @@
 import { parseAmount } from '../../currency/parse';
+
 import { groupAmount } from './amount-format';
 
 describe('groupAmount', () => {

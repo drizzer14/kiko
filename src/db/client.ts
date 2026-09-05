@@ -1,62 +1,123 @@
 import type { DB, Scalar } from '@op-engineering/op-sqlite';
 import { drizzle } from 'drizzle-orm/op-sqlite';
 
+import { DB_ENCRYPTION_ENABLED } from './db-config';
+import { openEncryptedDatabase } from './encrypted-database';
 import { migrateLegacyDatabase } from './migrate-legacy-db';
 import * as schema from './schema';
 
-/**
- * The raw op-sqlite connection handle. Exposed so reactive consumers
- * (the `useLiveQuery` hook in Task 8) can call `rawDatabase.reactiveExecute`.
- * All ORM access should go through `database`; all writes through `write`.
- *
- * `migrateLegacyDatabase` runs first, synchronously, at module load: it
- * migrates an existing legacy on-device database into `kiko.db` (or leaves an
- * already-migrated / fresh `kiko.db` untouched) and returns the connection the
- * app must adopt, before any drizzle/write setup below touches it.
- */
-export const rawDatabase = migrateLegacyDatabase();
+let connection: DB | undefined;
 
-// SQLite defaults foreign_keys OFF per connection and op-sqlite's open() does
-// not change it. Enable enforcement once at module load, on the raw connection,
-// before any transaction/write runs. The pragma is per-connection and a no-op
-// inside a transaction, so it must run here rather than inside `write`.
-rawDatabase.execute('PRAGMA foreign_keys = ON');
+const requireConnection = (): DB => {
+  if (connection === undefined) {
+    throw new Error(
+      'Database is not initialized: await initDatabase() (MigrationsGate does this) before any query.',
+    );
+  }
+
+  return connection;
+};
+
+/**
+ * The raw op-sqlite connection handle, exposed as a lazy proxy. Reactive
+ * consumers (`useLiveQuery`) call `rawDatabase.reactiveExecute`, the migrator
+ * calls `rawDatabase.execute`/`transaction`, `write` calls `transaction`.
+ *
+ * WHY A PROXY: the SQLCipher key lives in the Keychain, whose API is async, so
+ * the connection can no longer be opened at module load. Every property access
+ * on this handle forwards to the live connection once `initDatabase()` has
+ * opened it, which keeps every existing `rawDatabase.<method>(...)` call site
+ * (and every test mock of this module) unchanged. Before init it throws a clear
+ * error instead of an opaque `undefined is not a function`.
+ */
+export const rawDatabase: DB = new Proxy({} as DB, {
+  get: (_target, property) => {
+    const live = requireConnection();
+    const value = live[property as keyof DB];
+
+    return typeof value === 'function'
+      ? (value as (...args: never[]) => unknown).bind(live)
+      : value;
+  },
+});
+
+/**
+ * The launch-time connection. Gated on `DB_ENCRYPTION_ENABLED`:
+ *   - flag OFF (default): open the LIVE PLAINTEXT `kiko.db` exactly as the app
+ *     did before encryption shipped. `migrateLegacyDatabase()` canonicalizes any
+ *     surviving pre-rename `pff.db` into `kiko.db` (idempotent) and returns that
+ *     plaintext connection. Nothing here reads/creates the db key, asserts a
+ *     SQLCipher build, or deletes a plaintext file.
+ *   - flag ON: the full cluster-2 encrypted path (keyed open + one-time
+ *     plaintext -> encrypted export). See `db-config.ts` — ON only for the
+ *     supervised on-device migration test.
+ */
+const openConnection = (): Promise<DB> =>
+  DB_ENCRYPTION_ENABLED ? openEncryptedDatabase() : Promise.resolve(migrateLegacyDatabase());
+
+const openAndConfigure = async (): Promise<void> => {
+  const opened = await openConnection();
+  // SQLite defaults foreign_keys OFF per connection; op-sqlite's open() does not
+  // change it. Enable enforcement once, on the raw connection, before any
+  // transaction/write runs. The pragma is per-connection and a no-op inside a
+  // transaction, so it must run here rather than inside `write`.
+  await opened.execute('PRAGMA foreign_keys = ON');
+  connection = opened;
+};
+
+// A concurrent or repeat invocation (a gate remount) must not open two
+// connections or run the plaintext export twice, so every caller shares this
+// one in-flight run. A failed run clears the memo so the next call retries.
+let initialization: Promise<void> | undefined;
+
+/**
+ * Opens the encrypted database (running the one-time plaintext export on the
+ * first launch after encryption shipped) and enables foreign-key enforcement.
+ * Must resolve before the first query; `MigrationsGate` awaits it before
+ * `runMigrations()`. Idempotent.
+ */
+export const initDatabase = (): Promise<void> => {
+  initialization ??= openAndConfigure().catch((error: unknown) => {
+    initialization = undefined;
+    throw error;
+  });
+
+  return initialization;
+};
 
 /**
  * The op-sqlite connection shape drizzle's op-sqlite session actually calls.
- *
- * drizzle's fielded read path (`values()` -> `all()`/`get()`) invokes
- * `client.executeRawAsync(sql, params)` and expects a bare positional row
- * matrix `Scalar[][]`, which it maps directly. op-sqlite 18.1.4's runtime
- * `executeRawAsync`, however, resolves to its `RawQueryResult` OBJECT
- * (`{ rawRows, columnNames, rowsAffected, insertId? }`) — the method is not
- * even declared on the exported `DB` type. The mismatch makes every read
- * throw `TypeError: rows.map is not a function`, which `useLiveQuery`
- * swallows into empty data, so the whole UI renders blank.
+ * drizzle's fielded read path invokes `client.executeRawAsync(sql, params)` and
+ * expects a bare `Scalar[][]`; op-sqlite's runtime `executeRawAsync` resolves to
+ * a `{ rawRows, columnNames, rowsAffected }` OBJECT — the method is not even on
+ * the exported `DB` type. The mismatch makes every read throw and `useLiveQuery`
+ * swallow it into empty data, so the whole UI renders blank.
  */
 type DrizzleOPSQLiteClient = DB & {
   executeRawAsync(query: string, params?: Scalar[]): Promise<Scalar[][]>;
 };
 
 /**
- * Thin wrapper that delegates every method to the real op-sqlite handle
- * (the spread copies its own-enumerable methods, including the runtime-only
- * `executeAsync`/`executeRawAsync` that the `DB` type omits) but overrides
- * `executeRawAsync` to return the unwrapped `Scalar[][]` drizzle's reads
- * expect. Writes are untouched: drizzle mutations and the transaction
- * begin/commit/rollback all route through `run()` -> `executeAsync`, a
- * different method whose `QueryResult` (`rowsAffected`/`insertId`) return
- * shape this wrapper preserves verbatim.
+ * Forwards every method to the given op-sqlite handle but overrides
+ * `executeRawAsync` to return the unwrapped `Scalar[][]` drizzle's reads expect.
+ * A proxy (not a spread copy) so it composes with the lazy `rawDatabase` handle,
+ * which has no own properties to copy. Writes are untouched: drizzle mutations
+ * and the transaction begin/commit/rollback route through `executeAsync`, whose
+ * `QueryResult` return shape this wrapper preserves verbatim.
  */
-export const wrapClientForDrizzle = (client: DB): DrizzleOPSQLiteClient => ({
-  ...client,
-  executeRawAsync: async (query, params) => (await client.executeRaw(query, params)).rawRows,
-});
+export const wrapClientForDrizzle = (client: DB): DrizzleOPSQLiteClient =>
+  new Proxy(client as DrizzleOPSQLiteClient, {
+    get: (target, property, receiver) =>
+      property === 'executeRawAsync'
+        ? async (query: string, params?: Scalar[]) =>
+            (await target.executeRaw(query, params)).rawRows
+        : Reflect.get(target, property, receiver),
+  });
 
 /**
- * The Drizzle ORM instance layered over the same op-sqlite connection.
- * Reads (query builders passed to `useLiveQuery`) use this directly;
- * writes must go through `write` so they run inside a transaction.
+ * The Drizzle ORM instance layered over the same op-sqlite connection. Reads use
+ * this directly; writes must go through `write` so they run inside a transaction.
+ * Building a query (`.toSQL()`) needs no connection; executing one needs `initDatabase`.
  */
 export const database = drizzle(wrapClientForDrizzle(rawDatabase), { schema });
 
@@ -64,31 +125,18 @@ export const database = drizzle(wrapClientForDrizzle(rawDatabase), { schema });
  * The one sanctioned write path for the app.
  *
  * REACTIVE RULE: op-sqlite fires a reactive query's callback only when the
- * mutation that changed the table ran inside `rawDatabase.transaction(...)`.
- * A write issued outside a transaction is invisible to every live query
- * watching that table, so the UI silently goes stale. Therefore `write`
- * wraps the Drizzle operations in the *raw* op-sqlite transaction (not
- * Drizzle's own `database.transaction`, which does not drive op-sqlite's
- * reactive flush). Because `database` is built over `rawDatabase`, the
- * Drizzle statements run on the same connection inside the native
- * transaction, and reactive queries fire on commit. Errors auto-rollback.
- *
- * The callback receives the global `database` instance (not a
- * transaction-scoped Drizzle handle) — its statements run on `rawDatabase`,
- * which is already inside the open native transaction.
- *
- * Every insert/update/delete in the app — even a single statement — must
- * go through here.
+ * mutation ran inside `rawDatabase.transaction(...)`. A write outside a
+ * transaction is invisible to every live query watching that table. So `write`
+ * wraps the Drizzle operations in the *raw* op-sqlite transaction (not Drizzle's
+ * own `database.transaction`, which does not drive op-sqlite's reactive flush).
+ * Errors auto-rollback.
  */
 export const write = async <T>(work: (db: typeof database) => Promise<T>): Promise<T> => {
   let result!: T;
   await rawDatabase.transaction(async () => {
     result = await work(database);
   });
-  // Idempotent: flushes only the pending reactive queue. If the transaction
-  // commit already flushed, this is a harmless no-op. Guarantees live queries
-  // (Task 8's useLiveQuery) refresh after every write, removing the runtime
-  // uncertainty about whether the commit alone drives the reactive flush.
   await rawDatabase.flushPendingReactiveQueries();
+
   return result;
 };

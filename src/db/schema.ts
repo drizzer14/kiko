@@ -48,8 +48,16 @@ export const transactions = sqliteTable(
     description: text('description').notNull().default(''),
     category: text('category'),
     mcc: integer('mcc'),
+    // The counterparty's IBAN on a synced Monobank transfer (null for manual
+    // rows, for non-transfer merchants, and for rows synced before this column
+    // existed). Lets the category chart tell an OWN-account transfer (counter
+    // IBAN ∈ the user's own cards) from a genuine P2P payment — see
+    // statistics/transfer-exclusion.ts.
+    counterIban: text('counter_iban'),
     comment: text('comment'),
-    source: text('source', { enum: ['manual', 'monobank'] }).notNull(),
+    // 'btc_wallet' / 'binance' are named for enum parity with
+    // `accounts.institution`; a balance sync writes no transaction rows today.
+    source: text('source', { enum: ['manual', 'monobank', 'btc_wallet', 'binance'] }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   },
@@ -107,6 +115,18 @@ export const settings = sqliteTable('settings', {
     .notNull()
     .default('UAH'),
   lastSyncAt: integer('last_sync_at'),
+  // The category a null/empty transaction category folds into (the single
+  // catch-all), and the category deleted rows reassign to. Seeded to `'other'`
+  // (the canonical seeded catch-all category — see the seed migration), and
+  // user-configurable from the Categories screen. A `categories.key` slug.
+  defaultCategoryKey: text('default_category_key').notNull().default('other'),
+  // App lock (Face ID / passcode gate). Off by default; asked for only on a
+  // fresh app open. Once unlocked the process never re-locks.
+  lockEnabled: integer('lock_enabled', { mode: 'boolean' }).notNull().default(false),
+  // Legacy: the old background-grace period. No longer read or written (the lock
+  // is cold-launch-only now). Kept as a harmless column so no migration is
+  // needed to drop it; migration 0011 still creates it.
+  lockGraceSeconds: integer('lock_grace_seconds').notNull().default(30),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

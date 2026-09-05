@@ -79,4 +79,28 @@ describe('useSync', () => {
 
     expect(result.current.error).toMatch(/sync boom/);
   });
+
+  it('resolves true when the sync and rate refresh succeed', async () => {
+    const { result } = await renderHook(() => useSync());
+
+    let outcome = false;
+    await act(async () => {
+      outcome = await result.current.sync('acc-42');
+    });
+
+    expect(outcome).toBe(true);
+  });
+
+  it('resolves false (and sets error) when the sync fails', async () => {
+    mockRunSync.mockRejectedValue(new Error('sync boom'));
+    const { result } = await renderHook(() => useSync());
+
+    let outcome = true;
+    await act(async () => {
+      outcome = await result.current.sync();
+    });
+
+    expect(outcome).toBe(false);
+    expect(result.current.error).toMatch(/sync boom/);
+  });
 });

@@ -1,12 +1,13 @@
-import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
-import { HOLD_GESTURE_TEST_ID } from '../card-context-menu.component';
+import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
+
 import AccountDetailScreen from './account-detail.screen';
 
 // A grid card's delete menu is a react-native-gesture-handler long-press, so
@@ -105,6 +106,18 @@ jest.mock('../../repositories/rates.repo', () => ({
 jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+
+// The crypto section is tested on its own; here it collapses to a marker view
+// so the screen's kind-gating is what is under test.
+jest.mock('./crypto-sync-section', () => {
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ account }: { account: { id: string } }) => (
+      <View testID="crypto-sync-section" accessibilityLabel={`crypto-sync ${account.id}`} />
+    ),
+  };
+});
 
 type Account = {
   id: string;
@@ -530,6 +543,33 @@ describe('AccountDetailScreen', () => {
     setLiveData({ accounts: [account({ kind: 'cash', institution: null })], holdings: [] });
     const { queryByPlaceholderText } = await renderScreen();
     expect(queryByPlaceholderText('Monobank token')).toBeNull();
+  });
+
+  it('renders the crypto sync section for a crypto account, with that account', async () => {
+    setLiveData({ accounts: [account({ kind: 'crypto', name: 'Cold storage' })], holdings: [] });
+    const { getByTestId, getByLabelText, queryByPlaceholderText } = await renderScreen();
+
+    expect(getByTestId('crypto-sync-section')).toBeTruthy();
+    expect(getByLabelText('crypto-sync a')).toBeTruthy();
+    // no Monobank controls on a crypto account
+    expect(queryByPlaceholderText('Monobank token')).toBeNull();
+  });
+
+  it.each([
+    ['a bank account', account({ kind: 'bank' })],
+    ['a cash account', account({ kind: 'cash' })],
+  ])('does not render the crypto sync section for %s', async (_label, testAccount) => {
+    setLiveData({ accounts: [testAccount], holdings: [] });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('crypto-sync-section')).toBeNull();
+  });
+
+  it('does not render the crypto sync section before the account has loaded', async () => {
+    setLiveData({ accounts: [], holdings: [] });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('crypto-sync-section')).toBeNull();
   });
 
   it('surfaces the sync error from useSync', async () => {

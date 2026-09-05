@@ -1,9 +1,12 @@
 import { asc, eq, sql } from 'drizzle-orm';
+
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
-import { isSyncedAccount } from '../holdings/deletable';
+import { isSyncedAccount, isSyncedHolding, type SyncedInstitution } from '../holdings/deletable';
+import { SYNCED_AT_FIELD, syncedMetadataFields } from '../holdings/holding-metadata';
+
 import type { Repository } from './repository';
 
 // The next free grid slot for a new account: one past the current highest
@@ -36,6 +39,17 @@ type NewCashAccount = {
   color?: string | null;
 };
 
+// The metadata keys a disconnect strips: every sync-ownership marker plus the
+// balance-sync `syncedAt` stamp, so a disconnected holding reads as manual and
+// carries no stale sync bookkeeping. Every other key (iban, maskedPan, …) stays.
+const strippedOnDisconnect: readonly string[] = [...syncedMetadataFields, SYNCED_AT_FIELD];
+
+const withoutSyncMetadata = (metadata: Record<string, unknown>): Record<string, unknown> | null => {
+  const kept = Object.entries(metadata).filter(([key]) => !strippedOnDisconnect.includes(key));
+
+  return kept.length > 0 ? Object.fromEntries(kept) : null;
+};
+
 export const accountsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so any rows that happen to share a
@@ -45,12 +59,13 @@ export const accountsRepo = {
   byIdQuery: (accountId: string) =>
     database.select().from(accounts).where(eq(accounts.id, accountId)),
   /**
-   * The account(s) currently connected to the personal Monobank API. The
-   * single-connection invariant means this yields at most one row; the UI uses
-   * it to hide "Connect" on every other account while one is connected.
+   * The account(s) connected under one institution — Monobank by default, or a
+   * balance provider (`'btc_wallet'` / `'binance'`). The one-connection-per-
+   * institution invariant means this yields at most one row; the UI uses it to
+   * hide "Connect" on every other account while one is connected.
    */
-  connectedQuery: () =>
-    database.select().from(accounts).where(eq(accounts.institution, 'monobank')),
+  connectedQuery: (institution: SyncedInstitution = 'monobank') =>
+    database.select().from(accounts).where(eq(accounts.institution, institution)),
   /**
    * Insert a new account and resolve to its generated app id (the text UUID),
    * so a caller can immediately act on the new row (e.g. set its icon). The
@@ -92,33 +107,33 @@ export const accountsRepo = {
       });
     }),
   /**
-   * Disconnect a Monobank-connected account, turning it into a plain manual
-   * account whose data is kept as a historical snapshot. In ONE op-sqlite
-   * transaction: clear the account's `institution` (so `isSyncedAccount` is
-   * false and `remove` accepts it), and strip the `monobankId` key from every
-   * synced holding's metadata (so `isSyncedHolding` is false and each card/jar
-   * holding becomes manual). Balances, holdings and transactions are left as-is.
-   * Manual holdings under the account (no `monobankId`) are untouched. Clearing
-   * the Keychain token is NOT done here — the Keychain is not transactional; the
-   * `disconnectMonobank` operation in `../monobank/disconnect` composes both.
+   * Disconnect a synced account (Monobank, wallet, or Binance), turning it into
+   * a plain manual account whose data is kept as a historical snapshot. In ONE
+   * op-sqlite transaction: clear the account's `institution` (so
+   * `isSyncedAccount` is false and `remove` accepts it), and strip every sync
+   * key (`monobankId` / `walletAddress` / `binanceAsset`) plus `syncedAt` from
+   * each synced holding's metadata (so `isSyncedHolding` is false and the
+   * holding becomes manual). Balances, holdings and transactions are left as-is;
+   * manual holdings under the account are untouched. Clearing a Keychain item
+   * is NOT done here — the Keychain is not transactional; the
+   * `monobank/disconnect` and `crypto-sync/disconnect` operations compose both.
    */
-  disconnectMonobank: (accountId: string) =>
+  disconnect: (accountId: string) =>
     write(async (tx) => {
       await tx.update(accounts).set({ institution: null }).where(eq(accounts.id, accountId));
       const accountHoldings = await tx
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
+
       for (const holding of accountHoldings) {
-        const meta = holding.metadata;
-        if (typeof meta !== 'object' || meta === null || !('monobankId' in meta)) {
+        if (!isSyncedHolding(holding)) {
           continue;
         }
-        const { monobankId: _monobankId, ...rest } = meta as Record<string, unknown>;
-        const nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+
         await tx
           .update(holdings)
-          .set({ metadata: nextMetadata })
+          .set({ metadata: withoutSyncMetadata(holding.metadata as Record<string, unknown>) })
           .where(eq(holdings.id, holding.id));
       }
     }),

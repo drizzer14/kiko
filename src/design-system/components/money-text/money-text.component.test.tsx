@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+
 import { Money } from '../../../currency/money';
 import '../../unistyles';
 import MoneyText from './money-text.component';

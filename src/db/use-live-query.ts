@@ -25,9 +25,10 @@ const toError = (caught: unknown): Error =>
 export function useLiveQuery<T>(
   query: SQLQuery<T>,
   tables: string[],
-): { data: T[]; error?: Error } {
+): { data: T[]; error?: Error; isLoading: boolean } {
   const [data, setData] = useState<T[]>([]);
   const [error, setError] = useState<Error | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
   const tablesKey = tables.join(',');
@@ -53,6 +54,8 @@ export function useLiveQuery<T>(
       if (!alive || myGeneration !== generation.current) {
         return;
       }
+
+      setIsLoading(false);
 
       const settled = first(result, toError);
 
@@ -98,5 +101,5 @@ export function useLiveQuery<T>(
     };
   }, [sql, paramsKey, fireOn]);
 
-  return { data, error };
+  return { data, error, isLoading };
 }

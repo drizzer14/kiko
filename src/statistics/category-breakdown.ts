@@ -6,11 +6,6 @@ import { darkTheme } from '../design-system/theme';
 import { convert, type RateTable } from '../rates/conversion';
 import { canConvert } from '../rates/net-worth-view';
 
-// The grouping key a null/empty category folds into. Kept distinct from any real
-// category slug so uncategorized spending is one stable slice (and one stable
-// color) rather than scattering.
-const UNCATEGORIZED_KEY = 'uncategorized';
-
 const { chartSeries } = darkTheme.colors;
 
 /**
@@ -19,7 +14,10 @@ const { chartSeries } = darkTheme.colors;
  * amount's currency is the parent HOLDING's currency (a transaction row has no
  * currency of its own), so the caller joins it in before building.
  */
-export type BreakdownTransaction = Pick<TransactionRow, 'category' | 'amountMinorUnits'> & {
+export type BreakdownTransaction = Pick<
+  TransactionRow,
+  'id' | 'category' | 'amountMinorUnits' | 'mcc' | 'counterIban' | 'description'
+> & {
   currency: HoldingRow['currency'];
 };
 
@@ -76,9 +74,12 @@ export const resolveCategoryColor = (
     : categoryColor(key);
 
 // The normalized grouping key for a transaction's category: lowercased to match
-// `resolveCategoryDisplay`'s own lookup convention, with null/empty folding into
-// the shared uncategorized bucket.
-const groupKey = (category: string | null): string => category?.toLowerCase() || UNCATEGORIZED_KEY;
+// `resolveCategoryDisplay`'s own lookup convention, with a null/empty category
+// folding into the DEFAULT category key so uncategorized spending merges into
+// the default's slice rather than a separate bucket.
+const groupKey = (category: string | null, defaultKey: string): string => {
+  return category?.toLowerCase() || defaultKey;
+};
 
 /**
  * Build one pie slice per spending category for the "Spending by Category"
@@ -88,18 +89,34 @@ const groupKey = (category: string | null): string => category?.toLowerCase() ||
  * currency at the current `rateTable`; the guard silently drops any transaction
  * whose currency has no rate (so one unconvertible row never voids its
  * category). Categories listed in `excludedCategories` are dropped before the
- * shares are computed, so the visible slices always reshare to ~1. Empty
- * categories are excluded and the rest are sorted by amount descending.
+ * shares are computed, so the visible slices always reshare to ~1. Individual
+ * rows listed in `excludedTransactionIds` (e.g. the debit leg of an internal
+ * transfer — the credit leg is already ignored as income) are dropped by id. A
+ * null/empty category folds into `defaultCategoryKey` (a `categories.key` read
+ * from settings at the call site, never hardcoded here), so uncategorized
+ * spending merges into the default's slice. Empty categories are excluded and
+ * the rest are sorted by amount descending.
  */
 export const buildCategoryBreakdown = (input: {
   transactions: BreakdownTransaction[];
   categoryDisplay: ReadonlyMap<string, { title: string; icon: string; color: string | null }>;
   rateTable: RateTable;
   baseCurrency: Currency;
+  defaultCategoryKey: string;
   excludedCategories?: ReadonlySet<string>;
+  excludedTransactionIds?: ReadonlySet<string>;
 }): CategorySlice[] => {
-  const { transactions, categoryDisplay, rateTable, baseCurrency, excludedCategories } = input;
+  const {
+    transactions,
+    categoryDisplay,
+    rateTable,
+    baseCurrency,
+    defaultCategoryKey,
+    excludedCategories,
+    excludedTransactionIds,
+  } = input;
   const excluded = excludedCategories ?? new Set<string>();
+  const excludedIds = excludedTransactionIds ?? new Set<string>();
 
   // Per category key: the running spend total (base minor units) plus a
   // representative raw category value, so the display resolves off the same key
@@ -110,11 +127,14 @@ export const buildCategoryBreakdown = (input: {
     if (transaction.amountMinorUnits >= 0) {
       continue;
     }
+    if (excludedIds.has(transaction.id)) {
+      continue;
+    }
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
       continue;
     }
 
-    const key = groupKey(transaction.category);
+    const key = groupKey(transaction.category, defaultCategoryKey);
     if (excluded.has(key)) {
       continue;
     }
@@ -132,7 +152,7 @@ export const buildCategoryBreakdown = (input: {
 
   const slices = Array.from(totals.entries())
     .map(([key, { amount, representative }]) => {
-      const display = resolveCategoryDisplay(representative, categoryDisplay);
+      const display = resolveCategoryDisplay(representative, categoryDisplay, defaultCategoryKey);
 
       return {
         key,
@@ -147,5 +167,7 @@ export const buildCategoryBreakdown = (input: {
 
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
 
-  return slices.map((slice) => ({ ...slice, share: total === 0 ? 0 : slice.amount / total }));
+  return slices.map((slice) => {
+    return { ...slice, share: total === 0 ? 0 : slice.amount / total };
+  });
 };

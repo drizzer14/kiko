@@ -58,4 +58,25 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
     paddingVertical: theme.spacing(8),
   },
+  // Absolutely centres the donut's total figure (and its subtle "Total"
+  // caption) over the ring's hole. Sized to the same `size` as the sibling
+  // `<Svg>` inline at render time — this static sheet does not know the
+  // caller's `size` prop — so it centres within the exact box the ring is
+  // drawn in, not merely within `chart`'s own (already-centred) bounds.
+  centerTotal: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The total figure itself: the section-title weight kept, but the size
+  // taken down to two-thirds of `title` (28 -> 19) so the center total sits
+  // quietly inside the ring's hole rather than crowding it. Explicit
+  // `fontSize`/`lineHeight` because no shared token lands on 19.
+  // `MoneyText` still owns the tone color, so this omits `color`.
+  centerAmount: {
+    ...theme.typography.title,
+    fontSize: 19,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
 }));

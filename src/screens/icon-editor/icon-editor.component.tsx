@@ -1,9 +1,11 @@
 import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
+
 import Box from '../../design-system/components/box';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import IconPickerModal from '../settings/icon-picker-modal';
+
 import type { IconEditorProps } from './icon-editor.props';
 import { styles } from './icon-editor.styles';
 

@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, SwipeableRow, Switch, TextField, CurrencyBreakdown, CurrencySwitch), an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, SwipeableRow, Switch, TextField, CurrencyBreakdown, CurrencySwitch, OptionPills), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -88,13 +88,24 @@ new component can land between reviews of this skill:
   single fixed color regardless of variant.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
-  optional `bordered` edge, and an optional entity-color gradient
-  wash — see "Entity color and tint" below.
+  optional `bordered` edge, and an optional flat entity-color tint
+  background — see "Entity color and tint" below.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
-  `Modal + backdrop + Box` again.
+  `Modal + backdrop + Box` again. It caps its own height at a fixed
+  66%-of-window ceiling and takes an optional `maxHeight` prop that
+  can only tighten that cap further, plus a `scrollable` prop
+  (defaults `true`) that wraps `children` in a `ScrollView` so
+  overflow scrolls instead of clipping — a sheet that needs its own
+  pinned header/footer or a scroll-to-selection ref (date-range-field,
+  category-field, icon-picker-modal) passes `scrollable={false}` and
+  renders its own inner `ScrollView` instead. Its drag-to-close
+  grabber's pure math (`clampSheetTranslate`, `shouldDismissSheet`)
+  lives in `bottom-sheet.gesture.ts` — see `kiko-gestures`. Read
+  `bottom-sheet.props.d.ts` for the exact current prop set rather than
+  trusting this summary if it drifts.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
@@ -110,10 +121,25 @@ new component can land between reviews of this skill:
 - **CurrencySwitch** — a segmented base-currency toggle pill; not a
   `Button` (it is a selection control, not an action, and needs a
   transparent selected-state fill `Button` does not support).
+- **OptionPills** (`src/design-system/components/option-pills/`) — a
+  shared row of selectable pill options; read that folder directly
+  for its current props rather than assuming it matches
+  `CurrencySwitch`'s shape.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
-  of the three.
+  of the three. `PieChart` additionally supports `innerRatio` (ring
+  thickness) and `centerTotal` (an amount centered in the donut hole)
+  — see `kiko-charts`.
+
+## App-lock UI
+
+The app-lock screen/gate components are part of the shared
+screen/gate vocabulary, not a one-off: `src/auth/lock-gate/` (the
+launch-time lock screen) and
+`src/screens/settings/app-lock-setting/` (the settings toggle row).
+Follow their existing shape — read the folders directly — when adding
+a related security UI rather than inventing a new screen pattern.
 
 ## Entity color and tint
 
@@ -136,24 +162,25 @@ where they can drift. As of this writing the pipeline is:
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
   of silently falling back.
-- `entityGradientStops` (`entity-tint.ts`) — the two `rgba(...)` stops
-  for a card's 45deg gradient wash: the resolved color's flat tint as
-  the first stop, that same color lightened as the second, so the
-  gradient reads as one subtle diagonal wash of a single hue.
-- `entityTintBackground` / `lightenHex` (`entity-tint.ts`) — the
-  lower-level building blocks `entityGradientStops` composes; reach
-  for them directly only when you need one flat tint or one lightened
-  hex, not both gradient stops.
+- `entityCardBackground` (`entity-tint.ts`) — a card's flat, solid
+  background: the resolved color, darkened, then applied at the
+  shared tint opacity — one `rgba(...)` string, fed straight to
+  `GlassSurface`'s `tint` prop. Replaced a 45deg two-stop gradient
+  wash (design review: a plain darker solid reads calmer than a
+  diagonal blend of two near-identical hues).
+- `entityTintBackground` / `darkenHex` (`entity-tint.ts`) — the
+  lower-level building blocks `entityCardBackground` composes; reach
+  for them directly only when you need one flat (non-darkened) tint or
+  one darkened hex on its own, not the composed card background.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
-a flat translucent tint behind a card, a two-stop diagonal gradient
-wash on a `GlassSurface`, an opaque SF Symbol tint, a chart fill, a
-pastel-over-white blend (`blendOverWhite`). Never introduce a second,
-parallel way to derive one of these renderings from a hex, and never
-add a second hex parser either — `entity-tint.ts` owns the one
-unexported `parseHex`. Extend `entity-tint.ts` with a new named
-function instead, so every rendering of an entity's color still
+a flat translucent tint behind a card, an opaque SF Symbol tint, a
+chart fill, a pastel-over-white blend (`blendOverWhite`). Never
+introduce a second, parallel way to derive one of these renderings
+from a hex, and never add a second hex parser either — `entity-tint.ts`
+owns the one unexported `parseHex`. Extend `entity-tint.ts` with a new
+named function instead, so every rendering of an entity's color still
 traces back to the same `resolveEntityColor` call. `blendOverWhite`
 and a duplicated `parseHex` were once added under `money-text/` and
 had to be moved back into `entity-tint.ts` for exactly this reason.
@@ -187,7 +214,7 @@ with a conditional prop: `isLiquidGlassSupported` (from
 as a plain `View` with no glass effect — so the fallback styling lives
 in the `else` branch's `View`, not as a style merged onto
 `LiquidGlassView` "just in case." A new prop that changes the surface's
-appearance (a new gradient wash, a new border style) must be applied
+appearance (a new tint wash, a new border style) must be applied
 to **both** branches, or it silently only works on iOS 26+.
 
 ## Wrapping a React Native primitive

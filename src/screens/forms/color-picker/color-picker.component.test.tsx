@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
+
 import ColorPicker from './color-picker.component';
 
 const { entityColors } = darkTheme.colors;

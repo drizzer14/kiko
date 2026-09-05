@@ -1,4 +1,3 @@
-import type { DimensionValue } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 
 // The single base padding step every sheet keeps around its content, shared by
@@ -12,6 +11,27 @@ import { StyleSheet } from 'react-native-unistyles';
 // inset entirely (bug A2) — this one owner adds `insets.bottom` for every sheet
 // so neither drift can recur.
 const SHEET_PADDING_STEP = 4;
+
+// An EXTRA buffer kept at the very end of a sheet's own content, on top of
+// `sheet`'s own bottom padding below. Bug A: the Home filter menu (short,
+// never-scrolled content) read roomier at the bottom than every other sheet,
+// because `sheet`'s own bottom padding is applied to the OUTER card, not the
+// content — a short sheet's content simply falls short of the card's full
+// height, so `sheet`'s padding shows in full underneath it, while a taller
+// sheet's content runs right up to (or past, and scrolls within) that same
+// capped height, leaving nothing extra below the last row. Living on the
+// CONTENT itself (`scrollContent`'s own `contentContainerStyle` below, and
+// `box` below for a `scrollable={false}` sheet) rather than solely on
+// `sheet`'s own padding guarantees this same buffer renders directly beneath
+// the very last row (or, for a pinned-actions sheet, the pinned row itself)
+// in every case — short content, content that fills the cap, and content
+// scrolled all the way to its end alike. Matches `SHEET_PADDING_STEP` itself
+// (both are "the one base step"), so every sheet's existing
+// "pads the sheet clear of the home indicator" test — which asserts the
+// FIRST ancestor `paddingBottom` it finds is at least the base step, spacing(4)
+// = 16 — still holds once that first-found ancestor becomes this content-level
+// padding rather than `sheet`'s own.
+const CONTENT_BOTTOM_PADDING_STEP = SHEET_PADDING_STEP;
 
 export const styles = StyleSheet.create((theme) => ({
   // Fills the modal window and pins the sheet to the bottom edge. The scrim and
@@ -59,9 +79,11 @@ export const styles = StyleSheet.create((theme) => ({
   // renders outside any SafeAreaView, so the sheet owns the bottom safe-area
   // inset itself (`bottomInset` is `useSafeAreaInsets().bottom` from the call
   // site) on top of the single base step, or its last row would sit flush
-  // against the home indicator. `maxHeight`, when set, lets a tall sheet scroll
-  // its own content instead of growing past the viewport.
-  sheet: (bottomInset: number, maxHeight: DimensionValue | undefined) => ({
+  // against the home indicator. `maxHeight` is always set by the component
+  // (the resolved 66%-of-window cap, or a call site's own stricter override —
+  // see `BottomSheet`'s own comment), never left unset, so a tall sheet always
+  // scrolls its own content instead of growing past the viewport.
+  sheet: (bottomInset: number, maxHeight: number) => ({
     maxHeight,
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
@@ -70,4 +92,75 @@ export const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing(SHEET_PADDING_STEP),
     paddingBottom: theme.spacing(SHEET_PADDING_STEP) + bottomInset,
   }),
+  // DEVICE BUG (F5) fix: the 66% cap (`sheet.maxHeight` above) is forced on
+  // every sheet, but until now the sheet card rendered no scroll container of
+  // its own, so a plain-Box sheet whose content ran taller than the cap
+  // (filter-menu, date-field, date-range-field, the transaction-form
+  // category-override confirm) simply got CLIPPED at 66% with no way to
+  // reach its own lower rows. `flexShrink: 1` is what makes the ScrollView
+  // actually shrink to fit inside the capped parent `Box` (`sheet` above)
+  // instead of growing it to its content's natural height — a bare
+  // `ScrollView` with no explicit sizing ignores its parent's `maxHeight`.
+  // The default `scrollable` path in `BottomSheet` wraps `children` in a
+  // `ScrollView` styled with this; the `scrollable={false}` opt-out (a sheet
+  // that needs a pinned header/footer/actions row around its OWN inner
+  // ScrollView — date-range-field's Apply/Clear row, category-field's
+  // scroll-to-selected ref, icon-picker-modal's Remove/Cancel header) skips
+  // this entirely and owns its own scroll region instead.
+  scrollBody: {
+    flexShrink: 1,
+  },
+  // The top drag region: the grabber pill centered in a hit area the vertical
+  // Pan is attached to (and ONLY here, never the scrollable body, so the drag
+  // never fights the sheet's own ScrollView). Its bottom pad separates the pill
+  // from the first content row; the sheet card's own `paddingTop` sits above it.
+  grabberRegion: {
+    alignItems: 'center',
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(3),
+  },
+  // The grabber pill itself: the standard iOS ~36x5pt rounded handle, in the
+  // muted separator gray so it reads as a subtle affordance on the sheet
+  // surface rather than a hard line.
+  grabber: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: theme.colors.border,
+  },
+  // The vertical gap between the sheet's own top-level children (the
+  // call-site's `gap` prop, in theme.spacing steps), applied to the
+  // centralized `ScrollView`'s own content container on the default
+  // `scrollable` path (`box` below is the `scrollable={false}` opt-out
+  // path's equivalent). A `ScrollView`'s OWN `style` never lays out its
+  // children (only `contentContainerStyle` does), so the gap cannot live on
+  // `scrollBody` above. `paddingBottom` is the extra comfortable-bottom-space
+  // buffer (bug A, see `CONTENT_BOTTOM_PADDING_STEP` above) — living in the
+  // content container itself means it is still visible even once the
+  // ScrollView is scrolled all the way to its end, unlike padding on `sheet`
+  // (which only ever shows beneath content short enough to never need to
+  // scroll).
+  scrollContent: (gap: number) => ({
+    gap,
+    paddingBottom: theme.spacing(CONTENT_BOTTOM_PADDING_STEP),
+  }),
+  // The `scrollable={false}` opt-out's body wrapper (a pinned-actions sheet:
+  // date-range-field's Clear/Apply row, category-field's and
+  // icon-picker-modal's own header + inner ScrollView, each rendered as a
+  // plain child of this `Box` alongside the pinned row). `flexShrink: 1` lets
+  // this `Box` participate in the sheet's 66% cap the SAME way `scrollBody`
+  // above does — a plain `View` (React Native's Yoga default `flexShrink: 0`,
+  // unlike the web's `1`) would otherwise refuse to shrink at all here, so
+  // only its OWN inner `flexShrink: 1` ScrollView (each opted-out sheet's own
+  // `styles.scroll`) was what kept the whole thing inside the cap; this
+  // closes that gap in the ONE shared wrapper instead of relying on every
+  // opted-out sheet getting its own inner ScrollView's sizing exactly right.
+  // `paddingBottom` gives it the SAME comfortable bottom buffer as
+  // `scrollContent` above (bug A) — directly beneath whichever child renders
+  // last: a pinned actions row (date-range-field), or the sheet's own inner
+  // ScrollView's frame (category-field, icon-picker-modal).
+  box: {
+    flexShrink: 1,
+    paddingBottom: theme.spacing(CONTENT_BOTTOM_PADDING_STEP),
+  },
 }));

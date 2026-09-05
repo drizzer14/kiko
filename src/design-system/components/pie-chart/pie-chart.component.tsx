@@ -1,12 +1,14 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import { Svg, Path } from 'react-native-svg';
+import { Path, Svg } from 'react-native-svg';
+
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
 import type { AccountSlice } from '../../../statistics/account-contribution';
 import Box from '../box';
-import Text from '../text';
 import MoneyText from '../money-text';
+import Text from '../text';
+
 import { styles } from './pie-chart.styles';
 
 /**
@@ -14,7 +16,13 @@ import { styles } from './pie-chart.styles';
  * every rendered primitive (arc, legend row, empty state), so two pies on one
  * screen — the account-contribution pie and the category-spending pie — never
  * collide on the same hardcoded id; it defaults to `pie-chart`. `emptyLabel` is
- * the empty-state copy, defaulting to the account-pie wording.
+ * the empty-state copy, defaulting to the account-pie wording. `innerRatio`
+ * overrides the default ring thickness (see `DEFAULT_INNER_RATIO`) — a caller
+ * that needs room for a `centerTotal` passes a higher ratio to thin the ring.
+ * `centerTotal`, when supplied, renders that amount centered in the donut
+ * hole (e.g. the category-spending donut's total); omitted, no center total
+ * renders — the account-contribution pie's total already reads elsewhere on
+ * screen, so it passes neither.
  */
 type PieChartProps = {
   slices: AccountSlice[];
@@ -22,13 +30,15 @@ type PieChartProps = {
   size?: number;
   testID?: string;
   emptyLabel?: string;
+  innerRatio?: number;
+  centerTotal?: Money;
 };
 
 const DEFAULT_SIZE = 200;
 const DEFAULT_TEST_ID = 'pie-chart';
 const DEFAULT_EMPTY_LABEL = 'No Accounts To Show';
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.
-const INNER_RATIO = 0.58;
+const DEFAULT_INNER_RATIO = 0.58;
 const FULL_TURN = 360;
 // A single full-circle slice (share ~1) would collapse an SVG arc to a
 // zero-length command (start point == end point), rendering nothing; cap the
@@ -61,8 +71,13 @@ const polarToCartesian = (center: number, radius: number, angleDeg: number) => {
 
 // The `d` for one donut wedge: outer arc forward, line in to the hole, inner
 // arc back, closed. `largeArc` flips once a wedge passes the half-circle mark.
-const donutArc = (center: number, outerRadius: number, arc: ArcSlice): string => {
-  const innerRadius = outerRadius * INNER_RATIO;
+const donutArc = (
+  center: number,
+  outerRadius: number,
+  arc: ArcSlice,
+  innerRatio: number,
+): string => {
+  const innerRadius = outerRadius * innerRatio;
   const largeArc = arc.endAngle - arc.startAngle > 180 ? 1 : 0;
   const outerStart = polarToCartesian(center, outerRadius, arc.startAngle);
   const outerEnd = polarToCartesian(center, outerRadius, arc.endAngle);
@@ -128,6 +143,8 @@ const PieChart: FC<PieChartProps> = ({
   size = DEFAULT_SIZE,
   testID = DEFAULT_TEST_ID,
   emptyLabel = DEFAULT_EMPTY_LABEL,
+  innerRatio = DEFAULT_INNER_RATIO,
+  centerTotal,
 }) => {
   if (slices.length === 0) {
     return (
@@ -150,11 +167,32 @@ const PieChart: FC<PieChartProps> = ({
             <Path
               key={arc.accountId}
               testID={`${testID}-arc-${arc.accountId}`}
-              d={donutArc(center, center, arc)}
+              d={donutArc(center, center, arc, innerRatio)}
               fill={arc.color}
             />
           ))}
         </Svg>
+
+        {centerTotal !== undefined && (
+          <View
+            testID={`${testID}-center-total`}
+            pointerEvents="none"
+            style={[styles.centerTotal, { width: size, height: size }]}
+          >
+            <MoneyText
+              money={centerTotal}
+              context="balance"
+              style={styles.centerAmount}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+            />
+
+            <Text variant="caption" tone="textSecondary">
+              Total
+            </Text>
+          </View>
+        )}
       </View>
 
       <Box style={styles.legend}>

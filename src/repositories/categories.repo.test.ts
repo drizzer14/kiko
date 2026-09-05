@@ -18,6 +18,8 @@ jest.mock('../db/client', () => {
 // slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
+import { categories, categoryOverrides, transactions } from '../db/schema';
+
 import { SEEDED_CATEGORIES as CANONICAL_SEED } from './__fixtures__/seeded-categories';
 import { categoriesRepo } from './categories.repo';
 
@@ -136,6 +138,76 @@ describe('categoriesRepo', () => {
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
     expect(captured.values).toMatchObject({ color: null });
+  });
+});
+
+describe('categoriesRepo.delete', () => {
+  // Fake tx: read the single settings row (for the current default key), then
+  // the two category reassign updates (transactions + overrides) and the
+  // category-row delete, each captured so the test can assert the whole
+  // transaction without a real database.
+  const makeTx = (settingsRows: { defaultCategoryKey: string }[]) => {
+    const captured: {
+      txUpdate?: Record<string, unknown>;
+      overrideUpdate?: Record<string, unknown>;
+      deletedTable?: unknown;
+    } = {};
+    const tx = {
+      select: () => ({ from: () => Promise.resolve(settingsRows) }),
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            if (table === transactions) {
+              captured.txUpdate = values;
+            }
+            if (table === categoryOverrides) {
+              captured.overrideUpdate = values;
+            }
+            return Promise.resolve();
+          },
+        }),
+      }),
+      delete: (table: unknown) => ({
+        where: () => {
+          captured.deletedTable = table;
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    return { tx, captured };
+  };
+
+  it('reassigns matching transactions and overrides to the default, then removes the category row', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
+    mockTx = tx;
+
+    await categoriesRepo.delete('groceries');
+
+    expect(captured.txUpdate).toEqual({ category: 'other' });
+    expect(captured.overrideUpdate).toEqual({ category: 'other' });
+    expect(captured.deletedTable).toBe(categories);
+  });
+
+  it('reassigns to the CURRENT (configurable) default, not a hardcoded one', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'shopping' }]);
+    mockTx = tx;
+
+    await categoriesRepo.delete('groceries');
+
+    expect(captured.txUpdate).toEqual({ category: 'shopping' });
+    expect(captured.overrideUpdate).toEqual({ category: 'shopping' });
+  });
+
+  it('refuses to delete the default category and writes nothing', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
+    mockTx = tx;
+
+    await expect(categoriesRepo.delete('other')).rejects.toThrow(/default/i);
+
+    expect(captured.txUpdate).toBeUndefined();
+    expect(captured.overrideUpdate).toBeUndefined();
+    expect(captured.deletedTable).toBeUndefined();
   });
 });
 

@@ -1,9 +1,11 @@
 import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
+
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+
 import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 import { styles } from './filter-menu.styles';
 
