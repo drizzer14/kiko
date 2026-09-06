@@ -12,6 +12,24 @@ Rules:
 
 ## Device-deploy recipe
 
+Use `npm run deploy:device` (or `bash scripts/deploy-device.sh`) for a
+physical-iPhone deploy — do not hand-run `xcodebuild` + `devicectl`
+step by step, and do not use `react-native run-ios` (it targets the
+simulator). Read `scripts/deploy-device.sh` for the exact invocation;
+do not copy its body here. Interface:
+
+- `npm run deploy:device` — auto-detects the single connected iPhone.
+- `bash scripts/deploy-device.sh <device-id>` — explicit device id as
+  the first argument.
+- `export DEVICE_ID=<device-id>` — explicit device id via environment
+  variable.
+
+The script already builds in the incidents-driven recipe below (force
+bundling, `pod install` retry-once on a build failure, `devicectl`-only
+install/launch), so nobody needs to re-derive it by hand. Read the
+recipe anyway before debugging a deploy failure — it explains *why*
+each step exists.
+
 Before any device build/install task, read the `[[release-build-stale-jsbundle]]`
 memory (global memory dir) for the full recipe and the incidents that
 motivated it. Summary — every step is required, not optional:

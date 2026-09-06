@@ -17,7 +17,8 @@
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",
     "test": "jest",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "deploy:device": "bash scripts/deploy-device.sh"
   },
   "dependencies": {
     "@bottom-tabs/react-navigation": "^1.4.0",
