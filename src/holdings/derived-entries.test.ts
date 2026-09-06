@@ -1,3 +1,5 @@
+import { i18n } from '../i18n';
+
 import { derivedEntries } from './derived-entries';
 import type { ValuableHolding } from './holding-value';
 
@@ -35,7 +37,7 @@ describe('derivedEntries', () => {
     };
     const now = local(2026, 8, 2);
 
-    const entries = derivedEntries(holding, now);
+    const entries = derivedEntries(holding, now, i18n.t);
 
     // The opening deposit and the top-up lead, labelled distinctly.
     const contributions = entries.filter((e) => e.kind === 'contribution');
@@ -86,7 +88,7 @@ describe('derivedEntries', () => {
         compounding: 'bi-weekly',
       },
     };
-    const entries = derivedEntries(holding, local(2026, 2, 1));
+    const entries = derivedEntries(holding, local(2026, 2, 1), i18n.t);
     // Non-decreasing by time overall.
     for (let i = 1; i < entries.length; i += 1) {
       expect(entries[i].time).toBeGreaterThanOrEqual(entries[i - 1].time);
@@ -113,7 +115,7 @@ describe('derivedEntries', () => {
     };
     const now = T0 + 365 * DAY;
 
-    const entries = derivedEntries(holding, now);
+    const entries = derivedEntries(holding, now, i18n.t);
 
     expect(entries.map((e) => e.kind)).toEqual(['contribution', 'interest', 'tax']);
     const interest = entries.find((e) => e.kind === 'interest');
@@ -131,7 +133,7 @@ describe('derivedEntries', () => {
       metadata: { nonsense: true },
     };
 
-    expect(derivedEntries(holding, T0)).toEqual([]);
+    expect(derivedEntries(holding, T0, i18n.t)).toEqual([]);
   });
 
   it('derives purchase, each net coupon, and redemption for a government bond', () => {
@@ -155,7 +157,7 @@ describe('derivedEntries', () => {
     };
     const now = local(2025, 5, 1); // 1 Jun 2025
 
-    const entries = derivedEntries(holding, now);
+    const entries = derivedEntries(holding, now, i18n.t);
 
     expect(entries).toEqual([
       {
@@ -233,7 +235,7 @@ describe('derivedEntries', () => {
     };
     const now = local(2025, 5, 1);
 
-    const entries = derivedEntries(holding, now);
+    const entries = derivedEntries(holding, now, i18n.t);
 
     expect(entries[0]).toEqual({
       id: 'derived:corp:purchase:0',
@@ -266,7 +268,7 @@ describe('derivedEntries', () => {
       },
     };
 
-    const entries = derivedEntries(holding, local(2026, 8, 2));
+    const entries = derivedEntries(holding, local(2026, 8, 2), i18n.t);
     const toneOf = (kind: string): string | undefined => entries.find((e) => e.kind === kind)?.tone;
 
     // Withholding lines read red (negative); interest accrual and capitalization
@@ -293,7 +295,7 @@ describe('derivedEntries', () => {
       },
     };
 
-    const entries = derivedEntries(holding, T0 + 365 * DAY);
+    const entries = derivedEntries(holding, T0 + 365 * DAY, i18n.t);
 
     expect(entries.find((e) => e.kind === 'interest')?.tone).toBe('positive');
     expect(entries.find((e) => e.kind === 'tax')?.tone).toBe('negative');
@@ -316,7 +318,7 @@ describe('derivedEntries', () => {
       },
     };
 
-    const entries = derivedEntries(holding, local(2025, 5, 1));
+    const entries = derivedEntries(holding, local(2025, 5, 1), i18n.t);
 
     expect(entries.find((e) => e.kind === 'coupon')?.tone).toBe('positive');
     expect(entries.find((e) => e.kind === 'purchase')?.tone).toBe('neutral');
@@ -339,7 +341,40 @@ describe('derivedEntries', () => {
       metadata: null,
     };
 
-    expect(derivedEntries(card, T0)).toEqual([]);
-    expect(derivedEntries(cash, T0)).toEqual([]);
+    expect(derivedEntries(card, T0, i18n.t)).toEqual([]);
+    expect(derivedEntries(cash, T0, i18n.t)).toEqual([]);
+  });
+
+  it('resolves the purchase/coupon/redemption labels in Ukrainian once the active language switches', async () => {
+    const holding: Holding = {
+      id: 'gov-uk',
+      type: 'bond',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 10,
+        faceValueMinorUnits: 100_000,
+        couponPct: 5,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate: local(2025, 0, 1),
+        maturityDate: local(2027, 0, 1),
+      },
+    };
+
+    await i18n.changeLanguage('uk');
+    try {
+      const entries = derivedEntries(holding, local(2025, 5, 1), i18n.t);
+
+      expect(entries.map((e) => e.label)).toEqual([
+        'Купівля',
+        'Купон',
+        'Купон',
+        'Купон',
+        'Погашення',
+      ]);
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });

@@ -1,7 +1,9 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
+
 import IconEditor from '.';
 
 type Overrides = Partial<ComponentProps<typeof IconEditor>>;
@@ -105,5 +107,37 @@ describe('IconEditor', () => {
 
     expect(getByLabelText('Change Groceries icon')).toBeTruthy();
     expect(queryByLabelText('Change icon')).toBeNull();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the Ukrainian catalog toggle label for a captioned chip', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      // The `label` prop passes through verbatim — the caller-supplied caption
+      // text, not something IconEditor itself translates — so the caption reads
+      // its own literal ("Icon") while the surrounding "Change {{label}}" phrase
+      // comes from the Ukrainian catalog.
+      const { getByLabelText } = await setup();
+
+      expect(getByLabelText('Змінити Icon')).toBeTruthy();
+    });
+
+    it('renders the Ukrainian catalog fallback toggle label with no caption', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText } = await setup({ label: undefined });
+
+      expect(getByLabelText('Змінити іконку')).toBeTruthy();
+    });
   });
 });

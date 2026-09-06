@@ -3,6 +3,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
 import { useRef, useState } from 'react';
+import { type TFunction, useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 
@@ -10,9 +11,11 @@ import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
+  resolveCategoryKey,
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { defaultDateRange } from '../../dates/default-range';
 import { formatDate, formatTime } from '../../dates/format';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
@@ -26,6 +29,7 @@ import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import { activeHoldings } from '../../rates/active-holdings';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
@@ -83,17 +87,18 @@ const startOfLocalDay = (time: number): number => {
 
 // "Today"/"Yesterday" for the two most recent days, otherwise the shared
 // explicit DD.MM.YYYY format (locale-independent). `now` is passed in rather
-// than read here so the mapping stays pure and testable.
-const dayHeader = (dayStart: number, now: number): string => {
+// than read here so the mapping stays pure and testable; `t` is passed in for
+// the same reason (a hook can only be called from the component itself).
+const dayHeader = (dayStart: number, now: number, t: TFunction): string => {
   const today = startOfLocalDay(now);
   const yesterdayDate = new Date(today);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
 
   if (dayStart === today) {
-    return 'Today';
+    return t('home.today');
   }
   if (dayStart === yesterdayDate.getTime()) {
-    return 'Yesterday';
+    return t('home.yesterday');
   }
 
   return formatDate(dayStart);
@@ -106,6 +111,7 @@ const dayHeader = (dayStart: number, now: number): string => {
 const groupByDay = <Row extends { time: number }>(
   rows: readonly Row[],
   now: number,
+  t: TFunction,
 ): DaySection<Row>[] => {
   const sections: DaySection<Row>[] = [];
 
@@ -116,7 +122,7 @@ const groupByDay = <Row extends { time: number }>(
     if (openSection && startOfLocalDay(openSection.data[0].time) === dayStart) {
       openSection.data.push(row);
     } else {
-      sections.push({ title: dayHeader(dayStart, now), data: [row] });
+      sections.push({ title: dayHeader(dayStart, now, t), data: [row] });
     }
   }
 
@@ -124,6 +130,8 @@ const groupByDay = <Row extends { time: number }>(
 };
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
+  const { t } = useTranslation();
+
   // The floating native glass tab bar sits over this screen's bottom edge, so
   // the SectionList needs bottom clearance beyond it or the last transaction
   // row is left partially covered. Unlike the Screen primitive's own
@@ -166,14 +174,21 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
+  // Read once here (rather than where the net-worth total needs it below) so
+  // the date-range state below can seed off this same instant instead of a
+  // second, separately-timed `Date.now()` read.
+  const now = Date.now();
+
   // The date-range bounds; a null bound is ignored so the range is open-ended
-  // on that side. Both null means no date filtering at all.
-  const [dateFrom, setDateFrom] = useState<Date | null>(null);
-  const [dateTo, setDateTo] = useState<Date | null>(null);
+  // on that side. Both default to the last 30 days on mount — a user pick can
+  // still set either to null (open-ended) via the date-range field.
+  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
+  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
 
   const clearDateRange = (): void => {
-    setDateFrom(null);
-    setDateTo(null);
+    const range = defaultDateRange();
+    setDateFrom(range.from);
+    setDateTo(range.to);
   };
 
   // The date-range modal commits both bounds at once on Apply; either may be
@@ -213,17 +228,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const rateTable = buildRateTable(rates);
 
-  // A holding counts toward net worth only when it is open AND its parent
-  // account is not archived — archived accounts are hidden but not deleted.
-  const archivedAccountIds = new Set(
-    accounts.filter((account) => account.archivedAt != null).map((account) => account.id),
-  );
-  const activeHoldings = holdings.filter((holding) => {
-    return holding.closedAt == null && !archivedAccountIds.has(holding.accountId);
-  });
-  const now = Date.now();
-  const total = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
-  const breakdown = sumByCurrency(activeHoldings);
+  const active = activeHoldings(holdings, accounts);
+  const total = guardedNetWorth(active, baseCurrency, rateTable, now);
+  const breakdown = sumByCurrency(active);
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user
@@ -260,38 +267,60 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     });
   }
   const accountOptions = Array.from(accountOptionsByName.values());
-  // Group and match the category filter by the RESOLVED display title, not the
-  // raw stored value: an override stores the lowercase slug key (`groceries`)
-  // while un-overridden synced rows still store the capitalized MCC name
-  // (`Groceries`). Both resolve to the same title, so keying on the title
-  // collapses them into one nicely-labeled chip instead of splitting them.
-  // A null/empty category resolves to the DEFAULT category's title (not a
-  // separate "Uncategorized" label), so uncategorized rows share the default's
-  // filter chip.
-  const categoryLabel = (raw: string | null): string =>
-    resolveCategoryDisplay(raw, categoryByKey, defaultCategoryKey).title;
-  // One option per distinct resolved title, first-seen-wins (the same
-  // distinctness the old `Set` gave), each carrying the category's resolved icon
-  // and effective color for the menu row. Matching still keys on `option.value`
-  // (the title, compared to `categoryLabel(row.category)` below).
-  const categoryOptionsByTitle = new Map<string, FilterOption>();
+  // Group and match the category filter by the STABLE `categories.key` slug,
+  // never by the resolved display title: the title is language-dependent (a
+  // default category's title changes under a live language switch — see
+  // resolveDefaultCategoryTitle), so keying selection/matching on it would
+  // silently desync the moment the app language changes, leaving a stale
+  // Set of now-nonexistent title strings. An override stores the lowercase
+  // slug key (`groceries`) while un-overridden synced rows still store the
+  // capitalized MCC name (`Groceries`); both resolve to the same KEY (via
+  // resolveCategoryKey), so keying on it still collapses them into one chip.
+  // A null/empty category resolves to the DEFAULT category's key (not a
+  // separate "Uncategorized" bucket), so uncategorized rows share the
+  // default's filter chip. The visible row LABEL is still the resolved,
+  // localized display title — only the identity is the key.
+  const categoryKeyForRow = (raw: string | null): string =>
+    resolveCategoryKey(raw, categoryByKey, defaultCategoryKey);
+  // One option per distinct resolved key, first-seen-wins (the same
+  // distinctness the old `Set` gave), each carrying the category's resolved
+  // icon, effective color, and localized label for the menu row. Matching
+  // keys on `option.value` (the stable key, compared to
+  // `categoryKeyForRow(row.category)` below); the row renders `option.label`.
+  const categoryOptionsByKey = new Map<string, FilterOption>();
   for (const row of transactions) {
-    const display = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
-    if (categoryOptionsByTitle.has(display.title)) {
+    const key = categoryKeyForRow(row.category);
+    if (categoryOptionsByKey.has(key)) {
       continue;
     }
-    const key = row.category?.toLowerCase() || defaultCategoryKey;
-    categoryOptionsByTitle.set(display.title, {
-      value: display.title,
+    const display = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
+    categoryOptionsByKey.set(key, {
+      value: key,
+      label: display.title,
       icon: display.icon,
       color: resolveCategoryColor(display.color, key),
     });
   }
-  const categoryOptions = Array.from(categoryOptionsByTitle.values());
+  // Order the filter options by each category's `sortOrder` (the user-defined
+  // reorder), not the first-seen-in-transactions order the Map above yields.
+  // `categories` already arrives ordered by `sortOrder` then `key`
+  // (categoriesRepo.allQuery), so its index is the display order. A key absent
+  // from `categories` (rare) sorts last, preserving the Map's stable order
+  // among such keys via a stable sort.
+  const categoryOrderByKey = new Map<string, number>();
+  categories.forEach((category, index) => {
+    categoryOrderByKey.set(category.key, index);
+  });
+  const categoryOptions = Array.from(categoryOptionsByKey.values()).sort((a, b) => {
+    const orderA = categoryOrderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
+    const orderB = categoryOrderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
+
+    return orderA - orderB;
+  });
   const filteredTransactions = transactions.filter((row) => {
     const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
     const matchesCategory =
-      selectedCategories.size === 0 || selectedCategories.has(categoryLabel(row.category));
+      selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
     const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
 
     return matchesAccount && matchesCategory && matchesDate;
@@ -300,12 +329,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
   // newest-day-first with each day's rows newest-first.
-  const sections = groupByDay(filteredTransactions, now);
+  const sections = groupByDay(filteredTransactions, now, t);
 
   const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => {
     const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
     const description =
-      item.description || defaultTransactionDescription(item.holdingName, item.amountMinorUnits);
+      item.description || defaultTransactionDescription(item.holdingName, item.amountMinorUnits, t);
 
     // Every row is tappable: it opens the shared Transaction form for this id.
     // A manual row edits; a synced (Monobank) row opens read-only — the form
@@ -373,7 +402,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         <GlassSurface padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
             <Text variant="caption" tone="textSecondary">
-              Net worth
+              {t('home.netWorth')}
             </Text>
             <MoneyText money={total} context="balance" style={styles.balance} />
             <Box style={styles.breakdown}>
@@ -384,7 +413,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         {failures.length > 0 && (
           <Text variant="body" tone="negative">
-            {`Couldn't sync ${failures.join(', ')}`}
+            {t('home.syncFailedMessage', { accounts: failures.join(', ') })}
           </Text>
         )}
 
@@ -426,7 +455,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncAll} />}
           ListEmptyComponent={
             <Box style={styles.empty}>
-              <Text tone="textSecondary">No transactions</Text>
+              <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
             </Box>
           }
         />

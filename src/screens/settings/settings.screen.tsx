@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 
 import type { Currency } from '../../currency/currency';
 import { APP_LOCK_ENABLED } from '../../db/db-config';
@@ -9,7 +10,9 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import CurrencySwitch from '../../design-system/components/currency-switch';
 import GlassSurface from '../../design-system/components/glass-surface';
+import LanguageSwitch from '../../design-system/components/language-switch';
 import Screen from '../../design-system/components/screen';
+import { type AppLanguage, deviceLanguage } from '../../i18n';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { settingsRepo } from '../../repositories/settings.repo';
@@ -23,8 +26,10 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useAnimatedRef<ScrollView>();
   useScrollToTopOnTabPress(scrollRef);
+
+  const { t } = useTranslation();
 
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
@@ -36,6 +41,14 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const handleToggleLock = (enabled: boolean): void => {
     settingsRepo.setLockEnabled(enabled);
   };
+
+  const handleSelectLanguage = (language: AppLanguage): void => {
+    settingsRepo.setLanguage(language);
+  };
+
+  // The effective language shown as selected: the explicit choice if set,
+  // otherwise the device-detected default. null in the DB means "follow device".
+  const effectiveLanguage = settings?.language ?? deviceLanguage();
 
   return (
     <Screen scroll scrollableRef={scrollRef}>
@@ -49,9 +62,15 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-base-currency"
             icon="dollarsign.circle"
-            label="Base Currency"
+            label={t('settings.baseCurrency')}
           >
             <CurrencySwitch selected={settings?.baseCurrency} onSelect={handleSelectCurrency} />
+          </SettingsRow>
+        </GlassSurface>
+
+        <GlassSurface testID="settings-card-language" padding={3}>
+          <SettingsRow testID="settings-row-language" icon="globe" label={t('settings.language')}>
+            <LanguageSwitch selected={effectiveLanguage} onSelect={handleSelectLanguage} />
           </SettingsRow>
         </GlassSurface>
 
@@ -69,7 +88,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           <SettingsRow
             testID="settings-row-categories"
             icon="square.grid.2x2"
-            label="Categories"
+            label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />
         </GlassSurface>

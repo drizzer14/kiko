@@ -13,8 +13,9 @@ export type ColorPickerProps = {
   // picker reads as a labeled field alongside the other form controls.
   label?: string;
   // Optional prefix for each swatch's accessibility label (`${prefix} ${name}`),
-  // defaulting to 'Color'. When several pickers render at once (e.g. one per
-  // category row), pass a per-instance prefix so VoiceOver — and label-based test
-  // queries — can tell a "yellow" swatch on one picker from another's.
+  // defaulting to the catalog's forms.fields.color ('Color'/'Колір'). When
+  // several pickers render at once (e.g. one per category row), pass a
+  // per-instance prefix so VoiceOver — and label-based test queries — can tell
+  // a "yellow" swatch on one picker from another's.
   accessibilityLabelPrefix?: string;
 };

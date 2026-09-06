@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { match, P } from 'ts-pattern';
 
 import Box from '../../../design-system/components/box';
@@ -11,12 +12,14 @@ import type { SyncStatusLineProps } from './sync-status-line.props';
 // One glyph + tone per outcome; `invalid` and `saveError` share the negative
 // treatment and differ only in the message the owning field supplies.
 const SyncStatusLine: FC<SyncStatusLineProps> = ({ status }) => {
+  const { t } = useTranslation();
+
   return match(status)
     .with({ kind: 'idle' }, () => null)
     .with({ kind: 'checking' }, () => {
       return (
         <Text variant="body" tone="textSecondary">
-          Checking…
+          {t('accountDetail.checking')}
         </Text>
       );
     })
@@ -26,7 +29,7 @@ const SyncStatusLine: FC<SyncStatusLineProps> = ({ status }) => {
           <SymbolIcon
             name="checkmark.circle"
             tone="positive"
-            accessibilityLabel="Icon checkmark.circle"
+            accessibilityLabel={t('common.iconLabel', { name: 'checkmark.circle' })}
           />
 
           <Text variant="body" tone="positive">
@@ -38,7 +41,11 @@ const SyncStatusLine: FC<SyncStatusLineProps> = ({ status }) => {
     .with({ kind: P.union('invalid', 'saveError') }, ({ message }) => {
       return (
         <Box direction="row" gap={2} style={styles.statusLine}>
-          <SymbolIcon name="xmark.circle" tone="negative" accessibilityLabel="Icon xmark.circle" />
+          <SymbolIcon
+            name="xmark.circle"
+            tone="negative"
+            accessibilityLabel={t('common.iconLabel', { name: 'xmark.circle' })}
+          />
 
           <Text variant="body" tone="negative">
             {message}

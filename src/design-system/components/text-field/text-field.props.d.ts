@@ -20,4 +20,10 @@ export type TextFieldProps = Pick<
   // Defaults to `label` so a caller only needs to override it when the
   // visible label isn't descriptive enough for a screen reader on its own.
   accessibilityLabel?: string;
+  // A short trailing string rendered inside the field, after the input, in a
+  // muted tone — a money field passes its currency glyph here so a value reads
+  // as "100.00 ₴". Optional and empty-safe: `undefined` (or an empty string,
+  // e.g. a currency not yet known) renders exactly as a plain field with no
+  // trailing node.
+  suffix?: string;
 };

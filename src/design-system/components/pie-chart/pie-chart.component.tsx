@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 
@@ -36,7 +37,6 @@ type PieChartProps = {
 
 const DEFAULT_SIZE = 200;
 const DEFAULT_TEST_ID = 'pie-chart';
-const DEFAULT_EMPTY_LABEL = 'No Accounts To Show';
 // The donut hole as a fraction of the outer radius — 0 would be a full pie.
 const DEFAULT_INNER_RATIO = 0.58;
 const FULL_TURN = 360;
@@ -142,15 +142,17 @@ const PieChart: FC<PieChartProps> = ({
   baseCurrency,
   size = DEFAULT_SIZE,
   testID = DEFAULT_TEST_ID,
-  emptyLabel = DEFAULT_EMPTY_LABEL,
+  emptyLabel,
   innerRatio = DEFAULT_INNER_RATIO,
   centerTotal,
 }) => {
+  const { t } = useTranslation();
+
   if (slices.length === 0) {
     return (
       <Box testID={`${testID}-empty`} style={styles.empty}>
         <Text variant="body" tone="textSecondary">
-          {emptyLabel}
+          {emptyLabel ?? t('components.pieChart.emptyDefault')}
         </Text>
       </Box>
     );
@@ -189,7 +191,7 @@ const PieChart: FC<PieChartProps> = ({
             />
 
             <Text variant="caption" tone="textSecondary">
-              Total
+              {t('components.pieChart.total')}
             </Text>
           </View>
         )}

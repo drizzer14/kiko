@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 
-import type { Currency } from '../../currency/currency';
+import { type Currency, currencySymbol } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -42,6 +43,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
 
+  const { t } = useTranslation();
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState<number>(startOfToday);
 
@@ -61,24 +63,25 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
-      Alert.alert('Could not add contribution', 'Please try again.');
+      Alert.alert(t('forms.contribution.errorTitle'), t('forms.contribution.errorMessage'));
       return;
     }
     navigation.goBack();
   };
 
   return (
-    <Screen scroll footer={<Button onPress={save}>Save contribution</Button>}>
+    <Screen scroll footer={<Button onPress={save}>{t('forms.contribution.save')}</Button>}>
       <Box gap={4}>
         <TextField
-          label="Amount"
+          label={t('forms.fields.amount')}
           value={amount}
           onChangeText={(text) => setAmount(groupAmount(text))}
           keyboardType="decimal-pad"
           placeholder="0.00"
+          suffix={currencySymbol[currency]}
         />
 
-        <DateField label="Date" value={date} onChange={setDate} />
+        <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
       </Box>
     </Screen>
   );

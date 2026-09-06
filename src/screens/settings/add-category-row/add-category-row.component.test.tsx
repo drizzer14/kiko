@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 import AddCategoryRow from './add-category-row.component';
 
 const mockCreate = jest.fn();
@@ -60,5 +61,14 @@ describe('AddCategoryRow', () => {
     // The name field mounts only on expand, so autoFocus fires exactly when the
     // row opens — the keyboard lands on it without a second tap.
     expect(getByLabelText('Name').props.autoFocus).toBe(true);
+  });
+
+  it('labels the icon chip and color picker from the localization catalog when expanded', async () => {
+    const { getByLabelText, getByText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    expect(getByLabelText('Choose new category icon')).toBeTruthy();
+    expect(getByText('Color')).toBeTruthy();
   });
 });

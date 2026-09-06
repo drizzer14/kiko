@@ -2010,6 +2010,27 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNDateTimePicker (9.1.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-bridging
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - RNGestureHandler (3.2.1):
     - hermes-engine
     - RCTRequired
@@ -2444,6 +2465,7 @@ DEPENDENCIES:
   - "ReactNativeBiometrics (from `../node_modules/@sbaiahmed1/react-native-biometrics`)"
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
+  - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
   - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
@@ -2642,6 +2664,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCClipboard:
     :path: "../node_modules/@react-native-clipboard/clipboard"
+  RNDateTimePicker:
+    :path: "../node_modules/@react-native-community/datetimepicker"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNKeychain:
@@ -2755,6 +2779,7 @@ SPEC CHECKSUMS:
   ReactNativeBiometrics: 0bb07c42709936f7bc750a020d8838e547178a55
   ReactNativeDependencies: 94c922c39e0e6150ee9ad05e2ca1946e0ef55783
   RNCClipboard: 93375695275b24a6738ea21e78cb865e1ed869d9
+  RNDateTimePicker: d2f35a064ec49cc97cc8d130a7ac3467358d7695
   RNGestureHandler: 91b8290b2aa3724db5ebba0add1003aedd9c8ba4
   RNKeychain: 9a6ea3f5824cfeea8652d70f59a16d9e73e6c817
   RNReactNativeHapticFeedback: d5dccf2dbb34bdc53d97c10b3d4e2c2f46cf7a1f

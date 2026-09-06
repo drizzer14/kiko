@@ -220,5 +220,37 @@ describe('GlassSurface', () => {
       expect(base.props.tintColor).toBeUndefined();
       expect(base.props.animated).toBe(false);
     });
+
+    // `solidBackdrop` opts a tint-LESS surface into the same opaque themed
+    // backdrop a tinted card gets, WITHOUT any color wash — the anti-drift fix
+    // (a constant color for the translucent glass to sample) applied to a card
+    // that must stay visually neutral (the settings categories card). The
+    // backdrop is the neutral themed surface (no tint) and there is still no
+    // wash layer, since `wash` stays gated on `tint`.
+    it('paints the opaque neutral backdrop for a tint-less surface when solidBackdrop is set, with no wash', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="solid-glass" solidBackdrop>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const backdrop = getByTestId('solid-glass-backdrop');
+      const flat = StyleSheet.flatten(backdrop.props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+
+      // No color wash: the card stays neutral, and the glass base carries no tint.
+      expect(queryByTestId('solid-glass-wash')).toBeNull();
+      expect(getByTestId('solid-glass-base').props.tintColor).toBeUndefined();
+    });
+
+    it('renders no backdrop when neither tint nor solidBackdrop is set', async () => {
+      const { queryByTestId } = await render(
+        <GlassSurface testID="no-backdrop-glass">
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
+    });
   });
 });

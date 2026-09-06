@@ -1,5 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import FilterMenu, { FILTER_ALL } from './filter-menu.component';
 import type { FilterOption } from './filter-menu.props';
 
@@ -106,5 +108,26 @@ describe('FilterMenu', () => {
     await openMenu(getByTestId);
 
     expect(queryByLabelText(FILTER_ALL)).toBeNull();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the synthetic All row label from the Ukrainian catalog, keeping the sentinel testID', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByTestId, getByText } = await renderMenu();
+
+      await openMenu(getByTestId);
+
+      expect(getByTestId(`${TEST_ID}-option-${FILTER_ALL}`)).toBeTruthy();
+      expect(getByText('Усі')).toBeTruthy();
+    });
   });
 });

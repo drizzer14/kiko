@@ -4,6 +4,8 @@ import { StyleSheet } from 'react-native';
 
 import { formatDate } from '../../../dates/format';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import DateRangeField from './date-range-field.component';
 
 // The Text primitive's tone -> color mapping lives inside a react-native-unistyles
@@ -222,6 +224,40 @@ describe('DateRangeField safe area', () => {
     // collapses to the sheet's own base spacing(4) = 16 — this only proves the
     // inset is additive, not double-subtracted or dropped.
     expect(StyleSheet.flatten(node.props.style).paddingBottom).toBeGreaterThanOrEqual(16);
+  });
+});
+
+describe('DateRangeField localization', () => {
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the heading and the open-ended "From" prefix from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const from = new Date(2000, 1, 1);
+    const { getByLabelText, getByText } = await render(
+      <DateRangeField
+        dateFrom={from}
+        dateTo={null}
+        minDate={new Date(2000, 0, 1)}
+        maxDate={new Date(2000, 5, 15)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+
+    expect(getByText(`Від ${formatDate(from)}`)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Період дат'));
+    });
+
+    expect(getByText('Період дат')).toBeTruthy();
   });
 });
 

@@ -17,8 +17,9 @@ export type HoldingIdentityFieldProps = {
   // Clear the custom icon back to the fallback. Omit it for a mandatory-icon
   // caller (a category row) so the picker offers no Remove control.
   onRemoveIcon?: () => void;
-  // Optional a11y label for the name input (defaults to 'Name'). The detail
-  // header passes `${holding.name} name` so several holdings stay distinct.
+  // Optional a11y label for the name input (defaults to the catalog's
+  // forms.fields.name, 'Name'/'Назва'). The detail header passes
+  // `${holding.name} name` so several holdings stay distinct.
   nameAccessibilityLabel?: string;
   // Optional explicit a11y label for the icon-picker toggle, forwarded to the
   // shared IconEditor. A captionless caller (a category row) uses it to keep a
@@ -31,6 +32,12 @@ export type HoldingIdentityFieldProps = {
   // Optional commit-on-blur handler. The detail header renames on
   // end-of-editing; the create form commits via onChangeName and omits this.
   onEndEditingName?: () => void;
+  // Optional focus handler forwarded to the inner TextInput. A caller that
+  // shows a computed display value while unfocused (a category row, which
+  // shows a translated label for an un-renamed default) uses this to swap
+  // `name` back to the raw editable value the instant focus starts — before
+  // any keystroke can land in the field.
+  onFocus?: () => void;
   // Optional placeholder shown while the name is empty.
   namePlaceholder?: string;
   // Focus the name input as soon as it mounts. A caller that reveals this field

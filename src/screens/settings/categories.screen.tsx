@@ -1,24 +1,27 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, type ScrollView } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
+import Sortable from 'react-native-sortables';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { CategoryRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
+import Text from '../../design-system/components/text';
+import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import ColorPicker from '../forms/color-picker';
 import HoldingIdentityField from '../forms/holding-identity-field';
-import { openDeleteMenu } from '../grid-interaction';
+import { onGridDragEnd, openDeleteMenu } from '../grid-interaction';
 
 import AddCategoryRow from './add-category-row';
 
@@ -26,8 +29,9 @@ type CategoriesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Cat
 
 const styles = StyleSheet.create((theme) => ({
   // The card's top row: the identity field (icon + rename) stretches, and the
-  // trailing slot (delete button, or the default-category star on the default
-  // card) sits at its right edge, vertically centered against it.
+  // trailing slot (the "set as default" star, or the default-category filled
+  // star on the default card) sits at its right edge, vertically centered
+  // against it.
   header: {
     alignItems: 'center',
   },
@@ -36,8 +40,44 @@ const styles = StyleSheet.create((theme) => ({
   identity: {
     flex: 1,
   },
-  // The delete affordance: a bare destructive icon, given a little hit padding.
+  // The delete affordance, now at the card's bottom: a labelled destructive
+  // row (trash icon + "Delete" text). It hugs the leading edge
+  // (`alignSelf: 'flex-start'`) rather than stretching the full card width, so
+  // its tap target stays sized to its content, and carries the same hit padding
+  // as the other micro-affordances.
   deleteButton: {
+    alignSelf: 'flex-start',
+    padding: theme.spacing(1),
+  },
+  // The delete row's inner layout: the trash icon and its "Delete" label,
+  // vertically centered against each other (icon on the left, per the app's
+  // icon-leading convention).
+  deleteRow: {
+    alignItems: 'center',
+  },
+  // The "set as default" affordance, now in the header's trailing slot: a bare
+  // outline-star icon, given a little hit padding. It sits in the header row
+  // (which centers its items), so it needs no `alignSelf` of its own.
+  setDefaultButton: {
+    padding: theme.spacing(1),
+  },
+  // The card's bottom row: the labelled Delete (left, non-default only) and the
+  // reorder cluster (right), split by `space-between` and centered against each
+  // other.
+  bottomRow: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  // The move-to-top / move-to-bottom reorder cluster, sharing the bottom row
+  // with the Delete control. `marginLeft: 'auto'` pins it to the row's right
+  // edge even on a default card, where the Delete on the left is absent and
+  // `space-between` alone would otherwise leave the cluster at the left.
+  reorderButtons: {
+    marginLeft: 'auto',
+  },
+  // Each reorder micro-button: a bare icon with the same hit padding the
+  // delete/set-default affordances use.
+  reorderButton: {
     padding: theme.spacing(1),
   },
 }));
@@ -48,28 +88,47 @@ const styles = StyleSheet.create((theme) => ({
 // inside one shared surface. Inside the card, the shared identity field pairs
 // the leading icon (which doubles as the picker toggle) with an inline
 // title-rename field, in its caption-free (dense list) mode. The default
-// category's card shows a filled star (SF Symbol `star.fill`, tinted a muted
-// gray via `textSecondary` so the marker reads as neutral metadata rather
-// than an actionable accent color — a long-standing symbol, available since
-// iOS 13, so it renders on every supported device) INSTEAD OF the delete button and the
-// "Set as default" control (it is the catch-all — it can never be deleted);
-// every other card carries a destructive delete (confirmed via the native
-// action sheet, since it moves this category's transactions to the default)
-// and a "Set as default" button (whose own icon is the OUTLINE `star`, so a
-// non-default card previews what picking it will fill in). Local title state
-// is seeded from the row so keystrokes show immediately, while the persisted
+// category's card shows a filled star marker in the header's trailing slot
+// (SF Symbol `star.fill`, tinted white via `textPrimary` — a long-standing
+// symbol, available since iOS 13, so it renders on every supported device)
+// INSTEAD OF the "Set as default" control (it is the catch-all — it is already
+// the default), and carries NO delete (it can never be deleted). Every other
+// card puts an icon-only "Set as default" affordance in that same header slot
+// (a bare OUTLINE `star`, so a non-default card previews what picking it will
+// fill in), and a labelled destructive delete at the card's bottom (a trash
+// icon beside a "Delete" label, confirmed via the native action sheet since it
+// moves this category's transactions to the default). Local title state is
+// seeded from the row so keystrokes show immediately, while the persisted
 // value flows back through the live query.
-const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
-  category,
-  isDefault,
-}) => {
+const CategoryListRow: FC<{
+  category: CategoryRow;
+  isDefault: boolean;
+  onMoveToTop: () => void;
+  onMoveToBottom: () => void;
+}> = ({ category, isDefault, onMoveToTop, onMoveToBottom }) => {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
+  // Local edit state is the RAW stored title, never the translated display —
+  // this is the source of truth `commitTitle` diffs against and persists, so
+  // the translated string it is shown as (see `displayTitle` below) can never
+  // itself be saved as a rename.
   const [title, setTitle] = useState(category.title);
+  // Tracks whether the field currently has focus. While unfocused, an
+  // un-renamed default shows its translated label (`resolveDefaultCategoryTitle`
+  // is a no-op for a renamed/custom row, so those always show `title`
+  // verbatim); the instant the field gains focus — before any keystroke can
+  // land — it swaps back to the raw `title` so the user edits (and the field's
+  // controlled `value` stays in sync with) the real stored text, not the
+  // translated one.
+  const [isEditing, setIsEditing] = useState(false);
+  const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
   // The category's EFFECTIVE color: its stored hex when picked, else the
   // stable per-key palette hash — computed once and shared by the row icon
   // and the color picker's ringed swatch, so both always agree on what "this
   // category's color" means.
   const color = resolveCategoryColor(category.color, category.key);
+
+  const startEditingTitle = (): void => setIsEditing(true);
 
   const commitTitle = (): void => {
     const trimmed = title.trim();
@@ -77,6 +136,8 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
     if (trimmed !== '' && trimmed !== category.title) {
       categoriesRepo.updateTitle(category.key, trimmed);
     }
+
+    setIsEditing(false);
   };
 
   const selectIcon = (icon: string): void => {
@@ -105,7 +166,7 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
   };
 
   return (
-    <GlassSurface testID="category-card" padding={4} bordered>
+    <GlassSurface testID="category-card" padding={4} bordered solidBackdrop>
       <Box gap={2}>
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>
@@ -119,15 +180,22 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
               // still gets a hue (the same stable hash the chart already uses for it)
               // rather than staying neutral.
               iconColor={color}
-              iconAccessibilityLabel={`Change ${category.title} icon`}
+              iconAccessibilityLabel={t('categories.changeIconLabel', { title: category.title })}
               onSelectIcon={selectIcon}
-              name={title}
+              name={displayTitle}
               onChangeName={setTitle}
-              nameAccessibilityLabel={`${category.title} title`}
+              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: category.title })}
+              // Swap to the raw stored title the instant the field gains focus —
+              // before any keystroke can land — so what the user actually edits
+              // (and what `commitTitle` diffs and persists) is always the raw
+              // title, never the translated `displayTitle` above.
+              onFocus={startEditingTitle}
               // Commit once on end-of-editing only. `onEndEditing` fires on both a
               // return-key submit and a blur, so a rename that loses focus without
               // pressing return still saves — and it never double-writes the way
-              // wiring both `onSubmitEditing` and `onEndEditing` would.
+              // wiring both `onSubmitEditing` and `onEndEditing` would. It also
+              // ends the "editing" window opened by `onFocus` above, so the field
+              // reverts to showing the translated `displayTitle` once blurred.
               onEndEditingName={commitTitle}
             />
           </Box>
@@ -135,18 +203,18 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
           {isDefault ? (
             <SymbolIcon
               name="star.fill"
-              color={theme.colors.textSecondary}
+              color={theme.colors.textPrimary}
               size={20}
-              accessibilityLabel={`${category.title} is the default category`}
+              accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
             />
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Delete ${category.title}`}
-              onPress={confirmDelete}
-              style={styles.deleteButton}
+              accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}
+              onPress={setAsDefault}
+              style={styles.setDefaultButton}
             >
-              <SymbolIcon name="trash" color={theme.colors.negative} size={20} />
+              <SymbolIcon name="star" color={theme.colors.textSecondary} size={20} />
             </Pressable>
           )}
         </Box>
@@ -162,21 +230,60 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
         <ColorPicker
           value={color}
           onSelect={selectColor}
-          accessibilityLabelPrefix={`${category.title} color`}
+          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: category.title })}
         />
 
-        {!isDefault && (
-          <Button
-            variant="secondary"
-            size="compact"
-            fullWidth={false}
-            icon="star"
-            onPress={setAsDefault}
-            accessibilityLabel={`Set ${category.title} as default`}
-          >
-            Set as default
-          </Button>
-        )}
+        {/* The card's bottom row: the labelled destructive Delete on the left
+            (only on a non-default card — the default is never deletable) and the
+            move-to-top / move-to-bottom reorder cluster on the right, split by
+            `space-between`. On a default card the Delete is absent, so the
+            reorder cluster's own `marginLeft: 'auto'` still pins it to the right
+            edge rather than the left. */}
+        <Box direction="row" style={styles.bottomRow}>
+          {!isDefault && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
+              onPress={confirmDelete}
+              style={styles.deleteButton}
+            >
+              <Box direction="row" gap={2} style={styles.deleteRow}>
+                <SymbolIcon name="trash" color={theme.colors.negative} size={20} />
+                <Text tone="negative">{t('common.delete')}</Text>
+              </Box>
+            </Pressable>
+          )}
+
+          {/* Move-to-top / move-to-bottom: bare icon buttons at the row's right
+              edge. Each immediately rewrites the whole list order (the parent
+              computes the new key array and persists it via
+              categoriesRepo.reorder); because the list is a live query, the write
+              re-renders it with this card at its new position. These are a
+              keyboard-free alternative to the drag-to-reorder gesture the
+              enclosing Sortable.Grid provides. `arrow.up.to.line` /
+              `arrow.down.to.line` are long-standing SF Symbols (iOS 13+), tinted
+              the same muted `textSecondary` as the star marker so they read as
+              neutral controls. */}
+          <Box direction="row" gap={1} style={styles.reorderButtons}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('categories.moveToTopLabel', { title: category.title })}
+              onPress={onMoveToTop}
+              style={styles.reorderButton}
+            >
+              <SymbolIcon name="arrow.up.to.line" color={theme.colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('categories.moveToBottomLabel', { title: category.title })}
+              onPress={onMoveToBottom}
+              style={styles.reorderButton}
+            >
+              <SymbolIcon name="arrow.down.to.line" color={theme.colors.textSecondary} size={20} />
+            </Pressable>
+          </Box>
+        </Box>
       </Box>
     </GlassSurface>
   );
@@ -188,9 +295,25 @@ const CategoryListRow: FC<{ category: CategoryRow; isDefault: boolean }> = ({
 // current default category (read from settings) is marked and shielded from
 // deletion. The inline add-category affordance renders as the final card.
 const CategoriesScreen: FC<CategoriesScreenProps> = () => {
+  const { theme } = useUnistyles();
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
+
+  // The full current top-to-bottom order, the basis for both reorder buttons.
+  // Moving a category to the top (or bottom) rebuilds this array with that key
+  // relocated and every other key kept in its existing relative order, then
+  // persists it in one write — the live query re-renders the list with the card
+  // at its new position, which is the "immediately jump" behavior.
+  const orderedKeys = categories.map((category) => category.key);
+
+  const moveToTop = (key: string): void => {
+    categoriesRepo.reorder([key, ...orderedKeys.filter((other) => other !== key)]);
+  };
+
+  const moveToBottom = (key: string): void => {
+    categoriesRepo.reorder([...orderedKeys.filter((other) => other !== key), key]);
+  };
 
   // The scroll-mode ScrollView's ref, so expanding the inline add-category form
   // (appended below the last category card) can bring its revealed fields into
@@ -211,13 +334,37 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   return (
     <Screen scroll scrollableRef={scrollableRef}>
       <Box gap={4}>
-        {categories.map((category) => (
-          <CategoryListRow
-            key={category.key}
-            category={category}
-            isDefault={category.key === defaultCategoryKey}
-          />
-        ))}
+        {/* A single-column drag-and-drop stack of category cards, mirroring the
+            accounts/holdings grids: a hold-and-move reorders (routed through the
+            shared `onGridDragEnd`, which persists only a real move), while a
+            quick tap still falls through to a card's own fields. `overDrag`
+            keeps a dragged card on its vertical axis; `scrollableRef` +
+            `autoScrollActivationOffset` let a drag near an edge scroll the parent
+            ScrollView; `sortEnabled` is off with a single category (nothing to
+            reorder). Each card also carries move-to-top/bottom buttons for a
+            gesture-free reorder. */}
+        <Sortable.Grid
+          data={categories}
+          sortEnabled={categories.length > 1}
+          activeItemScale={1.03}
+          columns={1}
+          overDrag="vertical"
+          rowGap={theme.spacing(4)}
+          scrollableRef={scrollableRef}
+          autoScrollActivationOffset={75}
+          keyExtractor={(category) => category.key}
+          renderItem={({ item }) => (
+            <CategoryListRow
+              category={item}
+              isDefault={item.key === defaultCategoryKey}
+              onMoveToTop={() => moveToTop(item.key)}
+              onMoveToBottom={() => moveToBottom(item.key)}
+            />
+          )}
+          onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
+            onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
+          }
+        />
 
         <AddCategoryRow onExpand={scrollToAddCategoryForm} />
       </Box>

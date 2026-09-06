@@ -16,8 +16,13 @@ jest.mock('../../rates/history-backfill', () => {
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { defaultDateRange } from '../../dates/default-range';
+import { formatDate } from '../../dates/format';
+import { i18n } from '../../i18n';
 import { toUtcMidnight } from '../../rates/history-entry';
 import '../../design-system/unistyles';
+import { FILTER_ALL } from '../home/filter-menu';
+
 import StatisticsScreen from './statistics.screen';
 
 const mockUseLiveQuery = jest.fn();
@@ -512,6 +517,40 @@ describe('StatisticsScreen', () => {
     expect(getByLabelText('Transport').props.name).toBe('car');
   });
 
+  it('orders the category filter options by the custom category order, not by spending magnitude', async () => {
+    // Spending magnitude orders groceries (300.00) ahead of transport (100.00).
+    // The user's custom category order (categoriesRepo.allQuery, asc sortOrder /
+    // key) is the REVERSE here — transport first, then groceries. The filter
+    // option list must follow the custom order, keyed by the stable slug.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: EXPENSES,
+      history: HISTORY,
+      categories: [
+        { key: 'transport', title: 'Transport', icon: 'car' },
+        { key: 'groceries', title: 'Groceries', icon: 'cart' },
+      ],
+    });
+
+    const view = await renderScreen();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId(CATEGORY_FILTER));
+    });
+
+    const prefix = `${CATEGORY_FILTER}-option-`;
+    const optionKeys = renderOrder(view)
+      .map((node) => node.props.testID)
+      .filter((id): id is string => typeof id === 'string' && id.startsWith(prefix))
+      .map((id) => id.slice(prefix.length));
+
+    // The synthetic "All" sentinel leads, then the real options in the custom
+    // category order (transport before groceries), NOT the spending order.
+    expect(optionKeys).toEqual([FILTER_ALL, 'transport', 'groceries']);
+  });
+
   it('excludes a card-to-card self-transfer pair from the category pie while keeping real spending', async () => {
     seedSpendingWithTransfer();
 
@@ -558,18 +597,121 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
 
-    // Selecting one category (by its title) narrows the pie to just it — the
-    // same include-narrowing model the account filter uses.
-    await pressFilter(getByTestId, CATEGORY_FILTER, 'Groceries');
+    // Selecting one category (by its stable KEY, not its title) narrows the
+    // pie to just it — the same include-narrowing model the account filter
+    // uses.
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
 
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(queryByTestId('category-pie-arc-transport')).toBeNull();
 
     // Toggling that same selection back off clears the dimension, so all
     // categories return to the pie.
-    await pressFilter(getByTestId, CATEGORY_FILTER, 'Groceries');
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
 
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('defaults the date-range field to the last 30 days', async () => {
+    const { getByText } = await renderScreen();
+    const range = defaultDateRange();
+
+    expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+  });
+
+  it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderScreen();
+
+    // Narrow away from the 30-day default by picking a single day (today).
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    const today = new Date();
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: today.getFullYear(),
+        month: today.getMonth() + 1,
+        day: today.getDate(),
+      });
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Apply'));
+    });
+    expect(getByText(`${formatDate(today)} – ${formatDate(today)}`)).toBeTruthy();
+
+    // Clearing must land back on the 30-day default, NOT on all-time.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Clear'));
+    });
+
+    const range = defaultDateRange();
+    expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+  });
+});
+
+describe('StatisticsScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seedFull();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the card titles and category-donut empty label from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Капітал з часом')).toBeTruthy();
+    expect(getByText('Витрати за категоріями')).toBeTruthy();
+  });
+
+  it('preserves an active category filter selection across a live language switch, relabeling the option to its Ukrainian catalog title', async () => {
+    // The category donut's filter keys its identity/matching on the STABLE
+    // `categories.key` slug ('groceries'), not the resolved display title, so
+    // switching the app language live must not reset the selection: the
+    // option's stable value is unaffected, only its rendered LABEL changes.
+    seedSpending();
+
+    const { getByTestId, getAllByText, queryByTestId } = await renderScreen();
+
+    await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    // The selection survived the language switch: the same slice stays
+    // filtered in/out — the Set was not silently cleared.
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+
+    // The option itself now renders the Ukrainian catalog label, still keyed
+    // on the same stable `groceries` value and still checked.
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
+    expect(
+      getByTestId(`${CATEGORY_FILTER}-option-groceries`).props.accessibilityState?.checked,
+    ).toBe(true);
+    // Rendered twice — the open filter menu's option row and the pie's own
+    // legend entry — so assert at least one instance rather than a single
+    // unique match.
+    expect(getAllByText('Продукти').length).toBeGreaterThan(0);
   });
 });

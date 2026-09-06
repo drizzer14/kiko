@@ -1,9 +1,10 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '../../../design-system/unistyles';
 
 import { formatDateTime } from '../../../dates/format';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
+import { i18n } from '../../../i18n';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -234,5 +235,34 @@ describe('CryptoSyncSection', () => {
 
     expect(getByText('Syncing…')).toBeTruthy();
     expect(getByText('Binance request failed: 401')).toBeTruthy();
+  });
+});
+
+describe('CryptoSyncSection — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSync.mockResolvedValue(true);
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setConnected({});
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the heading and Source label from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText, queryByText } = await render(
+      <CryptoSyncSection account={account()} holdings={[]} />,
+    );
+
+    expect(getByText('Синхронізація')).toBeTruthy();
+    expect(getByText('Джерело')).toBeTruthy();
+    expect(queryByText('Synchronization')).toBeNull();
   });
 });

@@ -1,7 +1,9 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { UNLOCK_PROMPT, useAppLock } from './use-app-lock';
+import '../i18n';
+
+import { useAppLock } from './use-app-lock';
 
 // The whole lock is gated OFF by default (`APP_LOCK_ENABLED`, src/db/db-config).
 // These tests exercise the locking LOGIC, so they run with the flag forced ON.
@@ -83,7 +85,7 @@ describe('useAppLock', () => {
       await result.current.unlock();
     });
 
-    expect(mockAuthenticate).toHaveBeenCalledWith(UNLOCK_PROMPT);
+    expect(mockAuthenticate).toHaveBeenCalledWith('Unlock Kiko');
     expect(result.current.isLocked).toBe(false);
   });
 

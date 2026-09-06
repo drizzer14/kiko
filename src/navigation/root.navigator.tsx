@@ -1,5 +1,6 @@
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { darkTheme } from '../design-system/theme';
 
@@ -34,33 +35,43 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * `appearance.backgroundColor` to the concrete, scheme-independent dark
  * background token on every rebuild, so the bar holds one consistent scheme.
  */
-const RootNavigator: FC = () => (
-  <Tabs.Navigator
-    barTintColor={darkTheme.colors.background}
-    tabBarActiveTintColor={darkTheme.colors.accent}
-    tabBarInactiveTintColor={darkTheme.colors.textSecondary}
-  >
-    <Tabs.Screen
-      name="HomeTab"
-      component={HomeStack}
-      options={{ title: 'Home', tabBarIcon: () => ({ sfSymbol: 'house.fill' }) }}
-    />
-    <Tabs.Screen
-      name="AccountsTab"
-      component={AccountsStack}
-      options={{ title: 'Accounts', tabBarIcon: () => ({ sfSymbol: 'wallet.pass.fill' }) }}
-    />
-    <Tabs.Screen
-      name="StatisticsTab"
-      component={StatisticsStack}
-      options={{ title: 'Statistics', tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }) }}
-    />
-    <Tabs.Screen
-      name="SettingsTab"
-      component={SettingsStack}
-      options={{ title: 'Settings', tabBarIcon: () => ({ sfSymbol: 'gearshape.fill' }) }}
-    />
-  </Tabs.Navigator>
-);
+const RootNavigator: FC = () => {
+  const { t } = useTranslation();
+
+  return (
+    <Tabs.Navigator
+      barTintColor={darkTheme.colors.background}
+      tabBarActiveTintColor={darkTheme.colors.accent}
+      tabBarInactiveTintColor={darkTheme.colors.textSecondary}
+    >
+      <Tabs.Screen
+        name="HomeTab"
+        component={HomeStack}
+        options={{ title: t('home.title'), tabBarIcon: () => ({ sfSymbol: 'house.fill' }) }}
+      />
+      <Tabs.Screen
+        name="AccountsTab"
+        component={AccountsStack}
+        options={{
+          title: t('accounts.title'),
+          tabBarIcon: () => ({ sfSymbol: 'wallet.pass.fill' }),
+        }}
+      />
+      <Tabs.Screen
+        name="StatisticsTab"
+        component={StatisticsStack}
+        options={{
+          title: t('statistics.title'),
+          tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }),
+        }}
+      />
+      <Tabs.Screen
+        name="SettingsTab"
+        component={SettingsStack}
+        options={{ title: t('settings.title'), tabBarIcon: () => ({ sfSymbol: 'gearshape.fill' }) }}
+      />
+    </Tabs.Navigator>
+  );
+};
 
 export default RootNavigator;

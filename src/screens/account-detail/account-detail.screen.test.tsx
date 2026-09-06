@@ -6,6 +6,7 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
+import { i18n } from '../../i18n';
 import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
 
 import AccountDetailScreen from './account-detail.screen';
@@ -798,5 +799,35 @@ describe('AccountDetailScreen', () => {
     // the grown valuation the breakdown would instead show 1,000.00 ₴, leaving
     // only the single headline match.
     expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('AccountDetailScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockReadToken.mockResolvedValue('token-abc');
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the footer action, the Holdings heading, and the Monobank controls from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Додати актив')).toBeTruthy();
+    expect(getByText('Активи')).toBeTruthy();
+    expect(getByText('Підключити Monobank')).toBeTruthy();
+    expect(queryByText('Add holding')).toBeNull();
+    expect(queryByText('Connect Monobank')).toBeNull();
   });
 });

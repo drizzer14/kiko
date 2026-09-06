@@ -1,6 +1,8 @@
 import { ActionSheetIOS } from 'react-native';
 import { trigger } from 'react-native-haptic-feedback';
 
+import { i18n } from '../i18n';
+
 // The subset of react-native-sortables' `onDragEnd` params this app reads. The
 // library also passes `keyToIndex`; it is not needed here. Kept local (callers
 // pass a matching object literal by structural typing) so it is not a dangling
@@ -53,7 +55,7 @@ export const openDeleteMenu = (name: string, onDelete: () => void): void => {
   trigger('impactMedium');
   ActionSheetIOS.showActionSheetWithOptions(
     {
-      options: ['Cancel', `Delete "${name}"`],
+      options: [i18n.t('common.cancel'), i18n.t('common.deleteNamed', { name })],
       destructiveButtonIndex: 1,
       cancelButtonIndex: 0,
     },

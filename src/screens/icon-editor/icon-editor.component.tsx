@@ -1,4 +1,5 @@
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import Box from '../../design-system/components/box';
@@ -27,10 +28,12 @@ const IconEditor: FC<IconEditorProps> = ({
   onSelect,
   onRemove,
 }) => {
+  const { t } = useTranslation();
   const [pickerOpen, setPickerOpen] = useState(false);
   const displayIcon = icon ?? fallbackIcon;
   const toggleLabel =
-    iconAccessibilityLabel ?? (label !== undefined ? `Change ${label}` : 'Change icon');
+    iconAccessibilityLabel ??
+    (label !== undefined ? t('common.changeIconLabel', { label }) : t('common.changeIcon'));
   // Remove is offered only when a custom icon is set AND the caller opted into
   // it by supplying a handler — a mandatory-icon row (a category) omits it.
   const removable = icon != null && onRemove !== undefined;
@@ -64,7 +67,7 @@ const IconEditor: FC<IconEditorProps> = ({
           name={displayIcon}
           tone="textSecondary"
           color={iconColor}
-          accessibilityLabel={`Icon ${displayIcon}`}
+          accessibilityLabel={t('common.iconLabel', { name: displayIcon })}
         />
       </Pressable>
 

@@ -1,6 +1,7 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
+import { i18n } from '../../i18n';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -326,5 +327,35 @@ describe('AccountFormScreen edit mode', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountFormScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [];
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the kind/color/currency field chrome from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByLabelText, getByText, queryByText } = await renderForm();
+
+    expect(getByLabelText('Назва')).toBeTruthy();
+    expect(getByText('Колір')).toBeTruthy();
+    expect(getByText('Вид')).toBeTruthy();
+    expect(getByText('Банк')).toBeTruthy();
+    expect(getByText('Готівка')).toBeTruthy();
+    expect(getByText('Крипто')).toBeTruthy();
+    expect(getByText('Зберегти')).toBeTruthy();
+    expect(queryByText('Bank')).toBeNull();
   });
 });

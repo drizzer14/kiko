@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import SymbolIcon from '../../design-system/components/symbol';
 
@@ -12,6 +13,8 @@ import SymbolIcon from '../../design-system/components/symbol';
 const ENTITY_ICON_SIZE = 28;
 
 const EntityHeaderIcon: FC<{ identity?: { icon: string; color: string } }> = ({ identity }) => {
+  const { t } = useTranslation();
+
   if (identity === undefined) {
     return null;
   }
@@ -21,7 +24,7 @@ const EntityHeaderIcon: FC<{ identity?: { icon: string; color: string } }> = ({ 
       name={identity.icon}
       size={ENTITY_ICON_SIZE}
       color={identity.color}
-      accessibilityLabel={`Icon ${identity.icon}`}
+      accessibilityLabel={t('common.iconLabel', { name: identity.icon })}
     />
   );
 };

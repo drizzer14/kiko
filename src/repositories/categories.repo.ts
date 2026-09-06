@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 
 import { DEFAULT_CATEGORY_KEY } from '../categories/category-display';
 import { database, write } from '../db/client';
@@ -7,24 +7,46 @@ import { categories, categoryOverrides, settings, transactions } from '../db/sch
 
 import type { Repository } from './repository';
 
+// The next free slot for a new category: one past the current highest
+// `sortOrder` (or 0 when there are no categories yet), so a freshly created
+// category appends to the end of the list. Unlike holdings, categories are NOT
+// account-scoped — the list is global, so there is no `accountId` filter. Read
+// inside the write transaction so a concurrent create cannot observe a stale
+// maximum.
+const nextSortOrder = async (tx: typeof database): Promise<number> => {
+  const rows = await tx
+    .select({ value: sql<number>`coalesce(max(${categories.sortOrder}), -1)` })
+    .from(categories);
+
+  return (rows.at(0)?.value ?? -1) + 1;
+};
+
 /**
  * Categories are keyed by a stable slug (`key`). `title` and `icon` are the
  * user-editable display fields; editing either leaves the key — and therefore
  * every transaction's stored `category` value — untouched.
  */
 export const categoriesRepo = {
-  allQuery: () => database.select().from(categories),
+  // Ordered by the user-controlled `sortOrder` (the reorderable list order),
+  // with the stable `key` slug as a tiebreak so rows sharing a rank keep a
+  // deterministic order rather than flickering between renders. Categories have
+  // no `createdAt`, so the primary-key slug is the natural stable tiebreaker.
+  allQuery: () =>
+    database.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.key)),
   // A user-added category gets a generated key, distinct from the seeded MCC
-  // slugs, so it never collides with the canonical categories.
+  // slugs, so it never collides with the canonical categories. It appends to the
+  // end of the list via `sortOrder = max + 1`.
   create: (category: { title: string; icon: string; color?: string | null }) =>
-    write((tx) =>
-      tx.insert(categories).values({
+    write(async (tx) => {
+      const sortOrder = await nextSortOrder(tx);
+      await tx.insert(categories).values({
         key: id(),
         title: category.title,
         icon: category.icon,
         color: category.color ?? null,
-      }),
-    ),
+        sortOrder,
+      });
+    }),
   updateTitle: (key: string, title: string) =>
     write((tx) => tx.update(categories).set({ title }).where(eq(categories.key, key))),
   updateIcon: (key: string, icon: string) =>
@@ -62,5 +84,22 @@ export const categoriesRepo = {
         .set({ category: defaultKey })
         .where(eq(categoryOverrides.category, key));
       await tx.delete(categories).where(eq(categories.key, key));
+    }),
+  /**
+   * Persist a reorder of the categories list. `orderedKeys` is the full new
+   * top-to-bottom order of every category; each row's `sortOrder` is rewritten
+   * to its 0-based index in ONE transaction so the `allQuery` ordering matches
+   * the list the user just arranged (via drag or the move-to-top/bottom
+   * buttons). Mirrors `holdingsRepo.reorder`, but keyed by the category slug
+   * (`key`) and global (categories are not account-scoped).
+   */
+  reorder: (orderedKeys: string[]) =>
+    write(async (tx) => {
+      for (let index = 0; index < orderedKeys.length; index += 1) {
+        await tx
+          .update(categories)
+          .set({ sortOrder: index })
+          .where(eq(categories.key, orderedKeys[index]));
+      }
     }),
 } satisfies Repository;

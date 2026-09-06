@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import '../i18n';
+
 import { useAppLock } from './use-app-lock';
 
 // APP_LOCK_ENABLED defaults FALSE. This file pins the safety contract: with the

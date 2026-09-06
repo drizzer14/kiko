@@ -1,5 +1,7 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
+
 import SettingsScreen from './settings.screen';
 
 // APP_LOCK_ENABLED is now ON by default. This suite covers the disabled/hidden
@@ -9,12 +11,16 @@ import SettingsScreen from './settings.screen';
 jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockSetBaseCurrency = jest.fn();
-let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
+const mockSetLanguage = jest.fn();
+let mockLiveQueryData: Array<{ baseCurrency: string; language?: 'en' | 'uk' | null }> = [
+  { baseCurrency: 'UAH' },
+];
 
 jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
+    setLanguage: (...args: unknown[]) => mockSetLanguage(...args),
   },
 }));
 jest.mock('../../db/use-live-query', () => ({
@@ -85,9 +91,10 @@ describe('SettingsScreen', () => {
   it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
     const navigation = { navigate: jest.fn() } as never;
     const { getAllByRole } = await render(<SettingsScreen navigation={navigation} />);
-    // BTC, USD, EUR, UAH — four separate currency pressables, not one combined
-    // control — plus the navigating Categories row's own pressable (5 total).
-    expect(getAllByRole('button')).toHaveLength(5);
+    // BTC, USD, EUR, UAH — four separate currency pressables, English/Ukrainian
+    // — two separate language pressables — not one combined control — plus the
+    // navigating Categories row's own pressable (7 total).
+    expect(getAllByRole('button')).toHaveLength(7);
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
@@ -103,6 +110,24 @@ describe('SettingsScreen', () => {
     const { getByText } = await render(<SettingsScreen />);
     await fireEvent.press(getByText('USD'));
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
+  });
+
+  it('renders the language card and persists a language choice', async () => {
+    const { getByTestId, getByText } = await render(<SettingsScreen />);
+
+    expect(getByTestId('settings-card-language')).toBeTruthy();
+
+    await fireEvent.press(getByText('🇺🇦 Українська'));
+
+    expect(mockSetLanguage).toHaveBeenCalledWith('uk');
+  });
+
+  it('shows the stored language as selected, proving effectiveLanguage wiring end-to-end', async () => {
+    mockLiveQueryData = [{ baseCurrency: 'UAH', language: 'uk' }];
+    const { getByText } = await render(<SettingsScreen />);
+
+    expect(getByText('🇺🇦 Українська').parent?.props.accessibilityState.selected).toBe(true);
+    expect(getByText('🇬🇧 English').parent?.props.accessibilityState.selected).toBe(false);
   });
 
   it('hides the App Lock card while APP_LOCK_ENABLED is off (pinned off in this suite)', async () => {
@@ -127,5 +152,33 @@ describe('SettingsScreen', () => {
   it('does not render a Sync button (sync is per-account now)', async () => {
     const { queryByText } = await render(<SettingsScreen />);
     expect(queryByText('Sync')).toBeNull();
+  });
+});
+
+describe('SettingsScreen — localization', () => {
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders English catalog strings under en', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+    const { getByText } = await render(<SettingsScreen />);
+
+    expect(getByText('Base Currency')).toBeTruthy();
+    expect(getByText('Language')).toBeTruthy();
+  });
+
+  it('renders Ukrainian catalog strings under uk', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+    const { getByText } = await render(<SettingsScreen />);
+
+    expect(getByText('Основна валюта')).toBeTruthy();
+    expect(getByText('Мова')).toBeTruthy();
   });
 });

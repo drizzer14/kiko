@@ -1,6 +1,7 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
+import { i18n } from '../../i18n';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -787,5 +788,52 @@ describe('HoldingFormScreen edit mode', () => {
     expect(patch.metadata.quantity).toBe(10);
     expect(patch.metadata.bondKind).toBe('corporate');
     expect(patch.balanceMinorUnits).toBeUndefined();
+  });
+});
+
+describe('HoldingFormScreen — localization', () => {
+  beforeEach(() => {
+    mockAccountKind = 'cash';
+    mockEditHoldings = [];
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the type/currency/balance field chrome from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByLabelText, getByText, queryByText } = await renderScreen();
+
+    expect(getByLabelText('Назва')).toBeTruthy();
+    expect(getByText('Тип')).toBeTruthy();
+    expect(getByText('Валюта')).toBeTruthy();
+    expect(getByLabelText('Баланс')).toBeTruthy();
+    expect(getByText('Готівка')).toBeTruthy();
+    expect(getByText('Зберегти')).toBeTruthy();
+    expect(queryByText('Balance')).toBeNull();
+  });
+
+  it('renders the bond field group from the Ukrainian catalog', async () => {
+    mockAccountKind = 'bank';
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await renderScreen();
+    await fireEvent.press(getByText('Облігація'));
+
+    expect(getByText('Кількість')).toBeTruthy();
+    expect(getByText('Номінальна вартість')).toBeTruthy();
+    expect(getByText('Купон %')).toBeTruthy();
+    expect(getByText('Дата придбання')).toBeTruthy();
+    expect(getByText('Дата погашення')).toBeTruthy();
+    expect(getByText('Тип облігації')).toBeTruthy();
+    expect(getByText('Державна')).toBeTruthy();
   });
 });

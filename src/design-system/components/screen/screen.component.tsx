@@ -70,6 +70,17 @@ const Screen: FC<ScreenProps> = ({
           ref={scrollableRef}
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
+          // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
+          // scroll-to-top hook's `-headerHeight` target — more negative than that
+          // `0` top edge — would be clamped away and the collapsed large title
+          // would never re-expand. This prop disables RN's clamp, letting the
+          // negative target reach iOS `setContentOffset`. iOS does NOT clamp an
+          // animated programmatic scroll, so an UNBOUNDED target would overshoot
+          // into a void of empty space; the hook keeps the target bounded to the
+          // header inset (`-headerHeight`), which lands exactly at the expanded
+          // large-title top and can never overshoot. Programmatic-scroll only;
+          // user scrolling is unaffected. See `use-scroll-to-top-on-tab-press.ts`.
+          scrollToOverflowEnabled={true}
           // Default "never" consumes the first tap to dismiss the keyboard, so
           // focusing another input (or opening a date field) needs a second
           // tap. "handled" fires a focusable/handled child on the first tap

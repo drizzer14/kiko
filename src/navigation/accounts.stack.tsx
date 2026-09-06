@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountsScreen from '../screens/accounts/accounts.screen';
@@ -30,32 +31,43 @@ const Stack = createNativeStackNavigator<AccountsStackParamList>();
  * large-title toggle. The entity's identity icon sits beside the Balance/Value
  * amount in the body (`EntityHeaderIcon`), not in the nav title.
  */
-const AccountsStack: FC = () => (
-  <Stack.Navigator screenOptions={{ headerLargeTitle: true }} screenListeners={resetTabStackOnBlur}>
-    <Stack.Screen name="Accounts" component={AccountsScreen} />
-    <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
-    <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
-    <Stack.Screen
-      name="AccountForm"
-      component={AccountFormScreen}
-      options={{ title: 'Add Account' }}
-    />
-    <Stack.Screen
-      name="HoldingForm"
-      component={HoldingFormScreen}
-      options={{ title: 'Add Holding' }}
-    />
-    <Stack.Screen
-      name="TransactionForm"
-      component={TransactionFormScreen}
-      options={{ title: 'Add Transaction' }}
-    />
-    <Stack.Screen
-      name="ContributionForm"
-      component={ContributionFormScreen}
-      options={{ title: 'Add Contribution' }}
-    />
-  </Stack.Navigator>
-);
+const AccountsStack: FC = () => {
+  const { t } = useTranslation();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{ headerLargeTitle: true }}
+      screenListeners={resetTabStackOnBlur}
+    >
+      <Stack.Screen
+        name="Accounts"
+        component={AccountsScreen}
+        options={{ title: t('accounts.title') }}
+      />
+      <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
+      <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
+      <Stack.Screen
+        name="AccountForm"
+        component={AccountFormScreen}
+        options={{ title: t('forms.account.addTitle') }}
+      />
+      <Stack.Screen
+        name="HoldingForm"
+        component={HoldingFormScreen}
+        options={{ title: t('forms.holding.addTitle') }}
+      />
+      <Stack.Screen
+        name="TransactionForm"
+        component={TransactionFormScreen}
+        options={{ title: t('forms.transaction.addTitle') }}
+      />
+      <Stack.Screen
+        name="ContributionForm"
+        component={ContributionFormScreen}
+        options={{ title: t('forms.contribution.addTitle') }}
+      />
+    </Stack.Navigator>
+  );
+};
 
 export default AccountsStack;

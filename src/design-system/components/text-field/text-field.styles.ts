@@ -26,4 +26,27 @@ export const styles = StyleSheet.create((theme) => ({
     color: theme.colors.textSecondary,
     opacity: 0.5,
   },
+  // Extra trailing room reserved on top of `input`'s own `padding` when a
+  // suffix renders, so the value and the caret never slide under the pinned
+  // suffix glyph. Sized to clear the glyph plus the `suffixSlot`'s right inset.
+  inputWithSuffix: {
+    paddingRight: theme.spacing(9),
+  },
+  // Positioned parent for the absolutely-pinned suffix slot: the input keeps
+  // its full width and 44pt tap area, and the slot overlays only the reserved
+  // trailing padding.
+  suffixContainer: {
+    position: 'relative',
+  },
+  // The suffix glyph, pinned to the trailing edge and vertically centered
+  // against the field's fixed height. `pointerEvents: 'none'` lets a tap in the
+  // trailing area still fall through to the input rather than being swallowed.
+  suffixSlot: {
+    position: 'absolute',
+    right: theme.spacing(3),
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
 }));

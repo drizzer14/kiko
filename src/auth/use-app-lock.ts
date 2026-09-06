@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { APP_LOCK_ENABLED } from '../db/db-config';
 import { useLiveQuery } from '../db/use-live-query';
 import { settingsRepo } from '../repositories/settings.repo';
 
 import { type AuthResult, authenticate } from './biometrics';
-
-export const UNLOCK_PROMPT = 'Unlock Kiko';
 
 type AppLock = {
   // False until the settings row has loaded; the gate renders neither the prompt
@@ -34,6 +33,7 @@ type AppLock = {
  * build without the pod.
  */
 export const useAppLock = (): AppLock => {
+  const { t } = useTranslation();
   const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settingsRow = data.at(0);
   const lockEnabled = APP_LOCK_ENABLED && (settingsRow?.lockEnabled ?? false);
@@ -57,14 +57,14 @@ export const useAppLock = (): AppLock => {
     // call (see `./biometrics`), so this early-returned path — the only one
     // reached while the flag is off — never loads it. Reaching here means the
     // flag is on, so pulling in the native module now is intended.
-    const result = await authenticate(UNLOCK_PROMPT);
+    const result = await authenticate(t('auth.unlockPrompt'));
 
     if (result.kind === 'success') {
       setLocked(false);
     }
 
     return result;
-  }, []);
+  }, [t]);
 
   return {
     isReady: !APP_LOCK_ENABLED || locked !== undefined,

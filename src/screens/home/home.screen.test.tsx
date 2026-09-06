@@ -1,6 +1,9 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { defaultDateRange } from '../../dates/default-range';
+import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
+import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
@@ -111,11 +114,14 @@ const MONOBANK: Account = { id: 'a', name: 'Monobank', kind: 'bank' };
 const PRIVATBANK: Account = { id: 'b', name: 'PrivatBank', kind: 'bank' };
 const UAH_HOLDING: Holding = { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 };
 
+// `time` defaults to "now" — the Home screen's date filter defaults to the
+// last 30 days on mount, so a fixed historical default would fall outside it
+// and silently vanish from every test that does not care about dates.
 const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   id: 't1',
   amountMinorUnits: -5000,
   currency: 'UAH',
-  time: 1,
+  time: Date.now(),
   description: 'Coffee',
   category: 'Food',
   accountId: 'a',
@@ -186,8 +192,11 @@ describe('HomeScreen', () => {
   });
 
   it('renders the transaction time as zero-padded HH:MM', async () => {
-    const at = new Date(2026, 0, 5, 9, 5).getTime();
-    seed({ transactions: [transaction({ time: at })] });
+    // 2 days ago, at a fixed hour/minute — well inside the screen's default
+    // last-30-days window, unlike a fixed historical date would be.
+    const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    at.setHours(9, 5, 0, 0);
+    seed({ transactions: [transaction({ time: at.getTime() })] });
     const { getByText } = await renderHome();
     expect(getByText('09:05')).toBeTruthy();
   });
@@ -405,12 +414,40 @@ describe('HomeScreen', () => {
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
-    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
+    await pressFilter(getByTestId, 'category-filter-menu', 'dining');
+    await pressFilter(getByTestId, 'category-filter-menu', 'transport');
 
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
     expect(queryByText('Rent')).toBeNull();
+  });
+
+  it('orders the category filter options by the categories sortOrder, not transaction first-seen order', async () => {
+    // The categories repo already arrives ordered by `sortOrder` (dining, then
+    // transport here). Transactions are first *seen* the other way round
+    // (transport, then dining), so the filter must follow the repo's reorder,
+    // not the transaction encounter order.
+    seed({
+      categories: [
+        { key: 'dining', title: 'Dining', icon: 'fork.knife' },
+        { key: 'transport', title: 'Transport', icon: 'car' },
+      ],
+      transactions: [
+        transaction({ id: 't1', category: 'Transport', description: 'Bus' }),
+        transaction({ id: 't2', category: 'Dining', description: 'Coffee' }),
+      ],
+    });
+    const { getByTestId, getAllByTestId } = await renderHome();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    const optionValues = getAllByTestId(/^category-filter-menu-option-/)
+      .map((node) => String(node.props.testID).replace('category-filter-menu-option-', ''))
+      .filter((value) => value !== FILTER_ALL);
+
+    expect(optionValues).toEqual(['dining', 'transport']);
   });
 
   it('removes a category from the set when its action is toggled off again', async () => {
@@ -422,9 +459,9 @@ describe('HomeScreen', () => {
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
-    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
-    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
+    await pressFilter(getByTestId, 'category-filter-menu', 'dining');
+    await pressFilter(getByTestId, 'category-filter-menu', 'transport');
+    await pressFilter(getByTestId, 'category-filter-menu', 'dining');
 
     expect(queryByText('Coffee')).toBeNull();
     expect(getByText('Groceries')).toBeTruthy();
@@ -439,7 +476,7 @@ describe('HomeScreen', () => {
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Dining');
+    await pressFilter(getByTestId, 'category-filter-menu', 'dining');
     expect(queryByText('Groceries')).toBeNull();
 
     await pressFilter(getByTestId, 'category-filter-menu', FILTER_ALL);
@@ -464,14 +501,14 @@ describe('HomeScreen', () => {
       fireEvent.press(getByTestId('category-filter-menu'));
     });
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-Dining'));
+      fireEvent.press(getByTestId('category-filter-menu-option-dining'));
     });
-    expect(queryByTestId('category-filter-menu-option-Transport')).toBeTruthy();
+    expect(queryByTestId('category-filter-menu-option-transport')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(getByTestId('category-filter-menu-option-Transport'));
+      fireEvent.press(getByTestId('category-filter-menu-option-transport'));
     });
-    expect(queryByTestId('category-filter-menu-option-Utilities')).toBeTruthy();
+    expect(queryByTestId('category-filter-menu-option-utilities')).toBeTruthy();
 
     // Dismiss and confirm both selections took effect.
     await act(async () => {
@@ -482,25 +519,28 @@ describe('HomeScreen', () => {
     expect(queryByText('Rent')).toBeNull();
   });
 
-  it('collapses an overridden slug and a capitalized synced value with the same resolved title into one filter entry', async () => {
+  it('collapses an overridden slug and a capitalized synced value with the same resolved key into one filter entry', async () => {
     // After an override some rows store the lowercase slug key (`groceries`)
     // while un-overridden synced rows still store the capitalized MCC name
-    // (`Groceries`). Both resolve to the same title, so the filter must show a
-    // single `Groceries` entry, not one chip per raw stored value.
+    // (`Groceries`). Both resolve to the same KEY, so the filter must show a
+    // single `groceries` entry (labeled "Groceries"), not one chip per raw
+    // stored value.
     seed({
       transactions: [
         transaction({ id: 't1', category: 'Groceries', description: 'SyncedRow' }),
         transaction({ id: 't2', category: 'groceries', description: 'OverriddenRow' }),
       ],
     });
-    const { getByTestId, queryByTestId } = await renderHome();
+    const { getByTestId, getByText, queryByTestId } = await renderHome();
 
     await act(async () => {
       fireEvent.press(getByTestId('category-filter-menu'));
     });
 
-    expect(getByTestId('category-filter-menu-option-Groceries')).toBeTruthy();
-    expect(queryByTestId('category-filter-menu-option-groceries')).toBeNull();
+    expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
+    expect(queryByTestId('category-filter-menu-option-Groceries')).toBeNull();
+    // A single "Groceries" label renders for the collapsed entry — not two.
+    expect(getByText('Groceries')).toBeTruthy();
   });
 
   it('filters both the overridden slug row and the capitalized synced row in when the resolved category is selected', async () => {
@@ -513,31 +553,70 @@ describe('HomeScreen', () => {
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'category-filter-menu', 'Groceries');
+    await pressFilter(getByTestId, 'category-filter-menu', 'groceries');
 
     expect(getByText('SyncedRow')).toBeTruthy();
     expect(getByText('OverriddenRow')).toBeTruthy();
     expect(queryByText('OtherRow')).toBeNull();
   });
 
-  it('displays the full transaction date span in the date-range field without filtering', async () => {
-    const earliest = new Date(2026, 0, 10).getTime();
-    const latest = new Date(2026, 2, 15).getTime();
-    seed({
-      transactions: [
-        transaction({ id: 't1', time: latest, description: 'Newer' }),
-        transaction({ id: 't2', time: earliest, description: 'Older' }),
-      ],
-    });
-    const { getByText } = await renderHome();
+  it('defaults the date-range field to the last 30 days, filtering out an older transaction', async () => {
+    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
+    const tooOld = transaction({ id: 't2', time: Date.now() - 40 * DAY_MS, description: 'TooOld' });
+    seed({ transactions: [recent, tooOld] });
 
-    // The field shows earliest–latest by default...
-    expect(
-      getByText(`${formatDate(new Date(earliest))} – ${formatDate(new Date(latest))}`),
-    ).toBeTruthy();
-    // ...and every transaction still shows, so the default span does not filter.
-    expect(getByText('Newer')).toBeTruthy();
-    expect(getByText('Older')).toBeTruthy();
+    const { getByText, queryByText } = await renderHome();
+    const range = defaultDateRange();
+
+    // The field shows the 30-day default, not the full earliest–latest span...
+    expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+    // ...a row inside the window shows...
+    expect(getByText('Recent')).toBeTruthy();
+    // ...and a row older than 30 days is filtered out by default.
+    expect(queryByText('TooOld')).toBeNull();
+  });
+
+  it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
+    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
+    const tooOld = transaction({ id: 't2', time: Date.now() - 40 * DAY_MS, description: 'TooOld' });
+    seed({ transactions: [recent, tooOld] });
+
+    const { getByLabelText, getByTestId, getByText, queryByText } = await renderHome();
+
+    // Narrow away from the 30-day default: pick today alone and apply it, which
+    // excludes both the "Recent" (2 days ago) and "TooOld" rows.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    const today = new Date();
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: today.getFullYear(),
+        month: today.getMonth() + 1,
+        day: today.getDate(),
+      });
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Apply'));
+    });
+    expect(queryByText('Recent')).toBeNull();
+
+    // Clearing must land back on the 30-day default, NOT on all-time: the
+    // 40-day-old row stays excluded and the field shows the 30-day range again.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Clear'));
+    });
+
+    const range = defaultDateRange();
+    expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+    expect(getByText('Recent')).toBeTruthy();
+    expect(queryByText('TooOld')).toBeNull();
   });
 
   it('renders an empty state when there are no transactions', async () => {
@@ -621,7 +700,7 @@ describe('HomeScreen', () => {
     const { getByText, getByTestId } = await renderHome();
 
     await pressFilter(getByTestId, 'account-filter-menu', 'Monobank');
-    await pressFilter(getByTestId, 'category-filter-menu', 'Transport');
+    await pressFilter(getByTestId, 'category-filter-menu', 'transport');
 
     expect(getByText('No transactions')).toBeTruthy();
   });
@@ -665,5 +744,78 @@ describe('HomeScreen', () => {
 
     expect(getByText(/Binance/)).toBeTruthy();
     expect(getByText(/Cold storage/)).toBeTruthy();
+  });
+});
+
+describe('HomeScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seed({ transactions: [transaction()] });
+    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the net worth caption and the Today separator from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await renderHome();
+
+    expect(getByText('Капітал')).toBeTruthy();
+    expect(getByText('Сьогодні')).toBeTruthy();
+  });
+
+  it('renders the empty-transactions state from the Ukrainian catalog', async () => {
+    seed({ transactions: [] });
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await renderHome();
+
+    expect(getByText('Немає транзакцій')).toBeTruthy();
+  });
+
+  it('preserves an active default-category filter selection across a live language switch, relabeling the option to its Ukrainian catalog title', async () => {
+    // The category filter's identity/matching keys on the STABLE
+    // `categories.key` slug (`groceries`), not the resolved display title, so
+    // switching the app language live must not reset the selection: the
+    // option's stable value is unaffected, only its rendered LABEL changes.
+    seed({
+      transactions: [
+        transaction({ id: 't1', category: 'Groceries', description: 'Milk' }),
+        transaction({ id: 't2', category: 'Transport', description: 'Bus' }),
+      ],
+    });
+    const { getByText, queryByText, getByTestId } = await renderHome();
+
+    await pressFilter(getByTestId, 'category-filter-menu', 'groceries');
+    expect(getByText('Milk')).toBeTruthy();
+    expect(queryByText('Bus')).toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    // The selection survived the language switch: the same transaction stays
+    // filtered in/out — the Set was not silently cleared.
+    expect(getByText('Milk')).toBeTruthy();
+    expect(queryByText('Bus')).toBeNull();
+
+    // The option itself now renders the Ukrainian catalog label, still keyed
+    // on the same stable `groceries` value and still checked.
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu'));
+    });
+    expect(
+      getByTestId('category-filter-menu-option-groceries').props.accessibilityState?.checked,
+    ).toBe(true);
+    expect(getByText('Продукти')).toBeTruthy();
   });
 });

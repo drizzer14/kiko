@@ -1,3 +1,4 @@
+import type { TFunction } from 'react-i18next';
 import { match } from 'ts-pattern';
 
 import type { HoldingRow } from '../db/schema';
@@ -15,11 +16,16 @@ export type BalanceProviderId = (typeof balanceProviderIds)[number];
 export const isBalanceProviderId = (value: string | null): value is BalanceProviderId =>
   value !== null && (balanceProviderIds as readonly string[]).includes(value);
 
-/** Title-case display name used in UI copy and sync error messages. */
-export const providerDisplayName = (providerId: BalanceProviderId): string =>
+// Title-case display name used in UI copy. 'Binance' is a brand name and
+// reads the same in every language, so its catalog entry is identical
+// English/Ukrainian text (the same convention every other Binance-branded
+// string in the catalog already follows) — routed through the catalog
+// anyway, both for the one genuinely-translated 'Wallet' case and so a
+// future rename only touches the catalog, not this call site.
+export const providerDisplayName = (providerId: BalanceProviderId, t: TFunction): string =>
   match(providerId)
-    .with('btc_wallet', () => 'Wallet')
-    .with('binance', () => 'Binance')
+    .with('btc_wallet', () => t('accountDetail.wallet'))
+    .with('binance', () => t('accountDetail.binance'))
     .exhaustive();
 
 export type ProviderBalance = {

@@ -1,6 +1,8 @@
-import { fireEvent, type RenderResult, render } from '@testing-library/react-native';
+import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import { ScrollView } from 'react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import CategoryField from './category-field.component';
 
 // The element type RNTL's own queries return (its bundled test-renderer
@@ -327,6 +329,32 @@ describe('CategoryField', () => {
       // selection again instead of opening at the top.
       expect(scrollToSpy).toHaveBeenCalledTimes(1);
       expect(scrollToSpy).toHaveBeenCalledWith({ y: 48, animated: false });
+    });
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('shows the empty-selection placeholder from the Ukrainian catalog', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText, queryByText } = await render(
+        <CategoryField
+          label="Category"
+          options={OPTIONS}
+          selectedKey={null}
+          onSelect={jest.fn()}
+        />,
+      );
+
+      expect(getByText('Оберіть категорію')).toBeTruthy();
+      expect(queryByText('Select category')).toBeNull();
     });
   });
 });

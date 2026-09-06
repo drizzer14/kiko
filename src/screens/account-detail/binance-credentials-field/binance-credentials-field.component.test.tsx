@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
 import BinanceCredentialsField from '../binance-credentials-field';
 
 const mockFetchAccount = jest.fn();
@@ -159,5 +160,31 @@ describe('BinanceCredentialsField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture-2');
     expect(queryByText('Invalid API key or secret')).toBeNull();
+  });
+});
+
+describe('BinanceCredentialsField — localization', () => {
+  const onConnect = jest.fn<Promise<boolean>, []>();
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the link, field placeholders, and action from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByPlaceholderText, getByText, queryByText } = await render(
+      <BinanceCredentialsField onConnect={onConnect} />,
+    );
+
+    expect(getByPlaceholderText('API ключ Binance')).toBeTruthy();
+    expect(getByPlaceholderText('API секрет Binance')).toBeTruthy();
+    expect(getByText('Відкрити керування API Binance')).toBeTruthy();
+    expect(getByText('Підключити Binance')).toBeTruthy();
+    expect(queryByText('Connect Binance')).toBeNull();
   });
 });

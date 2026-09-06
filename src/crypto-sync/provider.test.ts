@@ -1,3 +1,5 @@
+import { i18n } from '../i18n';
+
 import { balanceProviderIds, isBalanceProviderId, providerDisplayName } from './provider';
 
 describe('balance provider ids', () => {
@@ -14,7 +16,17 @@ describe('balance provider ids', () => {
   });
 
   it('maps each provider to its display name', () => {
-    expect(providerDisplayName('btc_wallet')).toBe('Wallet');
-    expect(providerDisplayName('binance')).toBe('Binance');
+    expect(providerDisplayName('btc_wallet', i18n.t)).toBe('Wallet');
+    expect(providerDisplayName('binance', i18n.t)).toBe('Binance');
+  });
+
+  it('resolves the wallet display name in Ukrainian once the active language switches', async () => {
+    await i18n.changeLanguage('uk');
+    try {
+      expect(providerDisplayName('btc_wallet', i18n.t)).toBe('Гаманець');
+      expect(providerDisplayName('binance', i18n.t)).toBe('Binance');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });

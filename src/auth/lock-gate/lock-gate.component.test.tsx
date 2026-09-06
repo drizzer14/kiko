@@ -1,8 +1,21 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import '../../design-system/unistyles';
+import '../../i18n';
 
 import LockGate from './lock-gate.component';
+
+// The SF Symbol glyph is a native SFSymbolView; render it as a plain text node
+// so the lock screen's icon name is queryable without the native module (the
+// same pattern as button.component.test.tsx).
+jest.mock('../../design-system/components/symbol', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ name }: { name: string }) => <RNText>{`icon:${name}`}</RNText>,
+  };
+});
 
 const mockUnlock = jest.fn();
 const mockAppLock = { current: { isReady: true, isLocked: false, unlock: mockUnlock } };
@@ -50,6 +63,14 @@ describe('LockGate', () => {
     expect(getByText('Unlock')).toBeTruthy();
     expect(queryByText('secret balances')).toBeNull();
     expect(mockUnlock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the Face ID glyph on the lock prompt', async () => {
+    mockAppLock.current = { isReady: true, isLocked: true, unlock: mockUnlock };
+    const { getByText } = await renderGate();
+
+    // The lock screen leads with the Face ID symbol, not a padlock.
+    expect(getByText('icon:faceid')).toBeTruthy();
   });
 
   it('re-prompts when the Unlock button is pressed', async () => {

@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 import SyncStatusLine from './sync-status-line.component';
 
 describe('SyncStatusLine', () => {

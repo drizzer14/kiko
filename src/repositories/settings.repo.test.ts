@@ -57,4 +57,14 @@ describe('settingsRepo', () => {
     expect(captured.set).toEqual({ lockEnabled: true });
     expect(captured.whereCalled).toBe(true);
   });
+
+  it('setLanguage updates the single settings row with the chosen language', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await settingsRepo.setLanguage('uk');
+
+    expect(captured.set).toEqual({ language: 'uk' });
+    expect(captured.whereCalled).toBe(true);
+  });
 });

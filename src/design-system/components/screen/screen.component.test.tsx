@@ -127,6 +127,21 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
+  it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {
+    const { getByTestId } = await render(
+      <Screen scroll>
+        <Text>content</Text>
+      </Screen>,
+    );
+
+    // Fabric clamps a negative programmatic `scrollTo` y to 0 while
+    // `contentInsetAdjustmentBehavior="automatic"` keeps the large-title band
+    // in `adjustedContentInset.top` (leaving `contentInset.top` at 0), so a
+    // scroll-to-top target never re-expands the collapsed title. This prop
+    // bypasses that clamp (see `use-scroll-to-top-on-tab-press.ts`).
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.scrollToOverflowEnabled).toBe(true);
+  });
+
   it('keeps the keyboard up so a tap on a child focuses on the first tap, not the second', async () => {
     const { getByTestId } = await render(
       <Screen scroll>

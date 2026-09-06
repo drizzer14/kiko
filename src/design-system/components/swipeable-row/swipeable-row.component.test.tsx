@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { Alert, Text } from 'react-native';
+import '../../../i18n';
 import '../../unistyles';
 import {
   ACTION_WIDTH,

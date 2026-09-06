@@ -1,4 +1,5 @@
 import { type FC, type ReactNode, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 
 import { migrateLegacyToken } from '../monobank/token';
@@ -12,6 +13,7 @@ type MigrationState =
   | { status: 'error'; error: Error };
 
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
 
   useEffect(() => {
@@ -43,7 +45,7 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   if (state.status === 'error') {
     return (
       <View>
-        <Text>Migration error: {state.error.message}</Text>
+        <Text>{t('migrations.error', { message: state.error.message })}</Text>
       </View>
     );
   }
@@ -51,7 +53,7 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   if (state.status === 'pending') {
     return (
       <View>
-        <Text>Preparing database...</Text>
+        <Text>{t('migrations.preparing')}</Text>
       </View>
     );
   }

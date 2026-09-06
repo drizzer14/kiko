@@ -1,4 +1,5 @@
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
@@ -26,12 +27,20 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  * so a pure-JS sheet owns this behaviour instead.)
  */
 const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, testID }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const buttonLabel = selected.size > 0 ? `${label} · ${selected.size}` : label;
   // Prepend the synthetic "All" row (no icon) to the real options. Every row is
   // a FilterOption so the render path is uniform; matching still keys on `value`.
   const rows: FilterOption[] = [{ value: FILTER_ALL }, ...options];
+  // The sentinel's stored `value` (FILTER_ALL) stays the fixed English string
+  // that toggleFilter/isChecked match on; only the DISPLAYED row label is
+  // translated. A real option renders its own `label` when given one (e.g. a
+  // category's resolved, localized title, distinct from its stable `value`
+  // key) or falls back to `value` itself (an account name IS its own label).
+  const rowLabel = (option: FilterOption): string =>
+    option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value);
   // Reserve a fixed-width leading icon slot on every row only when at least one
   // option carries an icon, so labels stay aligned between icon and icon-less
   // rows (the "All" row, or any option with no icon) without adding dead space
@@ -83,13 +92,13 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
                       name={option.icon}
                       color={option.color}
                       size={18}
-                      accessibilityLabel={option.value}
+                      accessibilityLabel={option.label ?? option.value}
                     />
                   )}
                 </Box>
               )}
 
-              <Text variant="body">{option.value}</Text>
+              <Text variant="body">{rowLabel(option)}</Text>
             </Box>
           </Pressable>
         ))}

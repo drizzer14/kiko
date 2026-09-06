@@ -1,7 +1,9 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import HoldingIdentityField from '.';
 
 type Overrides = Partial<ComponentProps<typeof HoldingIdentityField>>;
@@ -61,6 +63,15 @@ describe('HoldingIdentityField', () => {
     await fireEvent.press(getByLabelText('Choose icon basket'));
 
     expect(onSelectIcon).toHaveBeenCalledWith('basket');
+  });
+
+  it('forwards a focus event through the optional onFocus handler', async () => {
+    const onFocus = jest.fn();
+    const { getByLabelText } = await setup({ onFocus, nameAccessibilityLabel: 'Card name' });
+
+    await fireEvent(getByLabelText('Card name'), 'focus');
+
+    expect(onFocus).toHaveBeenCalledTimes(1);
   });
 
   it('commits on end-of-editing through the optional onEndEditingName handler', async () => {
@@ -130,5 +141,26 @@ describe('HoldingIdentityField', () => {
     await fireEvent.press(getByLabelText('Change Icon'));
 
     expect(queryByText('Remove')).toBeNull();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the Icon/Name captions and default name a11y label from the Ukrainian catalog', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText, getByLabelText, queryByText } = await setup();
+
+      expect(getByText('Іконка')).toBeTruthy();
+      expect(getByText('Назва')).toBeTruthy();
+      expect(getByLabelText('Назва')).toBeTruthy();
+      expect(queryByText('Icon')).toBeNull();
+    });
   });
 });

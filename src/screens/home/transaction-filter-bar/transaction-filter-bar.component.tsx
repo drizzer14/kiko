@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import Box from '../../../design-system/components/box';
 import DateRangeField from '../date-range-field';
@@ -38,11 +39,13 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
   onApplyDates,
   onClearDates,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <Box gap={3}>
       <Box direction="row" gap={3}>
         <FilterMenu
-          label="Accounts"
+          label={t('home.filterAccounts')}
           options={accounts}
           selected={selectedAccount}
           onToggle={onToggleAccount}
@@ -50,7 +53,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
         />
 
         <FilterMenu
-          label="Categories"
+          label={t('home.filterCategories')}
           options={categories}
           selected={selectedCategory}
           onToggle={onToggleCategory}

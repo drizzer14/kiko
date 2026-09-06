@@ -14,9 +14,10 @@ import { styles } from './glass-surface.styles';
 //
 // The surface is composed as stacked `absoluteFill` layers inside one plain
 // parent `View`, painted back-to-front:
-//   1. the `backdrop` (glass path, tinted cards only) — an opaque themed
-//      `View` painted UNDER the glass so the translucent backdrop-sampling
-//      material refracts a FIXED color instead of live screen content;
+//   1. the `backdrop` (glass path; a tinted card, or a neutral card that opts
+//      in via `solidBackdrop`) — an opaque themed `View` painted UNDER the
+//      glass so the translucent backdrop-sampling material refracts a FIXED
+//      color instead of live screen content;
 //   2. the base — the Liquid Glass material (glass path) or the flat themed
 //      background (fallback path), a layer with NO children;
 //   3. the `wash` — the entity-color flat tint, a SIBLING drawn OVER the base;
@@ -34,9 +35,14 @@ import { styles } from './glass-surface.styles';
 //     tint that no recomposite can wash out;
 //   - a tinted card also gets the opaque `backdrop` layer UNDER the glass, so
 //     the material samples a constant color, not the live screen — pinning the
-//     card's lightness across scroll/reorder/navigation. Gradient-less
-//     surfaces (settings/statistics sections) keep the see-through live glass:
-//     they carry no entity tint and are not the unstable-card case.
+//     card's lightness across scroll/reorder/navigation. This opaque backdrop
+//     is the prescribed anti-drift mechanism, and it also stops the glass
+//     compositing a frame over nothing solid (the pop-in). A NEUTRAL card that
+//     needs the same stability but must carry NO entity color opts into the
+//     identical backdrop via `solidBackdrop` (no wash). Gradient-less surfaces
+//     (settings/statistics sections) that opt into neither keep the
+//     see-through live glass: they carry no entity tint and are not the
+//     unstable-card case.
 //
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
@@ -54,6 +60,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   padding,
   radius = 'md',
   tint,
+  solidBackdrop = false,
   bordered = false,
   testID,
   ...props
@@ -66,13 +73,16 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // The card edge goes through the Unistyles-managed `bordered` member so it
   // lands on the first paint (see the `bordered` prop docs).
   const edge = bordered ? styles.bordered : false;
-  // The opaque backdrop UNDER the glass, for a tinted entity card only (a
-  // `tint` is set). It pins what the translucent glass samples to a fixed
-  // color so the card's lightness cannot drift on recomposite (see the block
-  // comment). A tint-less glass surface renders NO backdrop and keeps the
-  // live see-through material. The fallback (non-glass) branch needs no
-  // backdrop: its base already IS the opaque themed surface.
-  const backdrop: ReactNode = isLiquidGlassSupported && tint !== undefined && (
+  // The opaque backdrop UNDER the glass. It pins what the translucent glass
+  // samples to a fixed color so the card's lightness cannot drift on
+  // recomposite AND so the material never composites a frame over nothing solid
+  // (the pop-in) — see the block comment. Rendered for a tinted entity card (a
+  // `tint` is set) OR for a neutral card that opts in via `solidBackdrop`
+  // (same anti-drift fill, no color wash). A tint-less, non-opted-in glass
+  // surface renders NO backdrop and keeps the live see-through material. The
+  // fallback (non-glass) branch needs no backdrop: its base already IS the
+  // opaque themed surface.
+  const backdrop: ReactNode = isLiquidGlassSupported && (tint !== undefined || solidBackdrop) && (
     <View
       style={[RNStyleSheet.absoluteFill, styles.opaqueBase]}
       testID={testID && `${testID}-backdrop`}

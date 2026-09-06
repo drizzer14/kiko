@@ -1,4 +1,5 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { i18n } from '../i18n';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '../repositories/holdings.repo';
 
@@ -43,18 +44,27 @@ const defaultDeps: BalanceSyncDeps = {
  * idempotent re-sync. This only reads — marking happens after a successful
  * fetch, so a failed fetch never leaves a half-connected account behind.
  */
+// Unlike the Monobank/disconnect error paths (which the screen swallows behind
+// a bare `catch` and a generic translated fallback — see
+// `accountDetail.tryAgainMessage`), `useSyncAction` (src/screens/use-sync.ts)
+// surfaces THIS thrown message's `.message` verbatim as the sync screen's
+// error `<Text>`, so it genuinely needs `providerDisplayName`'s translated
+// name, not the raw `providerId`. This module has no React context of its
+// own, so it reads the i18next instance directly (the same pattern as
+// `src/screens/grid-interaction.ts`) rather than threading a `t` prop through
+// every sync call site.
 const resolveTargetAccount = async (
   deps: BalanceSyncDeps,
   providerId: BalanceProviderId,
 ): Promise<string> => {
   const accounts = await deps.listAccounts();
-  const name = providerDisplayName(providerId);
+  const name = providerDisplayName(providerId, i18n.t);
 
   if (deps.targetAccountId !== undefined) {
     const target = accounts.find((account) => account.id === deps.targetAccountId);
 
     if (!target) {
-      throw new Error(`No ${name} connection found`);
+      throw new Error(i18n.t('accountDetail.noConnectionFound', { name }));
     }
 
     const otherConnected = accounts.find((account) => {
@@ -62,7 +72,7 @@ const resolveTargetAccount = async (
     });
 
     if (otherConnected) {
-      throw new Error(`${name} is already connected to another account`);
+      throw new Error(i18n.t('accountDetail.sourceConnectedElsewhere', { source: name }));
     }
 
     return deps.targetAccountId;
@@ -71,7 +81,7 @@ const resolveTargetAccount = async (
   const existing = accounts.find((account) => account.institution === providerId);
 
   if (!existing) {
-    throw new Error(`No ${name} connection found`);
+    throw new Error(i18n.t('accountDetail.noConnectionFound', { name }));
   }
 
   return existing.id;

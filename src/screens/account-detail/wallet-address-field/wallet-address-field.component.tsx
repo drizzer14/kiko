@@ -1,5 +1,6 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
@@ -26,6 +27,7 @@ type WalletAddressFieldProps = {
 // the Keychain — the address lands in the synced holding's metadata. Connect
 // runs a local format check first, then the trial sync behind `onConnect`.
 const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
+  const { t } = useTranslation();
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
@@ -45,7 +47,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
     const trimmed = address.trim();
 
     if (!isValidBitcoinAddress(trimmed)) {
-      setStatus({ kind: 'invalid', message: 'Invalid BTC address' });
+      setStatus({ kind: 'invalid', message: t('accountDetail.invalidBtcAddress') });
 
       return;
     }
@@ -54,8 +56,8 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
     onConnect(trimmed).then((connected) => {
       setStatus(
         connected
-          ? { kind: 'success', message: 'Wallet connected' }
-          : { kind: 'saveError', message: 'Could not connect wallet' },
+          ? { kind: 'success', message: t('accountDetail.walletConnected') }
+          : { kind: 'saveError', message: t('accountDetail.couldNotConnectWallet') },
       );
     });
   };
@@ -65,10 +67,10 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
       <Box direction="row" gap={3} style={styles.fieldRow}>
         <Box style={styles.tokenFieldColumn}>
           <TextField
-            label="Address"
+            label={t('accountDetail.addressLabel')}
             value={address}
             onChangeText={handleChangeAddress}
-            placeholder="BTC address"
+            placeholder={t('accountDetail.btcAddressPlaceholder')}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -76,7 +78,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Paste from clipboard"
+          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
           onPress={handlePasteAddress}
           style={styles.iconButton}
         >
@@ -93,7 +95,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           disabled={status.kind === 'checking'}
           icon="link"
         >
-          Connect Wallet
+          {t('accountDetail.connectWallet')}
         </Button>
 
         <SyncStatusLine status={status} />

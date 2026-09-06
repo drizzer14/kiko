@@ -63,6 +63,10 @@ describe('isDescriptionExcludedTransfer', () => {
     expect(isDescriptionExcludedTransfer('ATB')).toBe(false);
   });
 
+  it('keeps a third-party FOP payee (e.g. a landlord) as spending, not an own top-up', () => {
+    expect(isDescriptionExcludedTransfer('ФОП Песляк Валентина Петрівна')).toBe(false);
+  });
+
   it('matches case-insensitively', () => {
     expect(isDescriptionExcludedTransfer('ПОПОВНЕННЯ ДЕПОЗИТУ')).toBe(true);
     expect(isDescriptionExcludedTransfer('на чорну картку')).toBe(true);
@@ -90,6 +94,16 @@ describe('descriptionExcludedTransferTxIds', () => {
 
   it('returns an empty set when no row matches', () => {
     expect(descriptionExcludedTransferTxIds([])).toEqual(new Set());
+  });
+
+  it('does NOT drop a third-party FOP payee id (only the own-FOP top-up phrase matches)', () => {
+    const ids = descriptionExcludedTransferTxIds([
+      { id: 'fop-topup', description: 'На гривневий рахунок ФОП для переказу на картку' },
+      { id: 'landlord', description: 'ФОП Песляк Валентина Петрівна' },
+    ]);
+
+    expect(ids).toEqual(new Set(['fop-topup']));
+    expect(ids.has('landlord')).toBe(false);
   });
 });
 

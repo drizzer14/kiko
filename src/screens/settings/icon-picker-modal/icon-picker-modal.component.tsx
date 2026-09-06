@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -191,6 +192,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   onRemove,
 }) => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
 
   return (
     // `scrollable={false}`: the Remove/Cancel header below must stay pinned
@@ -202,21 +204,21 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
       visible={visible}
       onDismiss={onDismiss}
       animationType="slide"
-      backdropAccessibilityLabel="Dismiss icon picker"
+      backdropAccessibilityLabel={t('categories.dismissIconPicker')}
       scrollable={false}
     >
       <Box direction="row" gap={3} style={styles.header}>
-        <Text variant="heading">Choose Icon</Text>
+        <Text variant="heading">{t('categories.chooseIconHeading')}</Text>
 
         <Box direction="row" gap={2}>
           {onRemove !== undefined && (
             <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
-              Remove
+              {t('forms.holding.remove')}
             </Button>
           )}
 
           <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </Box>
       </Box>
@@ -227,7 +229,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
             <Pressable
               key={icon}
               accessibilityRole="button"
-              accessibilityLabel={`Choose icon ${icon}`}
+              accessibilityLabel={t('categories.iconOptionLabel', { icon })}
               accessibilityState={{ selected: icon === selectedIcon }}
               onPress={() => onSelect(icon)}
               style={[

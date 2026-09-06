@@ -1,6 +1,8 @@
+import '../i18n';
+
 import {
   buildCategoryDisplayMap,
-  NEUTRAL_CATEGORY,
+  neutralCategory,
   resolveCategoryDisplay,
 } from './category-display';
 
@@ -54,7 +56,7 @@ describe('resolveCategoryDisplay', () => {
   it('returns the neutral category when neither the key nor the default resolves', () => {
     const empty = buildCategoryDisplayMap([]);
 
-    expect(resolveCategoryDisplay('Groceries', empty, 'other')).toEqual(NEUTRAL_CATEGORY);
-    expect(resolveCategoryDisplay(null, empty, 'other')).toEqual(NEUTRAL_CATEGORY);
+    expect(resolveCategoryDisplay('Groceries', empty, 'other')).toEqual(neutralCategory());
+    expect(resolveCategoryDisplay(null, empty, 'other')).toEqual(neutralCategory());
   });
 });

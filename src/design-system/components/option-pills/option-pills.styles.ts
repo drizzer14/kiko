@@ -21,7 +21,7 @@ export const styles = StyleSheet.create((theme) => ({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: theme.spacing(2),
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),

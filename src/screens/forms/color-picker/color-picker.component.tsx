@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -18,10 +19,12 @@ const ColorPicker = ({
   value,
   onSelect,
   label,
-  accessibilityLabelPrefix = 'Color',
+  accessibilityLabelPrefix,
 }: ColorPickerProps): ReactElement => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const swatches = Object.entries(theme.colors.entityColors);
+  const resolvedAccessibilityLabelPrefix = accessibilityLabelPrefix ?? t('forms.fields.color');
 
   return (
     <Box gap={1}>
@@ -40,7 +43,7 @@ const ColorPicker = ({
               key={name}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${accessibilityLabelPrefix} ${name}`}
+              accessibilityLabel={`${resolvedAccessibilityLabelPrefix} ${name}`}
               onPress={() => onSelect(hex)}
               style={[styles.swatchRing, selected && { borderColor: theme.colors.textPrimary }]}
             >

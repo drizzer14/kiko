@@ -1,5 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 
 import CategoriesScreen from './categories.screen';
@@ -29,6 +30,7 @@ const mockUpdateIcon = jest.fn();
 const mockUpdateColor = jest.fn();
 const mockCreate = jest.fn();
 const mockDelete = jest.fn();
+const mockReorder = jest.fn();
 const mockSetDefault = jest.fn();
 const mockOpenDeleteMenu = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
@@ -43,6 +45,7 @@ jest.mock('../../repositories/categories.repo', () => ({
     updateIcon: (...args: unknown[]) => mockUpdateIcon(...args),
     updateColor: (...args: unknown[]) => mockUpdateColor(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
+    reorder: (...args: unknown[]) => mockReorder(...args),
   },
 }));
 jest.mock('../../repositories/settings.repo', () => ({
@@ -290,20 +293,39 @@ describe('CategoriesScreen', () => {
     }
   });
 
-  it('hides the delete button on the default category card and shows a filled star instead', async () => {
+  it('hides the delete control on the default category card and shows a filled star marker instead', async () => {
     const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
 
-    // `other` is the default: no delete, a filled star (`star.fill`) instead.
+    // `other` is the default: no delete, a filled star marker (`star.fill`)
+    // instead — and the default card offers no "Set as default" either.
     expect(queryByLabelText('Delete Other')).toBeNull();
-    expect(getByLabelText('Other is the default category')).toBeTruthy();
-    // A non-default category still offers delete.
+    // The marker is now tinted white (`textPrimary` = #FFFFFF, passed straight
+    // through to the native glyph's tintColor), not the old muted gray.
+    expect(getByLabelText('Other is the default category').props.tintColor).toBe('#FFFFFF');
+    // A non-default category still offers delete (now at the card's bottom, as a
+    // labelled "Delete" control).
     expect(getByLabelText('Delete Groceries')).toBeTruthy();
   });
 
-  it('hides the "Set as default" control on the default card and shows it on the others', async () => {
+  it('shows the delete control at the bottom with a visible "Delete" label', async () => {
+    const { getAllByText, getByLabelText } = await render(<CategoriesScreen />);
+
+    // The delete affordance now carries a visible "Delete" text label — one per
+    // non-default card ('other' is the default and shows no delete), not just an
+    // icon.
+    const nonDefaultCount = SEEDED_CATEGORIES.filter((category) => category.key !== 'other').length;
+    expect(getAllByText('Delete')).toHaveLength(nonDefaultCount);
+    expect(getByLabelText('Delete Groceries')).toBeTruthy();
+  });
+
+  it('puts the "Set as default" control in the header slot on the non-default cards and hides it on the default', async () => {
     const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
 
+    // The default card shows the filled-star marker in its header slot instead
+    // of a "Set as default" control.
     expect(queryByLabelText('Set Other as default')).toBeNull();
+    // Every other card exposes the icon-only "Set as default" star, identified
+    // purely by its VoiceOver label.
     expect(getByLabelText('Set Groceries as default')).toBeTruthy();
   });
 
@@ -329,5 +351,130 @@ describe('CategoriesScreen', () => {
     onConfirm();
 
     expect(mockDelete).toHaveBeenCalledWith('groceries');
+  });
+
+  describe('reorder', () => {
+    // The seeded categories render top-to-bottom in `SEEDED_CATEGORIES` order.
+    const keys = SEEDED_CATEGORIES.map((category) => category.key);
+
+    it('moves a category to the top when its move-to-top button is pressed', async () => {
+      const { getByLabelText } = await render(<CategoriesScreen />);
+
+      // Transport is the third card; move-to-top lifts it above every other,
+      // keeping the rest in their existing relative order.
+      await fireEvent.press(getByLabelText('Move Transport to top'));
+
+      expect(mockReorder).toHaveBeenCalledWith([
+        'transport',
+        ...keys.filter((k) => k !== 'transport'),
+      ]);
+    });
+
+    it('moves a category to the bottom when its move-to-bottom button is pressed', async () => {
+      const { getByLabelText } = await render(<CategoriesScreen />);
+
+      // Transport drops below every other, the rest keeping their order.
+      await fireEvent.press(getByLabelText('Move Transport to bottom'));
+
+      expect(mockReorder).toHaveBeenCalledWith([
+        ...keys.filter((k) => k !== 'transport'),
+        'transport',
+      ]);
+    });
+
+    it('persists a drag reorder through onGridDragEnd (only when the item actually moved)', async () => {
+      const { getByTestId } = await render(<CategoriesScreen />);
+
+      // A release-in-place (fromIndex === toIndex) is a held-not-dragged gesture:
+      // onGridDragEnd persists nothing.
+      await act(async () => {
+        getByTestId('sortable-grid').props.onDragEnd({
+          key: 'transport',
+          fromIndex: 2,
+          toIndex: 2,
+          indexToKey: keys,
+        });
+      });
+      expect(mockReorder).not.toHaveBeenCalled();
+
+      // A real move (fromIndex !== toIndex) persists the new front-to-back order.
+      const reordered = ['transport', ...keys.filter((k) => k !== 'transport')];
+      await act(async () => {
+        getByTestId('sortable-grid').props.onDragEnd({
+          key: 'transport',
+          fromIndex: 2,
+          toIndex: 0,
+          indexToKey: reordered,
+        });
+      });
+      expect(mockReorder).toHaveBeenCalledWith(reordered);
+    });
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('shows the translated label for an un-renamed default under the Ukrainian catalog', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByDisplayValue, queryByDisplayValue } = await render(<CategoriesScreen />);
+
+      expect(getByDisplayValue('Продукти')).toBeTruthy();
+      expect(queryByDisplayValue('Groceries')).toBeNull();
+    });
+
+    // The regression this guards against: pre-filling the editable field with
+    // the TRANSLATED title would make an unedited (no-op) end-of-editing look
+    // like a rename to that translated string, permanently un-translating the
+    // row (its stored title would no longer match the English seed). Focusing
+    // then blurring without typing anything must never call updateTitle.
+    it('does not persist the translated label as a rename on an unedited (no-op) save', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText } = await render(<CategoriesScreen />);
+
+      const field = getByLabelText('Назва Groceries');
+      await fireEvent(field, 'focus');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+    });
+
+    it('reverts to the translated label after a no-op focus/blur cycle', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, getByDisplayValue } = await render(<CategoriesScreen />);
+
+      const field = getByLabelText('Назва Groceries');
+      await fireEvent(field, 'focus');
+      await fireEvent(field, 'endEditing');
+
+      expect(getByDisplayValue('Продукти')).toBeTruthy();
+    });
+
+    it('still renames a category via updateTitle when the field is actually edited under uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText } = await render(<CategoriesScreen />);
+
+      const field = getByLabelText('Назва Groceries');
+      await fireEvent(field, 'focus');
+      await fireEvent.changeText(field, 'Овочі');
+      await fireEvent(field, 'endEditing');
+
+      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Овочі');
+    });
   });
 });

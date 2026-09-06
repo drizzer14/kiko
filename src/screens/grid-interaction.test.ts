@@ -1,9 +1,15 @@
 import { ActionSheetIOS } from 'react-native';
 import { trigger } from 'react-native-haptic-feedback';
 
+import { i18n } from '../i18n';
+
 import { onGridDragEnd, openDeleteMenu } from './grid-interaction';
 
 jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));
+
+afterEach(async () => {
+  await i18n.changeLanguage('en');
+});
 
 describe('onGridDragEnd', () => {
   it('persists the new order when the item actually moved (fromIndex !== toIndex)', () => {
@@ -61,6 +67,25 @@ describe('openDeleteMenu', () => {
     openDeleteMenu('Cash', onDelete);
 
     expect(onDelete).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
+
+  it('presents the sheet in Ukrainian once the active language switches', async () => {
+    await i18n.changeLanguage('uk');
+    const onDelete = jest.fn();
+    const spy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
+
+    openDeleteMenu('Чорна картка', onDelete);
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: ['Скасувати', 'Видалити «Чорна картка»'],
+      }),
+      expect.any(Function),
+    );
 
     spy.mockRestore();
   });

@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import Box from '../../../design-system/components/box';
@@ -8,24 +9,24 @@ import Text from '../../../design-system/components/text';
 import type { CalendarHeaderProps } from './calendar-header.props';
 import { styles } from './calendar-header.styles';
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+const MONTH_KEYS = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+] as const;
 
 // Sunday-first, matching react-native-calendars' default firstDay (0) and the
 // column order of the day grid this header sits above.
-const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 // Replaces react-native-calendars' default header. The library hands it the
 // visible month and an `addMonth(count)` navigator; the double-chevron controls
@@ -33,8 +34,9 @@ const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // custom header also owns the weekday labels the default header would render,
 // this re-renders them below the title so the day-of-week row is preserved.
 const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
+  const { t } = useTranslation();
   const visible = month ?? new Date();
-  const title = `${MONTH_NAMES[visible.getMonth()]} ${visible.getFullYear()}`;
+  const title = `${t(`calendar.month.${MONTH_KEYS[visible.getMonth()]}`)} ${visible.getFullYear()}`;
   const step = (count: number) => () => addMonth?.(count);
 
   return (
@@ -43,7 +45,7 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
         <Box direction="row" gap={3} style={styles.group}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Previous year"
+            accessibilityLabel={t('calendar.previousYear')}
             hitSlop={8}
             onPress={step(-12)}
           >
@@ -52,7 +54,7 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Previous month"
+            accessibilityLabel={t('calendar.previousMonth')}
             hitSlop={8}
             onPress={step(-1)}
           >
@@ -67,7 +69,7 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
         <Box direction="row" gap={3} style={styles.group}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Next month"
+            accessibilityLabel={t('calendar.nextMonth')}
             hitSlop={8}
             onPress={step(1)}
           >
@@ -76,7 +78,7 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Next year"
+            accessibilityLabel={t('calendar.nextYear')}
             hitSlop={8}
             onPress={step(12)}
           >
@@ -86,10 +88,10 @@ const CalendarHeader: FC<CalendarHeaderProps> = ({ month, addMonth }) => {
       </Box>
 
       <Box direction="row" style={styles.weekRow}>
-        {WEEKDAY_NAMES.map((day) => (
+        {WEEKDAY_KEYS.map((day) => (
           <Box key={day} style={styles.weekday}>
             <Text variant="caption" tone="textSecondary">
-              {day}
+              {t(`calendar.weekday.${day}`)}
             </Text>
           </Box>
         ))}

@@ -1,5 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import MonobankTokenField from './monobank-token-field.component';
 
 const mockSaveToken = jest.fn();
@@ -205,5 +207,34 @@ describe('MonobankTokenField', () => {
     const { getByText } = await render(<MonobankTokenField isConnected={true} />);
 
     expect(getByText('Synchronization')).toBeTruthy();
+  });
+});
+
+describe('MonobankTokenField — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadToken.mockResolvedValue(undefined);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the heading, link, placeholder, and Save action from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByPlaceholderText, getByText, queryByText } = await render(
+      <MonobankTokenField isConnected={false} />,
+    );
+
+    expect(getByText('Синхронізація')).toBeTruthy();
+    expect(getByText('Відкрити api.monobank.ua')).toBeTruthy();
+    expect(getByPlaceholderText('Токен Monobank')).toBeTruthy();
+    expect(getByText('Зберегти')).toBeTruthy();
+    expect(queryByText('Save')).toBeNull();
   });
 });

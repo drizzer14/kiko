@@ -90,4 +90,27 @@ describe('DateField', () => {
 
     expect(onChange).toHaveBeenCalledWith(new Date(2026, 2, 4).getTime());
   });
+
+  it('preserves the existing time-of-day when only the day is re-picked', async () => {
+    const onChange = jest.fn();
+    // An existing value at 14:37:09 on 4 March 2026 — a day pick must move the
+    // day only, never clobber the time-of-day back to midnight (so a paired
+    // TimeField and DateField do not overwrite each other).
+    const value = new Date(2026, 2, 4, 14, 37, 9).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <DateField label="Start Date" value={value} onChange={onChange} />,
+    );
+
+    await fireEvent.press(getByLabelText('Start Date'));
+    await fireEvent(getByTestId('Start Date calendar'), 'dayPress', {
+      year: 2026,
+      month: 6,
+      day: 20,
+      dateString: '2026-06-20',
+      timestamp: 0,
+    });
+
+    // Day becomes 20 June 2026; the 14:37:09 time-of-day carries over.
+    expect(onChange).toHaveBeenCalledWith(new Date(2026, 5, 20, 14, 37, 9).getTime());
+  });
 });

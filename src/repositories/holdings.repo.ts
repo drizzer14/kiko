@@ -76,6 +76,54 @@ const upsertByMetadataKey = async (
   await tx.insert(holdings).values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
+// Append one contribution to a term deposit and rewrite its metadata, operating
+// on an EXISTING transaction handle so a caller (e.g. `recordExchange`) can run
+// it inside a larger single transaction. `appendDepositContribution` wraps this
+// in its own `write(...)`. Throws on a non-deposit or invalid/absent metadata.
+export const appendDepositContributionTx = async (
+  tx: typeof database,
+  holdingId: string,
+  contribution: DepositContribution,
+): Promise<void> => {
+  const rows = await tx.select().from(holdings).where(eq(holdings.id, holdingId));
+  const row = rows.at(0);
+
+  if (row?.type !== 'term_deposit') {
+    throw new Error('appendDepositContribution: not a term deposit');
+  }
+
+  const meta = asTermDepositMeta(row.metadata);
+
+  if (meta === null) {
+    throw new Error('appendDepositContribution: invalid deposit metadata');
+  }
+
+  const { amountMinorUnits, date } = contribution;
+
+  if (!Number.isFinite(amountMinorUnits) || !Number.isFinite(date)) {
+    throw new Error('appendDepositContribution: invalid contribution');
+  }
+
+  // Build the item explicitly (never spread `contribution`) so no extra
+  // caller-supplied keys can persist into stored metadata.
+  const contributions = [...meta.contributions, { amountMinorUnits, date }].sort(
+    (a, b) => a.date - b.date,
+  );
+
+  await tx
+    .update(holdings)
+    .set({
+      metadata: {
+        contributions,
+        annualRatePct: meta.annualRatePct,
+        termMonths: meta.termMonths,
+        recapitalization: meta.recapitalization,
+        compounding: meta.compounding,
+      },
+    })
+    .where(eq(holdings.id, holdingId));
+};
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -142,38 +190,7 @@ export const holdingsRepo = {
    * carried forward. Contributions are kept sorted by date ascending.
    */
   appendDepositContribution: (holdingId: string, contribution: DepositContribution) =>
-    write(async (tx) => {
-      const rows = await tx.select().from(holdings).where(eq(holdings.id, holdingId));
-      const row = rows.at(0);
-      if (row?.type !== 'term_deposit') {
-        throw new Error('appendDepositContribution: not a term deposit');
-      }
-      const meta = asTermDepositMeta(row.metadata);
-      if (meta === null) {
-        throw new Error('appendDepositContribution: invalid deposit metadata');
-      }
-      const { amountMinorUnits, date } = contribution;
-      if (!Number.isFinite(amountMinorUnits) || !Number.isFinite(date)) {
-        throw new Error('appendDepositContribution: invalid contribution');
-      }
-      // Build the item explicitly (never spread `contribution`) so no extra
-      // caller-supplied keys can persist into stored metadata.
-      const contributions = [...meta.contributions, { amountMinorUnits, date }].sort(
-        (a, b) => a.date - b.date,
-      );
-      await tx
-        .update(holdings)
-        .set({
-          metadata: {
-            contributions,
-            annualRatePct: meta.annualRatePct,
-            termMonths: meta.termMonths,
-            recapitalization: meta.recapitalization,
-            compounding: meta.compounding,
-          },
-        })
-        .where(eq(holdings.id, holdingId));
-    }),
+    write((tx) => appendDepositContributionTx(tx, holdingId, contribution)),
   /**
    * Deletes a manual holding and all of its transactions in one transaction.
    * Refuses a Monobank-synced holding (its balance is owned by the sync), so a

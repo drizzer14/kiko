@@ -1,5 +1,6 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking, Pressable, Text as RNText } from 'react-native';
 
 import Box from '../../../design-system/components/box';
@@ -28,6 +29,7 @@ type MonobankTokenFieldProps = {
 // token-entry controls (link, input, Save) disappear — the Connect/Sync/
 // Disconnect actions live on the parent account-detail screen instead.
 const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
+  const { t } = useTranslation();
   const [token, setToken] = useState('');
   const [tokenStatus, setTokenStatus] = useState<SyncStatus>({ kind: 'idle' });
   const hasUserEditedToken = useRef(false);
@@ -71,16 +73,19 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
         const clientInfo = await fetchClientInfo(token);
         clientName = clientInfo.name;
       } catch {
-        setTokenStatus({ kind: 'invalid', message: 'Invalid token' });
+        setTokenStatus({ kind: 'invalid', message: t('accountDetail.invalidToken') });
 
         return;
       }
 
       try {
         await saveToken(token);
-        setTokenStatus({ kind: 'success', message: `Connected as ${clientName}` });
+        setTokenStatus({
+          kind: 'success',
+          message: t('accountDetail.connectedAs', { name: clientName }),
+        });
       } catch {
-        setTokenStatus({ kind: 'saveError', message: 'Could not save token' });
+        setTokenStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveToken') });
       }
     })();
   };
@@ -91,31 +96,31 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
   if (isConnected) {
     return (
       <Box gap={3}>
-        <Text variant="heading">Synchronization</Text>
+        <Text variant="heading">{t('accountDetail.synchronization')}</Text>
       </Box>
     );
   }
 
   return (
     <Box gap={3}>
-      <Text variant="heading">Synchronization</Text>
+      <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel="Open api.monobank.ua"
+        accessibilityLabel={t('accountDetail.openMonobankLink')}
         onPress={handleOpenMonobank}
         style={styles.linkPressable}
       >
-        <RNText style={styles.link}>Open api.monobank.ua</RNText>
+        <RNText style={styles.link}>{t('accountDetail.openMonobankLink')}</RNText>
       </Pressable>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
         <Box style={styles.tokenFieldColumn}>
           <TextField
-            label="Token"
+            label={t('accountDetail.tokenLabel')}
             value={token}
             onChangeText={handleChangeToken}
-            placeholder="Monobank token"
+            placeholder={t('accountDetail.monobankTokenPlaceholder')}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -123,7 +128,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
         </Box>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Paste from clipboard"
+          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
           onPress={handlePasteToken}
           style={styles.iconButton}
         >
@@ -140,7 +145,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
           disabled={tokenStatus.kind === 'checking'}
           icon="checkmark.circle"
         >
-          Save
+          {t('common.save')}
         </Button>
 
         <SyncStatusLine status={tokenStatus} />

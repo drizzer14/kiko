@@ -1,7 +1,8 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { Money } from '../../../currency/money';
+import { i18n } from '../../../i18n';
 import '../../unistyles';
 import MoneyText from './money-text.component';
 
@@ -56,6 +57,27 @@ const expectTone = async (
 };
 
 describe('MoneyText', () => {
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('re-formats a UAH amount when the active language changes (en-US comma grouping -> uk-UA space grouping)', async () => {
+    const { getByText, queryByText } = await render(<MoneyText money={Money.of('UAH', 123_456)} />);
+
+    expect(getByText('1,234.56 ₴')).toBeTruthy();
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    // uk-UA groups thousands with U+00A0 NO-BREAK SPACE and a comma decimal
+    // (see currency/format.test.ts for the same finding).
+    expect(queryByText('1,234.56 ₴')).toBeNull();
+    expect(getByText('1 234,56 ₴')).toBeTruthy();
+  });
+
   it('renders the formatted amount', async () => {
     const { getByText } = await render(<MoneyText money={Money.of('USD', 123456)} />);
     expect(getByText(/\$1,234\.56/)).toBeTruthy();

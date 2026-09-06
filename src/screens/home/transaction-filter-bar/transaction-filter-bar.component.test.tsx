@@ -2,6 +2,8 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { formatDate } from '../../../dates/format';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
 
 type BarProps = {
@@ -298,6 +300,31 @@ describe('TransactionFilterBar', () => {
       });
 
       expect(onClearDates).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the Accounts label and the date-range Apply/Clear actions from the Ukrainian catalog', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText, getByLabelText } = await renderBar();
+
+      expect(getByText('Рахунки')).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.press(getByLabelText('Період дат'));
+      });
+
+      expect(getByText('Застосувати')).toBeTruthy();
+      expect(getByText('Очистити')).toBeTruthy();
     });
   });
 });

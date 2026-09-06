@@ -1,4 +1,5 @@
 import { type FC, useState } from 'react';
+import { type TFunction, useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
@@ -91,17 +92,17 @@ const buildPeriodMarks = (
 
 // The field's summary text for an active range: both bounds, or one open-ended
 // bound. Every date is DD.MM.YYYY (see formatDate); an en dash joins two bounds.
-const activeRangeLabel = (from: Date | null, to: Date | null): string => {
+const activeRangeLabel = (from: Date | null, to: Date | null, t: TFunction): string => {
   if (from !== null && to !== null) {
     return `${formatDate(from)} – ${formatDate(to)}`;
   }
 
   if (from !== null) {
-    return `From ${formatDate(from)}`;
+    return t('home.dateRangeField.from', { date: formatDate(from) });
   }
 
   if (to !== null) {
-    return `Until ${formatDate(to)}`;
+    return t('home.dateRangeField.until', { date: formatDate(to) });
   }
 
   return '';
@@ -117,6 +118,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   onClear,
 }) => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
@@ -126,7 +128,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   // With no active range the field displays the full transaction span but does
   // not filter; an active range shows its own bounds.
   const fieldLabel = hasActiveRange
-    ? activeRangeLabel(dateFrom, dateTo)
+    ? activeRangeLabel(dateFrom, dateTo, t)
     : `${formatDate(minDate)} – ${formatDate(maxDate)}`;
 
   // The inclusive *selectable* range, distinct from the display span above: the
@@ -196,7 +198,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Date range" onPress={openModal}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('home.dateRangeField.label')}
+        onPress={openModal}
+      >
         <Box direction="row" gap={2} style={styles.field}>
           <SymbolIcon name="calendar" size={18} tone="textPrimary" />
 
@@ -218,7 +224,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text variant="heading">Date Range</Text>
+          <Text variant="heading">{t('home.dateRangeField.heading')}</Text>
 
           <KikoCalendar
             testID="date-range-calendar"
@@ -232,11 +238,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
 
         <Box direction="row" gap={3} style={styles.actions}>
           <Button variant="secondary" fullWidth={false} onPress={handleClear}>
-            Clear
+            {t('home.dateRangeField.clear')}
           </Button>
 
           <Button fullWidth={false} onPress={handleApply}>
-            Apply
+            {t('home.dateRangeField.apply')}
           </Button>
         </Box>
       </BottomSheet>

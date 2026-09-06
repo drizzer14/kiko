@@ -1,5 +1,7 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
+
 import EntityHeaderIcon from './entity-header-icon.component';
 
 describe('EntityHeaderIcon', () => {
@@ -20,5 +22,26 @@ describe('EntityHeaderIcon', () => {
     const { toJSON } = await render(<EntityHeaderIcon />);
 
     expect(toJSON()).toBeNull();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the Ukrainian catalog accessibility label when the locale is uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, queryByLabelText } = await render(
+        <EntityHeaderIcon identity={{ icon: 'creditcard.fill', color: '#FFD60A' }} />,
+      );
+
+      expect(getByLabelText('Іконка creditcard.fill')).toBeTruthy();
+      expect(queryByLabelText('Icon creditcard.fill')).toBeNull();
+    });
   });
 });

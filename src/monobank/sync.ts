@@ -1,6 +1,7 @@
 import { pipe } from 'fnts';
 
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+import { i18n } from '../i18n';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
 import { settingsRepo } from '../repositories/settings.repo';
@@ -116,7 +117,9 @@ export const mapAccountToHolding = (
 ): NewHolding => {
   const currency = currencyFromCode(account.currencyCode);
   if (!currency) {
-    throw new Error(`Unsupported Monobank currency code: ${account.currencyCode}`);
+    throw new Error(
+      i18n.t('accountDetail.unsupportedCurrencyCode', { code: account.currencyCode }),
+    );
   }
   return {
     accountId: monobankAccountId,
@@ -131,7 +134,7 @@ export const mapAccountToHolding = (
 const mapJarToHolding = (jar: MonobankJar, monobankAccountId: string): NewHolding => {
   const currency = currencyFromCode(jar.currencyCode);
   if (!currency) {
-    throw new Error(`Unsupported Monobank currency code: ${jar.currencyCode}`);
+    throw new Error(i18n.t('accountDetail.unsupportedCurrencyCode', { code: jar.currencyCode }));
   }
   return {
     accountId: monobankAccountId,
@@ -157,12 +160,20 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * the user to create and connect an account first, so we surface a clear error
  * rather than silently minting a stray 'Monobank' account.
  */
+// `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message's
+// `.message` verbatim as the account-detail screen's error `<Text>` (see
+// account-detail.screen.tsx), so it genuinely needs to be localized, not left
+// as a diagnostic-only string. This module has no React context of its own,
+// so it reads the i18next instance directly (the same pattern as
+// `src/screens/grid-interaction.ts`) rather than threading a `t` prop through
+// every sync call site. 'Monobank' itself is a brand name and is not
+// translated (matching every other Monobank-branded catalog entry).
 const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
   const accounts = await deps.listAccounts();
   if (deps.targetAccountId !== undefined) {
     const target = accounts.find((account) => account.id === deps.targetAccountId);
     if (!target) {
-      throw new Error('No Monobank account connected');
+      throw new Error(i18n.t('accountDetail.noMonobankConnection'));
     }
     // The personal Monobank API is a single connection: at most one account may
     // be institution=monobank at a time. Re-connecting the SAME account is an
@@ -173,14 +184,14 @@ const ensureMonobankAccount = async (deps: SyncDeps): Promise<string> => {
       return account.institution === 'monobank' && account.id !== deps.targetAccountId;
     });
     if (otherConnected) {
-      throw new Error('A Monobank account is already connected');
+      throw new Error(i18n.t('accountDetail.monobankAlreadyConnected'));
     }
     await deps.updateAccount(deps.targetAccountId, { institution: 'monobank' });
     return deps.targetAccountId;
   }
   const existing = accounts.find((account) => account.institution === 'monobank');
   if (!existing) {
-    throw new Error('No Monobank account connected');
+    throw new Error(i18n.t('accountDetail.noMonobankConnection'));
   }
   return existing.id;
 };
@@ -284,7 +295,7 @@ export const runSync = async (
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
   const token = await deps.readToken();
   if (!token) {
-    throw new Error('No Monobank token found; connect an account before syncing');
+    throw new Error(i18n.t('accountDetail.noMonobankToken'));
   }
 
   await deps.ensureSettings();

@@ -1,12 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, type ScrollView } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 
 import type { Currency } from '../../currency/currency';
-import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -33,13 +33,8 @@ import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
 
-const KIND_LABEL: Record<AccountRow['kind'], string> = {
-  bank: 'Bank',
-  cash: 'Cash',
-  crypto: 'Crypto',
-};
-
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
@@ -75,7 +70,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             fullWidth
             onPress={() => navigation.navigate('AccountForm', {})}
           >
-            Add account
+            {t('accounts.addAccount')}
           </Button>
         </Box>
       }
@@ -83,7 +78,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       <Box gap={4} style={styles.content}>
         {activeAccounts.length === 0 ? (
           <Box style={styles.empty}>
-            <Text tone="textSecondary">No accounts yet</Text>
+            <Text tone="textSecondary">{t('accounts.emptyState')}</Text>
           </Box>
         ) : (
           // A single-column drag-and-drop grid of the existing wide account
@@ -142,12 +137,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                           <SymbolIcon
                             name={item.icon ?? accountKindSymbol[item.kind]}
                             color={color}
-                            accessibilityLabel={`${item.name} icon`}
+                            accessibilityLabel={t('accounts.icon', { name: item.name })}
                           />
                           <Box gap={1}>
                             <Text variant="body">{item.name}</Text>
                             <Text variant="caption" tone="textSecondary">
-                              {KIND_LABEL[item.kind]}
+                              {t(`forms.account.${item.kind}`)}
                             </Text>
                           </Box>
                         </Box>

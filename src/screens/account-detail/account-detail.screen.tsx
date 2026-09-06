@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
+import { type TFunction, useTranslation } from 'react-i18next';
 import { Alert, type ScrollView } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
@@ -41,23 +42,20 @@ import { formatLastSyncAt } from './format-last-sync';
 import HoldingCard from './holding-card';
 import MonobankTokenField from './monobank-token-field';
 
-// The token input now lives on this screen, so a missing token points the user
-// up to that field rather than off to global Settings.
-const NO_TOKEN_MESSAGE = 'Add your Monobank token above before connecting.';
-
 // Connect (mark institution + first import) and Sync now (re-import) are the
 // same action; only the label and glyph differ. A link glyph while the action
 // still establishes the connection, a refresh glyph once it re-imports.
 const actionPresentation = (
   isConnectedToMonobank: boolean,
   isSyncing: boolean,
+  t: TFunction,
 ): { label: string; icon: string } => {
   if (!isConnectedToMonobank) {
-    return { label: 'Connect Monobank', icon: 'link' };
+    return { label: t('accountDetail.connectMonobank'), icon: 'link' };
   }
 
   return {
-    label: isSyncing ? 'Syncing…' : 'Sync now',
+    label: isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow'),
     icon: 'arrow.triangle.2.circlepath',
   };
 };
@@ -85,6 +83,7 @@ type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId, name: initialName } = route.params;
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: connectedAccounts } = useLiveQuery(accountsRepo.connectedQuery(), ['accounts']);
@@ -160,7 +159,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     try {
       setTokenMessage(undefined);
       if ((await readToken()) === undefined) {
-        setTokenMessage(NO_TOKEN_MESSAGE);
+        setTokenMessage(t('accountDetail.noTokenMessage'));
         return;
       }
       await sync(accountId);
@@ -178,18 +177,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     try {
       await disconnectMonobank(accountId);
     } catch {
-      Alert.alert('Could not disconnect', 'Please try again.');
+      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
     }
   };
 
   const confirmDisconnect = (): void => {
     Alert.alert(
-      'Disconnect Monobank',
-      'This clears the connection and the stored token. Your holdings and transactions stay as a manual snapshot.',
+      t('accountDetail.disconnectMonobank'),
+      t('accountDetail.disconnectMonobankMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Disconnect',
+          text: t('accountDetail.disconnectAction'),
           style: 'destructive',
           onPress: () => {
             runDisconnect();
@@ -202,6 +201,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { label: actionLabel, icon: actionIcon } = actionPresentation(
     isConnectedToMonobank,
     isSyncing,
+    t,
   );
 
   // Show the action button for the connected account (Sync now) or for an
@@ -221,14 +221,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           fullWidth
           onPress={() => navigation.navigate('HoldingForm', { accountId })}
         >
-          Add holding
+          {t('accountDetail.addHolding')}
         </Button>
       }
     >
       <Box gap={4}>
         <Box gap={1} style={styles.balanceBlock}>
           <EntityAmountHeader
-            label="Balance"
+            label={t('accountDetail.balanceLabel')}
             money={overallBalance}
             context="balance"
             icon={<EntityHeaderIcon identity={identity} />}
@@ -250,7 +250,17 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
 
         {showActionButton && (
-          <Box direction="row" gap={2} style={styles.statusLine}>
+          <Box gap={2}>
+            {isConnectedToMonobank && (
+              <Box direction="row" gap={2} style={styles.statusLine}>
+                <SymbolIcon name="clock" tone="textSecondary" />
+                <Text variant="body" tone="textSecondary">
+                  {t('accountDetail.lastSync', {
+                    time: formatLastSyncAt(settingsRows.at(0)?.lastSyncAt ?? null),
+                  })}
+                </Text>
+              </Box>
+            )}
             <Button
               variant="primary"
               size="compact"
@@ -263,14 +273,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             >
               {actionLabel}
             </Button>
-            {isConnectedToMonobank && (
-              <Box direction="row" gap={2} style={styles.statusLine}>
-                <SymbolIcon name="clock" tone="textSecondary" />
-                <Text variant="body" tone="textSecondary">
-                  Last sync: {formatLastSyncAt(settingsRows.at(0)?.lastSyncAt ?? null)}
-                </Text>
-              </Box>
-            )}
           </Box>
         )}
 
@@ -282,13 +284,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             onPress={confirmDisconnect}
             icon="link.badge.plus"
           >
-            Disconnect Monobank
+            {t('accountDetail.disconnectMonobank')}
           </Button>
         )}
 
         {showConnectedElsewhereHint && (
           <Text variant="caption" tone="textSecondary">
-            Monobank is connected to another account
+            {t('accountDetail.connectedElsewhere')}
           </Text>
         )}
 
@@ -307,7 +309,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box style={styles.divider} />
 
         <Box gap={3}>
-          <Text variant="heading">Holdings</Text>
+          <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>
 
           {/* A single-column drag-and-drop list of wide holding row cards
               (mirroring the accounts list). A plain tap opens the holding; a

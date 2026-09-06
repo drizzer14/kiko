@@ -1,10 +1,12 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
+import { activeLocale } from '../../../i18n/active-locale';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import Box from '../box';
 import Text from '../text';
@@ -133,7 +135,7 @@ const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
 const formatAxisTime = (t: number): string =>
-  new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  new Date(t).toLocaleDateString(activeLocale(), { month: 'short', day: 'numeric' });
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a
 // runtime number, so it widens to `string` and needs the cast onto the
@@ -151,9 +153,13 @@ const xLabelStyle = (tick: XTick) => {
   return tick.isStart ? styles.xLabelStart : styles.xLabelEnd;
 };
 
-const StatusMessage: FC<{ testID: string; message: string }> = ({ testID, message }) => {
+const StatusMessage: FC<{ testID: string; message: string; height: number }> = ({
+  testID,
+  message,
+  height,
+}) => {
   return (
-    <Box testID={testID} style={styles.status}>
+    <Box testID={testID} style={styles.status(height)}>
       <Text variant="body" tone="textSecondary">
         {message}
       </Text>
@@ -169,12 +175,26 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   height = DEFAULT_HEIGHT,
 }) => {
   const { theme } = useUnistyles();
+  // formatAxisTime and formatCompactMoney below both read activeLocale() at
+  // render/call time, not via a subscription of their own (formatAxisTime is
+  // a module-scope helper). Subscribing here, the same as MoneyText, is what
+  // makes a language switch actually re-render this component's axis labels
+  // instead of leaving them stale until some other prop change forces it.
+  const { t } = useTranslation();
 
   if (points.length === 0) {
     return loading ? (
-      <StatusMessage testID="net-worth-line-loading" message="Loading History" />
+      <StatusMessage
+        testID="net-worth-line-loading"
+        message={t('components.netWorthLine.loadingHistory')}
+        height={height}
+      />
     ) : (
-      <StatusMessage testID="net-worth-line-empty" message="No Data For This Range" />
+      <StatusMessage
+        testID="net-worth-line-empty"
+        message={t('common.noDataForRange')}
+        height={height}
+      />
     );
   }
 
@@ -204,7 +224,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                 adjustsFontSizeToFit
                 minimumFontScale={0.7}
               >
-                {formatCompactMoney(tick.value, baseCurrency, axisUnit)}
+                {formatCompactMoney(tick.value, baseCurrency, axisUnit, activeLocale())}
               </Text>
             </View>
           ))}

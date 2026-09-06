@@ -1,6 +1,7 @@
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking, Pressable, Text as RNText } from 'react-native';
 
 import { fetchAccount } from '../../../crypto-sync/binance/binance.client';
@@ -25,6 +26,7 @@ type Field = 'apiKey' | 'secret';
 // account call BEFORE it is written to the biometric Keychain, then runs the
 // first sync. The pair never leaves this component except into `saveCredentials`.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }) => {
+  const { t } = useTranslation();
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
@@ -55,7 +57,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
       try {
         await fetchAccount(apiKey, secret);
       } catch {
-        setStatus({ kind: 'invalid', message: 'Invalid API key or secret' });
+        setStatus({ kind: 'invalid', message: t('accountDetail.invalidApiKeyOrSecret') });
 
         return;
       }
@@ -63,7 +65,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
       try {
         await saveCredentials({ apiKey, secret });
       } catch {
-        setStatus({ kind: 'saveError', message: 'Could not save credentials' });
+        setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') });
 
         return;
       }
@@ -71,8 +73,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
       const connected = await onConnect();
       setStatus(
         connected
-          ? { kind: 'success', message: 'Binance connected' }
-          : { kind: 'saveError', message: 'Could not connect Binance' },
+          ? { kind: 'success', message: t('accountDetail.binanceConnected') }
+          : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
       );
     })();
   };
@@ -81,20 +83,20 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
     <Box gap={3}>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel="Open Binance API Management"
+        accessibilityLabel={t('accountDetail.openBinanceLink')}
         onPress={handleOpenBinance}
         style={styles.linkPressable}
       >
-        <RNText style={styles.link}>Open Binance API Management</RNText>
+        <RNText style={styles.link}>{t('accountDetail.openBinanceLink')}</RNText>
       </Pressable>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
         <Box style={styles.tokenFieldColumn}>
           <TextField
-            label="API key"
+            label={t('accountDetail.apiKeyLabel')}
             value={apiKey}
             onChangeText={(value) => setField('apiKey', value)}
-            placeholder="Binance API key"
+            placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -103,7 +105,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Paste API key from clipboard"
+          accessibilityLabel={t('accountDetail.pasteApiKey')}
           onPress={() => handlePaste('apiKey')}
           style={styles.iconButton}
         >
@@ -114,10 +116,10 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
       <Box direction="row" gap={3} style={styles.fieldRow}>
         <Box style={styles.tokenFieldColumn}>
           <TextField
-            label="API secret"
+            label={t('accountDetail.apiSecretLabel')}
             value={secret}
             onChangeText={(value) => setField('secret', value)}
-            placeholder="Binance API secret"
+            placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -126,7 +128,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Paste API secret from clipboard"
+          accessibilityLabel={t('accountDetail.pasteApiSecret')}
           onPress={() => handlePaste('secret')}
           style={styles.iconButton}
         >
@@ -143,7 +145,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
           disabled={status.kind === 'checking'}
           icon="link"
         >
-          Connect Binance
+          {t('accountDetail.connectBinance')}
         </Button>
 
         <SyncStatusLine status={status} />

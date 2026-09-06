@@ -1,5 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useLayoutEffect } from 'react';
+import { type TFunction, useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -79,21 +80,25 @@ const breakdownRows = (
   breakdown: HoldingValueBreakdown,
   type: string,
   expectedProfit: Money | null,
+  t: TFunction,
 ): { label: string; money: Money; tone?: MoneyTextTone }[] => [
-  { label: type === 'bond' ? 'Cost' : 'Principal', money: breakdown.principalOrCost },
-  { label: 'Gross value', money: breakdown.gross },
+  {
+    label: type === 'bond' ? t('holdingDetail.cost') : t('holdingDetail.principal'),
+    money: breakdown.principalOrCost,
+  },
+  { label: t('holdingDetail.grossValue'), money: breakdown.gross },
   // Interest and tax carry a fixed tone by KIND (interest always green, tax
   // always red), the same rule the derived ledger rows use — not the sign-only
   // balance coloring, which would leave a positive interest/tax magnitude
   // white — except when the amount is exactly zero, where `ledgerTone` mutes
   // it to gray instead.
   {
-    label: 'Interest earned',
+    label: t('holdingDetail.interestEarned'),
     money: breakdown.interest,
     tone: ledgerTone('positive', breakdown.interest.minorUnits),
   },
   {
-    label: 'Tax withheld',
+    label: t('holdingDetail.taxWithheld'),
     money: breakdown.tax,
     tone: ledgerTone('negative', breakdown.tax.minorUnits),
   },
@@ -101,11 +106,18 @@ const breakdownRows = (
   // redeemed, less the price paid (the figure the bank statement shows). It
   // reads green as the holding's expected gain.
   ...(expectedProfit
-    ? [{ label: 'Expected profit', money: expectedProfit, tone: 'positive' as const }]
+    ? [
+        {
+          label: t('holdingDetail.expectedProfit'),
+          money: expectedProfit,
+          tone: 'positive' as const,
+        },
+      ]
     : []),
 ];
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
+  const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
   const { theme } = useUnistyles();
   // Disable this screen's native back-swipe while any transaction row is open,
@@ -144,7 +156,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // carry a `time`; the merged list is sorted newest-first to match the repo's
   // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
   // edit); derived rows are read-only and marked "Computed".
-  const derived: DerivedEntry[] = holding ? derivedEntries(holding, now) : [];
+  const derived: DerivedEntry[] = holding ? derivedEntries(holding, now, t) : [];
   const ledger = [
     ...transactions.map((transaction) => ({
       kind: 'transaction' as const,
@@ -207,7 +219,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               : navigation.navigate('TransactionForm', { holdingId })
           }
         >
-          {isContribution ? 'Add contribution' : 'Add transaction'}
+          {isContribution ? t('forms.holding.addContribution') : t('holdingDetail.addTransaction')}
         </Button>
       }
     >
@@ -215,13 +227,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         {holding && breakdown && (
           <Box gap={1}>
             <EntityAmountHeader
-              label="Value"
+              label={t('holdingDetail.valueLabel')}
               money={breakdown.net}
               icon={<EntityHeaderIcon identity={identity} />}
             />
             {showBreakdown && (
               <Box gap={1} style={styles.breakdown}>
-                {breakdownRows(breakdown, holding.type, expectedProfit).map((detail) => (
+                {breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => (
                   <Box
                     key={detail.label}
                     style={{ flexDirection: 'row', justifyContent: 'space-between' }}
@@ -240,7 +252,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         <Box style={styles.divider} />
 
         <Box gap={2}>
-          <Text variant="heading">Transactions</Text>
+          <Text variant="heading">{t('holdingDetail.transactionsHeading')}</Text>
           {ledger.map((row) => {
             if (row.kind === 'derived') {
               // A computed lifecycle entry (opening/top-up, interest accrual, the
@@ -273,8 +285,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     </Box>
                   </Box>
                   <Text variant="caption" tone="textSecondary">
-                    {row.entry.isFuture ? 'Projected' : 'Computed'} ·{' '}
-                    {formatDateTime(row.entry.time)}
+                    {row.entry.isFuture
+                      ? t('holdingDetail.projected')
+                      : t('holdingDetail.computed')}{' '}
+                    · {formatDateTime(row.entry.time)}
                   </Text>
                 </Box>
               );
@@ -326,6 +340,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                               defaultTransactionDescription(
                                 holdingName ?? '',
                                 row.transaction.amountMinorUnits,
+                                t,
                               )}
                           </Text>
                         </Box>

@@ -1,5 +1,6 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
+import { i18n } from '../../../i18n';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
@@ -19,6 +20,38 @@ const points: NetWorthPoint[] = [
 ];
 
 describe('NetWorthLine', () => {
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('re-formats a UAH Y-axis label when the active language changes (en-US comma grouping -> uk-UA space grouping)', async () => {
+    // Clean, evenly-spaced amounts so the four Y-axis ticks (1236, 1224, 1212,
+    // 1200) land on distinct grouped-thousands values in the base compact
+    // unit — see currency/compact.ts's chooseCompactUnit: a K-unit label here
+    // would collapse every tick to "1", so it steps down to the base unit,
+    // which is exactly the grouped integer this test needs.
+    const uahPoints: NetWorthPoint[] = [
+      { t: 0, amount: 1200 },
+      { t: 86_400_000, amount: 1236 },
+    ];
+    const { getByText, queryByText } = await render(
+      <NetWorthLine points={uahPoints} startReference={1218} baseCurrency="UAH" />,
+    );
+
+    expect(getByText('1,236 ₴')).toBeTruthy();
+
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    // uk-UA groups thousands with U+00A0 NO-BREAK SPACE (see
+    // currency/compact.test.ts for the same finding on formatCompactMoney).
+    expect(queryByText('1,236 ₴')).toBeNull();
+    expect(getByText('1 236 ₴')).toBeTruthy();
+  });
+
   it('renders a single polyline with one coordinate pair per point', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
@@ -227,5 +260,59 @@ describe('NetWorthLine', () => {
 
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(queryByTestId('net-worth-line-polyline')).toBeNull();
+  });
+
+  // Regression: the loading placeholder used to be a short spinner box that
+  // grew ~135px once the loaded chart replaced it, jumping the Charts screen's
+  // content height above the viewport mid-render and interrupting the OS's
+  // native scroll-to-top (tapping the active tab). The placeholder must now
+  // reserve the SAME total height the loaded chart occupies for a given plot
+  // height, so no post-mount height change ever occurs.
+  it('reserves the same total height in the loading state as the loaded chart', async () => {
+    const height = 200;
+
+    const { getByTestId: getByTestIdLoading } = await render(
+      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" loading height={height} />,
+    );
+    const loadingHeight = styleLayers(getByTestIdLoading('net-worth-line-loading').props.style)
+      .map((layer) => layer.height)
+      .find((value): value is number => typeof value === 'number');
+
+    const { getByTestId: getByTestIdLoaded } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
+    );
+    // The loaded chart's total footprint: the plot row's height, plus the
+    // container's rowGap, plus the X-axis label row's height below it.
+    const plotHeight = styleLayers(getByTestIdLoaded('net-worth-line-y-axis').props.style)
+      .map((layer) => layer.height)
+      .find((value): value is number => typeof value === 'number');
+    const rowGap = styleLayers(getByTestIdLoaded('net-worth-line-x-axis-labels').props.style)
+      .map((layer) => layer.columnGap)
+      .find((value): value is number => typeof value === 'number');
+    const xAxisTrackHeight = darkTheme.typography.caption.fontSize + darkTheme.spacing(1);
+    const loadedTotalHeight = (plotHeight ?? 0) + (rowGap ?? 0) + xAxisTrackHeight;
+
+    expect(loadingHeight).toBeGreaterThan(0);
+    expect(loadingHeight).toBe(loadedTotalHeight);
+  });
+
+  it('reserves the same total height in the empty state as the loaded chart', async () => {
+    const height = 200;
+
+    const { getByTestId: getByTestIdEmpty } = await render(
+      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" height={height} />,
+    );
+    const emptyHeight = styleLayers(getByTestIdEmpty('net-worth-line-empty').props.style)
+      .map((layer) => layer.height)
+      .find((value): value is number => typeof value === 'number');
+
+    const { getByTestId: getByTestIdLoading } = await render(
+      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" loading height={height} />,
+    );
+    const loadingHeight = styleLayers(getByTestIdLoading('net-worth-line-loading').props.style)
+      .map((layer) => layer.height)
+      .find((value): value is number => typeof value === 'number');
+
+    expect(emptyHeight).toBe(loadingHeight);
   });
 });

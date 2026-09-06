@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import { AppState, type AppStateStatus, Text } from 'react-native';
 import '../../design-system/unistyles';
+import '../../i18n';
 
 import LockGate from './lock-gate.component';
 

@@ -1,7 +1,8 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
+import { i18n } from '../../i18n';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -519,5 +520,46 @@ describe('HoldingDetailScreen', () => {
     await fireEvent.press(getByText('Add contribution'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
+  });
+});
+
+describe('HoldingDetailScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the Value breakdown labels, Transactions heading, and footer action from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    seed(depositHolding);
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Вартість')).toBeTruthy();
+    expect(getByText('Валова вартість')).toBeTruthy();
+    expect(getByText('Отримані відсотки')).toBeTruthy();
+    expect(getByText('Утримано податку')).toBeTruthy();
+    expect(getByText('Транзакції')).toBeTruthy();
+    expect(queryByText('Value')).toBeNull();
+    expect(queryByText('Transactions')).toBeNull();
+  });
+
+  it('renders the Add transaction footer action from the Ukrainian catalog for a non-deposit holding', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    seed(cardHolding);
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Додати транзакцію')).toBeTruthy();
+    expect(queryByText('Add transaction')).toBeNull();
   });
 });

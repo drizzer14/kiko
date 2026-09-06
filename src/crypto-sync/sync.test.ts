@@ -4,6 +4,7 @@
 // fully injected through BalanceSyncDeps, so the real repos are never exercised
 // here.
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { i18n } from '../i18n';
 
 import type { BalanceProvider, ProviderBalance, SyncTarget } from './provider';
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
@@ -175,6 +176,23 @@ describe('runBalanceSync', () => {
     );
     expect(calls).toHaveLength(0);
     expect(holdingsStore).toHaveLength(0);
+  });
+
+  // This error is surfaced verbatim to the user (`useSyncAction` renders
+  // `error.message` directly), so — unlike the swallowed Monobank/disconnect
+  // failures elsewhere — it genuinely needs to resolve in the active language.
+  it('throws the connection-not-found message in Ukrainian once the active language switches', async () => {
+    const { provider } = makeProvider();
+    const { deps } = makeInMemoryDeps([cryptoAccount({ institution: null })]);
+
+    await i18n.changeLanguage('uk');
+    try {
+      await expect(
+        runBalanceSync(provider, { balances: [walletBalance(1)] }, deps),
+      ).rejects.toThrow('Немає підключення Гаманець');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('throws when the target id matches no account', async () => {

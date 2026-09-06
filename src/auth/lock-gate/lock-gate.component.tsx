@@ -1,4 +1,5 @@
 import { type FC, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { match } from 'ts-pattern';
 
@@ -13,21 +14,26 @@ import { styles } from './lock-gate.styles';
 
 const LOCK_ICON_SIZE = 56;
 
-const unlockHint = (result: AuthResult | undefined): string =>
+const unlockHint = (
+  result: AuthResult | undefined,
+  t: ReturnType<typeof useTranslation>['t'],
+): string =>
   match(result?.kind)
-    .with(undefined, () => 'Unlock with Face ID or your device passcode.')
+    .with(undefined, () => t('auth.hint.default'))
     .with('success', () => '')
-    .with('cancelled', () => 'Authentication was cancelled.')
-    .with('lockout', () => 'Face ID is locked. Use your device passcode instead.')
-    .with('passcodeNotSet', () => 'Set a device passcode to unlock Kiko.')
-    .with('failed', () => 'Authentication failed. Try again.')
+    .with('cancelled', () => t('auth.hint.cancelled'))
+    .with('lockout', () => t('auth.hint.lockout'))
+    .with('passcodeNotSet', () => t('auth.hint.passcodeNotSet'))
+    .with('failed', () => t('auth.hint.failed'))
     .exhaustive();
 
 // With `allowDeviceCredentials` the same system sheet falls back to the passcode
 // once biometry is locked out, so the retry action is the same call; only the
 // label changes to tell the user what to expect.
-const unlockLabel = (result: AuthResult | undefined): string =>
-  result?.kind === 'lockout' ? 'Use Passcode' : 'Unlock';
+const unlockLabel = (
+  result: AuthResult | undefined,
+  t: ReturnType<typeof useTranslation>['t'],
+): string => (result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock'));
 
 /**
  * Mounted inside `MigrationsGate` (settings must be readable) and around the
@@ -42,6 +48,7 @@ const unlockLabel = (result: AuthResult | undefined): string =>
  * this is a pure pass-through that renders `children` and never prompts.
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const { isReady, isLocked, unlock } = useAppLock();
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
@@ -70,16 +77,16 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   return (
     <SafeAreaView testID="lock-gate" style={styles.fill}>
       <Box padding={6} gap={4} style={styles.content}>
-        <SymbolIcon name="lock.fill" size={LOCK_ICON_SIZE} tone="textSecondary" />
+        <SymbolIcon name="faceid" size={LOCK_ICON_SIZE} tone="textSecondary" />
 
-        <Text variant="title">Locked</Text>
+        <Text variant="title">{t('auth.locked')}</Text>
 
         <Text variant="body" tone="textSecondary" style={styles.hint}>
-          {unlockHint(lastResult)}
+          {unlockHint(lastResult, t)}
         </Text>
 
         <Button onPress={attemptUnlock} fullWidth={false}>
-          {unlockLabel(lastResult)}
+          {unlockLabel(lastResult, t)}
         </Button>
       </Box>
     </SafeAreaView>

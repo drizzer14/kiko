@@ -85,6 +85,20 @@
       "when": 1788626457218,
       "tag": "0011_add_lock_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788655576375,
+      "tag": "0012_add_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1788701155878,
+      "tag": "0013_add_category_sort_order",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Animated,
@@ -85,13 +86,16 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   children,
   onDelete,
   disabled = false,
-  confirmTitle = 'Delete',
-  confirmMessage = 'This cannot be undone.',
+  confirmTitle,
+  confirmMessage,
   testID,
   radius,
   onOpenChange,
 }) => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const resolvedConfirmTitle = confirmTitle ?? t('common.delete');
+  const resolvedConfirmMessage = confirmMessage ?? t('components.swipeableRow.confirmMessage');
   // theme is only available inside the component body, so the radii.lg
   // default is applied here rather than as a destructured default.
   const cornerRadius = radius ?? theme.radii.lg;
@@ -209,9 +213,9 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
   });
 
   const confirmDelete = () => {
-    Alert.alert(confirmTitle, confirmMessage, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    Alert.alert(resolvedConfirmTitle, resolvedConfirmMessage, [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: onDelete },
     ]);
   };
 
@@ -237,7 +241,7 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Delete"
+          accessibilityLabel={t('common.delete')}
           onPress={confirmDelete}
           style={[
             styles.deleteAction,
@@ -250,7 +254,7 @@ const SwipeableRow: FC<SwipeableRowProps> = ({
             },
           ]}
         >
-          <Text style={styles.deleteLabel}>Delete</Text>
+          <Text style={styles.deleteLabel}>{t('common.delete')}</Text>
         </Pressable>
       </Animated.View>
 

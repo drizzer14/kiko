@@ -83,11 +83,14 @@ export const styles = StyleSheet.create((theme) => ({
     width: 0,
     alignItems: 'center',
   },
-  // Loading and empty states fill roughly the plot's footprint and centre
-  // their message, so each reads as intentional rather than broken.
-  status: {
+  // Loading and empty states reserve the SAME total footprint the loaded chart
+  // occupies for a given plot height — plot height + the row gap + the X-axis
+  // label row height below it — so the container's height does not change once
+  // data arrives. A height jump above the viewport (the un-fixed bug) interrupts
+  // the OS's native scroll-to-top when the active tab is tapped mid-load.
+  status: (plotHeight: number) => ({
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: theme.spacing(8),
-  },
+    height: plotHeight + theme.spacing(2) + theme.typography.caption.fontSize + theme.spacing(1),
+  }),
 }));

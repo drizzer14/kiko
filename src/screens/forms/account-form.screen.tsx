@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-import { type Currency, currencyOptions } from '../../currency/currency';
+import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
@@ -29,14 +30,6 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 const kinds = ['bank', 'cash', 'crypto'] as const;
 type Kind = (typeof kinds)[number];
 
-// Human display text for the account kinds; the chip still reports the
-// underlying value on select.
-const KIND_LABELS: Record<Kind, string> = {
-  bank: 'Bank',
-  cash: 'Cash',
-  crypto: 'Crypto',
-};
-
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one. The persisted default (a kind-derived icon) is applied by the
 // account list rows when the stored icon is null; here the account has no kind
@@ -50,6 +43,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // create form.
   const editId = route.params?.accountId;
   const isEdit = editId !== undefined;
+
+  const { t } = useTranslation();
+  // Human display text for the account kinds; the chip still reports the
+  // underlying value on select. Built from the catalog inside the component
+  // (rather than a module-level constant) so it always reflects the active
+  // language.
+  const kindLabels: Record<Kind, string> = {
+    bank: t('forms.account.bank'),
+    cash: t('forms.account.cash'),
+    crypto: t('forms.account.crypto'),
+  };
 
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind>('bank');
@@ -89,9 +93,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // "Edit Account" so the header reads correctly for the update flow.
   useLayoutEffect(() => {
     if (isEdit) {
-      navigation.setOptions({ title: 'Edit Account' });
+      navigation.setOptions({ title: t('forms.account.editTitle') });
     }
-  }, [isEdit, navigation]);
+  }, [isEdit, navigation, t]);
 
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
@@ -150,7 +154,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scroll
       footer={
         <Button onPress={save} disabled={!canSave}>
-          Save
+          {t('common.save')}
         </Button>
       }
     >
@@ -168,20 +172,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onChangeName={setName}
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
-          namePlaceholder="Name"
+          namePlaceholder={t('forms.fields.name')}
         />
 
-        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
+        <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
         {/* Kind fixes an account's structure (a cash account owns an initial
             cash holding; a bank/crypto does not), and no repo path re-shapes it,
             so it is read-only in edit mode — shown, but not switchable. */}
         <ChipRow
-          label="Kind"
+          label={t('forms.account.kind')}
           options={kinds}
           selected={kind}
           onSelect={setKind}
-          labels={KIND_LABELS}
+          labels={kindLabels}
           icons={accountKindSymbol}
           disabled={isEdit}
         />
@@ -193,7 +197,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         {!isEdit && kind === 'cash' && (
           <>
             <ChipRow
-              label="Currency"
+              label={t('forms.fields.currency')}
               options={currencyOptions}
               selected={currency}
               onSelect={setCurrency}
@@ -201,11 +205,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             />
 
             <TextField
-              label="Initial value"
+              label={t('forms.account.initialValue')}
               value={initialValue}
               onChangeText={(text) => setInitialValue(groupAmount(text))}
               keyboardType="decimal-pad"
               placeholder="0.00"
+              suffix={currencySymbol[currency]}
             />
           </>
         )}

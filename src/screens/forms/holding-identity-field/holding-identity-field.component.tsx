@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -25,20 +26,23 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   onChangeName,
   onSelectIcon,
   onRemoveIcon,
-  nameAccessibilityLabel = 'Name',
+  nameAccessibilityLabel,
   iconAccessibilityLabel,
   iconColor,
   onEndEditingName,
+  onFocus,
   namePlaceholder,
   autoFocus = false,
   captioned = true,
 }) => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const nameLabel = t('forms.fields.name');
 
   return (
     <Box direction="row" gap={3} style={captioned ? styles.container : styles.containerBare}>
       <IconEditor
-        label={captioned ? 'Icon' : undefined}
+        label={captioned ? t('forms.fields.icon') : undefined}
         iconAccessibilityLabel={iconAccessibilityLabel}
         icon={icon}
         fallbackIcon={fallbackIcon}
@@ -50,16 +54,17 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
       <Box gap={1} style={styles.nameBlock}>
         {captioned && (
           <Text variant="caption" tone="textSecondary">
-            Name
+            {nameLabel}
           </Text>
         )}
 
         <TextInput
-          accessibilityLabel={nameAccessibilityLabel}
+          accessibilityLabel={nameAccessibilityLabel ?? nameLabel}
           autoFocus={autoFocus}
           value={name}
           onChangeText={onChangeName}
           onEndEditing={onEndEditingName}
+          onFocus={onFocus}
           placeholder={namePlaceholder}
           placeholderTextColor={theme.colors.textSecondary}
           style={styles.nameField}

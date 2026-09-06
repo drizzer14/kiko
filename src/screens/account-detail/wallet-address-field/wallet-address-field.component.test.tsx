@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
 import WalletAddressField from '../wallet-address-field';
 
 const mockGetString = jest.fn<Promise<string>, []>();
@@ -134,5 +135,30 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(input, ADDRESS);
     expect(queryByText('Invalid BTC address')).toBeNull();
+  });
+});
+
+describe('WalletAddressField — localization', () => {
+  const onConnect = jest.fn<Promise<boolean>, [string]>();
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the placeholder, paste label, and action from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByPlaceholderText, getByLabelText, getByText, queryByText } = await render(
+      <WalletAddressField onConnect={onConnect} />,
+    );
+
+    expect(getByPlaceholderText('BTC-адреса')).toBeTruthy();
+    expect(getByLabelText('Вставити з буфера обміну')).toBeTruthy();
+    expect(getByText('Підключити гаманець')).toBeTruthy();
+    expect(queryByText('Connect Wallet')).toBeNull();
   });
 });

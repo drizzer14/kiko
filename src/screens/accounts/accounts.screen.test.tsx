@@ -7,6 +7,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
 import { entityCardBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
+import { i18n } from '../../i18n';
 import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
 
 import AccountsScreen from './accounts.screen';
@@ -397,5 +398,50 @@ describe('AccountsScreen', () => {
     // deposit value would be NaN and never render the grown figure.
     expect(getByText(/1,077\.00 ₴/)).toBeTruthy();
     expect(queryByText(/1,000\.00 ₴/)).toBeNull();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders its Ukrainian catalog strings when the locale is uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Wallet', kind: 'cash' }],
+        holdings: [],
+        rates: [],
+        settings: [{ baseCurrency: 'UAH' }],
+      });
+
+      const { getByText, getByLabelText, queryByText } = await renderAccounts();
+
+      // The account-kind caption ("Cash" -> forms.account.cash) and the icon's
+      // accessibility label prefix both read through the catalog, not a
+      // hardcoded English literal.
+      expect(getByText('Готівка')).toBeTruthy();
+      expect(getByLabelText('Іконка Wallet')).toBeTruthy();
+      expect(getByText('Додати рахунок')).toBeTruthy();
+      expect(queryByText('Add account')).toBeNull();
+    });
+
+    it('renders the Ukrainian empty state when there are no active accounts', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+      setLiveData({
+        accounts: [{ id: 'b', name: 'Old Cash', kind: 'cash', archivedAt: 123 }],
+        holdings: [],
+        rates: [],
+        settings: [{ baseCurrency: 'UAH' }],
+      });
+
+      const { getByText } = await renderAccounts();
+      expect(getByText('Ще немає рахунків')).toBeTruthy();
+    });
   });
 });

@@ -1,11 +1,17 @@
-// One selectable row in a filter menu. `value` is the exact string the filter
-// matches on (an account name / a resolved category title) AND the row's label —
-// selection state keys on it, unchanged by the optional presentation below. When
-// present, `icon` is an SF Symbol rendered before the label and `color` tints
-// that glyph (an entity/category color hex); either may be absent (e.g. the
-// synthetic "All" row), and the row then renders label-only.
+// One selectable row in a filter menu. `value` is the STABLE identity the
+// filter matches and toggles on (an account name, or — since a category's
+// display title is language-dependent — a category's `categories.key` slug,
+// never its resolved title). `label`, when present, is the text actually
+// rendered for the row and may differ from `value` (e.g. the category's
+// resolved, localized display title); when absent the row renders `value`
+// itself as its label, which is what an account option (identity == label)
+// relies on. When present, `icon` is an SF Symbol rendered before the label
+// and `color` tints that glyph (an entity/category color hex); both — like
+// `label` — may be absent (e.g. the synthetic "All" row), and the row then
+// renders label-only.
 export type FilterOption = {
   value: string;
+  label?: string;
   icon?: string;
   color?: string;
 };

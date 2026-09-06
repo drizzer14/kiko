@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 import IconPickerModal from '.';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;

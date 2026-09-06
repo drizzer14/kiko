@@ -3,6 +3,7 @@
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+import { i18n } from '../i18n';
 
 import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';
@@ -243,6 +244,22 @@ describe('runSync', () => {
     await expect(runSync(deps)).rejects.toThrow('No Monobank account connected');
     expect(holdingsStore).toHaveLength(0);
     expect(transactionsStore).toHaveLength(0);
+  });
+
+  // `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message
+  // verbatim as the account-detail screen's error text, so it genuinely needs
+  // to resolve in the active language, unlike a swallowed/discarded error.
+  it('throws the no-account-connected message in Ukrainian once the active language switches', async () => {
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [
+      bankAccount({ id: 'acc-cash', institution: null }),
+    ]);
+
+    await i18n.changeLanguage('uk');
+    try {
+      await expect(runSync(deps)).rejects.toThrow('Рахунок Monobank не підключено');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('rejects connecting a second account while another is already connected, importing nothing', async () => {

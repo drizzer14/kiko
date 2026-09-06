@@ -1,4 +1,5 @@
 import { type FC, useState } from 'react';
+import { type TFunction, useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
 
@@ -29,22 +30,18 @@ type CryptoSyncSectionProps = {
   holdings: HoldingRow[];
 };
 
-const sourceLabels: Record<BalanceProviderId, string> = {
-  btc_wallet: providerDisplayName('btc_wallet'),
-  binance: providerDisplayName('binance'),
-};
+// A function (not a module-level constant) so its labels re-resolve against
+// the active language on every render, rather than freezing to whatever
+// language was active when this module first loaded.
+const sourceLabels = (t: TFunction): Record<BalanceProviderId, string> => ({
+  btc_wallet: providerDisplayName('btc_wallet', t),
+  binance: providerDisplayName('binance', t),
+});
 
-const disconnectMessage = (providerId: BalanceProviderId): string =>
+const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string =>
   match(providerId)
-    .with(
-      'btc_wallet',
-      () => 'This clears the connection. Your BTC holding stays as a manual snapshot.',
-    )
-    .with(
-      'binance',
-      () =>
-        'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
-    )
+    .with('btc_wallet', () => t('accountDetail.disconnectProviderMessage.wallet'))
+    .with('binance', () => t('accountDetail.disconnectProviderMessage.binance'))
     .exhaustive();
 
 // The crypto account's Synchronization section — the counterpart of the bank
@@ -53,6 +50,7 @@ const disconnectMessage = (providerId: BalanceProviderId): string =>
 // (each field's Connect runs the first sync, which marks the account). Once
 // connected: Sync now with the last-sync stamp, and a confirmed Disconnect.
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
+  const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
   const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
   // One connection per institution: another account holding the picked source
@@ -79,29 +77,41 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     try {
       await disconnectCryptoAccount(account.id, providerId);
     } catch {
-      Alert.alert('Could not disconnect', 'Please try again.');
+      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
     }
   };
 
   const confirmDisconnect = (providerId: BalanceProviderId): void => {
-    Alert.alert(`Disconnect ${providerDisplayName(providerId)}`, disconnectMessage(providerId), [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect',
-        style: 'destructive',
-        onPress: () => {
-          runDisconnect(providerId);
+    Alert.alert(
+      t('accountDetail.disconnectProvider', { provider: providerDisplayName(providerId, t) }),
+      disconnectMessage(providerId, t),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('accountDetail.disconnectAction'),
+          style: 'destructive',
+          onPress: () => {
+            runDisconnect(providerId);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   if (connectedProvider !== undefined) {
     return (
       <Box gap={3}>
-        <Text variant="heading">Synchronization</Text>
+        <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-        <Box direction="row" gap={2} style={styles.statusLine}>
+        <Box gap={2}>
+          <Box direction="row" gap={2} style={styles.statusLine}>
+            <SymbolIcon name="clock" tone="textSecondary" />
+
+            <Text variant="body" tone="textSecondary">
+              {t('accountDetail.lastSync', { time: formatLastSyncAt(latestSyncedAt(holdings)) })}
+            </Text>
+          </Box>
+
           <Button
             variant="primary"
             size="compact"
@@ -112,16 +122,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             disabled={isSyncing}
             icon="arrow.triangle.2.circlepath"
           >
-            {isSyncing ? 'Syncing…' : 'Sync now'}
+            {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
           </Button>
-
-          <Box direction="row" gap={2} style={styles.statusLine}>
-            <SymbolIcon name="clock" tone="textSecondary" />
-
-            <Text variant="body" tone="textSecondary">
-              Last sync: {formatLastSyncAt(latestSyncedAt(holdings))}
-            </Text>
-          </Box>
         </Box>
 
         <Button
@@ -131,7 +133,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
           onPress={() => confirmDisconnect(connectedProvider)}
           icon="link.badge.plus"
         >
-          {`Disconnect ${providerDisplayName(connectedProvider)}`}
+          {t('accountDetail.disconnectProvider', {
+            provider: providerDisplayName(connectedProvider, t),
+          })}
         </Button>
 
         {error !== undefined && (
@@ -145,19 +149,19 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   return (
     <Box gap={3}>
-      <Text variant="heading">Synchronization</Text>
+      <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
       <ChipRow
-        label="Source"
+        label={t('accountDetail.sourceLabel')}
         options={balanceProviderIds}
         selected={source}
         onSelect={setSource}
-        labels={sourceLabels}
+        labels={sourceLabels(t)}
       />
 
       {sourceConnectedElsewhere && (
         <Text variant="caption" tone="textSecondary">
-          {providerDisplayName(source)} is already connected to another account
+          {t('accountDetail.sourceConnectedElsewhere', { source: providerDisplayName(source, t) })}
         </Text>
       )}
 

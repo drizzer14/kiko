@@ -127,6 +127,11 @@ export const settings = sqliteTable('settings', {
   // is cold-launch-only now). Kept as a harmless column so no migration is
   // needed to drop it; migration 0011 still creates it.
   lockGraceSeconds: integer('lock_grace_seconds').notNull().default(30),
+  // The chosen UI language. NULL means "follow the device language" (the real,
+  // distinct unset state — unlike baseCurrency, which always has a value); 'en'
+  // / 'uk' is an explicit user choice made from Settings. Read by
+  // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
+  language: text('language', { enum: ['en', 'uk'] }),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
@@ -147,6 +152,11 @@ export const categories = sqliteTable('categories', {
   // palette hash (see resolveCategoryColor in statistics/category-breakdown.ts),
   // mirroring accounts/holdings' nullable `color`.
   color: text('color'),
+  // The user-controlled display order of the categories list (drag-and-drop /
+  // move-to-top/bottom on the Categories screen). Mirrors accounts/holdings'
+  // `sortOrder`; backfilled from `rowid` on upgrade (0013) so the existing
+  // display order is preserved. A new category appends at `max + 1`.
+  sortOrder: integer('sort_order').notNull().default(0),
 });
 
 export type CategoryRow = typeof categories.$inferSelect;

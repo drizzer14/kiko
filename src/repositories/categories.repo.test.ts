@@ -28,6 +28,16 @@ describe('categoriesRepo', () => {
     expect(categoriesRepo.allQuery().toSQL().sql).toContain('categories');
   });
 
+  it('allQuery orders by sortOrder then key', () => {
+    // The reorderable categories list renders in the user-controlled
+    // `sort_order`, with the stable `key` as a tiebreak (categories have no
+    // createdAt, so the primary-key slug is the deterministic fallback).
+    const { sql } = categoriesRepo.allQuery().toSQL();
+    const orderBy = sql.toLowerCase().split('order by')[1] ?? '';
+    expect(orderBy).toContain('sort_order');
+    expect(orderBy).toContain('key');
+  });
+
   it('updateTitle writes the new title for the given key', async () => {
     const captured: { set?: Record<string, unknown>; whereCalled: boolean } = {
       whereCalled: false,
@@ -52,9 +62,16 @@ describe('categoriesRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
-  it('create inserts a new category with a generated key, title and icon', async () => {
+  // A fake write-transaction handle for the create path. `create` first reads
+  // the current global max `sort_order` via `select(...).from(categories)` (to
+  // append at `max + 1`), then inserts. This answers that max query with
+  // `maxSortOrder` and captures the insert payload.
+  const makeCreateTx = (
+    maxSortOrder = -1,
+  ): { tx: unknown; captured: { values?: Record<string, unknown> } } => {
     const captured: { values?: Record<string, unknown> } = {};
-    mockTx = {
+    const tx = {
+      select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.values = values;
@@ -63,6 +80,12 @@ describe('categoriesRepo', () => {
         },
       }),
     };
+    return { tx, captured };
+  };
+
+  it('create inserts a new category with a generated key, title and icon', async () => {
+    const { tx, captured } = makeCreateTx();
+    mockTx = tx;
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
 
@@ -72,6 +95,24 @@ describe('categoriesRepo', () => {
     const generatedKey = captured.values?.key;
     expect(typeof generatedKey).toBe('string');
     expect((generatedKey as string).length).toBeGreaterThan(0);
+  });
+
+  it('create appends the category at the global sortOrder = max + 1', async () => {
+    const { tx, captured } = makeCreateTx(4);
+    mockTx = tx;
+
+    await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
+
+    expect(captured.values).toMatchObject({ sortOrder: 5 });
+  });
+
+  it('create uses sortOrder 0 for the first category', async () => {
+    const { tx, captured } = makeCreateTx(-1);
+    mockTx = tx;
+
+    await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
+
+    expect(captured.values).toMatchObject({ sortOrder: 0 });
   });
 
   it('updateIcon writes the new icon for the given key', async () => {
@@ -125,6 +166,7 @@ describe('categoriesRepo', () => {
   it('create persists the picked color when supplied, and null when omitted', async () => {
     const captured: { values?: Record<string, unknown> } = {};
     mockTx = {
+      select: () => ({ from: () => Promise.resolve([{ value: -1 }]) }),
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           captured.values = values;
@@ -138,6 +180,26 @@ describe('categoriesRepo', () => {
 
     await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
     expect(captured.values).toMatchObject({ color: null });
+  });
+});
+
+describe('categoriesRepo.reorder', () => {
+  it('rewrites each category sortOrder to its 0-based index in the new order', async () => {
+    const sortOrders: unknown[] = [];
+    mockTx = {
+      update: () => ({
+        set: (set: Record<string, unknown>) => ({
+          where: () => {
+            sortOrders.push(set.sortOrder);
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await categoriesRepo.reorder(['c3', 'c1', 'c2']);
+
+    expect(sortOrders).toEqual([0, 1, 2]);
   });
 });
 
@@ -281,5 +343,23 @@ describe('categories seed migration', () => {
     // The ALTER must be its own, later migration than the create — a DB that already
     // recorded the create timestamp only picks up the column via a distinct later entry.
     expect((alter as { name: string }).name > create.name).toBe(true);
+  });
+
+  it('adds a sort_order column to the categories table and backfills it in a later migration', () => {
+    const files = migrationFiles();
+    const create = createMigration();
+    const alter = files.find(({ sql }) =>
+      /ALTER TABLE `categories` ADD `sort_order` integer DEFAULT 0 NOT NULL/i.test(sql),
+    );
+
+    expect(alter).toBeDefined();
+    // Its own, later migration than the create — a DB that already recorded the
+    // create timestamp only picks up the new column via a distinct later entry.
+    expect((alter as { name: string }).name > create.name).toBe(true);
+    // The same migration backfills a stable per-row rank from `rowid`, so the
+    // current display order is preserved on upgrade instead of collapsing to a
+    // `sort_order = 0` tie (mirrors 0006_backfill_sort_order for accounts/holdings).
+    expect((alter as { sql: string }).sql).toMatch(/UPDATE `categories` SET `sort_order`/i);
+    expect((alter as { sql: string }).sql).toContain('rowid');
   });
 });

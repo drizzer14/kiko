@@ -1,3 +1,6 @@
+import { i18n } from '../i18n';
+import { resolveDefaultCategoryTitle } from '../i18n/default-category-title';
+
 // The seeded catch-all category key. It is the INITIAL value of the
 // user-configurable `settings.defaultCategoryKey` (see the schema/migration),
 // and the single fallback a screen uses when the settings row has not been read
@@ -18,12 +21,17 @@ type CategoryDisplay = { title: string; icon: string; color: string | null };
 // runs). In normal operation a null/empty/unknown category folds into the
 // DEFAULT category instead (see `resolveCategoryDisplay`), so there is no
 // separate "Uncategorized" bucket. `color` is null so the chart falls back to
-// the neutral key's palette hue.
-export const NEUTRAL_CATEGORY: CategoryDisplay = {
-  title: 'Uncategorized',
+// the neutral key's palette hue. A function (not a static constant) so its
+// `title` re-resolves against the active language at call time, rather than
+// freezing to whatever language was active when this module first loaded —
+// this is a plain (non-component) module, so it reads the i18next instance
+// directly rather than `useTranslation()`, the same pattern as
+// `src/screens/grid-interaction.ts`.
+export const neutralCategory = (): CategoryDisplay => ({
+  title: i18n.t('categories.uncategorized'),
   icon: 'creditcard',
   color: null,
-};
+});
 
 // Build the key → display lookup a screen resolves each row's category through.
 // Sourced from the categories live query so a rename (or recolor) flows straight
@@ -36,7 +44,11 @@ export const buildCategoryDisplayMap = (
   new Map(
     categories.map((category) => [
       category.key,
-      { title: category.title, icon: category.icon, color: category.color ?? null },
+      {
+        title: resolveDefaultCategoryTitle(category.key, category.title),
+        icon: category.icon,
+        color: category.color ?? null,
+      },
     ]),
   );
 
@@ -45,8 +57,8 @@ export const buildCategoryDisplayMap = (
  * unresolved category folds into the DEFAULT category (`defaultKey`, a
  * `categories.key` read from settings at the call site — never hardcoded here),
  * so uncategorized spending merges into the default's slice rather than a
- * separate bucket. `NEUTRAL_CATEGORY` is the last resort only when the default
- * key itself is not in the map (e.g. before the seed runs).
+ * separate bucket. `neutralCategory()` is the last resort only when the
+ * default key itself is not in the map (e.g. before the seed runs).
  */
 export const resolveCategoryDisplay = (
   category: string | null,
@@ -56,5 +68,27 @@ export const resolveCategoryDisplay = (
   const key = category?.toLowerCase();
   const resolved = key ? byKey.get(key) : undefined;
 
-  return resolved ?? byKey.get(defaultKey) ?? NEUTRAL_CATEGORY;
+  return resolved ?? byKey.get(defaultKey) ?? neutralCategory();
+};
+
+/**
+ * The STABLE identity a transaction's stored category resolves to — the same
+ * fold-into-default resolution `resolveCategoryDisplay` uses, but returning
+ * the `categories.key` slug instead of the display record. This is the
+ * language-independent counterpart of that function's `title`: a slug never
+ * changes when the active language does, so a caller that needs to key a
+ * selection (e.g. a filter's selected-categories Set) off "which category is
+ * this" — not off its current display label — should resolve through this
+ * instead of `resolveCategoryDisplay(...).title`. An override's lowercase slug
+ * and an un-overridden synced row's capitalized MCC name still collapse onto
+ * the same key here, exactly as they collapse onto the same title above.
+ */
+export const resolveCategoryKey = (
+  category: string | null,
+  byKey: ReadonlyMap<string, CategoryDisplay>,
+  defaultKey: string,
+): string => {
+  const key = category?.toLowerCase();
+
+  return key !== undefined && key !== '' && byKey.has(key) ? key : defaultKey;
 };

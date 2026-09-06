@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -14,7 +15,6 @@ import { styles } from './category-field.styles';
 // placeholder, tinted secondary to read as "empty" like the DateField's own
 // unselected state.
 const PLACEHOLDER_ICON = 'tag';
-const PLACEHOLDER_LABEL = 'Select category';
 
 // A labeled single-select category picker: the field shows the current
 // selection (its SF Symbol + title, or a placeholder when none) and opens a
@@ -31,6 +31,7 @@ const CategoryField = ({
   onSelect,
 }: CategoryFieldProps): ReactElement => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   // Each option row's vertical offset inside the ScrollView content, keyed by
@@ -101,7 +102,7 @@ const CategoryField = ({
           />
 
           <Text variant="body" tone={selected ? 'textPrimary' : 'textSecondary'}>
-            {selected?.title ?? PLACEHOLDER_LABEL}
+            {selected?.title ?? t('forms.fields.selectCategory')}
           </Text>
         </Box>
       </Pressable>

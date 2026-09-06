@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { settings } from '../db/schema';
+import type { AppLanguage } from '../i18n';
 
 import type { Repository } from './repository';
 
@@ -34,4 +35,6 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ defaultCategoryKey: key }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  setLanguage: (language: AppLanguage) =>
+    write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
 } satisfies Repository;

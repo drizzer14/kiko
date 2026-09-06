@@ -1,9 +1,12 @@
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ScrollView } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
+import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { useLiveQuery } from '../../db/use-live-query';
 import BarChart from '../../design-system/components/bar-chart';
@@ -139,10 +142,12 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
  * state, and drives the backfill.
  */
 const StatisticsScreen: FC = () => {
+  const { t, i18n } = useTranslation();
+
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
   // tab navigator's `tabPress`.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useAnimatedRef<ScrollView>();
   useScrollToTopOnTabPress(scrollRef);
 
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
@@ -160,14 +165,21 @@ const StatisticsScreen: FC = () => {
 
   // The spending pie's own category filter, in the SAME "empty means all" model
   // the account FilterMenu uses: an empty set includes every category; any
-  // category titles in it narrow the pie to just those. Scoped to that chart
-  // alone — the account filter and date range do not touch it, nor it them.
+  // stable category KEYS in it narrow the pie to just those (never the
+  // language-dependent display title — see categoryOptions below). Scoped to
+  // that chart alone — the account filter and date range do not touch it, nor
+  // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
-  // A null bound leaves that side of the line's window at its default (earliest
-  // transaction on the `from` side, now on the `to` side).
-  const [dateFrom, setDateFrom] = useState<Date | null>(null);
-  const [dateTo, setDateTo] = useState<Date | null>(null);
+  // `now` is fixed at mount: the default date-range seed below, the default
+  // line window, the backfill's "today", and every memo below key on it, and a
+  // fresh `Date.now()` each render would defeat that memoization.
+  const now = useMemo(() => Date.now(), []);
+
+  // The date-range bounds default to the last 30 days on mount; a user pick
+  // can still set either to null (open-ended) via the date-range field.
+  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
+  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
 
   const applyDateRange = (from: Date | null, to: Date | null): void => {
     setDateFrom(from);
@@ -175,8 +187,9 @@ const StatisticsScreen: FC = () => {
   };
 
   const clearDateRange = (): void => {
-    setDateFrom(null);
-    setDateTo(null);
+    const range = defaultDateRange();
+    setDateFrom(range.from);
+    setDateTo(range.to);
   };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
@@ -184,10 +197,6 @@ const StatisticsScreen: FC = () => {
   // slice. Read from settings (seeded to `other`), passed into the breakdown.
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
-  // `now` is fixed at mount: the default line window, the backfill's "today", and
-  // every memo below key on it, and a fresh `Date.now()` each render would defeat
-  // that memoization.
-  const now = useMemo(() => Date.now(), []);
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
 
   // Only non-archived accounts are ever shown; the account filter narrows within
@@ -315,7 +324,11 @@ const StatisticsScreen: FC = () => {
   // in its holding's currency — so join each transaction to its (account-scoped,
   // open) holding for the currency, dropping any whose holding is filtered out.
   // The category display map is built here so a rename flows straight through.
-  const categoryByKey = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver) buildCategoryDisplayMap resolves each un-renamed default category's title through resolveDefaultCategoryTitle, which reads the active language off the global i18next singleton (see category-display.ts) rather than off anything in this closure — the callback body never references `i18n.language` directly, but the memo must still invalidate on it, or a live language switch would keep serving the stale, previously-built titles.
+  const categoryByKey = useMemo(
+    () => buildCategoryDisplayMap(categories),
+    [categories, i18n.language],
+  );
 
   // Join each transaction to its (account-scoped, open) holding for the currency
   // its amount is in — a transaction row has no currency of its own — dropping
@@ -421,24 +434,50 @@ const StatisticsScreen: FC = () => {
     ],
   );
 
-  // The FilterMenu speaks category TITLES (the human-readable label a slug
-  // resolves to); the breakdown groups by key. The menu's options are the
-  // distinct titles, and a selection is translated back into the set of KEYS to
-  // EXCLUDE from the pie: an empty selection excludes nothing (all included),
-  // otherwise every category whose title is not selected is excluded. Each
-  // option carries the slice's own icon + color for the menu row; matching still
-  // keys on `option.value` (the title). De-duplicated by title, first-seen-wins.
+  // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
+  // the resolved display title: the title is language-dependent (a default
+  // category's title changes under a live language switch — see
+  // resolveDefaultCategoryTitle), so keying selection on it would silently
+  // desync the moment the app language changes, leaving a stale Set of
+  // now-nonexistent title strings (the same bug the Home screen's category
+  // filter had — see category-display.ts's resolveCategoryKey). The menu's
+  // options are one per distinct slice KEY, each carrying the slice's own icon +
+  // color and its current localized title as the row's `label`; a selection is
+  // translated back into the set of KEYS to EXCLUDE from the pie: an empty
+  // selection excludes nothing (all included), otherwise every category whose
+  // KEY is not selected is excluded. De-duplicated by key, first-seen-wins.
   const categoryOptions = useMemo(() => {
-    const byTitle = new Map<string, FilterOption>();
+    const byKey = new Map<string, FilterOption>();
     for (const slice of allCategorySlices) {
-      if (byTitle.has(slice.title)) {
+      if (byKey.has(slice.key)) {
         continue;
       }
-      byTitle.set(slice.title, { value: slice.title, icon: slice.icon, color: slice.color });
+      byKey.set(slice.key, {
+        value: slice.key,
+        label: slice.title,
+        icon: slice.icon,
+        color: slice.color,
+      });
     }
 
-    return Array.from(byTitle.values());
-  }, [allCategorySlices]);
+    // Present the options in the user's CUSTOM category order — the live
+    // `categories` query is already sorted `asc(sortOrder), asc(key)` (see
+    // categories.repo's allQuery) — not in the spending-magnitude order the
+    // breakdown happens to emit. Ranked by the STABLE lowercased slug (never
+    // the localized title — see the block comment above about language
+    // desync), so the ordering holds across a live language switch. An option
+    // whose key has no matching category row (the synthetic default /
+    // uncategorized catch-all keyed by DEFAULT_CATEGORY_KEY) sorts LAST.
+    // Equal-rank options keep their first-seen (Map insertion) order, which
+    // Array.prototype.sort preserves — it is a stable sort (ES2019+).
+    const orderByKey = new Map<string, number>();
+    categories.forEach((category, index) => {
+      orderByKey.set(category.key.toLowerCase(), index);
+    });
+    const rank = (key: string): number => orderByKey.get(key.toLowerCase()) ?? categories.length;
+
+    return Array.from(byKey.values()).sort((a, b) => rank(a.value) - rank(b.value));
+  }, [allCategorySlices, categories]);
 
   const excludedCategoryKeys = useMemo(() => {
     if (selectedCategories.size === 0) {
@@ -447,7 +486,7 @@ const StatisticsScreen: FC = () => {
 
     return new Set(
       allCategorySlices
-        .filter((slice) => !selectedCategories.has(slice.title))
+        .filter((slice) => !selectedCategories.has(slice.key))
         .map((slice) => slice.key),
     );
   }, [allCategorySlices, selectedCategories]);
@@ -501,7 +540,7 @@ const StatisticsScreen: FC = () => {
       <Box gap={4} testID="statistics-blocks">
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
-            label="Accounts"
+            label={t('statistics.filterAccounts')}
             testID="statistics-account-filter"
             options={accountOptions}
             selected={selectedAccounts}
@@ -521,7 +560,7 @@ const StatisticsScreen: FC = () => {
         <GlassSurface testID="statistics-block-line" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
-              Net Worth Over Time
+              {t('statistics.netWorthOverTime')}
             </Text>
 
             <NetWorthLine
@@ -536,7 +575,7 @@ const StatisticsScreen: FC = () => {
         <GlassSurface testID="statistics-block-bar" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
-              By Type
+              {t('statistics.byType')}
             </Text>
 
             <BarChart data={typeSlices} baseCurrency={baseCurrency} />
@@ -546,7 +585,7 @@ const StatisticsScreen: FC = () => {
         <GlassSurface testID="statistics-block-pie" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
-              Account Contribution
+              {t('statistics.accountContribution')}
             </Text>
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
@@ -556,12 +595,12 @@ const StatisticsScreen: FC = () => {
         <GlassSurface testID="statistics-block-category" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
-              Expenses by Category
+              {t('statistics.expensesByCategory')}
             </Text>
 
             <Box direction="row" gap={3} style={styles.filterBar}>
               <FilterMenu
-                label="Categories"
+                label={t('statistics.filterCategories')}
                 testID="statistics-category-filter"
                 options={categoryOptions}
                 selected={selectedCategories}
@@ -573,7 +612,7 @@ const StatisticsScreen: FC = () => {
               slices={categorySlices.map(toPieSlice)}
               baseCurrency={baseCurrency}
               testID="category-pie"
-              emptyLabel="No Spending To Show"
+              emptyLabel={t('statistics.noSpendingToShow')}
               innerRatio={CATEGORY_DONUT_INNER_RATIO}
               centerTotal={categoryTotal}
             />

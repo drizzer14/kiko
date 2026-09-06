@@ -1,6 +1,7 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
 import ContributionFormScreen from './contribution-form.screen';
@@ -64,6 +65,23 @@ describe('ContributionFormScreen', () => {
     const { getByTestId } = await renderScreen();
 
     expect(getByTestId('screen-scroll-view')).toBeTruthy();
+  });
+
+  it('shows the holding currency glyph as the amount suffix', async () => {
+    const { getByText } = await renderScreen();
+
+    // The seeded holding is UAH, so the amount reads with the hryvnia sign.
+    expect(getByText('₴')).toBeTruthy();
+  });
+
+  it('shows the amount suffix in the holding own currency, not a fixed one', async () => {
+    seed({ id: 'h-1', currency: 'USD', balanceMinorUnits: 0 });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    // A USD holding shows the dollar sign, never the default hryvnia sign.
+    expect(getByText('$')).toBeTruthy();
+    expect(queryByText('₴')).toBeNull();
   });
 
   it('appends the entered amount at the picked date and navigates back', async () => {
@@ -137,6 +155,49 @@ describe('ContributionFormScreen', () => {
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
     expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+});
+
+describe('ContributionFormScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seed();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the amount/date field chrome and save action from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByLabelText, getByText, queryByText } = await renderScreen();
+
+    expect(getByLabelText('Сума')).toBeTruthy();
+    expect(getByLabelText('Дата')).toBeTruthy();
+    expect(getByText('Зберегти внесок')).toBeTruthy();
+    expect(queryByText('Amount')).toBeNull();
+  });
+
+  it('surfaces the failure alert from the Ukrainian catalog', async () => {
+    (holdingsRepo.appendDepositContribution as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const utils = await renderScreen();
+    await fireEvent.changeText(utils.getByLabelText('Сума'), '1000');
+    await fireEvent.press(utils.getByText('Зберегти внесок'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Не вдалося додати внесок', 'Спробуйте ще раз.'),
+    );
     alertSpy.mockRestore();
   });
 });

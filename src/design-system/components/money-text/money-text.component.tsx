@@ -1,7 +1,9 @@
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
 import { formatMoney } from '../../../currency/format';
+import { activeLocale } from '../../../i18n/active-locale';
 import Text from '../text';
 
 import type { MoneyTextContext, MoneyTextProps, MoneyTextTone } from './money-text.props';
@@ -60,6 +62,9 @@ const MoneyText: FC<MoneyTextProps> = ({
   minimumFontScale,
 }) => {
   const resolvedTone = resolveTone(context, money.minorUnits, tone);
+  // Subscribe to the active language so the amount re-formats when the user
+  // switches languages; activeLocale() then supplies the grouping locale.
+  useTranslation();
 
   return (
     <Text
@@ -70,7 +75,7 @@ const MoneyText: FC<MoneyTextProps> = ({
       adjustsFontSizeToFit={adjustsFontSizeToFit}
       minimumFontScale={minimumFontScale}
     >
-      {formatMoney(money)}
+      {formatMoney(money, activeLocale())}
     </Text>
   );
 };

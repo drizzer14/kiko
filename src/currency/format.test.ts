@@ -36,3 +36,18 @@ describe('formatMoney negative amounts', () => {
     expect(formatMoney(Money.fromMajor('UAH', -2500))).toBe('-2,500.00 ₴');
   });
 });
+
+describe('formatMoney locale grouping', () => {
+  it('groups with a non-ASCII space (U+00A0) and comma decimal for uk-UA', () => {
+    // 1 234,56 ₴ — uk-UA groups thousands with U+00A0 NO-BREAK SPACE, the
+    // exact code point this project's Jest/Node ICU build emits for uk-UA
+    // grouping (verified by running this test before pinning it; a
+    // different ICU build could emit U+202F NARROW NO-BREAK SPACE instead —
+    // if this ever regresses to a plain ASCII space, that is the bug this
+    // guards against), comma decimal, UAH symbol suffixed.
+    const money = { currency: 'UAH', minorUnits: 123_456 } as const;
+    const formatted = formatMoney(money, 'uk-UA');
+
+    expect(formatted).toBe('1\u00A0234,56 ₴');
+  });
+});

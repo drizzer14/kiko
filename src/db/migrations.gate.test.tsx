@@ -1,6 +1,8 @@
 import { act, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import '../i18n';
+
 import MigrationsGate from './migrations.gate';
 
 const mockInitDatabase = jest.fn<Promise<void>, []>();
@@ -35,7 +37,7 @@ describe('MigrationsGate', () => {
     );
 
     expect(await findByText('ready')).toBeTruthy();
-    expect(queryByText('Preparing database...')).toBeNull();
+    expect(queryByText('Preparing database…')).toBeNull();
     expect(mockMigrateLegacyToken).toHaveBeenCalledTimes(1);
   });
 
@@ -49,7 +51,7 @@ describe('MigrationsGate', () => {
       </MigrationsGate>,
     );
 
-    expect(getByText('Preparing database...')).toBeTruthy();
+    expect(getByText('Preparing database…')).toBeTruthy();
     expect(mockRunMigrations).not.toHaveBeenCalled();
 
     await act(async () => {

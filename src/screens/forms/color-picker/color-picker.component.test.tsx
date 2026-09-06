@@ -1,6 +1,7 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
+import { i18n } from '../../../i18n';
 
 import ColorPicker from './color-picker.component';
 
@@ -43,5 +44,26 @@ describe('ColorPicker', () => {
     );
 
     expect(getByText('Color')).toBeTruthy();
+  });
+
+  describe('localization', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('falls back to the Ukrainian catalog for the accessibility-label prefix', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByLabelText, queryByLabelText } = await render(
+        <ColorPicker value={entityColors.white} onSelect={jest.fn()} />,
+      );
+
+      expect(getByLabelText('Колір white')).toBeTruthy();
+      expect(queryByLabelText('Color white')).toBeNull();
+    });
   });
 });

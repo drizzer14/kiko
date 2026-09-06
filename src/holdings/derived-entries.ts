@@ -1,3 +1,4 @@
+import type { TFunction } from 'react-i18next';
 import { match } from 'ts-pattern';
 
 import { Money, toMajor } from '../currency/money';
@@ -5,7 +6,7 @@ import { Money, toMajor } from '../currency/money';
 import { asBondMeta, asTermDepositMeta } from './holding-metadata';
 import { holdingValueBreakdown, type ValuableHolding } from './holding-value';
 import { bondCouponDates, bondCouponMajor, depositLedger } from './interest';
-import { taxOnInterestMinor } from './tax';
+import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from './tax';
 
 export type DerivedEntryKind =
   | 'contribution'
@@ -70,7 +71,11 @@ const makeEntry = (
 
 // The opening deposit and each top-up as contribution entries (opening first,
 // the rest labelled "Top-up").
-const contributionEntries = (holding: IdentifiedHolding, now: number): DerivedEntry[] => {
+const contributionEntries = (
+  holding: IdentifiedHolding,
+  now: number,
+  t: TFunction,
+): DerivedEntry[] => {
   const meta = asTermDepositMeta(holding.metadata);
   if (meta === null) {
     return [];
@@ -82,7 +87,7 @@ const contributionEntries = (holding: IdentifiedHolding, now: number): DerivedEn
       index,
       contribution.date,
       contribution.amountMinorUnits,
-      index === 0 ? 'Opening deposit' : 'Top-up',
+      index === 0 ? t('holdingDetail.openingDeposit') : t('holdingDetail.topUp'),
       now,
     ),
   );
@@ -97,6 +102,7 @@ const recapAccrualEntries = (
   holding: IdentifiedHolding,
   meta: NonNullable<ReturnType<typeof asTermDepositMeta>>,
   now: number,
+  t: TFunction,
 ): DerivedEntry[] => {
   const ledger = depositLedger(
     meta.contributions.map((c) => ({ amountMinor: c.amountMinorUnits, date: c.date })),
@@ -113,16 +119,31 @@ const recapAccrualEntries = (
   };
   for (const accrual of ledger.accruals) {
     if (accrual.grossMinor > 0) {
-      push('accrual', accrual.date, accrual.grossMinor, 'Interest accrual');
+      push('accrual', accrual.date, accrual.grossMinor, t('holdingDetail.interestAccrual'));
     }
     if (accrual.incomeTaxMinor > 0) {
-      push('income-tax', accrual.date, -accrual.incomeTaxMinor, 'Income tax 18%');
+      push(
+        'income-tax',
+        accrual.date,
+        -accrual.incomeTaxMinor,
+        t('holdingDetail.incomeTax', { pct: INCOME_TAX_RATE_PCT }),
+      );
     }
     if (accrual.militaryLevyMinor > 0) {
-      push('military-levy', accrual.date, -accrual.militaryLevyMinor, 'Military levy 5%');
+      push(
+        'military-levy',
+        accrual.date,
+        -accrual.militaryLevyMinor,
+        t('holdingDetail.militaryLevy', { pct: MILITARY_LEVY_RATE_PCT }),
+      );
     }
     if (accrual.capitalized && accrual.capitalizationMinor !== 0) {
-      push('capitalization', accrual.date, accrual.capitalizationMinor, 'Capitalization');
+      push(
+        'capitalization',
+        accrual.date,
+        accrual.capitalizationMinor,
+        t('holdingDetail.capitalization'),
+      );
     }
   }
   return entries;
@@ -132,28 +153,46 @@ const recapAccrualEntries = (
 // to the opening/top-ups plus the per-accrual interest/tax/capitalization lines;
 // a recap-OFF deposit pays interest out instead of compounding, so it surfaces a
 // single cumulative interest/tax pair at `now`.
-const depositEntries = (holding: IdentifiedHolding, now: number): DerivedEntry[] => {
+const depositEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asTermDepositMeta(holding.metadata);
   if (meta === null) {
     return [];
   }
-  const entries = contributionEntries(holding, now);
+  const entries = contributionEntries(holding, now, t);
   if (!meta.recapitalization) {
     const breakdown = holdingValueBreakdown(holding, now);
     if (breakdown.interest.minorUnits > 0) {
       entries.push(
-        makeEntry(holding.id, 'interest', 0, now, breakdown.interest.minorUnits, 'Interest', now),
+        makeEntry(
+          holding.id,
+          'interest',
+          0,
+          now,
+          breakdown.interest.minorUnits,
+          t('holdingDetail.interest'),
+          now,
+        ),
       );
     }
     if (breakdown.tax.minorUnits > 0) {
-      entries.push(makeEntry(holding.id, 'tax', 0, now, -breakdown.tax.minorUnits, 'Tax', now));
+      entries.push(
+        makeEntry(
+          holding.id,
+          'tax',
+          0,
+          now,
+          -breakdown.tax.minorUnits,
+          t('holdingDetail.tax'),
+          now,
+        ),
+      );
     }
     return entries;
   }
-  return [...entries, ...recapAccrualEntries(holding, meta, now)];
+  return [...entries, ...recapAccrualEntries(holding, meta, now, t)];
 };
 
-const bondEntries = (holding: IdentifiedHolding, now: number): DerivedEntry[] => {
+const bondEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
   const meta = asBondMeta(holding.metadata);
   if (meta === null) {
     return [];
@@ -181,22 +220,38 @@ const bondEntries = (holding: IdentifiedHolding, now: number): DerivedEntry[] =>
       0,
       meta.purchaseDate,
       -meta.purchasePriceMinorUnits,
-      'Purchase',
+      t('holdingDetail.purchase'),
       now,
     ),
     ...couponDates.map((couponDate, index) =>
-      makeEntry(holding.id, 'coupon', index, couponDate, netCouponMinor, 'Coupon', now),
+      makeEntry(
+        holding.id,
+        'coupon',
+        index,
+        couponDate,
+        netCouponMinor,
+        t('holdingDetail.coupon'),
+        now,
+      ),
     ),
-    makeEntry(holding.id, 'redemption', 0, meta.maturityDate, nominalMinorUnits, 'Redemption', now),
+    makeEntry(
+      holding.id,
+      'redemption',
+      0,
+      meta.maturityDate,
+      nominalMinorUnits,
+      t('holdingDetail.redemption'),
+      now,
+    ),
   ];
 };
 
-const entriesForType = (holding: IdentifiedHolding, now: number): DerivedEntry[] => {
+const entriesForType = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
   if (holding.type === 'term_deposit') {
-    return depositEntries(holding, now);
+    return depositEntries(holding, now, t);
   }
   if (holding.type === 'bond') {
-    return bondEntries(holding, now);
+    return bondEntries(holding, now, t);
   }
   return [];
 };
@@ -204,6 +259,12 @@ const entriesForType = (holding: IdentifiedHolding, now: number): DerivedEntry[]
 // The derived lifecycle entries for a holding, sorted oldest-first. Entries that
 // share an instant (an accrual and its two withholding lines and any
 // capitalization on the same date) keep their emitted order under the stable
-// sort, so they read as a coherent group.
-export const derivedEntries = (holding: IdentifiedHolding, now: number): DerivedEntry[] =>
-  [...entriesForType(holding, now)].sort((a, b) => a.time - b.time);
+// sort. Not a React component (a plain render-time helper the caller's own
+// `useTranslation()` feeds `t` into), so every label re-resolves against the
+// active language on every call rather than freezing to a module-load-time
+// language.
+export const derivedEntries = (
+  holding: IdentifiedHolding,
+  now: number,
+  t: TFunction,
+): DerivedEntry[] => [...entriesForType(holding, now, t)].sort((a, b) => a.time - b.time);

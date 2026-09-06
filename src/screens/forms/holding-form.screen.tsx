@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
-import { type Currency, currencyOptions } from '../../currency/currency';
+import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money, toMajor } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
@@ -100,23 +101,7 @@ const buildHoldingPatch = (params: {
   };
 };
 
-// Human display text for the id-like holding types; the chip still reports the
-// underlying value on select.
-const TYPE_LABELS: Record<HoldingType, string> = {
-  card: 'Card',
-  term_deposit: 'Deposit',
-  bond: 'Bond',
-  cash: 'Cash',
-  crypto_asset: 'Crypto Asset',
-  jar: 'Jar',
-};
-
 const bondKinds: readonly BondKind[] = ['government', 'corporate'];
-
-const BOND_KIND_LABELS: Record<BondKind, string> = {
-  government: 'Government',
-  corporate: 'Corporate',
-};
 
 const compoundingOptions: readonly CompoundingFrequency[] = [
   'bi-weekly',
@@ -125,25 +110,43 @@ const compoundingOptions: readonly CompoundingFrequency[] = [
   'annually',
 ];
 
-const COMPOUNDING_LABELS: Record<CompoundingFrequency, string> = {
-  'bi-weekly': 'Bi-weekly',
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-  annually: 'Annually',
-};
-
 const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
 type CouponFrequency = (typeof couponFrequencies)[number];
 
-const COUPON_FREQUENCY_LABELS: Record<CouponFrequency, string> = {
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-  semiannually: 'Semiannually',
-  annually: 'Annually',
-};
-
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId, holdingId } = route.params;
+  const { t } = useTranslation();
+  // Human display text for the id-like holding types, the bond kind, and the
+  // two frequency chip rows below; the chips still report the underlying
+  // value on select. Built from the catalog inside the component (rather than
+  // a module-level constant) so it always reflects the active language.
+  const typeLabels: Record<HoldingType, string> = {
+    card: t('forms.holding.card'),
+    term_deposit: t('forms.holding.deposit'),
+    bond: t('forms.holding.bond'),
+    cash: t('forms.account.cash'),
+    crypto_asset: t('forms.holding.cryptoAsset'),
+    jar: t('forms.holding.jar'),
+  };
+  const bondKindLabels: Record<BondKind, string> = {
+    government: t('forms.holding.government'),
+    corporate: t('forms.holding.corporate'),
+  };
+  // Coupon frequency additionally offers 'semiannually', which compounding
+  // does not; the shared vocabulary (monthly/quarterly/annually) resolves to
+  // the same catalog key either way.
+  const compoundingLabels: Record<CompoundingFrequency, string> = {
+    'bi-weekly': t('forms.holding.biWeekly'),
+    monthly: t('forms.holding.monthly'),
+    quarterly: t('forms.holding.quarterly'),
+    annually: t('forms.holding.annually'),
+  };
+  const couponFrequencyLabels: Record<CouponFrequency, string> = {
+    monthly: t('forms.holding.monthly'),
+    quarterly: t('forms.holding.quarterly'),
+    semiannually: t('forms.holding.semiannually'),
+    annually: t('forms.holding.annually'),
+  };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
   // rather than create.
@@ -289,9 +292,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // "Edit Holding" so the header reads correctly for the update flow.
   useLayoutEffect(() => {
     if (isEdit) {
-      navigation.setOptions({ title: 'Edit Holding' });
+      navigation.setOptions({ title: t('forms.holding.editTitle') });
     }
-  }, [isEdit, navigation]);
+  }, [isEdit, navigation, t]);
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
@@ -473,7 +476,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       scroll
       footer={
         <Button onPress={save} disabled={!isValid}>
-          Save
+          {t('common.save')}
         </Button>
       }
     >
@@ -486,10 +489,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           onChangeName={setName}
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
-          namePlaceholder="Name"
+          namePlaceholder={t('forms.fields.name')}
         />
 
-        <ColorPicker label="Color" value={effectiveColor} onSelect={setColor} />
+        <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
         {/* A holding's type shapes its metadata and value math, and its currency
             fixes the unit of every stored balance/transaction; no repo path
@@ -500,17 +503,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
         <ChipRow
-          label="Type"
+          label={t('forms.holding.type')}
           options={typeOptions}
           selected={type}
           onSelect={setType}
-          labels={TYPE_LABELS}
+          labels={typeLabels}
           icons={holdingTypeSymbol}
           disabled={isEdit}
         />
 
         <ChipRow
-          label="Currency"
+          label={t('forms.fields.currency')}
           options={currencyOptions}
           selected={currency}
           onSelect={setCurrency}
@@ -520,11 +523,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type !== 'term_deposit' && type !== 'bond' && !isSyncedEdit && (
           <TextField
-            label="Balance"
+            label={t('forms.holding.balance')}
             value={openingBalance}
             onChangeText={(text) => setOpeningBalance(groupAmount(text))}
             keyboardType="decimal-pad"
             placeholder="0.00"
+            suffix={currencySymbol[currency]}
           />
         )}
 
@@ -533,18 +537,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             {contributions.map((contribution, index) => (
               <Box key={contribution.id} gap={2}>
                 <TextField
-                  label={`Contribution ${index + 1} Amount`}
+                  label={t('forms.holding.contributionAmount', { index: index + 1 })}
                   value={contribution.amount}
                   onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
+                  suffix={currencySymbol[currency]}
                 />
 
                 <DateField
-                  label={`Contribution ${index + 1} Date`}
+                  label={t('forms.holding.contributionDate', { index: index + 1 })}
                   value={contribution.date}
                   onChange={(next) => updateContributionDate(index, next)}
-                  placeholder="Select a date"
+                  placeholder={t('forms.holding.selectDatePlaceholder')}
                 />
 
                 {contributions.length > 1 && (
@@ -552,21 +557,23 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                     variant="secondary"
                     size="compact"
                     fullWidth={false}
-                    accessibilityLabel={`Remove contribution ${index + 1}`}
+                    accessibilityLabel={t('forms.holding.removeContribution', {
+                      index: index + 1,
+                    })}
                     onPress={() => removeContribution(index)}
                   >
-                    Remove
+                    {t('forms.holding.remove')}
                   </Button>
                 )}
               </Box>
             ))}
 
             <Button variant="secondary" size="compact" fullWidth={false} onPress={addContribution}>
-              Add contribution
+              {t('forms.holding.addContribution')}
             </Button>
 
             <TextField
-              label="Annual Rate %"
+              label={t('forms.holding.annualRatePct')}
               value={annualRate}
               onChangeText={setAnnualRate}
               keyboardType="decimal-pad"
@@ -574,21 +581,25 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             />
 
             <TextField
-              label="Term (Months)"
+              label={t('forms.holding.termMonths')}
               value={termMonths}
               onChangeText={setTermMonths}
               keyboardType="number-pad"
               placeholder="0"
             />
 
-            <Switch label="Recapitalization" value={recapitalization} onValueChange={setRecap} />
+            <Switch
+              label={t('forms.holding.recapitalization')}
+              value={recapitalization}
+              onValueChange={setRecap}
+            />
 
             <ChipRow
-              label="Compounding"
+              label={t('forms.holding.compounding')}
               options={compoundingOptions}
               selected={compounding}
               onSelect={setCompounding}
-              labels={COMPOUNDING_LABELS}
+              labels={compoundingLabels}
             />
           </Box>
         )}
@@ -596,7 +607,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {type === 'bond' && (
           <Box gap={4}>
             <TextField
-              label="Quantity"
+              label={t('forms.holding.quantity')}
               value={quantity}
               onChangeText={(text) => setQuantity(groupAmount(text))}
               keyboardType="number-pad"
@@ -604,15 +615,16 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             />
 
             <TextField
-              label="Face Value"
+              label={t('forms.holding.faceValue')}
               value={faceValue}
               onChangeText={(text) => setFaceValue(groupAmount(text))}
               keyboardType="decimal-pad"
               placeholder="0.00"
+              suffix={currencySymbol[currency]}
             />
 
             <TextField
-              label="Coupon %"
+              label={t('forms.holding.couponPct')}
               value={couponPct}
               onChangeText={setCouponPct}
               keyboardType="decimal-pad"
@@ -620,41 +632,42 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             />
 
             <TextField
-              label="Purchase Price (total paid)"
+              label={t('forms.holding.purchasePrice')}
               value={purchasePrice}
               onChangeText={(text) => setPurchasePrice(groupAmount(text))}
               keyboardType="decimal-pad"
-              placeholder="Defaults to nominal"
+              placeholder={t('forms.holding.purchasePricePlaceholder')}
+              suffix={currencySymbol[currency]}
             />
 
             <DateField
-              label="Purchase Date"
+              label={t('forms.holding.purchaseDate')}
               value={purchaseDate}
               onChange={setPurchaseDate}
-              placeholder="Select a date"
+              placeholder={t('forms.holding.selectDatePlaceholder')}
             />
 
             <DateField
-              label="Maturity Date"
+              label={t('forms.holding.maturityDate')}
               value={maturityDate}
               onChange={setMaturityDate}
-              placeholder="Select a date"
+              placeholder={t('forms.holding.selectDatePlaceholder')}
             />
 
             <ChipRow
-              label="Bond Kind"
+              label={t('forms.holding.bondKind')}
               options={bondKinds}
               selected={bondKind}
               onSelect={setBondKind}
-              labels={BOND_KIND_LABELS}
+              labels={bondKindLabels}
             />
 
             <ChipRow
-              label="Coupon frequency"
+              label={t('forms.holding.couponFrequency')}
               options={couponFrequencies}
               selected={couponFrequency}
               onSelect={setCouponFrequency}
-              labels={COUPON_FREQUENCY_LABELS}
+              labels={couponFrequencyLabels}
             />
           </Box>
         )}

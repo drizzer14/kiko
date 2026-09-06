@@ -1,4 +1,5 @@
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import Box from '../../../design-system/components/box';
@@ -30,6 +31,7 @@ type AddCategoryRowProps = {
 // (the new row then appears through the list's existing live query); Cancel
 // collapses the form back so the action is never a dead end.
 const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
@@ -69,7 +71,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
       <GlassSurface testID="add-category-card" padding={4} bordered>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Add category"
+          accessibilityLabel={t('categories.addCategory')}
           onPress={() => {
             setExpanded(true);
             onExpand?.();
@@ -79,7 +81,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
             <SymbolIcon name="plus" tone="textPrimary" />
 
             <Text variant="body" tone="textSecondary">
-              Add category
+              {t('categories.addCategory')}
             </Text>
           </Box>
         </Pressable>
@@ -101,11 +103,11 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           // Live preview: once a swatch is picked the icon tints to it (undefined
           // while unset keeps the field's default), mirroring the account form.
           iconColor={color ?? undefined}
-          iconAccessibilityLabel="Choose new category icon"
+          iconAccessibilityLabel={t('categories.chooseNewIconLabel')}
           onSelectIcon={setIcon}
           name={name}
           onChangeName={setName}
-          namePlaceholder="Category name"
+          namePlaceholder={t('categories.namePlaceholder')}
           // The field mounts only once the form expands, so focusing it on mount
           // fires exactly when the row opens — the keyboard lands straight on the
           // name input without a second tap.
@@ -117,22 +119,22 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
             prefix scopes the swatch a11y labels so they never collide with the
             per-row pickers above (e.g. "New category color yellow"). */}
         <ColorPicker
-          label="Color"
+          label={t('categories.colorLabel')}
           value={color ?? ''}
           onSelect={setColor}
-          accessibilityLabelPrefix="New category color"
+          accessibilityLabelPrefix={t('categories.newColorPrefix')}
         />
 
         <Box direction="row" gap={3}>
           <Box style={styles.action}>
             <Button variant="secondary" onPress={collapse}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </Box>
 
           <Box style={styles.action}>
             <Button onPress={save} disabled={!canSave}>
-              Save
+              {t('common.save')}
             </Button>
           </Box>
         </Box>

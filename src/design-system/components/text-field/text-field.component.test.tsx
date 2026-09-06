@@ -28,4 +28,32 @@ describe('TextField', () => {
     // Undefined (never masked) unless the caller opts in.
     expect(getByLabelText('Name').props.secureTextEntry).toBeUndefined();
   });
+
+  it('renders a trailing suffix after the input', async () => {
+    const { getByText, getByDisplayValue } = await render(
+      <TextField label="Amount" value="100.00" onChangeText={jest.fn()} suffix="₴" />,
+    );
+
+    // The value stays in the input; the currency glyph shows alongside it.
+    expect(getByDisplayValue('100.00')).toBeTruthy();
+    expect(getByText('₴')).toBeTruthy();
+  });
+
+  it('renders no suffix by default', async () => {
+    const { queryByText } = await render(
+      <TextField label="Amount" value="100.00" onChangeText={jest.fn()} />,
+    );
+
+    expect(queryByText('₴')).toBeNull();
+  });
+
+  it('treats an empty suffix as no suffix', async () => {
+    const { queryByText } = await render(
+      <TextField label="Amount" value="100.00" onChangeText={jest.fn()} suffix="" />,
+    );
+
+    // An empty suffix (a currency not yet known) renders exactly as the
+    // no-suffix field — no stray trailing node.
+    expect(queryByText('')).toBeNull();
+  });
 });

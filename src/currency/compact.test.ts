@@ -58,4 +58,17 @@ describe('formatCompactMoney', () => {
   it('places the sign before the symbol for a negative value', () => {
     expect(formatCompactMoney(-1_500_000, 'USD', millions)).toBe('-$1.5M');
   });
+
+  it('groups compact thousands with a non-ASCII space (U+00A0) for uk-UA', () => {
+    // 1,234K under en-US groups with an ASCII comma; under uk-UA the same
+    // thousands unit groups with U+00A0 NO-BREAK SPACE instead (the exact
+    // code point this project's Jest/Node ICU build emits — verified by
+    // running this test before pinning it; see format.test.ts for the same
+    // finding on formatMoney). Reuses the `thousands` unit above: a
+    // lone-value unit here would pick the decimal-only "M" bucket instead
+    // and never exercise grouping at all.
+    const formatted = formatCompactMoney(1_234_000, 'UAH', thousands, 'uk-UA');
+
+    expect(formatted).toBe('1\u00A0234K ₴');
+  });
 });

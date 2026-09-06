@@ -55,12 +55,16 @@ export const isMccExcludedTransfer = (
  * internal-transfer wordings surface:
  *   - 'депозит'       → "Поповнення депозиту", "Відкриття депозиту" (deposit)
  *   - 'чорну картку'  → "На чорну картку" (the user's own black card)
- *   - 'фоп'           → "На гривневий рахунок ФОП для переказу на картку"
+ *   - 'рахунок фоп'   → "На гривневий рахунок ФОП для переказу на картку" (the
+ *     user's OWN FOP account top-up). Deliberately NOT the bare 'фоп' — a
+ *     third-party payee named "ФОП <name>" (e.g. a landlord) is a real
+ *     merchant/counterparty, not an internal transfer, and must stay as
+ *     spending.
  */
 const INTERNAL_TRANSFER_DESCRIPTION_PATTERNS: readonly string[] = [
   'депозит',
   'чорну картку',
-  'фоп',
+  'рахунок фоп',
 ];
 
 /**

@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+import '../../../i18n';
 
 import AppLockSetting from './app-lock-setting.component';
 
@@ -18,10 +19,12 @@ describe('AppLockSetting', () => {
   });
 
   it('renders the App Lock row in its own card with an enabled switch on a Face ID device', async () => {
-    const { getByTestId, findByRole, queryByText } = await renderSetting();
+    const { getByTestId, getByText, findByRole, queryByText } = await renderSetting();
 
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
     expect(getByTestId('settings-row-app-lock')).toBeTruthy();
+    expect(getByText('App Lock')).toBeTruthy();
+    expect(getByText('Require Face ID or Passcode')).toBeTruthy();
     expect(await findByRole('switch')).toBeEnabled();
     expect(queryByText(/Set a device passcode/)).toBeNull();
     expect(queryByText(/unavailable/)).toBeNull();

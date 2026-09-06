@@ -1,4 +1,5 @@
 import { type FC, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
 import { isSensorAvailable, type SensorStatus } from '../../../auth/biometrics';
@@ -9,13 +10,18 @@ import SettingsRow from '../settings-row';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 
-const sensorHint = (status: SensorStatus | undefined): string | undefined =>
+// A pure helper (no hook access), so the translator function is threaded in
+// from the component's own `useTranslation()` rather than called globally.
+const sensorHint = (
+  status: SensorStatus | undefined,
+  t: (key: string) => string,
+): string | undefined =>
   match(status?.kind)
     .with(undefined, () => undefined)
     .with('available', () => undefined)
-    .with('passcodeOnly', () => 'No Face ID enrolled — your device passcode will be used.')
-    .with('passcodeNotSet', () => 'Set a device passcode in iOS Settings to use App Lock.')
-    .with('unavailable', () => 'Biometric hardware is unavailable on this device.')
+    .with('passcodeOnly', () => t('settings.appLock.hint.passcodeOnly'))
+    .with('passcodeNotSet', () => t('settings.appLock.hint.passcodeNotSet'))
+    .with('unavailable', () => t('settings.appLock.hint.unavailable'))
     .exhaustive();
 
 // The lock can be offered whenever the system sheet has something to ask for:
@@ -32,6 +38,7 @@ const canOfferLock = (status: SensorStatus | undefined): boolean =>
  * shows no non-functional toggle.
  */
 const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
+  const { t } = useTranslation();
   const [sensorStatus, setSensorStatus] = useState<SensorStatus | undefined>(undefined);
 
   useEffect(() => {
@@ -47,17 +54,17 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
     };
   }, []);
 
-  const hint = sensorHint(sensorStatus);
+  const hint = sensorHint(sensorStatus, t);
   const lockAvailable = canOfferLock(sensorStatus);
 
   return (
     <GlassSurface testID="settings-card-app-lock" padding={3}>
-      <SettingsRow testID="settings-row-app-lock" icon="lock.fill" label="App Lock">
+      <SettingsRow testID="settings-row-app-lock" icon="faceid" label={t('settings.appLock.label')}>
         <Switch
           value={lockEnabled}
           onValueChange={onToggle}
           disabled={!lockAvailable}
-          label="Require Face ID or Passcode"
+          label={t('settings.appLock.requireFaceIdOrPasscode')}
         />
 
         {hint !== undefined && (

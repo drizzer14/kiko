@@ -5,6 +5,17 @@ import { isValidElement } from 'react';
 // opens a real op-sqlite connection at module load. op-sqlite has no Jest
 // binary, so stub it the same way the root-navigator and repo tests do.
 import '../design-system/unistyles';
+
+// StatisticsStack() is called directly below (a plain function call, not a
+// real React render — see screenNames), so its own useTranslation() call
+// would throw ("Invalid hook call") outside a real component render. This
+// test only reads route `name`s, not the translated title, so a no-op stub
+// (returning the raw key) is enough to unblock the call.
+jest.mock('react-i18next', () => ({
+  ...jest.requireActual('react-i18next'),
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 import StatisticsStack from './statistics.stack';
 
 type ScreenElement = ReactElement<{ name: string }>;

@@ -1,9 +1,32 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
+import { i18n } from '../../i18n';
+
 import TransactionFormScreen from './transaction-form.screen';
 
+// A react-test-renderer JSON node's `children` mixes further nodes and raw
+// text leaves. Walking only `children` (never `props`) and keeping just the
+// string leaves reconstructs the SCREEN-READING order of every rendered
+// caption/label/button-text, independent of any prop value (e.g. a
+// `placeholder` that happens to equal a neighboring field's label) — used to
+// assert field order without depending on internal DOM structure.
+type RenderedNode = { children: (RenderedNode | string)[] | null };
+
+const collectRenderedText = (node: RenderedNode | string | null): string[] => {
+  if (node === null) {
+    return [];
+  }
+  if (typeof node === 'string') {
+    return [node];
+  }
+
+  return (node.children ?? []).flatMap(collectRenderedText);
+};
+
 const mockRecordManual = jest.fn();
+const mockRecordExchange = jest.fn();
+const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockUpsertCategoryOverride = jest.fn();
@@ -12,6 +35,8 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('../../repositories/transactions.repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
+    recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
+    recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
     remove: (...args: unknown[]) => mockRemove(...args),
     getByIdQuery: (transactionId: string) => ({
@@ -22,6 +47,11 @@ jest.mock('../../repositories/transactions.repo', () => ({
 jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+  },
+}));
+jest.mock('../../repositories/accounts.repo', () => ({
+  accountsRepo: {
+    listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('../../repositories/categories.repo', () => ({
@@ -38,7 +68,18 @@ jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 
-type Holding = { id: string; currency: string; balanceMinorUnits: number };
+type Holding = {
+  id: string;
+  currency: string;
+  balanceMinorUnits: number;
+  type?: string;
+  name?: string;
+  closedAt?: number | null;
+  icon?: string | null;
+  color?: string | null;
+  accountId?: string;
+};
+type Account = { id: string; name: string };
 type Category = { key: string; title: string; icon: string };
 type Transaction = {
   id: string;
@@ -61,6 +102,7 @@ const setLiveData = (
   holdings: Holding[],
   transaction?: Transaction,
   categories: Category[] = CATEGORIES,
+  accounts: Account[] = [],
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
     if (tables[0] === 'holdings') {
@@ -72,6 +114,9 @@ const setLiveData = (
     if (tables[0] === 'categories') {
       return { data: categories };
     }
+    if (tables[0] === 'accounts') {
+      return { data: accounts };
+    }
 
     return { data: [] };
   });
@@ -79,11 +124,13 @@ const setLiveData = (
 
 const navigation = { goBack: jest.fn(), setOptions: jest.fn() } as never;
 
-const renderAdd = (): ReturnType<typeof render> => {
-  const route = { params: { holdingId: 'h1' } } as never;
+const renderAddFromHolding = (holdingId: string): ReturnType<typeof render> => {
+  const route = { params: { holdingId } } as never;
 
   return render(<TransactionFormScreen route={route} navigation={navigation} />);
 };
+
+const renderAdd = (): ReturnType<typeof render> => renderAddFromHolding('h1');
 
 const renderEdit = (transactionId: string): ReturnType<typeof render> => {
   const route = { params: { transactionId } } as never;
@@ -109,10 +156,20 @@ const pickDate = async (
   });
 };
 
+// Pick a category from the field's bottom-sheet: tap the field to open the
+// sheet, then tap the option row. The picker is a single-select sheet, not an
+// inline chip row, so the option is only mounted once the sheet opens. A create
+// now requires a category before Save enables, so the add-mode cases pick one
+// through the same path the category-editing cases use.
+const pickCategory = async (utils: ReturnType<typeof render>, title: string): Promise<void> => {
+  await fireEvent.press(utils.getByLabelText('Category'));
+  await fireEvent.press(utils.getByText(title));
+};
+
 describe('TransactionFormScreen — add mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0 }]);
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
   });
 
   it('renders in scroll mode so the native large title renders and collapses', async () => {
@@ -129,9 +186,11 @@ describe('TransactionFormScreen — add mode', () => {
   });
 
   it('submits a manual transaction', async () => {
-    const { getByLabelText, getByText } = await renderAdd();
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -144,9 +203,11 @@ describe('TransactionFormScreen — add mode', () => {
   });
 
   it('negates the amount for an expense', async () => {
-    const { getByLabelText, getByText } = await renderAdd();
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '10.00');
     await fireEvent.press(getByText('Expense'));
+    await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -1000 }),
@@ -161,23 +222,33 @@ describe('TransactionFormScreen — add mode', () => {
     expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(false);
   });
 
-  it('backdates a manual transaction to the date picked in the calendar', async () => {
+  it('backdates a manual transaction to the picked day, keeping the default time-of-day', async () => {
+    // A fresh add defaults `time` to now; picking a DAY moves only the day and
+    // carries over that default time-of-day (the DateField no longer resets to
+    // midnight, so a later time pick is not clobbered). Pin `Date.now()` so the
+    // carried-over time-of-day (14:30) is deterministic.
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
     const utils = await renderAdd();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await pickDate(utils, 2025, 6, 1);
+    await pickCategory(utils, 'Groceries');
     await fireEvent.press(utils.getByText('Save'));
-    // The picked day is persisted as the transaction time at LOCAL midnight,
-    // instead of the hardcoded Date.now() the form used before.
+
     expect(mockRecordManual).toHaveBeenCalledWith(
-      expect.objectContaining({ time: new Date(2025, 5, 1).getTime() }),
+      expect.objectContaining({ time: new Date(2025, 5, 1, 14, 30, 0).getTime() }),
     );
+    nowSpy.mockRestore();
   });
 
   it('groups the amount with spaces as the user types and still parses it on save', async () => {
-    const { getByLabelText, getByText } = await renderAdd();
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '1000000');
     // The field reflects the grouped display value immediately as typed.
     expect(getByLabelText('Amount').props.value).toBe('1 000 000');
+    await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
     // The grouped string round-trips through parseAmount: 1,000,000.00 UAH.
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -191,12 +262,71 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
+
+  it('keeps the income/expense field order: Amount, Description, Date, Time, mode row, Category', async () => {
+    const utils = await renderAdd();
+    const rendered = collectRenderedText(utils.toJSON());
+    const order = ['Amount', 'Description', 'Date', 'Time', 'Income', 'Category'].map((label) =>
+      rendered.indexOf(label),
+    );
+
+    for (const index of order) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+});
+
+describe('TransactionFormScreen — localization', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the income/expense/category field chrome from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByLabelText, getByText, queryByText } = await renderAdd();
+
+    expect(getByLabelText('Сума')).toBeTruthy();
+    expect(getByLabelText('Опис')).toBeTruthy();
+    expect(getByText('Дохід')).toBeTruthy();
+    expect(getByText('Витрата')).toBeTruthy();
+    expect(getByLabelText('Категорія')).toBeTruthy();
+    expect(queryByText('Amount')).toBeNull();
+  });
+
+  it('renders the Exchange field group and Save from the Ukrainian catalog', async () => {
+    setLiveData([
+      { id: 'cash-1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash', name: 'Cash UAH' },
+      { id: 'card-usd-1', currency: 'USD', balanceMinorUnits: 0, type: 'card', name: 'Card USD' },
+    ]);
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByLabelText, getByText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByText('Обмін'));
+
+    expect(getByLabelText('Віддано')).toBeTruthy();
+    expect(getByLabelText('Куди')).toBeTruthy();
+    expect(getByLabelText('Отримано')).toBeTruthy();
+    expect(getByText('Зберегти')).toBeTruthy();
+  });
 });
 
 describe('TransactionFormScreen — edit mode (manual)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -241,13 +371,67 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: 42 }));
   });
 
-  it('re-dates the transaction to a newly picked calendar day', async () => {
+  it('re-dates the transaction to a newly picked calendar day, keeping its time-of-day', async () => {
+    // A stored row at 09:15 on 20 June 2024; re-picking only the day must move
+    // the day and carry over the 09:15 time-of-day (so a later time pick is not
+    // lost), rather than resetting to midnight.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: new Date(2024, 5, 20, 9, 15, 0).getTime(),
+      description: 'Coffee',
+      source: 'manual',
+    });
     const utils = await renderEdit('txn-1');
     await pickDate(utils, 2025, 1, 10);
     await fireEvent.press(utils.getByText('Save'));
+
     expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ time: new Date(2025, 0, 10).getTime() }),
+      expect.objectContaining({ time: new Date(2025, 0, 10, 9, 15, 0).getTime() }),
     );
+  });
+
+  it('re-times the transaction to a newly picked time, keeping its day', async () => {
+    // A stored row at 09:15 on 20 June 2024; picking only the TIME must keep the
+    // 20 June 2024 day while replacing the time-of-day with 18:45.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: new Date(2024, 5, 20, 9, 15, 0).getTime(),
+      description: 'Coffee',
+      source: 'manual',
+    });
+    const utils = await renderEdit('txn-1');
+    await fireEvent.press(utils.getByLabelText('Time'));
+    await fireEvent(
+      utils.getByTestId('Time picker'),
+      'change',
+      { type: 'set' },
+      new Date(2000, 0, 1, 18, 45),
+    );
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2024, 5, 20, 18, 45).getTime() }),
+    );
+  });
+
+  it('opening an existing transaction shows its stored time-of-day, not the wall clock', async () => {
+    // The edit screen hydrates `time` from the stored row (09:15 on 20 June
+    // 2024), so the Time field shows 09:15 — never the current wall-clock time.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: new Date(2024, 5, 20, 9, 15, 0).getTime(),
+      description: 'Coffee',
+      source: 'manual',
+    });
+    const { getByText } = await renderEdit('txn-1');
+
+    expect(getByText('09:15')).toBeTruthy();
   });
 
   it('deletes the transaction and navigates back after confirmation', async () => {
@@ -268,7 +452,7 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 describe('TransactionFormScreen — read-only mode (monobank)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-9',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -304,20 +488,12 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
 });
 
 describe('TransactionFormScreen — category editing', () => {
-  // Pick a category from the field's bottom-sheet: tap the field to open the
-  // sheet, then tap the option row. The picker is a single-select sheet now,
-  // not an inline chip row, so the option is only mounted once the sheet opens.
-  const pickCategory = async (utils: ReturnType<typeof render>, title: string): Promise<void> => {
-    await fireEvent.press(utils.getByLabelText('Category'));
-    await fireEvent.press(utils.getByText(title));
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('propagates a MANUAL row category change through upsertCategoryOverride after confirming', async () => {
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -348,7 +524,7 @@ describe('TransactionFormScreen — category editing', () => {
   });
 
   it('renders the picked category icon in white in the confirm modal', async () => {
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -372,7 +548,7 @@ describe('TransactionFormScreen — category editing', () => {
   });
 
   it('lets a SYNCED row save a category-only change via the override, without an update', async () => {
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-9',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -400,7 +576,7 @@ describe('TransactionFormScreen — category editing', () => {
   });
 
   it('never opens the confirm modal when the category is unchanged', async () => {
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -420,7 +596,7 @@ describe('TransactionFormScreen — category editing', () => {
   });
 
   it('does not apply the override when the confirmation is cancelled', async () => {
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000 }], {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
@@ -439,5 +615,464 @@ describe('TransactionFormScreen — category editing', () => {
     expect(mockUpdate).toHaveBeenCalled();
     expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+});
+
+// Distinct holding types so the Exchange eligibility/destination-filter rules
+// (cash-only source, non-source/non-closed/cash-only destination) can each be
+// exercised against a fixture built for that exact case. A second cash holding
+// (`cash-usd-1`) stands in for "an eligible destination" now that card is no
+// longer create-eligible on either side (Requirement B).
+const EXCHANGE_HOLDINGS: Holding[] = [
+  { id: 'cash-1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash', name: 'Cash UAH' },
+  { id: 'cash-usd-1', currency: 'USD', balanceMinorUnits: 0, type: 'cash', name: 'Cash USD' },
+  { id: 'card-usd-1', currency: 'USD', balanceMinorUnits: 0, type: 'card', name: 'Card USD' },
+  { id: 'bond-1', currency: 'UAH', balanceMinorUnits: 0, type: 'bond', name: 'Government Bond' },
+  {
+    id: 'old-cash-1',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Old Cash',
+    closedAt: 1,
+  },
+  { id: 'war-bond-1', currency: 'UAH', balanceMinorUnits: 0, type: 'bond', name: 'War Bond' },
+  { id: 'jar-1', currency: 'UAH', balanceMinorUnits: 0, type: 'jar', name: 'Monobank Jar' },
+];
+
+describe('TransactionFormScreen — Exchange mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData(EXCHANGE_HOLDINGS);
+  });
+
+  it('offers Exchange only when the source holding is cash (not bond)', async () => {
+    const cash = await renderAddFromHolding('cash-1');
+    expect(cash.queryByText('Exchange')).toBeTruthy();
+
+    const bond = await renderAddFromHolding('bond-1');
+    expect(bond.queryByText('Exchange')).toBeNull();
+  });
+
+  it('never offers Exchange in edit mode', async () => {
+    setLiveData(EXCHANGE_HOLDINGS, {
+      id: 'txn-1',
+      holdingId: 'cash-1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+    });
+
+    const { queryByText } = await renderEdit('txn-1');
+    expect(queryByText('Exchange')).toBeNull();
+  });
+
+  it('lists open, non-source cash holdings in the destination select', async () => {
+    const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+
+    // Another cash holding is listed; the source itself, a closed cash
+    // holding, a card, and bond/jar holdings are all excluded on create.
+    expect(getByText('Cash USD')).toBeTruthy();
+    expect(queryByText('Cash UAH')).toBeNull();
+    expect(queryByText('Card USD')).toBeNull();
+    expect(queryByText('Old Cash')).toBeNull();
+    expect(queryByText('War Bond')).toBeNull();
+    expect(queryByText('Monobank Jar')).toBeNull();
+  });
+
+  it('hides the category picker in Exchange mode', async () => {
+    const { getByText, queryByLabelText } = await renderAddFromHolding('cash-1');
+    // Category field is visible in income/expense mode.
+    expect(queryByLabelText('Category')).toBeTruthy();
+
+    await fireEvent.press(getByText('Exchange'));
+    expect(queryByLabelText('Category')).toBeNull();
+  });
+
+  it.each([
+    ['empty Value Out', '', '2.50'],
+    ['zero Value Out', '0', '2.50'],
+    ['negative Value Out', '-10', '2.50'],
+    ['empty Value In', '100', ''],
+    ['zero Value In', '100', '0'],
+    ['negative Value In', '100', '-5'],
+  ])('rejects %s: recordExchange is not called', async (_case, valueOut, valueIn) => {
+    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD'));
+
+    if (valueOut !== '') {
+      await fireEvent.changeText(getByLabelText('Value Out'), valueOut);
+    }
+    if (valueIn !== '') {
+      await fireEvent.changeText(getByLabelText('Value In'), valueIn);
+    }
+
+    await fireEvent.press(getByText('Save'));
+    expect(mockRecordExchange).not.toHaveBeenCalled();
+  });
+
+  it('saves an exchange with correct minor units and holding ids', async () => {
+    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByText('Exchange'));
+
+    await fireEvent.changeText(getByLabelText('Value Out'), '100');
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD'));
+    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(mockRecordExchange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceHoldingId: 'cash-1',
+          sourceName: 'Cash UAH',
+          valueOutMinorUnits: 10_000,
+          destinationHoldingId: 'cash-usd-1',
+          destinationName: 'Cash USD',
+          destinationType: 'cash',
+          valueInMinorUnits: 250,
+        }),
+      ),
+    );
+  });
+});
+
+// Fixtures for the cash-only create rule (Requirement B) plus account-name
+// threading (Requirement C, Task 2). `cash-1` and `cash-usd-1` sit under two
+// different accounts so the destination's account name is unambiguous;
+// `card-1`, `btc-1`, and `deposit-1` cover every non-cash type that create
+// mode must now exclude on the destination side.
+const EXCHANGE_CREATE_HOLDINGS: Holding[] = [
+  {
+    id: 'cash-1',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash UAH',
+    accountId: 'acc-cash',
+  },
+  {
+    id: 'cash-usd-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash USD',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'card-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'card',
+    name: 'Card USD',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'btc-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'crypto_asset',
+    name: 'BTC Wallet',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'deposit-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'term_deposit',
+    name: 'USD Deposit',
+    accountId: 'acc-wallet',
+  },
+];
+
+const EXCHANGE_CREATE_ACCOUNTS: Account[] = [
+  { id: 'acc-cash', name: 'Home' },
+  { id: 'acc-wallet', name: 'Wallet' },
+];
+
+describe('TransactionFormScreen — Exchange create (cash-only, account names)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData(EXCHANGE_CREATE_HOLDINGS, undefined, CATEGORIES, EXCHANGE_CREATE_ACCOUNTS);
+  });
+
+  it('offers Exchange from a cash source but NOT from a card source', async () => {
+    const cash = await renderAddFromHolding('cash-1');
+    expect(cash.queryByText('Exchange')).toBeTruthy();
+
+    const card = await renderAddFromHolding('card-1');
+    expect(card.queryByText('Exchange')).toBeNull();
+  });
+
+  it('lists only cash destinations (card/crypto/term_deposit excluded) and shows account names', async () => {
+    const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+
+    // Another cash holding is offered, with its account name shown (rendered
+    // as "<account name> · <currency>", per holding-select-field.component).
+    expect(getByText('Cash USD')).toBeTruthy();
+    expect(getByText('Wallet · USD')).toBeTruthy(); // Cash USD's parent account name
+
+    // The source itself and every non-cash type are excluded on create.
+    expect(queryByText('Cash UAH')).toBeNull(); // the source itself
+    expect(queryByText('Card USD')).toBeNull(); // card excluded on create
+    expect(queryByText('BTC Wallet')).toBeNull(); // crypto excluded on create
+    expect(queryByText('USD Deposit')).toBeNull(); // term_deposit excluded on create
+  });
+
+  it('saves a cash->cash exchange with correct minor units and holding ids', async () => {
+    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByText('Exchange'));
+
+    await fireEvent.changeText(getByLabelText('Value Out'), '100');
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD'));
+    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(mockRecordExchange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceHoldingId: 'cash-1',
+          sourceName: 'Cash UAH',
+          valueOutMinorUnits: 10_000, // 100 UAH -> minor (scale 2)
+          destinationHoldingId: 'cash-usd-1',
+          destinationName: 'Cash USD',
+          destinationType: 'cash',
+          valueInMinorUnits: 250, // 2.50 USD -> minor (scale 2)
+        }),
+      ),
+    );
+  });
+});
+
+// Fixtures for convert-mode (Task 7): `cash-1` is the existing row's own
+// holding for the expense/income-manual cases; `card-1` stands in for a
+// SYNCED row's holding. `cash-usd-1` and `card-eur-1` are eligible
+// counterparts under the WIDER convert predicates (cash/card, unlike the
+// cash-only create rule); `deposit-1` (term_deposit) and `btc-1`
+// (crypto_asset) must never appear as a source, and `deposit-1`'s holding
+// type also makes its OWN transaction row ineligible for the action at all.
+const CONVERT_HOLDINGS: Holding[] = [
+  {
+    id: 'cash-1',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash UAH',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'card-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'card',
+    name: 'Card USD',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'cash-usd-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash USD',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'card-eur-1',
+    currency: 'EUR',
+    balanceMinorUnits: 0,
+    type: 'card',
+    name: 'Card EUR',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'deposit-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'term_deposit',
+    name: 'USD Deposit',
+    accountId: 'acc-wallet',
+  },
+  {
+    id: 'btc-1',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'crypto_asset',
+    name: 'BTC Wallet',
+    accountId: 'acc-wallet',
+  },
+];
+
+const CONVERT_ACCOUNTS: Account[] = [{ id: 'acc-wallet', name: 'Wallet' }];
+
+const CONVERT_TRANSACTIONS: Record<string, Transaction> = {
+  'expense-manual': {
+    id: 'expense-manual',
+    holdingId: 'cash-1',
+    amountMinorUnits: -10_000,
+    time: 42,
+    description: 'Groceries',
+    source: 'manual',
+  },
+  'expense-synced': {
+    id: 'expense-synced',
+    holdingId: 'card-1',
+    amountMinorUnits: -5_000,
+    time: 42,
+    description: 'Imported purchase',
+    source: 'monobank',
+  },
+  'income-manual': {
+    id: 'income-manual',
+    holdingId: 'cash-1',
+    amountMinorUnits: 8_000,
+    time: 42,
+    description: 'Refund',
+    source: 'manual',
+  },
+  'zero-amount': {
+    id: 'zero-amount',
+    holdingId: 'cash-1',
+    amountMinorUnits: 0,
+    time: 42,
+    description: 'Zero',
+    source: 'manual',
+  },
+  'deposit-txn': {
+    id: 'deposit-txn',
+    holdingId: 'deposit-1',
+    amountMinorUnits: -1_000,
+    time: 42,
+    description: 'Deposit',
+    source: 'manual',
+  },
+};
+
+describe('TransactionFormScreen — Convert to Exchange', () => {
+  const renderEdit = (transactionId: string): ReturnType<typeof render> => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      CONVERT_TRANSACTIONS[transactionId],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const route = { params: { transactionId } } as never;
+
+    return render(<TransactionFormScreen route={route} navigation={navigation} />);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the action for a non-zero expense on a cash/card holding (manual AND synced)', async () => {
+    const manual = await renderEdit('expense-manual');
+    expect(manual.queryByText('Convert to Exchange')).toBeTruthy();
+
+    const synced = await renderEdit('expense-synced');
+    expect(synced.queryByText('Convert to Exchange')).toBeTruthy();
+  });
+
+  it('does NOT show the action for a zero amount or a non-liquid holding', async () => {
+    const zero = await renderEdit('zero-amount');
+    expect(zero.queryByText('Convert to Exchange')).toBeNull();
+
+    const deposit = await renderEdit('deposit-txn');
+    expect(deposit.queryByText('Convert to Exchange')).toBeNull();
+  });
+
+  it('opens the destination ("To") form for an expense-sourced convert', async () => {
+    const { getByText, getByLabelText } = await renderEdit('expense-manual');
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+
+    // Expense source: the fixed side is Value Out; the picked leg is a destination ("To").
+    expect(getByText('Value Out')).toBeTruthy();
+    expect(getByLabelText('To')).toBeTruthy();
+    expect(getByLabelText('Value In')).toBeTruthy();
+  });
+
+  it('opens the source ("From") form for an income-sourced convert', async () => {
+    const { getByText, getByLabelText } = await renderEdit('income-manual');
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+
+    // Income destination: the fixed side is Value In; the picked leg is a source ("From").
+    expect(getByText('Value In')).toBeTruthy();
+    expect(getByLabelText('From')).toBeTruthy();
+    expect(getByLabelText('Value Out')).toBeTruthy();
+  });
+
+  it('writes the destination leg with the right sign, id, and description for an expense convert', async () => {
+    const { getByText, getByLabelText } = await renderEdit('expense-manual');
+    // existing: holding 'cash-1' name 'Cash UAH', amount -10_000 (100.00 UAH)
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD')); // a cash destination in another account
+    await fireEvent.changeText(getByLabelText('Value In'), '2.50');
+
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(mockRecordExchangeCounterpart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: 'record-destination',
+          counterpartHoldingId: 'cash-usd-1',
+          counterpartType: 'cash',
+          amountMinorUnits: 250, // 2.50 USD -> minor
+          existingHoldingName: 'Cash UAH',
+        }),
+      ),
+    );
+  });
+
+  it('restricts the source picker to cash/card for an income convert', async () => {
+    const { getByText, getByLabelText, queryByText } = await renderEdit('income-manual');
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByLabelText('From'));
+
+    expect(getByText('Cash USD')).toBeTruthy(); // cash offered
+    expect(getByText('Card EUR')).toBeTruthy(); // card offered
+    expect(queryByText('USD Deposit')).toBeNull(); // term_deposit NOT a source
+    expect(queryByText('BTC Wallet')).toBeNull(); // crypto NOT a source
+  });
+
+  it('rejects a blank/zero/negative counterpart amount (no write)', async () => {
+    const { getByText, getByLabelText } = await renderEdit('expense-manual');
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD'));
+    // leave Value In blank
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
+  });
+
+  it('never calls update/remove on the existing row when converting', async () => {
+    const { getByText, getByLabelText } = await renderEdit('expense-synced');
+
+    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Cash USD'));
+    await fireEvent.changeText(getByLabelText('Value In'), '5');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(mockRecordExchangeCounterpart).toHaveBeenCalled());
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 });
