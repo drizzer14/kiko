@@ -12,4 +12,16 @@ export const styles = StyleSheet.create((theme) => ({
   cardTitle: {
     ...theme.typography.heading,
   },
+  // The trend filter row: the FilterMenu + Reset icon left-grouped, the Save
+  // button pushed to the right edge.
+  trendFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trendFilterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+  },
 }));

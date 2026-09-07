@@ -14,11 +14,11 @@ import { styles } from './category-trend-line.styles';
 
 /**
  * The per-category spending trend: one line per category, each point that
- * category's total EXPENSE inside one calendar-month bucket (per-period spend,
- * not cumulative), in the base currency's MAJOR units. Every series shares one
- * set of month buckets on the X axis and a common Y scale rooted at 0. A legend
- * below the plot pairs each line's color with its category title. Renders an
- * empty state when `series` is empty.
+ * category's total EXPENSE inside one UTC-day bucket (per-period spend, not
+ * cumulative), in the base currency's MAJOR units. Every series shares one set
+ * of day buckets over the last 30 days on the X axis and a common Y scale rooted
+ * at 0. A legend below the plot pairs each line's color with its category title.
+ * Renders an empty state when `series` is empty.
  */
 type CategoryTrendLineProps = {
   series: CategoryTrendSeries[];
@@ -44,7 +44,7 @@ const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
 // The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior months, so the axis reads as a real
+// at: the two extremes plus three interior days, so the axis reads as a real
 // timeline rather than just its endpoints.
 const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 // Half a caption line, to centre a Y tick label on its gridline.
@@ -95,7 +95,7 @@ const buildTicks = (maxValue: number): Tick[] =>
     return { key: fraction.toFixed(4), value: maxValue - fraction * maxValue };
   });
 
-// One X-axis (month) tick: its timestamp, its horizontal position as a
+// One X-axis (day) tick: its timestamp, its horizontal position as a
 // percentage of the plot width (so a label anchors under its gridline), whether
 // it is one of the two range extremes (drawn flush to an edge, not centred), and
 // — for an edge — whether it is the START extreme (flush left) versus the END
@@ -103,9 +103,9 @@ const buildTicks = (maxValue: number): Tick[] =>
 // the start's `leftPercent` is the plot's left padding, never exactly 0.
 type XTick = { key: string; time: number; leftPercent: number; isEdge: boolean; isStart: boolean };
 
-// The X-axis month ticks across the range. A single-instant range (one bucket,
+// The X-axis day ticks across the range. A single-instant range (one bucket,
 // or every point at the same time) collapses to a lone start label — the evenly
-// spaced set would otherwise stack every month on the same x.
+// spaced set would otherwise stack every day on the same x.
 const buildXTicks = (scales: Scales): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
   if (timeSpan <= 0) {
@@ -128,16 +128,24 @@ const buildXTicks = (scales: Scales): XTick[] => {
 const toPolylinePoints = (points: CategoryTrendSeries['points'], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
+// The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
+// label must format in UTC too — without `timeZone: 'UTC'`, a negative-UTC-
+// offset locale renders every label one day early (a UTC-midnight instant is
+// still the previous local day there).
 const formatAxisTime = (t: number): string =>
-  new Date(t).toLocaleDateString(activeLocale(), { month: 'short', year: '2-digit' });
+  new Date(t).toLocaleDateString(activeLocale(), {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a
 // runtime number, so it widens to `string` and needs the cast onto the
 // percentage side of `DimensionValue`.
 const leftPercentOf = (percent: number): DimensionValue => `${percent}%` as DimensionValue;
 
-// The absolute-position style for an X-axis month label: the two range extremes
-// flush to the plot's left/right edge, every interior month centred on its
+// The absolute-position style for an X-axis day label: the two range extremes
+// flush to the plot's left/right edge, every interior day centred on its
 // gridline via a zero-width anchor pinned to that gridline's x.
 const xLabelStyle = (tick: XTick) => {
   if (!tick.isEdge) {

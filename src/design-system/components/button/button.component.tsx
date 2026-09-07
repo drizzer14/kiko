@@ -18,6 +18,7 @@ const Button: FC<ButtonProps> = ({
   trailingIcon,
   accessibilityLabel,
   textColor,
+  testID,
 }) => {
   const { theme } = useUnistyles();
   styles.useVariants({ variant });
@@ -31,6 +32,7 @@ const Button: FC<ButtonProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      testID={testID}
       onPress={onPress}
       disabled={disabled}
       style={[

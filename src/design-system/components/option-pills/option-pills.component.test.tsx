@@ -62,4 +62,32 @@ describe('OptionPills', () => {
 
     expect(onSelect).toHaveBeenCalledWith(30);
   });
+
+  // The cell's `style` prop is an array (`[styles.cell, cellWidth]`); flatten
+  // it to read the merged `width` back out.
+  const flattenStyle = (style: unknown): Record<string, unknown> =>
+    Array.isArray(style) ? Object.assign({}, ...style) : (style as Record<string, unknown>);
+
+  it('defaults each cell to a 50%-wide 2-column grid when `columns` is omitted', async () => {
+    const { getByText } = await render(
+      <OptionPills options={['a', 'b', 'c'] as const} selected="a" onSelect={jest.fn()} />,
+    );
+
+    expect(flattenStyle(getByText('a').parent?.parent?.props.style).width).toBe('50%');
+  });
+
+  it('lays out an equal-width single row when `columns` matches the option count', async () => {
+    const { getByText } = await render(
+      <OptionPills
+        options={['a', 'b', 'c'] as const}
+        selected="a"
+        onSelect={jest.fn()}
+        columns={3}
+      />,
+    );
+
+    expect(flattenStyle(getByText('a').parent?.parent?.props.style).width).toBe(`${100 / 3}%`);
+    expect(flattenStyle(getByText('b').parent?.parent?.props.style).width).toBe(`${100 / 3}%`);
+    expect(flattenStyle(getByText('c').parent?.parent?.props.style).width).toBe(`${100 / 3}%`);
+  });
 });

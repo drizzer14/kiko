@@ -114,6 +114,16 @@ describe('Button', () => {
     expect(getByLabelText('Remove contribution 2')).toBeTruthy();
   });
 
+  it('forwards a testID onto the pressable so a caller can target it', async () => {
+    const { getByTestId } = await render(
+      <Button onPress={() => {}} testID="my-button">
+        Save
+      </Button>,
+    );
+
+    expect(getByTestId('my-button')).toBeTruthy();
+  });
+
   it('overrides the label color when textColor is given', async () => {
     const { getByText } = await render(
       <Button onPress={() => {}} variant="ghost" textColor="#FF453A">

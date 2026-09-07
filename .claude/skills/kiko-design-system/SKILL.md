@@ -28,7 +28,17 @@ pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
 persisted in `settings.appearance` (`src/db/schema.ts`) and applied
 by the shared `applyAppearance` mapping (`src/appearance/appearance.ts`,
 mapped with ts-pattern's `match().exhaustive()`), which flips
-`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match. Two callers
+`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match AND drives the
+native iOS interface style through React Native 0.87's
+`Appearance.setColorScheme` (`'light'`/`'dark'` to pin, `'auto'` for
+`'system'` to clear the override). The native call is what makes native
+chrome — the bottom tab bar, stack headers/large-title blur, system
+controls, the native date picker — follow the chosen scheme; without it
+those surfaces resolve against the OS style (or, formerly, a hard
+`UIUserInterfaceStyle = Dark` Info.plist pin that is now removed). The
+`'light'`/`'dark'` literal from the exhaustive match is already the
+concrete native scheme, so no `resolveColorScheme` mapping is needed
+inside `applyAppearance` itself. Two callers
 apply it: `useSyncAppearanceWithSettings`
 (`src/appearance/use-sync-appearance-with-settings.ts`), mounted from
 `AppRoot` for a LIVE change from the Settings screen, and
@@ -134,6 +144,18 @@ new component can land between reviews of this skill:
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
+- **IconButton** (`src/design-system/components/icon-button/`) — the
+  icon-only action button: a single tappable SF Symbol (`symbol` prop),
+  with `onPress`, `disabled`, `accessibilityLabel`, `testID`, and
+  theme-driven `tint`/`size`. An icon-only control has no visible text,
+  so it must be given an `accessibilityLabel`. `disabled` dims to the
+  shared `DISABLED_OPACITY` token (`src/design-system/disabled-opacity.ts`)
+  — the SAME dimming the `Button` uses; neither primitive hardcodes the
+  value, and a third disabled control must reuse the token too, never a
+  fresh inline `opacity`. Left unset, `tint` falls back to `SymbolIcon`'s
+  own default tone and `size` defaults to the Button icon size (18).
+  Reach for `IconButton` for any control that is JUST an icon (e.g. the
+  Statistics trend Reset); use `Button` when there is a text label.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and an optional flat entity-color tint
@@ -172,7 +194,13 @@ new component can land between reviews of this skill:
 - **OptionPills** (`src/design-system/components/option-pills/`) — a
   shared row of selectable pill options; read that folder directly
   for its current props rather than assuming it matches
-  `CurrencySwitch`'s shape.
+  `CurrencySwitch`'s shape. Its grid defaults to an always-2-column
+  wrap (`CurrencySwitch`'s 4 options, `LanguageSwitch`'s 2) via an
+  optional `columns` prop (default `2`); a consumer with a different,
+  known option count that must render as a single equal-width row
+  instead of wrapping — `AppearanceSwitch`'s 3 — passes
+  `columns={appearances.length}`. Do not add a second, parallel way to
+  force a row count; extend/override `columns` instead.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
@@ -210,10 +238,26 @@ where they can drift. As of this writing the pipeline is:
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
   of silently falling back. Takes an optional third `colorScheme`
-  argument (`'light' | 'dark'`, defaults to `'dark'`) that only
-  affects the gray fallback — it resolves the fallback gray from the
-  matching per-theme palette (`entityColorsByScheme` in
-  `palette.ts`), not a single hardcoded gray.
+  argument (`'light' | 'dark'`, defaults to `'dark'`) that affects both
+  the gray fallback AND a valid stored hex: a stored override is
+  persisted as an absolute `#RRGGBB` of whichever theme was active
+  when the user picked it (`ColorPicker` hands `onSelect` the active
+  theme's raw swatch hex), so an existing row can hold, forever, the
+  OTHER scheme's hex for a swatch — e.g. `white` picked on dark
+  (`#FFFFFF`) with no update after the user switches to light, where
+  `white` should render as `#000000` (see `palette.ts`). Rather than a
+  destructive migration rewriting stored rows, `resolveEntityColor`
+  reverse-maps a stored hex it recognizes as a swatch of the OTHER
+  scheme's palette to the CURRENT scheme's paired counterpart, by
+  swatch NAME (the two palettes are paired 1:1 by key — "only ever
+  GROW a set" per `palette.ts`'s own doc comment, so the pairing never
+  dangles). A hex that already belongs to the current scheme's own
+  palette, or that isn't a recognized swatch of EITHER scheme (a
+  genuine custom/legacy value), passes through unchanged — this is
+  what keeps a value that predates the palette safe. The gray fallback
+  resolves from the matching per-theme palette
+  (`entityColorsByScheme` in `palette.ts`), not a single hardcoded
+  gray.
 - `entityCardBackground` (`entity-tint.ts`) — a card's flat, OPAQUE
   `#RRGGBB` background (never an `rgba(...)` string; it does not go
   through `entityTintBackground`'s alpha compositing): the resolved

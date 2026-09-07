@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+import { DISABLED_OPACITY } from '../../disabled-opacity';
+
 // The shared regular Button's rendered height.
 const BUTTON_MIN_HEIGHT = 50;
 
@@ -44,8 +46,9 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // Applied on top of `button` when `disabled` — `Pressable`'s own
   // `disabled` prop makes it non-interactive, this makes that state visible.
+  // Dims to the shared token so every disabled control reads identically.
   disabled: {
-    opacity: 0.4,
+    opacity: DISABLED_OPACITY,
   },
   // A plain `Text as RNText`, not the design-system `Text` primitive: `Text`
   // intentionally excludes `color` from its style prop (see text.props.ts) so

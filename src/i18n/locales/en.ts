@@ -349,6 +349,7 @@ export const en = {
     filterCategories: 'Categories',
     netWorthOverTime: 'Net Worth Over Time',
     noSpendingToShow: 'No Spending To Show',
+    resetTrendCategories: 'Reset',
     spendingTrendByCategory: 'Spending Trend by Category',
     title: 'Statistics',
   },

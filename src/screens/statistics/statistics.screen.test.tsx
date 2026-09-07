@@ -42,8 +42,12 @@ jest.mock('../../repositories/holdings.repo', () => ({
 jest.mock('../../repositories/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+const mockSetTrendCategoryKeys = jest.fn();
 jest.mock('../../repositories/settings.repo', () => ({
-  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  settingsRepo: {
+    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    setTrendCategoryKeys: (...args: unknown[]) => mockSetTrendCategoryKeys(...args),
+  },
 }));
 jest.mock('../../repositories/transactions.repo', () => ({
   transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -78,7 +82,7 @@ type Holding = {
   closedAt?: number | null;
 };
 type Rate = { base: string; quote: string; rate: string };
-type Settings = { baseCurrency: string };
+type Settings = { baseCurrency: string; trendCategoryKeys?: string[] | null };
 type Transaction = {
   id: string;
   holdingId: string;
@@ -222,6 +226,48 @@ const seedSpending = (): void =>
     transactions: EXPENSES,
     history: HISTORY,
     categories: CATEGORIES,
+  });
+
+// Three categorized expenses (groceries 300 > transport 100 > transfers 50), so
+// the trend chart's top-3-by-spend preset selects ALL three categories and the
+// filter reads "Categories · 3". None is an internal transfer (no matching
+// credit leg, no mcc/description/exchange marker), so all three survive as
+// spending.
+const THREE_EXPENSES: Transaction[] = [
+  {
+    id: 'x1',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -300_00,
+    category: 'groceries',
+  },
+  {
+    id: 'x2',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -100_00,
+    category: 'transport',
+  },
+  {
+    id: 'x3',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -50_00,
+    category: 'transfers',
+  },
+];
+
+// The three-category spending dataset, with an optional SAVED trend selection
+// seeded onto the single settings row (null = no saved selection).
+const seedTrend = (trendCategoryKeys: string[] | null): void =>
+  setLiveData({
+    accounts: [CASH, BANK],
+    holdings: [UAH_HOLDING, USD_HOLDING],
+    rates: [USD_UAH_RATE],
+    transactions: THREE_EXPENSES,
+    history: HISTORY,
+    categories: CATEGORIES,
+    settings: [{ baseCurrency: 'UAH', trendCategoryKeys }],
   });
 
 // The two legs of a card-to-card self-transfer: a categorized debit on one UAH
@@ -932,6 +978,112 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
     expect(getByTestId('category-trend-line-line-transport')).toBeTruthy();
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+  });
+
+  it('seeds the trend selection from the saved keys when present, not the top-3 preset', async () => {
+    seedTrend(['transport']);
+
+    const { getByTestId } = await renderScreen();
+
+    // The saved single-category selection overrides the 3-key preset, so the
+    // filter reads its count of 1 rather than the preset's 3.
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 1')).toBeTruthy();
+  });
+
+  it('seeds the trend selection from the top-3 preset when no saved selection exists', async () => {
+    seedTrend(null);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 3')).toBeTruthy();
+  });
+
+  it('applies the SAVED selection even when settings resolve AFTER the category slices', async () => {
+    // Cold-start race: transactions + categories resolve first, while the
+    // independent settings live query has NOT yet resolved (an empty [] row set).
+    // The seed must NOT fire yet — if it seeded the live top-3 preset here, the
+    // one-shot ref guard would permanently discard the user's persisted
+    // selection for this session.
+    const seedRows = {
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: THREE_EXPENSES,
+      history: HISTORY,
+      categories: CATEGORIES,
+    };
+    setLiveData({ ...seedRows, settings: [] });
+
+    const view = await renderScreen();
+
+    // Settings now resolves with the user's saved single-category selection.
+    setLiveData({
+      ...seedRows,
+      settings: [{ baseCurrency: 'UAH', trendCategoryKeys: ['transport'] }],
+    });
+    await act(async () => {
+      view.rerender(<StatisticsScreen />);
+    });
+
+    // The saved selection (1) wins over the top-3 preset (3) — proving the seed
+    // waited for settings rather than latching the preset on the first render.
+    expect(
+      within(view.getByTestId('statistics-trend-filter')).getByText('Categories · 1'),
+    ).toBeTruthy();
+  });
+
+  it('disables Save at the preset, enables it after a change, then persists the current keys', async () => {
+    seedTrend(null);
+
+    const { getByTestId } = await renderScreen();
+
+    // At the preset (saved is null, current == preset) Save is a no-op.
+    expect(getByTestId('statistics-trend-save')).toBeDisabled();
+
+    // Deselecting one category moves current away from the preset.
+    await pressFilter(getByTestId, 'statistics-trend-filter', 'groceries');
+
+    const save = getByTestId('statistics-trend-save');
+    expect(save).toBeEnabled();
+    await act(async () => {
+      fireEvent.press(save);
+    });
+
+    // Save persists the current selection (groceries removed, in insertion order).
+    expect(mockSetTrendCategoryKeys).toHaveBeenCalledWith(['transport', 'transfers']);
+  });
+
+  it('disables Save when the current selection equals the already-saved selection', async () => {
+    seedTrend(['groceries', 'transport']);
+
+    const { getByTestId } = await renderScreen();
+
+    // Mounted showing exactly the saved set (which itself differs from the 3-key
+    // preset): a re-save would be a no-op, so Save is disabled while Reset — which
+    // only tracks difference from the preset — is enabled.
+    expect(getByTestId('statistics-trend-save')).toBeDisabled();
+    expect(getByTestId('statistics-trend-reset')).toBeEnabled();
+  });
+
+  it('disables Reset at the preset, enables it after a change, and reverts + clears the saved selection on press', async () => {
+    seedTrend(null);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('statistics-trend-reset')).toBeDisabled();
+
+    await pressFilter(getByTestId, 'statistics-trend-filter', 'groceries');
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 2')).toBeTruthy();
+
+    const reset = getByTestId('statistics-trend-reset');
+    expect(reset).toBeEnabled();
+    await act(async () => {
+      fireEvent.press(reset);
+    });
+
+    // Reset restores the full top-3 preset and clears the saved selection to null.
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 3')).toBeTruthy();
+    expect(mockSetTrendCategoryKeys).toHaveBeenCalledWith(null);
   });
 
   it('shows the spending-trend empty state when there is no spending', async () => {

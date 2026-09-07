@@ -52,9 +52,12 @@ const RootNavigator: FC = () => {
       // spread (TabView.tsx:477), so the native view received `undefined` and
       // `configureWithDefaultBackground()` re-resolved the bar's glass against
       // the ambient userInterfaceStyle on every tab's `onAppear` — the bar
-      // flipped light/dark between pages (bug B1). The Info.plist
-      // `UIUserInterfaceStyle = Dark` key removes the ambient variance too;
-      // both fixes are wanted, this one pins the concrete color.
+      // flipped light/dark between pages (bug B1). The Info.plist no longer
+      // pins `UIUserInterfaceStyle` at all; the ambient native style is now
+      // driven at runtime from the chosen appearance via
+      // `RNAppearance.setColorScheme` in `applyAppearance` (src/appearance/
+      // appearance.ts), so the bar's glass re-resolves against the scheme the
+      // user picked. This concrete backgroundColor still pins the exact token.
       tabBarStyle={{ backgroundColor: theme.colors.background }}
       tabBarActiveTintColor={theme.colors.accent}
       tabBarInactiveTintColor={theme.colors.textSecondary}

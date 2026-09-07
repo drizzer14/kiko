@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 
-import { entityColorsByScheme } from './palette';
+import { entityColorsByScheme, entityColorsDark, entityColorsLight } from './palette';
 
 // A subtle color-tint background: the entity's own color (one of
 // `theme.colors.entityColors`, see theme.ts) blended at a low, consistent
@@ -64,6 +64,55 @@ export const entityTintBackground = (colorHex: string): string => {
 const isValidHex = (value: string | null | undefined): value is string =>
   typeof value === 'string' && HEX_PATTERN.test(value);
 
+// A stored entity-color override is persisted as an absolute `#RRGGBB` hex of
+// whichever theme was active at pick time (`ColorPicker` hands `onSelect` the
+// active theme's raw swatch hex — see color-picker.component.tsx). Un-migrated
+// existing rows in real user databases hold exactly that: a dark-palette hex
+// picked on the dark theme, or a light-palette hex picked on the light theme.
+// Left verbatim, a stored `white` (`#FFFFFF` on dark) stays `#FFFFFF` forever,
+// even after the user switches to the light theme, where `white` should render
+// as `#000000` (see palette.ts) — invisible against the light background.
+//
+// This reverse-maps a stored hex, by swatch NAME, to its CURRENT-scheme
+// counterpart: built once from the two paired per-scheme palettes
+// (`entityColorsDark`/`entityColorsLight` in palette.ts — paired 1:1 by key,
+// "Only ever GROW a set" per that file's own doc comment, so this pairing
+// never dangles). A hex that is not a recognized swatch in EITHER scheme is a
+// custom/legacy value with no known counterpart, and is returned unchanged —
+// this must never break a value that predates the palette or was never one of
+// its swatches.
+const swatchNames = Object.keys(entityColorsDark) as (keyof typeof entityColorsDark)[];
+
+const buildReverseMap = (
+  from: typeof entityColorsDark | typeof entityColorsLight,
+  to: typeof entityColorsDark | typeof entityColorsLight,
+): Map<string, string> => new Map(swatchNames.map((name) => [from[name].toLowerCase(), to[name]]));
+
+// Keyed by the hex the stored value was picked FROM (lowercased), each maps to
+// its paired counterpart in the OTHER scheme.
+const REVERSE_SWATCH_MAP: Record<'light' | 'dark', Map<string, string>> = {
+  // A dark-palette hex, requested against the light scheme -> its light pair.
+  light: buildReverseMap(entityColorsDark, entityColorsLight),
+  // A light-palette hex, requested against the dark scheme -> its dark pair.
+  dark: buildReverseMap(entityColorsLight, entityColorsDark),
+};
+
+// Resolves a stored hex to the CURRENT scheme's rendering of that swatch: if
+// the hex already belongs to the current scheme's own palette, it is already
+// correct and returned as-is; if it belongs to the OTHER scheme's palette
+// (the frozen-at-pick-time case above), it is reverse-mapped by name to this
+// scheme's paired counterpart; otherwise (a custom/legacy hex) it passes
+// through unchanged.
+const resolveStoredHexForScheme = (storedColor: string, colorScheme: 'light' | 'dark'): string => {
+  const currentSchemeValues = new Set<string>(Object.values(entityColorsByScheme[colorScheme]));
+
+  if (currentSchemeValues.has(storedColor)) {
+    return storedColor;
+  }
+
+  return REVERSE_SWATCH_MAP[colorScheme].get(storedColor.toLowerCase()) ?? storedColor;
+};
+
 // The guaranteed-safe swatch `resolveEntityColor` falls back to when BOTH the
 // stored color and the kind/type default are unusable — a neutral gray that
 // always exists on every per-theme palette, so a card's background can never
@@ -107,7 +156,7 @@ export const resolveEntityColor = (
   colorScheme: 'light' | 'dark' = 'dark',
 ): string => {
   if (isValidHex(storedColor)) {
-    return storedColor;
+    return resolveStoredHexForScheme(storedColor, colorScheme);
   }
 
   if (isValidHex(typeDefault)) {

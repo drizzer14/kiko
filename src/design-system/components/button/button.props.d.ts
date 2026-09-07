@@ -35,6 +35,9 @@ export type ButtonProps = {
   // An explicit accessibility label, used where several buttons share the same
   // visible text and need disambiguating (e.g. "Remove contribution 2").
   accessibilityLabel?: string;
+  // An optional test identifier, forwarded onto the underlying pressable so a
+  // test (or an analytics selector) can target this specific button.
+  testID?: string;
   // An optional label + icon color that overrides the variant's default white —
   // e.g. a `ghost` "Cancel" that must read in the negative (red) tone. Kept a
   // raw color string so the call site passes a theme token (e.g.

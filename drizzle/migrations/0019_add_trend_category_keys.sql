@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `trend_category_keys` text;

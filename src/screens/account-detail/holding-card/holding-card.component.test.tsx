@@ -6,7 +6,7 @@ import type { HoldingRow } from '../../../db/schema';
 import * as colorSchemeModule from '../../../design-system/color-scheme';
 import '../../../design-system/unistyles';
 import { entityCardBackground } from '../../../design-system/entity-tint';
-import { darkTheme } from '../../../design-system/theme';
+import { darkTheme, lightTheme } from '../../../design-system/theme';
 
 import HoldingCard from './holding-card.component';
 
@@ -125,8 +125,11 @@ describe('HoldingCard', () => {
       );
 
       const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
+      // The stored color is the DARK violet swatch; on the light scheme it
+      // reverse-maps to its LIGHT counterpart (entity-color scheme adaptation)
+      // BEFORE the card tint lightens it — so the base hue is the light violet.
       expect(flat.backgroundColor).toBe(
-        entityCardBackground(darkTheme.colors.entityColors.violet, 'light'),
+        entityCardBackground(lightTheme.colors.entityColors.violet, 'light'),
       );
     } finally {
       jest.restoreAllMocks();

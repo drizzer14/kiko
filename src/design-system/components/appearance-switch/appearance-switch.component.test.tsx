@@ -28,4 +28,18 @@ describe('AppearanceSwitch', () => {
     expect(getByText('Light').parent?.props.accessibilityState.selected).toBe(true);
     expect(getByText('System').parent?.props.accessibilityState.selected).toBe(false);
   });
+
+  // OptionPills defaults to an always-2-column grid, which would leave this
+  // control's 3rd pill alone on its own row. AppearanceSwitch opts into a
+  // single equal-width row via `columns={appearances.length}` (3) — assert
+  // each pill's cell actually gets a 33.33%-ish width, not the 50% default.
+  it('lays out all three pills in a single row (equal-width cells, not the 2-column default)', async () => {
+    const { getByText } = await render(<AppearanceSwitch selected="system" onSelect={jest.fn()} />);
+
+    // The cell View is the pill Pressable's grandparent (Pressable -> cell View).
+    const cellStyle = getByText('System').parent?.parent?.props.style;
+    const flattened = Array.isArray(cellStyle) ? Object.assign({}, ...cellStyle) : cellStyle;
+
+    expect(flattened.width).toBe(`${100 / 3}%`);
+  });
 });

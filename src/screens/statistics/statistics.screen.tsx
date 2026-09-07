@@ -13,8 +13,10 @@ import { useLiveQuery } from '../../db/use-live-query';
 import { resolveColorScheme } from '../../design-system/color-scheme';
 import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import CategoryTrendLine from '../../design-system/components/category-trend-line';
 import GlassSurface from '../../design-system/components/glass-surface';
+import IconButton from '../../design-system/components/icon-button';
 import NetWorthLine from '../../design-system/components/net-worth-line';
 import PieChart from '../../design-system/components/pie-chart';
 import Screen from '../../design-system/components/screen';
@@ -94,6 +96,28 @@ const toggleFilter =
       return next;
     });
   };
+
+// Order-independent set equality: same size and every member of `a` present in
+// `b`. Drives the Save/Reset enable rules, which compare the current trend
+// selection against the preset and the saved set regardless of insertion order.
+const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+  a.size === b.size && [...a].every((key) => b.has(key));
+
+// Prune a saved trend selection to the category keys that still EXIST, dropping
+// any whose category was later deleted (plan Decision D5). Returns the surviving
+// keys, or null when nothing survives — the caller then falls back to the live
+// top-3-by-expense preset. Never writes to the DB.
+const pruneSavedTrendKeys = (
+  saved: string[] | null,
+  existingKeys: ReadonlySet<string>,
+): string[] | null => {
+  if (saved === null) {
+    return null;
+  }
+  const pruned = saved.filter((key) => existingKeys.has(key));
+
+  return pruned.length > 0 ? pruned : null;
+};
 
 // Group the whole ledger by holding id so the net-worth series can reconstruct
 // each holding's running balance over time. Keyed by holding, not account,
@@ -432,9 +456,9 @@ const StatisticsScreen: FC = () => {
   );
 
   // The spending-trend builder needs everything the breakdown does PLUS each
-  // row's `time`, so it can bucket the expense into its calendar month. Built
-  // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other.
+  // row's `time`, so it can bucket the expense into its UTC-day within the last
+  // 30 days. Built separately from `breakdownTransactions` (which carries no
+  // time) so neither memo has to change shape for the other.
   const trendTransactions = useMemo<TrendTransaction[]>(
     () =>
       transactionsWithCurrency.map((transaction) => ({
@@ -531,20 +555,6 @@ const StatisticsScreen: FC = () => {
       excludedTransactionIds,
     ],
   );
-
-  // Seed the spending-trend filter's default selection to the TOP 3 categories
-  // by total spend, exactly once — when `allCategorySlices` first becomes
-  // non-empty (it is already sorted by amount desc, so `slice(0, 3)` is the top
-  // three). The ref guards against re-seeding on later recomputes, so a user's
-  // own later selection is never clobbered; mirrors `backfillStartedRef`.
-  useEffect(() => {
-    if (trendSeededRef.current || allCategorySlices.length === 0) {
-      return;
-    }
-
-    trendSeededRef.current = true;
-    setSelectedTrendCategories(new Set(allCategorySlices.slice(0, 3).map((slice) => slice.key)));
-  }, [allCategorySlices]);
 
   // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
   // the resolved display title: the title is language-dependent (a default
@@ -652,6 +662,7 @@ const StatisticsScreen: FC = () => {
         baseCurrency,
         defaultCategoryKey,
         colorScheme,
+        now,
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
       }),
@@ -662,10 +673,70 @@ const StatisticsScreen: FC = () => {
       baseCurrency,
       defaultCategoryKey,
       colorScheme,
+      now,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
     ],
   );
+
+  // The live top-3-by-expense PRESET (`allCategorySlices` is sorted by amount
+  // desc), the baseline the Save/Reset controls compare the current selection
+  // against.
+  const presetTrendKeys = useMemo(
+    () => new Set(allCategorySlices.slice(0, 3).map((slice) => slice.key)),
+    [allCategorySlices],
+  );
+
+  // The SAVED selection, pruned to categories that still exist (D5): a saved key
+  // whose category was deleted is dropped, and a selection that prunes to nothing
+  // reads as null (no saved selection → fall back to the preset).
+  const savedTrendKeys = useMemo(() => {
+    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
+    const saved = pruneSavedTrendKeys(settingsRows.at(0)?.trendCategoryKeys ?? null, existingKeys);
+
+    return saved ? new Set(saved) : null;
+  }, [settingsRows, categories]);
+
+  // Seed the spending-trend filter's default selection exactly once — the first
+  // render on which the category slices are non-empty AND the settings row has
+  // loaded. Waiting on settings is what fixes the cold-start race: when
+  // transactions/categories resolve BEFORE the independent settings live query,
+  // `settingsRows` is momentarily `[]`; seeding then would latch the live top-3
+  // preset and the ref guard would block the user's persisted selection from
+  // ever applying this session. `savedTrendKeys` already prunes a deleted
+  // category (D5) and reads as null when nothing is saved, in which case the
+  // live top-3 `presetTrendKeys` is used. Never writes to the DB; the ref guards
+  // against re-seeding on later recomputes so a user's own later selection is
+  // never clobbered (mirrors `backfillStartedRef`).
+  useEffect(() => {
+    if (trendSeededRef.current || allCategorySlices.length === 0 || settingsRows.length === 0) {
+      return;
+    }
+
+    trendSeededRef.current = true;
+    setSelectedTrendCategories(new Set(savedTrendKeys ?? presetTrendKeys));
+  }, [allCategorySlices, settingsRows, savedTrendKeys, presetTrendKeys]);
+
+  // Save is enabled ONLY when the current selection differs from the preset AND
+  // from the last-saved selection (disabled at the preset, and disabled when
+  // nothing changed since the last Save — see plan Decision D1).
+  const canSaveTrend =
+    !sameKeys(selectedTrendCategories, presetTrendKeys) &&
+    !(savedTrendKeys !== null && sameKeys(selectedTrendCategories, savedTrendKeys));
+
+  // Reset is enabled whenever the current selection differs from the preset.
+  const canResetTrend = !sameKeys(selectedTrendCategories, presetTrendKeys);
+
+  // Save persists the current selection as the saved set. Reset restores the
+  // preset AND clears the saved set to null (so a later mount re-seeds off the
+  // live preset again).
+  const saveTrendSelection = (): void => {
+    settingsRepo.setTrendCategoryKeys([...selectedTrendCategories]);
+  };
+  const resetTrendSelection = (): void => {
+    setSelectedTrendCategories(new Set(presetTrendKeys));
+    settingsRepo.setTrendCategoryKeys(null);
+  };
 
   // The donut's own center figure: every VISIBLE slice's spend summed back
   // together, in the base currency — the total the ring's wedges add up to
@@ -783,14 +854,34 @@ const StatisticsScreen: FC = () => {
               {t('statistics.spendingTrendByCategory')}
             </Text>
 
-            <Box direction="row" gap={3} style={styles.filterBar}>
-              <FilterMenu
-                label={t('statistics.filterCategories')}
-                testID="statistics-trend-filter"
-                options={categoryOptions}
-                selected={selectedTrendCategories}
-                onToggle={toggleFilter(setSelectedTrendCategories)}
-              />
+            <Box direction="row" style={styles.trendFilterBar}>
+              <Box direction="row" style={styles.trendFilterLeft}>
+                <FilterMenu
+                  label={t('statistics.filterCategories')}
+                  testID="statistics-trend-filter"
+                  options={categoryOptions}
+                  selected={selectedTrendCategories}
+                  onToggle={toggleFilter(setSelectedTrendCategories)}
+                />
+
+                <IconButton
+                  testID="statistics-trend-reset"
+                  symbol="arrow.counterclockwise"
+                  accessibilityLabel={t('statistics.resetTrendCategories')}
+                  disabled={!canResetTrend}
+                  onPress={resetTrendSelection}
+                />
+              </Box>
+
+              <Button
+                testID="statistics-trend-save"
+                size="compact"
+                fullWidth={false}
+                disabled={!canSaveTrend}
+                onPress={saveTrendSelection}
+              >
+                {t('common.save')}
+              </Button>
             </Box>
 
             <CategoryTrendLine

@@ -214,8 +214,50 @@ describe('resolveEntityColor scheme-aware fallback', () => {
     expect(resolveEntityColor(null, undefined, 'light')).toBe(entityColorsLight.gray);
   });
 
-  it('still returns a valid stored/typeDefault hex regardless of scheme', () => {
-    expect(resolveEntityColor('#123456', undefined, 'light')).toBe('#123456');
+  it('still returns a valid typeDefault hex regardless of scheme', () => {
     expect(resolveEntityColor(null, '#abcdef', 'light')).toBe('#abcdef');
+  });
+});
+
+// A stored override is persisted as an absolute hex of whichever theme was
+// active at pick time (color-picker.component.tsx hands `onSelect` the raw
+// active-theme swatch hex). An existing user's stored row therefore holds
+// exactly one scheme's hex, unchanged, forever — resolveEntityColor is the
+// ONLY place that must reverse-map it to the CURRENT scheme's paired
+// counterpart at render time, with no destructive migration of the stored
+// row itself.
+describe('resolveEntityColor stored-hex scheme portability', () => {
+  it('resolves a PRE-EXISTING stored dark-palette hex to its light counterpart under scheme=light', () => {
+    // `white` picked on dark (#FFFFFF) must render as light `white` (#000000)
+    // on the light scheme — the exact bug this fix addresses.
+    expect(resolveEntityColor(palette.white, undefined, 'light')).toBe(entityColorsLight.white);
+    expect(resolveEntityColor(palette.blue, undefined, 'light')).toBe(entityColorsLight.blue);
+  });
+
+  it('resolves a PRE-EXISTING stored light-palette hex to its dark counterpart under scheme=dark', () => {
+    expect(resolveEntityColor(entityColorsLight.white, undefined, 'dark')).toBe(palette.white);
+    expect(resolveEntityColor(entityColorsLight.blue, undefined, 'dark')).toBe(palette.blue);
+  });
+
+  it('every named swatch round-trips: dark hex -> light -> back to the original dark hex', () => {
+    for (const name of Object.keys(palette) as (keyof typeof palette)[]) {
+      const toLight = resolveEntityColor(palette[name], undefined, 'light');
+      expect(toLight).toBe(entityColorsLight[name]);
+
+      const backToDark = resolveEntityColor(toLight, undefined, 'dark');
+      expect(backToDark).toBe(palette[name]);
+    }
+  });
+
+  it('leaves a stored hex unchanged when it already matches the current scheme', () => {
+    expect(resolveEntityColor(palette.white, undefined, 'dark')).toBe(palette.white);
+    expect(resolveEntityColor(entityColorsLight.white, undefined, 'light')).toBe(
+      entityColorsLight.white,
+    );
+  });
+
+  it('passes an unknown/custom hex through unchanged for either scheme, never breaking a legacy value', () => {
+    expect(resolveEntityColor('#123456', undefined, 'light')).toBe('#123456');
+    expect(resolveEntityColor('#123456', undefined, 'dark')).toBe('#123456');
   });
 });

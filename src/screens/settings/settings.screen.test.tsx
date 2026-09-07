@@ -229,6 +229,6 @@ describe('SettingsScreen — localization', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('Основна валюта')).toBeTruthy();
-    expect(getByText('Система')).toBeTruthy();
+    expect(getByText('Системні')).toBeTruthy();
   });
 });

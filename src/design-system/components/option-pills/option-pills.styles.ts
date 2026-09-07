@@ -9,10 +9,12 @@ export const styles = StyleSheet.create((theme) => ({
     flexWrap: 'wrap',
     margin: -theme.spacing(1),
   },
-  // Each pill's 50%-wide slot — always 2 columns, however many options exist,
-  // since two cells fill a row before the third wraps.
+  // Each pill's slot padding. Width is NOT set here — the component computes
+  // it from the `columns` prop (`${100 / columns}%`, default 2, matching this
+  // grid's original always-2-column behavior) and merges it in per-instance,
+  // so a consumer with a different, known option count (AppearanceSwitch's 3)
+  // can force a single equal-width row instead of the 2-column wrap.
   cell: {
-    width: '50%',
     padding: theme.spacing(1),
   },
   // A compact segmented pill. Only the shape lives here; the selected/unselected

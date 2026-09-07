@@ -166,6 +166,12 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
+  // The user's SAVED spending-trend category selection: a JSON array of stable
+  // `categories.key` slugs that overrides the default "top 3 by expense" seed on
+  // the Statistics trend chart. NULL means "no saved selection" — the chart falls
+  // back to the live top-3-by-expense preset. Written by settingsRepo
+  // .setTrendCategoryKeys (Save persists the current set; Reset clears to null).
+  trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

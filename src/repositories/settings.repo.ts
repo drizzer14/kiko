@@ -38,6 +38,15 @@ export const settingsRepo = {
     ),
   setLanguage: (language: AppLanguage) =>
     write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
+  /**
+   * Persist (or clear) the user's saved spending-trend category selection: a
+   * JSON array of stable `categories.key` slugs, or `null` to fall back to the
+   * live top-3-by-expense preset. Written by Save; cleared to `null` by Reset.
+   */
+  setTrendCategoryKeys: (keys: string[] | null) =>
+    write((tx) =>
+      tx.update(settings).set({ trendCategoryKeys: keys }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   setAppearance: (appearance: Appearance) =>
     write((tx) => tx.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID))),
 } satisfies Repository;

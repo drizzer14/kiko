@@ -8,19 +8,19 @@ import { type BreakdownTransaction, resolveCategoryColor } from './category-brea
 
 /**
  * One point on a category's spending line: `amount` is that category's total
- * EXPENSE for the point's month bucket, in the base currency's MAJOR units (a
+ * EXPENSE for the point's UTC-day bucket, in the base currency's MAJOR units (a
  * positive magnitude, per-period — NOT a running/cumulative total). `t` is the
- * bucket's UTC-midnight-first-of-month instant.
+ * bucket's UTC-midnight-of-day instant.
  */
 export type CategoryTrendPoint = { t: number; amount: number };
 
 /**
- * One category's spending line across the shared month buckets. `key` is the
+ * One category's spending line across the shared day buckets. `key` is the
  * stable category slug; `title` is its resolved display title; `color` is the
  * category's stored color when set, else its stable categorical-palette hue (see
  * resolveCategoryColor). `points` is ordered by `t` ascending and carries a
- * point at EVERY month bucket in the series' span (0 where that category had no
- * spend that month), so every line shares one set of X positions.
+ * point at EVERY day in the last-30-days window (0 where that category had no
+ * spend that day), so every line shares one set of exactly 30 X positions.
  */
 export type CategoryTrendSeries = {
   key: string;
@@ -32,11 +32,16 @@ export type CategoryTrendSeries = {
 /**
  * A transaction as the spending-trend needs it: the donut's `BreakdownTransaction`
  * (its stored `category`, its signed `amountMinorUnits`, and its holding's
- * currency) plus the transaction's `time` (unix ms), which decides its month
+ * currency) plus the transaction's `time` (unix ms), which decides its UTC-day
  * bucket. The amount's currency is the parent HOLDING's currency, so the caller
  * joins it in before building — exactly as `buildCategoryBreakdown` requires.
  */
 export type TrendTransaction = BreakdownTransaction & { time: number };
+
+// The trend spans a fixed relative window: the last 30 days ending on `now`,
+// inclusive of both ends. A shorter or longer horizon is a single-constant edit.
+const TREND_WINDOW_DAYS = 30;
+const MS_PER_DAY = 86_400_000;
 
 // The normalized grouping key for a transaction's category: lowercased to match
 // `resolveCategoryDisplay`'s own lookup convention, with a null/empty category
@@ -46,53 +51,35 @@ const groupKey = (category: string | null, defaultKey: string): string => {
   return category?.toLowerCase() || defaultKey;
 };
 
-// The month bucket instant for a timestamp: UTC-midnight of the first day of the
-// calendar month it falls in. Matches the `toUtcMidnight` convention (UTC, never
-// the local day) so buckets do not drift by a day in a positive-UTC-offset
-// locale.
-const monthBucket = (time: number): number => {
+// The day bucket instant for a timestamp: UTC-midnight of the calendar day it
+// falls in. Matches the `toUtcMidnight` convention (UTC, never the local day) so
+// buckets do not drift by a day in a positive-UTC-offset locale.
+const dayBucket = (time: number): number => {
   const date = new Date(time);
 
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 };
 
-// The full ordered set of month buckets from `earliest` to `latest` inclusive,
-// one per calendar month — so a series can carry a point at every month even
-// where a category had no spend, and every line shares the same X positions.
-const monthsBetween = (earliest: number, latest: number): number[] => {
-  const months: number[] = [];
-  const end = new Date(latest);
-  const endYear = end.getUTCFullYear();
-  const endMonth = end.getUTCMonth();
-  let year = new Date(earliest).getUTCFullYear();
-  let month = new Date(earliest).getUTCMonth();
+// The fixed last-30-days window as an ordered set of UTC-day instants, ending on
+// the day `now` falls in and reaching back TREND_WINDOW_DAYS - 1 days — so a
+// series carries a point at every day even where a category had no spend, and
+// every line shares the same 30 X positions regardless of the data.
+const daysWindow = (now: number): number[] => {
+  const endDay = dayBucket(now);
+  const startDay = endDay - (TREND_WINDOW_DAYS - 1) * MS_PER_DAY;
 
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    months.push(Date.UTC(year, month, 1));
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
-  }
-
-  return months;
+  return Array.from({ length: TREND_WINDOW_DAYS }, (_, index) => startDay + index * MS_PER_DAY);
 };
 
 // Per category key: the running spend total (base minor units, for the series
 // sort), a representative raw category value (so the display resolves off the
-// same key the Home screen stored), and the per-month spend map (base minor
+// same key the Home screen stored), and the per-day spend map (base minor
 // units) the points are read from.
 type TrendAccumulator = {
   representative: string | null;
   total: number;
-  byMonth: Map<number, number>;
+  byDay: Map<number, number>;
 };
-
-// The accumulated per-category, per-month spend plus the min/max month seen, so
-// the caller can build the shared bucket set. Extracted from the builder to keep
-// each function under the cognitive-complexity cap.
-type TrendTotals = { totals: Map<string, TrendAccumulator>; minMonth: number; maxMonth: number };
 
 // Fold every EXPENSE (negative amount) into its category's per-month spend,
 // applying the SAME exclusion rules `buildCategoryBreakdown` applies: income and
@@ -107,12 +94,20 @@ const accumulateSpend = (input: {
   defaultCategoryKey: string;
   excluded: ReadonlySet<string>;
   excludedIds: ReadonlySet<string>;
-}): TrendTotals => {
-  const { transactions, rateTable, baseCurrency, defaultCategoryKey, excluded, excludedIds } =
-    input;
+  startDay: number;
+  endDay: number;
+}): Map<string, TrendAccumulator> => {
+  const {
+    transactions,
+    rateTable,
+    baseCurrency,
+    defaultCategoryKey,
+    excluded,
+    excludedIds,
+    startDay,
+    endDay,
+  } = input;
   const totals = new Map<string, TrendAccumulator>();
-  let minMonth = Number.POSITIVE_INFINITY;
-  let maxMonth = Number.NEGATIVE_INFINITY;
 
   for (const transaction of transactions) {
     if (transaction.amountMinorUnits >= 0) {
@@ -130,42 +125,48 @@ const accumulateSpend = (input: {
       continue;
     }
 
+    // Drop any expense whose day falls outside the fixed last-30-days window;
+    // it must not affect a series' points NOR its sort total.
+    const day = dayBucket(transaction.time);
+    if (day < startDay || day > endDay) {
+      continue;
+    }
+
     const spend = convert(
       Money.of(transaction.currency, -transaction.amountMinorUnits),
       baseCurrency,
       rateTable,
     ).minorUnits;
-    const month = monthBucket(transaction.time);
-    minMonth = Math.min(minMonth, month);
-    maxMonth = Math.max(maxMonth, month);
 
     const entry = totals.get(key) ?? {
       representative: transaction.category,
       total: 0,
-      byMonth: new Map<number, number>(),
+      byDay: new Map<number, number>(),
     };
     entry.total += spend;
-    entry.byMonth.set(month, (entry.byMonth.get(month) ?? 0) + spend);
+    entry.byDay.set(day, (entry.byDay.get(day) ?? 0) + spend);
     totals.set(key, entry);
   }
 
-  return { totals, minMonth, maxMonth };
+  return totals;
 };
 
 /**
  * Build one spending line per category for the "Spending Trend by Category"
  * chart. Only EXPENSES count (a negative `amountMinorUnits`; income and zero
  * adjustments are ignored), each converted to the base currency at the current
- * `rateTable`. Every kept expense folds into the month bucket its `time` falls
- * in (UTC-midnight of the first of that month), and each category's point for a
- * month is that month's summed spend magnitude in base MAJOR units — a
- * per-period figure, never cumulative. The full ordered set of month buckets
- * spans the earliest to latest kept expense, so EVERY returned series has a
- * point at EVERY month (0 where that category had no spend that month) and all
- * lines share the same X positions. Each series' points are sorted by `t`
- * ascending; the series array is sorted by total spend descending. Exclusion,
- * default-fold, and conversion rules match `buildCategoryBreakdown` exactly.
- * Empty input (or every row excluded) returns `[]`.
+ * `rateTable`. Every kept expense folds into the UTC-day bucket its `time` falls
+ * in, and each category's point for a day is that day's summed spend magnitude
+ * in base MAJOR units — a per-period figure, never cumulative. The window is
+ * FIXED: the last 30 days ending on `now` (a unix-ms reference "today"), so
+ * EVERY returned series has exactly 30 points, one per day (0 where that
+ * category had no spend that day) and all lines share the same X positions. An
+ * expense whose day falls OUTSIDE that window (older than 30 days, or in the
+ * future) is dropped entirely — it affects neither a series' points nor its
+ * sort total. Each series' points are sorted by `t` ascending; the series array
+ * is sorted by total spend descending. Exclusion, default-fold, and conversion
+ * rules match `buildCategoryBreakdown` exactly. Empty input (or every row
+ * excluded / out of window) returns `[]`.
  */
 export const buildCategoryTrend = (input: {
   transactions: TrendTransaction[];
@@ -174,6 +175,7 @@ export const buildCategoryTrend = (input: {
   baseCurrency: Currency;
   defaultCategoryKey: string;
   colorScheme: 'light' | 'dark';
+  now: number;
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
 }): CategoryTrendSeries[] => {
@@ -184,24 +186,29 @@ export const buildCategoryTrend = (input: {
     baseCurrency,
     defaultCategoryKey,
     colorScheme,
+    now,
   } = input;
   const excluded = input.excludedCategories ?? new Set<string>();
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
 
-  const { totals, minMonth, maxMonth } = accumulateSpend({
+  const days = daysWindow(now);
+  const startDay = days[0];
+  const endDay = days[days.length - 1];
+
+  const totals = accumulateSpend({
     transactions,
     rateTable,
     baseCurrency,
     defaultCategoryKey,
     excluded,
     excludedIds,
+    startDay,
+    endDay,
   });
 
   if (totals.size === 0) {
     return [];
   }
-
-  const months = monthsBetween(minMonth, maxMonth);
 
   return Array.from(totals.entries())
     .map(([key, entry]) => {
@@ -210,9 +217,9 @@ export const buildCategoryTrend = (input: {
         categoryDisplay,
         defaultCategoryKey,
       );
-      const points = months.map((t) => ({
+      const points = days.map((t) => ({
         t,
-        amount: toMajor(entry.byMonth.get(t) ?? 0, baseCurrency),
+        amount: toMajor(entry.byDay.get(t) ?? 0, baseCurrency),
       }));
 
       return {

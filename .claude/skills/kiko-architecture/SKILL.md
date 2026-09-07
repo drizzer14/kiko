@@ -270,7 +270,11 @@ steps are the kind of thing that changes as the rollout progresses:
   persisted language and appearance here — before the gate's own first
   paint — is what makes the lock screen (and the "Preparing database…"
   text/background itself) render in the user's chosen language and
-  pinned theme on a cold launch, not the device language/OS appearance;
+  pinned theme on a cold launch, not the device language/OS appearance.
+  `applyAppearance` also drives the native iOS interface style via
+  `Appearance.setColorScheme` (RN 0.87), so native chrome (tab bar, stack
+  headers, system date picker) follows the same scheme — the app no
+  longer hard-pins `UIUserInterfaceStyle` in Info.plist;
   `useSyncLanguageWithSettings`/`useSyncAppearanceWithSettings` (mounted
   from `AppRoot`, after both gates) only cover a LIVE switch from the
   Settings screen.

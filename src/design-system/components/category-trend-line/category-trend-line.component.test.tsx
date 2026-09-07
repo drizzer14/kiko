@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 
 import type { CategoryTrendSeries } from '../../../statistics/category-trend';
 import '../../unistyles';
@@ -117,6 +117,27 @@ describe('CategoryTrendLine', () => {
     }
   });
 
+  it('labels the X axis at day granularity, so the tick numbers vary across the window', async () => {
+    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+
+    // Each X tick reads month-abbrev + day-of-month (e.g. "Jan 1"), so the
+    // trailing number is the DAY and varies across the 5 ticks. The old
+    // month/year format ("Jan 25") put the constant 2-digit year there, so
+    // every tick's trailing number would be identical — this asserts it is not.
+    const tickLabel = (fraction: string): string => {
+      const node = within(getByTestId(`category-trend-line-x-tick-${fraction}`)).getByText(/\d/);
+
+      return String(node.props.children);
+    };
+    const trailingNumbers = new Set(
+      ['0.00', '0.25', '0.50', '0.75', '1.00'].map((fraction) =>
+        tickLabel(fraction).replace(/^\D+/, ''),
+      ),
+    );
+
+    expect(trailingNumbers.size).toBeGreaterThan(1);
+  });
+
   it('renders an empty state when there are no series', async () => {
     const { getByTestId, queryByTestId } = await render(
       <CategoryTrendLine series={[]} baseCurrency="UAH" emptyLabel="No Spending To Show" />,
@@ -124,5 +145,26 @@ describe('CategoryTrendLine', () => {
 
     expect(getByTestId('category-trend-line-empty')).toBeTruthy();
     expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
+  });
+
+  // The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
+  // axis labels must be formatted in UTC too — otherwise, in a negative-UTC-
+  // offset locale, a UTC-midnight instant is still the PREVIOUS local day and
+  // every label reads one day early. The formatter therefore must pass
+  // `timeZone: 'UTC'`, which a spy on `toLocaleDateString` verifies directly
+  // (the jest worker's own timezone is fixed and can't be changed at runtime,
+  // so asserting the option is the deterministic proof).
+  it('formats every X-axis label in UTC so the bucket day is never off by one', async () => {
+    const spy = jest.spyOn(Date.prototype, 'toLocaleDateString');
+    try {
+      await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+
+      expect(spy).toHaveBeenCalled();
+      for (const call of spy.mock.calls) {
+        expect(call[1]).toMatchObject({ timeZone: 'UTC' });
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

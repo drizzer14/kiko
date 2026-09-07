@@ -20,8 +20,10 @@ const OptionPills = <T extends string | number>({
   onSelect,
   label = String,
   icon,
+  columns = 2,
 }: OptionPillsProps<T>): ReactElement => {
   const { theme } = useUnistyles();
+  const cellWidth = { width: `${100 / columns}%` } as const;
 
   return (
     <Box style={styles.grid}>
@@ -29,7 +31,7 @@ const OptionPills = <T extends string | number>({
         const isSelected = selected === option;
 
         return (
-          <View key={String(option)} style={styles.cell}>
+          <View key={String(option)} style={[styles.cell, cellWidth]}>
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
