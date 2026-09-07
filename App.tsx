@@ -19,7 +19,6 @@ import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-s
 import RootNavigator from './src/navigation/root.navigator';
 import { selectNavigationTheme } from './src/navigation/select-navigation-theme';
 import { useAutoSync } from './src/screens/use-auto-sync';
-import { useNetWorthWidget } from './src/widget/use-net-worth-widget';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the
@@ -27,15 +26,13 @@ import { useNetWorthWidget } from './src/widget/use-net-worth-widget';
  * `MigrationsGate`'s own init chain guarantees exists before this ever mounts.
  * Hands off to the navigation stack. `useAutoSync` kicks off a throttled
  * background sync of the connected account without blocking this first
- * render. `useNetWorthWidget` keeps the home-screen widget's snapshot current
- * — debounced on live-query changes, and immediately on background.
+ * render.
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
   useSyncAppearanceWithSettings();
 
   useAutoSync();
-  useNetWorthWidget();
 
   const { rt } = useUnistyles();
 
