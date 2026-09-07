@@ -434,6 +434,7 @@ const StatisticsScreen: FC = () => {
         mcc: transaction.mcc,
         counterIban: transaction.counterIban,
         description: transaction.description,
+        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
         currency: transaction.currency,
         time: transaction.time,
       })),

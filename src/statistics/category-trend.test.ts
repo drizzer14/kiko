@@ -26,6 +26,7 @@ const tx = (over: Partial<TrendTransaction>): TrendTransaction => ({
   mcc: null,
   counterIban: null,
   description: '',
+  exchangeCounterpartHoldingId: null,
   currency: 'UAH' as BreakdownTransaction['currency'],
   time: JAN,
   ...over,

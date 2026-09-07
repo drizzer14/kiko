@@ -173,7 +173,7 @@ describe('buildNetWorthSnapshot', () => {
     expect(snapshot.updatedAt).toBe(now);
   });
 
-  it('does not carry a trend series — the widget renders only the total and the breakdown', () => {
+  it('does not carry a trend series — the widget renders only the total, the breakdown, and its labels', () => {
     const snapshot = buildNetWorthSnapshot({
       holdings: [holding({ id: 'h1', currency: 'USD', balanceMinorUnits: 10_000 })],
       accounts,
@@ -185,6 +185,7 @@ describe('buildNetWorthSnapshot', () => {
     expect(Object.keys(snapshot).sort()).toEqual([
       'baseCurrency',
       'breakdown',
+      'labels',
       'total',
       'updatedAt',
     ]);

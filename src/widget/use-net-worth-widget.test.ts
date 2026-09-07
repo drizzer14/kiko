@@ -14,7 +14,7 @@ const mockReloadWidget = jest.fn();
 jest.mock('./widget-bridge', () => ({
   widgetBridge: {
     writeSnapshot: (...args: Parameters<typeof mockWriteSnapshot>) => mockWriteSnapshot(...args),
-    clearSnapshot: (...args: unknown[]) => mockClearSnapshot(...args),
+    clearSnapshot: () => mockClearSnapshot(),
     reloadWidget: (...args: unknown[]) => mockReloadWidget(...args),
   },
 }));
