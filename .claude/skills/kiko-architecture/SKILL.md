@@ -218,15 +218,19 @@ steps are the kind of thing that changes as the rollout progresses:
   `applyPersistedLanguage()` helper (reads `settings.language` through
   the repo and calls `i18n.changeLanguage`, swallowing a failure — a
   language preference is cosmetic and must never block boot) ->
-  `migrateLegacyToken()`. The settings row must exist before either
-  `applyPersistedLanguage` or `LockGate` (`lockEnabled`) reads it,
-  which is why `ensure()` is awaited in the chain rather than
-  fire-and-forget from `AppRoot`. Applying the persisted language here
-  — before the gate's own first paint — is what makes the lock screen
-  (and the "Preparing database…" text itself) render in the user's
-  chosen language on a cold launch, not the device language;
-  `useSyncLanguageWithSettings` (mounted from `AppRoot`, after both
-  gates) only covers a LIVE switch from the Settings screen.
+  `applyPersistedAppearance()` (same shape, for `settings.appearance`,
+  via the shared `applyAppearance` mapping in `src/appearance/appearance.ts`)
+  -> `migrateLegacyToken()`. The settings row must exist before
+  `applyPersistedLanguage`, `applyPersistedAppearance`, or `LockGate`
+  (`lockEnabled`) reads it, which is why `ensure()` is awaited in the
+  chain rather than fire-and-forget from `AppRoot`. Applying the
+  persisted language and appearance here — before the gate's own first
+  paint — is what makes the lock screen (and the "Preparing database…"
+  text/background itself) render in the user's chosen language and
+  pinned theme on a cold launch, not the device language/OS appearance;
+  `useSyncLanguageWithSettings`/`useSyncAppearanceWithSettings` (mounted
+  from `AppRoot`, after both gates) only cover a LIVE switch from the
+  Settings screen.
 
 ## Spending-exclusion pipeline
 
