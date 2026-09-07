@@ -88,6 +88,7 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
     jest.resetModules();
     jest.clearAllMocks();
     mockImportFromOldApp.mockResolvedValue(false);
+    mockFinalizeImportBridge.mockResolvedValue(undefined);
     // These cases exercise the cluster-2 encrypted launch path.
     mockEncryptionEnabled = true;
   });
@@ -160,22 +161,34 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
     expect(order).toEqual(['import', 'open']);
   });
 
-  it('wipes the bridge only after init resolves, and only when it imported', async () => {
+  it('wipes the bridge LAST, after the connection opens, on an importing launch', async () => {
+    const order: string[] = [];
     mockImportFromOldApp.mockResolvedValue(true);
+    mockOpenEncryptedDatabase.mockImplementation(async () => {
+      order.push('open');
+      return mockOpened;
+    });
+    mockFinalizeImportBridge.mockImplementation(async () => {
+      order.push('wipe');
+    });
     const { initDatabase } = loadClient();
 
     await initDatabase();
 
+    expect(order).toEqual(['open', 'wipe']);
     expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
   });
 
-  it('does not wipe the bridge when nothing was imported', async () => {
+  it('retries the residual bridge wipe on a later launch that did not import', async () => {
+    // A later launch (a DB key already exists, so importFromOldApp is a no-op)
+    // must STILL attempt the wipe: it is the real retry for a wipe that failed
+    // on the import launch, otherwise the plaintext export lingers at rest.
     mockImportFromOldApp.mockResolvedValue(false);
     const { initDatabase } = loadClient();
 
     await initDatabase();
 
-    expect(mockFinalizeImportBridge).not.toHaveBeenCalled();
+    expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -184,6 +197,7 @@ describe('initDatabase (encryption disabled: plaintext launch path)', () => {
     jest.resetModules();
     jest.clearAllMocks();
     mockImportFromOldApp.mockResolvedValue(false);
+    mockFinalizeImportBridge.mockResolvedValue(undefined);
     mockEncryptionEnabled = false;
   });
 

@@ -102,6 +102,19 @@ describe('importFromOldApp', () => {
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
+
+  it('degrades a corrupt/truncated secrets file to the same no-op as a missing one', async () => {
+    // An existing-but-malformed file (e.g. a crash mid export-write) returns a
+    // non-null string from readTextFile; an unguarded JSON.parse would throw
+    // AFTER copyFile ran and brick every relaunch. It must instead complete the
+    // DB import and restore no secret.
+    mockBridge.readTextFile.mockResolvedValue('{ "monobankToken": "trunc');
+
+    await expect(importFromOldApp()).resolves.toBe(true);
+    expect(mockBridge.copyFile).toHaveBeenCalledWith(EXPORT_PATH, LIVE_PATH);
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+  });
 });
 
 describe('finalizeImportBridge', () => {

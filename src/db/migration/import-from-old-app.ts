@@ -39,11 +39,34 @@ const resolveLivePlaintextPath = (): string => {
 };
 
 /**
+ * Parses the secrets JSON defensively. Returns `undefined` for anything that is
+ * not a JSON object — a corrupt/truncated file (e.g. a crash mid export-write),
+ * or a literal `null`/scalar — so the caller degrades to the same no-op as an
+ * absent file rather than letting `JSON.parse` throw. Never returns `null`, so
+ * the caller can safely read its fields.
+ */
+const parseSecrets = (raw: string): Partial<MigrationSecrets> | undefined => {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Partial<MigrationSecrets>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Restores the two carried secrets into the new Keychain. A `null` argument
  * (the native `readTextFile` returns `null` on BOTH a missing file AND a read
  * error — `try? ... ?? nil`) is a DELIBERATE no-op: the secrets file is
  * non-essential (the token + credentials can be re-entered in-app), so a
- * missing/unreadable secrets file must never block or fail the DB import.
+ * missing/unreadable secrets file must never block or fail the DB import. A file
+ * that EXISTS but holds malformed/truncated JSON falls in the SAME bucket
+ * (`parseSecrets` -> `undefined`): the DB import still completes, no secret is
+ * restored, and nothing throws — an unguarded parse here would escape
+ * `importFromOldApp` after `copyFile` already ran and brick every relaunch.
  * Each secret is restored only when present and well-typed.
  */
 const restoreSecrets = async (raw: string | null): Promise<void> => {
@@ -51,7 +74,11 @@ const restoreSecrets = async (raw: string | null): Promise<void> => {
     return;
   }
 
-  const parsed = JSON.parse(raw) as Partial<MigrationSecrets>;
+  const parsed = parseSecrets(raw);
+
+  if (parsed === undefined) {
+    return;
+  }
 
   if (typeof parsed.monobankToken === 'string') {
     await saveToken(parsed.monobankToken);
@@ -99,8 +126,11 @@ export const importFromOldApp = async (): Promise<boolean> => {
 /**
  * Wipes the migration bridge files from the shared container. Best-effort and
  * NON-blocking: swallows every error so a failed wipe never blocks startup
- * (spec: "skipped-then-retried rather than blocking startup"). Runs only after
- * `initDatabase()` fully resolves, and only when this launch imported.
+ * (spec: "skipped-then-retried rather than blocking startup"). The caller runs
+ * it after `initDatabase()` fully resolves, on EVERY launch — a launch where a
+ * key already exists (so nothing imported) but residual bridge files remain
+ * still clears them, which is the real retry for a wipe that failed on the
+ * import launch. Deleting an already-absent file is a harmless no-op.
  */
 export const finalizeImportBridge = async (): Promise<void> => {
   try {
@@ -113,7 +143,8 @@ export const finalizeImportBridge = async (): Promise<void> => {
     await migrationBridge.deleteFile(`${container}/${EXPORT_DB_FILE}`);
     await migrationBridge.deleteFile(`${container}/${SECRETS_FILE}`);
   } catch {
-    // Non-fatal: the next launch retries the wipe after the DB-copy guard has
-    // already made the import a no-op. Never surfaces to startup.
+    // Non-fatal: the next launch retries the wipe (the caller invokes this on
+    // every launch, not only the importing one), so a transient failure here is
+    // cleared later. Never surfaces to startup.
   }
 };
