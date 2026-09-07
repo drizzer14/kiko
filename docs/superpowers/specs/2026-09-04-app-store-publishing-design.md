@@ -8,7 +8,7 @@ Source: `docs/research/2026-09-04-app-store-publishing.md`
 ## Problem
 
 The app (bare RN iOS, New Arch + Hermes, local-only data, Monobank
-connect via the user's own personal token; bundle `com.dmytro.pff`)
+connect via the user's own personal token; bundle `com.dmytro-vasylkivskyi.kiko`)
 has never been submitted to the App Store. A handful of `ios/` config
 values are wrong or missing, and there is a full first-submission
 process — enrollment, App Store Connect setup, assets, and a
@@ -79,7 +79,7 @@ Decisions for the alignment items:
 
 Verified but already correct — do not touch:
 
-- Bundle id `com.dmytro.pff`, team `M52858LNYL` with automatic
+- Bundle id `com.dmytro-vasylkivskyi.kiko`, team `M52858LNYL` with automatic
   signing, marketing version `1.0`, Hermes, bitcode `NO`, New Arch on
   (`RCTNewArchEnabled = true`), ATS on (`NSAllowsArbitraryLoads =
   false`).
@@ -107,7 +107,7 @@ a hard blocker.
    - Primary language: **Ukrainian**.
    - App name / Store listing name: **Кіко** (must be unique on the
      Store; check availability when creating the record).
-   - Bundle id: `com.dmytro.pff`.
+   - Bundle id: `com.dmytro-vasylkivskyi.kiko`.
    - Category: **Finance**.
 5. **Archive and upload.** Any iOS Device (arm64), Release
    configuration, via Xcode Organizer or `xcodebuild -archive` +

@@ -5,7 +5,7 @@ import Foundation
 /// `<APP_GROUP_ID>` used by the native `WidgetBridge` module that writes the
 /// snapshot file.
 enum WidgetConstants {
-    static let appGroupID = "group.com.dmytro.pff"
+    static let appGroupID = "group.com.dmytro-vasylkivskyi.kiko"
     static let snapshotFileName = "net-worth-snapshot.json"
 }
 

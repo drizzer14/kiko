@@ -15,7 +15,7 @@ import WidgetKit
 class WidgetBridge: NSObject {
   /// Must match the App Group id enabled on the `Kiko` target's entitlements
   /// (Task 6, Step 2) and on the `KikoWidget` extension target (Task 7).
-  private static let appGroupID = "group.com.dmytro.pff"
+  private static let appGroupID = "group.com.dmytro-vasylkivskyi.kiko"
 
   /// The file the `KikoWidget` extension reads its timeline data from.
   private static let snapshotFileName = "net-worth-snapshot.json"

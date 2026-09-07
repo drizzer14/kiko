@@ -12,7 +12,7 @@ CONFIGURATION="Release"
 SDK="iphoneos"
 DERIVED_DATA="$REPO_ROOT/ios/build"
 APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Kiko.app"
-BUNDLE_ID="com.dmytro.pff"
+BUNDLE_ID="com.dmytro-vasylkivskyi.kiko"
 
 # Resolve device ID with priority: (1) CLI arg, (2) DEVICE_ID env var, (3) auto-detect
 # Capture incoming DEVICE_ID env var before resetting it
