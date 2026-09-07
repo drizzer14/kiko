@@ -26,6 +26,15 @@ jest.mock('./db-config', () => ({
   },
 }));
 
+// The migration module reaches for the native bridge, so mock it. Default to a
+// no-op import (false) so every pre-existing suite is unaffected.
+const mockImportFromOldApp = jest.fn(async () => false);
+const mockFinalizeImportBridge = jest.fn(async () => undefined);
+jest.mock('./migration/import-from-old-app', () => ({
+  importFromOldApp: () => mockImportFromOldApp(),
+  finalizeImportBridge: () => mockFinalizeImportBridge(),
+}));
+
 import { wrapClientForDrizzle } from './client';
 
 const loadClient = (): typeof import('./client') =>
@@ -78,6 +87,8 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
+    mockImportFromOldApp.mockResolvedValue(false);
+    mockFinalizeImportBridge.mockResolvedValue(undefined);
     // These cases exercise the cluster-2 encrypted launch path.
     mockEncryptionEnabled = true;
   });
@@ -132,12 +143,63 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
 
     expect(mockOpenEncryptedDatabase).toHaveBeenCalledTimes(2);
   });
+
+  it('runs the old-app import before opening the connection', async () => {
+    const order: string[] = [];
+    mockImportFromOldApp.mockImplementation(async () => {
+      order.push('import');
+      return true;
+    });
+    mockOpenEncryptedDatabase.mockImplementation(async () => {
+      order.push('open');
+      return mockOpened;
+    });
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(order).toEqual(['import', 'open']);
+  });
+
+  it('wipes the bridge LAST, after the connection opens, on an importing launch', async () => {
+    const order: string[] = [];
+    mockImportFromOldApp.mockResolvedValue(true);
+    mockOpenEncryptedDatabase.mockImplementation(async () => {
+      order.push('open');
+      return mockOpened;
+    });
+    mockFinalizeImportBridge.mockImplementation(async () => {
+      order.push('wipe');
+    });
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(order).toEqual(['open', 'wipe']);
+    expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it('never wipes the bridge on a no-op launch (nothing imported)', async () => {
+    // The wipe must run ONLY on a launch that actually imported. Wiping on a
+    // no-op launch was the compounding bug: it deleted a still-pending export
+    // bridge before it could be consumed. The export-presence gate now handles
+    // the retry itself — a residual export re-imports on the next launch, which
+    // then wipes — so a no-op launch must leave the bridge files untouched.
+    mockImportFromOldApp.mockResolvedValue(false);
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(mockFinalizeImportBridge).not.toHaveBeenCalled();
+  });
 });
 
 describe('initDatabase (encryption disabled: plaintext launch path)', () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
+    mockImportFromOldApp.mockResolvedValue(false);
+    mockFinalizeImportBridge.mockResolvedValue(undefined);
     mockEncryptionEnabled = false;
   });
 
