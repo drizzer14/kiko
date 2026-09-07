@@ -705,4 +705,116 @@ describe('runSync', () => {
     // whatever the clock reads after the throttle sleeps that follow it.
     expect(persisted).toBe((statementTo as number) * 1000);
   });
+
+  // The single-flight lock: while one `runSync` is in flight, a second trigger
+  // (auto-sync on open, pull-to-refresh, the manual button) must JOIN the
+  // running promise instead of starting a second concurrent run — two
+  // concurrent runs on the same token collide into Monobank 429s.
+  it('coalesces two concurrent triggers into one sync (single-flight lock)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+
+    // Hold client-info open until both triggers have fired, so the second call
+    // arrives while the first is provably still running.
+    let release!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchClientInfo = jest.fn(async () => {
+      await opened;
+      return {
+        accounts: clientInfo.accounts as MonobankAccount[],
+        jars: clientInfo.jars as MonobankJar[],
+      };
+    });
+    deps.fetchClientInfo = fetchClientInfo;
+
+    const first = runSync(deps);
+    const second = runSync(deps);
+    release();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    // Exactly one underlying sync ran, and both triggers observed its result.
+    expect(fetchClientInfo).toHaveBeenCalledTimes(1);
+    expect(firstResult).toBe(secondResult);
+    expect(firstResult.importedTransactions).toBe(statement.length);
+    // No duplicate import from the coalesced second trigger.
+    expect(transactionsStore).toHaveLength(statement.length);
+  });
+
+  it('starts a fresh sync once the previous one has settled (lock releases)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const fetchClientInfo = jest.fn(async () => ({
+      accounts: clientInfo.accounts as MonobankAccount[],
+      jars: clientInfo.jars as MonobankJar[],
+    }));
+    deps.fetchClientInfo = fetchClientInfo;
+
+    await runSync(deps);
+    await runSync(deps);
+
+    // Sequential (awaited) runs are NOT coalesced — the lock only guards
+    // concurrency, so each completed run releases it for the next.
+    expect(fetchClientInfo).toHaveBeenCalledTimes(2);
+  });
+
+  // Partial-progress persistence: when one card of a multi-card sync fails, the
+  // cards that DID import must keep their data, the shared cursor must NOT
+  // advance (so the failed card's window is re-covered next time), and the next
+  // run must resume without re-importing what already landed.
+  it('imports every card independently and does not advance the cursor on a partial failure', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const idA = clientInfo.accounts[0].id;
+    const idB = clientInfo.accounts[1].id;
+    const itemA: MonobankStatementItem = {
+      ...(statement[0] as MonobankStatementItem),
+      id: 'txn-A',
+    };
+    const itemB: MonobankStatementItem = {
+      ...(statement[0] as MonobankStatementItem),
+      id: 'txn-B',
+    };
+
+    const { deps, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
+
+    let failA = true;
+    deps.fetchStatement = async (_token, accountId) => {
+      const id = decodeURIComponent(accountId);
+      if (id === idA) {
+        if (failA) {
+          throw new Error('Monobank request failed: 500');
+        }
+        return [itemA];
+      }
+      if (id === idB) {
+        return [itemB];
+      }
+      return [];
+    };
+
+    let cursor: number | null = null;
+    deps.getLastSyncAt = async () => cursor;
+    const setLastSyncAt = jest.fn(async (timestamp: number): Promise<void> => {
+      cursor = timestamp;
+    });
+    deps.setLastSyncAt = setLastSyncAt;
+
+    // First run: the FIRST card fails, but the second card must still import —
+    // the old fail-fast loop stopped every later card the moment one threw.
+    await expect(runSync(deps)).rejects.toThrow();
+    expect(transactionsStore.some((row) => row.externalId === 'txn-B')).toBe(true);
+    // The cursor stays put so card A's window is re-fetched next time.
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+
+    // Second run: card A recovers. Card B is re-fetched but its row already
+    // exists, so it dedups to zero new — nothing is re-imported.
+    failA = false;
+    const second = await runSync(deps);
+
+    expect(second.importedTransactions).toBe(1);
+    expect(transactionsStore.filter((row) => row.externalId === 'txn-B')).toHaveLength(1);
+    expect(transactionsStore.filter((row) => row.externalId === 'txn-A')).toHaveLength(1);
+    expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+  });
 });

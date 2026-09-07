@@ -240,6 +240,8 @@ export const uk: typeof en = {
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
     monobankAlreadyConnected: 'Рахунок Monobank вже підключено',
+    monobankRateLimited: 'Monobank зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
+    monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',
     monobankTokenPlaceholder: 'Токен Monobank',
     never: 'Ніколи',
     noConnectionFound: 'Немає підключення {{name}}',

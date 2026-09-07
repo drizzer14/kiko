@@ -347,9 +347,50 @@ const importAccount = async (
   return deps.addTransactions(fetched);
 };
 
-export const runSync = async (
-  overrides: Partial<SyncDeps> = {},
-): Promise<{ importedTransactions: number }> => {
+type SyncResult = { importedTransactions: number };
+
+/**
+ * Module-level single-flight lock. Monobank's rate limit is per TOKEN, and all
+ * three sync entry points — `useAutoSync` (app open), `useSyncAll`
+ * (pull-to-refresh) and `useSync` (the manual button) — drive the one connected
+ * token, so two overlapping runs collide into 429s (the reported "inconsistent"
+ * symptom). While a run is in flight, every new trigger JOINS (awaits) it and
+ * observes its result instead of starting a second concurrent run; the lock
+ * releases the instant the run settles — success OR failure — so the next
+ * trigger starts a fresh run.
+ *
+ * This guards CONCURRENCY only and is complementary to, NOT a replacement for,
+ * the per-invocation 60s request gate in `./throttle`: that gate paces requests
+ * WITHIN a single run to respect the per-token interval; this lock stops two
+ * runs existing at once. Both invariants are load-bearing — see kiko-architecture.
+ *
+ * Join (not queue) semantics are safe because the three triggers are equivalent
+ * syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
+ * ALREADY-connected account, so there is no competing run when the first-time
+ * Connect (a `targetAccountId` sync) executes, and a re-sync joining an
+ * in-flight run of the same connected token yields exactly the result it would
+ * have computed itself.
+ */
+let inFlightSync: Promise<SyncResult> | null = null;
+
+export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
+  if (inFlightSync) {
+    return inFlightSync;
+  }
+  const run = runSyncInner(overrides);
+  inFlightSync = run;
+  const release = (): void => {
+    if (inFlightSync === run) {
+      inFlightSync = null;
+    }
+  };
+  // Release on both settle paths; the returned `run` still carries the real
+  // result/rejection to the caller (and to every joined trigger).
+  run.then(release, release);
+  return run;
+};
+
+const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
   const token = await deps.readToken();
   if (!token) {
@@ -378,23 +419,53 @@ export const runSync = async (
     : toSeconds - DEFAULT_LOOKBACK_SECONDS;
 
   let importedTransactions = 0;
+  const failures: Error[] = [];
   for (const account of accounts) {
-    importedTransactions += await importAccount(
-      deps,
-      gate,
-      token,
-      accountId,
-      account,
-      fromSeconds,
-      toSeconds,
-    );
+    try {
+      importedTransactions += await importAccount(
+        deps,
+        gate,
+        token,
+        accountId,
+        account,
+        fromSeconds,
+        toSeconds,
+      );
+    } catch (error) {
+      // Isolate a per-card failure: a transient 429/timeout on one card must no
+      // longer stop every LATER card in the same run from importing (the old
+      // fail-fast loop aborted the whole sync on the first throw — a direct
+      // cause of the reported inconsistency). The cards that DID import already
+      // persisted their rows durably — each `importAccount` -> `addTransactions`
+      // runs in its own `db.transaction()` — so their data is safe regardless.
+      failures.push(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  if (failures.length > 0) {
+    // Partial failure: do NOT advance the shared cursor, so the failed card's
+    // window is re-covered on the next run. A re-fetch is idempotent — the
+    // (source, external_id) upsert refreshes an existing row rather than
+    // inserting a duplicate — so nothing already imported is lost or
+    // re-imported (`addTransactions` reports 0 new for a re-fetched item).
+    // Surface the failure so the caller shows an error and the user retries.
+    //
+    // SCOPED DOWN: a per-CARD cursor would also spare the cards that already
+    // finished from being re-fetched next run, but Kiko stores a single global
+    // `settings.lastSyncAt` and the holdings' JSON metadata is rewritten
+    // wholesale by the client-info upsert, so a correct per-card cursor needs a
+    // schema/metadata change beyond this change's minimal, safe scope. The
+    // dedup layer already guarantees the correctness invariant; only the
+    // network re-fetch cost is left on the table. See the task report.
+    throw failures[0];
   }
 
   // The cursor is the ceiling this run actually QUERIED, not the clock at loop
   // end. `deps.now()` here left every transaction between `toSeconds` and the
   // end of the loop permanently unqueried — one throttle sleep per page, per
   // card, each a silent hole in imported history (the balance still came out
-  // right, because it is overwritten from /client-info).
+  // right, because it is overwritten from /client-info). Advanced ONLY on a
+  // fully clean run (see the partial-failure branch above).
   await deps.setLastSyncAt(toSeconds * 1000);
   return { importedTransactions };
 };
