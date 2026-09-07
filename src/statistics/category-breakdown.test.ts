@@ -309,9 +309,13 @@ describe('categoryColor', () => {
 // T-21: the ten categories `0002_seed_categories.sql` seeds hash onto the
 // 8-entry `chartSeries` palette with FOUR collisions (verified: shopping,
 // entertainment, transfers, other all land on #0A84FF). Migration
-// `0017_seed_category_colors.sql` gives each seeded key an explicit, distinct
-// `categories.color`, which `resolveCategoryColor` prefers over the hash — this
-// is the contract test between that migration and the chart layer.
+// `0017_default_category_colors.sql` gives eight of the ten seeded keys an
+// explicit, distinct `categories.color`, which `resolveCategoryColor` prefers
+// over the hash — this is the contract test between that migration and the
+// chart layer. `utilities` and `entertainment` are intentionally left
+// uncolored by the migration (see its own header comment), so they keep
+// resolving through the `categoryColor` hash fallback, exactly as they did
+// before the migration existed.
 //
 // `seeded` is parsed from the REAL migration file (via
 // `readSeedCategoryColors`, `db/__fixtures__/seed-category-colors.ts`) rather
@@ -326,11 +330,18 @@ describe('seeded category colors (T-21)', () => {
     readSeedCategoryColors().map(({ key, color }) => [key, color]),
   );
 
-  it('resolves the ten seeded categories to ten distinct colors', () => {
+  it('resolves the eight colored seeded categories to eight distinct colors', () => {
     const resolved = Object.entries(seeded).map(([key, color]) => resolveCategoryColor(color, key));
 
-    expect(new Set(resolved).size).toBe(10);
+    expect(new Set(resolved).size).toBe(8);
     expect(resolved).toEqual(Object.values(seeded));
+  });
+
+  it('leaves utilities and entertainment uncolored, falling back to the categoryColor hash', () => {
+    for (const key of ['utilities', 'entertainment']) {
+      expect(seeded[key]).toBeUndefined();
+      expect(resolveCategoryColor(seeded[key], key)).toBe(categoryColor(key));
+    }
   });
 
   it('still collapses the ten keys onto fewer than ten hues WITHOUT stored colors, which is why the seed exists', () => {

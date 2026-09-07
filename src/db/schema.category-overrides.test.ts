@@ -104,30 +104,41 @@ describe('transaction-hold migration', () => {
 // breakdown.ts`) is what actually colors them — and over these exact ten keys
 // that hash collapses to five hues (four categories render an identical blue).
 // `resolveCategoryColor` prefers a STORED color over the hash, so this
-// data-only migration fills one in, only where still NULL.
+// data-only migration fills one in for eight of the ten keys, only where
+// still NULL — `utilities` and `entertainment` are intentionally left
+// uncolored (see the migration's own header comment) and keep falling back
+// to the hash, same as before this migration existed.
 describe('seed-category-colors migration', () => {
   // Parses the REAL migration file into `{ key, color }` pairs — asserting
   // against these (rather than a hand-typed literal map) is what catches a
   // key typo, a duplicate key, or a non-seeded key: any of those would leave
-  // the parsed key set mismatched against `SEEDED_CATEGORIES` even though a
-  // looser "ten colors, ten distinct" check would still pass. The parser
-  // additionally requires `AND \`color\` IS NULL` on the SAME statement to
-  // count as a match, so a statement missing that guard silently drops out of
-  // `pairs` and is caught the same way — as a missing key.
+  // the parsed key set mismatched against the eight colored keys even though
+  // a looser "eight colors, eight distinct" check would still pass. The
+  // parser additionally requires `AND \`color\` IS NULL` on the SAME
+  // statement to count as a match, so a statement missing that guard
+  // silently drops out of `pairs` and is caught the same way — as a missing
+  // key.
   const pairs = parseSeedCategoryColors(readSeedCategoryColorMigration());
+  const UNCOLORED_CATEGORY_KEYS = ['utilities', 'entertainment'];
+  const COLORED_CATEGORY_KEYS = SEEDED_CATEGORIES.map((category) => category.key).filter(
+    (key) => !UNCOLORED_CATEGORY_KEYS.includes(key),
+  );
 
-  it('targets exactly the ten seeded keys — no extra, missing, or duplicate key', () => {
+  it('targets exactly the eight colored seeded keys — no extra, missing, or duplicate key', () => {
     const keys = pairs.map((pair) => pair.key);
 
-    expect(keys.sort()).toEqual(SEEDED_CATEGORIES.map((category) => category.key).sort());
-    expect(new Set(keys).size).toBe(SEEDED_CATEGORIES.length);
+    expect(keys.sort()).toEqual([...COLORED_CATEGORY_KEYS].sort());
+    expect(new Set(keys).size).toBe(COLORED_CATEGORY_KEYS.length);
+    for (const uncoloredKey of UNCOLORED_CATEGORY_KEYS) {
+      expect(keys).not.toContain(uncoloredKey);
+    }
   });
 
-  it('seeds a distinct color for each of the ten seeded categories', () => {
+  it('seeds a distinct color for each of the eight colored seeded categories', () => {
     const colors = pairs.map((pair) => pair.color);
 
-    expect(colors).toHaveLength(10);
-    expect(new Set(colors).size).toBe(10);
+    expect(colors).toHaveLength(8);
+    expect(new Set(colors).size).toBe(8);
     expect(readFileSync(join(migrationsDir, 'migrations.js'), 'utf8')).toContain('0017');
   });
 
@@ -141,9 +152,16 @@ describe('seed-category-colors migration', () => {
 
   it('only fills a NULL color, never overwriting a color the user already set', () => {
     const sql = readSeedCategoryColorMigration();
-    const statements = sql.split('UPDATE `categories`').slice(1);
+    // Scoped to the color-setting statements only: the migration also carries
+    // one `SET \`icon\`` statement (the transport car->bus refinement), which
+    // is guarded by `icon = 'car'`, not `color` IS NULL — a different,
+    // already-idempotent concern this test does not assert on.
+    const statements = sql
+      .split('UPDATE `categories`')
+      .slice(1)
+      .filter((statement) => statement.includes('SET `color`'));
 
-    expect(statements).toHaveLength(10);
+    expect(statements).toHaveLength(8);
     for (const statement of statements) {
       expect(statement).toContain('`color` IS NULL');
     }
@@ -154,13 +172,13 @@ describe('seed-category-colors migration', () => {
       entries: { idx: number; when: number; tag: string }[];
     };
     const entry = journal.entries.find(
-      (candidate) => candidate.tag === '0017_seed_category_colors',
+      (candidate) => candidate.tag === '0017_default_category_colors',
     );
     const index = readFileSync(join(migrationsDir, 'migrations.js'), 'utf8');
 
     expect(entry?.idx).toBe(17);
-    expect(readdirSync(migrationsDir)).toContain('0017_seed_category_colors.sql');
-    expect(index).toContain("import m0017 from './0017_seed_category_colors.sql';");
+    expect(readdirSync(migrationsDir)).toContain('0017_default_category_colors.sql');
+    expect(index).toContain("import m0017 from './0017_default_category_colors.sql';");
     expect(index).toMatch(/\bm0017,/);
   });
 });

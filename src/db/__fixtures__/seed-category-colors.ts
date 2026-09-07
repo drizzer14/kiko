@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Parses migration `0017_seed_category_colors.sql`'s UPDATE statements into
+// Parses migration `0017_default_category_colors.sql`'s UPDATE statements into
 // `{ key, color }` pairs, read from the REAL migration file rather than a
 // hand-typed literal a test could assert against. A hand-typed literal can
 // silently drift from the migration (a key typo, a duplicate key, a
@@ -12,7 +12,10 @@ import { join } from 'node:path';
 // registration/idempotency tests) and
 // `src/statistics/category-breakdown.test.ts` (the chart-layer contract test)
 // import this so the two suites cannot drift from each other either.
-const MIGRATION_PATH = join(__dirname, '../../../drizzle/migrations/0017_seed_category_colors.sql');
+const MIGRATION_PATH = join(
+  __dirname,
+  '../../../drizzle/migrations/0017_default_category_colors.sql',
+);
 
 type SeedCategoryColor = { key: string; color: string };
 
