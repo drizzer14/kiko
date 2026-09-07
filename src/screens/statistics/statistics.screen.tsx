@@ -11,6 +11,7 @@ import { DAY_MS } from '../../dates/duration';
 import { useLiveQuery } from '../../db/use-live-query';
 import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
+import CategoryTrendLine from '../../design-system/components/category-trend-line';
 import GlassSurface from '../../design-system/components/glass-surface';
 import NetWorthLine from '../../design-system/components/net-worth-line';
 import PieChart from '../../design-system/components/pie-chart';
@@ -41,6 +42,7 @@ import {
   buildCategoryBreakdown,
   type CategorySlice,
 } from '../../statistics/category-breakdown';
+import { buildCategoryTrend, type TrendTransaction } from '../../statistics/category-trend';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { internalTransferTxIds } from '../../statistics/internal-transfers';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
@@ -170,6 +172,16 @@ const StatisticsScreen: FC = () => {
   // that chart alone — the account filter and date range do not touch it, nor
   // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+
+  // The spending-trend chart's OWN category filter, in the SAME "empty means
+  // all" model as the donut's — an empty set draws every category's line; any
+  // stable category KEYS in it narrow the chart to just those. Scoped to that
+  // chart alone (the account filter and date range do not touch it). Unlike the
+  // donut, it defaults to the top 3 categories by total spend, seeded once below.
+  const [selectedTrendCategories, setSelectedTrendCategories] = useState<Set<string>>(new Set());
+  // Guards the one-time top-3 seed so a later user selection is never overwritten
+  // when `allCategorySlices` recomputes. Mirrors `backfillStartedRef`'s style.
+  const trendSeededRef = useRef(false);
 
   // `now` is fixed at mount: the default date-range seed below, the default
   // line window, the backfill's "today", and every memo below key on it, and a
@@ -373,6 +385,25 @@ const StatisticsScreen: FC = () => {
     [transactionsWithCurrency],
   );
 
+  // The spending-trend builder needs everything the breakdown does PLUS each
+  // row's `time`, so it can bucket the expense into its calendar month. Built
+  // separately from `breakdownTransactions` (which carries no time) so neither
+  // memo has to change shape for the other.
+  const trendTransactions = useMemo<TrendTransaction[]>(
+    () =>
+      transactionsWithCurrency.map((transaction) => ({
+        id: transaction.id,
+        category: transaction.category,
+        amountMinorUnits: transaction.amountMinorUnits,
+        mcc: transaction.mcc,
+        counterIban: transaction.counterIban,
+        description: transaction.description,
+        currency: transaction.currency,
+        time: transaction.time,
+      })),
+    [transactionsWithCurrency],
+  );
+
   // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
   // bank transfer to one of these is an own-account transfer (excluded from the
   // spending pie); a 4829 to any other IBAN is a genuine P2P payment (kept).
@@ -433,6 +464,20 @@ const StatisticsScreen: FC = () => {
       excludedTransactionIds,
     ],
   );
+
+  // Seed the spending-trend filter's default selection to the TOP 3 categories
+  // by total spend, exactly once — when `allCategorySlices` first becomes
+  // non-empty (it is already sorted by amount desc, so `slice(0, 3)` is the top
+  // three). The ref guards against re-seeding on later recomputes, so a user's
+  // own later selection is never clobbered; mirrors `backfillStartedRef`.
+  useEffect(() => {
+    if (trendSeededRef.current || allCategorySlices.length === 0) {
+      return;
+    }
+
+    trendSeededRef.current = true;
+    setSelectedTrendCategories(new Set(allCategorySlices.slice(0, 3).map((slice) => slice.key)));
+  }, [allCategorySlices]);
 
   // The FilterMenu matches/stores by the STABLE `categories.key` slug, never by
   // the resolved display title: the title is language-dependent (a default
@@ -509,6 +554,44 @@ const StatisticsScreen: FC = () => {
       baseCurrency,
       defaultCategoryKey,
       excludedCategoryKeys,
+      excludedTransactionIds,
+    ],
+  );
+
+  // The spending-trend chart's exclusion set, off its OWN selection (mirrors
+  // `excludedCategoryKeys` but keyed on `selectedTrendCategories`): an empty
+  // selection excludes nothing, so every category's line is drawn; otherwise
+  // every category whose KEY is not selected is excluded.
+  const excludedTrendCategoryKeys = useMemo(() => {
+    if (selectedTrendCategories.size === 0) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      allCategorySlices
+        .filter((slice) => !selectedTrendCategories.has(slice.key))
+        .map((slice) => slice.key),
+    );
+  }, [allCategorySlices, selectedTrendCategories]);
+
+  const trendSeries = useMemo(
+    () =>
+      buildCategoryTrend({
+        transactions: trendTransactions,
+        categoryDisplay: categoryByKey,
+        rateTable,
+        baseCurrency,
+        defaultCategoryKey,
+        excludedCategories: excludedTrendCategoryKeys,
+        excludedTransactionIds,
+      }),
+    [
+      trendTransactions,
+      categoryByKey,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      excludedTrendCategoryKeys,
       excludedTransactionIds,
     ],
   );
@@ -615,6 +698,30 @@ const StatisticsScreen: FC = () => {
               emptyLabel={t('statistics.noSpendingToShow')}
               innerRatio={CATEGORY_DONUT_INNER_RATIO}
               centerTotal={categoryTotal}
+            />
+          </Box>
+        </GlassSurface>
+
+        <GlassSurface testID="statistics-block-trend" padding={4} radius="lg">
+          <Box gap={3}>
+            <Text variant="heading" style={styles.cardTitle}>
+              {t('statistics.spendingTrendByCategory')}
+            </Text>
+
+            <Box direction="row" gap={3} style={styles.filterBar}>
+              <FilterMenu
+                label={t('statistics.filterCategories')}
+                testID="statistics-trend-filter"
+                options={categoryOptions}
+                selected={selectedTrendCategories}
+                onToggle={toggleFilter(setSelectedTrendCategories)}
+              />
+            </Box>
+
+            <CategoryTrendLine
+              series={trendSeries}
+              baseCurrency={baseCurrency}
+              emptyLabel={t('statistics.noSpendingToShow')}
             />
           </Box>
         </GlassSurface>

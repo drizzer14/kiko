@@ -311,6 +311,7 @@ export const uk: typeof en = {
     filterCategories: 'Категорії',
     netWorthOverTime: 'Капітал з часом',
     noSpendingToShow: 'Немає витрат для показу',
+    spendingTrendByCategory: 'Тренд витрат за категоріями',
     title: 'Статистика',
   },
   transactions: {

@@ -375,7 +375,7 @@ describe('StatisticsScreen', () => {
     expect(typeof scrollRef?.current?.scrollTo).toBe('function');
   });
 
-  it('renders the four blocks in order: net-worth line, by-type bar, account pie, category pie', async () => {
+  it('renders the five blocks in order: net-worth line, by-type bar, account pie, category pie, spending trend', async () => {
     const { getByTestId } = await renderScreen();
 
     const order = getByTestId('statistics-blocks')
@@ -384,12 +384,15 @@ describe('StatisticsScreen', () => {
 
     // The net-worth line leads the screen, ahead of the by-type/category
     // charts — it is the one chart every other block on this screen relates
-    // back to (a snapshot of the same net worth it plots over time).
+    // back to (a snapshot of the same net worth it plots over time). The
+    // spending-trend line closes the screen, after the category donut it shares
+    // its category filter's dimension with.
     expect(order).toEqual([
       'statistics-block-line',
       'statistics-block-bar',
       'statistics-block-pie',
       'statistics-block-category',
+      'statistics-block-trend',
     ]);
   });
 
@@ -455,14 +458,16 @@ describe('StatisticsScreen', () => {
   it('renders a spending pie wedge per expense category, with its legend entry', async () => {
     seedSpending();
 
-    const { getByTestId, getByText } = await renderScreen();
+    const { getByTestId, getAllByText } = await renderScreen();
 
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
-    // The category filter is a closed dropdown button (no chips), so each title
-    // shows once — in its pie legend row.
-    expect(getByText('Groceries')).toBeTruthy();
-    expect(getByText('Transport')).toBeTruthy();
+    // Both category filters are closed dropdown buttons (no chips), so each
+    // title renders in the pie's legend row and again in the spending-trend
+    // chart's legend below it (both categories are seeded into the trend's
+    // top-3 default), so assert at least one instance rather than a unique one.
+    expect(getAllByText('Groceries').length).toBeGreaterThan(0);
+    expect(getAllByText('Transport').length).toBeGreaterThan(0);
     expect(getByTestId('category-pie-legend-groceries')).toBeTruthy();
   });
 
@@ -611,6 +616,42 @@ describe('StatisticsScreen', () => {
 
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('draws a spending-trend line per category, seeding the top-3 by spend as the default selection', async () => {
+    seedSpending();
+
+    const { getByTestId } = await renderScreen();
+
+    // With only two spending categories both fall inside the seeded top-3, so
+    // both lines are drawn under the trend block's own filter.
+    expect(getByTestId('statistics-block-trend')).toBeTruthy();
+    expect(getByTestId('category-trend-line-line-groceries')).toBeTruthy();
+    expect(getByTestId('category-trend-line-line-transport')).toBeTruthy();
+  });
+
+  it('narrows the spending-trend chart via its own filter, independent of the donut', async () => {
+    seedSpending();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // Both categories seed the top-3 default selection, so toggling groceries
+    // OFF deselects it — dropping its line while leaving transport — and the
+    // donut's own groceries wedge is untouched (the two filters are separate).
+    await pressFilter(getByTestId, 'statistics-trend-filter', 'groceries');
+
+    expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
+    expect(getByTestId('category-trend-line-line-transport')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+  });
+
+  it('shows the spending-trend empty state when there is no spending', async () => {
+    // The default `seedFull` transactions are all income, so the trend has no
+    // line to draw and falls back to its empty state.
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('category-trend-line-empty')).toBeTruthy();
+    expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
   });
 
   it('defaults the date-range field to the last 30 days', async () => {
