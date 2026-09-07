@@ -26,9 +26,18 @@ Kiko ships both a dark theme and a light theme (`darkTheme` /
 so a fresh install follows the OS appearance. The user can instead
 pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
 persisted in `settings.appearance` (`src/db/schema.ts`) and applied
-at app start by `useSyncAppearanceWithSettings`
-(`src/appearance/use-sync-appearance-with-settings.ts`), which flips
-`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match. Any native
+by the shared `applyAppearance` mapping (`src/appearance/appearance.ts`,
+mapped with ts-pattern's `match().exhaustive()`), which flips
+`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match. Two callers
+apply it: `useSyncAppearanceWithSettings`
+(`src/appearance/use-sync-appearance-with-settings.ts`), mounted from
+`AppRoot` for a LIVE change from the Settings screen, and
+`MigrationsGate`'s `applyPersistedAppearance`
+(`src/db/migrations.gate.tsx`), which reads the persisted value and
+applies it before `MigrationsGate`/`LockGate` first paint — those
+gates mount before `AppRoot` does, so without this a user who pinned
+`'light'`/`'dark'` would see a cold-launch flash of the OS appearance
+first. Any native
 surface that needs a plain `'light' | 'dark'` scheme rather than a
 Unistyles theme name (a `LiquidGlassView`, a native tab bar) goes
 through `resolveColorScheme` (`src/design-system/color-scheme.ts`),

@@ -1,6 +1,7 @@
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { applyAppearance } from '../appearance/appearance';
 import Box from '../design-system/components/box';
 import Text from '../design-system/components/text';
 import { i18n } from '../i18n';
@@ -48,6 +49,34 @@ const applyPersistedLanguage = async (): Promise<void> => {
   }
 };
 
+/**
+ * Apply the persisted appearance before the first gate paints — same
+ * rationale as `applyPersistedLanguage` above, for `settings.appearance`
+ * instead of `settings.language`. Unistyles registers `adaptiveThemes: true`
+ * at import time (`src/design-system/unistyles.ts`), and the only other
+ * caller of the shared `applyAppearance` mapping,
+ * `useSyncAppearanceWithSettings`, is mounted from `AppRoot` — which renders
+ * only after this gate succeeds AND `LockGate` unlocks. So a user with
+ * `settings.appearance = 'dark'` (or `'light'`) would see both gates paint in
+ * the OS appearance and only flip to their pinned choice once `AppRoot`
+ * mounted.
+ *
+ * Same cosmetic-only failure handling as `applyPersistedLanguage`: a plain
+ * `try`/`catch`, never blocking the app from starting.
+ */
+const applyPersistedAppearance = async (): Promise<void> => {
+  try {
+    const rows = await settingsRepo.getQuery();
+    const appearance = rows.at(0)?.appearance;
+
+    if (appearance != null) {
+      applyAppearance(appearance);
+    }
+  } catch {
+    // Cosmetic only — see the doc comment above.
+  }
+};
+
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
@@ -59,17 +88,19 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // shipped, the plaintext -> encrypted export) must exist before the schema
     // migrator runs. The single settings row (id = 1) must exist before ANY
     // gate reads settings: LockGate reads `lockEnabled`, and
-    // `applyPersistedLanguage` reads `language`, both before AppRoot mounts —
-    // so it is awaited here, not fire-and-forget from AppRoot, meaning no
-    // setter can ever run against a missing row, and a failed insert surfaces
-    // as this gate's error state instead of an unhandled rejection. The
-    // persisted language is applied next, before either gate paints anything
+    // `applyPersistedLanguage`/`applyPersistedAppearance` read `language`/
+    // `appearance`, all before AppRoot mounts — so it is awaited here, not
+    // fire-and-forget from AppRoot, meaning no setter can ever run against a
+    // missing row, and a failed insert surfaces as this gate's error state
+    // instead of an unhandled rejection. The persisted language and
+    // appearance are applied next, before either gate paints anything
     // user-visible. The legacy Keychain-token migration runs last, before any
     // token read (the auto-sync hook mounts only on success).
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
       .then(applyPersistedLanguage)
+      .then(applyPersistedAppearance)
       .then(migrateLegacyToken)
       .then(() => {
         if (!cancelled) {

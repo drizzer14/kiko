@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
+import { UnistylesRuntime } from 'react-native-unistyles';
 
 import '../design-system/unistyles';
 import { darkTheme } from '../design-system/theme';
@@ -8,14 +9,15 @@ import { settingsRepo } from '../repositories/settings.repo';
 
 import MigrationsGate from './migrations.gate';
 
-type SettingsRow = { language?: string | null };
+type SettingsRow = { language?: string | null; appearance?: string | null };
 
 const mockInitDatabase = jest.fn<Promise<void>, []>();
 const mockRunMigrations = jest.fn<Promise<void>, []>();
 const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
-// Backs `settingsRepo.getQuery()` for `applyPersistedLanguage`. A test sets
-// `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
-// directly so it can also exercise the read-throws path.
+// Backs `settingsRepo.getQuery()` for `applyPersistedLanguage` and
+// `applyPersistedAppearance`. A test sets `mockGetSettings.mockResolvedValue(...)`
+// / `mockRejectedValueOnce(...)` directly so it can also exercise the
+// read-throws path.
 const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
 jest.mock('./client', () => ({ initDatabase: () => mockInitDatabase() }));
 jest.mock('./run-migrations', () => ({ runMigrations: () => mockRunMigrations() }));
@@ -28,6 +30,10 @@ jest.mock('../repositories/settings.repo', () => ({
 // module mocked, so `i18next.use(initReactI18next).init(...)`'s side effect
 // still runs — that is what makes `useTranslation()` inside the gate work.
 const mockChangeLanguage = jest.spyOn(i18n, 'changeLanguage').mockResolvedValue(i18n.t);
+const mockSetAdaptiveThemes = jest
+  .spyOn(UnistylesRuntime, 'setAdaptiveThemes')
+  .mockImplementation(() => {});
+const mockSetTheme = jest.spyOn(UnistylesRuntime, 'setTheme').mockImplementation(() => {});
 
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve!: (value: T) => void;
@@ -174,6 +180,72 @@ describe('MigrationsGate', () => {
     );
 
     // A language preference is cosmetic: it must never block the app from
+    // starting.
+    expect(getByText('ready')).toBeTruthy();
+  });
+
+  it('applies a pinned dark appearance before reporting success', async () => {
+    mockGetSettings.mockResolvedValue([{ appearance: 'dark' }]);
+
+    await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(false);
+    expect(mockSetTheme).toHaveBeenCalledWith('dark');
+  });
+
+  it('applies a pinned light appearance before reporting success', async () => {
+    mockGetSettings.mockResolvedValue([{ appearance: 'light' }]);
+
+    await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(false);
+    expect(mockSetTheme).toHaveBeenCalledWith('light');
+  });
+
+  it("re-enables adaptiveThemes for a 'system' appearance", async () => {
+    mockGetSettings.mockResolvedValue([{ appearance: 'system' }]);
+
+    await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(true);
+    expect(mockSetTheme).not.toHaveBeenCalled();
+  });
+
+  it('leaves the appearance alone when none is persisted', async () => {
+    mockGetSettings.mockResolvedValue([{ appearance: null }]);
+
+    await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(mockSetAdaptiveThemes).not.toHaveBeenCalled();
+    expect(mockSetTheme).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the gate when the appearance read throws', async () => {
+    mockGetSettings.mockRejectedValueOnce(new Error('db gone'));
+
+    const { getByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    // An appearance preference is cosmetic: it must never block the app from
     // starting.
     expect(getByText('ready')).toBeTruthy();
   });
