@@ -20,6 +20,21 @@ fi
 # `rules/fixtures/` holds the positive/negative fixture pair for each project
 # rule. A positive fixture is deliberately vulnerable code, so it must not fail
 # the real scan; `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
+#
+# Dedup a single-file target on its content plus the mobile rules file. The
+# external p/ rulesets are pinned to the installed semgrep and do not change
+# within a session, so they are not part of the fingerprint. A whole-repo or
+# directory target always runs.
+dkey=""; fp=""
+if [ -f "$TARGET" ]; then
+  dkey="security:$(printf '%s' "$TARGET" | harness_hash)"
+  fp="$( { shasum "$TARGET" 2>/dev/null
+          shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null; } | harness_hash )"
+  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    exit 0
+  fi
+fi
+
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
@@ -94,4 +109,6 @@ if [ "${warning_count:-0}" -gt 0 ]; then
   } >&2
 fi
 
+# No Class A finding: record the pass so an unchanged file skips next time.
+[ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 exit 0

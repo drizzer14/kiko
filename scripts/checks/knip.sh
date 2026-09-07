@@ -17,6 +17,12 @@ if [ ! -x "$BIN" ]; then
   exit 2
 fi
 
+# Skip when no source or config Knip reads changed since its last pass.
+fp="$(harness_code_fingerprint "$ROOT")"
+if harness_unchanged "$ROOT" "knip" "$fp"; then
+  exit 0
+fi
+
 out="$("$BIN" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
@@ -29,4 +35,5 @@ if [ "$code" -ne 0 ]; then
     "Do not add the export to an ignore list. Delete the unused export or file."
   exit 2
 fi
+harness_mark_pass "$ROOT" "knip" "$fp"
 exit 0

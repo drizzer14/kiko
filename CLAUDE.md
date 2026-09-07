@@ -57,6 +57,29 @@ failure back to the agent. A fresh checkout must run `npm install`
 before these hooks work — every wrapper's tool lives in
 `node_modules`.
 
+**Content dedup (a check skips when its inputs did not change).**
+`Stop` and `SubagentStop` both call the medium tier, so a
+subagent-driven session runs it once per finished subagent plus once
+for the coordinator; a developer agent also re-ran `check:deep` after
+only an icon asset was added. To stop these duplicate runs, every check
+records a fingerprint of its own real inputs when it passes, and skips
+the next run whose fingerprint is identical (helpers in
+`scripts/checks/_lib.sh`). The fast tier fingerprints the single target
+file plus its config and tool version; `dup` and `override-guard`
+fingerprint the changed-file set; `knip`, `deps`, and `mutation`
+fingerprint the `.ts/.tsx/.js` source state relative to `HEAD` plus the
+manifests and configs (so a non-source change — an icon asset, an
+`ios/` file, a doc — skips them). `medium.sh` also holds a per-worktree
+single-flight lock so parallel `SubagentStop`/`Stop` runs do not launch
+concurrent `knip`/`deps`/`jscpd`; `mutation.sh` holds the same lock so
+two runs never spawn Stryker at once. The fingerprint state lives
+outside the repo, keyed by the worktree path, and is shared across
+sessions in that worktree — one session's pass lets another skip. A
+skip is recorded only on a PASS, so a failing check always re-runs.
+`osv-scanner` is deliberately never deduped: its result depends on the
+external vulnerability database, which changes even when the lockfile
+does not.
+
 ## Override protocol
 
 A Biome lint rule may only be suppressed with a justified override —
@@ -301,7 +324,7 @@ ESM-compatible or patched line.
 
 The Kiko agent harness is a local Claude Code plugin at
 `harness/kiko/` (`kiko` in the local
-`harness/.claude-plugin/marketplace.json`). It ships ten role agents,
+`harness/.claude-plugin/marketplace.json`). It ships eleven role agents,
 four project skills that thin-wrap superpowers, one vendored review
 command, and the tier hooks documented above.
 
@@ -317,7 +340,7 @@ app files inline. Complex or parallel work is split into separate
 Orca worktrees. If no agent fits a task, the coordinator reports the
 gap — it does not do the task itself.
 
-### The ten agents
+### The eleven agents
 
 | Agent | Role | model | effort | Spawn command |
 |---|---|---|---|---|
@@ -331,6 +354,7 @@ gap — it does not do the task itself.
 | retrospect | Gathers durable lessons after a run | sonnet | medium | `claude --agent retrospect --effort medium` |
 | scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
 | ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
+| pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | medium | `claude --agent pm --effort medium` |
 
 Agent frontmatter sets only `model` (there is no per-agent effort
 field); the coordinator applies the recorded effort with `--effort`

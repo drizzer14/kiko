@@ -17,6 +17,18 @@ if ! command -v gitleaks >/dev/null 2>&1; then
   exit 2
 fi
 
+# Dedup a single-file target on its content plus the gitleaks config. A
+# whole-repo or directory target always runs.
+dkey=""; fp=""
+if [ -f "$TARGET" ]; then
+  dkey="secrets:$(printf '%s' "$TARGET" | harness_hash)"
+  fp="$( { shasum "$TARGET" 2>/dev/null
+          shasum "$ROOT/.gitleaks.toml" 2>/dev/null; } | harness_hash )"
+  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    exit 0
+  fi
+fi
+
 out="$(gitleaks detect --no-git --source "$TARGET" --config "$ROOT/.gitleaks.toml" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
@@ -29,4 +41,5 @@ if [ "$code" -ne 0 ]; then
     "Do not move the secret to a config file. Remove it and load it from the iOS Keychain or an env var at runtime."
   exit 2
 fi
+[ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 exit 0

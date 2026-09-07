@@ -18,6 +18,14 @@ if [ ! -x "$BIN" ]; then
   exit 2
 fi
 
+# Skip when no source, manifest, or lockfile depcheck reads changed since
+# its last pass. The code fingerprint covers package.json, package-lock.json,
+# and the source import graph depcheck scans.
+fp="$(harness_code_fingerprint "$ROOT")"
+if harness_unchanged "$ROOT" "deps" "$fp"; then
+  exit 0
+fi
+
 fail=0
 details=""
 
@@ -66,4 +74,5 @@ if [ "$fail" -ne 0 ]; then
     "Do not add the dependency to depcheck ignores. Remove the unused dep; confirm any new dep is real."
   exit 2
 fi
+harness_mark_pass "$ROOT" "deps" "$fp"
 exit 0

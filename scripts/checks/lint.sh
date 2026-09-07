@@ -18,6 +18,20 @@ if [ ! -x "$BIN" ]; then
   exit 2
 fi
 
+# Dedup a single-file target on its content plus biome.json and the pinned
+# Biome version (captured by package-lock.json). A whole-repo or directory
+# target always runs.
+dkey=""; fp=""
+if [ -f "$TARGET" ]; then
+  dkey="lint:$(printf '%s' "$TARGET" | harness_hash)"
+  fp="$( { shasum "$TARGET" 2>/dev/null
+          shasum "$ROOT/biome.json" 2>/dev/null
+          shasum "$ROOT/package-lock.json" 2>/dev/null; } | harness_hash )"
+  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    exit 0
+  fi
+fi
+
 out="$("$BIN" check "$TARGET" 2>&1)"
 code=$?
 if [ "$code" -ne 0 ]; then
@@ -30,4 +44,5 @@ if [ "$code" -ne 0 ]; then
     "Do not silence a rule with a bare // biome-ignore. Fix the code, or use // biome-ignore <rule>: OVERRIDE(...) <specific reason>."
   exit 2
 fi
+[ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 exit 0

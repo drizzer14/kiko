@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT"
 
@@ -41,6 +43,20 @@ done < <(
 # Nothing relevant changed (the coordinator case): stay silent.
 if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
   exit 0
+fi
+
+# Both Stop and SubagentStop call this wrapper, so one subagent-driven
+# session runs the medium tier one time per finished subagent, plus one
+# more time for the coordinator, and parallel subagents fire near-together.
+# Serialize the tier per worktree so those runs do not launch concurrent
+# knip/deps/jscpd on the same tree. Each sub-check below skips on its own
+# when its inputs are unchanged, so a repeat run with no change is
+# near-instant. On a lock timeout, proceed unlocked rather than hang the hook.
+state="$(harness_state_dir "$ROOT")"
+mkdir -p "$state" 2>/dev/null || true
+lock="$state/medium.lock"
+if harness_lock "$lock" 240; then
+  trap 'harness_unlock "$lock"' EXIT
 fi
 
 # Changed-file scope: jscpd and override-guard on the changed source files only.

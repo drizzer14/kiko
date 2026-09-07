@@ -12,6 +12,22 @@ else
   scan_targets=("$@")
 fi
 
+# Dedup only an explicit set of files. The check greps their contents for an
+# unjustified biome-ignore, so its result depends only on those files.
+dkey=""; fp=""
+if [ "$#" -gt 0 ]; then
+  allfiles=1
+  for p in "$@"; do [ -f "$p" ] || allfiles=0; done
+  if [ "$allfiles" -eq 1 ]; then
+    sorted="$(printf '%s\n' "$@" | sort -u)"
+    dkey="override:$(printf '%s' "$sorted" | harness_hash)"
+    fp="$(printf '%s\n' "$sorted" | while IFS= read -r p; do shasum "$p" 2>/dev/null; done | harness_hash)"
+    if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+      exit 0
+    fi
+  fi
+fi
+
 hits="$(grep -nE 'biome-ignore' \
   --include='*.ts' --include='*.tsx' --include='*.js' \
   --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor -r "${scan_targets[@]}" \
@@ -26,4 +42,5 @@ if [ -n "$hits" ]; then
     "Do not delete the guard. Justify the override, or fix the code so the ignore is not needed."
   exit 2
 fi
+[ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 exit 0

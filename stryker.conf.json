@@ -6,6 +6,7 @@
   "mutate": ["**/*.ts", "**/*.tsx", "!**/*.test.ts", "!**/*.test.tsx", "!__tests__/**", "!ios/**"],
   "ignorePatterns": ["ios", "android"],
   "incremental": true,
+  "concurrency": 2,
   "reporters": ["clear-text", "progress"],
   "thresholds": { "high": 80, "low": 60, "break": 60 },
   "coverageAnalysis": "perTest"
