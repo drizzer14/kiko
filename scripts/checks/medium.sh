@@ -35,7 +35,7 @@ while IFS= read -r f; do
   [ -n "$f" ] && harness_changed+=("$f")
 done < <(
   printf '%s\n' "$touched" \
-    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/KikoWidget/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj)$'
+    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj)$'
 )
 
 # Nothing relevant changed (the coordinator case): stay silent.

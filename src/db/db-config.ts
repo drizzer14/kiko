@@ -34,8 +34,6 @@ export const DB_ENCRYPTION_ENABLED = true;
  * Do NOT flip it to `false` to make something build. Turning it off makes
  * `useAppLock()` report `{ isReady: true, isLocked: false }` unconditionally, so
  * `LockGate` never prompts and the user's enabled app lock silently stops
- * existing — the widget writer folds the same flag in
- * (`src/widget/use-net-worth-widget.ts`), so the App Group snapshot would start
- * being written again too. Enforced by `src/db/db-config.test.ts`.
+ * existing. Enforced by `src/db/db-config.test.ts`.
  */
 export const APP_LOCK_ENABLED = true;

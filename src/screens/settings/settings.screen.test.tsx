@@ -124,10 +124,7 @@ describe('SettingsScreen', () => {
   });
 
   it('renders the System navigation card at the very top, above Base Currency and Categories', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByTestId, getAllByTestId } = await render(
-      <SettingsScreen navigation={navigation} />,
-    );
+    const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('settings-card-system')).toBeTruthy();
     expect(getByTestId('settings-row-system')).toBeTruthy();
@@ -145,8 +142,8 @@ describe('SettingsScreen', () => {
   });
 
   it('navigates to the System sub-screen when the System row is pressed', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { getByTestId } = await render(<SettingsScreen navigation={navigation} />);
+    const navigation = navigationSpy();
+    const { getByTestId } = await renderScreen(navigation);
 
     await fireEvent.press(getByTestId('settings-row-system'));
 
@@ -154,8 +151,7 @@ describe('SettingsScreen', () => {
   });
 
   it('no longer renders the Language card (it moved to the System sub-screen)', async () => {
-    const navigation = { navigate: jest.fn() } as never;
-    const { queryByTestId } = await render(<SettingsScreen navigation={navigation} />);
+    const { queryByTestId } = await renderScreen();
     expect(queryByTestId('settings-card-language')).toBeNull();
     expect(queryByTestId('settings-row-language')).toBeNull();
   });

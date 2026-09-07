@@ -5,18 +5,15 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 PLIST="$ROOT/ios/Kiko/Info.plist"
-WIDGET_PLIST="$ROOT/ios/KikoWidget/Info.plist"
 
 problems=""
 add_problem() { problems="${problems}
   - $1"; }
 
-# --- 0. Both plists must parse at all -----------------------------------------
-for p in "$PLIST" "$WIDGET_PLIST"; do
-  if ! plutil -lint "$p" >/dev/null 2>&1; then
-    add_problem "$p is not a valid property list ($(plutil -lint "$p" 2>&1))"
-  fi
-done
+# --- 0. The plist must parse at all -------------------------------------------
+if ! plutil -lint "$PLIST" >/dev/null 2>&1; then
+  add_problem "$PLIST is not a valid property list ($(plutil -lint "$PLIST" 2>&1))"
+fi
 
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
 # A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
