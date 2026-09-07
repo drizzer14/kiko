@@ -127,6 +127,13 @@
       "when": 1788745897000,
       "tag": "0017_default_category_colors",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788796908113,
+      "tag": "0018_add_appearance",
+      "breakpoints": true
     }
   ]
 }

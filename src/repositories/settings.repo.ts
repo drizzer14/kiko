@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 
+import type { Appearance } from '../appearance/appearance';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { settings } from '../db/schema';
@@ -37,4 +38,6 @@ export const settingsRepo = {
     ),
   setLanguage: (language: AppLanguage) =>
     write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
+  setAppearance: (appearance: Appearance) =>
+    write((tx) => tx.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID))),
 } satisfies Repository;

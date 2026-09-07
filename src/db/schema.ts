@@ -160,6 +160,12 @@ export const settings = sqliteTable('settings', {
   // / 'uk' is an explicit user choice made from Settings. Read by
   // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
   language: text('language', { enum: ['en', 'uk'] }),
+  // The chosen appearance: 'system' follows the OS (adaptiveThemes), 'light'/
+  // 'dark' pin the theme. Defaults to 'system' so a fresh install follows iOS.
+  // Read by useSyncAppearanceWithSettings; written by settingsRepo.setAppearance.
+  appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
+    .notNull()
+    .default('system'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
