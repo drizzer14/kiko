@@ -271,6 +271,39 @@ is pinned as the one allowed reader-less `settings` column by
 `src/db/settings-columns.test.ts`; wiring it up means removing it from that
 test's documented-exception list, which is the deliberate decision gate.
 
+## Dates
+
+Interest and schedule math (`src/holdings/interest.ts` — deposit
+maturity, period boundaries, coupon dates, accrual day counts) is
+built entirely with **local-midnight instants**, not UTC. Read the
+`daysBetween` comment in that file for why: a raw
+`floor((end-start)/DAY_MS)` under- or over-counts by a day across a
+Kyiv DST transition, so every boundary (`atDay`, `midCredit`,
+`addMonths`) is deliberately constructed from local Y/M/D fields and
+diffed via `Date.UTC(y,m,d)` on each side, making the local calendar
+day the unit that's compared rather than a raw millisecond delta.
+`addMonths` clamps the result's day-of-month to the target month's
+length (no January-31 + 1 month rolling into March) while preserving
+whatever time-of-day the input carried — it does not force the result
+to local midnight, so a non-midnight input keeps its hour/minute/
+second/millisecond across the step.
+
+Tests for these helpers use two input styles side by side in
+`interest.test.ts`, and both stay valid because `addMonths` preserves
+the input's time-of-day rather than forcing local midnight: the file's
+own `local(year, monthIndex, day)` helper for anything that crosses a
+DST boundary, and `Date.UTC(...)` where the comment at the call site
+says the instant is a winter (no-DST) boundary. A `Date.UTC` instant
+is not local midnight on any machine whose system timezone offset
+isn't zero (this repo's dev machine is Kyiv, UTC+2/+3) — build a new
+test with `local(...)` unless it is specifically exercising a winter
+instant the way the existing `Date.UTC` cases do.
+
+The recap-OFF first-accrual-day convention (what day a deposit starts
+earning when the recap toggle is off) is unresolved — it needs a real
+bank statement to confirm against, not a guess; do not implement or
+assume a specific convention for it without one.
+
 ## Net worth
 
 Net worth is **assets-only** — liabilities and debt are out of scope

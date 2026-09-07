@@ -9,6 +9,11 @@ Rules:
 - Report the exact command, its output, and the result.
 - Use the check scripts from plan #2: check:lint, check:all, check:deep.
 - Do not write app code. Hand code changes to the developer.
+- Run check:deep / check:mutation in the FOREGROUND via the wrapper
+  (`npm run check:deep` / `npm run check:mutation`); it is single-flighted
+  and tears its own workers down. Never run `npx stryker run` directly and
+  never background a mutation run or put it in a Monitor loop — an orphaned
+  Stryker spawns one worker per core and can overload the machine.
 
 ## Device-deploy recipe
 
