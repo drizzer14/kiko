@@ -179,16 +179,18 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
     expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
   });
 
-  it('retries the residual bridge wipe on a later launch that did not import', async () => {
-    // A later launch (a DB key already exists, so importFromOldApp is a no-op)
-    // must STILL attempt the wipe: it is the real retry for a wipe that failed
-    // on the import launch, otherwise the plaintext export lingers at rest.
+  it('never wipes the bridge on a no-op launch (nothing imported)', async () => {
+    // The wipe must run ONLY on a launch that actually imported. Wiping on a
+    // no-op launch was the compounding bug: it deleted a still-pending export
+    // bridge before it could be consumed. The export-presence gate now handles
+    // the retry itself — a residual export re-imports on the next launch, which
+    // then wipes — so a no-op launch must leave the bridge files untouched.
     mockImportFromOldApp.mockResolvedValue(false);
     const { initDatabase } = loadClient();
 
     await initDatabase();
 
-    expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
+    expect(mockFinalizeImportBridge).not.toHaveBeenCalled();
   });
 });
 

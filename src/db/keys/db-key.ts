@@ -27,6 +27,18 @@ export const storeDbKey = async (keyHex: string): Promise<void> => {
 };
 
 /**
+ * Clears the stored SQLCipher key under its own service. Used by the one-time
+ * old-app import: iOS keeps a bundle id's Keychain items across a container
+ * wipe/reinstall, so a STALE `kiko.db.key` can survive from an earlier run of
+ * this bundle. Left in place it makes the app self-initialize an EMPTY encrypted
+ * DB; clearing it before the import lets `establishKey()` mint a fresh key for
+ * the just-imported data.
+ */
+export const resetDbKey = async (): Promise<void> => {
+  await Keychain.resetGenericPassword({ service: DB_KEY_SERVICE });
+};
+
+/**
  * 32 random bytes as 64 lowercase hex chars. Hermes ships no WebCrypto
  * (`crypto.getRandomValues` is undefined), so the entropy comes from SQLite's
  * `randomblob()` — a ChaCha20 stream seeded from the OS CSPRNG — drawn on a

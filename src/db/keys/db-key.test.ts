@@ -1,7 +1,14 @@
 import { open } from '@op-engineering/op-sqlite';
 import * as Keychain from 'react-native-keychain';
 
-import { DB_KEY_SERVICE, generateDbKey, readDbKey, storeDbKey, toSQLCipherRawKey } from './db-key';
+import {
+  DB_KEY_SERVICE,
+  generateDbKey,
+  readDbKey,
+  resetDbKey,
+  storeDbKey,
+  toSQLCipherRawKey,
+} from './db-key';
 
 const HEX_KEY = 'ab'.repeat(32);
 
@@ -72,6 +79,16 @@ describe('db-key', () => {
   it('throws instead of returning a malformed key', () => {
     mockExecuteSync.mockReturnValue({ rows: [{ keyHex: 'too-short' }] });
     expect(() => generateDbKey()).toThrow('Could not generate a database key');
+  });
+
+  it('resets (clears) the stored key under its own service', async () => {
+    await storeDbKey(HEX_KEY);
+    expect(await readDbKey()).toBe(HEX_KEY);
+
+    await resetDbKey();
+
+    expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({ service: 'kiko.db.key' });
+    expect(await readDbKey()).toBeUndefined();
   });
 
   it('formats the SQLCipher raw-key literal', () => {

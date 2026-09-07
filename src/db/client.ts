@@ -58,8 +58,9 @@ const openConnection = (): Promise<DB> =>
 
 const openAndConfigure = async (): Promise<void> => {
   // Run the one-time old-app import BEFORE opening the connection, so
-  // establishKey() finds the just-copied kiko.db. A no-op once a key exists.
-  await importFromOldApp();
+  // establishKey() finds the just-copied kiko.db. A no-op unless a pending
+  // export file exists in the old shared App Group.
+  const imported = await importFromOldApp();
   const opened = await openConnection();
   // SQLite defaults foreign_keys OFF per connection; op-sqlite's open() does not
   // change it. Enable enforcement once, on the raw connection, before any
@@ -67,15 +68,17 @@ const openAndConfigure = async (): Promise<void> => {
   // transaction, so it must run here rather than inside `write`.
   await opened.execute('PRAGMA foreign_keys = ON');
   connection = opened;
-  // Wipe the shared bridge container LAST — after init fully resolved. Run this
-  // on EVERY launch, not only the importing one: the wipe is best-effort, so a
-  // single failed attempt on the import launch (container momentarily
-  // unavailable, deleteFile rejects) would otherwise leave the plaintext export
-  // DB + secrets JSON at rest in the shared App Group until the Phase 5 cleanup
-  // build — a later launch no longer imports (a key exists), so it would never
-  // retry. finalizeImportBridge resolves the container itself and never throws,
-  // so a later launch with residual bridge files still clears them.
-  await finalizeImportBridge();
+  // Wipe the shared bridge container LAST — after init fully resolved — but ONLY
+  // when we actually imported this launch. Wiping on a no-op launch was the
+  // compounding data-loss bug: a launch that failed to import (e.g. a stale key
+  // short-circuited the old gate) still deleted the pending export bridge,
+  // destroying the user's data source before it was ever consumed. The retry for
+  // a wipe that failed on the import launch is the import itself: the export file
+  // survives, so the next launch sees it present and re-imports (which re-runs
+  // the wipe). A pending export must therefore live until an import consumes it.
+  if (imported) {
+    await finalizeImportBridge();
+  }
 };
 
 // A concurrent or repeat invocation (a gate remount) must not open two

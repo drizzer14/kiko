@@ -6,7 +6,7 @@ import {
 } from '../../crypto-sync/binance/binance.credentials';
 import { saveToken } from '../../monobank/token';
 import { LIVE_PLAINTEXT_DATABASE_NAME } from '../encrypted-database';
-import { readDbKey } from '../keys/db-key';
+import { resetDbKey } from '../keys/db-key';
 
 import { migrationBridge } from './migration-bridge';
 import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';
@@ -92,20 +92,32 @@ const restoreSecrets = async (raw: string | null): Promise<void> => {
 
 /**
  * One-time import from the retired old app, run BEFORE `openConnection()` in
- * `client.ts`. Idempotent and re-entrant: a no-op once the new app has a DB key
- * (spec ordering rule). Returns `true` only when it actually imported this
- * launch, so the caller wipes the shared container only then.
+ * `client.ts`. Returns `true` only when it actually imported this launch, so the
+ * caller wipes the shared container only then.
  *
- * Crash-safety (spec "Error handling & ordering"): copy DB -> restore secrets;
- * the caller then lets `establishKey()` encrypt and wipes the container LAST. A
- * crash before the wipe re-imports next launch — the source in the shared
- * container is only read, never modified, so re-copy/re-restore are harmless.
+ * GATE — export-file presence, NOT DB-key presence. A migration is pending IFF
+ * the plaintext export the old app wrote still exists in its shared App Group.
+ * The absence of that file is the sole no-op path (a fresh install or an
+ * already-consumed migration). Gating on the new DB key was the data-loss bug:
+ * iOS keeps a bundle id's Keychain items across a container wipe/reinstall, so a
+ * STALE `kiko.db.key` from an earlier run of this bundle made the gate no-op and
+ * the app self-initialized an EMPTY encrypted DB, dropping the user's real data.
+ *
+ * SELF-HEAL of stale state: when an export IS pending we `resetDbKey()` first, so
+ * a surviving stale key can no longer short-circuit `resolveDbKey()` — it now
+ * mints a fresh key for the imported data via `establishKey()`. The stale EMPTY
+ * `kiko-encrypted.db` an earlier no-op launch created is deleted by
+ * `establishKey()` itself: the copied `kiko.db` has user tables, so its
+ * stale-target cleanup (`encrypted-database.ts:108`) runs and rebuilds the
+ * encrypted file from scratch. We therefore need not delete it here.
+ *
+ * Crash-safety (spec "Error handling & ordering"): reset stale key -> copy DB ->
+ * restore secrets; the caller then lets `establishKey()` encrypt and wipes the
+ * container LAST. A crash before the wipe re-imports next launch — the export in
+ * the shared container is only read, never modified, and it is still present
+ * (the wipe never ran), so re-copy/re-restore are harmless and idempotent.
  */
 export const importFromOldApp = async (): Promise<boolean> => {
-  if ((await readDbKey()) !== undefined) {
-    return false;
-  }
-
   const container = await migrationBridge.sharedContainerPath(OLD_APP_GROUP_ID);
 
   if (container === null) {
@@ -118,6 +130,7 @@ export const importFromOldApp = async (): Promise<boolean> => {
     return false;
   }
 
+  await resetDbKey();
   await migrationBridge.copyFile(exportPath, resolveLivePlaintextPath());
   await restoreSecrets(await migrationBridge.readTextFile(`${container}/${SECRETS_FILE}`));
 
@@ -128,10 +141,11 @@ export const importFromOldApp = async (): Promise<boolean> => {
  * Wipes the migration bridge files from the shared container. Best-effort and
  * NON-blocking: swallows every error so a failed wipe never blocks startup
  * (spec: "skipped-then-retried rather than blocking startup"). The caller runs
- * it after `initDatabase()` fully resolves, on EVERY launch — a launch where a
- * key already exists (so nothing imported) but residual bridge files remain
- * still clears them, which is the real retry for a wipe that failed on the
- * import launch. Deleting an already-absent file is a harmless no-op.
+ * it after `initDatabase()` resolves, ONLY on a launch that actually imported —
+ * never on a no-op launch, which would delete a still-pending export before it
+ * is consumed. A wipe that fails here is retried the next launch: the export
+ * survives, so `importFromOldApp()` re-imports and this runs again. Deleting an
+ * already-absent file is a harmless no-op.
  */
 export const finalizeImportBridge = async (): Promise<void> => {
   try {

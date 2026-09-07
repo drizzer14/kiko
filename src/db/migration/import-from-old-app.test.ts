@@ -14,8 +14,8 @@ const mockOpen = jest.fn(() => ({
 }));
 jest.mock('@op-engineering/op-sqlite', () => ({ open: (...a: unknown[]) => mockOpen(...a) }));
 
-const mockReadDbKey = jest.fn<Promise<string | undefined>, []>();
-jest.mock('../keys/db-key', () => ({ readDbKey: () => mockReadDbKey() }));
+const mockResetDbKey = jest.fn(async () => undefined);
+jest.mock('../keys/db-key', () => ({ resetDbKey: () => mockResetDbKey() }));
 
 const mockBridge = {
   sharedContainerPath: jest.fn(async () => CONTAINER as string | null),
@@ -49,7 +49,6 @@ import { finalizeImportBridge, importFromOldApp } from './import-from-old-app';
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockReadDbKey.mockResolvedValue(undefined);
   mockBridge.sharedContainerPath.mockResolvedValue(CONTAINER);
   mockBridge.fileExists.mockResolvedValue(true);
   mockBridge.readTextFile.mockResolvedValue(
@@ -61,20 +60,35 @@ beforeEach(() => {
 });
 
 describe('importFromOldApp', () => {
-  it('is a true no-op when the new app already has a DB key', async () => {
-    mockReadDbKey.mockResolvedValue('ab'.repeat(32));
+  it('runs the import even when a stale DB key survived, clearing it before the copy', async () => {
+    // The old bundle id ran before, so iOS may keep a STALE kiko.db.key Keychain
+    // item across a container wipe/reinstall. A pending export (file present) must
+    // still import: it clears the stale key FIRST so establishKey() mints a fresh
+    // key for the imported data, then copies. Gating on key presence (the old bug)
+    // would leave the user with an empty self-initialized DB.
+    const order: string[] = [];
+    mockResetDbKey.mockImplementation(async () => {
+      order.push('reset');
+    });
+    mockBridge.copyFile.mockImplementation(async () => {
+      order.push('copy');
+    });
 
-    await expect(importFromOldApp()).resolves.toBe(false);
-    expect(mockBridge.copyFile).not.toHaveBeenCalled();
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    await expect(importFromOldApp()).resolves.toBe(true);
+
+    expect(mockResetDbKey).toHaveBeenCalledTimes(1);
+    expect(mockBridge.copyFile).toHaveBeenCalledWith(EXPORT_PATH, LIVE_PATH);
+    expect(order).toEqual(['reset', 'copy']);
   });
 
   it('is a no-op when no export file is present (fresh install)', async () => {
     mockBridge.fileExists.mockResolvedValue(false);
 
     await expect(importFromOldApp()).resolves.toBe(false);
+    expect(mockResetDbKey).not.toHaveBeenCalled();
     expect(mockBridge.copyFile).not.toHaveBeenCalled();
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 
   it('copies the export onto the resolved live kiko.db path and cleans the probe file', async () => {
