@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["App.tsx", "jest/setup.js", "__tests__/**/*.{test,spec}.{ts,tsx}"],
+  "entry": [
+    "App.tsx",
+    "jest/setup.js",
+    "__tests__/**/*.{test,spec}.{ts,tsx}",
+    "src/db/migration/export-self-check.ts"
+  ],
   "project": ["**/*.{ts,tsx,js}"],
   "ignoreDependencies": [
     "@babel/runtime",
