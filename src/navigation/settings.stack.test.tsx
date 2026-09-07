@@ -47,9 +47,4 @@ describe('SettingsStack', () => {
     expect(titles.System).toBe('System');
     expect(titles.Categories).toBe('Categories');
   });
-
-  it('registers the System sub-screen as a reachable route', () => {
-    const titles = titleByScreen();
-    expect(Object.keys(titles)).toContain('System');
-  });
 });
