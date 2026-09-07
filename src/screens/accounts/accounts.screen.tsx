@@ -8,6 +8,7 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import type { Currency } from '../../currency/currency';
 import { useLiveQuery } from '../../db/use-live-query';
+import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
@@ -35,7 +36,8 @@ type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accou
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
+  const scheme = resolveColorScheme(rt.themeName);
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -123,7 +125,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       testID="account-card"
                       padding={4}
                       bordered
-                      tint={entityCardBackground(color)}
+                      tint={entityCardBackground(color, scheme)}
                     >
                       <Pressable
                         accessibilityRole="button"

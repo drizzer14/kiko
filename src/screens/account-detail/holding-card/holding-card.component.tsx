@@ -2,8 +2,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type FC, useEffect, useState } from 'react';
 import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
+import { resolveColorScheme } from '../../../design-system/color-scheme';
 import Box from '../../../design-system/components/box';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import MoneyText from '../../../design-system/components/money-text';
@@ -31,6 +33,8 @@ const HoldingCard: FC<{
   now: number;
   onOpen: () => void;
 }> = ({ holding, now, onOpen }) => {
+  const { rt } = useUnistyles();
+  const scheme = resolveColorScheme(rt.themeName);
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
 
   // WHY: HoldingCard mounts on the AccountDetail *pushed* route, so its glass
@@ -70,7 +74,7 @@ const HoldingCard: FC<{
       testID="holding-card"
       padding={4}
       bordered
-      tint={entityCardBackground(color)}
+      tint={entityCardBackground(color, scheme)}
     >
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>

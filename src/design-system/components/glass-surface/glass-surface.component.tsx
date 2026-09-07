@@ -3,6 +3,8 @@ import type { FC, ReactNode } from 'react';
 import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
+import { resolveColorScheme } from '../../color-scheme';
+
 import type { GlassSurfaceProps } from './glass-surface.props';
 import { styles } from './glass-surface.styles';
 
@@ -65,7 +67,8 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   testID,
   ...props
 }) => {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
+  const colorScheme = resolveColorScheme(rt.themeName);
   const sizing = [
     { borderRadius: theme.radii[radius] },
     padding !== undefined && { padding: theme.spacing(padding) },
@@ -102,7 +105,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       effect="regular"
-      colorScheme="dark"
+      colorScheme={colorScheme}
       tintColor={tint}
       animated={false}
       style={[RNStyleSheet.absoluteFill, { borderRadius: theme.radii[radius] }]}
