@@ -45,6 +45,7 @@ export const en = {
     baseCurrency: 'Base Currency',
     categories: 'Categories',
     language: 'Language',
+    system: 'System',
     title: 'Settings',
   },
   language: {

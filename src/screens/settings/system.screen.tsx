@@ -1,0 +1,69 @@
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { APP_LOCK_ENABLED } from '../../db/db-config';
+import { useLiveQuery } from '../../db/use-live-query';
+import Box from '../../design-system/components/box';
+import GlassSurface from '../../design-system/components/glass-surface';
+import LanguageSwitch from '../../design-system/components/language-switch';
+import Screen from '../../design-system/components/screen';
+import { type AppLanguage, deviceLanguage } from '../../i18n';
+import type { SettingsStackParamList } from '../../navigation/types';
+import { settingsRepo } from '../../repositories/settings.repo';
+
+import AppLockSetting from './app-lock-setting/app-lock-setting.component';
+import SettingsRow from './settings-row';
+
+type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'>;
+
+// The System settings sub-screen: system-level preferences grouped away from the
+// finance settings that live on the main Settings screen. A pushed screen (not a
+// tab root), so — like the Categories sub-screen — it uses `<Screen scroll>`
+// without the active-tab re-tap scroll-to-top hook (that is only for a tab's
+// root screen). Order: Language, then the reserved Color Scheme slot, then Face
+// ID (App Lock).
+const SystemScreen: FC<SystemScreenProps> = () => {
+  const { t } = useTranslation();
+
+  const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const settings = data.at(0);
+
+  const handleSelectLanguage = (language: AppLanguage): void => {
+    settingsRepo.setLanguage(language);
+  };
+
+  const handleToggleLock = (enabled: boolean): void => {
+    settingsRepo.setLockEnabled(enabled);
+  };
+
+  // The effective language shown as selected: the explicit choice if set,
+  // otherwise the device-detected default. null in the DB means "follow device".
+  const effectiveLanguage = settings?.language ?? deviceLanguage();
+
+  return (
+    <Screen scroll>
+      <Box gap={4}>
+        <GlassSurface testID="settings-card-language" padding={3}>
+          <SettingsRow testID="settings-row-language" icon="globe" label={t('settings.language')}>
+            <LanguageSwitch selected={effectiveLanguage} onSelect={handleSelectLanguage} />
+          </SettingsRow>
+        </GlassSurface>
+
+        {/* Color Scheme (AppearanceSwitch) mounts HERE — between Language and Face ID — once the peer light-theme branch merges to main. It will import AppearanceSwitch from 'src/design-system/components/appearance-switch' and { appearances, type Appearance } from 'src/appearance/appearance', wrapped in a GlassSurface + SettingsRow card, wired to settings.appearance / settingsRepo.setAppearance. Not imported yet — the module does not exist on main until that merge. */}
+
+        {/* Gated behind APP_LOCK_ENABLED (default OFF): a safe build without the
+            biometrics pod shows no non-functional App Lock toggle. When the flag
+            is flipped on for the supervised device step, the card appears. */}
+        {APP_LOCK_ENABLED && (
+          <AppLockSetting
+            lockEnabled={settings?.lockEnabled ?? false}
+            onToggle={handleToggleLock}
+          />
+        )}
+      </Box>
+    </Screen>
+  );
+};
+
+export default SystemScreen;

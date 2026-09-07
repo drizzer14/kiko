@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import CategoriesScreen from '../screens/settings/categories.screen';
 import SettingsScreen from '../screens/settings/settings.screen';
+import SystemScreen from '../screens/settings/system.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { SettingsStackParamList } from './types';
@@ -23,6 +24,11 @@ const SettingsStack: FC = () => {
         name="Settings"
         component={SettingsScreen}
         options={{ title: t('settings.title') }}
+      />
+      <Stack.Screen
+        name="System"
+        component={SystemScreen}
+        options={{ title: t('settings.system') }}
       />
       <Stack.Screen
         name="Categories"

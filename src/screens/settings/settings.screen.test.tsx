@@ -4,23 +4,19 @@ import { i18n } from '../../i18n';
 
 import SettingsScreen from './settings.screen';
 
-// APP_LOCK_ENABLED is now ON by default. This suite covers the disabled/hidden
-// App Lock path, so it pins the flag OFF locally — the mirror of
-// settings.screen.app-lock.test.tsx, which pins it ON to cover the visible-card
-// path. Both paths stay covered without relying on the shipped default.
+// The App Lock card moved to the System sub-screen, so the main Settings screen
+// never renders it regardless of the flag. This suite pins APP_LOCK_ENABLED OFF
+// and asserts the card is absent here; the visible/hidden App Lock paths now
+// live in system.screen.test.tsx and system.screen.app-lock-off.test.tsx.
 jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockSetBaseCurrency = jest.fn();
-const mockSetLanguage = jest.fn();
-let mockLiveQueryData: Array<{ baseCurrency: string; language?: 'en' | 'uk' | null }> = [
-  { baseCurrency: 'UAH' },
-];
+let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
 
 jest.mock('../../repositories/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
-    setLanguage: (...args: unknown[]) => mockSetLanguage(...args),
   },
 }));
 jest.mock('../../db/use-live-query', () => ({
@@ -88,13 +84,50 @@ describe('SettingsScreen', () => {
     expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
+  it('renders the System navigation card at the very top, above Base Currency and Categories', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { getByTestId, getAllByTestId } = await render(
+      <SettingsScreen navigation={navigation} />,
+    );
+
+    expect(getByTestId('settings-card-system')).toBeTruthy();
+    expect(getByTestId('settings-row-system')).toBeTruthy();
+
+    // GlassSurface renders an inner `<id>-base` layer node under each card, so
+    // filter those out to compare just the top-level card order.
+    const cardOrder = getAllByTestId(/^settings-card-/)
+      .map((node) => node.props.testID as string)
+      .filter((testID) => !testID.endsWith('-base'));
+    expect(cardOrder).toEqual([
+      'settings-card-system',
+      'settings-card-base-currency',
+      'settings-card-categories',
+    ]);
+  });
+
+  it('navigates to the System sub-screen when the System row is pressed', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { getByTestId } = await render(<SettingsScreen navigation={navigation} />);
+
+    await fireEvent.press(getByTestId('settings-row-system'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('System');
+  });
+
+  it('no longer renders the Language card (it moved to the System sub-screen)', async () => {
+    const navigation = { navigate: jest.fn() } as never;
+    const { queryByTestId } = await render(<SettingsScreen navigation={navigation} />);
+    expect(queryByTestId('settings-card-language')).toBeNull();
+    expect(queryByTestId('settings-row-language')).toBeNull();
+  });
+
   it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
     const navigation = { navigate: jest.fn() } as never;
     const { getAllByRole } = await render(<SettingsScreen navigation={navigation} />);
-    // BTC, USD, EUR, UAH — four separate currency pressables, English/Ukrainian
-    // — two separate language pressables — not one combined control — plus the
-    // navigating Categories row's own pressable (7 total).
-    expect(getAllByRole('button')).toHaveLength(7);
+    // BTC, USD, EUR, UAH — four separate currency pressables — plus the two
+    // navigating rows' own pressables (System, Categories) — 6 total. Language
+    // moved to the System sub-screen, so its two pressables are gone from here.
+    expect(getAllByRole('button')).toHaveLength(6);
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
@@ -112,25 +145,7 @@ describe('SettingsScreen', () => {
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
   });
 
-  it('renders the language card and persists a language choice', async () => {
-    const { getByTestId, getByText } = await render(<SettingsScreen />);
-
-    expect(getByTestId('settings-card-language')).toBeTruthy();
-
-    await fireEvent.press(getByText('🇺🇦 Українська'));
-
-    expect(mockSetLanguage).toHaveBeenCalledWith('uk');
-  });
-
-  it('shows the stored language as selected, proving effectiveLanguage wiring end-to-end', async () => {
-    mockLiveQueryData = [{ baseCurrency: 'UAH', language: 'uk' }];
-    const { getByText } = await render(<SettingsScreen />);
-
-    expect(getByText('🇺🇦 Українська').parent?.props.accessibilityState.selected).toBe(true);
-    expect(getByText('🇬🇧 English').parent?.props.accessibilityState.selected).toBe(false);
-  });
-
-  it('hides the App Lock card while APP_LOCK_ENABLED is off (pinned off in this suite)', async () => {
+  it('no longer renders the App Lock card (it moved to the System sub-screen)', async () => {
     const { queryByTestId } = await render(<SettingsScreen />);
     expect(queryByTestId('settings-card-app-lock')).toBeNull();
   });
@@ -169,7 +184,7 @@ describe('SettingsScreen — localization', () => {
     const { getByText } = await render(<SettingsScreen />);
 
     expect(getByText('Base Currency')).toBeTruthy();
-    expect(getByText('Language')).toBeTruthy();
+    expect(getByText('System')).toBeTruthy();
   });
 
   it('renders Ukrainian catalog strings under uk', async () => {
@@ -179,6 +194,6 @@ describe('SettingsScreen — localization', () => {
     const { getByText } = await render(<SettingsScreen />);
 
     expect(getByText('Основна валюта')).toBeTruthy();
-    expect(getByText('Мова')).toBeTruthy();
+    expect(getByText('Система')).toBeTruthy();
   });
 });
