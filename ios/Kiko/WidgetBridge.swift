@@ -51,6 +51,80 @@ class WidgetBridge: NSObject {
     }
   }
 
+  @objc func sharedContainerPath(
+    _ appGroupID: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter _: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(
+      FileManager.default
+        .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+        .path
+    )
+  }
+
+  @objc func fileExists(
+    _ path: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter _: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(FileManager.default.fileExists(atPath: path))
+  }
+
+  @objc func deleteFile(
+    _ path: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    do {
+      if FileManager.default.fileExists(atPath: path) {
+        try FileManager.default.removeItem(atPath: path)
+      }
+      resolve(nil)
+    } catch {
+      reject("delete_error", "Failed to delete file", error)
+    }
+  }
+
+  @objc func copyFile(
+    _ fromPath: String,
+    toPath: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    do {
+      if FileManager.default.fileExists(atPath: toPath) {
+        try FileManager.default.removeItem(atPath: toPath)
+      }
+      try FileManager.default.copyItem(atPath: fromPath, toPath: toPath)
+      resolve(nil)
+    } catch {
+      reject("copy_error", "Failed to copy file", error)
+    }
+  }
+
+  @objc func readTextFile(
+    _ path: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter _: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(try? String(contentsOfFile: path, encoding: .utf8))
+  }
+
+  @objc func writeTextFile(
+    _ text: String,
+    toPath: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    do {
+      try text.write(toFile: toPath, atomically: true, encoding: .utf8)
+      resolve(nil)
+    } catch {
+      reject("write_error", "Failed to write file", error)
+    }
+  }
+
   /// Asks WidgetKit to reload the `KikoWidget` extension's timelines so it
   /// picks up the freshly written snapshot.
   @objc func reloadWidget() {
