@@ -49,6 +49,11 @@ export const uk: typeof en = {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
   },
+  appearance: {
+    system: 'Системна',
+    light: 'Світла',
+    dark: 'Темна',
+  },
   calendar: {
     month: {
       january: 'Січень',

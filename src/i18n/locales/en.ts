@@ -57,6 +57,11 @@ export const en = {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
   },
+  appearance: {
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
+  },
   calendar: {
     month: {
       january: 'January',
