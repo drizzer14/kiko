@@ -99,6 +99,13 @@
       "when": 1788701155878,
       "tag": "0013_add_category_sort_order",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788787555878,
+      "tag": "0014_default_category_colors",
+      "breakpoints": true
     }
   ]
 }

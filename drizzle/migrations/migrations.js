@@ -14,6 +14,7 @@ import m0010 from './0010_flowery_rhino.sql';
 import m0011 from './0011_add_lock_settings.sql';
 import m0012 from './0012_add_language.sql';
 import m0013 from './0013_add_category_sort_order.sql';
+import m0014 from './0014_default_category_colors.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -33,5 +34,6 @@ export default {
     m0011,
     m0012,
     m0013,
+    m0014,
   },
 };
