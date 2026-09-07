@@ -50,6 +50,7 @@ export const en = {
     },
     baseCurrency: 'Base Currency',
     categories: 'Categories',
+    colorScheme: 'Color Scheme',
     language: 'Language',
     system: 'System',
     title: 'Settings',
@@ -200,7 +201,7 @@ export const en = {
       addTitle: 'Add Transaction',
       apply: 'Apply',
       applyCategoryMessage:
-        'Apply “{{category}}” to all transactions named “{{name}}”? This also applies to future imports.',
+        'Apply "{{category}}" to all transactions named "{{name}}"? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
       category: 'Category',
       convertToExchange: 'Convert to exchange',

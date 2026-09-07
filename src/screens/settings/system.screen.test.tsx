@@ -25,9 +25,11 @@ jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
 
 const mockSetLanguage = jest.fn();
 const mockSetLockEnabled = jest.fn();
+const mockSetAppearance = jest.fn();
 let mockLiveQueryData: Array<{
   baseCurrency: string;
   language?: 'en' | 'uk' | null;
+  appearance?: 'system' | 'light' | 'dark' | null;
   lockEnabled?: boolean;
 }> = [{ baseCurrency: 'UAH', lockEnabled: false }];
 
@@ -36,6 +38,7 @@ jest.mock('../../repositories/settings.repo', () => ({
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setLanguage: (...args: unknown[]) => mockSetLanguage(...args),
     setLockEnabled: (...args: unknown[]) => mockSetLockEnabled(...args),
+    setAppearance: (...args: unknown[]) => mockSetAppearance(...args),
   },
 }));
 jest.mock('../../db/use-live-query', () => ({
@@ -58,14 +61,22 @@ describe('SystemScreen', () => {
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
   });
 
-  it('renders Language before Face ID (the reserved Color Scheme slot sits between them)', async () => {
+  it('renders the Color Scheme card', async () => {
+    const { getByTestId } = await renderScreen();
+    expect(getByTestId('settings-row-color-scheme')).toBeTruthy();
+  });
+
+  it('renders Language, then Color Scheme, then Face ID in that order', async () => {
     const { getAllByTestId } = await renderScreen();
 
     const cardOrder = getAllByTestId(/^settings-card-/).map((node) => node.props.testID);
 
-    expect(cardOrder.indexOf('settings-card-language')).toBeLessThan(
-      cardOrder.indexOf('settings-card-app-lock'),
-    );
+    const languageIndex = cardOrder.indexOf('settings-card-language');
+    const colorSchemeIndex = cardOrder.indexOf('settings-card-color-scheme');
+    const appLockIndex = cardOrder.indexOf('settings-card-app-lock');
+
+    expect(languageIndex).toBeLessThan(colorSchemeIndex);
+    expect(colorSchemeIndex).toBeLessThan(appLockIndex);
   });
 
   it('persists a language choice', async () => {
