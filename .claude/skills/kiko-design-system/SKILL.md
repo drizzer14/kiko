@@ -6,20 +6,39 @@ description: Invoke when touching theme tokens, react-native-unistyles styles, a
 # Kiko design system
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
-("Design system (started here)" section). The actual token file
-(`theme.ts`) is built in a later task; this skill states the method
-and token categories now so every screen built before then already
-follows the plan, not the final values (which don't exist yet).
+("Design system (started here)" section) and the token module itself,
+`src/design-system/theme.ts`, which now ships two themes —
+`darkTheme` and `lightTheme` — sharing one shape (spacing, radii,
+typography) but each with its own `colors` and its own per-scheme
+entity/chart palette (`palette.ts`). This skill states the method and
+token categories; read `theme.ts`/`palette.ts` directly for the
+current values rather than trusting a copy of them here.
 
 This project skill carries domain/design knowledge. The plugin's
 `design-system` workflow skill (`harness/kiko/skills/design-system/SKILL.md`)
 is a separate, thin process-wrapper skill for the designer role — the
 two are meant to coexist, read both.
 
-## The OLED dark theme method
+## Dark and light themes
 
-Follow the Habr method (https://habr.com/ru/articles/499202/) for an
-OLED-friendly dark theme:
+Kiko ships both a dark theme and a light theme (`darkTheme` /
+`lightTheme` in `theme.ts`), registered with `adaptiveThemes: true`
+so a fresh install follows the OS appearance. The user can instead
+pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
+persisted in `settings.appearance` (`src/db/schema.ts`) and applied
+at app start by `useSyncAppearanceWithSettings`
+(`src/appearance/use-sync-appearance-with-settings.ts`), which flips
+`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match. Any native
+surface that needs a plain `'light' | 'dark'` scheme rather than a
+Unistyles theme name (a `LiquidGlassView`, a native tab bar) goes
+through `resolveColorScheme` (`src/design-system/color-scheme.ts`),
+not a hand-rolled mapping. Read `theme.ts`, `palette.ts`, and
+`color-scheme.ts` directly for the current values and mapping rather
+than trusting a copy of them here.
+
+The dark theme itself follows the Habr method
+(https://habr.com/ru/articles/499202/) for an OLED-friendly dark
+theme:
 
 - **True-black background** (`#000000`) — an OLED pixel that's fully
   off draws zero power; near-black grays don't get this benefit.
