@@ -5,14 +5,14 @@ import { i18n } from '../../../i18n';
 import MonobankTokenField from './monobank-token-field.component';
 
 const mockSaveToken = jest.fn();
-const mockReadToken = jest.fn<Promise<string | undefined>, []>();
+const mockHasToken = jest.fn<Promise<boolean>, []>();
 const mockFetchClientInfo = jest.fn();
 const mockOpenURL = jest.fn();
 const mockGetString = jest.fn<Promise<string>, []>();
 
 jest.mock('../../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
-  readToken: () => mockReadToken(),
+  hasToken: () => mockHasToken(),
 }));
 jest.mock('../../../monobank/monobank.client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
@@ -35,52 +35,67 @@ const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } =>
   return { promise, resolve };
 };
 
+/**
+ * Renders the field the way every test here does; `isConnected` is the only
+ * variable. Returns the full RNTL query object so each test destructures only
+ * the queries it needs.
+ */
+const renderField = (isConnected = false) => {
+  return render(<MonobankTokenField isConnected={isConnected} />);
+};
+
 describe('MonobankTokenField', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadToken.mockResolvedValue(undefined);
+    mockHasToken.mockResolvedValue(false);
     mockSaveToken.mockResolvedValue(undefined);
   });
 
-  it('prefills the token input from readToken', async () => {
-    mockReadToken.mockResolvedValue('existing-token');
-    const { findByDisplayValue } = await render(<MonobankTokenField isConnected={false} />);
-    expect(await findByDisplayValue('existing-token')).toBeTruthy();
+  it('never prefills the input from the Keychain', async () => {
+    mockHasToken.mockResolvedValue(true);
+    const { getByPlaceholderText } = await renderField();
+
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('');
   });
 
-  it('does not overwrite the token the user is typing once readToken resolves late', async () => {
-    const pending = deferred<string | undefined>();
-    mockReadToken.mockReturnValue(pending.promise);
-    const { getByPlaceholderText, findByDisplayValue } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+  it('shows a "token saved" indicator when a token is already stored', async () => {
+    mockHasToken.mockResolvedValue(true);
+    const { findByText } = await renderField();
 
-    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'user-typed');
+    expect(await findByText('Token saved')).toBeTruthy();
+  });
 
-    await act(async () => {
-      pending.resolve('existing-token');
-      await pending.promise;
-    });
+  it('does not touch the Keychain at all when the account is connected', async () => {
+    await renderField(true);
 
-    expect(await findByDisplayValue('user-typed')).toBeTruthy();
+    expect(mockHasToken).not.toHaveBeenCalled();
+  });
+
+  it('clears the entered token from state after a successful save', async () => {
+    mockFetchClientInfo.mockResolvedValue({ name: 'Test User' });
+    const { getByPlaceholderText, getByText, findByText } = await renderField();
+
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'a-real-token');
+    await fireEvent.press(getByText('Save'));
+
+    expect(await findByText('Connected as Test User')).toBeTruthy();
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('');
   });
 
   it('renders the section heading as "Synchronization"', async () => {
-    const { getByText } = await render(<MonobankTokenField isConnected={false} />);
+    const { getByText } = await renderField();
     expect(getByText('Synchronization')).toBeTruthy();
   });
 
   it('opens api.monobank.ua when the "Open api.monobank.ua" link is pressed', async () => {
-    const { getByText } = await render(<MonobankTokenField isConnected={false} />);
+    const { getByText } = await renderField();
     await fireEvent.press(getByText('Open api.monobank.ua'));
     expect(mockOpenURL).toHaveBeenCalledWith('https://api.monobank.ua/');
   });
 
   it('fills the token field from the clipboard when the paste icon button is pressed', async () => {
     mockGetString.mockResolvedValue('clipboard-token');
-    const { getByLabelText, findByDisplayValue } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByLabelText, findByDisplayValue } = await renderField();
     await act(async () => {
       await fireEvent.press(getByLabelText('Paste from clipboard'));
     });
@@ -89,9 +104,7 @@ describe('MonobankTokenField', () => {
 
   it('trims surrounding whitespace from a pasted clipboard value', async () => {
     mockGetString.mockResolvedValue('  clipboard-token\n');
-    const { getByLabelText, getByPlaceholderText, findByDisplayValue } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByLabelText, getByPlaceholderText, findByDisplayValue } = await renderField();
     await act(async () => {
       await fireEvent.press(getByLabelText('Paste from clipboard'));
     });
@@ -103,9 +116,7 @@ describe('MonobankTokenField', () => {
 
   it('validates the token and calls saveToken when fetchClientInfo accepts it', async () => {
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, findByText } = await renderField();
     await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'new-token');
     await act(async () => {
       await fireEvent.press(getByText('Save'));
@@ -117,9 +128,7 @@ describe('MonobankTokenField', () => {
 
   it('does not call saveToken and shows an error when fetchClientInfo rejects the token', async () => {
     mockFetchClientInfo.mockRejectedValue(new Error('Monobank request failed: 401'));
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, findByText } = await renderField();
     await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'bad-token');
     await act(async () => {
       await fireEvent.press(getByText('Save'));
@@ -132,9 +141,7 @@ describe('MonobankTokenField', () => {
   it('shows a distinct save-error (not "Invalid token") when saveToken rejects a valid token', async () => {
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     mockSaveToken.mockRejectedValue(new Error('Keychain write failed'));
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await renderField();
     await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'valid-token');
     await act(async () => {
       await fireEvent.press(getByText('Save'));
@@ -149,9 +156,7 @@ describe('MonobankTokenField', () => {
   it('shows a "Checking…" line while token validation is in flight', async () => {
     const pending = deferred<{ name: string }>();
     mockFetchClientInfo.mockReturnValue(pending.promise);
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await renderField();
     await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'in-flight-token');
     await act(async () => {
       fireEvent.press(getByText('Save'));
@@ -169,9 +174,7 @@ describe('MonobankTokenField', () => {
 
   it('clears a stale save-result status line when the token text is edited afterward', async () => {
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, findByText, queryByText } = await renderField();
     const input = getByPlaceholderText('Monobank token');
     await fireEvent.changeText(input, 'valid-token');
     await act(async () => {
@@ -184,9 +187,7 @@ describe('MonobankTokenField', () => {
   });
 
   it('renders the token input, link, and Save button while not connected', async () => {
-    const { getByPlaceholderText, getByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText } = await renderField();
 
     expect(getByPlaceholderText('Monobank token')).toBeTruthy();
     expect(getByText('Open api.monobank.ua')).toBeTruthy();
@@ -194,9 +195,7 @@ describe('MonobankTokenField', () => {
   });
 
   it('hides the token input, link, and Save button once connected', async () => {
-    const { queryByPlaceholderText, queryByText } = await render(
-      <MonobankTokenField isConnected={true} />,
-    );
+    const { queryByPlaceholderText, queryByText } = await renderField(true);
 
     expect(queryByPlaceholderText('Monobank token')).toBeNull();
     expect(queryByText('Open api.monobank.ua')).toBeNull();
@@ -204,7 +203,7 @@ describe('MonobankTokenField', () => {
   });
 
   it('still shows the "Synchronization" heading once connected', async () => {
-    const { getByText } = await render(<MonobankTokenField isConnected={true} />);
+    const { getByText } = await renderField(true);
 
     expect(getByText('Synchronization')).toBeTruthy();
   });
@@ -213,7 +212,7 @@ describe('MonobankTokenField', () => {
 describe('MonobankTokenField — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadToken.mockResolvedValue(undefined);
+    mockHasToken.mockResolvedValue(false);
   });
 
   afterEach(async () => {
@@ -227,9 +226,7 @@ describe('MonobankTokenField — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByPlaceholderText, getByText, queryByText } = await render(
-      <MonobankTokenField isConnected={false} />,
-    );
+    const { getByPlaceholderText, getByText, queryByText } = await renderField();
 
     expect(getByText('Синхронізація')).toBeTruthy();
     expect(getByText('Відкрити api.monobank.ua')).toBeTruthy();

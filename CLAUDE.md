@@ -18,6 +18,8 @@ below).
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` | any unused/missing dep, or broken lockfile, fails; a changed dependency block is surfaced for confirmation | medium |
 | `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking | fast |
+| `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
+| `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
@@ -26,7 +28,7 @@ below).
 Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
-  lint, dup, knip, deps, security, secrets, overrides.
+  lint, dup, knip, deps, security, rules, plist, secrets, overrides.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint.
@@ -36,12 +38,19 @@ Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 (`scripts/checks/fast.sh`: lint, security, secrets on the touched
 file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
-session's changed source files; knip, deps project-wide) runs on
-`Stop` and `SubagentStop`, and stays silent when no source file
-changed. Both wrappers exit `2` on failure and print the structured
-block to stderr, which is how Claude Code surfaces the failure back
-to the agent. A fresh checkout must run `npm install` before these
-hooks work — every wrapper's tool lives in `node_modules`.
+session's changed source files; knip, deps, the Semgrep rule
+fixtures, and the Info.plist security assertions project-wide) runs
+on `Stop` and `SubagentStop`, and stays silent only when the session
+changed neither a source file nor a harness input — a rule `.yml`, a
+file under `rules/fixtures/`, a wrapper in `scripts/checks/`, or
+`ios/Kiko/Info.plist`. A session that edited only a rule, a fixture,
+or the plist is the one most likely to have broken a rule (or
+unpinned a credential-bearing host), so it must not be the one that
+runs nothing. Both wrappers exit `2` on failure and
+print the structured block to stderr, which is how Claude Code
+surfaces the failure back to the agent. A fresh checkout must run
+`npm install` before these hooks work — every wrapper's tool lives in
+`node_modules`.
 
 ## Override protocol
 
@@ -154,6 +163,22 @@ verified usage, not dead weight:
   is a pure false positive on them. Only the generated `*_snapshot.json`
   files are excluded; the hand-authored `.sql` migrations and every
   other JSON file stay in scope.
+- **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
+  `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
+  `scripts/checks/security.sh`)**: the positive/negative fixture pair that
+  proves each project Semgrep rule still fires. A positive fixture is
+  deliberately non-conforming, never-imported code (an unredacted widget money
+  view, an unprotected App Group write, a Keychain secret pushed into React
+  state), and each pair is near-identical by construction — the negative fixture
+  is the positive one plus the fix. Verified: without these exclusions a
+  `.bad.tsx` fails Biome, reads as an unused file to Knip, and a pair reports
+  40% duplicated lines / 43.71% duplicated tokens to jscpd, all by design. The
+  semgrep `--exclude` is the bare directory name `fixtures` (semgrep matches it
+  per path component), so it hits only `rules/fixtures`; the app's own
+  `src/**/__fixtures__` stays in scope. No coverage is lost:
+  `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
+  DOES scan the directory, and it fails if any rule stops matching its positive
+  fixture or starts matching its negative one.
 - **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

@@ -42,15 +42,19 @@ export const rawDatabase: DB = new Proxy({} as DB, {
 });
 
 /**
- * The launch-time connection. Gated on `DB_ENCRYPTION_ENABLED`:
- *   - flag OFF (default): open the LIVE PLAINTEXT `kiko.db` exactly as the app
- *     did before encryption shipped. `migrateLegacyDatabase()` canonicalizes any
- *     surviving pre-rename `pff.db` into `kiko.db` (idempotent) and returns that
- *     plaintext connection. Nothing here reads/creates the db key, asserts a
- *     SQLCipher build, or deletes a plaintext file.
- *   - flag ON: the full cluster-2 encrypted path (keyed open + one-time
- *     plaintext -> encrypted export). See `db-config.ts` — ON only for the
- *     supervised on-device migration test.
+ * The launch-time connection. Gated on `DB_ENCRYPTION_ENABLED`, which is ON
+ * as the shipping value — see `db-config.ts` for why the flag exists and why
+ * it must not be flipped:
+ *   - flag ON (shipping): the full cluster-2 encrypted path (keyed open +
+ *     one-time plaintext -> encrypted export).
+ *   - flag OFF: the historical pre-migration path only, kept as the escape
+ *     hatch for a build made without the SQLCipher pod, and must not be
+ *     re-enabled outside that case. Opens the LIVE PLAINTEXT `kiko.db` exactly
+ *     as the app did before encryption shipped. `migrateLegacyDatabase()`
+ *     canonicalizes any surviving pre-rename `pff.db` into `kiko.db`
+ *     (idempotent) and returns that plaintext connection. Nothing here
+ *     reads/creates the db key, asserts a SQLCipher build, or deletes a
+ *     plaintext file.
  */
 const openConnection = (): Promise<DB> =>
   DB_ENCRYPTION_ENABLED ? openEncryptedDatabase() : Promise.resolve(migrateLegacyDatabase());

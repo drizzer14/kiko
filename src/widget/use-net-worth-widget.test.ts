@@ -2,11 +2,13 @@ import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
 const mockWriteSnapshot = jest.fn(() => Promise.resolve());
+const mockClearSnapshot = jest.fn(() => Promise.resolve());
 const mockReloadWidget = jest.fn();
 
 jest.mock('./widget-bridge', () => ({
   widgetBridge: {
     writeSnapshot: (...args: unknown[]) => mockWriteSnapshot(...args),
+    clearSnapshot: (...args: unknown[]) => mockClearSnapshot(...args),
     reloadWidget: (...args: unknown[]) => mockReloadWidget(...args),
   },
 }));
@@ -28,12 +30,6 @@ jest.mock('../repositories/rates.repo', () => ({
 jest.mock('../repositories/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../repositories/transactions.repo', () => ({
-  transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
-}));
-jest.mock('../repositories/rate-history.repo', () => ({
-  rateHistoryRepo: { historyRowsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
-}));
 
 import { useNetWorthWidget } from './use-net-worth-widget';
 
@@ -42,8 +38,6 @@ type LiveData = {
   holdings?: unknown[];
   rates?: unknown[];
   settings?: unknown[];
-  transactions?: unknown[];
-  history?: unknown[];
 };
 
 // Feed each `useLiveQuery` call by the first table name it watches, mirroring
@@ -54,8 +48,6 @@ const setLiveData = (data: LiveData): void => {
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
-    transactions: data.transactions ?? [],
-    currency_rate_history: data.history ?? [],
   };
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
     data: byTable[tables[0]] ?? [],
@@ -73,6 +65,33 @@ const HOLDING = {
   closedAt: null,
 };
 const RATE = { base: 'USD', quote: 'UAH', rate: '40' };
+const FULL_LIVE_DATA = { accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] };
+// Mirrors the hook's own DEBOUNCE_MS.
+const DEBOUNCE_MS = 500;
+
+// Renders the hook over the full live data set, with the `settings` rows as the
+// only variable: a row whose `lockEnabled` decides the lock behaviour, or `[]`
+// for a device with no settings row written yet. Omit it for the default row.
+const renderWidget = async (settings?: LiveData['settings']) => {
+  setLiveData({ ...FULL_LIVE_DATA, settings });
+
+  return renderHook(() => useNetWorthWidget());
+};
+
+const advanceDebounce = async (): Promise<void> => {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(DEBOUNCE_MS);
+  });
+};
+
+const backgroundApp = async (): Promise<void> => {
+  await act(async () => {
+    for (const listener of appStateListeners) {
+      listener('background');
+    }
+    await Promise.resolve();
+  });
+};
 
 let appStateListeners: Array<(state: AppStateStatus) => void>;
 
@@ -96,14 +115,11 @@ afterEach(() => {
 
 describe('useNetWorthWidget', () => {
   it('writes the snapshot and reloads the widget once, after the debounce window', async () => {
-    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] });
-    await renderHook(() => useNetWorthWidget());
+    await renderWidget();
 
     expect(mockWriteSnapshot).not.toHaveBeenCalled();
 
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(500);
-    });
+    await advanceDebounce();
 
     expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
     expect(mockReloadWidget).toHaveBeenCalledTimes(1);
@@ -113,48 +129,26 @@ describe('useNetWorthWidget', () => {
     expect(snapshot.total.minorUnits).toBeGreaterThan(0);
   });
 
-  it('writes an empty trend when there are no history rows yet (first run)', async () => {
-    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE], history: [] });
-    await renderHook(() => useNetWorthWidget());
-
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(500);
-    });
-
-    const snapshot = mockWriteSnapshot.mock.calls[0]?.[0];
-    expect(snapshot.trend).toEqual([]);
-  });
-
   it('writes immediately when AppState transitions to background, without waiting for the debounce', async () => {
-    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] });
-    await renderHook(() => useNetWorthWidget());
+    await renderWidget();
 
-    await act(async () => {
-      for (const listener of appStateListeners) {
-        listener('background');
-      }
-      await Promise.resolve();
-    });
+    await backgroundApp();
 
     expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('clears the debounce timer on unmount, never writing after the window elapses', async () => {
-    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] });
-    const { unmount } = await renderHook(() => useNetWorthWidget());
+    const { unmount } = await renderWidget();
 
     await unmount();
 
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(500);
-    });
+    await advanceDebounce();
 
     expect(mockWriteSnapshot).not.toHaveBeenCalled();
   });
 
   it('removes the AppState listener on unmount', async () => {
-    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] });
-    const { unmount } = await renderHook(() => useNetWorthWidget());
+    const { unmount } = await renderWidget();
     const removeSpies = (AppState.addEventListener as jest.Mock).mock.results.map(
       (call) => call.value.remove,
     );
@@ -164,5 +158,42 @@ describe('useNetWorthWidget', () => {
     for (const removeSpy of removeSpies) {
       expect(removeSpy).toHaveBeenCalled();
     }
+  });
+
+  it('clears the snapshot instead of writing it while the app lock is enabled', async () => {
+    await renderWidget([{ baseCurrency: 'UAH', lockEnabled: true }]);
+
+    await advanceDebounce();
+
+    expect(mockClearSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockWriteSnapshot).not.toHaveBeenCalled();
+    expect(mockReloadWidget).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the snapshot immediately on background while the app lock is enabled', async () => {
+    await renderWidget([{ baseCurrency: 'UAH', lockEnabled: true }]);
+
+    await backgroundApp();
+
+    expect(mockClearSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockWriteSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('writes the snapshot again once the app lock is disabled', async () => {
+    await renderWidget([{ baseCurrency: 'UAH', lockEnabled: false }]);
+
+    await advanceDebounce();
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockClearSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('writes the snapshot when no settings row exists yet: a missing row is not a lock', async () => {
+    await renderWidget([]);
+
+    await advanceDebounce();
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockClearSnapshot).not.toHaveBeenCalled();
   });
 });

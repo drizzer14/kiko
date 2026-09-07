@@ -24,13 +24,14 @@ type AppLock = {
  * re-lock, however long the app sits backgrounded. Face ID is asked for only on
  * a fresh app open.
  *
- * SAFETY: the whole hook is inert while `APP_LOCK_ENABLED` is off (the default).
- * `lockEnabled` folds the flag in, so `isLocked` is always false; `unlock()`
- * short-circuits and returns success BEFORE calling `authenticate()`. Importing
- * `./biometrics` is safe because that wrapper only `require`s the native
- * biometrics module lazily, from inside `authenticate()` — which the off path
- * never calls — so the native `TurboModuleRegistry.getEnforcing` never runs on a
- * build without the pod.
+ * SAFETY: `APP_LOCK_ENABLED` is ON in every shipping build; the whole hook is
+ * inert only if it is compiled off, which is a build-time safety mechanism,
+ * not a default — see `db-config.ts`. `lockEnabled` folds the flag in, so
+ * `isLocked` is always false; `unlock()` short-circuits and returns success
+ * BEFORE calling `authenticate()`. Importing `./biometrics` is safe because
+ * that wrapper only `require`s the native biometrics module lazily, from
+ * inside `authenticate()` — which the off path never calls — so the native
+ * `TurboModuleRegistry.getEnforcing` never runs on a build without the pod.
  */
 export const useAppLock = (): AppLock => {
   const { t } = useTranslation();

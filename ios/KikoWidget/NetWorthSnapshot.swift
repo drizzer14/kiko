@@ -27,17 +27,9 @@ struct NetWorthSnapshot: Codable {
         var id: String { currency }
     }
 
-    struct TrendPoint: Codable {
-        let time: Int
-        // `amount` on the TS side (`NetWorthPoint`) is the total in base MAJOR
-        // units (a float), not minor units, so this is a Double, not an Int.
-        let value: Double
-    }
-
     let baseCurrency: String
     let total: Total
     let breakdown: [BreakdownItem]
-    let trend: [TrendPoint]
     let updatedAt: Int
 }
 

@@ -74,6 +74,27 @@ widening via `Pick`/extend; design-system layout prop over inline style; OLED
 dark-theme choices; Monobank protocol constraints; ISO-4217 mapping at the
 sync boundary only; net-worth assets-only rule.
 
+### Enforced — 2026-09-06 security pass (`docs/security/2026-09-06-security-pass-findings.md`)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-widget-money-view-needs-privacysensitive` | S2 (rule idea H1) | Semgrep (Swift, ERROR), `paths.include: "*.swift"` | Scope must be the **basename** pattern, never a path-prefixed `ios/KikoWidget/*.swift` — copy that form into every new Swift row here; the rationale is the comment above the rule in `rules/semgrep-mobile.yml`. Matches a `Text(…)` reading a money member (`.formatted` / `.minorUnits` / `.total`, keyed on the member so a renamed binding cannot escape) outside a `.privacySensitive()` chain. Verified against Semgrep 1.175: a row-level `HStack { … }.privacySensitive()` satisfies it. Known gap: it keys on a direct `Text(<member>)` read, so it does not cover the `moneyText(_ formatted:)` helper shape `ios/KikoWidget/NetWorthWidgetView.swift` now uses (the amount reaches `Text` as a plain `String` parameter). |
+| `kiko-appgroup-write-needs-protection` | S3 | Semgrep (generic regex over `*.swift`, ERROR) | File-scoped, not function-scoped: Semgrep 1.175 cannot match a Swift `func` body as an enclosing range, so `pattern-inside`/`pattern-not-inside` on a function silently matches nothing. Zero false positives on the real tree. |
+| `plist.sh` — credential-bearing host must be pinned | S1, H3 | Shell assertion (`scripts/checks/plist.sh`, medium tier + `check:all`) | Resolves each credential-header client's `@env` endpoint to a host via `.env` and requires it under `NSPinnedDomains`. The `@env` import parser is Node-based (not single-line sed) so a multi-line `import { A, B } from '@env';` is still resolved; if a credential-bearing file references `@env` at all but no identifier can be extracted (unrecognized import shape), the check fails closed rather than silently skipping the host. Also asserts every domain under `NSPinnedDomains` carries at least 2 `NSPinnedCAIdentities` entries (reinforces S1's "primary + backup pin" recommendation) — a single pin cannot be rotated without an outage. |
+| `plist.sh` — Release ATS hardening | S7, S8, H6 | Shell assertion (`scripts/checks/plist.sh`) | `NSAllowsArbitraryLoads` false; `NSAllowsLocalNetworking` absent from the source plist; the Debug-injection build phase present; no empty `NS*UsageDescription`. |
+| `settings` columns must have a reader | S4, H5 | Jest (`src/db/settings-columns.test.ts`) | Exception list is exact, not a floor, so both a new dead column and a silent re-wiring fail. Not a Semgrep rule: the assertion is cross-file (schema vs. the whole of `src/`). |
+| Security master switches stay `true` | S10, H7 | Jest (`src/db/db-config.test.ts`) | One assertion per flag. Converts an accidental "restore the documented default" from a silent shipped regression into a failing test. |
+| `kiko-no-keychain-secret-into-usestate` | S5, H4 | Semgrep (TS, taint mode, WARNING/Class B) | Catches `const x = await readToken(); setX(x)`. Also flags a value *derived* from a secret (e.g. a client-info call using it) — a judgment call, which is why it is Class B rather than a hard fail; the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. |
+| `kiko-no-keychain-secret-through-then` | S5, H4 | Semgrep (TS, WARNING/Class B) | Companion for `readToken().then(...)`, which Semgrep 1.175's taint engine cannot follow (propagators and `focus-metavariable` sources both verified not to work through a `.then` callback parameter); the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. Proven by its own fixture pair (`kiko-no-keychain-secret-through-then.bad.ts` / `.good.ts`), not the taint rule's — the fixture harness only credits a rule id against the fixture whose filename names it. |
+
+**Not mechanized, with reason.** H3's Semgrep half — "flag a `fetch` whose
+headers carry a credential key" — was dropped. Semgrep cannot read
+`Info.plist`, so the rule can only report every credential-bearing client
+unconditionally, which means it would fire forever on the two known-good,
+correctly-pinned clients. That is a noisy rule, not a check. The shell
+assertion above carries the whole intent, and it is strictly more precise
+because it can compare against the actual pinned set.
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

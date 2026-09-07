@@ -28,15 +28,19 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- NSAllowsLocalNetworking is deliberately ABSENT here. It exempts
+		     .local / loopback / link-local from ATS and is only a Metro
+		     dev-server convenience, so it must never ship in Release. The
+		     "Inject Debug-only ATS local networking" build phase adds it back
+		     into the built Info.plist for Debug configurations only. Asserted
+		     by scripts/checks/plist.sh. -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-		<!-- Certificate pinning for the token-bearing host only. CA (not leaf)
-		     pins: primary = root CA (Amazon Root CA 1), backup = current
-		     intermediate (Amazon RSA 2048 M01). Rotation runbook:
-		     docs/security/README.md. CoinGecko is deliberately unpinned
-		     (public price data, no secret). -->
+		<!-- Certificate pinning for every secret-bearing host. CA (not leaf)
+		     pins: primary = root CA, backup = current intermediate. The three
+		     remaining contacted hosts (api.coingecko.com, blockstream.info,
+		     bank.gov.ua) are deliberately unpinned: none carries a credential.
+		     Host table + rotation runbook: docs/security/README.md. -->
 		<key>NSPinnedDomains</key>
 		<dict>
 			<key>api.monobank.ua</key>
@@ -55,12 +59,26 @@
 					</dict>
 				</array>
 			</dict>
+			<key>api.binance.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+				<key>NSPinnedCAIdentities</key>
+				<array>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=</string>
+					</dict>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>SDG5orEv8iX6MNenIAxa8nQFNpROB/6+llsZdXHZNqs=</string>
+					</dict>
+				</array>
+			</dict>
 		</dict>
 	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Kiko uses Face ID to unlock the app and your saved credentials.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

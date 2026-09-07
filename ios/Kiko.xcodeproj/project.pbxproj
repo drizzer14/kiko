@@ -200,6 +200,7 @@
 				81CFFED591FFFF28AA5FBF50 /* [CP] Embed Pods Frameworks */,
 				561476BB934C0E96F3DA047B /* [CP] Copy Pods Resources */,
 				E8169A1CACF38CC8D9E5E450 /* Embed Foundation Extensions */,
+				A7C1D2E3F4A5B6C7D8E9F0A1 /* Inject Debug-only ATS local networking */,
 			);
 			buildRules = (
 			);
@@ -296,6 +297,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
+		};
+		A7C1D2E3F4A5B6C7D8E9F0A1 /* Inject Debug-only ATS local networking */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Inject Debug-only ATS local networking";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# NSAllowsLocalNetworking is absent from the source Info.plist on purpose\n# (it must never ship in Release). Metro needs it in Debug, so add it back\n# into the BUILT plist for Debug configurations only. Runs last, after\n# Info.plist processing and before code signing.\nset -e\nif [ \"${CONFIGURATION}\" != \"Debug\" ]; then\n  exit 0\nfi\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n/usr/libexec/PlistBuddy -c \"Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true\" \"${PLIST}\" 2>/dev/null \\\n  || /usr/libexec/PlistBuddy -c \"Set :NSAppTransportSecurity:NSAllowsLocalNetworking true\" \"${PLIST}\"\n";
 		};
 		561476BB934C0E96F3DA047B /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;

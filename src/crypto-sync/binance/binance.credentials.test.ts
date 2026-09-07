@@ -28,6 +28,31 @@ jest.mock('react-native-keychain', () => {
 
 const fixture = { apiKey: 'api-key-fixture', secret: 'secret-fixture' };
 
+type CredentialsModule = typeof import('./binance.credentials');
+type KeychainMock = {
+  setGenericPassword: jest.Mock<Promise<boolean>, [string, string, unknown]>;
+};
+
+/**
+ * Requires a fresh instance of the credentials module (and its mocked Keychain)
+ * in an isolated registry so the once-per-process `hasRepairedAccessPolicy`
+ * latch starts untripped — `jest.isolateModules()` rather than
+ * `jest.resetModules()`, because it sandboxes only its own callback and so
+ * leaves the file's `jest.requireMock('react-native-keychain')` binding intact,
+ * whatever the test order.
+ */
+const freshCredentials = (): { mod: CredentialsModule; keychain: KeychainMock } => {
+  let mod!: CredentialsModule;
+  let keychain!: KeychainMock;
+
+  jest.isolateModules(() => {
+    mod = require('./binance.credentials');
+    keychain = require('react-native-keychain');
+  });
+
+  return { mod, keychain };
+};
+
 describe('binance credentials', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -59,13 +84,7 @@ describe('binance credentials', () => {
   });
 
   it('re-saves a pair stored under the old biometric policy under the hardened policy on read', async () => {
-    const keychain = jest.requireMock('react-native-keychain') as {
-      setGenericPassword: (
-        username: string,
-        password: string,
-        options: unknown,
-      ) => Promise<boolean>;
-    };
+    const { mod: fresh, keychain } = freshCredentials();
     // A pair written before the hardening shipped: gated by BIOMETRY_CURRENT_SET.
     await keychain.setGenericPassword('binance', JSON.stringify(fixture), {
       service: 'kiko.binance.credentials',
@@ -74,7 +93,7 @@ describe('binance credentials', () => {
     });
     mockSet.mockClear();
 
-    expect(await readCredentials()).toEqual(fixture);
+    expect(await fresh.readCredentials()).toEqual(fixture);
 
     expect(mockSet).toHaveBeenCalledWith('binance', JSON.stringify(fixture), {
       service: 'kiko.binance.credentials',
@@ -107,5 +126,52 @@ describe('binance credentials', () => {
     await clearCredentials();
 
     expect(await readCredentials()).toBeUndefined();
+  });
+});
+
+describe('binance credentials — once-per-process re-save latch', () => {
+  it('re-saves the pair at most once per process, so a read is otherwise pure', async () => {
+    const { mod: fresh, keychain } = freshCredentials();
+    // A pair written before the hardening shipped, same as the legacy-policy
+    // test above, but against this test's own isolated module instance.
+    await keychain.setGenericPassword('binance', JSON.stringify(fixture), {
+      service: 'kiko.binance.credentials',
+      accessControl: 'BiometryCurrentSet',
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
+    });
+    mockSet.mockClear();
+
+    await fresh.readCredentials();
+    await fresh.readCredentials();
+    await fresh.readCredentials();
+
+    expect(mockSet).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not trip the latch when the re-save rejects, so a later read retries it', async () => {
+    const { mod: fresh, keychain } = freshCredentials();
+    await keychain.setGenericPassword('binance', JSON.stringify(fixture), {
+      service: 'kiko.binance.credentials',
+      accessControl: 'BiometryCurrentSet',
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
+    });
+    mockSet.mockClear();
+
+    // The first repair-save attempt fails (a real Keychain write can reject —
+    // e.g. the device locks mid-write).
+    keychain.setGenericPassword.mockRejectedValueOnce(new Error('keychain write failed'));
+
+    await expect(fresh.readCredentials()).rejects.toThrow('keychain write failed');
+    expect(mockSet).not.toHaveBeenCalled();
+
+    // The latch must not have been set by the failed attempt: the next read
+    // retries the repair-save, and this one succeeds.
+    await fresh.readCredentials();
+    expect(mockSet).toHaveBeenCalledTimes(1);
+
+    // Now that a save has succeeded, the latch is set: a further read does
+    // not re-save again.
+    await fresh.readCredentials();
+    expect(mockSet).toHaveBeenCalledTimes(1);
   });
 });
