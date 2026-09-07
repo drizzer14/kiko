@@ -58,11 +58,17 @@ one place a layout convention is supposed to live.
 
 ## Styling layer: react-native-unistyles v3
 
-`react-native-unistyles` (^3.3.0) is the styling layer. The theme
-described above is authored as a Unistyles v3 theme object. Style
-components against the theme's tokens, not literal values, so a
-future theme refinement (the follow-up sub-project) only touches the
-theme module.
+`react-native-unistyles` (^3.3.0) is the styling layer. There are two
+themes authored as Unistyles v3 theme objects — the OLED `darkTheme`
+above and a matching `lightTheme` — both registered in
+`src/design-system/unistyles.ts` as `{ dark, light }` (dark first) with
+`adaptiveThemes: true`, so a fresh install follows the OS appearance and
+`UnistylesRuntime.setTheme` can switch by name. Style components against
+the theme's tokens, not literal values, so both themes (and any future
+refinement) resolve from the same token keys — the token keys are the
+contract, the two themes just supply different values per key. The token
+values live in `theme.ts` (`darkTheme`/`lightTheme`) and
+`palette.ts`; read those directly rather than restating them here.
 
 ## Component set
 
