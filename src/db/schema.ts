@@ -123,9 +123,12 @@ export const settings = sqliteTable('settings', {
   // App lock (Face ID / passcode gate). Off by default; asked for only on a
   // fresh app open. Once unlocked the process never re-locks.
   lockEnabled: integer('lock_enabled', { mode: 'boolean' }).notNull().default(false),
-  // Legacy: the old background-grace period. No longer read or written (the lock
-  // is cold-launch-only now). Kept as a harmless column so no migration is
-  // needed to drop it; migration 0011 still creates it.
+  // LEGACY, zero readers. The abandoned background-grace design (migration 0011
+  // created it); the shipped lock is cold-launch-only and never re-locks.
+  // Deliberately not dropped — a destructive migration on a live single-user DB
+  // buys nothing and the column is harmless. Pinned as the sole documented
+  // exception in `src/db/settings-columns.test.ts`; re-wiring it means removing
+  // it there first. Accepted risk: docs/security/README.md.
   lockGraceSeconds: integer('lock_grace_seconds').notNull().default(30),
   // The chosen UI language. NULL means "follow the device language" (the real,
   // distinct unset state — unlike baseCurrency, which always has a value); 'en'

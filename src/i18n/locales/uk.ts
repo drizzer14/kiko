@@ -256,6 +256,7 @@ export const uk: typeof en = {
     syncing: 'Синхронізуємо…',
     syncNow: 'Синхронізувати зараз',
     tokenLabel: 'Токен',
+    tokenSaved: 'Токен збережено',
     tryAgainMessage: 'Спробуйте ще раз.',
     unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}',
     wallet: 'Гаманець',

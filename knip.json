@@ -2,6 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": ["App.tsx", "jest/setup.js", "__tests__/**/*.{test,spec}.{ts,tsx}"],
   "project": ["**/*.{ts,tsx,js}"],
+  "ignore": ["rules/fixtures/**"],
   "ignoreDependencies": [
     "@babel/runtime",
     "@typescript/native-preview",

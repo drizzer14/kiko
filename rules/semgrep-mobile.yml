@@ -42,6 +42,68 @@ rules:
       - metavariable-regex:
           metavariable: $TOKEN
           regex: (?i).*(token|secret|password|credential).*
+  # `paths.include` is a bare `*.swift` on purpose, NOT `ios/KikoWidget/*.swift`.
+  # Semgrep matches an include pattern containing a `/` against the path relative
+  # to the SCAN ROOT, so a path-prefixed include silently matches nothing the
+  # moment the fixture runner scans `rules/fixtures/` directly — a rule that
+  # matches nothing still reports success, which is the exact failure mode this
+  # whole fixture harness exists to prevent. A basename pattern matches under
+  # every scan root (verified both ways on Semgrep 1.175). The scope loss is
+  # nil: the pattern requires a `Text(…)` reading a money member, and SwiftUI
+  # `Text` exists only in the widget extension — the main app is React Native.
+  #
+  # The metavariable-regex keys on the money MEMBER being read (`.formatted`,
+  # `.minorUnits`, `.total`), never on the name of the binding it is read from.
+  # An earlier `^(snapshot|item)\.` let a renamed binding walk straight past the
+  # rule — `content(for snap:)` or `ForEach(rows) { row in … }` and the balance
+  # ships unredacted. `rules/fixtures/*.bad.swift` pins both spellings with
+  # EXPECT-FINDING comments so `npm run check:rules` fails if that regresses.
+  # The leading `.*` is load-bearing: Semgrep 1.175 anchors a metavariable-regex
+  # at the START of the metavariable's text, so the bare
+  # `\.(formatted|minorUnits|total)(\.|$)` matches nothing at all (measured: 4
+  # findings with the `.*`, 0 without it). A currency code (`Text(item.currency)`)
+  # is not money and stays unflagged; the row it sits in is still caught through
+  # its amount.
+  - id: kiko-widget-money-view-needs-privacysensitive
+    languages: [swift]
+    severity: ERROR
+    message: >
+      A widget view bound to snapshot money must be marked `.privacySensitive()`
+      so WidgetKit redacts it on a locked device. The widget extension has no
+      LockGate; without this the app lock is silently bypassed on the Lock
+      Screen / StandBy. Put the modifier on the Text, or on the row that
+      contains it.
+    paths:
+      include:
+        - "*.swift"
+    patterns:
+      - pattern: Text($X)
+      - metavariable-regex:
+          metavariable: $X
+          regex: .*\.(formatted|minorUnits|total)(\.|$)
+      - pattern-not-inside: $E.privacySensitive()
+  # File-scoped on purpose. The function-scoped form ("the same function must
+  # also set both attributes") is not expressible: Semgrep 1.175 does not match
+  # `func $F(...) { ... }` as a Swift enclosing range, so `pattern-inside` /
+  # `pattern-not-inside` on a function body silently matches nothing. A file
+  # that reaches the App Group container AND writes a file must therefore carry
+  # both hardening calls somewhere in it. Verified to produce no false positive
+  # on the real tree: `ios/KikoWidget/NetWorthSnapshot.swift` reaches the
+  # container but never writes, so it is not flagged.
+  - id: kiko-appgroup-write-needs-protection
+    languages: [generic]
+    severity: ERROR
+    message: >
+      This file writes into the App Group container without setting
+      `isExcludedFromBackup` and an explicit file-protection class. The shared
+      container IS included in iCloud/iTunes backups and defaults to an
+      inherited protection class, so a cleartext derivative of encrypted data
+      leaks through a backup. Set both, after every write — an atomic write
+      replaces the inode and drops them.
+    paths:
+      include:
+        - "*.swift"
+    pattern-regex: (?s)\A(?=.*\.write\(to:)(?!.*isExcludedFromBackup)(?!.*protectionKey).*forSecurityApplicationGroupIdentifier
   # ---- Class A: code-style conventions (deterministic hard-fail) ----
   - id: kiko-repo-no-class
     languages: [typescript]
@@ -124,3 +186,61 @@ rules:
       - metavariable-regex:
           metavariable: $X
           regex: ^(?!["'`]).*$
+  # Taint propagates through an intervening call's return value, so
+  # `const info = await fetchClientInfo(token); setName(info.name)` is flagged
+  # too (verified). That is intended, not a false positive — a value derived
+  # from a secret can leak it — and it is why this is Class B / override-eligible
+  # rather than a hard fail. Verified to report NOTHING on the real tree today.
+  - id: kiko-no-keychain-secret-into-usestate
+    languages: [typescript]
+    severity: WARNING
+    mode: taint
+    message: >
+      A Keychain secret is flowing into React state. A stored token or key must
+      never be parked in the React tree — a jailbroken device or an attached
+      debugger can read the JS heap, and a `secureTextEntry` field displays
+      nothing anyway. Expose a boolean "saved" indicator instead and require
+      re-entry, or use the value transiently inside the handler. If a case is
+      genuinely safe, add an OVERRIDE(...) saying why.
+    pattern-sources:
+      - patterns:
+          - pattern: $READ(...)
+          - metavariable-regex:
+              metavariable: $READ
+              regex: ^(readToken|readCredentials|readDbKey)$
+    pattern-sinks:
+      - patterns:
+          - pattern: $SET($X)
+          - metavariable-regex:
+              metavariable: $SET
+              regex: ^set[A-Z]
+  # Companion to the taint rule above. Semgrep 1.175's taint engine does not
+  # propagate through a `.then(callback)` parameter — `pattern-propagators`
+  # (from: $P, to: $V) and a `focus-metavariable: $V` source were both tried and
+  # match nothing — and the deep-expression form `(($V) => { <... $SET($V) ...> })`
+  # does not match either. The `.then` shape is exactly the one finding S5 found,
+  # so it is flagged syntactically instead: routing a Keychain reader's result
+  # through a promise callback in a component is the prefill anti-pattern, and
+  # the project has no legitimate instance of it.
+  # This rule has its OWN fixture pair
+  # (rules/fixtures/kiko-no-keychain-secret-through-then.{bad,good}.ts), not a
+  # borrowed one: the fixture harness (scripts/checks/semgrep-rules.sh) only
+  # credits a rule id against the fixture whose FILENAME names that id, so a
+  # finding this rule produces on a fixture named for a different rule id (the
+  # taint rule's `.bad.ts`) proves nothing about this rule — a broken
+  # metavariable-regex here would still pass `check:rules` silently without a
+  # dedicated fixture (verified: this was the exact gap the reviewer caught).
+  - id: kiko-no-keychain-secret-through-then
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A Keychain reader's result is being routed through a `.then` callback.
+      That is the prefill anti-pattern from security finding S5: the secret ends
+      up in React state. Await it inside an async handler and use it transiently,
+      or probe existence with a boolean helper (`hasToken`). If a case is
+      genuinely safe, add an OVERRIDE(...) saying why.
+    patterns:
+      - pattern: $READ(...).then($F)
+      - metavariable-regex:
+          metavariable: $READ
+          regex: ^(readToken|readCredentials|readDbKey)$

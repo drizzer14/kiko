@@ -1,5 +1,5 @@
 import Clipboard from '@react-native-clipboard/clipboard';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Pressable, Text as RNText } from 'react-native';
 
@@ -9,7 +9,7 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import TextField from '../../../design-system/components/text-field';
 import { fetchClientInfo } from '../../../monobank/monobank.client';
-import { readToken, saveToken } from '../../../monobank/token';
+import { hasToken, saveToken } from '../../../monobank/token';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
 import SyncStatusLine from '../sync-status-line';
@@ -31,24 +31,32 @@ type MonobankTokenFieldProps = {
 const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
+  const [isTokenSaved, setIsTokenSaved] = useState(false);
   const [tokenStatus, setTokenStatus] = useState<SyncStatus>({ kind: 'idle' });
-  const hasUserEditedToken = useRef(false);
 
+  // SECURITY: a stored token is never read back into state — only its existence
+  // is. Prefilling a `secureTextEntry` field with the real secret displays
+  // nothing to the user and parks the bank token in the React tree for anything
+  // that can read the JS heap. Changing the token means re-entering it.
+  // Skipped entirely once connected: this branch renders no input at all.
   useEffect(() => {
+    if (isConnected) {
+      return;
+    }
+
     let alive = true;
-    readToken().then((existing) => {
-      if (alive && !hasUserEditedToken.current && existing !== undefined) {
-        setToken(existing);
+    hasToken().then((exists) => {
+      if (alive) {
+        setIsTokenSaved(exists);
       }
     });
 
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isConnected]);
 
   const handleChangeToken = (value: string): void => {
-    hasUserEditedToken.current = true;
     setToken(value);
     setTokenStatus({ kind: 'idle' });
   };
@@ -59,7 +67,6 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
 
   const handlePasteToken = (): void => {
     Clipboard.getString().then((value) => {
-      hasUserEditedToken.current = true;
       setToken(value.trim());
       setTokenStatus({ kind: 'idle' });
     });
@@ -80,6 +87,8 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
 
       try {
         await saveToken(token);
+        setToken('');
+        setIsTokenSaved(true);
         setTokenStatus({
           kind: 'success',
           message: t('accountDetail.connectedAs', { name: clientName }),
@@ -113,6 +122,12 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
       >
         <RNText style={styles.link}>{t('accountDetail.openMonobankLink')}</RNText>
       </Pressable>
+
+      {isTokenSaved ? (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.tokenSaved')}
+        </Text>
+      ) : null}
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
         <Box style={styles.tokenFieldColumn}>

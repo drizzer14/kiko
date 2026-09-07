@@ -9,6 +9,9 @@ RCT_EXTERN_METHOD(writeSnapshot:(NSString *)json
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(clearSnapshot:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(reloadWidget)
 
 @end

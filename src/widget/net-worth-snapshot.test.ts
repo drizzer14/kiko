@@ -38,7 +38,6 @@ describe('buildNetWorthSnapshot', () => {
       accounts,
       rateTable,
       baseCurrency: 'UAH',
-      trendPoints: [],
       now,
     });
     const expected = guardedNetWorth(
@@ -62,7 +61,6 @@ describe('buildNetWorthSnapshot', () => {
       accounts,
       rateTable,
       baseCurrency: 'UAH',
-      trendPoints: [],
       now,
     });
 
@@ -81,7 +79,6 @@ describe('buildNetWorthSnapshot', () => {
       accounts,
       rateTable,
       baseCurrency: 'UAH',
-      trendPoints: [],
       now,
     });
 
@@ -95,45 +92,40 @@ describe('buildNetWorthSnapshot', () => {
       accounts,
       rateTable,
       baseCurrency: 'UAH',
-      trendPoints: [],
       now,
     });
 
     expect(snapshot.total.formatted).toContain('1,234.56');
   });
 
-  it('maps trend points from { t, amount } to { time, value }', () => {
-    const snapshot = buildNetWorthSnapshot({
-      holdings: [],
-      accounts,
-      rateTable,
-      baseCurrency: 'UAH',
-      trendPoints: [
-        { t: 111, amount: 1.5 },
-        { t: 222, amount: 2.5 },
-      ],
-      now,
-    });
-
-    expect(snapshot.trend).toEqual([
-      { time: 111, value: 1.5 },
-      { time: 222, value: 2.5 },
-    ]);
-  });
-
-  it('handles the empty / first-run case (no holdings, no trend)', () => {
+  it('handles the empty / first-run case (no holdings)', () => {
     const snapshot = buildNetWorthSnapshot({
       holdings: [],
       accounts: [],
       rateTable: {},
       baseCurrency: 'UAH',
-      trendPoints: [],
       now,
     });
 
     expect(snapshot.total.minorUnits).toBe(0);
     expect(snapshot.breakdown).toEqual([]);
-    expect(snapshot.trend).toEqual([]);
     expect(snapshot.updatedAt).toBe(now);
+  });
+
+  it('does not carry a trend series — the widget renders only the total and the breakdown', () => {
+    const snapshot = buildNetWorthSnapshot({
+      holdings: [holding({ id: 'h1', currency: 'USD', balanceMinorUnits: 10_000 })],
+      accounts,
+      rateTable,
+      baseCurrency: 'UAH',
+      now,
+    });
+
+    expect(Object.keys(snapshot).sort()).toEqual([
+      'baseCurrency',
+      'breakdown',
+      'total',
+      'updatedAt',
+    ]);
   });
 });

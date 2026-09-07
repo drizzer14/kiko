@@ -38,6 +38,7 @@ const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockReadToken = jest.fn();
+const mockHasToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
@@ -73,6 +74,7 @@ jest.mock('../../monobank/disconnect', () => ({
 }));
 jest.mock('../../monobank/token', () => ({
   readToken: () => mockReadToken(),
+  hasToken: () => mockHasToken(),
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
 jest.mock('../../monobank/monobank.client', () => ({
@@ -219,6 +221,7 @@ describe('AccountDetailScreen', () => {
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockReadToken.mockResolvedValue('token-abc');
+    mockHasToken.mockResolvedValue(false);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -808,6 +811,7 @@ describe('AccountDetailScreen — localization', () => {
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockReadToken.mockResolvedValue('token-abc');
+    mockHasToken.mockResolvedValue(false);
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
   });
 

@@ -38,6 +38,21 @@ export const clearToken = async (): Promise<void> => {
 };
 
 /**
+ * Whether a token is stored, WITHOUT handing the value back. The account-detail
+ * field uses this to show a "token saved" state: a stored secret must never be
+ * prefilled into an editable input or parked in React state, where a jailbroken
+ * device or an attached debugger can read the JS heap. Changing the token means
+ * re-entering it.
+ *
+ * `hasGenericPassword` queries the item's attributes only; `getGenericPassword`
+ * would decrypt the token into the JS heap just to compare it against `false`,
+ * which is exactly what this function exists to avoid.
+ */
+export const hasToken = async (): Promise<boolean> => {
+  return Keychain.hasGenericPassword({ service });
+};
+
+/**
  * One-time, idempotent migration of the Monobank token from the legacy
  * Keychain service to the current one. Must be awaited once at app bootstrap,
  * BEFORE anything reads the token (the auto-sync hook), so a device upgraded

@@ -12,6 +12,13 @@ mirrors the net worth block on the home screen: the "Net worth"
 label, the total in the base currency, the per-currency breakdown,
 and a mini trend line.
 
+> **Superseded (2026-09-06):** the mini trend line was dropped from the
+> shipped widget. The SwiftUI view renders the label, the total, and the
+> per-currency breakdown only, and the App Group snapshot carries no trend
+> series — a wealth history in cleartext in a backed-up shared container
+> was exposure with no reader (security finding S2). Every "trend" mention
+> below is historical; see `docs/security/README.md`.
+
 ## Approved decisions
 
 - Only the Medium (4x2) family is in scope now. Small, Large, and

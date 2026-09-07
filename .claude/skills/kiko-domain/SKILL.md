@@ -146,6 +146,12 @@ place rather than dropped via a migration). Treat it as legacy — do
 not re-wire it without a deliberate decision to resurrect the grace
 period, and re-check `src/db/schema.ts` before relying on this
 description if the lock design changes again.
+The shipped lock is **cold-launch only**: `useAppLock` decides once and never
+re-locks, so a resident backgrounded process resumes without a prompt. That is
+an accepted, recorded risk — see `docs/security/README.md`. `lockGraceSeconds`
+is pinned as the one allowed reader-less `settings` column by
+`src/db/settings-columns.test.ts`; wiring it up means removing it from that
+test's documented-exception list, which is the deliberate decision gate.
 
 ## Net worth
 

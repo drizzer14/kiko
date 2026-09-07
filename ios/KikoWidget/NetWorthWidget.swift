@@ -25,8 +25,7 @@ struct NetWorthTimelineProvider: TimelineProvider {
 
     /// The real timeline. The app also calls `reloadAllTimelines()` explicitly
     /// after every write, so this periodic refresh is a safety net for time
-    /// passing (e.g. the trend line's relative recency) rather than the
-    /// primary update path.
+    /// passing rather than the primary update path.
     func getTimeline(in context: Context, completion: @escaping (Timeline<NetWorthEntry>) -> Void) {
         let now = Date()
         let entry = NetWorthEntry(date: now, snapshot: SnapshotLoader.load())
@@ -41,11 +40,6 @@ struct NetWorthTimelineProvider: TimelineProvider {
         breakdown: [
             .init(currency: "USD", minorUnits: 800_000, formatted: "$8,000.00"),
             .init(currency: "EUR", minorUnits: 434_567, formatted: "€4,345.67"),
-        ],
-        trend: [
-            .init(time: 0, value: 11_800),
-            .init(time: 1, value: 12_100),
-            .init(time: 2, value: 12_345.67),
         ],
         updatedAt: 0
     )

@@ -17,9 +17,13 @@ if ! command -v semgrep >/dev/null 2>&1; then
   exit 2
 fi
 
+# `rules/fixtures/` holds the positive/negative fixture pair for each project
+# rule. A positive fixture is deliberately vulnerable code, so it must not fail
+# the real scan; `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
 out="$(semgrep --quiet --error --json \
   --config p/typescript --config p/react --config p/secrets \
   --config "$ROOT/rules/semgrep-mobile.yml" \
+  --exclude 'fixtures' \
   "$TARGET" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
 stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
@@ -59,6 +63,7 @@ if [ "${error_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   print_block \
     "Semgrep (mobile security rules) — Class A hard-fail" \
@@ -74,6 +79,7 @@ if [ "${warning_count:-0}" -gt 0 ]; then
   readable="$(semgrep --quiet \
     --config p/typescript --config p/react --config p/secrets \
     --config "$ROOT/rules/semgrep-mobile.yml" \
+    --exclude 'fixtures' \
     "$TARGET" 2>&1)"
   {
     printf '────────────────────────────────────────────────────────\n'

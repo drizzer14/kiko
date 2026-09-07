@@ -268,6 +268,7 @@ export const en = {
     syncing: 'Syncing…',
     syncNow: 'Sync now',
     tokenLabel: 'Token',
+    tokenSaved: 'Token saved',
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}',
     wallet: 'Wallet',

@@ -1,6 +1,6 @@
 import * as Keychain from 'react-native-keychain';
 
-import { clearToken, migrateLegacyToken, readToken, saveToken } from './token';
+import { clearToken, hasToken, migrateLegacyToken, readToken, saveToken } from './token';
 
 const LEGACY_SERVICE = 'pff.monobank.token';
 const NEW_SERVICE = 'kiko.monobank.token';
@@ -21,6 +21,7 @@ jest.mock('react-native-keychain', () => {
     getGenericPassword: jest.fn(
       async (options?: { service?: string }) => store[key(options)] ?? false,
     ),
+    hasGenericPassword: jest.fn(async (options?: { service?: string }) => key(options) in store),
     resetGenericPassword: jest.fn(async (options?: { service?: string }) => {
       delete store[key(options)];
       return true;
@@ -97,6 +98,23 @@ describe('migrateLegacyToken', () => {
         ([, , options]) => options?.service === NEW_SERVICE,
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe('hasToken', () => {
+  it('reports true when an item exists, without returning the secret', async () => {
+    await saveToken('secret-token');
+
+    const result = await hasToken();
+
+    expect(result).toBe(true);
+    // The existence probe must be attributes-only: reading the item back would
+    // decrypt the token into the JS heap, which is the whole point of hasToken.
+    expect(Keychain.getGenericPassword).not.toHaveBeenCalled();
+  });
+
+  it('reports false when nothing is stored', async () => {
+    await expect(hasToken()).resolves.toBe(false);
   });
 });
 

@@ -201,6 +201,13 @@ model, so this spec covers both in one document.
     elapsed time to `lockGraceSeconds` and re-lock if exceeded (or
     `lockGraceSeconds === 0` means always re-lock). Cold launch starts
     locked whenever `lockEnabled` is true.
+
+    > **Superseded (2026-09-06):** the `AppState` grace period described in this
+    > bullet was built and then replaced. What ships locks only at cold launch and
+    > never re-locks; `settings.lockGraceSeconds` has no reader. Accepted, with
+    > its limitation stated, in `docs/security/README.md`. The
+    > `setLockGraceSeconds` setter and the grace-period picker described further
+    > down were not shipped either.
   - `lock-gate.component.tsx` — `LockGate`: while `isLocked`, renders a
     full-screen unlock prompt (biometric icon + "Unlock" affordance +
     passcode fallback messaging) instead of `children`; calls
