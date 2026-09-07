@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
+import { useSyncAppearanceWithSettings } from './src/appearance/use-sync-appearance-with-settings';
 import LockGate from './src/auth/lock-gate/lock-gate.component';
 import MigrationsGate from './src/db/migrations.gate';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
@@ -31,6 +32,7 @@ import { useNetWorthWidget } from './src/widget/use-net-worth-widget';
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
+  useSyncAppearanceWithSettings();
 
   useAutoSync();
   useNetWorthWidget();
