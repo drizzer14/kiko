@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { Rect, Svg } from 'react-native-svg';
+import { useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 
 import type { Currency } from '../../../currency/currency';
@@ -9,6 +10,7 @@ import { Money } from '../../../currency/money';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { HoldingType } from '../../../holdings/holding-type';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
+import { resolveColorScheme } from '../../color-scheme';
 import Box from '../box';
 import MoneyText from '../money-text';
 import Text from '../text';
@@ -92,6 +94,10 @@ const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; scale: number; colo
 
 const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
   const { t } = useTranslation();
+  // The active color scheme, read once so each bar's type-default color resolves
+  // from the matching light/dark entity set (see color-scheme.ts / palette.ts).
+  const { rt } = useUnistyles();
+  const holdingDefaults = defaultHoldingColor(resolveColorScheme(rt.themeName));
 
   if (data.length === 0) {
     return (
@@ -125,7 +131,7 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
           scale={scale}
           // Match the holding cards: each type's bar wears the same entity color
           // its holdings do, keyed off the slice's type.
-          color={defaultHoldingColor[slice.type]}
+          color={holdingDefaults[slice.type]}
         />
       ))}
     </Box>

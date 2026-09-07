@@ -6,11 +6,9 @@ import {
 import type { Currency } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow, TransactionRow } from '../db/schema';
-import { darkTheme } from '../design-system/theme';
+import { chartSeriesByScheme } from '../design-system/palette';
 import { convert, type RateTable } from '../rates/conversion';
 import { canConvert } from '../rates/net-worth-view';
-
-const { chartSeries } = darkTheme.colors;
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,
@@ -56,9 +54,13 @@ export type CategorySlice = {
  * regardless of which other categories are present, so an uncolored slice's
  * color stays put as the filter toggles other categories in and out. See
  * `resolveCategoryColor` below for how a stored color, when present, wins over
- * this fallback.
+ * this fallback. `colorScheme` picks the active per-theme chart set
+ * (`chartSeriesByScheme[colorScheme]`, see palette.ts) — REQUIRED, so a
+ * category's fallback hue always comes from the active set and a missing
+ * argument is a compile error rather than a silent dark default.
  */
-export const categoryColor = (key: string): string => {
+export const categoryColor = (key: string, colorScheme: 'light' | 'dark'): string => {
+  const chartSeries = chartSeriesByScheme[colorScheme];
   let hash = 0;
   for (let index = 0; index < key.length; index += 1) {
     hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
@@ -78,10 +80,11 @@ export const categoryColor = (key: string): string => {
 export const resolveCategoryColor = (
   storedColor: string | null | undefined,
   key: string,
+  colorScheme: 'light' | 'dark',
 ): string =>
   typeof storedColor === 'string' && /^#[0-9a-f]{6}$/i.test(storedColor)
     ? storedColor
-    : categoryColor(key);
+    : categoryColor(key, colorScheme);
 
 // The normalized grouping key for a transaction's category: lowercased, with a
 // null/empty category AND a slug the display map cannot resolve both folding
@@ -120,6 +123,7 @@ export const buildCategoryBreakdown = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
+  colorScheme: 'light' | 'dark';
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
 }): CategorySlice[] => {
@@ -129,6 +133,7 @@ export const buildCategoryBreakdown = (input: {
     rateTable,
     baseCurrency,
     defaultCategoryKey,
+    colorScheme,
     excludedCategories,
     excludedTransactionIds,
   } = input;
@@ -176,7 +181,7 @@ export const buildCategoryBreakdown = (input: {
         title: display.title,
         icon: display.icon,
         amount,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, colorScheme),
       };
     })
     .filter((slice) => slice.amount > 0)

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles } from 'react-native-unistyles';
 
 import {
   buildCategoryDisplayMap,
@@ -21,6 +22,7 @@ import { defaultDateRange } from '../../dates/default-range';
 import { formatDate, formatTime } from '../../dates/format';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
+import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import GlassSurface from '../../design-system/components/glass-surface';
@@ -124,6 +126,14 @@ const groupByDay = <Row extends { time: number }>(
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
+
+  // The active color scheme (light/dark), read ONCE here and reused by every
+  // palette consumer below — the account-filter entity color, the category-
+  // filter color, and the per-row category icon color inside `renderTransaction`
+  // (which closes over this value rather than re-reading Unistyles per row). Read
+  // from the active theme name, never `darkTheme` (see color-scheme.ts).
+  const { rt } = useUnistyles();
+  const colorScheme = resolveColorScheme(rt.themeName);
 
   // The floating native glass tab bar sits over this screen's bottom edge, so
   // this SectionList — which owns the true bottom edge, since Home passes
@@ -266,7 +276,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     accountOptionsByName.set(account.name, {
       value: account.name,
       icon: account.icon ?? undefined,
-      color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+      color: resolveEntityColor(
+        account.color,
+        defaultAccountColor(colorScheme)[account.kind],
+        colorScheme,
+      ),
     });
   }
   const accountOptions = Array.from(accountOptionsByName.values());
@@ -301,7 +315,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       value: key,
       label: display.title,
       icon: display.icon,
-      color: resolveCategoryColor(display.color, key),
+      color: resolveCategoryColor(display.color, key, colorScheme),
     });
   }
   // Order the filter options by each category's `sortOrder` (the user-defined
@@ -364,7 +378,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 // on the raw lowercased slug renders one category in two hues
                 // whenever that slug is absent from the categories table, since
                 // the chip has already folded it onto the default key.
-                color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
+                color={resolveCategoryColor(
+                  category.color,
+                  categoryKeyForRow(item.category),
+                  colorScheme,
+                )}
                 accessibilityLabel={category.title}
               />
               <Box style={styles.rowDescription}>

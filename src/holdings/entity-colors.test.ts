@@ -1,5 +1,5 @@
 import type { AccountRow } from '../db/schema';
-import { darkTheme } from '../design-system/theme';
+import { entityColorsByScheme } from '../design-system/palette';
 
 import { defaultAccountColor, defaultHoldingColor } from './entity-colors';
 import { holdingTypes, holdingTypesForAccountKind } from './holding-type';
@@ -12,56 +12,76 @@ type AccountKind = AccountRow['kind'];
 const accountKinds = Object.keys(holdingTypesForAccountKind) as AccountKind[];
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
-// Typed as a set OF STRINGS, not of the theme's literal union: these tests ask
-// whether an arbitrary `#RRGGBB` produced by the color maps is a member, which
-// is exactly the question a literal-typed `has` refuses to answer.
-const paletteHexes: ReadonlySet<string> = new Set(Object.values(darkTheme.colors.entityColors));
 
 describe('defaultAccountColor', () => {
-  it('maps every account kind to a default color', () => {
-    for (const kind of accountKinds) {
-      expect(defaultAccountColor[kind]).toBeDefined();
+  it('maps every account kind to a default color for each scheme', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      for (const kind of accountKinds) {
+        expect(defaultAccountColor(scheme)[kind]).toBeDefined();
+      }
     }
   });
 
-  it('gives every kind a valid hex value drawn from the entity palette', () => {
-    for (const kind of accountKinds) {
-      expect(defaultAccountColor[kind]).toMatch(HEX);
-      expect(paletteHexes.has(defaultAccountColor[kind])).toBe(true);
+  it('gives every kind a valid hex value drawn from the active entity set', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      const paletteHexes: ReadonlySet<string> = new Set(
+        Object.values(entityColorsByScheme[scheme]),
+      );
+      for (const kind of accountKinds) {
+        expect(defaultAccountColor(scheme)[kind]).toMatch(HEX);
+        expect(paletteHexes.has(defaultAccountColor(scheme)[kind])).toBe(true);
+      }
     }
   });
 
-  it('assigns bank white, cash khaki, crypto yellow', () => {
-    const { entityColors } = darkTheme.colors;
+  it('assigns bank white, cash khaki, crypto yellow from the dark set', () => {
+    const { white, khaki, yellow } = entityColorsByScheme.dark;
 
-    expect(defaultAccountColor.bank).toBe(entityColors.white);
-    expect(defaultAccountColor.cash).toBe(entityColors.khaki);
-    expect(defaultAccountColor.crypto).toBe(entityColors.yellow);
+    expect(defaultAccountColor('dark').bank).toBe(white);
+    expect(defaultAccountColor('dark').cash).toBe(khaki);
+    expect(defaultAccountColor('dark').crypto).toBe(yellow);
+  });
+
+  it('picks the LIGHT set when the scheme is light', () => {
+    expect(defaultAccountColor('light').bank).toBe(entityColorsByScheme.light.white);
+    expect(defaultAccountColor('light').cash).toBe(entityColorsByScheme.light.khaki);
   });
 });
 
 describe('defaultHoldingColor', () => {
-  it('maps every holding type to a default color', () => {
-    for (const type of holdingTypes) {
-      expect(defaultHoldingColor[type]).toBeDefined();
+  it('maps every holding type to a default color for each scheme', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      for (const type of holdingTypes) {
+        expect(defaultHoldingColor(scheme)[type]).toBeDefined();
+      }
     }
   });
 
-  it('gives every type a valid hex value drawn from the entity palette', () => {
-    for (const type of holdingTypes) {
-      expect(defaultHoldingColor[type]).toMatch(HEX);
-      expect(paletteHexes.has(defaultHoldingColor[type])).toBe(true);
+  it('gives every type a valid hex value drawn from the active entity set', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      const paletteHexes: ReadonlySet<string> = new Set(
+        Object.values(entityColorsByScheme[scheme]),
+      );
+      for (const type of holdingTypes) {
+        expect(defaultHoldingColor(scheme)[type]).toMatch(HEX);
+        expect(paletteHexes.has(defaultHoldingColor(scheme)[type])).toBe(true);
+      }
     }
   });
 
-  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow', () => {
-    const { entityColors } = darkTheme.colors;
+  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow from the dark set', () => {
+    const { white, blue, green, violet, khaki, yellow } = entityColorsByScheme.dark;
 
-    expect(defaultHoldingColor.card).toBe(entityColors.white);
-    expect(defaultHoldingColor.term_deposit).toBe(entityColors.blue);
-    expect(defaultHoldingColor.bond).toBe(entityColors.green);
-    expect(defaultHoldingColor.jar).toBe(entityColors.violet);
-    expect(defaultHoldingColor.cash).toBe(entityColors.khaki);
-    expect(defaultHoldingColor.crypto_asset).toBe(entityColors.yellow);
+    expect(defaultHoldingColor('dark').card).toBe(white);
+    expect(defaultHoldingColor('dark').term_deposit).toBe(blue);
+    expect(defaultHoldingColor('dark').bond).toBe(green);
+    expect(defaultHoldingColor('dark').jar).toBe(violet);
+    expect(defaultHoldingColor('dark').cash).toBe(khaki);
+    expect(defaultHoldingColor('dark').crypto_asset).toBe(yellow);
+  });
+
+  it('picks the LIGHT set when the scheme is light', () => {
+    expect(defaultHoldingColor('light').card).toBe(entityColorsByScheme.light.white);
+    expect(defaultHoldingColor('light').crypto_asset).toBe(entityColorsByScheme.light.yellow);
   });
 });

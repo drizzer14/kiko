@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 
 import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
@@ -9,6 +10,7 @@ import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
+import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -118,6 +120,11 @@ type CouponFrequency = (typeof couponFrequencies)[number];
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId, holdingId } = route.params;
   const { t } = useTranslation();
+  const { rt } = useUnistyles();
+  // The active color scheme, read once so the ColorPicker's default-swatch
+  // highlight resolves from the matching light/dark set (see color-scheme.ts /
+  // palette.ts).
+  const colorScheme = resolveColorScheme(rt.themeName);
   // Human display text for the id-like holding types, the bond kind, and the
   // two frequency chip rows below; the chips still report the underlying
   // value on select. Built from the catalog inside the component (rather than
@@ -210,7 +217,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // because `color` here is seeded straight from a stored row
   // (setColor(holding.color) below): a stored empty-string color reaches
   // here as an unusable value the bare pattern would let through as ''.
-  const effectiveColor = resolveEntityColor(color, defaultHoldingColor[type]);
+  const effectiveColor = resolveEntityColor(
+    color,
+    defaultHoldingColor(colorScheme)[type],
+    colorScheme,
+  );
 
   // Keep the selected type valid for what the form currently OFFERS. The account
   // loads asynchronously, so once its option set is known, a default (or

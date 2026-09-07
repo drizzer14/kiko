@@ -14,6 +14,7 @@ import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
+import { resolveColorScheme } from '../../design-system/color-scheme';
 import BottomSheet from '../../design-system/components/bottom-sheet';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -228,8 +229,11 @@ const buildExchangeOptions = (
   accountNameById: ReadonlyMap<string, string>,
   excludeHoldingId: string | undefined,
   isEligibleType: (type: HoldingRow['type']) => boolean,
-): HoldingSelectOption[] =>
-  holdings
+  colorScheme: 'light' | 'dark',
+): HoldingSelectOption[] => {
+  const holdingDefaults = defaultHoldingColor(colorScheme);
+
+  return holdings
     .filter(
       (candidate) =>
         candidate.id !== excludeHoldingId &&
@@ -240,10 +244,11 @@ const buildExchangeOptions = (
       id: candidate.id,
       name: candidate.name,
       icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
-      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
+      color: resolveEntityColor(candidate.color, holdingDefaults[candidate.type], colorScheme),
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',
     }));
+};
 
 // Present a stored (signed) minor-units amount as the unsigned major string the
 // Amount input shows, pairing it with the sign chip the amount's polarity maps
@@ -285,6 +290,7 @@ const resolveConvertView = (
   accountNameById: ReadonlyMap<string, string>,
   holdingId: string | undefined,
   t: TFunction,
+  colorScheme: 'light' | 'dark',
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — Requirement B's cash-only restriction
@@ -305,6 +311,7 @@ const resolveConvertView = (
     accountNameById,
     holdingId,
     direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
+    colorScheme,
   );
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.
@@ -583,7 +590,11 @@ const resolvePendingCategory = (
 };
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
+  // The active color scheme, read once and threaded into every palette consumer
+  // below (the holding select options and the category options) so each picks
+  // the matching light/dark set (see color-scheme.ts / palette.ts).
+  const colorScheme = resolveColorScheme(rt.themeName);
   const { t } = useTranslation();
   // The mode row's display labels, resolved from the catalog inside the
   // component (rather than a module-level constant) so they always reflect
@@ -634,7 +645,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     key: category.key,
     title: categoryByKey.get(category.key)?.title ?? category.title,
     icon: category.icon,
-    color: resolveCategoryColor(category.color, category.key),
+    color: resolveCategoryColor(category.color, category.key, colorScheme),
   }));
 
   const holdingId =
@@ -660,6 +671,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountNameById,
     holdingId,
     isExchangeCreateDestinationType,
+    colorScheme,
   );
 
   const convertView = resolveConvertView(
@@ -671,6 +683,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountNameById,
     holdingId,
     t,
+    colorScheme,
   );
 
   const [amount, setAmount] = useState('');

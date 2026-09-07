@@ -35,7 +35,11 @@ const HoldingCard: FC<{
 }> = ({ holding, now, onOpen }) => {
   const { rt } = useUnistyles();
   const scheme = resolveColorScheme(rt.themeName);
-  const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
+  const color = resolveEntityColor(
+    holding.color,
+    defaultHoldingColor(scheme)[holding.type],
+    scheme,
+  );
 
   // WHY: HoldingCard mounts on the AccountDetail *pushed* route, so its glass
   // first lays out mid-slide at PARTIAL width. The vendor LiquidGlassView

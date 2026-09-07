@@ -1,5 +1,6 @@
 import { buildCategoryDisplayMap } from '../categories/category-display';
 import { readSeedCategoryColors } from '../db/__fixtures__/seed-category-colors';
+import { chartSeriesByScheme } from '../design-system/palette';
 import { darkTheme } from '../design-system/theme';
 import { SEEDED_CATEGORIES } from '../repositories/__fixtures__/seeded-categories';
 
@@ -41,6 +42,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     // transport (40_00) sorts before groceries (50_00)? No: groceries 50_00 > transport 40_00.
@@ -59,6 +61,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices.map((slice) => slice.key)).toEqual(['groceries']);
@@ -75,6 +78,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices[0].share).toBeCloseTo(0.75, 6);
@@ -89,6 +93,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: { 'USD:UAH': 40 },
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     // 10 USD * 40 = 400 UAH = 400_00 minor units.
@@ -105,6 +110,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices.map((slice) => slice.key)).toEqual(['transport']);
@@ -120,6 +126,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices).toHaveLength(1);
@@ -138,6 +145,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices).toHaveLength(1);
@@ -161,6 +169,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices).toHaveLength(1);
@@ -176,6 +185,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'salary',
+      colorScheme: 'dark',
     });
 
     expect(slices[0].key).toBe('salary');
@@ -189,6 +199,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     expect(slices[0].title).toBe('Transport');
@@ -205,6 +216,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH' as const,
       defaultCategoryKey: 'other' as const,
+      colorScheme: 'dark' as const,
     };
 
     const slices = buildCategoryBreakdown({
@@ -227,6 +239,7 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
       excludedTransactionIds: new Set(['transfer-debit']),
     });
 
@@ -250,11 +263,26 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     const byKey = new Map(slices.map((slice) => [slice.key, slice.color]));
     expect(byKey.get('groceries')).toBe('#123456');
-    expect(byKey.get('transport')).toBe(categoryColor('transport'));
+    expect(byKey.get('transport')).toBe(categoryColor('transport', 'dark'));
+  });
+
+  it('colors an uncolored slice from the LIGHT chart set when colorScheme is light', () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [tx({ category: 'transport', amountMinorUnits: -10_00 })],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      colorScheme: 'light',
+    });
+
+    expect(chartSeriesByScheme.light).toContain(slices[0].color);
+    expect(slices[0].color).toBe(categoryColor('transport', 'light'));
   });
 
   it('colors each slice from the shared chart palette, stably per category key', () => {
@@ -267,42 +295,63 @@ describe('buildCategoryBreakdown', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
+      colorScheme: 'dark',
     });
 
     for (const slice of slices) {
       expect(darkTheme.colors.chartSeries).toContain(slice.color);
-      expect(slice.color).toBe(categoryColor(slice.key));
+      expect(slice.color).toBe(categoryColor(slice.key, 'dark'));
     }
   });
 });
 
 describe('resolveCategoryColor', () => {
   it('returns the stored #RRGGBB hex when one is set', () => {
-    expect(resolveCategoryColor('#FFCC00', 'groceries')).toBe('#FFCC00');
+    expect(resolveCategoryColor('#FFCC00', 'groceries', 'dark')).toBe('#FFCC00');
   });
 
   it('falls back to the per-key palette hash when the stored color is null', () => {
-    expect(resolveCategoryColor(null, 'groceries')).toBe(categoryColor('groceries'));
+    expect(resolveCategoryColor(null, 'groceries', 'dark')).toBe(
+      categoryColor('groceries', 'dark'),
+    );
   });
 
   it('falls back to the palette hash for an empty or malformed stored color', () => {
-    expect(resolveCategoryColor('', 'groceries')).toBe(categoryColor('groceries'));
-    expect(resolveCategoryColor('red', 'groceries')).toBe(categoryColor('groceries'));
+    expect(resolveCategoryColor('', 'groceries', 'dark')).toBe(categoryColor('groceries', 'dark'));
+    expect(resolveCategoryColor('red', 'groceries', 'dark')).toBe(
+      categoryColor('groceries', 'dark'),
+    );
   });
 
   it('is stable: the same key yields the same fallback color', () => {
-    expect(resolveCategoryColor(null, 'groceries')).toBe(resolveCategoryColor(null, 'groceries'));
+    expect(resolveCategoryColor(null, 'groceries', 'dark')).toBe(
+      resolveCategoryColor(null, 'groceries', 'dark'),
+    );
+  });
+
+  it('threads the scheme into its palette-hash fallback (light differs from dark)', () => {
+    expect(resolveCategoryColor(null, 'groceries', 'light')).toBe(
+      categoryColor('groceries', 'light'),
+    );
   });
 });
 
 describe('categoryColor', () => {
   it('is deterministic: the same key always maps to the same palette hue', () => {
-    expect(categoryColor('groceries')).toBe(categoryColor('groceries'));
+    expect(categoryColor('groceries', 'dark')).toBe(categoryColor('groceries', 'dark'));
   });
 
   it('always returns a hue drawn from the shared chart palette', () => {
-    expect(darkTheme.colors.chartSeries).toContain(categoryColor('anything'));
-    expect(darkTheme.colors.chartSeries).toContain(categoryColor(''));
+    expect(darkTheme.colors.chartSeries).toContain(categoryColor('anything', 'dark'));
+    expect(darkTheme.colors.chartSeries).toContain(categoryColor('', 'dark'));
+  });
+
+  it('picks from the per-scheme chart set: the SAME key differs light vs dark', () => {
+    expect(chartSeriesByScheme.dark).toContain(categoryColor('groceries', 'dark'));
+    expect(chartSeriesByScheme.light).toContain(categoryColor('groceries', 'light'));
+    // The two chart sets differ per index, so the same key resolves to a
+    // different hex under each scheme.
+    expect(categoryColor('groceries', 'light')).not.toBe(categoryColor('groceries', 'dark'));
   });
 });
 
@@ -331,7 +380,9 @@ describe('seeded category colors (T-21)', () => {
   );
 
   it('resolves the eight colored seeded categories to eight distinct colors', () => {
-    const resolved = Object.entries(seeded).map(([key, color]) => resolveCategoryColor(color, key));
+    const resolved = Object.entries(seeded).map(([key, color]) =>
+      resolveCategoryColor(color, key, 'dark'),
+    );
 
     expect(new Set(resolved).size).toBe(8);
     expect(resolved).toEqual(Object.values(seeded));
@@ -340,13 +391,13 @@ describe('seeded category colors (T-21)', () => {
   it('leaves utilities and entertainment uncolored, falling back to the categoryColor hash', () => {
     for (const key of ['utilities', 'entertainment']) {
       expect(seeded[key]).toBeUndefined();
-      expect(resolveCategoryColor(seeded[key], key)).toBe(categoryColor(key));
+      expect(resolveCategoryColor(seeded[key], key, 'dark')).toBe(categoryColor(key, 'dark'));
     }
   });
 
   it('still collapses the ten keys onto fewer than ten hues WITHOUT stored colors, which is why the seed exists', () => {
     const keys = SEEDED_CATEGORIES.map((category) => category.key);
 
-    expect(new Set(keys.map((key) => categoryColor(key))).size).toBeLessThan(10);
+    expect(new Set(keys.map((key) => categoryColor(key, 'dark'))).size).toBeLessThan(10);
   });
 });

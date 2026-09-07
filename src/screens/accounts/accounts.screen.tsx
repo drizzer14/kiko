@@ -113,7 +113,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   return holding.accountId === item.id && holding.closedAt == null;
                 });
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
-                const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
+                const color = resolveEntityColor(
+                  item.color,
+                  defaultAccountColor(scheme)[item.kind],
+                  scheme,
+                );
 
                 return (
                   <CardContextMenu

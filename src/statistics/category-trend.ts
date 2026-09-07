@@ -173,10 +173,18 @@ export const buildCategoryTrend = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
+  colorScheme: 'light' | 'dark';
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
 }): CategoryTrendSeries[] => {
-  const { transactions, categoryDisplay, rateTable, baseCurrency, defaultCategoryKey } = input;
+  const {
+    transactions,
+    categoryDisplay,
+    rateTable,
+    baseCurrency,
+    defaultCategoryKey,
+    colorScheme,
+  } = input;
   const excluded = input.excludedCategories ?? new Set<string>();
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
 
@@ -210,7 +218,7 @@ export const buildCategoryTrend = (input: {
       return {
         key,
         title: display.title,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, colorScheme),
         total: entry.total,
         points,
       };

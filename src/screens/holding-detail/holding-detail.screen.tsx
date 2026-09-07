@@ -15,6 +15,7 @@ import { Money } from '../../currency/money';
 import { formatDateTime } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
+import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
@@ -56,9 +57,16 @@ type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 // header with an invalid empty color while the card showed the type default.
 // Extracted so the fallbacks don't count against the screen component's
 // cognitive-complexity budget.
-const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
+const holdingIdentity = (
+  holding: HoldingRow,
+  colorScheme: 'light' | 'dark',
+): { icon: string; color: string } => ({
   icon: holding.icon ?? holdingTypeSymbol[holding.type],
-  color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
+  color: resolveEntityColor(
+    holding.color,
+    defaultHoldingColor(colorScheme)[holding.type],
+    colorScheme,
+  ),
 });
 
 const isZero = (minorUnits: number): boolean => minorUnits === 0;
@@ -120,7 +128,11 @@ const breakdownRows = (
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
+  // The active color scheme, read once and threaded into the header identity
+  // color and each ledger row's category color so both pick the matching
+  // light/dark set (see color-scheme.ts / palette.ts).
+  const colorScheme = resolveColorScheme(rt.themeName);
   // Disable this screen's native back-swipe while any transaction row is open,
   // so a right-swipe that closes a row does not also pop the screen.
   const onOpenChange = useSwipePopGuard(navigation);
@@ -189,7 +201,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
-  const identity = holding ? holdingIdentity(holding) : undefined;
+  const identity = holding ? holdingIdentity(holding, colorScheme) : undefined;
   // The holding's owning account, needed to open its edit form (the form reads
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
@@ -336,6 +348,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                           color={resolveCategoryColor(
                             category.color,
                             row.transaction.category?.toLowerCase() || defaultCategoryKey,
+                            colorScheme,
                           )}
                           accessibilityLabel={category.title}
                         />

@@ -2,9 +2,11 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 
+import * as colorSchemeModule from '../../design-system/color-scheme';
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
+import { categoryColor } from '../../statistics/category-breakdown';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import TransactionFormScreen from './transaction-form.screen';
@@ -196,6 +198,27 @@ describe('TransactionFormScreen — add mode', () => {
   it('sets the header title to "Add Transaction"', async () => {
     await renderAdd();
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Transaction' });
+  });
+
+  it('tints an uncolored category option from the LIGHT chart set on the light theme', async () => {
+    // Spy the scheme resolver → 'light' so the category options resolve their
+    // fallback hue from the light chart set (see color-scheme.ts / palette.ts).
+    // `groceries` carries no stored color, so its option tint is
+    // `categoryColor('groceries', 'light')`.
+    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
+    try {
+      const utils = await renderAdd();
+      await fireEvent.press(utils.getByLabelText('Category'));
+
+      // The `groceries` option row (labelled by its title) renders its glyph
+      // ('cart') tinted with the resolved category color.
+      const row = utils.getByLabelText('Groceries');
+      const [icon] = row.queryAll((node) => node.props.name === 'cart');
+      expect(icon?.props.tintColor).toBe(categoryColor('groceries', 'light'));
+      expect(categoryColor('groceries', 'light')).not.toBe(categoryColor('groceries', 'dark'));
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('submits a manual transaction', async () => {
