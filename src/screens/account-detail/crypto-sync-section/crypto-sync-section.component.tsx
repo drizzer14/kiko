@@ -1,5 +1,6 @@
+import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
 
@@ -108,7 +109,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             <SymbolIcon name="clock" tone="textSecondary" />
 
             <Text variant="body" tone="textSecondary">
-              {t('accountDetail.lastSync', { time: formatLastSyncAt(latestSyncedAt(holdings)) })}
+              {t('accountDetail.lastSync', {
+                time: formatLastSyncAt(latestSyncedAt(holdings), t),
+              })}
             </Text>
           </Box>
 

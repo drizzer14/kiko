@@ -57,9 +57,10 @@ export const styles = StyleSheet.create((theme) => ({
     ...theme.typography.body,
     fontWeight: '600',
     color: theme.colors.textPrimary,
-    // Every call site passes a sentence-case label ("Add holding") — force
-    // title case here, once, so button copy reads consistently without
-    // editing each call site.
-    textTransform: 'capitalize',
+    // NOTE: no `textTransform`. It used to force `capitalize` so call sites
+    // "need not be edited", which rendered every Ukrainian label in Title Case
+    // ("Додати Рахунок") — Ukrainian UI labels are sentence case. Each catalogue
+    // now supplies its own casing; there is no per-language gate, because a copy
+    // decision does not belong in the style layer.
   },
 }));

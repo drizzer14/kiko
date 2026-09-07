@@ -7,7 +7,7 @@ import './src/design-system/unistyles';
 import './src/i18n';
 
 import { NavigationContainer } from '@react-navigation/native';
-import { type FC, useEffect } from 'react';
+import type { FC } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -16,23 +16,19 @@ import MigrationsGate from './src/db/migrations.gate';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
-import { settingsRepo } from './src/repositories/settings.repo';
 import { useAutoSync } from './src/screens/use-auto-sync';
 import { useNetWorthWidget } from './src/widget/use-net-worth-widget';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the
- * signal that the schema is ready. Ensures the single settings row exists,
- * then hands off to the navigation stack. `useAutoSync` kicks off a
- * throttled background sync of the connected account without blocking this
- * first render. `useNetWorthWidget` keeps the home-screen widget's snapshot
- * current — debounced on live-query changes, and immediately on background.
+ * signal that the schema is ready — including the single settings row, which
+ * `MigrationsGate`'s own init chain guarantees exists before this ever mounts.
+ * Hands off to the navigation stack. `useAutoSync` kicks off a throttled
+ * background sync of the connected account without blocking this first
+ * render. `useNetWorthWidget` keeps the home-screen widget's snapshot current
+ * — debounced on live-query changes, and immediately on background.
  */
 const AppRoot: FC = () => {
-  useEffect(() => {
-    settingsRepo.ensure();
-  }, []);
-
   useSyncLanguageWithSettings();
 
   useAutoSync();
@@ -55,8 +51,9 @@ export default function App(): React.JSX.Element {
       <SafeAreaProvider>
         <MigrationsGate>
           {/* Inside MigrationsGate: the gate reads settings.lockEnabled, so the
-              database must be open and migrated first. Around AppRoot: while
-              locked, nothing below (navigator, auto-sync, ensure) mounts. */}
+              database must be open and migrated (and the settings row ensured)
+              first. Around AppRoot: while locked, nothing below (navigator,
+              auto-sync) mounts. */}
           <LockGate>
             <AppRoot />
           </LockGate>

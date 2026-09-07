@@ -8,6 +8,7 @@ import {
 } from './account-contribution';
 
 const NOW = Date.UTC(2026, 0, 1);
+const HEX = /^#[0-9a-f]{6}$/i;
 
 const account = (
   id: string,
@@ -92,6 +93,44 @@ describe('buildAccountContribution', () => {
 
     expect(slices.find((slice) => slice.accountId === 'a')?.color).toBe(defaultAccountColor.cash);
     expect(slices.find((slice) => slice.accountId === 'b')?.color).toBe('#123456');
+  });
+
+  it('resolves a stored empty-string color to a real hex', () => {
+    const slices = buildAccountContribution({
+      accounts: [account('a', 'X', { kind: 'cash', color: '' })],
+      holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices[0].color).toMatch(HEX);
+  });
+
+  it('resolves an unmapped kind to a real hex, never undefined', () => {
+    const slices = buildAccountContribution({
+      // `broker` was a valid Account.kind once and was dropped; the schema enum
+      // is TS-only with no CHECK constraint, so such a row can still exist.
+      accounts: [account('a', 'X', { kind: 'broker' as AccountRow['kind'], color: null })],
+      holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices[0].color).toMatch(HEX);
+  });
+
+  it('still prefers a valid stored color', () => {
+    const slices = buildAccountContribution({
+      accounts: [account('a', 'X', { kind: 'cash', color: '#123456' })],
+      holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices[0].color).toBe('#123456');
   });
 
   it('filters out an account with zero net worth', () => {

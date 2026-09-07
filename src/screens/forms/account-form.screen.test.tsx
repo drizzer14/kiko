@@ -1,11 +1,37 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
+import {
+  asNavigationProp,
+  asRouteProp,
+  type NavigationSpy,
+  navigationSpy,
+} from '../../test-support/navigation-props';
 
 import AccountFormScreen from './account-form.screen';
 
+type AccountFormProps = ComponentProps<typeof AccountFormScreen>;
+
 const { entityColors } = darkTheme.colors;
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+// Finds which theme entity-color swatch (if any) the ColorPicker currently
+// marks selected, by its accessibility label, and resolves it back to a hex.
+// `undefined` means no swatch matches the form's current effective color —
+// the failure mode a stored '' or an unmapped kind/type used to produce.
+const selectedSwatchHex = (
+  getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'],
+): string | undefined => {
+  for (const [name, hex] of Object.entries(entityColors)) {
+    if (getByLabelText(`Color ${name}`).props.accessibilityState.selected) {
+      return hex;
+    }
+  }
+  return undefined;
+};
 
 const mockCreate = jest.fn();
 const mockCreateCashAccount = jest.fn();
@@ -33,12 +59,15 @@ type RouteParams = { accountId?: string };
 
 const renderForm = async (
   params: RouteParams = {},
-): Promise<
-  ReturnType<typeof render> & { navigation: { goBack: jest.Mock; setOptions: jest.Mock } }
-> => {
-  const navigation = { goBack: jest.fn(), setOptions: jest.fn() };
-  const route = { params } as never;
-  const view = await render(<AccountFormScreen navigation={navigation as never} route={route} />);
+): Promise<Awaited<ReturnType<typeof render>> & { navigation: NavigationSpy }> => {
+  const navigation = navigationSpy();
+  const route = asRouteProp<AccountFormProps['route']>('AccountForm', params);
+  const view = await render(
+    <AccountFormScreen
+      navigation={asNavigationProp<AccountFormProps['navigation']>(navigation)}
+      route={route}
+    />,
+  );
   return { ...view, navigation };
 };
 
@@ -79,6 +108,46 @@ describe('AccountFormScreen', () => {
     expect(mockCreate).toHaveBeenCalledWith({ name: 'My Crypto', kind: 'crypto', color: null });
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates one cash account for a double-tapped Save', async () => {
+    // Hold the write open (never auto-resolving) so the first press's `await`
+    // genuinely has not settled when the second press lands — firing two real
+    // `fireEvent.press` calls back to back without awaiting between them trips
+    // React's "overlapping act() calls" guard (each is independently wrapped
+    // in its own act()), so the two presses are awaited sequentially instead;
+    // the guard is still exercised because the write only resolves when this
+    // test says so.
+    let resolveWrite: () => void = () => {};
+    mockCreateCashAccount.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('Cash'));
+
+    const save = getByText('Save');
+
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+
+    expect(mockCreateCashAccount).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveWrite();
+    });
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockCreateCashAccount).toHaveBeenCalledTimes(1);
+
+    // jest.clearAllMocks() (this file's beforeEach) clears call history but
+    // not a custom mockImplementation — reset it explicitly so it does not
+    // leak this test's never-auto-resolving write into the next test.
+    mockCreateCashAccount.mockReset();
   });
 
   it('creates a bank account without touching the cash-account path', async () => {
@@ -327,6 +396,22 @@ describe('AccountFormScreen edit mode', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('resolves a stored empty-string color to a real swatch, not blank', async () => {
+    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'cash', icon: null, color: '' }];
+    const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
+  });
+
+  it('resolves a since-removed account kind to a real swatch, not blank', async () => {
+    // `broker` was a valid Account.kind once and was dropped; the schema enum
+    // is TS-only with no CHECK constraint, so such a row can still exist.
+    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'broker', icon: null, color: null }];
+    const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
   });
 });
 

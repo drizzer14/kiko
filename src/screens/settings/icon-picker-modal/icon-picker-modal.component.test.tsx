@@ -1,6 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+
+import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import IconPickerModal from '.';
@@ -69,10 +71,7 @@ describe('IconPickerModal', () => {
     // Walk up from a known sheet child to the sheet Box itself, the same
     // ancestor-search approach the currency-breakdown tests use, since RNTL
     // has no direct `getByTestId` here.
-    let node = getByText('Choose Icon');
-    while (node && StyleSheet.flatten(node.props.style)?.paddingBottom === undefined) {
-      node = node.parent;
-    }
+    const node = ancestorWithStyle(getByText('Choose Icon'), 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the shared BottomSheet's single base spacing(4) = 16 — this

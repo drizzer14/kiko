@@ -18,9 +18,27 @@ collection" sections). This skill summarizes the settled contract.
 - Generate migrations with `drizzle-kit` using `driver: 'expo'` —
   this is the correct driver value for op-sqlite migration
   generation, despite the name.
-- Bundle migrations into the app and apply them on launch with
-  `drizzle-orm/op-sqlite/migrator` + `useMigrations`. Show a loading
-  state until migrations succeed, and an error state if they fail —
+- `npx drizzle-kit generate --name <slug>` writes the `.sql`, the
+  `meta/NNNN_snapshot.json` and the journal entry — and it also
+  REWRITES `drizzle/migrations/migrations.js` wholesale, in its own
+  formatting (verified: it clobbered the repo's import/export layout
+  and dropped a comma-per-line style). Re-check that file after every
+  generate, and run `npx biome check --write` over the generated
+  artifacts: the snapshot and journal JSON are lint-checked like any
+  other file.
+- Bundle migrations into the app and apply them on launch through
+  `src/db/run-migrations.ts` — NOT drizzle's own
+  `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
+  op-sqlite 18's raw-row shape and re-runs every migration on each
+  launch (read that file's header). This custom count-based runner
+  applies `journal.entries.slice(COUNT(*))` in idx order (`SELECT
+  COUNT(*)` from `__drizzle_migrations`, then apply the remaining
+  entries by idx) and stores `when` as `created_at` bookkeeping only —
+  it never reads `when` to decide what to apply. So journal `when`
+  order is NOT load-bearing: a non-monotonic `when` across worktrees is
+  harmless (main itself carries a pre-existing 0006/0007 `when`
+  disorder). `src/db/migrations.gate.tsx` owns the launch UI: a loading
+  state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
 
 ## Hard rule: every write goes through `db.transaction()`
@@ -92,23 +110,83 @@ The sync pipeline is deliberately functional, not OOP — see
    database or write it to a log — Settings holds `baseCurrency` and
    `lastSyncAt` only, not the token.
 2. `GET /personal/client-info` with header `X-Token`; map each bank
-   account and jar to a Holding under one `monobank` Account.
+   account and jar to a Holding under one `monobank` Account. On a
+   Connect, `runSync` (`src/monobank/sync.ts`) marks the target
+   account `institution: 'monobank'` only AFTER this call resolves —
+   `resolveMonobankAccountId` (read-only: validates the
+   one-connection-per-institution invariant) runs first, then
+   `fetchClientInfo`, then `markMonobankAccount` writes the mark. A
+   wrong token, an offline device or a 429 must never leave the
+   account half-connected; mirrors `crypto-sync/sync.ts`'s
+   `runBalanceSync` ordering. `runSync` does not create the settings
+   row itself — the single settings row is guaranteed to exist by the
+   app-boot migrations gate (`src/db/migrations.gate.tsx`) before any
+   sync can run.
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
-   import each item as a Transaction, deduplicated by `externalId`
-   (the Monobank statement id). Respect the API's constraints: a
-   31-day-max statement window, 1 request per 60 seconds, and at
-   most 500 items per response — page the window and throttle
-   requests accordingly.
+   import each item as a Transaction, UPSERTED on
+   `(source, externalId)` — the Monobank statement id — by
+   `addManyDedup` (`src/repositories/transactions.repo.ts`). Two
+   things about that upsert are load-bearing, both verified there
+   rather than restated as a column list here:
+   - Re-syncing an existing external id **refreshes** the row's
+     bank-owned columns (the settled amount and `hold` among them)
+     and **never** its `category` or `comment` — the category may be
+     the user's own override or a name-rule rewrite. Read
+     `addManyDedup`'s `onConflictDoUpdate` set for the exact
+     refreshable columns, and `transactions.hold` in
+     `src/db/schema.ts` for why a pending item is imported at all.
+   - The pipeline holds no JS-side "already imported" filter. One
+     existed and was the bug: it dropped a re-fetched item before the
+     database ever saw it, so a `hold: true` authorization's
+     provisional amount could never be refreshed to its settled
+     value. The duplicate is resolved in SQL, which is also what
+     makes the refresh atomic.
+
+   Respect the API's per-request constraints — a 31-day-max statement
+   window and at most 500 items per response — by paging the window
+   (see `fetchAllStatements` in `src/monobank/sync.ts` for the paging
+   shape). The rate limit is *not* handled here — see "The rate limit
+   is per TOKEN" below.
 4. Map Monobank's ISO 4217 numeric currency codes to the app's
    currency literal with `ts-pattern` (see `kiko-domain`). Amounts
    and balances already arrive in integer minor units — no float
    conversion needed there.
-5. Compose the pipeline's transform steps with `fnts` (see
-   `kiko-code-style`).
+5. The pipeline is a straight sequence of small transforms, not an
+   `fnts` composition: map each fetched item to a row, fold duplicate
+   conflict keys, hand the batch to the repository's upsert. The
+   `pipe` that used to live here was removed with the JS-side dedup
+   filter it wrapped (see step 3) — read `src/monobank/sync.ts` end
+   to end for the current shape rather than assuming a composition
+   chain.
 
 Confirm exact Monobank field names against the live API during
 implementation — the spec's shape is a best-effort description, not
 a verified schema.
+
+### The rate limit is per TOKEN, not per call site
+
+Monobank's personal API allows one request per interval **per
+token**, so the throttle cannot live inside any single request
+helper. `src/monobank/throttle.ts` owns it: `createRequestGate`
+returns a one-slot gate whose `wait()` resolves immediately the first
+time and thereafter only once the interval has elapsed since the
+previous resolution. Read that file for the interval and the gate's
+exact semantics rather than trusting a number restated here.
+
+`runSync` (`src/monobank/sync.ts`) creates **exactly one** gate per
+invocation and threads it through **every** request that invocation
+makes — `fetchClientInfo` first, then each card's statement pages via
+`importAccount` -> `fetchAllStatements`. A gate scoped any narrower
+is a bug, not an optimization: when the throttle was a local
+first-request flag inside one `fetchAllStatements` call, the second
+card's opening request fired with zero delay, Monobank returned 429,
+the error escaped `runSync` before `setLastSyncAt`, and no card after
+the first ever imported.
+
+The gate is deliberately **not** a `SyncDeps` seam. It is built from
+the already-injectable `now`/`sleep` deps, so a test controls it
+without a new seam — and a `gate` dep would let a test share one gate
+across two `runSync` calls, defeating the per-invocation scoping.
 
 ## DB encryption + flag gate
 
@@ -135,8 +213,20 @@ steps are the kind of thing that changes as the rollout progresses:
   `executeRawAsync` shape landmine — read that file's comment on
   `DrizzleOPSQLiteClient`/`wrapClientForDrizzle` before touching the
   read path.
-- `src/db/migrations.gate.tsx` — the launch sequencing:
-  `initDatabase()` -> `runMigrations()` -> `migrateLegacyToken()`.
+- `src/db/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
+  -> `runMigrations()` -> `settingsRepo.ensure()` -> the module-level
+  `applyPersistedLanguage()` helper (reads `settings.language` through
+  the repo and calls `i18n.changeLanguage`, swallowing a failure — a
+  language preference is cosmetic and must never block boot) ->
+  `migrateLegacyToken()`. The settings row must exist before either
+  `applyPersistedLanguage` or `LockGate` (`lockEnabled`) reads it,
+  which is why `ensure()` is awaited in the chain rather than
+  fire-and-forget from `AppRoot`. Applying the persisted language here
+  — before the gate's own first paint — is what makes the lock screen
+  (and the "Preparing database…" text itself) render in the user's
+  chosen language on a cold launch, not the device language;
+  `useSyncLanguageWithSettings` (mounted from `AppRoot`, after both
+  gates) only covers a LIVE switch from the Settings screen.
 
 ## Spending-exclusion pipeline
 
@@ -151,6 +241,17 @@ here:
   `settings.defaultCategoryKey`).
 - `src/statistics/internal-transfers.ts` — the matched-pair fallback
   for transfers the MCC rule can't see (paired by amount/time/holding).
+- `src/statistics/exchange-exclusion.ts` — the Exchange/Convert rule,
+  keyed on the structural marker column
+  `transactions.exchangeCounterpartHoldingId` (see `src/db/schema.ts`
+  and `recordExchange` / `recordExchangeCounterpart` in
+  `src/repositories/transactions.repo.ts`, which write it on both legs).
+  It catches what the other two structurally cannot: a cross-currency
+  pair, and the single debit leg of an exchange into a term deposit.
+  The legs persist no description — the label is resolved at render time
+  through `t` (`src/transactions/exchange-description.ts`, applied by
+  `src/transactions/row-description.ts`), so a marker column and a
+  persisted sentence are not interchangeable here. See `kiko-domain`.
 
 ## Price data
 

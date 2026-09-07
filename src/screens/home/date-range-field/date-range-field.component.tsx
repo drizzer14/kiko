@@ -1,5 +1,6 @@
+import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
@@ -230,6 +231,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
             testID="date-range-calendar"
             markingType="period"
             markedDates={marks}
+            // Open on the ACTIVE range's start (or its draft, mid-edit) rather
+            // than letting react-native-calendars default to the current
+            // month: reopening the picker after applying a March range showed
+            // September with none of its own marks on screen.
+            initialDate={toCalendarKey(draftFrom ?? selectableFloor)}
             minDate={toCalendarKey(selectableFloor)}
             maxDate={toCalendarKey(selectableCeiling)}
             onDayPress={handleDayPress}

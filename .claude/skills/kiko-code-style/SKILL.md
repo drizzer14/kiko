@@ -189,9 +189,17 @@ never have to jump away from a declaration to see what it produces.
 ## `fnts` for composition
 
 Use `fnts` (github.com/drizzer14/fnts) to compose functional
-transform pipelines — e.g. chaining the Monobank statement-item ->
-Transaction mapping steps. Don't hand-roll a `pipe`/`compose` helper;
-use the library's.
+transform pipelines. Don't hand-roll a `pipe`/`compose` helper; use
+the library's.
+
+No worked example is quoted here on purpose. The Monobank
+statement-item mapping used to be it, and its `pipe` was deleted when
+that pipeline's JS-side dedup filter moved into SQL (see
+`kiko-architecture`), which left this rule citing code that no longer
+existed. `grep -rn "from 'fnts'" src` for the live uses instead —
+today every one of them is `guard` in an HTTP client, and no `pipe`
+composition is left in the tree. The rule still governs the next
+pipeline that needs one.
 
 `fnts` also owns network and error-handling code — reach for it
 instead of hand-rolled `try`/`catch` plus manual `Error` normalization:

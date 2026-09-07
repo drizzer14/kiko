@@ -11,6 +11,7 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import TextField from '../../design-system/components/text-field';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
@@ -20,6 +21,7 @@ import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';
 import HoldingIdentityField from './holding-identity-field';
+import { useSubmitOnce } from './use-submit-once';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -65,7 +67,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
   // switching kind moves it; once picked, the choice sticks.
   const [color, setColor] = useState<string | null>(null);
-  const effectiveColor = color ?? defaultAccountColor[kind];
+  // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
+  // because `color`/`kind` here are seeded straight from a stored row
+  // (setColor(editingAccount.color) / setKind(editingAccount.kind) below): a
+  // stored empty-string color and a since-removed kind (the schema enum is
+  // TS-only, no CHECK constraint) both reach here as unusable values the bare
+  // pattern would let through as ''/undefined.
+  const effectiveColor = resolveEntityColor(color, defaultAccountColor[kind]);
 
   // In edit mode, load the account being edited so its fields can seed the form.
   // The query always runs (hooks can't be conditional); an empty id in create
@@ -149,11 +157,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     navigation.goBack();
   };
 
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
   return (
     <Screen
       scroll
       footer={
-        <Button onPress={save} disabled={!canSave}>
+        <Button onPress={onSave} disabled={!canSave || isSubmitting}>
           {t('common.save')}
         </Button>
       }

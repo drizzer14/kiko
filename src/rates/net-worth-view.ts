@@ -3,6 +3,7 @@ import type { Money } from '../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../db/schema';
 
 import { netWorth, type RateTable } from './conversion';
+import { sumByCurrency } from './currency-totals';
 
 type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
 
@@ -40,3 +41,27 @@ export const guardedNetWorth = (
   const convertible = holdings.filter((holding) => canConvert(holding.currency, base, rates));
   return netWorth(convertible, base, rates, now);
 };
+
+/**
+ * The per-currency breakdown restricted to exactly the holdings
+ * `guardedNetWorth` could convert, so the rows ALWAYS sum to the headline
+ * total.
+ *
+ * `sumByCurrency` alone keeps every currency, including one with no cached
+ * rate — which `guardedNetWorth` had already dropped from the total. With a
+ * BTC holding and no BTC:UAH rate yet (a first run, or a CoinGecko outage),
+ * the Home card's headline excluded BTC while the breakdown beneath it still
+ * listed BTC, so the rows visibly did not add up. The widget's snapshot had
+ * the identical divergence, which is why this lives here rather than in either
+ * caller.
+ */
+export const guardedBreakdown = (
+  holdings: ConvertibleHolding[],
+  base: Currency,
+  rates: RateTable,
+  now: number,
+): Money[] =>
+  sumByCurrency(
+    holdings.filter((holding) => canConvert(holding.currency, base, rates)),
+    now,
+  );

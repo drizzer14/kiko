@@ -12,7 +12,7 @@ import LockGate from './lock-gate.component';
 // proves it is never called even when the stored setting enables the lock.
 jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
-const mockAuthenticate = jest.fn(async () => ({ kind: 'success' }) as const);
+const mockAuthenticate = jest.fn(async (..._args: unknown[]) => ({ kind: 'success' }) as const);
 jest.mock('../biometrics', () => ({
   authenticate: (...args: unknown[]) => mockAuthenticate(...args),
 }));

@@ -38,7 +38,8 @@ describe('mapStatementItem', () => {
     const groceryItem = statement[0];
     const transaction = mapStatementItem(groceryItem, 'holding-1');
     expect(groceryItem.mcc).toBe(5411);
-    expect(transaction.category).toBe('Groceries');
+    // The persisted value is the `categories.key` slug, never a display title.
+    expect(transaction.category).toBe('groceries');
   });
 
   it('persists the counterparty IBAN when the statement item carries one', () => {
@@ -59,6 +60,23 @@ describe('mapStatementItem', () => {
     const withComment = statement[0];
     const transaction = mapStatementItem(withComment, 'holding-1');
     expect(transaction.comment).toBe(withComment.comment);
+  });
+
+  // `hold: true` marks a PENDING authorization whose settled amount can still
+  // change, so the stored row has to carry the flag for a reader to tell a
+  // provisional amount from a final one.
+  it('persists the pending-authorization hold flag', () => {
+    const pending = statement[2];
+    const transaction = mapStatementItem(pending, 'holding-1');
+    expect(pending.hold).toBe(true);
+    expect(transaction.hold).toBe(true);
+  });
+
+  it('defaults a hold-less payload to settled', () => {
+    const { hold, ...withoutHold } = statement[0];
+    const transaction = mapStatementItem(withoutHold as MonobankStatementItem, 'holding-1');
+    expect(hold).toBe(false);
+    expect(transaction.hold).toBe(false);
   });
 });
 
@@ -101,6 +119,32 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   archivedAt: null,
   createdAt: 0,
   ...overrides,
+  // A `Partial`/optional spread reintroduces `undefined` into every nullable
+  // column, so each one the row type declares as `T | null` is restated from
+  // the merged value — the same normalization the real repository does.
+  icon: overrides.icon ?? null,
+  color: overrides.color ?? null,
+});
+
+type SyncedTransactionInput = Parameters<SyncDeps['addTransactions']>[0][number];
+
+/**
+ * The BANK-OWNED columns of a synced row: the ones a re-fetched statement item
+ * refreshes on conflict, normalized onto the `T | null` shape a stored row
+ * declares. `category` and `comment` are deliberately absent — they may hold the
+ * user's own value, and the real `addManyDedup` upsert leaves them alone too.
+ *
+ * This list MIRRORS that upsert's `onConflictDoUpdate` set in
+ * `repositories/transactions.repo.ts` and must change with it, or the double
+ * stops standing for the repository it doubles.
+ */
+const bankOwnedColumns = (input: SyncedTransactionInput) => ({
+  amountMinorUnits: input.amountMinorUnits,
+  time: input.time,
+  description: input.description ?? '',
+  mcc: input.mcc ?? null,
+  hold: input.hold ?? null,
+  counterIban: input.counterIban ?? null,
 });
 
 const makeInMemoryDeps = (
@@ -112,7 +156,9 @@ const makeInMemoryDeps = (
   const transactionsStore: TransactionRow[] = [];
   let sequence = 0;
   const nextId = () => `id-${++sequence}`;
-  const sleep = jest.fn(async () => undefined);
+  // Typed with the dep's own `milliseconds` parameter so an assertion can read
+  // back the delay each call asked for, not merely that a call happened.
+  const sleep = jest.fn(async (_milliseconds: number): Promise<void> => undefined);
 
   const upsertHolding: SyncDeps['upsertHolding'] = async ({ monobankId, metadata, ...rest }) => {
     const merged = { ...(metadata as Record<string, unknown> | null), monobankId };
@@ -132,28 +178,56 @@ const makeInMemoryDeps = (
       createdAt: 0,
       balanceMinorUnits: rest.balanceMinorUnits ?? 0,
       ...rest,
+      // The dep's input carries neither column, but a stored row declares both
+      // as `string | null` — the real repository defaults them the same way.
+      icon: null,
+      color: null,
       metadata: merged,
     });
   };
 
+  // Mirrors `transactionsRepo.addManyDedup`'s upsert on (source, externalId): a
+  // re-fetched statement item REFRESHES the stored row's bank-owned fields
+  // (amount/description/hold/mcc/counterIban/time) instead of being skipped,
+  // while `category` and `comment` — which the user may have overridden — are
+  // left untouched. It returns the number of rows actually INSERTED, which is
+  // what the sync reports to the user as "imported".
   const addTransactions: SyncDeps['addTransactions'] = async (inputs) => {
+    let inserted = 0;
+
     for (const input of inputs) {
-      const duplicate = transactionsStore.some(
-        (row) => row.source === input.source && row.externalId === (input.externalId ?? null),
-      );
-      if (!duplicate) {
-        transactionsStore.push({
-          id: nextId(),
-          category: null,
-          description: '',
-          mcc: null,
-          comment: null,
-          externalId: null,
-          createdAt: 0,
-          ...input,
-        });
+      // SQLite treats every NULL as distinct in a unique index, so a row with no
+      // external id (a manual one) never conflicts with another.
+      const existing = input.externalId
+        ? transactionsStore.find(
+            (row) => row.source === input.source && row.externalId === input.externalId,
+          )
+        : undefined;
+
+      if (existing) {
+        Object.assign(existing, bankOwnedColumns(input));
+        continue;
       }
+
+      transactionsStore.push({
+        id: nextId(),
+        createdAt: 0,
+        ...input,
+        // The input declares each of these as optional, so the spread can put
+        // `undefined` where the stored row requires `T | null` — restated after
+        // the spread, exactly as the real repository normalizes them.
+        ...bankOwnedColumns(input),
+        category: input.category ?? null,
+        // A synced row is never an exchange leg — that marker is written only
+        // by the manual Exchange/Convert paths.
+        exchangeCounterpartHoldingId: null,
+        comment: input.comment ?? null,
+        externalId: input.externalId ?? null,
+      });
+      inserted += 1;
     }
+
+    return inserted;
   };
 
   const deps: Partial<SyncDeps> = {
@@ -178,10 +252,7 @@ const makeInMemoryDeps = (
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
     upsertHolding,
-    listTransactionsByHolding: async (holdingId) =>
-      transactionsStore.filter((row) => row.holdingId === holdingId).map((row) => ({ ...row })),
     addTransactions,
-    ensureSettings: async () => undefined,
     getLastSyncAt: async () => null,
     setLastSyncAt: async () => undefined,
   };
@@ -218,7 +289,7 @@ describe('runSync', () => {
     const groceryTransaction = transactionsStore.find(
       (transaction) => transaction.externalId === statement[0].id,
     );
-    expect(groceryTransaction?.category).toBe('Groceries');
+    expect(groceryTransaction?.category).toBe('groceries');
   });
 
   it('with no target id, syncs into the existing institution=monobank account', async () => {
@@ -296,6 +367,44 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(statement.length);
   });
 
+  it('leaves the target account unmarked when client-info fails', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps, accountsStore } = makeInMemoryDeps(onlyFirstAccount, [target]);
+    deps.targetAccountId = 'acc-1';
+    deps.fetchClientInfo = jest.fn(() => Promise.reject(new Error('401')));
+
+    await expect(runSync(deps)).rejects.toThrow('401');
+
+    expect(accountsStore[0].institution).toBeNull();
+  });
+
+  it('marks the target account only once client-info resolves, not before', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps, accountsStore } = makeInMemoryDeps(onlyFirstAccount, [target]);
+    deps.targetAccountId = 'acc-1';
+    const calls: string[] = [];
+    const originalFetchClientInfo = deps.fetchClientInfo as SyncDeps['fetchClientInfo'];
+    deps.fetchClientInfo = async (token, fetchImpl) => {
+      calls.push('fetchClientInfo');
+      // At the moment fetchClientInfo resolves, the account must still be
+      // unmarked — the mark can only happen after this call returns.
+      expect(accountsStore[0].institution).toBeNull();
+      return originalFetchClientInfo(token, fetchImpl);
+    };
+    deps.updateAccount = async (accountId, patch) => {
+      calls.push('updateAccount');
+      const account = accountsStore.find((row) => row.id === accountId);
+      if (account) {
+        Object.assign(account, patch);
+      }
+    };
+
+    await runSync(deps);
+
+    expect(calls).toEqual(['fetchClientInfo', 'updateAccount']);
+    expect(accountsStore[0].institution).toBe('monobank');
+  });
+
   it('throws when the target id does not match any existing account', async () => {
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
       bankAccount({ id: 'acc-cash', institution: null }),
@@ -318,6 +427,61 @@ describe('runSync', () => {
     expect(second.importedTransactions).toBe(0);
     // no duplicates accumulated across the two runs
     expect(transactionsStore).toHaveLength(statement.length);
+  });
+
+  // A `hold: true` item is a PENDING authorization whose final amount can still
+  // move (a restaurant tip, a fuel pre-auth). It is imported right away so the
+  // ledger shows the pending charge, which means the settled re-fetch must
+  // REFRESH that row — dropping it as a duplicate froze the provisional amount
+  // forever.
+  it('refreshes a re-synced held item to its settled amount, keeping one row', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    let page: MonobankStatementItem[] = [
+      { ...(statement[0] as MonobankStatementItem), id: 'stmt-1', amount: -10_000, hold: true },
+    ];
+    const { deps, transactionsStore } = makeInMemoryDeps(
+      (accountId) => (accountId === firstAccountId ? page : []),
+      [connected],
+    );
+
+    await runSync(deps);
+
+    page = [
+      { ...(statement[0] as MonobankStatementItem), id: 'stmt-1', amount: -12_500, hold: false },
+    ];
+    const second = await runSync(deps);
+
+    const rows = transactionsStore.filter((row) => row.externalId === 'stmt-1');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amountMinorUnits).toBe(-12_500);
+    expect(rows[0].hold).toBe(false);
+    // A refresh is not an import: nothing new reached the ledger.
+    expect(second.importedTransactions).toBe(0);
+  });
+
+  it('does not clobber a user category override on re-sync', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    let page: MonobankStatementItem[] = [
+      { ...(statement[0] as MonobankStatementItem), id: 'stmt-1', amount: -10_000, hold: true },
+    ];
+    const { deps, transactionsStore } = makeInMemoryDeps(
+      (accountId) => (accountId === firstAccountId ? page : []),
+      [connected],
+    );
+
+    await runSync(deps);
+    // The MCC-derived category, which the user then overrides by hand.
+    expect(transactionsStore[0].category).toBe('groceries');
+    transactionsStore[0].category = 'dining';
+
+    page = [
+      { ...(statement[0] as MonobankStatementItem), id: 'stmt-1', amount: -12_500, hold: false },
+    ];
+    await runSync(deps);
+
+    expect(transactionsStore[0].category).toBe('dining');
+    expect(transactionsStore[0].amountMinorUnits).toBe(-12_500);
   });
 
   it('does not create a second account on a repeat sync', async () => {
@@ -407,5 +571,138 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(cappedPage.length + secondPage.length);
     // a delay was inserted between the two paged requests to respect the rate limit
     expect(sleep).toHaveBeenCalledWith(60 * 1000);
+  });
+
+  it('pages to the earliest item second itself, importing a same-second straggler', async () => {
+    // A full (capped) page whose earliest item — the one that filled the
+    // 500-item cap — shares its exact second with a "straggler" that did NOT
+    // fit in the page. The straggler must still be reachable in the next
+    // window, which means the next window's ceiling has to be that shared
+    // second itself, not one second before it.
+    const boundary = 1704240000;
+    const page: MonobankStatementItem[] = Array.from({ length: 500 }, (_, index) => ({
+      ...(statement[0] as MonobankStatementItem),
+      id: `p1-${index}`,
+      time: index === 499 ? boundary : boundary + 1000 + index,
+    }));
+    const straggler: MonobankStatementItem = {
+      ...(statement[0] as MonobankStatementItem),
+      id: 'straggler',
+      time: boundary,
+    };
+
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
+
+    // A window-aware double: the bulk page is only visible while the queried
+    // ceiling still covers its items; once the ceiling narrows to `boundary`
+    // itself, only the straggler (also at `boundary`) is in range. The old
+    // `- 1` ceiling never queries `to === boundary`, so it never sees the
+    // straggler at all.
+    deps.fetchStatement = jest.fn(async (_token, accountId, _from, to) => {
+      if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
+        return [];
+      }
+      if (to >= boundary + 1000) {
+        return page;
+      }
+      if (to >= boundary) {
+        return [straggler];
+      }
+      return [];
+    }) as SyncDeps['fetchStatement'];
+
+    await runSync(deps);
+
+    const windows = (deps.fetchStatement as jest.Mock).mock.calls.map(
+      ([, , , to]: [unknown, unknown, unknown, number]) => to,
+    );
+
+    expect(windows).toContain(boundary);
+    expect(transactionsStore.some((row) => row.externalId === 'straggler')).toBe(true);
+  });
+
+  it('terminates when a full capped page shares a single second', async () => {
+    // A pathological case: 500 statement items all landing in the same
+    // second. Naively re-querying with that second as the ceiling would
+    // re-issue the identical request forever, since the response never
+    // changes. The loop must still terminate.
+    const toSeconds = 1_700_100_000;
+    // boundary sits inside the default 31-day lookback window ending at toSeconds.
+    const boundary = 1_700_050_000;
+    const page: MonobankStatementItem[] = Array.from({ length: 500 }, (_, index) => ({
+      ...(statement[0] as MonobankStatementItem),
+      id: `p-${index}`,
+      time: boundary,
+    }));
+
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+    deps.now = () => toSeconds * 1000;
+    deps.fetchStatement = jest.fn(async (_token, accountId, _from, to) => {
+      if (decodeURIComponent(accountId) !== clientInfo.accounts[0].id) {
+        return [];
+      }
+      return to >= boundary ? page : [];
+    }) as SyncDeps['fetchStatement'];
+
+    await expect(runSync(deps)).resolves.toBeDefined();
+  });
+
+  it('throttles across accounts: one 60 s sleep between two cards', async () => {
+    // Two cards, each returning a single (sub-cap) statement page, so each card
+    // makes exactly one statement request.
+    const singlePage = (): MonobankStatementItem[] => [statement[0] as MonobankStatementItem];
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, sleep } = makeInMemoryDeps(singlePage, [connected]);
+
+    await runSync(deps);
+
+    // 3 requests total: client-info, card A's statement, card B's statement.
+    // Two gaps between them, both throttled by the one per-token gate.
+    expect(sleep.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([60_000, 60_000]);
+  });
+
+  it('routes fetchClientInfo through the same gate', async () => {
+    const singlePage = (): MonobankStatementItem[] => [statement[0] as MonobankStatementItem];
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, sleep } = makeInMemoryDeps(singlePage, [connected]);
+    // One card only, so the single statement request is the ONLY request that
+    // can follow client-info — a sleep here can only be the client-info gap.
+    deps.fetchClientInfo = async () => ({ accounts: [clientInfo.accounts[0] as MonobankAccount] });
+
+    await runSync(deps);
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists the queried window ceiling, not the clock at loop end', async () => {
+    const singlePage = (): MonobankStatementItem[] => [statement[0] as MonobankStatementItem];
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(singlePage, [connected]);
+    deps.fetchClientInfo = async () => ({ accounts: [clientInfo.accounts[0] as MonobankAccount] });
+
+    // Every `now()` read advances 2 minutes, modelling the throttle sleeps
+    // between the window ceiling being captured and the loop finishing.
+    let current = 1_700_000_000_000;
+    deps.now = () => {
+      const value = current;
+      current += 120_000;
+      return value;
+    };
+
+    const fetchStatement = jest.fn(deps.fetchStatement as SyncDeps['fetchStatement']);
+    deps.fetchStatement = fetchStatement;
+    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncAt = setLastSyncAt;
+
+    await runSync(deps);
+
+    const [persisted] = setLastSyncAt.mock.calls.at(-1) ?? [];
+    const [, , , statementTo] = fetchStatement.mock.calls.at(-1) ?? [];
+
+    // The cursor must be the same instant the statement window closed at, not
+    // whatever the clock reads after the throttle sleeps that follow it.
+    expect(persisted).toBe((statementTo as number) * 1000);
   });
 });

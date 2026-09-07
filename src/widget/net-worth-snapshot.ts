@@ -1,11 +1,11 @@
 import type { Currency } from '../currency/currency';
 import { formatMoney } from '../currency/format';
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { i18n } from '../i18n';
 import { activeLocale } from '../i18n/active-locale';
 import { activeHoldings } from '../rates/active-holdings';
 import type { RateTable } from '../rates/conversion';
-import { sumByCurrency } from '../rates/currency-totals';
-import { guardedNetWorth } from '../rates/net-worth-view';
+import { guardedBreakdown, guardedNetWorth } from '../rates/net-worth-view';
 import type { NetWorthPoint } from '../statistics/net-worth-series';
 
 // The snapshot the app writes to the App Group container for the widget to read.
@@ -17,6 +17,15 @@ export type NetWorthSnapshot = {
   breakdown: { currency: Currency; minorUnits: number; formatted: string }[];
   trend: { time: number; value: number }[];
   updatedAt: number;
+  // Every user-facing string the widget renders, resolved through `i18n.t` at
+  // build time so the widget follows the app's PERSISTED language. The
+  // extension runs in a separate process with no JS and no access to the
+  // catalogues, and a Localizable.strings bundle would follow the DEVICE
+  // language instead — precisely the mismatch this avoids. One entry per
+  // string the widget actually renders from a snapshot, no more. Keep in
+  // lockstep with `NetWorthSnapshot.Labels` in
+  // ios/KikoWidget/NetWorthSnapshot.swift.
+  labels: { title: string };
 };
 
 export const buildNetWorthSnapshot = (input: {
@@ -29,11 +38,13 @@ export const buildNetWorthSnapshot = (input: {
 }): NetWorthSnapshot => {
   const active = activeHoldings(input.holdings, input.accounts);
   const total = guardedNetWorth(active, input.baseCurrency, input.rateTable, input.now);
-  const breakdown = sumByCurrency(active, input.now).map((money) => ({
-    currency: money.currency,
-    minorUnits: money.minorUnits,
-    formatted: formatMoney(money, activeLocale()),
-  }));
+  const breakdown = guardedBreakdown(active, input.baseCurrency, input.rateTable, input.now).map(
+    (money) => ({
+      currency: money.currency,
+      minorUnits: money.minorUnits,
+      formatted: formatMoney(money, activeLocale()),
+    }),
+  );
   const trend = input.trendPoints.map((point) => ({ time: point.t, value: point.amount }));
 
   return {
@@ -42,5 +53,6 @@ export const buildNetWorthSnapshot = (input: {
     breakdown,
     trend,
     updatedAt: input.now,
+    labels: { title: i18n.t('home.netWorth') },
   };
 };

@@ -1,5 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+
+import { i18n } from '../../../i18n';
+import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import Button from './button.component';
 
@@ -18,7 +21,7 @@ jest.mock('../symbol', () => {
   };
 });
 
-const flattenRoot = (node: { props: { style: unknown } }): Record<string, unknown> =>
+const flattenRoot = (node: RenderedElement): Record<string, unknown> =>
   StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
 
 describe('Button', () => {
@@ -120,5 +123,23 @@ describe('Button', () => {
     // textColor is applied inline (not through the variant block the mock
     // strips), so it survives into the flattened label style.
     expect(flattenRoot(getByText('Cancel')).color).toBe('#FF453A');
+  });
+
+  it('does not force a text transform on the label', async () => {
+    const { getByText } = await render(<Button onPress={jest.fn()}>Add account</Button>);
+
+    const style = StyleSheet.flatten(getByText('Add account').props.style);
+
+    expect(style.textTransform).toBeUndefined();
+  });
+
+  it('renders a Ukrainian label in sentence case, unchanged', async () => {
+    await i18n.changeLanguage('uk');
+
+    const { getByText } = await render(<Button onPress={jest.fn()}>Додати рахунок</Button>);
+
+    expect(getByText('Додати рахунок')).toBeTruthy();
+
+    await i18n.changeLanguage('en');
   });
 });

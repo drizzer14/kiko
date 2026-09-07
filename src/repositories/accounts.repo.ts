@@ -4,8 +4,8 @@ import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { id } from '../db/id';
 import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
-import { isSyncedAccount, isSyncedHolding, type SyncedInstitution } from '../holdings/deletable';
-import { SYNCED_AT_FIELD, syncedMetadataFields } from '../holdings/holding-metadata';
+import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
+import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
 
 import type { Repository } from './repository';
 
@@ -39,10 +39,14 @@ type NewCashAccount = {
   color?: string | null;
 };
 
-// The metadata keys a disconnect strips: every sync-ownership marker plus the
-// balance-sync `syncedAt` stamp, so a disconnected holding reads as manual and
-// carries no stale sync bookkeeping. Every other key (iban, maskedPan, …) stays.
-const strippedOnDisconnect: readonly string[] = [...syncedMetadataFields, SYNCED_AT_FIELD];
+// A disconnect strips ONLY the balance-sync `syncedAt` stamp (stale
+// bookkeeping). The sync KEYS (`monobankId` / `walletAddress` / `binanceAsset`)
+// are deliberately KEPT: `upsertByMetadataKey` matches on them, so dropping
+// them made a reconnect insert a SECOND holding carrying the same balance,
+// double-counting net worth while the original kept every transaction.
+// "Manual" is now decided by the account's cleared `institution` alone — see
+// `isSyncedHolding`. Every other key (iban, maskedPan, …) stays too.
+const strippedOnDisconnect: readonly string[] = [SYNCED_AT_FIELD];
 
 const withoutSyncMetadata = (metadata: Record<string, unknown>): Record<string, unknown> | null => {
   const kept = Object.entries(metadata).filter(([key]) => !strippedOnDisconnect.includes(key));
@@ -80,14 +84,30 @@ export const accountsRepo = {
       return accountId;
     }),
   /**
-   * Create a cash account and its initial cash holding in ONE op-sqlite
-   * transaction, so the account can never persist without its holding on a
-   * partial failure (mirrors `transactionsRepo.recordManual`'s ledger +
-   * balance atomicity).
+   * Create a cash account, its initial cash holding, and — for a non-zero
+   * initial balance — that holding's opening ledger row, in ONE op-sqlite
+   * transaction, so the account can never persist without its holding (or its
+   * holding without the row explaining its balance) on a partial failure
+   * (mirrors `transactionsRepo.recordManual`'s ledger + balance atomicity).
+   *
+   * The opening balance is a manual adjustment like any other, so it gets its
+   * own `manual` transaction (kiko-domain: a holding's balance history must stay
+   * derivable from its transactions; `holdingsRepo.updateWithBalanceDelta`
+   * enforces the same invariant for a later edit). Without it, `holdingValueAt`
+   * (statistics/holding-value-at.ts) back-derived the opening balance as
+   * `balance - sum(transactions)` and the whole historical net-worth series
+   * carried a step no ledger row could explain.
+   *
+   * The row is inserted directly rather than through
+   * `transactionsRepo.recordManual`, which would ALSO add the amount to a
+   * balance the insert above has already set. It carries no description and no
+   * category: the label resolves at render time
+   * (transactions/row-description.ts).
    */
   createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
     write(async (tx) => {
       const accountId = id();
+      const holdingId = id();
       const sortOrder = await nextSortOrder(tx);
       await tx.insert(accounts).values({
         id: accountId,
@@ -98,25 +118,45 @@ export const accountsRepo = {
         sortOrder,
       });
       await tx.insert(holdings).values({
-        id: id(),
+        id: holdingId,
         accountId,
         name,
         type: 'cash',
         currency,
         balanceMinorUnits: initialBalanceMinorUnits,
       });
+
+      if (initialBalanceMinorUnits === 0) {
+        return;
+      }
+
+      await tx.insert(transactions).values({
+        id: id(),
+        holdingId,
+        amountMinorUnits: initialBalanceMinorUnits,
+        time: Date.now(),
+        description: '',
+        category: null,
+        source: 'manual',
+      });
     }),
   /**
    * Disconnect a synced account (Monobank, wallet, or Binance), turning it into
    * a plain manual account whose data is kept as a historical snapshot. In ONE
    * op-sqlite transaction: clear the account's `institution` (so
-   * `isSyncedAccount` is false and `remove` accepts it), and strip every sync
-   * key (`monobankId` / `walletAddress` / `binanceAsset`) plus `syncedAt` from
-   * each synced holding's metadata (so `isSyncedHolding` is false and the
-   * holding becomes manual). Balances, holdings and transactions are left as-is;
-   * manual holdings under the account are untouched. Clearing a Keychain item
-   * is NOT done here — the Keychain is not transactional; the
-   * `monobank/disconnect` and `crypto-sync/disconnect` operations compose both.
+   * `isSyncedAccount` is false, every holding under it reads as manual through
+   * `isSyncedHolding`, and `remove` accepts it), and drop the now-stale
+   * `syncedAt` stamp from any holding carrying one.
+   *
+   * The sync KEYS (`monobankId` / `walletAddress` / `binanceAsset`) are KEPT on
+   * purpose: `holdingsRepo`'s metadata-key upsert matches on them, so a later
+   * reconnect re-adopts these very rows (with their transactions) instead of
+   * inserting duplicates that double-count every balance.
+   *
+   * Balances, holdings and transactions are left as-is; manual holdings under
+   * the account are untouched. Clearing a Keychain item is NOT done here — the
+   * Keychain is not transactional; the `monobank/disconnect` and
+   * `crypto-sync/disconnect` operations compose both.
    */
   disconnect: (accountId: string) =>
     write(async (tx) => {
@@ -126,14 +166,22 @@ export const accountsRepo = {
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
 
+      // The loop's only job now is to drop `syncedAt` — the account's cleared
+      // institution (written above) is what makes each holding manual, so
+      // there is no `isSyncedHolding` guard left to apply here.
       for (const holding of accountHoldings) {
-        if (!isSyncedHolding(holding)) {
+        const metadata = holding.metadata;
+
+        // A JSON column can hold a non-object (nothing here writes one, but the
+        // `in` test below would throw on it), and only a record can carry the
+        // stamp — so both are skipped.
+        if (typeof metadata !== 'object' || metadata === null || !(SYNCED_AT_FIELD in metadata)) {
           continue;
         }
 
         await tx
           .update(holdings)
-          .set({ metadata: withoutSyncMetadata(holding.metadata as Record<string, unknown>) })
+          .set({ metadata: withoutSyncMetadata(metadata as Record<string, unknown>) })
           .where(eq(holdings.id, holding.id));
       }
     }),

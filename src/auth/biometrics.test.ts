@@ -59,6 +59,12 @@ describe('isSensorAvailable', () => {
 
     expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
   });
+
+  it('resolves to unavailable when the native module rejects, instead of rejecting itself', async () => {
+    mockSensor.mockRejectedValueOnce(new Error('boom'));
+
+    expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
+  });
 });
 
 describe('authenticate', () => {
@@ -124,5 +130,49 @@ describe('authenticate', () => {
     mockAuthenticate.mockResolvedValue({ success: false });
 
     expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'failed', code: undefined });
+  });
+
+  it('resolves to failed with the thrown error code when the native module rejects, instead of rejecting itself', async () => {
+    mockAuthenticate.mockRejectedValueOnce(
+      Object.assign(new Error('boom'), { code: 'SYSTEM_ERROR' }),
+    );
+
+    await expect(authenticate('Unlock Kiko')).resolves.toEqual({
+      kind: 'failed',
+      code: 'SYSTEM_ERROR',
+    });
+  });
+
+  it('resolves to failed with an undefined code when the thrown error carries none', async () => {
+    mockAuthenticate.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(authenticate('Unlock Kiko')).resolves.toEqual({
+      kind: 'failed',
+      code: undefined,
+    });
+  });
+});
+
+describe('authenticate when the native module fails to load entirely', () => {
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  it('resolves to failed instead of throwing when require() itself throws (missing pod)', async () => {
+    // `./biometrics` and its native dependency are already cached from this
+    // file's top-level static import, so `jest.doMock` alone would not affect
+    // a `require` below — reset the module registry first to force a fresh
+    // evaluation that actually picks up the throwing factory.
+    jest.resetModules();
+    jest.doMock('@sbaiahmed1/react-native-biometrics', () => {
+      throw new Error("Cannot find module '@sbaiahmed1/react-native-biometrics'");
+    });
+
+    const { authenticate: freshAuthenticate } = require('./biometrics');
+
+    await expect(freshAuthenticate('Unlock Kiko')).resolves.toEqual({
+      kind: 'failed',
+      code: undefined,
+    });
   });
 });

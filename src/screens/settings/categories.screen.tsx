@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, type ScrollView } from 'react-native';
+import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -289,6 +289,12 @@ const CategoryListRow: FC<{
   );
 };
 
+// Above iOS's text-selection hold threshold, so a long-press inside a card's
+// rename TextInput belongs to the text field, not to the grid's drag. Retune
+// on-device (see kiko-gestures: gesture thresholds are tuned on hardware, not
+// guessed).
+const CATEGORY_DRAG_ACTIVATION_MS = 600;
+
 // The Categories settings sub-screen: a live-queried vertical stack of every
 // category, each rendered as its own card (matching the account/holding card
 // treatment) so it renames its title and re-picks its icon in place. The
@@ -318,7 +324,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // The scroll-mode ScrollView's ref, so expanding the inline add-category form
   // (appended below the last category card) can bring its revealed fields into
   // view.
-  const scrollableRef = useAnimatedRef<ScrollView>();
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
   // Scroll to the form once it expands. The icon/name/color fields and the
   // Save/Cancel pair are only measured after this render commits, so defer the
@@ -349,6 +355,16 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
           activeItemScale={1.03}
           columns={1}
           overDrag="vertical"
+          // Unlike the accounts and holdings grids, EVERY card here contains a
+          // live TextInput (the rename field). react-native-sortables' default
+          // 200 ms activation is shorter than iOS's own text-selection hold,
+          // so a hold meant to place the cursor or open Paste started a card
+          // drag instead. A longer delay is preferred over `customHandle`
+          // because the other two grids deliberately expose no handle
+          // (kiko-gestures) and diverging one screen's interaction model for
+          // this would be worse; the cards also already offer gesture-free
+          // move-to-top / move-to-bottom buttons.
+          dragActivationDelay={CATEGORY_DRAG_ACTIVATION_MS}
           rowGap={theme.spacing(4)}
           scrollableRef={scrollableRef}
           autoScrollActivationOffset={75}
@@ -361,8 +377,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
               onMoveToBottom={() => moveToBottom(item.key)}
             />
           )}
-          onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-            onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
+          onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+            onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
           }
         />
 

@@ -101,7 +101,16 @@ export const useNetWorthWidget = (): void => {
   ]);
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  // The persisted language, in `writeNow`'s dependency list below: every
+  // formatted string in the snapshot is locale-dependent (₴1,234.56 vs
+  // 1 234,56 ₴, and since the widget's labels are carried in the snapshot, the
+  // labels themselves), but a language switch writes only `settings.language` —
+  // no other watched table, and `baseCurrency` is unchanged — so `writeNow`'s
+  // identity was stable, the debounce never re-fired, and the widget kept the
+  // previous locale until something unrelated changed.
+  const language = settingsRows.at(0)?.language ?? null;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver) `assembleSnapshot` -> `buildNetWorthSnapshot` resolves `labels.title` through `i18n.t`, which reads the active language off the global i18next singleton rather than off anything in this closure — `language` is never read directly in the body above, but `writeNow`'s identity must still invalidate on it, or a language switch (which touches no other watched table and leaves `baseCurrency` unchanged) would never re-fire the debounced write.
   const writeNow = useCallback(async (): Promise<void> => {
     const snapshot = assembleSnapshot({
       accounts,
@@ -115,7 +124,7 @@ export const useNetWorthWidget = (): void => {
 
     await widgetBridge.writeSnapshot(snapshot);
     widgetBridge.reloadWidget();
-  }, [accounts, holdings, rates, transactions, historyRows, baseCurrency]);
+  }, [accounts, holdings, rates, transactions, historyRows, baseCurrency, language]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -2,6 +2,12 @@
 // resource AND the source of the catalog's TypeScript type (see i18next.d.ts).
 // Every user-facing string lives here, namespaced by app area. uk.ts mirrors
 // this exact key set.
+//
+// Deliberately NOT `as const`: `i18next.d.ts` needs only this object's KEY
+// STRUCTURE, and a literal-typed `typeof en` made uk.ts's `typeof en`
+// annotation demand the exact ENGLISH strings — 261 tsc errors, one per
+// translated value, which buried the real "uk.ts is missing a key" error the
+// annotation exists to surface.
 export const en = {
   // The system Face ID/passcode prompt (src/auth/use-app-lock.ts) and the
   // full-screen LockGate it backs (src/auth/lock-gate) — the very first UI a
@@ -17,7 +23,7 @@ export const en = {
     locked: 'Locked',
     unlock: 'Unlock',
     unlockPrompt: 'Unlock Kiko',
-    usePasscode: 'Use Passcode',
+    usePasscode: 'Use passcode',
   },
   common: {
     all: 'All',
@@ -191,7 +197,7 @@ export const en = {
         'Apply “{{category}}” to all transactions named “{{name}}”? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
       category: 'Category',
-      convertToExchange: 'Convert to Exchange',
+      convertToExchange: 'Convert to exchange',
       deleteConfirmMessage: 'This transaction will be permanently removed.',
       deleteConfirmTitle: 'Delete Transaction',
       description: 'Description',
@@ -230,7 +236,7 @@ export const en = {
     connectedAs: 'Connected as {{name}}',
     connectedElsewhere: 'Monobank is connected to another account',
     connectMonobank: 'Connect Monobank',
-    connectWallet: 'Connect Wallet',
+    connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
     couldNotConnectWallet: 'Could not connect wallet',
     couldNotSaveCredentials: 'Could not save credentials',
@@ -253,6 +259,7 @@ export const en = {
     lastSync: 'Last sync: {{time}}',
     monobankAlreadyConnected: 'A Monobank account is already connected',
     monobankTokenPlaceholder: 'Monobank token',
+    never: 'Never',
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',
@@ -315,6 +322,9 @@ export const en = {
     emptyTransactions: 'No transactions',
     filterAccounts: 'Accounts',
     filterCategories: 'Categories',
+    // Also the home-screen widget's headline: it travels inside the snapshot
+    // (src/widget/net-worth-snapshot.ts) rather than a Localizable.strings
+    // bundle, and reuses THIS key so the two can never drift apart.
     netWorth: 'Net worth',
     syncFailedMessage: "Couldn't sync {{accounts}}.",
     title: 'Home',
@@ -338,6 +348,8 @@ export const en = {
   transactions: {
     defaultDescriptionExpense: '{{name}} expense',
     defaultDescriptionIncome: '{{name}} income',
+    exchangeFrom: 'Exchange from {{name}}',
+    exchangeTo: 'Exchange to {{name}}',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
@@ -360,4 +372,4 @@ export const en = {
     error: 'Migration error: {{message}}',
     preparing: 'Preparing database…',
   },
-} as const;
+};

@@ -37,8 +37,9 @@ const defaultDeps: BalanceSyncDeps = {
 };
 
 /**
- * Resolve the account this sync writes into, mirroring `ensureMonobankAccount`
- * but scoped per institution: one connection per provider id, so a wallet and
+ * Resolve the account this sync writes into, mirroring
+ * `resolveMonobankAccountId` (`src/monobank/sync.ts`) but scoped per
+ * institution: one connection per provider id, so a wallet and
  * a Binance connection coexist as two accounts while two wallet connections
  * cannot silently double-count. Re-connecting the SAME account is an
  * idempotent re-sync. This only reads — marking happens after a successful

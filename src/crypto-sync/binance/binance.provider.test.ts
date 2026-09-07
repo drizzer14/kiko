@@ -80,20 +80,39 @@ describe('binanceProvider', () => {
     expect(balance).toMatchObject({ currency: 'BTC', balanceMinorUnits: 0, metadataKey: 'BTC' });
   });
 
-  it('reports a zero BTC balance when the payload carries no balances array at all', async () => {
-    const deps = makeDeps([]);
-    deps.fetchAccount.mockResolvedValue({} as BinanceAccount);
-
-    const [balance] = await binanceProvider.fetchBalances(deps, target);
-
-    expect(balance).toMatchObject({ currency: 'BTC', balanceMinorUnits: 0, metadataKey: 'BTC' });
-  });
-
   it('throws before any network call when no credentials are stored', async () => {
     const deps = makeDeps([]);
     deps.readCredentials.mockResolvedValue(undefined);
 
     await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(/connect Binance/i);
     expect(deps.fetchAccount).not.toHaveBeenCalled();
+  });
+
+  it('rejects a body with no balances array', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({} as BinanceAccount);
+
+    await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(/Binance/);
+  });
+
+  it('rejects a body whose balances is not an array', async () => {
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockResolvedValue({ balances: 'nope' } as unknown as BinanceAccount);
+
+    await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(/Binance/);
+  });
+
+  it('rejects a non-finite free/locked amount rather than writing NaN', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
+
+    await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(/Binance/);
+  });
+
+  it('reports a genuine zero balance as zero', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0', locked: '0' }]);
+
+    const [balance] = await binanceProvider.fetchBalances(deps, target);
+
+    expect(balance.balanceMinorUnits).toBe(0);
   });
 });

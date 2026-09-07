@@ -1,4 +1,4 @@
-import type { TFunction } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 // The label shown for a transaction that carries no user-entered description.
 // The sign of `amountMinorUnits` is the source of truth for direction: a

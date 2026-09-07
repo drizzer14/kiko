@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 
+import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
 import { i18n } from '../../../i18n';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
@@ -80,6 +81,47 @@ describe('NetWorthLine', () => {
     expect(reference.props.y1).toBeCloseTo(height / 2);
   });
 
+  // NEW-2: the y-domain is anchored symmetrically on startReference, so the
+  // dashed baseline holds a stable vertical position (centred) and a dip below
+  // it renders proportionally instead of teleporting the baseline to the top.
+  it('keeps the reference centred when net worth dips below the start (NEW-2)', async () => {
+    const height = 200;
+    const { getByTestId } = await render(
+      <NetWorthLine
+        points={[
+          { t: 0, amount: 100 },
+          { t: 1, amount: 95 },
+        ]}
+        startReference={100}
+        baseCurrency="USD"
+        height={height}
+      />,
+    );
+
+    const reference = getByTestId('net-worth-line-reference');
+    expect(reference.props.y1).toBe(reference.props.y2);
+    expect(reference.props.y1).toBeCloseTo(height / 2, 0);
+  });
+
+  it('keeps the reference centred when net worth rises above the start (NEW-2)', async () => {
+    const height = 200;
+    const { getByTestId } = await render(
+      <NetWorthLine
+        points={[
+          { t: 0, amount: 100 },
+          { t: 1, amount: 105 },
+        ]}
+        startReference={100}
+        baseCurrency="USD"
+        height={height}
+      />,
+    );
+
+    const reference = getByTestId('net-worth-line-reference');
+    expect(reference.props.y1).toBe(reference.props.y2);
+    expect(reference.props.y1).toBeCloseTo(height / 2, 0);
+  });
+
   it('renders about four Y-axis tick labels spanning the value range', async () => {
     const { getByTestId, getByText } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
@@ -91,6 +133,53 @@ describe('NetWorthLine', () => {
     // no suffix), not the full two-decimal money format.
     expect(getByText('$300')).toBeTruthy();
     expect(getByText('$100')).toBeTruthy();
+  });
+
+  it('renders a single Y tick for a flat series', async () => {
+    const { queryByTestId, getByTestId } = await render(
+      <NetWorthLine
+        points={[
+          { t: 1, amount: 5000 },
+          { t: 2, amount: 5000 },
+        ]}
+        startReference={5000}
+        baseCurrency="UAH"
+      />,
+    );
+
+    expect(getByTestId('net-worth-line-tick-0')).toBeTruthy();
+    expect(queryByTestId('net-worth-line-tick-1')).toBeNull();
+  });
+
+  it('renders one Y gridline per tick, each with a testID', async () => {
+    const { getAllByTestId } = await render(
+      <NetWorthLine
+        points={[
+          { t: 1, amount: 1000 },
+          { t: 2, amount: 5000 },
+        ]}
+        startReference={1000}
+        baseCurrency="UAH"
+      />,
+    );
+
+    const gridlines = getAllByTestId(/^net-worth-line-y-grid-/);
+
+    expect(gridlines).toHaveLength(4);
+
+    const ys = gridlines.map((line) => Number(line.props.y1));
+
+    // Top tick (max) draws at the smallest y; the set is strictly monotonic.
+    expect([...ys].sort((a, b) => a - b)).toEqual(ys);
+    expect(new Set(ys).size).toBe(4);
+  });
+
+  it('renders a single Y gridline for a flat series', async () => {
+    const { getAllByTestId } = await render(
+      <NetWorthLine points={[{ t: 1, amount: 5000 }]} startReference={5000} baseCurrency="UAH" />,
+    );
+
+    expect(getAllByTestId(/^net-worth-line-y-grid-/)).toHaveLength(1);
   });
 
   it('labels the Y-axis in a compact unit chosen from the spread — grouped thousands when values are close together', async () => {
@@ -118,8 +207,13 @@ describe('NetWorthLine', () => {
       <NetWorthLine points={farPoints} startReference={800_000} baseCurrency="USD" />,
     );
 
+    // The y-domain is anchored symmetrically on startReference (800K): the half
+    // range is max(|1.5M - 800K|, |800K - 200K|) = 700K, so the axis spans
+    // [100K, 1.5M]. The top tick is the data max (1.5M) and the bottom tick is
+    // the anchored min (100K = $0.1M), not the raw data min — both still render
+    // in the millions unit, which is what this test guards.
     expect(getByText('$1.5M')).toBeTruthy();
-    expect(getByText('$0.2M')).toBeTruthy();
+    expect(getByText('$0.1M')).toBeTruthy();
   });
 
   it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot (G5)', async () => {
@@ -176,6 +270,48 @@ describe('NetWorthLine', () => {
     const endStyle = styleLayers(getByTestId('net-worth-line-x-tick-1.00').props.style);
     expect(startStyle.map((layer) => layer.left).find((value) => value !== undefined)).toBe(0);
     expect(endStyle.map((layer) => layer.right).find((value) => value !== undefined)).toBe(0);
+  });
+
+  // Regression guard (NEW-1): the "tomorrow as the end date" symptom exists only
+  // on `main`, where the range bounds were UTC-anchored (an inline `startOfLocalDay`
+  // returning `Date.UTC(...)` plus a fixed `+ DAY_MS - 1`). On this branch the
+  // range is built from `startOfLocalDay`/`endOfLocalDay` (`src/dates/local-day.ts`),
+  // which return TRUE LOCAL instants — a local midnight and a local end-of-day —
+  // so the chart's bucket `t` values are true-local, and formatting them in the
+  // device-local zone (the shipped `formatAxisTime`) already reads the picked
+  // calendar day. This guard drives points through the real range-bound helpers
+  // in a positive-offset zone (Europe/Kyiv, UTC+) and asserts the start and end
+  // ticks read the picked days — proving the bug is already fixed here and
+  // catching a regression (e.g. a stray `timeZone: 'UTC'` on `formatAxisTime`)
+  // that would shift the start tick a day back. It is a guard, not a TDD
+  // RED->GREEN fix: no source change is needed on this branch. Node re-reads TZ
+  // per Date op, so pinning it for the render is enough even when the host runs
+  // in UTC.
+  it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone (NEW-1)', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Europe/Kyiv';
+    try {
+      // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
+      const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
+      const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
+      const rangePoints: NetWorthPoint[] = [
+        { t: fromT, amount: 100 },
+        { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
+        { t: toT, amount: 200 },
+      ];
+      const { getByTestId } = await render(
+        <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
+      );
+
+      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('Sep 5');
+      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('Sep 7');
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
   });
 
   it('draws the net-worth line in white', async () => {

@@ -45,7 +45,7 @@ describe('formatMoney locale grouping', () => {
     // different ICU build could emit U+202F NARROW NO-BREAK SPACE instead —
     // if this ever regresses to a plain ASCII space, that is the bug this
     // guards against), comma decimal, UAH symbol suffixed.
-    const money = { currency: 'UAH', minorUnits: 123_456 } as const;
+    const money = Money.of('UAH', 123_456);
     const formatted = formatMoney(money, 'uk-UA');
 
     expect(formatted).toBe('1\u00A0234,56 ₴');

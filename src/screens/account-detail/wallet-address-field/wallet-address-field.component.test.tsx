@@ -29,14 +29,14 @@ describe('WalletAddressField', () => {
     onConnect.mockResolvedValue(true);
   });
 
-  it('renders a plain (non-secure) address input, a paste button and a Connect Wallet action', async () => {
+  it('renders a plain (non-secure) address input, a paste button and a Connect wallet action', async () => {
     const { getByPlaceholderText, getByLabelText, getByText } = await render(
       <WalletAddressField onConnect={onConnect} />,
     );
 
     expect(getByPlaceholderText('BTC address').props.secureTextEntry).toBeFalsy();
     expect(getByLabelText('Paste from clipboard')).toBeTruthy();
-    expect(getByText('Connect Wallet')).toBeTruthy();
+    expect(getByText('Connect wallet')).toBeTruthy();
   });
 
   it('fills the input from the clipboard, trimmed', async () => {
@@ -59,7 +59,7 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('BTC address'), 'not an address');
     await act(async () => {
-      await fireEvent.press(getByText('Connect Wallet'));
+      await fireEvent.press(getByText('Connect wallet'));
     });
 
     expect(await findByText('Invalid BTC address')).toBeTruthy();
@@ -73,7 +73,7 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('BTC address'), ` ${ADDRESS} `);
     await act(async () => {
-      await fireEvent.press(getByText('Connect Wallet'));
+      await fireEvent.press(getByText('Connect wallet'));
     });
 
     expect(onConnect).toHaveBeenCalledWith(ADDRESS);
@@ -88,7 +88,7 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
     await act(async () => {
-      await fireEvent.press(getByText('Connect Wallet'));
+      await fireEvent.press(getByText('Connect wallet'));
     });
 
     expect(await findByText('Could not connect wallet')).toBeTruthy();
@@ -105,13 +105,13 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
     await act(async () => {
-      fireEvent.press(getByText('Connect Wallet'));
+      fireEvent.press(getByText('Connect wallet'));
     });
 
     expect(await findByText(/Checking/)).toBeTruthy();
     // PressableButton forwards `disabled` to its Pressable, which RN exposes as
     // accessibilityState.disabled — the built-in RNTL matcher reads exactly that.
-    expect(getByRole('button', { name: 'Connect Wallet' })).toBeDisabled();
+    expect(getByRole('button', { name: 'Connect wallet' })).toBeDisabled();
 
     await act(async () => {
       pending.resolve(true);
@@ -129,7 +129,7 @@ describe('WalletAddressField', () => {
 
     await fireEvent.changeText(input, 'bad');
     await act(async () => {
-      await fireEvent.press(getByText('Connect Wallet'));
+      await fireEvent.press(getByText('Connect wallet'));
     });
     expect(await findByText('Invalid BTC address')).toBeTruthy();
 
@@ -159,6 +159,6 @@ describe('WalletAddressField — localization', () => {
     expect(getByPlaceholderText('BTC-адреса')).toBeTruthy();
     expect(getByLabelText('Вставити з буфера обміну')).toBeTruthy();
     expect(getByText('Підключити гаманець')).toBeTruthy();
-    expect(queryByText('Connect Wallet')).toBeNull();
+    expect(queryByText('Connect wallet')).toBeNull();
   });
 });

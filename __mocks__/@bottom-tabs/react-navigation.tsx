@@ -17,8 +17,14 @@
 // screen's `component` — enough to exercise "does the tab navigator wire
 // the right tabs to the right stacks" without a native tab-bar renderer.
 
-import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import {
+  Children,
+  type ComponentType,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { Text, View, type ViewProps } from 'react-native';
 
 type MockScreenProps = {
   name: string;
@@ -26,13 +32,33 @@ type MockScreenProps = {
   options?: { title?: string };
 };
 
-type MockNavigatorProps = {
-  children: ReactNode;
-  // Native tab-bar appearance props the real navigator forwards to the
-  // UITabBar. Surfaced here on the `tab-bar` view so tests can assert the
-  // app pins them (e.g. `barTintColor` to keep the bar's scheme deterministic).
-  barTintColor?: string;
+// Native tab-bar appearance props the real navigator forwards to the
+// UITabBar. Surfaced here on the `tab-bar` view so tests can assert the app
+// pins them (e.g. `tabBarStyle.backgroundColor` to keep the bar's scheme
+// deterministic). Neither is a real `ViewProps` member, so the host element
+// below is cast through `TabBarView` rather than typed as plain `View`.
+type MockTabBarProps = {
+  tabBarStyle?: { backgroundColor?: string };
   translucent?: boolean;
+};
+
+// `View`'s own type has no room for `MockTabBarProps` — they are native
+// tab-bar appearance props, not real `ViewProps` members. This mock only
+// needs the `tab-bar` host element to carry them so a test can read them
+// back off `.props`; the cast below is that boundary, scoped to this mock
+// only, not a widening of the app's own component surface.
+const TabBarView = View as ComponentType<ViewProps & MockTabBarProps>;
+
+type MockNavigatorProps = MockTabBarProps & {
+  children: ReactNode;
+  // Forward ONLY the props the real @bottom-tabs/react-navigation adapter
+  // consumes. `barTintColor` is NOT one of them: it is not a
+  // NativeBottomTabNavigatorProps member, so the real adapter drops it into
+  // `...rest` and react-native-bottom-tabs' TabView then OVERWRITES it with
+  // `tabBarStyle?.backgroundColor` (TabView.tsx:477). A mock that accepted and
+  // painted `barTintColor` made root.navigator.test.tsx green while the device
+  // tab bar still flipped light/dark (bug B1). Keep this mock's prop surface
+  // narrower than the app's, never wider.
   tabBarActiveTintColor?: string;
   tabBarInactiveTintColor?: string;
 };
@@ -41,7 +67,7 @@ function Screen(_props: MockScreenProps): null {
   return null;
 }
 
-function Navigator({ children, barTintColor, translucent }: MockNavigatorProps) {
+function Navigator({ children, tabBarStyle, translucent }: MockNavigatorProps) {
   const screens = Children.toArray(children).filter(
     isValidElement,
   ) as ReactElement<MockScreenProps>[];
@@ -49,11 +75,11 @@ function Navigator({ children, barTintColor, translucent }: MockNavigatorProps) 
   const ActiveComponent = active?.props.component;
   return (
     <>
-      <View testID="tab-bar" barTintColor={barTintColor} translucent={translucent}>
+      <TabBarView testID="tab-bar" tabBarStyle={tabBarStyle} translucent={translucent}>
         {screens.map((screen) => (
           <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
         ))}
-      </View>
+      </TabBarView>
       {ActiveComponent ? <ActiveComponent /> : null}
     </>
   );

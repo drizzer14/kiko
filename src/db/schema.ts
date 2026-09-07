@@ -48,12 +48,37 @@ export const transactions = sqliteTable(
     description: text('description').notNull().default(''),
     category: text('category'),
     mcc: integer('mcc'),
+    // Monobank's `hold` flag: the item is a PENDING authorization whose final
+    // settled amount can still change (a restaurant tip, a fuel pre-auth). The
+    // row is imported anyway, so a pending charge shows in the ledger
+    // immediately; `addManyDedup` (repositories/transactions.repo.ts) then
+    // upserts on (source, external_id), so the settled re-fetch REFRESHES the
+    // amount and clears this flag — without ever touching `category`, which may
+    // hold the user's own override. Null on manual rows and on rows synced
+    // before this column existed.
+    hold: integer('hold', { mode: 'boolean' }),
     // The counterparty's IBAN on a synced Monobank transfer (null for manual
     // rows, for non-transfer merchants, and for rows synced before this column
     // existed). Lets the category chart tell an OWN-account transfer (counter
     // IBAN ∈ the user's own cards) from a genuine P2P payment — see
     // statistics/transfer-exclusion.ts.
     counterIban: text('counter_iban'),
+    // Set on BOTH legs of an Exchange/Convert to the OTHER leg's holding id
+    // (and on the single debit leg of an exchange into a term deposit, which
+    // writes a metadata contribution rather than a credit row). This is the
+    // DURABLE structural marker that an exchange leg is an internal money
+    // movement, not spending — see statistics/exchange-exclusion.ts. It is a
+    // column and not a reserved `category` value because the category picker
+    // and the override sheet both rewrite `category`, so a marker there could
+    // be destroyed by ordinary user action; and not a shared id in
+    // `externalId` because `(source, external_id)` is unique and both legs are
+    // `source: 'manual'`. Storing the counterpart's ID (not its name) also
+    // lets the display layer resolve the CURRENT name at render time through
+    // `t`, so no English sentence is ever persisted and a rename follows.
+    // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
+    // is manual — a bank-owned (monobank) row is never mutated by this app, so
+    // a synced debit converted into another currency still counts as spending.
+    exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' are named for enum parity with
     // `accounts.institution`; a balance sync writes no transaction rows today.

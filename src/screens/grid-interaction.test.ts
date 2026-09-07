@@ -15,10 +15,7 @@ describe('onGridDragEnd', () => {
   it('persists the new order when the item actually moved (fromIndex !== toIndex)', () => {
     const persistOrder = jest.fn();
 
-    onGridDragEnd(
-      { key: 'b', fromIndex: 1, toIndex: 0, indexToKey: ['b', 'a', 'c'] },
-      persistOrder,
-    );
+    onGridDragEnd({ fromIndex: 1, toIndex: 0, indexToKey: ['b', 'a', 'c'] }, persistOrder);
 
     expect(persistOrder).toHaveBeenCalledWith(['b', 'a', 'c']);
   });
@@ -26,10 +23,7 @@ describe('onGridDragEnd', () => {
   it('does nothing when the drag ended where it started — a hold-still opens the delete menu, it is not a reorder', () => {
     const persistOrder = jest.fn();
 
-    onGridDragEnd(
-      { key: 'a', fromIndex: 0, toIndex: 0, indexToKey: ['a', 'b', 'c'] },
-      persistOrder,
-    );
+    onGridDragEnd({ fromIndex: 0, toIndex: 0, indexToKey: ['a', 'b', 'c'] }, persistOrder);
 
     expect(persistOrder).not.toHaveBeenCalled();
   });

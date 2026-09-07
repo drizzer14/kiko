@@ -30,7 +30,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 
 const mockReadDbKey = jest.fn<Promise<string | undefined>, []>();
 const mockGenerateDbKey = jest.fn(() => 'cd'.repeat(32));
-const mockStoreDbKey = jest.fn(async () => undefined);
+const mockStoreDbKey = jest.fn(async (_keyHex: string) => undefined);
 jest.mock('./keys/db-key', () => ({
   readDbKey: () => mockReadDbKey(),
   generateDbKey: () => mockGenerateDbKey(),

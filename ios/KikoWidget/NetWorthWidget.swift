@@ -47,7 +47,10 @@ struct NetWorthTimelineProvider: TimelineProvider {
             .init(time: 1, value: 12_100),
             .init(time: 2, value: 12_345.67),
         ],
-        updatedAt: 0
+        updatedAt: 0,
+        // English on purpose: this preview never comes from the app, so there
+        // is no in-app language to follow — see the gallery note below.
+        labels: .init(title: "Net worth")
     )
 }
 
@@ -58,6 +61,13 @@ struct NetWorthWidget: Widget {
         StaticConfiguration(kind: kind, provider: NetWorthTimelineProvider()) { entry in
             NetWorthWidgetView(entry: entry)
         }
+        // DELIBERATELY English. `configurationDisplayName` and `description` are
+        // WidgetKit GALLERY metadata: the system renders them in the widget
+        // picker with no snapshot available and no app process running, so they
+        // cannot read `snapshot.labels`. Localizing them would need a .lproj
+        // bundle keyed to the DEVICE language, which would then disagree with
+        // the in-app language for exactly the users the snapshot labels serve.
+        // Tracked as a separate decision, not an oversight.
         .configurationDisplayName("Net Worth")
         .description("Your total net worth at a glance.")
         .supportedFamilies([.systemMedium])

@@ -74,7 +74,18 @@ new component can land between reviews of this skill:
 - **Screen** — the top-level screen container: true-black background,
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
-  native glass tab bar's measured height.
+  native glass tab bar's measured height. A `bleedBottom` child that
+  owns the screen's true bottom edge itself (e.g. a scrollable list)
+  must compute that same clearance with the shared
+  `resolveBottomClearance(tabBarHeight, insetBottom)` helper exported
+  from `src/design-system/components/screen/bottom-clearance.ts` —
+  never re-derive it inline, or it double-counts the bottom safe-area
+  inset Screen's `SafeAreaView` already reserves. Its `scroll`
+  ScrollView is also the tab-root scroll container an active-tab
+  re-tap returns to the top, where `HeaderHeightContext` is the LIVE
+  header height — see
+  `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
+  the tracked expanded height rather than a live height plus a band.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
@@ -85,7 +96,10 @@ new component can land between reviews of this skill:
   `Text` never receives a `Money` object directly.
 - **Button** — the one action button: primary/secondary/destructive
   variants, an optional leading/trailing SF Symbol icon tinted to a
-  single fixed color regardless of variant.
+  single fixed color regardless of variant. The label has no
+  `textTransform`: each catalogue supplies its own casing (English
+  Button copy is sentence case; Ukrainian already is) — there is no
+  style-layer transform and no per-language gate.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and an optional flat entity-color tint
@@ -176,14 +190,18 @@ where they can drift. As of this writing the pipeline is:
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
 a flat translucent tint behind a card, an opaque SF Symbol tint, a
-chart fill, a pastel-over-white blend (`blendOverWhite`). Never
-introduce a second, parallel way to derive one of these renderings
-from a hex, and never add a second hex parser either — `entity-tint.ts`
-owns the one unexported `parseHex`. Extend `entity-tint.ts` with a new
-named function instead, so every rendering of an entity's color still
-traces back to the same `resolveEntityColor` call. `blendOverWhite`
-and a duplicated `parseHex` were once added under `money-text/` and
-had to be moved back into `entity-tint.ts` for exactly this reason.
+chart fill. Never introduce a second, parallel way to derive one of
+these renderings from a hex, and never add a second hex parser either
+— `entity-tint.ts` owns the one unexported `parseHex`. Extend
+`entity-tint.ts` with a new named function instead, so every
+rendering of an entity's color still traces back to the same
+`resolveEntityColor` call. Read `entity-tint.ts` directly for its
+current exported functions rather than trusting a list restated here
+— a duplicated `parseHex` (and, at one point, a since-removed
+`blendOverWhite` pastel-over-white blend helper) were once added
+under `money-text/` and had to be moved back into `entity-tint.ts`
+for exactly this reason; do not assume either name still exists
+there today.
 
 ## SF Symbol `tintColor` gotcha
 
@@ -253,4 +271,7 @@ visually distinct.
 
 Use title case for every heading and sub-heading shown in the UI —
 screen titles, section headers — styled through the typography tokens
-(see "Token categories" above).
+(see "Token categories" above). This does not cover Button labels:
+buttons are actions, not headings, and case themselves per the
+catalogue (see "Button" above) — English Button copy is sentence
+case.

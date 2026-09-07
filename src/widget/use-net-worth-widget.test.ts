@@ -1,12 +1,18 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
 
-const mockWriteSnapshot = jest.fn(() => Promise.resolve());
+import { i18n } from '../i18n';
+import { en } from '../i18n/locales/en';
+import { uk } from '../i18n/locales/uk';
+
+import type { NetWorthSnapshot } from './net-worth-snapshot';
+
+const mockWriteSnapshot = jest.fn((_snapshot: NetWorthSnapshot) => Promise.resolve());
 const mockReloadWidget = jest.fn();
 
 jest.mock('./widget-bridge', () => ({
   widgetBridge: {
-    writeSnapshot: (...args: unknown[]) => mockWriteSnapshot(...args),
+    writeSnapshot: (...args: Parameters<typeof mockWriteSnapshot>) => mockWriteSnapshot(...args),
     reloadWidget: (...args: unknown[]) => mockReloadWidget(...args),
   },
 }));
@@ -36,6 +42,19 @@ jest.mock('../repositories/rate-history.repo', () => ({
 }));
 
 import { useNetWorthWidget } from './use-net-worth-widget';
+
+// The snapshot handed to the bridge on its Nth write. Throws instead of
+// returning undefined so a missing call fails HERE, naming the write that never
+// happened, rather than as a property read on undefined further down.
+const writtenSnapshot = (index = 0): NetWorthSnapshot => {
+  const call = mockWriteSnapshot.mock.calls[index];
+
+  if (call === undefined) {
+    throw new Error(`widgetBridge.writeSnapshot was not called ${index + 1} time(s).`);
+  }
+
+  return call[0];
+};
 
 type LiveData = {
   accounts?: unknown[];
@@ -108,7 +127,7 @@ describe('useNetWorthWidget', () => {
     expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
     expect(mockReloadWidget).toHaveBeenCalledTimes(1);
 
-    const snapshot = mockWriteSnapshot.mock.calls[0]?.[0];
+    const snapshot = writtenSnapshot();
     expect(snapshot.baseCurrency).toBe('UAH');
     expect(snapshot.total.minorUnits).toBeGreaterThan(0);
   });
@@ -121,7 +140,7 @@ describe('useNetWorthWidget', () => {
       await jest.advanceTimersByTimeAsync(500);
     });
 
-    const snapshot = mockWriteSnapshot.mock.calls[0]?.[0];
+    const snapshot = writtenSnapshot();
     expect(snapshot.trend).toEqual([]);
   });
 
@@ -150,6 +169,83 @@ describe('useNetWorthWidget', () => {
     });
 
     expect(mockWriteSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('re-writes the snapshot when only the language changes', async () => {
+    // Stable references across both `setLiveData` calls below, so the only
+    // thing that actually changes between renders is `settings.language` —
+    // otherwise a fresh `[ACCOUNT]` array literal on the second call would
+    // itself change identity and mask what this test is isolating.
+    const accountsData = [ACCOUNT];
+    const holdingsData = [HOLDING];
+    const ratesData = [RATE];
+    const transactionsData: unknown[] = [];
+    const historyData: unknown[] = [];
+
+    setLiveData({
+      accounts: accountsData,
+      holdings: holdingsData,
+      rates: ratesData,
+      transactions: transactionsData,
+      history: historyData,
+      settings: [{ baseCurrency: 'UAH', language: 'en' }],
+    });
+    await i18n.changeLanguage('en');
+    const { rerender } = await renderHook(() => useNetWorthWidget());
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(500);
+    });
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
+    expect(writtenSnapshot(0).labels.title).toBe(en.home.netWorth);
+
+    // Only `settings.language` changes — no other table, and `baseCurrency`
+    // is untouched — mirroring a user switching language in Settings.
+    setLiveData({
+      accounts: accountsData,
+      holdings: holdingsData,
+      rates: ratesData,
+      transactions: transactionsData,
+      history: historyData,
+      settings: [{ baseCurrency: 'UAH', language: 'uk' }],
+    });
+    await i18n.changeLanguage('uk');
+    // `rerender` (RNTL 14) is itself async, mirroring
+    // `use-scroll-to-top-on-tab-press.test.tsx`'s `setup` helper — awaiting it
+    // outside `act` leaves a dangling act scope that corrupts every render in
+    // the tests that follow.
+    await act(async () => {
+      await rerender(undefined);
+    });
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(500);
+    });
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(2);
+    expect(writtenSnapshot(1).labels.title).toBe(uk.home.netWorth);
+  });
+
+  it('does not re-write when nothing changes', async () => {
+    setLiveData({ accounts: [ACCOUNT], holdings: [HOLDING], rates: [RATE] });
+    const { rerender } = await renderHook(() => useNetWorthWidget());
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(500);
+    });
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await rerender(undefined);
+    });
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(500);
+    });
+
+    expect(mockWriteSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('removes the AppState listener on unmount', async () => {

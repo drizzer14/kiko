@@ -10,10 +10,10 @@ export type TextProps = {
   tone?: TextTone;
   // An optional screen-local style override (size/weight/alignment/transform)
   // layered on top of the variant/tone tokens — lets a screen render, e.g., a
-  // large balance without minting a new design-system typography token, or a
-  // title-cased button label via `textTransform`. `color` is intentionally
-  // excluded so the `tone` token stays authoritative and a caller can never
-  // override the money tone (zero=white / negative=red / positive=green).
+  // large balance without minting a new design-system typography token.
+  // `color` is intentionally excluded so the `tone` token stays authoritative
+  // and a caller can never override the money tone (zero=white / negative=red
+  // / positive=green).
   style?: StyleProp<Pick<TextStyle, 'fontSize' | 'fontWeight' | 'textAlign' | 'textTransform'>>;
   // Single-line / shrink-to-fit controls forwarded straight to the underlying
   // RN Text. A fixed-width column (a chart's money value or Y-axis tick) sets

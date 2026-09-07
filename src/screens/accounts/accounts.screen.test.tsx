@@ -1,16 +1,20 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { ActionSheetIOS, StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
+
 import { entityCardBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
 
 import AccountsScreen from './accounts.screen';
+
+type AccountsProps = ComponentProps<typeof AccountsScreen>;
 
 // A grid card's delete menu is a react-native-gesture-handler long-press, so
 // the screen must mount under a GestureHandlerRootView (the app supplies one at
@@ -37,7 +41,8 @@ jest.mock('react-native-bottom-tabs', () => ({
 // grid auto-scrolls off).
 const mockUseScrollToTopOnTabPress = jest.fn();
 jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
-  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
+  useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
+    mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -105,12 +110,16 @@ const setLiveData = (data: {
   }));
 };
 
-const navigation = { navigate: jest.fn() } as never;
+const navigation = navigationSpy();
 
 const renderAccounts = (): ReturnType<typeof render> =>
-  render(<AccountsScreen navigation={navigation} route={{} as never} />, {
-    wrapper: gestureRootWrapper,
-  });
+  render(
+    <AccountsScreen
+      navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+      route={asRouteProp<AccountsProps['route']>('Accounts')}
+    />,
+    { wrapper: gestureRootWrapper },
+  );
 
 describe('AccountsScreen', () => {
   beforeEach(() => {
@@ -144,6 +153,25 @@ describe('AccountsScreen', () => {
     expect(createdRefs).toContain(hookRef);
 
     animatedRefSpy.mockRestore();
+  });
+
+  it('hands the hook the live scroll offset of that same scroll view', async () => {
+    // The hook skips its scroll when the content is already at the top, which it
+    // can only decide from the live `contentOffset.y` of the scroll view it
+    // would scroll — so the offset must be derived from the SAME ref the hook
+    // receives, not from some other scrollable.
+    const reanimated = require('react-native-reanimated') as {
+      useScrollOffset: (ref: unknown) => unknown;
+    };
+    const offsetSpy = jest.spyOn(reanimated, 'useScrollOffset');
+
+    await renderAccounts();
+
+    const lastCall = mockUseScrollToTopOnTabPress.mock.calls.at(-1);
+    expect(offsetSpy).toHaveBeenCalledWith(lastCall?.[0]);
+    expect(lastCall?.[1]).toBe(offsetSpy.mock.results.at(-1)?.value);
+
+    offsetSpy.mockRestore();
   });
 
   it('renders an active account with its name and balance', async () => {

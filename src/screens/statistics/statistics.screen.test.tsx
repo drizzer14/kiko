@@ -6,7 +6,7 @@
 // (`missingDays`, `deriveLastBackfilledDay`) real, but stub `runBackfill` with a
 // never-resolving promise so the screen's mount effect leaves the line in its
 // `loading` state without hitting NBU/CoinGecko.
-const mockRunBackfill = jest.fn(() => new Promise<never>(() => {}));
+const mockRunBackfill = jest.fn((..._args: unknown[]) => new Promise<never>(() => {}));
 
 jest.mock('../../rates/history-backfill', () => {
   const actual = jest.requireActual('../../rates/history-backfill');
@@ -14,10 +14,11 @@ jest.mock('../../rates/history-backfill', () => {
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 
 import { defaultDateRange } from '../../dates/default-range';
 import { formatDate } from '../../dates/format';
+import { startOfLocalDay } from '../../dates/local-day';
 import { i18n } from '../../i18n';
 import { toUtcMidnight } from '../../rates/history-entry';
 import '../../design-system/unistyles';
@@ -54,7 +55,8 @@ jest.mock('../../repositories/categories.repo', () => ({
 // assert the screen hands it the scroll view's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
 jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
-  useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
+  useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
+    mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
 type Account = {
@@ -83,6 +85,7 @@ type Transaction = {
   category?: string | null;
   mcc?: number | null;
   counterIban?: string | null;
+  exchangeCounterpartHoldingId?: string | null;
 };
 type CategoryRow = { key: string; title: string; icon: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -104,7 +107,13 @@ const setLiveData = (data: LiveData): void => {
     holdings: data.holdings ?? [],
     currency_rates: data.rates ?? [],
     settings: data.settings ?? [{ baseCurrency: 'UAH' }],
-    transactions: data.transactions ?? [],
+    // SQLite returns NULL, never undefined, for a column a row does not set, so
+    // default every nullable marker the screen reads the same way — an
+    // `undefined` here would be a fixture artefact the device never produces.
+    transactions: (data.transactions ?? []).map((row) => ({
+      exchangeCounterpartHoldingId: null,
+      ...row,
+    })),
     currency_rate_history: data.history ?? [],
     categories: data.categories ?? [],
   };
@@ -261,6 +270,10 @@ const UAH_OWN_CARD: Holding = {
 
 const CASH_CATEGORY: CategoryRow = { key: 'cash', title: 'Cash', icon: 'banknote' };
 
+// The seeded catch-all a null category folds onto (DEFAULT_CATEGORY_KEY), so an
+// unexcluded exchange leg would render its wedge under this key.
+const OTHER_CATEGORY: CategoryRow = { key: 'other', title: 'Other', icon: 'ellipsis' };
+
 // MCC-classified movements that the pie must drop by rule (not by matched pair):
 //   - a cash-out (mcc 6011), always excluded — categorized 'cash' so its absence
 //     from the pie is observable;
@@ -295,6 +308,76 @@ const MCC_MOVEMENTS: Transaction[] = [
     counterIban: 'UA-SOMEONE-ELSE',
   },
 ];
+
+// The two legs of a CROSS-CURRENCY exchange: 10,000.00 UAH out of the UAH cash
+// holding and 240.00 USD into the USD card, each carrying the OTHER leg's
+// holding id as its structural marker and no description. No other exclusion
+// rule can see this pair — the legs have a null mcc, an empty description, and
+// two DIFFERENT currencies, which the matched-pair matcher rejects — so without
+// the marker rule the debit surfaces as a full-pie 'other' spending wedge.
+const EXCHANGE_LEGS: Transaction[] = [
+  {
+    id: 'ex-out',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -10_000_00,
+    category: null,
+    exchangeCounterpartHoldingId: 'h2',
+  },
+  {
+    id: 'ex-in',
+    holdingId: 'h2',
+    time: now - 2 * DAY,
+    amountMinorUnits: 240_00,
+    category: null,
+    exchangeCounterpartHoldingId: 'h1',
+  },
+];
+
+const seedSpendingWithExchange = (): void =>
+  setLiveData({
+    accounts: [CASH, BANK],
+    holdings: [UAH_HOLDING, USD_HOLDING],
+    rates: [USD_UAH_RATE],
+    transactions: [...EXPENSES, ...EXCHANGE_LEGS],
+    history: HISTORY,
+    categories: [...CATEGORIES, OTHER_CATEGORY],
+  });
+
+// A CROSS-CURRENCY Convert: the user's original, already-CATEGORIZED manual
+// expense (in UAH) plus the counterpart leg the convert recorded (in USD). The
+// repository marks BOTH — the existing row too — so the original expense leaves
+// the pie with its counterpart instead of lingering under its own category.
+const CONVERT_LEGS: Transaction[] = [
+  {
+    id: 'cv-existing',
+    holdingId: 'h1',
+    time: now - 2 * DAY,
+    amountMinorUnits: -10_000_00,
+    category: 'transport',
+    exchangeCounterpartHoldingId: 'h2',
+  },
+  {
+    id: 'cv-new',
+    holdingId: 'h2',
+    time: now - 2 * DAY,
+    amountMinorUnits: 240_00,
+    category: null,
+    exchangeCounterpartHoldingId: 'h1',
+  },
+];
+
+const seedSpendingWithConvert = (): void =>
+  setLiveData({
+    accounts: [CASH, BANK],
+    holdings: [UAH_HOLDING, USD_HOLDING],
+    rates: [USD_UAH_RATE],
+    // Only the groceries expense is real spending here; the transport-labelled
+    // row is the converted leg.
+    transactions: [EXPENSES[0], ...CONVERT_LEGS],
+    history: HISTORY,
+    categories: [...CATEGORIES, OTHER_CATEGORY],
+  });
 
 const seedSpendingWithMccMovements = (): void =>
   setLiveData({
@@ -348,7 +431,7 @@ const flattenPreOrder = (node: JSONNode): JSONNode[] => [
   ),
 ];
 
-const renderOrder = (root: ReturnType<typeof render>): JSONNode[] => {
+const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
   const tree = root.toJSON();
   if (tree === null) {
     return [];
@@ -373,6 +456,25 @@ describe('StatisticsScreen', () => {
     // re-renders as its backfill status settles, so read the latest call's ref.
     const scrollRef = mockUseScrollToTopOnTabPress.mock.calls.at(-1)?.[0];
     expect(typeof scrollRef?.current?.scrollTo).toBe('function');
+  });
+
+  it('hands the hook the live scroll offset of that same scroll view', async () => {
+    // The hook skips its scroll when the content is already at the top, which it
+    // can only decide from the live `contentOffset.y` of the scroll view it
+    // would scroll — so the offset must be derived from the SAME ref the hook
+    // receives, not from some other scrollable.
+    const reanimated = require('react-native-reanimated') as {
+      useScrollOffset: (ref: unknown) => unknown;
+    };
+    const offsetSpy = jest.spyOn(reanimated, 'useScrollOffset');
+
+    await renderScreen();
+
+    const lastCall = mockUseScrollToTopOnTabPress.mock.calls.at(-1);
+    expect(offsetSpy).toHaveBeenCalledWith(lastCall?.[0]);
+    expect(lastCall?.[1]).toBe(offsetSpy.mock.results.at(-1)?.value);
+
+    offsetSpy.mockRestore();
   });
 
   it('renders the four blocks in order: net-worth line, by-type bar, account pie, category pie', async () => {
@@ -564,6 +666,103 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
+  it('still excludes a self-transfer pair whose legs straddle the active range boundary', async () => {
+    const MINUTE = 60_000;
+    // The screen's own `rangeFrom` is the shared `startOfLocalDay` — TRUE
+    // local midnight of the default range's `from` date, the SAME helper
+    // `defaultDateRange` itself uses to seed `from` (statistics.screen.tsx
+    // used to anchor this to `Date.UTC` instead, matching the rate-history
+    // bucket system — that was the T-32 follow-up bug: a positive-UTC-offset
+    // locale had its first 2-3 local hours of every day silently excluded).
+    // Mirror the screen's exact calculation here (idempotent since `dateFrom`
+    // is already local midnight) so a UTC-offset host doesn't misplace the
+    // straddling legs.
+    const dateFrom = defaultDateRange(now).from;
+    const rangeFromMs = startOfLocalDay(dateFrom.getTime());
+
+    // The debit leg sits just INSIDE the active range (rangeFrom + 1 minute);
+    // its matching credit leg sits just OUTSIDE it (rangeFrom - 1 minute) — a
+    // 2-minute gap, still inside the matcher's TRANSFER_MATCH_WINDOW_MS. If
+    // the exclusion sets were computed only over the in-range slice (instead
+    // of the full, unfiltered ledger), the matcher would never see the
+    // out-of-range credit leg and the in-range debit would wrongly surface
+    // as a 'transfers' wedge.
+    const straddlingDebit: Transaction = {
+      id: 'straddle-debit-in-range',
+      holdingId: 'h1',
+      time: rangeFromMs + MINUTE,
+      amountMinorUnits: -200_00,
+      category: 'transfers',
+    };
+    const straddlingCredit: Transaction = {
+      id: 'straddle-credit-out-of-range',
+      holdingId: 'h3',
+      time: rangeFromMs - MINUTE,
+      amountMinorUnits: 200_00,
+      category: 'transfers',
+    };
+
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING, UAH_HOLDING_2],
+      rates: [USD_UAH_RATE],
+      transactions: [...EXPENSES, straddlingDebit, straddlingCredit],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // The straddling pair is still recognized as an internal transfer, so no
+    // 'transfers' wedge appears, even though only the debit leg is in range.
+    expect(queryByTestId('category-pie-arc-transfers')).toBeNull();
+    // Genuine in-range spending is untouched.
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  // Kyiv is UTC+2/+3 — a positive offset, where a UTC-anchored `rangeFrom`
+  // (`Date.UTC(y, m, d)` built from the picked day's LOCAL y/m/d) sits 2-3
+  // hours AFTER true local midnight. A transaction shortly after true local
+  // midnight then falls before that UTC-anchored bound and drops out of the
+  // range entirely — the T-32 follow-up bug this regression test targets.
+  describe('local-day range start in a positive-UTC-offset zone (Kyiv)', () => {
+    const originalTz = process.env.TZ;
+    beforeAll(() => {
+      process.env.TZ = 'Europe/Kyiv';
+    });
+    afterAll(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it('includes a 00:30 local expense on the range’s first day in the category pie', async () => {
+      const MINUTE = 60_000;
+      const dateFrom = defaultDateRange(now).from;
+      const rangeFromMs = startOfLocalDay(dateFrom.getTime());
+
+      const earlyExpense: Transaction = {
+        id: 'early-local-day-expense',
+        holdingId: 'h1',
+        time: rangeFromMs + 30 * MINUTE,
+        amountMinorUnits: -400_00,
+        category: 'groceries',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [earlyExpense],
+        history: HISTORY,
+        categories: CATEGORIES,
+      });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    });
+  });
+
   it('drops a cash-out and an OWN-account transfer by mcc/IBAN while keeping a P2P payment', async () => {
     seedSpendingWithMccMovements();
 
@@ -578,6 +777,30 @@ describe('StatisticsScreen', () => {
     // Genuine spending in the other categories is untouched.
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('renders no category wedge for a cross-currency exchange pair', async () => {
+    seedSpendingWithExchange();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // Both legs are an internal movement between the user's own holdings, so
+    // the debit never reaches the pie — no 'other' wedge for its null category.
+    expect(queryByTestId('category-pie-arc-other')).toBeNull();
+    // Genuine spending is untouched.
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('renders no wedge for the ORIGINAL expense of a cross-currency convert', async () => {
+    seedSpendingWithConvert();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // The converted row keeps its own 'transport' category, but it is one leg
+    // of an internal movement, so its wedge is gone.
+    expect(queryByTestId('category-pie-arc-transport')).toBeNull();
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
   });
 
   it('leaves income-only data with an empty spending pie', async () => {
@@ -611,6 +834,46 @@ describe('StatisticsScreen', () => {
 
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('excludes an expense outside the active date range from the donut center total', async () => {
+    // One expense inside the default 30-day window, one 60 days back (well
+    // outside it). If the donut summed the whole ledger instead of the active
+    // range, the center total would read 1,000.00 (both) instead of 100.00
+    // (the in-range expense alone).
+    const insideRangeExpense: Transaction = {
+      id: 'inside-range',
+      holdingId: 'h1',
+      time: now - 5 * DAY,
+      amountMinorUnits: -100_00,
+      category: 'groceries',
+    };
+    const outsideRangeExpense: Transaction = {
+      id: 'outside-range',
+      holdingId: 'h1',
+      time: now - 60 * DAY,
+      amountMinorUnits: -900_00,
+      category: 'groceries',
+    };
+
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [insideRangeExpense, outsideRangeExpense],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    // The donut's center total is the sum of its visible (in-range) slices —
+    // scope the query to it, since the legend row below repeats the same
+    // per-category figure.
+    const centerTotal = within(getByTestId('category-pie-center-total'));
+
+    expect(centerTotal.getByText('100.00 ₴')).toBeTruthy();
+    expect(centerTotal.queryByText('1,000.00 ₴')).toBeNull();
   });
 
   it('defaults the date-range field to the last 30 days', async () => {

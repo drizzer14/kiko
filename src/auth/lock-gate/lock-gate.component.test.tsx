@@ -1,7 +1,9 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
+
+import MigrationsGate from '../../db/migrations.gate';
 
 import LockGate from './lock-gate.component';
 
@@ -23,6 +25,21 @@ jest.mock('../use-app-lock', () => ({
   useAppLock: () => mockAppLock.current,
 }));
 
+// MigrationsGate pulls in the op-sqlite native binding (via `./client`) and
+// the legacy-token migration, neither of which has a jest binary; stub its
+// init-chain dependencies so it resolves promptly to `success`, exercising
+// the real `applyPersistedLanguage` step this test targets (same pattern as
+// migrations.gate.test.tsx). `useAppLock` stays mocked above, so this
+// `settingsRepo` stub is only reached by `MigrationsGate` itself.
+type SettingsRow = { language?: string | null };
+const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
+jest.mock('../../db/client', () => ({ initDatabase: () => Promise.resolve() }));
+jest.mock('../../db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
+jest.mock('../../monobank/token', () => ({ migrateLegacyToken: () => Promise.resolve() }));
+jest.mock('../../repositories/settings.repo', () => ({
+  settingsRepo: { ensure: () => Promise.resolve(), getQuery: () => mockGetSettings() },
+}));
+
 const renderGate = () =>
   render(
     <LockGate>
@@ -35,6 +52,7 @@ describe('LockGate', () => {
     jest.clearAllMocks();
     mockUnlock.mockResolvedValue({ kind: 'success' });
     mockAppLock.current = { isReady: true, isLocked: false, unlock: mockUnlock };
+    mockGetSettings.mockResolvedValue([]);
   });
 
   it('renders the children when unlocked and never prompts', async () => {
@@ -89,7 +107,7 @@ describe('LockGate', () => {
     mockUnlock.mockResolvedValue({ kind: 'lockout' });
     const { findByText } = await renderGate();
 
-    expect(await findByText('Use Passcode')).toBeTruthy();
+    expect(await findByText('Use passcode')).toBeTruthy();
     expect(await findByText('Face ID is locked. Use your device passcode instead.')).toBeTruthy();
   });
 
@@ -100,5 +118,25 @@ describe('LockGate', () => {
 
     expect(await findByText('Authentication was cancelled.')).toBeTruthy();
     expect(getByText('Unlock')).toBeTruthy();
+  });
+
+  it('renders the lock screen in the persisted language, not the device language', async () => {
+    // Device is `en` (the i18n module's init default under test); settings say
+    // `uk`. Wraps `LockGate` in the real `MigrationsGate` deliberately — that
+    // composition (App.tsx) is what the cold-launch fix relies on.
+    mockAppLock.current = { isReady: true, isLocked: true, unlock: mockUnlock };
+    mockGetSettings.mockResolvedValue([{ language: 'uk' }]);
+
+    const { getByText } = await render(
+      <MigrationsGate>
+        <LockGate>
+          <Text>unlocked</Text>
+        </LockGate>
+      </MigrationsGate>,
+    );
+
+    await waitFor(() => {
+      expect(getByText('Заблоковано')).toBeTruthy();
+    });
   });
 });

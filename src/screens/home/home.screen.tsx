@@ -1,11 +1,13 @@
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { TFunction } from 'i18next';
 import type { FC, ReactElement } from 'react';
 import { useRef, useState } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   buildCategoryDisplayMap,
@@ -17,12 +19,13 @@ import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
 import { formatDate, formatTime } from '../../dates/format';
+import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
-import Screen from '../../design-system/components/screen';
+import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -30,8 +33,7 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
-import { sumByCurrency } from '../../rates/currency-totals';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
+import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
@@ -39,7 +41,7 @@ import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { defaultTransactionDescription } from '../../transactions/default-description';
+import { transactionRowDescription } from '../../transactions/row-description';
 import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
@@ -55,17 +57,17 @@ type HomeScreenProps = CompositeScreenProps<
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
-
 // Whether a transaction time falls within the (inclusive) date range. A null
 // bound is open-ended on that side. The `to` bound is pushed to the end of its
-// calendar day so a same-day transaction any time that day still matches.
+// calendar day — the last millisecond before the NEXT local midnight
+// (DST-correct; see `endOfLocalDay`) — so a same-day transaction any time
+// that day still matches, including on a 25-hour fall-back day.
 const withinDateRange = (time: number, from: Date | null, to: Date | null): boolean => {
   if (from !== null && time < startOfLocalDay(from.getTime())) {
     return false;
   }
 
-  if (to !== null && time > startOfLocalDay(to.getTime()) + DAY_IN_MS - 1) {
+  if (to !== null && time > endOfLocalDay(to.getTime())) {
     return false;
   }
 
@@ -75,15 +77,6 @@ const withinDateRange = (time: number, from: Date | null, to: Date | null): bool
 // A day's worth of transactions, headed by a human-readable label. The list is
 // a SectionList of these — one section per calendar day, newest day first.
 type DaySection<Row> = { title: string; data: Row[] };
-
-// Midnight (local time) of the calendar day a timestamp falls on. Grouping and
-// the Today/Yesterday comparison both key off this so they agree on day
-// boundaries in the device's own timezone.
-const startOfLocalDay = (time: number): number => {
-  const date = new Date(time);
-
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-};
 
 // "Today"/"Yesterday" for the two most recent days, otherwise the shared
 // explicit DD.MM.YYYY format (locale-independent). `now` is passed in rather
@@ -133,21 +126,26 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
 
   // The floating native glass tab bar sits over this screen's bottom edge, so
-  // the SectionList needs bottom clearance beyond it or the last transaction
-  // row is left partially covered. Unlike the Screen primitive's own
-  // footer/content clearance (see `screen.component.tsx`), this omits the
-  // bottom safe-area inset: Screen's plain-branch `SafeAreaView` already
-  // reserves that inset natively around this screen's content (it keeps the
-  // default 'bottom' edge), so adding it again here would double-count it and
-  // leave too much space below the last row. The measured tab-bar height
-  // alone is the only clearance this list needs to add itself.
+  // this SectionList — which owns the true bottom edge, since Home passes
+  // `bleedBottom` — reserves the clearance itself. It is the tab-bar height
+  // MINUS the bottom safe-area inset, because Screen's plain-branch
+  // `SafeAreaView` already reserves that inset natively around this content:
+  // adding the full bar height on top of it double-counted the inset and left
+  // 130pt of dead space under the last row, against 96pt everywhere else. One
+  // shared computation, in `resolveBottomClearance`.
   const tabBarHeight = useBottomTabBarHeight();
-  const listBottomClearance = tabBarHeight;
+  const insets = useSafeAreaInsets();
+  const listBottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom);
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
-  const listRef = useRef<SectionList>(null);
+  // The CONCRETE generic instance type, not the bare `SectionListInstance`
+  // alias (which is `SectionList<any, DefaultSectionT>`): the rendered
+  // `<SectionList>` below is inferred at `<TransactionRow, DaySection<...>>`,
+  // and `DefaultSectionT` does not satisfy `DaySection`, so the alias would not
+  // be assignable to this list's own `ref`.
+  const listRef = useRef<SectionList<TransactionRow, DaySection<TransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
@@ -228,9 +226,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const rateTable = buildRateTable(rates);
 
+  // Counterpart holding names, so an Exchange/Convert leg's label resolves to
+  // the counterpart's CURRENT name in the ACTIVE language (nothing is
+  // persisted — see transactions/row-description.ts).
+  const holdingNameById = new Map(holdings.map((holding) => [holding.id, holding.name]));
+
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now);
-  const breakdown = sumByCurrency(active);
+  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now);
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user
@@ -333,8 +336,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => {
     const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
-    const description =
-      item.description || defaultTransactionDescription(item.holdingName, item.amountMinorUnits, t);
+    const description = transactionRowDescription({
+      transaction: item,
+      holdingName: item.holdingName,
+      holdingNameById,
+      t,
+    });
 
     // Every row is tappable: it opens the shared Transaction form for this id.
     // A manual row edits; a synced (Monobank) row opens read-only — the form
@@ -352,10 +359,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 name={category.icon}
                 size={18}
                 tone="textSecondary"
-                color={resolveCategoryColor(
-                  category.color,
-                  item.category?.toLowerCase() || defaultCategoryKey,
-                )}
+                // The row icon and this category's filter chip must hash on the
+                // SAME resolved key (`categoryKeyForRow`, above): hashing here
+                // on the raw lowercased slug renders one category in two hues
+                // whenever that slug is absent from the categories table, since
+                // the chip has already folded it onto the default key.
+                color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
                 accessibilityLabel={category.title}
               />
               <Box style={styles.rowDescription}>

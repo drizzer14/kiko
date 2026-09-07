@@ -1,5 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+
+import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
 import { formatDate } from '../../../dates/format';
 
@@ -31,10 +33,7 @@ describe('DateField', () => {
     await fireEvent.press(getByLabelText('Start Date'));
 
     // Walk up from the calendar itself to the sheet Box that wraps it.
-    let node = getByTestId('Start Date calendar');
-    while (node && StyleSheet.flatten(node.props.style)?.paddingBottom === undefined) {
-      node = node.parent;
-    }
+    const node = ancestorWithStyle(getByTestId('Start Date calendar'), 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the sheet's own base spacing(4) = 16 — this only proves the
@@ -71,6 +70,17 @@ describe('DateField', () => {
     // placeholder Text (placeholder Text -> field Box).
     const fieldRow = getByText('Pick a day').parent;
     expect(StyleSheet.flatten(fieldRow?.props.style).opacity).toBe(0.5);
+  });
+
+  it('opens the calendar on the current value', async () => {
+    const value = new Date(2026, 2, 4).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <DateField label="Start Date" value={value} onChange={jest.fn()} />,
+    );
+
+    await fireEvent.press(getByLabelText('Start Date'));
+
+    expect(getByTestId('Start Date calendar').props.initialDate).toBe('2026-03-04');
   });
 
   it('opens the calendar and reports the picked day as a local-midnight timestamp', async () => {

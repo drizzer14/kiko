@@ -241,6 +241,7 @@ export const uk: typeof en = {
     lastSync: 'Остання синхронізація: {{time}}',
     monobankAlreadyConnected: 'Рахунок Monobank вже підключено',
     monobankTokenPlaceholder: 'Токен Monobank',
+    never: 'Ніколи',
     noConnectionFound: 'Немає підключення {{name}}',
     noMonobankConnection: 'Рахунок Monobank не підключено',
     noMonobankToken: 'Токен Monobank не знайдено; підключіть рахунок перед синхронізацією.',
@@ -316,6 +317,8 @@ export const uk: typeof en = {
   transactions: {
     defaultDescriptionExpense: 'Витрата: {{name}}',
     defaultDescriptionIncome: 'Надходження: {{name}}',
+    exchangeFrom: 'Обмін з {{name}}',
+    exchangeTo: 'Обмін на {{name}}',
   },
   components: {
     netWorthLine: {

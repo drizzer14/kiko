@@ -1,4 +1,4 @@
-const mockDisconnectAccount = jest.fn(async () => {});
+const mockDisconnectAccount = jest.fn(async (_id: string) => {});
 const mockClearToken = jest.fn(async () => {});
 
 jest.mock('../repositories/accounts.repo', () => ({

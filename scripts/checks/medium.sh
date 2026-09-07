@@ -28,4 +28,5 @@ fi
 # Project-wide: knip and deps.
 "$DIR/knip.sh" || exit 2
 "$DIR/deps.sh" || exit 2
+"$DIR/typecheck.sh" || exit 2
 exit 0

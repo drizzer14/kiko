@@ -96,8 +96,18 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   const loadBTC = deps.fetchBTCPrice ?? (() => fetchBTCPrice());
   const upsertMany = deps.upsertMany ?? ratesRepo.upsertMany;
 
-  const [fiat, btc] = await Promise.all([loadFiat(), loadBTC()]);
+  // Settle the two providers independently, exactly as `runBackfill` does
+  // (rates/history-backfill.ts). `Promise.all` discarded a successful Monobank
+  // fiat fetch whenever CoinGecko 429'd or returned a malformed body, left the
+  // stale rate table in place, and propagated the rejection through
+  // `useSyncAction` — so a Monobank import that fully succeeded was reported
+  // to the user as a failed sync. Whichever provider survives still
+  // contributes its anchors.
+  const [fiatResult, btcResult] = await Promise.allSettled([loadFiat(), loadBTC()]);
+  const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
+  const btc = btcResult.status === 'fulfilled' ? btcResult.value : [];
   const pairs = buildPairs(buildUahPrice(fiat, btc), at);
+
   if (pairs.length > 0) {
     await upsertMany(pairs);
   }

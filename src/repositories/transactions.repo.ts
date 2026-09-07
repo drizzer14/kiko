@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
 import { database, write } from '../db/client';
@@ -24,22 +24,23 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
   Partial<
     Pick<
       TransactionRow,
-      'description' | 'category' | 'mcc' | 'counterIban' | 'comment' | 'externalId'
+      'description' | 'category' | 'mcc' | 'hold' | 'counterIban' | 'comment' | 'externalId'
     >
   >;
 
 type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time'> &
-  Partial<Pick<TransactionRow, 'description'>>;
+  Partial<Pick<TransactionRow, 'description' | 'category' | 'exchangeCounterpartHoldingId'>>;
 
 type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
 
+// No holding NAMES here: neither leg persists a description anymore, so the
+// only thing each leg needs about the other is its ID — the marker the display
+// layer resolves the current name from (see transactions/exchange-description.ts).
 type ExchangeInput = {
   sourceHoldingId: string;
-  sourceName: string;
   valueOutMinorUnits: number;
   destinationHoldingId: string;
-  destinationName: string;
   destinationType: HoldingRow['type'];
   valueInMinorUnits: number;
   time: number;
@@ -50,7 +51,12 @@ type ExchangeCounterpartInput = {
   counterpartHoldingId: string;
   counterpartType: HoldingRow['type'];
   amountMinorUnits: number;
-  existingHoldingName: string;
+  // The EXISTING row itself: its id, so the same transaction can mark that row
+  // as the other leg of this movement, and its holding id, which becomes the
+  // NEW leg's exchange marker. The existing holding's NAME is not needed — the
+  // label is resolved at render time from the id.
+  existingTransactionId: string;
+  existingHoldingId: string;
   time: number;
 };
 
@@ -60,9 +66,22 @@ type ExchangeCounterpartInput = {
 // each other with a stale read-modify-write. `recordManual` wraps this in its
 // own `write(...)`; `recordExchange` calls it directly for the source leg and
 // for a plain destination leg, keeping both legs in one transaction.
+//
+// The row carries its OWN category here — a picked category is never lost to
+// a blank description or a cancelled override sheet. `upsertCategoryOverride`
+// (category-overrides.repo.ts) governs a SEPARATE concern: propagating that
+// pick to every OTHER same-name row, not whether this row itself is
+// categorised.
 const recordManualTx = async (
   tx: typeof database,
-  { holdingId, amountMinorUnits, time, description }: ManualTransaction,
+  {
+    holdingId,
+    amountMinorUnits,
+    time,
+    description,
+    category,
+    exchangeCounterpartHoldingId,
+  }: ManualTransaction,
 ): Promise<void> => {
   await tx.insert(transactions).values({
     id: id(),
@@ -70,6 +89,8 @@ const recordManualTx = async (
     amountMinorUnits,
     time,
     description: description ?? '',
+    category: category ?? null,
+    exchangeCounterpartHoldingId: exchangeCounterpartHoldingId ?? null,
     source: 'manual',
   });
 
@@ -84,6 +105,105 @@ const recordManualTx = async (
     .update(holdings)
     .set({ balanceMinorUnits: base + amountMinorUnits })
     .where(eq(holdings.id, holdingId));
+};
+
+// Mark the EXISTING row of a Convert as the other leg of the same movement, on
+// an EXISTING transaction handle so it commits with the new leg or not at all.
+// The existing row is half of one money movement, so leaving it unmarked would
+// keep the original expense in the spending pie — exactly the leak the marker
+// exists to close, and one no other rule can catch across two currencies.
+// `source` is read INSIDE the transaction, never from a render snapshot: a
+// bank-owned (synced) row is never mutated by this app and stays unmarked (see
+// the residual documented on `transactions.exchangeCounterpartHoldingId` in
+// `db/schema.ts`).
+const markExistingLegTx = async (
+  tx: typeof database,
+  { existingTransactionId, counterpartHoldingId }: ExchangeCounterpartInput,
+): Promise<void> => {
+  const existingRows = await tx
+    .select({ source: transactions.source })
+    .from(transactions)
+    .where(eq(transactions.id, existingTransactionId))
+    .limit(1);
+
+  if (existingRows.at(0)?.source !== 'manual') {
+    return;
+  }
+
+  await tx
+    .update(transactions)
+    .set({ exchangeCounterpartHoldingId: counterpartHoldingId })
+    .where(eq(transactions.id, existingTransactionId));
+};
+
+/**
+ * A row's key in the `(source, external_id)` unique index, or `null` when it has
+ * no external id — SQLite treats every NULL in a unique index as distinct, so
+ * such a row (a manual one) never conflicts with anything.
+ */
+const conflictKeyOf = (input: NewTransaction): string | null => {
+  return input.externalId ? `${input.source}:${input.externalId}` : null;
+};
+
+/**
+ * Fold a batch onto one row per conflict key, keeping the LAST copy. SQLite
+ * refuses to let a single statement upsert the same conflict target twice, which
+ * two overlapping statement pages carrying one id would otherwise trigger; and
+ * the later copy is the more settled one anyway. Rows with no external id are
+ * all kept.
+ */
+const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
+  const lastIndexByKey = new Map<string, number>();
+
+  inputs.forEach((input, index) => {
+    const key = conflictKeyOf(input);
+
+    if (key !== null) {
+      lastIndexByKey.set(key, index);
+    }
+  });
+
+  return inputs.filter((input, index) => {
+    const key = conflictKeyOf(input);
+
+    return key === null || lastIndexByKey.get(key) === index;
+  });
+};
+
+/**
+ * How many of these rows the upsert will INSERT rather than refresh. Read inside
+ * the caller's own transaction, so the count can never disagree with the write
+ * it describes.
+ */
+const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Promise<number> => {
+  const externalIds = inputs
+    .map((input) => input.externalId)
+    .filter((externalId): externalId is string => Boolean(externalId));
+
+  if (externalIds.length === 0) {
+    return inputs.length;
+  }
+
+  const sources = Array.from(
+    new Set(inputs.filter((input) => conflictKeyOf(input) !== null).map((input) => input.source)),
+  );
+  // BOTH halves of the unique key are constrained, so SQLite SEARCHes
+  // `transactions_source_external` on its leading `source` column; an
+  // `external_id`-only predicate cannot use that index and SCANs it instead
+  // (verified with EXPLAIN QUERY PLAN).
+  const existing = await tx
+    .select({ source: transactions.source, externalId: transactions.externalId })
+    .from(transactions)
+    .where(
+      and(inArray(transactions.source, sources), inArray(transactions.externalId, externalIds)),
+    );
+  const known = new Set(existing.map((row) => `${row.source}:${row.externalId}`));
+
+  return inputs.filter((input) => {
+    const key = conflictKeyOf(input);
+
+    return key === null || !known.has(key);
+  }).length;
 };
 
 export const transactionsRepo = {
@@ -104,6 +224,10 @@ export const transactionsRepo = {
         currency: holdings.currency,
         time: transactions.time,
         description: transactions.description,
+        // The exchange marker travels with the display projection: Home reads
+        // it to resolve an exchange leg's label, and Statistics reads it to
+        // drop both legs from the spending pie.
+        exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
         category: transactions.category,
         accountId: accounts.id,
         accountName: accounts.name,
@@ -125,7 +249,9 @@ export const transactionsRepo = {
   recordManual: (input: ManualTransaction) => write((tx) => recordManualTx(tx, input)),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
-   * only by their descriptions. The source leg subtracts Value Out (in the
+   * by the structural `exchangeCounterpartHoldingId` marker — each leg stores
+   * the OTHER leg's holding id, and neither persists a description. The source
+   * leg subtracts Value Out (in the
    * source's currency); the destination leg dispatches by type — a plain
    * transaction (+Value In) for cash/card/crypto_asset, or a deposit
    * contribution for a term_deposit. bond/jar are not valid destinations and
@@ -143,7 +269,12 @@ export const transactionsRepo = {
         holdingId: input.sourceHoldingId,
         amountMinorUnits: -input.valueOutMinorUnits,
         time: input.time,
-        description: `Exchange to ${input.destinationName}`,
+        // No description is persisted: the label is resolved at render time
+        // from this marker + the counterpart's CURRENT name via `t` (see
+        // transactions/exchange-description.ts). A persisted
+        // `Exchange to <name>` string was English forever and went stale on a
+        // rename.
+        exchangeCounterpartHoldingId: input.destinationHoldingId,
       });
 
       await match(exchangeReceivePath(input.destinationType))
@@ -152,7 +283,7 @@ export const transactionsRepo = {
             holdingId: input.destinationHoldingId,
             amountMinorUnits: input.valueInMinorUnits,
             time: input.time,
-            description: `Exchange from ${input.sourceName}`,
+            exchangeCounterpartHoldingId: input.sourceHoldingId,
           }),
         )
         .with('contribution', () => {
@@ -181,8 +312,14 @@ export const transactionsRepo = {
    *   - 'record-source' (existing was an INCOME): a NEGATIVE payment on the
    *     picked source, always a plain transaction (a source leg is never a
    *     contribution).
-   * The description is the fixed copy create-mode uses. Balances are read INSIDE
-   * the transaction, never from a render snapshot, exactly as `recordManual` does.
+   * The new leg persists NO description; it carries the same
+   * `exchangeCounterpartHoldingId` marker create-mode writes (pointing at the
+   * EXISTING row's holding), and the label is resolved at render time from it.
+   * The EXISTING row is marked too, pointing back at the new leg's holding —
+   * both halves of one movement leave the spending pie together — unless the
+   * bank owns it (see `markExistingLegTx`).
+   * Balances are read INSIDE the transaction, never from a render snapshot,
+   * exactly as `recordManual` does.
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
     write(async (tx) => {
@@ -195,13 +332,13 @@ export const transactionsRepo = {
         );
       }
 
-      return match(input.direction)
+      await match(input.direction)
         .with('record-source', () =>
           recordManualTx(tx, {
             holdingId: input.counterpartHoldingId,
             amountMinorUnits: -input.amountMinorUnits,
             time: input.time,
-            description: `Exchange to ${input.existingHoldingName}`,
+            exchangeCounterpartHoldingId: input.existingHoldingId,
           }),
         )
         .with('record-destination', () =>
@@ -211,7 +348,7 @@ export const transactionsRepo = {
                 holdingId: input.counterpartHoldingId,
                 amountMinorUnits: input.amountMinorUnits,
                 time: input.time,
-                description: `Exchange from ${input.existingHoldingName}`,
+                exchangeCounterpartHoldingId: input.existingHoldingId,
               }),
             )
             .with('contribution', () => {
@@ -230,6 +367,8 @@ export const transactionsRepo = {
             .exhaustive(),
         )
         .exhaustive();
+
+      await markExistingLegTx(tx, input);
     }),
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance
@@ -304,16 +443,22 @@ export const transactionsRepo = {
           .where(eq(holdings.id, row.holdingId));
       }
     }),
+  /**
+   * Upsert a batch of imported rows on the `(source, external_id)` unique index
+   * and return how many of them were genuinely NEW — the number the sync reports
+   * to the user as "imported".
+   */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (tx) => {
+    write(async (tx): Promise<number> => {
       if (inputs.length === 0) {
-        return;
+        return 0;
       }
+      const batch = dedupByConflictKey(inputs);
       // Apply name→category override rules at insert time. Normalize each
       // incoming description in JS (never SQL) and look the rules up by exact
       // equality on the already-normalized key.
       const keys = Array.from(
-        new Set(inputs.map((input) => normalizeTransactionName(input.description ?? ''))),
+        new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
       ).filter((key) => key !== '');
       const rules =
         keys.length > 0
@@ -323,17 +468,42 @@ export const transactionsRepo = {
               .where(inArray(categoryOverrides.normalizedName, keys))
           : [];
       const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
-      const withOverrides = inputs.map((input) => {
+      const withOverrides = batch.map((input) => {
         const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
 
         return override ? { ...input, category: override } : input;
       });
-      // Dedup re-imported statement items against the (source, external_id)
-      // unique index — a repeated Monobank statement id is skipped, not
-      // duplicated. Manual rows with a null externalId are never conflated.
+      const newRows = await countNewRows(tx, batch);
+      // Upsert on the `(source, external_id)` unique index: a re-fetched
+      // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
+      // imports at its PROVISIONAL amount and re-syncs at the settled one, which
+      // `onConflictDoNothing` silently discarded — freezing the wrong amount
+      // forever. `excluded` is SQLite's alias for the row that would have been
+      // inserted.
+      //
+      // The update set names only the BANK-owned columns. `category` (which may
+      // be the user's own override, or a name rule's rewrite) and `comment` (the
+      // user's note) are deliberately absent, as is every structural column
+      // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
+      //
+      // Manual rows are untouched either way: they carry a null `external_id`,
+      // and SQLite treats each NULL in a unique index as distinct, so two of
+      // them never conflict.
       await tx
         .insert(transactions)
         .values(withOverrides.map((input) => ({ id: id(), ...input })))
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [transactions.source, transactions.externalId],
+          set: {
+            amountMinorUnits: sql`excluded.amount_minor_units`,
+            description: sql`excluded.description`,
+            hold: sql`excluded.hold`,
+            mcc: sql`excluded.mcc`,
+            counterIban: sql`excluded.counter_iban`,
+            time: sql`excluded.time`,
+          },
+        });
+
+      return newRows;
     }),
 } satisfies Repository;

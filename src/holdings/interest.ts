@@ -35,10 +35,26 @@ const monthsPerPeriod = (frequency: CalendarCompounding): number => {
   }
 };
 
+// Add (or subtract) whole calendar months, CLAMPING the day to the target
+// month's length. A naive `setMonth(getMonth() + n)` overflows whenever the
+// target month is shorter than the source day-of-month (31 Jan + 1 month ->
+// 3 Mar, not 28 Feb), which silently fabricates or drops days of interest in
+// every boundary built on it: `periodBoundary`, `depositMaturity`,
+// `depositLedger`'s maturity, and `bondCouponDates`. This is the same clamp
+// `midCredit` already applies to the bi-weekly path.
 export const addMonths = (start: number, months: number): number => {
   const date = new Date(start);
-  date.setMonth(date.getMonth() + months);
-  return date.getTime();
+  const targetMonthStart = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const year = targetMonthStart.getFullYear();
+  const monthIndex = targetMonthStart.getMonth();
+  const day = Math.min(date.getDate(), daysInMonth(year, monthIndex));
+  const result = new Date(date);
+  // Only the year/month/day fields are rewritten, so a non-midnight input
+  // (a caller that hasn't normalized to local midnight) keeps its original
+  // hour/minute/second/millisecond rather than being silently snapped to 00:00.
+  result.setFullYear(year, monthIndex, day);
+
+  return result.getTime();
 };
 
 // Whole CALENDAR days between the two instants' LOCAL dates. Normalizing each
@@ -383,7 +399,11 @@ export const bondCouponDates = (
     }
     dates.push(couponDate);
   }
-  return dates.sort((a, b) => a - b);
+
+  // A month-end maturity can step onto the same 15th twice once `addMonths`
+  // clamps, so de-dup before sorting — the same `new Set` pass
+  // `biweeklyCreditDates` uses for its own clamp collision.
+  return [...new Set(dates)].sort((a, b) => a - b);
 };
 
 // The amount of a single coupon (major units): nominal * couponPct/100 divided

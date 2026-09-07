@@ -1,8 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, type ScrollView } from 'react-native';
-import { useAnimatedRef } from 'react-native-reanimated';
+import { Pressable, type ScrollViewInstance } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -52,12 +52,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
-  const scrollableRef = useAnimatedRef<ScrollView>();
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
   // Re-tapping the Accounts tab while already on it returns this scrolling list
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`. It reuses the same ScrollView ref the grid holds.
-  useScrollToTopOnTabPress(scrollableRef);
+  // The live `contentOffset.y`, so the hook can skip a redundant scroll.
+  const scrollOffset = useScrollOffset(scrollableRef);
+  useScrollToTopOnTabPress(scrollableRef, scrollOffset);
 
   return (
     <Screen
@@ -152,8 +154,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   </CardContextMenu>
                 );
               }}
-              onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
+              onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                onGridDragEnd({ fromIndex, toIndex, indexToKey }, accountsRepo.reorder)
               }
             />
           </Box>

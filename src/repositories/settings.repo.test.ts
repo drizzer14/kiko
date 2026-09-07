@@ -10,7 +10,47 @@ jest.mock('../db/client', () => {
   };
 });
 
+import { database } from '../db/client';
+
 import { settingsRepo } from './settings.repo';
+
+/**
+ * A fake `write`-transaction handle backed by a plain array, standing in for
+ * the single `settings` row. `ensure`'s `insert(...).values(...)
+ * .onConflictDoNothing()` only appends when no row exists yet (proving
+ * idempotency); a setter's `update(...).set(...).where(...)` mutates the row
+ * in place. `getQuery` is separately pointed at the same array via a
+ * `database.select` spy, so a test can prove a write survives through to a
+ * read without a native database.
+ */
+const makeSettingsRowTx = (store: Record<string, unknown>[]): unknown => ({
+  insert: () => ({
+    values: (values: Record<string, unknown>) => ({
+      onConflictDoNothing: async () => {
+        if (!store.some((row) => row.id === values.id)) {
+          store.push({ ...values });
+        }
+      },
+    }),
+  }),
+  update: () => ({
+    set: (values: Record<string, unknown>) => ({
+      where: async () => {
+        for (const row of store) {
+          Object.assign(row, values);
+        }
+      },
+    }),
+  }),
+});
+
+const spyOnSettingsSelect = (store: Record<string, unknown>[]): void => {
+  // The double implements only the `.from().where()` path this repo calls, not
+  // drizzle's full builder, so it cannot overlap the real return type directly.
+  jest.spyOn(database, 'select').mockReturnValue({
+    from: () => ({ where: async () => store }),
+  } as unknown as ReturnType<typeof database.select>);
+};
 
 type Captured = { set?: Record<string, unknown>; whereCalled: boolean };
 
@@ -34,6 +74,10 @@ const captureSetTx = (): { captured: Captured; tx: unknown } => {
 };
 
 describe('settingsRepo', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('builds a single-row settings query', () => {
     expect(settingsRepo.getQuery().toSQL().sql).toContain('settings');
   });
@@ -66,5 +110,30 @@ describe('settingsRepo', () => {
 
     expect(captured.set).toEqual({ language: 'uk' });
     expect(captured.whereCalled).toBe(true);
+  });
+
+  it('ensure inserts the single settings row and is idempotent', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeSettingsRowTx(store);
+    spyOnSettingsSelect(store);
+
+    await settingsRepo.ensure();
+    await settingsRepo.ensure();
+
+    const rows = await settingsRepo.getQuery();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(1);
+  });
+
+  it('setBaseCurrency persists after ensure has run', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeSettingsRowTx(store);
+    spyOnSettingsSelect(store);
+
+    await settingsRepo.ensure();
+    await settingsRepo.setBaseCurrency('USD');
+
+    expect((await settingsRepo.getQuery())[0].baseCurrency).toBe('USD');
   });
 });

@@ -27,4 +27,14 @@ describe('fetchBTCPrice', () => {
   it('throws on a non-ok response', async () => {
     await expect(fetchBTCPrice(makeFetch({}, false))).rejects.toThrow('429');
   });
+
+  it('rejects with a typed error on a body without bitcoin.usd', async () => {
+    await expect(fetchBTCPrice(makeFetch({}))).rejects.toThrow(/CoinGecko/);
+  });
+
+  it('rejects on a non-numeric price', async () => {
+    await expect(fetchBTCPrice(makeFetch({ bitcoin: { usd: 'lots' } }))).rejects.toThrow(
+      /CoinGecko/,
+    );
+  });
 });

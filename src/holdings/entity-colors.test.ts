@@ -12,7 +12,10 @@ type AccountKind = AccountRow['kind'];
 const accountKinds = Object.keys(holdingTypesForAccountKind) as AccountKind[];
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
-const paletteHexes = new Set(Object.values(darkTheme.colors.entityColors));
+// Typed as a set OF STRINGS, not of the theme's literal union: these tests ask
+// whether an arbitrary `#RRGGBB` produced by the color maps is a member, which
+// is exactly the question a literal-typed `has` refuses to answer.
+const paletteHexes: ReadonlySet<string> = new Set(Object.values(darkTheme.colors.entityColors));
 
 describe('defaultAccountColor', () => {
   it('maps every account kind to a default color', () => {

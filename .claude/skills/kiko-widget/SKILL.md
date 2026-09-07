@@ -26,11 +26,12 @@ shared App Group container:
 1. **Build**: `buildNetWorthSnapshot` in `src/widget/net-worth-snapshot.ts`
    is the SINGLE source of truth for the widget's numbers. It shares
    the app's own net-worth math — `guardedNetWorth` and
-   `sumByCurrency` (from `src/rates/net-worth-view.ts` and
-   `src/rates/currency-totals.ts`) over the same active-holding filter
-   the rest of the app uses (`src/rates/active-holdings.ts`). Never
-   recompute net worth independently in the widget path — always
-   route through this builder, on both the assembly side
+   `guardedBreakdown` (both from `src/rates/net-worth-view.ts`, sharing
+   one `canConvert` filter so the snapshot's breakdown always sums to
+   its total) over the same active-holding filter the rest of the app
+   uses (`src/rates/active-holdings.ts`). Never recompute net worth
+   independently in the widget path — always route through this
+   builder, on both the assembly side
    (`src/widget/use-net-worth-widget.ts`'s `assembleSnapshot`) and any
    future consumer. See `net-worth-snapshot.ts` for the exact shape of
    `NetWorthSnapshot` — do not copy the field list here; read it
@@ -73,6 +74,33 @@ Non-obvious mismatch to preserve: the TS `trend[].value` (and the
 Swift `TrendPoint.value`) is a **major-unit float** (e.g. `12345.67`,
 not minor units) — do not "fix" it to an `Int`/minor-units without
 updating the builder too.
+
+## Every widget string travels in the snapshot
+
+The extension has no JS and no access to the i18n catalogues, and
+Kiko's language is a **persisted in-app setting**, not the device
+language — so a `Localizable.strings` / `.lproj` bundle (which
+follows the DEVICE language) would disagree with the app for exactly
+the users translation exists for. There is none, and adding one is
+the wrong fix.
+
+Instead `buildNetWorthSnapshot` resolves every user-facing string
+through `i18n.t` at write time into the snapshot's `labels`
+(`src/widget/net-worth-snapshot.ts`, mirrored by
+`NetWorthSnapshot.Labels` in `ios/KikoWidget/NetWorthSnapshot.swift`),
+and `NetWorthWidgetView` renders `snapshot.labels.*`. When you add a
+string to the widget, add it to both catalogues and to `labels` —
+never as a Swift literal. Two deliberate exceptions, both commented
+in place because neither can reach a snapshot: the no-snapshot
+placeholder branch in `NetWorthWidgetView.swift`, and the widget
+GALLERY metadata (`configurationDisplayName` / `description` in
+`NetWorthWidget.swift`), which the system renders in the picker with
+no snapshot and no app process.
+
+Because `labels` is language-dependent, a language change alone is a
+write trigger: `useNetWorthWidget` (`src/widget/use-net-worth-widget.ts`)
+carries the persisted `language` in `writeNow`'s dependency list
+specifically to re-fire the debounced write when nothing else changed.
 
 ## App Group: two targets, one identifier
 

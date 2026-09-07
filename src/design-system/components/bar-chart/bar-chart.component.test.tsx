@@ -65,4 +65,59 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-empty')).toBeTruthy();
     expect(queryByTestId('bar-chart-bar-card')).toBeNull();
   });
+
+  it('never renders a negative bar width', async () => {
+    const { getByTestId } = await render(
+      <BarChart
+        data={[
+          { type: 'cash', amount: 1_000_000 },
+          { type: 'card', amount: -500_000 },
+        ]}
+        baseCurrency="USD"
+      />,
+    );
+
+    const width = Number(getByTestId('bar-chart-bar-card').props.width);
+
+    expect(width).toBeGreaterThanOrEqual(0);
+    expect(width).toBeLessThanOrEqual(320);
+  });
+
+  it('scales against the largest magnitude, so a negative slice is half of a double-sized positive', async () => {
+    const { getByTestId } = await render(
+      <BarChart
+        data={[
+          { type: 'cash', amount: 1_000_000 },
+          { type: 'card', amount: -500_000 },
+        ]}
+        baseCurrency="USD"
+      />,
+    );
+
+    expect(Number(getByTestId('bar-chart-bar-cash').props.width)).toBe(320);
+    expect(Number(getByTestId('bar-chart-bar-card').props.width)).toBe(160);
+  });
+
+  it('does not render every bar full-width for all-negative data', async () => {
+    const { getByTestId } = await render(
+      <BarChart
+        data={[
+          { type: 'cash', amount: -100_000 },
+          { type: 'card', amount: -500_000 },
+        ]}
+        baseCurrency="USD"
+      />,
+    );
+
+    expect(Number(getByTestId('bar-chart-bar-card').props.width)).toBe(320);
+    expect(Number(getByTestId('bar-chart-bar-cash').props.width)).toBe(64);
+  });
+
+  it('still renders the honest signed money label for a negative slice', async () => {
+    const { getByText } = await render(
+      <BarChart data={[{ type: 'card', amount: -500_000 }]} baseCurrency="USD" />,
+    );
+
+    expect(getByText(/-/)).toBeTruthy();
+  });
 });

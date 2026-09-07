@@ -265,4 +265,16 @@ describe('CryptoSyncSection — localization', () => {
     expect(getByText('Джерело')).toBeTruthy();
     expect(queryByText('Synchronization')).toBeNull();
   });
+
+  it('renders the never label in Ukrainian for an unsynced provider', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await render(
+      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
+    );
+
+    expect(getByText(/Ніколи/)).toBeTruthy();
+  });
 });

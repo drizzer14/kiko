@@ -1,6 +1,7 @@
-import { type ReactTestInstance, render } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 
 import { Money } from '../../../currency/money';
+import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import CurrencyBreakdown from './currency-breakdown.component';
 
@@ -15,10 +16,10 @@ const styleLayers = (style: unknown): Record<string, unknown>[] =>
 // `predicate` — used to find the cell (the code+amount row) and the table row
 // that holds the two columns.
 const ancestorWith = (
-  node: ReactTestInstance,
+  node: RenderedElement,
   predicate: (layer: Record<string, unknown>) => boolean,
 ): Record<string, unknown> | undefined => {
-  let current: ReactTestInstance | null = node.parent;
+  let current: RenderedElement | null = node.parent;
   while (current) {
     const match = styleLayers(current.props.style).find(predicate);
     if (match) return match;

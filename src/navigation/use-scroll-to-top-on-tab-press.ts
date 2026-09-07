@@ -6,43 +6,50 @@ import {
   type ParamListBase,
   useRoute,
 } from '@react-navigation/native';
-import { type RefObject, useContext, useEffect } from 'react';
-import type { FlatList, ScrollView, SectionList } from 'react-native';
-
-/**
- * A tab-root screen's primary scrollable, the surface an active-tab re-tap
- * returns to the top: the Home transactions `SectionList`, or the `ScrollView`
- * behind the `Screen` primitive's `scroll` mode (Statistics / Accounts /
- * Settings). `FlatList` is included so a future list-backed tab root fits too.
- */
-export type TabRootScrollable = ScrollView | FlatList<unknown> | SectionList<unknown>;
-
-// The iOS large-title band: the extra height the system renders BELOW the
-// standard navigation bar for a native-stack large-title screen when fully
-// expanded. `HeaderHeightContext` reports only the COLLAPSED header height
-// (status bar + standard nav bar), so this band is added to reach the fully
-// expanded top. There is no documented JS constant for it — the large title is
-// drawn natively by react-native-screens and exposes no height — so this is the
-// standard `52`, tuned for the default (non-accessibility) text size. It is a
-// deliberate tradeoff: overshooting past the true expanded top reintroduces the
-// void (iOS does not clamp the animated programmatic scroll because the `Screen`
-// ScrollView has `scrollToOverflowEnabled` on), while undershooting leaves the
-// large title partly hidden.
-const LARGE_TITLE_BAND = 52;
+import { type RefObject, useContext, useEffect, useRef } from 'react';
+import { useWindowDimensions } from 'react-native';
 
 type ScrollOptions = { x?: number; y?: number; animated?: boolean };
 
-// The private union React Navigation's `useScrollToTop` accepts: a raw
-// scrollable, an `Animated.createAnimatedComponent(ScrollView)` (`getNode`), or a
-// `FlatList`/`SectionList` wrapper (`getScrollResponder`).
+// The scroll capabilities React Navigation's `useScrollToTop` recognizes on a
+// raw scrollable node: a `ScrollView` (`scrollTo`), a `FlatList`
+// (`scrollToOffset`), or one of the older responder-based surfaces.
 type ScrollableView =
   | { scrollToTop(): void }
   | { scrollTo(options: ScrollOptions): void }
   | { scrollToOffset(options: { offset: number; animated?: boolean }): void }
   | { scrollResponderScrollTo(options: ScrollOptions): void };
 
-type ScrollableWrapper =
-  | { getScrollResponder(): ScrollableView }
+/**
+ * A tab-root screen's primary scrollable, the surface an active-tab re-tap
+ * returns to the top: the Home transactions `SectionList`, or the `ScrollView`
+ * behind the `Screen` primitive's `scroll` mode (Statistics / Accounts /
+ * Settings). A `FlatList` fits too, so a future list-backed tab root works
+ * unchanged.
+ *
+ * This names the scroll CAPABILITY rather than the three nominal RN component
+ * types, exactly as React Navigation types `useScrollToTop`'s own ref
+ * (`getScrollResponder(): React.ReactNode | ScrollableView`). Two reasons:
+ *
+ * 1. `getScrollableNode` below only ever reads these methods off `ref.current`,
+ *    so the capability IS the real requirement — the nominal union had to be
+ *    cast through `unknown` to be read at all.
+ * 2. RN 0.87's codegen split each component's type from its instance type, and
+ *    its `SectionListInstance` alias pins the section type to the library's own
+ *    `DefaultSectionT`. Home's list is inferred at its own `DaySection` type, so
+ *    no nominal alias RN exports can name it (`renderSectionHeader` is
+ *    contravariant in the section type). The capability union accepts every
+ *    concretely-typed list without a cast.
+ *
+ * A raw scrollable satisfies it directly; an animated
+ * `Animated.createAnimatedComponent(ScrollView)` through `getNode`; a
+ * `FlatList`/`SectionList` through `getScrollResponder`.
+ */
+export type TabRootScrollable =
+  // `getScrollResponder` is nullable on both RN list components — it returns
+  // `null | undefined | ScrollResponderType` before the list has mounted its
+  // underlying ScrollView.
+  | { getScrollResponder(): ScrollableView | null | undefined }
   | { getNode(): ScrollableView }
   | ScrollableView;
 
@@ -51,7 +58,7 @@ type ScrollableWrapper =
 // (`getNode`) ScrollView, and a `FlatList`/`SectionList` (`getScrollResponder`)
 // all work.
 const getScrollableNode = (ref: RefObject<TabRootScrollable | null>): ScrollableView | null => {
-  const node = ref.current as unknown as ScrollableWrapper | null;
+  const node = ref.current;
 
   if (node == null) {
     return null;
@@ -67,21 +74,25 @@ const getScrollableNode = (ref: RefObject<TabRootScrollable | null>): Scrollable
   }
 
   if ('getScrollResponder' in node) {
-    return node.getScrollResponder();
+    return node.getScrollResponder() ?? null;
   }
 
   if ('getNode' in node) {
     return node.getNode();
   }
 
-  return node as ScrollableView;
+  // Unreachable for a well-typed caller: TabRootScrollable is exactly the six
+  // members tested above, so `node` is `never` here. A node with none of them
+  // could not be scrolled anyway — the previous cast-and-return reached
+  // `scrollToTrueTop`, which then matched no branch and did nothing, so this is
+  // the same no-op stated honestly.
+  return null;
 };
 
 // Drive the resolved node to the true top. Identical branch structure to
-// `useScrollToTop`, but with the expanded large-title target
-// (`-(headerHeight + LARGE_TITLE_BAND)`) instead of `0`, so the animated scroll
-// lands at the fully expanded large-title top rather than one collapsed-header
-// height below it.
+// `useScrollToTop`, but with the caller's negative target (the expanded
+// large-title top) instead of `0`, so the animated scroll lands at the fully
+// expanded large-title top rather than one collapsed-header height below it.
 const scrollToTrueTop = (scrollable: ScrollableView, target: number): void => {
   if ('scrollTo' in scrollable) {
     scrollable.scrollTo({ y: target, animated: true });
@@ -136,27 +147,35 @@ const collectTabNavigations = (
  * screen being focused AND on being the first route of its stack (so a re-tap on
  * a pushed detail does not scroll), respects `preventDefault`, and defers the
  * scroll one frame so all other `tabPress` listeners have run — with one
- * deliberate difference: it scrolls to `-(headerHeight + LARGE_TITLE_BAND)`
- * rather than a literal `y: 0`.
+ * deliberate difference: it scrolls to `-expandedHeaderHeight` rather than a
+ * literal `y: 0`.
  *
- * The reason: the native-stack large-title tab roots (Statistics / Settings /
- * Accounts) render inside the `Screen` primitive's `ScrollView`, which sets
+ * The reason: the native-stack large-title tab roots (Statistics / Accounts /
+ * Settings) render inside the `Screen` primitive's `ScrollView`, which sets
  * `contentInsetAdjustmentBehavior="automatic"`. At the fully expanded top the
- * content offset is negative (the large-title band), so `useScrollToTop`'s `y: 0`
- * lands one inset-height below the true top and leaves the large title hidden.
- * iOS does NOT clamp an animated programmatic scroll, and that `Screen`
- * ScrollView sets `scrollToOverflowEnabled` (which disables RN's own clamp), so a
- * negative target reaches iOS verbatim — an unbounded target like the former
- * fixed `-1000` therefore parked the content ~1000pt below the top and showed a
- * void of empty space above it. `HeaderHeightContext` reports only the COLLAPSED
- * header height, so the bounded target adds the large-title band
- * (`-(headerHeight + LARGE_TITLE_BAND)`): it lands exactly at the fully expanded
- * large-title top and can never overshoot into a void. Home hides its header
- * (so `headerHeight` is `0`, and the band is NOT added — the target stays `0`)
- * and its `SectionList` is not the overflow-enabled ScrollView, so RN still
- * clamps its `0` target to the top — Home is unaffected.
+ * content offset is negative (the large-title band), so `useScrollToTop`'s
+ * `y: 0` lands one inset-height below the true top and leaves the large title
+ * hidden. That `ScrollView` also sets `scrollToOverflowEnabled`, which disables
+ * RN's own clamp, and iOS does not clamp an animated programmatic scroll — so a
+ * negative target reaches UIKit verbatim and an over-large one parks the content
+ * in a void of empty space with nothing to bring it back.
+ *
+ * The target is therefore the EXPANDED header height the device itself reports
+ * (see `expandedHeaderHeight` in the body), not a live height plus a guessed
+ * constant, and the optional `scrollOffset` lets the hook skip the scroll
+ * entirely when the content is already at or above that target. Home hides its
+ * header (`headerHeight` is 0, target 0) and its `SectionList` is not the
+ * overflow-enabled ScrollView, so RN still clamps its 0 target — Home is
+ * unaffected either way.
  */
-export const useScrollToTopOnTabPress = (ref: RefObject<TabRootScrollable | null>): void => {
+export const useScrollToTopOnTabPress = (
+  ref: RefObject<TabRootScrollable | null>,
+  // The live scroll offset (reanimated's `useScrollOffset` on the same animated
+  // ref the caller already holds). Optional: a caller without an animated ref
+  // (Home's `SectionList`) does not need it — its target is `0` and RN clamps
+  // that anyway.
+  scrollOffset?: { value: number },
+): void => {
   const navigation = useContext(NavigationContext);
   const route = useRoute();
   // Read the header inset directly from context (rather than `useHeaderHeight()`)
@@ -165,6 +184,77 @@ export const useScrollToTopOnTabPress = (ref: RefObject<TabRootScrollable | null
   // is present there; a standalone render (or the header-hidden Home) falls back
   // to `0`.
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
+
+  // The window frame, so the tracked expanded height below is discarded on a
+  // frame-size change (a rotation, an iPad split-view resize): a landscape
+  // header is shorter than a portrait one, and keeping the larger portrait
+  // maximum would scroll past the top in landscape.
+  const { width, height } = useWindowDimensions();
+
+  // The EXPANDED large-title header height, as the DEVICE reports it — the
+  // maximum `HeaderHeightContext` value seen since mount (or since the last
+  // frame-size change).
+  //
+  // WHY A TRACKED MAXIMUM AND NOT `headerHeight + 52`: `HeaderHeightContext`
+  // reports the LIVE, currently-animating header height, not a collapsed
+  // baseline — @react-navigation/native-stack feeds it from the native
+  // `onHeaderHeightChange` event (and debounces it precisely because it changes
+  // constantly on a large-title screen), and react-native-screens computes it as
+  // `navigationBar.frame.size.height + origin.y`, re-emitted on every layout
+  // pass. Adding a hardcoded 52pt band to it double-counted the band whenever
+  // the large title was ALREADY expanded — i.e. whenever the user was already at
+  // the top — and scrolled 52pt PAST the real top. Nothing clamped that:
+  // `Screen` sets `scrollToOverflowEnabled` (exactly the branch RN skips its
+  // bounds clamp on) and UIKit does not rubber-band an animated programmatic
+  // `setContentOffset`, so the content parked in a black void and stayed there.
+  //
+  // A tab root mounts at the top, so the expanded height is observed within the
+  // first frames, once native emits it (the context's initial value is the
+  // collapsed default); the maximum is exact from then on rather than a guessed
+  // constant.
+  const expandedHeaderHeight = useRef(0);
+  const trackedFrame = useRef({ width, height });
+  // The header height that was still live when the frame changed — i.e. the
+  // PRE-rotation one, which the context keeps reporting until the next native
+  // emit lands. `undefined` means "nothing stale to ignore".
+  const staleHeaderHeight = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    // Only a REAL frame change discards the tracked height. The ref starts at
+    // the mount frame, so this effect's own mount run (and a StrictMode
+    // remount) sees the same frame and keeps the height the first render
+    // already observed — resetting unconditionally here would wipe it before
+    // the very first tap. After a real change the maximum re-establishes itself
+    // from the next `onHeaderHeightChange`; until then the target is `0`, which
+    // is short of the top but never past it.
+    if (trackedFrame.current.width === width && trackedFrame.current.height === height) {
+      return;
+    }
+
+    trackedFrame.current = { width, height };
+    expandedHeaderHeight.current = 0;
+    staleHeaderHeight.current = headerHeight;
+  }, [width, height, headerHeight]);
+
+  // Deliberate render-phase writes to refs (not state): they cannot trigger a
+  // re-render, and they must run before a `tabPress` that arrives ahead of the
+  // next effect flush reads them.
+  //
+  // native-stack re-emits the header height through a 100ms debounce, so for a
+  // moment after a rotation the context still reports the PRE-rotation height.
+  // Any render in that window (a live-query tick, the frame change propagating)
+  // would otherwise re-latch the just-discarded portrait maximum and make every
+  // landscape tap overshoot, so the maximum stays frozen until a height OTHER
+  // than the stale one arrives — which only the post-rotation native emit can
+  // produce. If the new frame's height happens to equal the old one, the
+  // maximum simply stays `0` (short of the top, never past it).
+  if (staleHeaderHeight.current !== undefined && headerHeight !== staleHeaderHeight.current) {
+    staleHeaderHeight.current = undefined;
+  }
+
+  if (staleHeaderHeight.current === undefined && headerHeight > expandedHeaderHeight.current) {
+    expandedHeaderHeight.current = headerHeight;
+  }
 
   if (navigation === undefined) {
     throw new Error(
@@ -201,17 +291,30 @@ export const useScrollToTopOnTabPress = (ref: RefObject<TabRootScrollable | null
           requestAnimationFrame(() => {
             const scrollable = getScrollableNode(ref);
 
-            if (isFocused && isFirst && scrollable && !e.defaultPrevented) {
-              // `HeaderHeightContext` reports the COLLAPSED header height, so the
-              // large-title band is added to reach the fully expanded top. When
-              // there IS a header the bounded target is
-              // `-(headerHeight + LARGE_TITLE_BAND)`; when there is none (Home,
-              // `headerHeight === 0`) the band is NOT added and the target stays
-              // `0`. It lands at the expanded large-title top and never
-              // overshoots into a void (see this hook's doc comment).
-              const target = -(headerHeight === 0 ? 0 : headerHeight + LARGE_TITLE_BAND);
-              scrollToTrueTop(scrollable, target);
+            if (!isFocused || !isFirst || !scrollable || e.defaultPrevented) {
+              return;
             }
+
+            // The expanded large-title top, as the device reported it. No
+            // hardcoded band — see `expandedHeaderHeight` above. A header-hidden
+            // screen (Home) reports `0`, so the target stays `0` and RN's own
+            // clamp handles it.
+            const target = -expandedHeaderHeight.current;
+
+            // If the content is ALREADY at or above the target, skip: the
+            // scroll would either do nothing (redundant) or, for a target that
+            // UNDERSHOOTS the real top, push the content back DOWN away from
+            // the top. Note what this does not do — it cannot stop an
+            // OVERSHOOTING target from parking the content in a void, because
+            // an over-large target is by definition below (more negative than)
+            // the current offset and passes this check. Not producing a void is
+            // the target's job, and the target is the height the device itself
+            // reported.
+            if (scrollOffset !== undefined && scrollOffset.value <= target) {
+              return;
+            }
+
+            scrollToTrueTop(scrollable, target);
           });
         },
       ),
@@ -222,5 +325,5 @@ export const useScrollToTopOnTabPress = (ref: RefObject<TabRootScrollable | null
         unsubscribe();
       }
     };
-  }, [navigation, ref, route.key, headerHeight]);
+  }, [navigation, ref, route.key, scrollOffset]);
 };

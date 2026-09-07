@@ -2,7 +2,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { database, write } from '../db/client';
 import { id } from '../db/id';
-import { type HoldingRow, holdings, transactions } from '../db/schema';
+import { accounts, type HoldingRow, holdings, transactions } from '../db/schema';
 import { isSyncedHolding } from '../holdings/deletable';
 import {
   asTermDepositMeta,
@@ -144,29 +144,127 @@ export const holdingsRepo = {
    * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
    * not this id, so it is not returned. A new holding appends to the end of its
    * account's grid via `sortOrder = max + 1` unless an explicit order is given.
+   *
+   * A non-zero opening balance additionally seeds its own `manual` transaction
+   * in the SAME op-sqlite transaction — the same rule
+   * `updateWithBalanceDelta` (an edit) and `accountsRepo.createCashAccount`
+   * (a cash account's first holding) follow, so a holding's balance is
+   * explained by its ledger from the moment it exists (kiko-domain). Without
+   * it, `holdingValueAt` (statistics/holding-value-at.ts) back-derives an
+   * opening balance out of `balance - sum(transactions)` that no row accounts
+   * for, and the historical net-worth series carries an unexplained step.
+   * The row is inserted directly rather than through
+   * `transactionsRepo.recordManual`, which would add the amount to the balance
+   * this insert has already set. It is the SYNC upserts (`upsertMonobank` /
+   * `upsertExchange`), not this function, that write a provider-owned balance,
+   * so no sync path is affected.
    */
   create: (input: NewHolding): Promise<string> =>
     write(async (tx) => {
       const holdingId = id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.accountId));
       await tx.insert(holdings).values({ id: holdingId, ...input, sortOrder });
+
+      const openingBalance = input.balanceMinorUnits ?? 0;
+
+      if (openingBalance !== 0) {
+        await tx.insert(transactions).values({
+          id: id(),
+          holdingId,
+          amountMinorUnits: openingBalance,
+          time: Date.now(),
+          description: '',
+          category: null,
+          source: 'manual',
+        });
+      }
+
       return holdingId;
     }),
-  setBalance: (holdingId: string, minorUnits: number) =>
-    write((tx) =>
-      tx.update(holdings).set({ balanceMinorUnits: minorUnits }).where(eq(holdings.id, holdingId)),
-    ),
   updateName: (holdingId: string, name: string) =>
     write((tx) => tx.update(holdings).set({ name }).where(eq(holdings.id, holdingId))),
   /**
-   * Generic partial update for a holding row (name, color, balance, metadata),
-   * mirroring `accountsRepo.update`. The edit form saves an existing holding's
-   * editable fields through this in ONE transaction — the icon still routes
-   * through `setIcon` (so a cleared icon persists an explicit null), the same
-   * split the create form uses.
+   * Generic partial update for a holding row (name, color, metadata), mirroring
+   * `accountsRepo.update`. The icon routes through `setIcon` instead (so a
+   * cleared icon persists an explicit null), the same split the create form
+   * uses.
+   *
+   * A patch that touches `balanceMinorUnits` belongs on
+   * `updateWithBalanceDelta` below, NOT here: this bare `set(patch)` moves a
+   * balance with no ledger row to explain it, which breaks the kiko-domain
+   * invariant. `update` stays bare on purpose for the non-balance callers
+   * (`setIcon`/`setColor`-style field writes, the sync's own writes, reorder),
+   * which must never start emitting transactions.
    */
   update: (holdingId: string, patch: Partial<HoldingRow>) =>
     write((tx) => tx.update(holdings).set(patch).where(eq(holdings.id, holdingId))),
+  /**
+   * Update a holding's editable fields and, when `balanceMinorUnits` is part of
+   * the patch and differs from what is stored, write the DIFFERENCE as a
+   * `manual` transaction — both in ONE op-sqlite transaction, so the balance and
+   * the ledger row can never desync on a partial failure.
+   *
+   * WHY: kiko-domain's invariant is that a manual balance adjustment always
+   * writes a manual transaction, so a holding's balance history stays derivable
+   * from its transactions. `holdingValueAt` (statistics/holding-value-at.ts)
+   * back-derives each holding's opening balance as
+   * `currentBalance - sum(allTransactions)`, so a bare `set({ balanceMinorUnits })`
+   * retroactively shifted the ENTIRE historical net-worth series by the delta,
+   * with no ledger row to explain it, and left the holding-detail transaction
+   * list unable to reconcile with its own displayed Value.
+   *
+   * The stored balance is re-read INSIDE the transaction so the delta is computed
+   * against what is actually persisted, never a render snapshot — the same rule
+   * `transactionsRepo.update` follows.
+   *
+   * The row is inserted here directly rather than through
+   * `transactionsRepo.recordManual`, which ALSO adjusts the balance: the patch
+   * above has already written the absolute new balance, so routing through it
+   * would apply the delta a second time. Do not "DRY" the two together.
+   *
+   * The row carries no description and no category: the list resolves its label
+   * at render time (transactions/row-description.ts), so no English sentence is
+   * persisted, and the category stays the user's to pick.
+   *
+   * DELIBERATE (ruled, not an oversight): with a null category the row folds
+   * onto `settings.defaultCategoryKey`, so a downward correction DOES count as
+   * spending in the breakdown — exactly like any other uncategorised manual
+   * row, and the user can edit or recategorise it. Do not "fix" this by
+   * excluding these rows without a decision to give them a structural marker
+   * (the exchange precedent in db/schema.ts), which a reserved category value
+   * cannot provide.
+   */
+  updateWithBalanceDelta: (holdingId: string, patch: Partial<HoldingRow>, time: number) =>
+    write(async (tx) => {
+      const rows = await tx
+        .select({ balanceMinorUnits: holdings.balanceMinorUnits })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId))
+        .limit(1);
+      const stored = rows.at(0)?.balanceMinorUnits;
+
+      await tx.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+
+      if (patch.balanceMinorUnits === undefined || stored === undefined) {
+        return;
+      }
+
+      const delta = patch.balanceMinorUnits - stored;
+
+      if (delta === 0) {
+        return;
+      }
+
+      await tx.insert(transactions).values({
+        id: id(),
+        holdingId,
+        amountMinorUnits: delta,
+        time,
+        description: '',
+        category: null,
+        source: 'manual',
+      });
+    }),
   /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back
    * to no custom icon. The display layer falls back to a type-derived default
@@ -193,8 +291,11 @@ export const holdingsRepo = {
     write((tx) => appendDepositContributionTx(tx, holdingId, contribution)),
   /**
    * Deletes a manual holding and all of its transactions in one transaction.
-   * Refuses a Monobank-synced holding (its balance is owned by the sync), so a
-   * synced row is left untouched.
+   * Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
+   * left untouched. That ownership is read from the holding's ACCOUNT (its
+   * `institution`, fetched inside the same transaction) as well as the
+   * holding's own sync key — a disconnected account keeps its holdings' keys so
+   * a reconnect re-adopts them, and those rows are deletable again.
    */
   remove: (holdingId: string) =>
     write(async (tx) => {
@@ -203,7 +304,12 @@ export const holdingsRepo = {
       if (!row) {
         return;
       }
-      if (isSyncedHolding(row)) {
+      const accountRows = await tx
+        .select({ institution: accounts.institution })
+        .from(accounts)
+        .where(eq(accounts.id, row.accountId));
+
+      if (isSyncedHolding(row, accountRows.at(0))) {
         throw new Error('remove: cannot delete a synced holding');
       }
       await tx.delete(transactions).where(eq(transactions.holdingId, holdingId));

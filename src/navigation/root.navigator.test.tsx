@@ -30,12 +30,13 @@ describe('RootNavigator', () => {
 
   // Bug B1: the native UITabBar rebuilds its appearance on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
-  // `barTintColor`, that rebuild calls `configureWithDefaultBackground()`,
+  // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,
   // whose material re-resolves against the ambient (unpinned) interface
   // style, so the glass bar flips light/dark between pages. Pinning
-  // `barTintColor` to the dark background token forces
+  // `tabBarStyle.backgroundColor` to the dark background token forces
   // `appearance.backgroundColor` to a concrete, scheme-independent color on
-  // every rebuild, keeping one consistent dark scheme.
+  // every rebuild, keeping one consistent dark scheme. `barTintColor` is NOT
+  // a real prop of the native navigator — see root.navigator.tsx.
   it('pins the tab-bar background to the dark background token so the scheme cannot flip', async () => {
     const { findByTestId } = await render(
       <NavigationContainer theme={navigationDarkTheme}>
@@ -43,6 +44,6 @@ describe('RootNavigator', () => {
       </NavigationContainer>,
     );
     const tabBar = await findByTestId('tab-bar');
-    expect(tabBar.props.barTintColor).toBe(darkTheme.colors.background);
+    expect(tabBar.props.tabBarStyle.backgroundColor).toBe(darkTheme.colors.background);
   });
 });

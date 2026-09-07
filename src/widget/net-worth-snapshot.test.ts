@@ -1,3 +1,7 @@
+import type { HoldingRow } from '../db/schema';
+import { i18n } from '../i18n';
+import { en } from '../i18n/locales/en';
+import { uk } from '../i18n/locales/uk';
 import { guardedNetWorth } from '../rates/net-worth-view';
 
 import { buildNetWorthSnapshot } from './net-worth-snapshot';
@@ -7,7 +11,10 @@ const accounts = [
   { id: 'a2', archivedAt: 1_700_000_000_000 },
 ];
 
-const holding = (over: Partial<Record<string, unknown>>) => ({
+// Annotated `HoldingRow`, not left to inference: a bare object literal widens
+// `type` and `currency` to `string`, which no consumer of a real holding row
+// accepts.
+const holding = (over: Partial<HoldingRow>): HoldingRow => ({
   id: 'h',
   accountId: 'a1',
   name: 'H',
@@ -27,6 +34,13 @@ const rateTable = { 'USD:UAH': 40, 'EUR:UAH': 44 };
 const now = 1_700_000_100_000;
 
 describe('buildNetWorthSnapshot', () => {
+  // The label assertions switch the app language; restore it even when one of
+  // them fails, so a failure cannot leak `uk` number formatting into the
+  // formatting assertions below.
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('matches guardedNetWorth for the total over the active holdings', () => {
     const holdings = [
       holding({ id: 'h1', currency: 'USD', balanceMinorUnits: 10_000 }), // active
@@ -50,6 +64,39 @@ describe('buildNetWorthSnapshot', () => {
 
     expect(snapshot.total.minorUnits).toBe(expected.minorUnits);
     expect(snapshot.baseCurrency).toBe('UAH');
+  });
+
+  // The widget extension has no JS and no catalogues, so every string it
+  // renders has to travel inside the snapshot, resolved at build time.
+  it('carries every user-facing widget string, resolved in the active language', () => {
+    const snapshot = buildNetWorthSnapshot({
+      holdings: [],
+      accounts,
+      rateTable,
+      baseCurrency: 'UAH',
+      trendPoints: [],
+      now,
+    });
+
+    expect(snapshot.labels).toEqual({ title: en.home.netWorth });
+  });
+
+  it('rebuilds the labels in the language the app switched to', async () => {
+    await i18n.changeLanguage('uk');
+
+    const snapshot = buildNetWorthSnapshot({
+      holdings: [],
+      accounts,
+      rateTable,
+      baseCurrency: 'UAH',
+      trendPoints: [],
+      now,
+    });
+
+    // Asserted against the uk catalogue itself, not `i18n.t`, so a silent
+    // fallback to English would fail rather than agree with itself.
+    expect(snapshot.labels).toEqual({ title: uk.home.netWorth });
+    expect(snapshot.labels.title).not.toBe(en.home.netWorth);
   });
 
   it('produces a per-currency breakdown over the active holdings', () => {
@@ -119,6 +166,23 @@ describe('buildNetWorthSnapshot', () => {
       { time: 111, value: 1.5 },
       { time: 222, value: 2.5 },
     ]);
+  });
+
+  it('omits an unconvertible currency from the snapshot breakdown', () => {
+    const holdings = [
+      holding({ id: 'h1', currency: 'UAH', balanceMinorUnits: 100_00 }),
+      holding({ id: 'h2', currency: 'BTC', type: 'crypto_asset', balanceMinorUnits: 50_000_000 }),
+    ];
+    const snapshot = buildNetWorthSnapshot({
+      holdings,
+      accounts,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      trendPoints: [],
+      now,
+    });
+
+    expect(snapshot.breakdown.map((item) => item.currency)).toEqual(['UAH']);
   });
 
   it('handles the empty / first-run case (no holdings, no trend)', () => {

@@ -2,6 +2,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { Dimensions, StyleSheet, Text } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+
+import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import { darkTheme } from '../../theme';
 
@@ -248,7 +250,7 @@ describe('BottomSheet', () => {
     // 25% of this height is the distance threshold the drag must pass (= 100).
     const SHEET_HEIGHT = 400;
 
-    const layoutSheet = (node: ReturnType<typeof getByGestureTestId>): void => {
+    const layoutSheet = (node: RenderedElement): void => {
       fireEvent(node, 'layout', {
         nativeEvent: { layout: { x: 0, y: 0, width: 320, height: SHEET_HEIGHT } },
       });

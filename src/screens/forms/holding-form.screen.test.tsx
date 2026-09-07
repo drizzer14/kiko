@@ -1,18 +1,43 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 
+type HoldingFormProps = ComponentProps<typeof HoldingFormScreen>;
+
+const navigationProp = (spy: ReturnType<typeof navigationSpy>) =>
+  asNavigationProp<HoldingFormProps['navigation']>(spy);
+
 const { entityColors } = darkTheme.colors;
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+// Finds which theme entity-color swatch (if any) the ColorPicker currently
+// marks selected, by its accessibility label, and resolves it back to a hex.
+// `undefined` means no swatch matches the form's current effective color —
+// the failure mode a stored '' used to produce.
+const selectedSwatchHex = (
+  getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'],
+): string | undefined => {
+  for (const [name, hex] of Object.entries(entityColors)) {
+    if (getByLabelText(`Color ${name}`).props.accessibilityState.selected) {
+      return hex;
+    }
+  }
+  return undefined;
+};
 
 jest.mock('../../repositories/holdings.repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
     setIcon: jest.fn(),
     update: jest.fn(),
+    updateWithBalanceDelta: jest.fn(),
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -21,41 +46,56 @@ jest.mock('../../repositories/holdings.repo', () => ({
 // so the hoisted jest.mock factory may close over it; each test can reassign it
 // before rendering to exercise a different account kind.
 let mockAccountKind = 'bank';
+// The account's live sync connection. A holding only counts as synced while its
+// account is still connected: a disconnect KEEPS the holding's sync key (so a
+// reconnect re-adopts the row), so the institution is what decides.
+let mockAccountInstitution: string | null = null;
 // The holding the edit-mode form loads through useLiveQuery. Empty by default
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
 
 jest.mock('../../db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
-  // the accounts query drives the allowed-type filter.
+  // the accounts query drives the allowed-type filter and the sync gate.
   useLiveQuery: (_query: unknown, keys: string[]) =>
     keys[0] === 'holdings'
       ? { data: mockEditHoldings }
-      : { data: [{ id: 'acc-1', kind: mockAccountKind }] },
+      : { data: [{ id: 'acc-1', kind: mockAccountKind, institution: mockAccountInstitution }] },
 }));
 jest.mock('../../repositories/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-const navigation = { goBack: jest.fn(), navigate: jest.fn(), setOptions: jest.fn() } as never;
-const route = { params: { accountId: 'acc-1' } } as never;
+const navigation = navigationSpy();
+const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });
 
 const createMock = holdingsRepo.create as jest.Mock;
 const setIconMock = holdingsRepo.setIcon as jest.Mock;
 const updateMock = holdingsRepo.update as jest.Mock;
+// An edit saves through `updateWithBalanceDelta`, which writes the patch AND the
+// balance difference as a manual ledger row in one transaction (see
+// holdings.repo.ts). `update`'s bare `set(patch)` is kept mocked so a test can
+// prove the form never falls back to it for a balance edit.
+const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 
 beforeEach(() => {
   mockAccountKind = 'bank';
+  mockAccountInstitution = null;
   mockEditHoldings = [];
 });
 
-const renderScreen = () => render(<HoldingFormScreen navigation={navigation} route={route} />);
+const renderScreen = () =>
+  render(<HoldingFormScreen navigation={navigationProp(navigation)} route={route} />);
 
 // Render the form in EDIT mode against a seeded holding, keyed by its id.
 const renderEdit = (holding: Record<string, unknown>) => {
   mockEditHoldings = [holding];
-  const editRoute = { params: { accountId: 'acc-1', holdingId: holding.id } } as never;
-  return render(<HoldingFormScreen navigation={navigation} route={editRoute} />);
+  const editRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+    accountId: 'acc-1',
+    holdingId: holding.id,
+  });
+
+  return render(<HoldingFormScreen navigation={navigationProp(navigation)} route={editRoute} />);
 };
 
 type Screen = Awaited<ReturnType<typeof renderScreen>>;
@@ -419,6 +459,8 @@ describe('HoldingFormScreen icon', () => {
   beforeEach(() => {
     createMock.mockClear();
     setIconMock.mockClear();
+    updateMock.mockClear();
+    updateDeltaMock.mockClear();
   });
 
   it('sets the picked icon on the new holding using the returned id', async () => {
@@ -437,6 +479,25 @@ describe('HoldingFormScreen icon', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('hands a create-mode opening balance to create, the one path that seeds its ledger row', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fill(screen, 'Balance', '500');
+    await fireEvent.press(screen.getByText('Save'));
+
+    // The form writes the opening balance through `create` and nothing else:
+    // `create` seeds the matching `manual` opening row inside its own
+    // transaction (see holdings.repo.ts, and its tests for the row's shape), so
+    // a new holding's balance is explained by its ledger from the first render.
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acc-1', currency: 'UAH', balanceMinorUnits: 500_00 }),
+    );
+    expect(updateDeltaMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it('does not set an icon when none is picked', async () => {
     mockAccountKind = 'cash';
     const screen = await renderScreen();
@@ -446,6 +507,47 @@ describe('HoldingFormScreen icon', () => {
 
     expect(createMock).toHaveBeenCalled();
     expect(setIconMock).not.toHaveBeenCalled();
+  });
+
+  it('creates one holding for a double-tapped Save', async () => {
+    // A cash holding is valid with just a name (a bank create defaults to a term
+    // deposit, which needs contributions), so it is the simplest create path.
+    mockAccountKind = 'cash';
+
+    // Hold the write open (never auto-resolving) so the first press's `await`
+    // genuinely has not settled when the second press lands — firing two real
+    // `fireEvent.press` calls back to back without awaiting between them trips
+    // React's "overlapping act() calls" guard (each is independently wrapped
+    // in its own act()), so the two presses are awaited sequentially instead;
+    // the guard is still exercised because the write only resolves when this
+    // test says so. `mockImplementationOnce` (rather than `mockImplementation`)
+    // consumes itself on this one call and falls back to the module's default
+    // `mockResolvedValue('new-holding-id')` afterwards, so it does not leak
+    // into the next test.
+    let resolveWrite: (id: string) => void = () => {};
+    createMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+
+    const save = screen.getByText('Save');
+
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+
+    expect(createMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveWrite('new-holding-id');
+    });
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -651,6 +753,7 @@ describe('HoldingFormScreen edit mode', () => {
     createMock.mockClear();
     setIconMock.mockClear();
     updateMock.mockClear();
+    updateDeltaMock.mockClear();
   });
 
   it('sets the header title to "Edit Holding"', async () => {
@@ -672,6 +775,23 @@ describe('HoldingFormScreen edit mode', () => {
 
     // 25000 minor UAH -> "250" major, shown in the Balance field.
     expect(getByDisplayValue('250')).toBeTruthy();
+  });
+
+  it('hydrates a dust BTC balance at full scale, not exponential notation', async () => {
+    // Below 100 satoshis, `String(toMajor(...))` emits exponential notation
+    // ("5e-7"), which the grouping formatter used to strip down to its digits
+    // ("57") — a 50-satoshi holding rendered, and would save, as 57 BTC.
+    const { getByLabelText } = await renderEdit({
+      id: 'h-btc',
+      name: 'Wallet',
+      type: 'crypto_asset',
+      currency: 'BTC',
+      balanceMinorUnits: 50,
+      icon: null,
+      color: null,
+    });
+
+    expect(getByLabelText('Balance').props.value).toBe('0.0000005');
   });
 
   it('shows type and currency read-only (disabled) so neither can change', async () => {
@@ -708,14 +828,32 @@ describe('HoldingFormScreen edit mode', () => {
     await fireEvent.press(screen.getByLabelText('Color teal'));
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(updateMock).toHaveBeenCalledWith('h-1', {
-      name: 'Renamed card',
-      color: entityColors.teal,
-      balanceMinorUnits: 300_00,
-    });
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h-1',
+      { name: 'Renamed card', color: entityColors.teal, balanceMinorUnits: 300_00 },
+      expect.any(Number),
+    );
     expect(setIconMock).toHaveBeenCalledWith('h-1', 'banknote');
     expect(createMock).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('routes a balance edit through the ledger-writing update, never the bare one', async () => {
+    const screen = await renderEdit(cardHolding);
+
+    // 250 -> 500 UAH. The repo turns the new absolute balance into a +250.00
+    // manual transaction against the STORED balance, so the holding's history
+    // stays derivable from its ledger (kiko-domain) and the past net-worth
+    // series does not shift under the edit.
+    await fill(screen, 'Balance', '500');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h-1',
+      expect.objectContaining({ balanceMinorUnits: 500_00 }),
+      expect.any(Number),
+    );
+    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it('persists a cleared custom icon as null when saving in edit mode', async () => {
@@ -731,6 +869,7 @@ describe('HoldingFormScreen edit mode', () => {
   });
 
   it('hides the Balance input when editing a synced holding', async () => {
+    mockAccountInstitution = 'monobank';
     const screen = await renderEdit(syncedCardHolding);
 
     // A synced holding's balance is owned by the sync, so the manual balance
@@ -738,13 +877,24 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.queryByLabelText('Balance')).toBeNull();
   });
 
+  it('offers the Balance input again once the account is disconnected', async () => {
+    // The disconnected account keeps the holding's `monobankId` (so a reconnect
+    // re-adopts the row), but nothing syncs its balance anymore — the user owns
+    // it again, so the field comes back.
+    mockAccountInstitution = null;
+    const screen = await renderEdit(syncedCardHolding);
+
+    expect(screen.queryByLabelText('Balance')).not.toBeNull();
+  });
+
   it('does not write balanceMinorUnits when editing a synced holding', async () => {
+    mockAccountInstitution = 'monobank';
     const screen = await renderEdit(syncedCardHolding);
 
     await fill(screen, 'Name', 'Renamed monobank');
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateMock.mock.calls[0][1];
+    const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('Renamed monobank');
     // The synced balance must stay untouched until the next sync.
     expect(patch.balanceMinorUnits).toBeUndefined();
@@ -761,7 +911,7 @@ describe('HoldingFormScreen edit mode', () => {
     await fill(screen, 'Annual Rate %', '15');
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateMock.mock.calls[0][1];
+    const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('My deposit');
     expect(patch.metadata.annualRatePct).toBe(15);
     expect(patch.metadata.termMonths).toBe(24);
@@ -783,11 +933,17 @@ describe('HoldingFormScreen edit mode', () => {
     await fill(screen, 'Coupon %', '11');
     await fireEvent.press(screen.getByText('Save'));
 
-    const patch = updateMock.mock.calls[0][1];
+    const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.metadata.couponPct).toBe(11);
     expect(patch.metadata.quantity).toBe(10);
     expect(patch.metadata.bondKind).toBe('corporate');
     expect(patch.balanceMinorUnits).toBeUndefined();
+  });
+
+  it('resolves a stored empty-string color to a real swatch, not blank', async () => {
+    const { getByLabelText } = await renderEdit({ ...cardHolding, color: '' });
+
+    expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
   });
 });
 

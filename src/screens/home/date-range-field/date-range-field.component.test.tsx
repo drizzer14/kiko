@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { formatDate } from '../../../dates/format';
+import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 
@@ -215,10 +216,7 @@ describe('DateRangeField safe area', () => {
     });
 
     // Walk up from the calendar itself to the sheet Box that wraps it.
-    let node = getByTestId('date-range-calendar');
-    while (node && StyleSheet.flatten(node.props.style)?.paddingBottom === undefined) {
-      node = node.parent;
-    }
+    const node = ancestorWithStyle(getByTestId('date-range-calendar'), 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the sheet's own base spacing(4) = 16 — this only proves the
@@ -258,6 +256,46 @@ describe('DateRangeField localization', () => {
     });
 
     expect(getByText('Період дат')).toBeTruthy();
+  });
+});
+
+describe('DateRangeField calendar initial month', () => {
+  it('opens the calendar on the active range start', async () => {
+    const { getByText, getByTestId } = await render(
+      <DateRangeField
+        dateFrom={new Date(2026, 2, 10)}
+        dateTo={new Date(2026, 2, 20)}
+        minDate={new Date(2025, 0, 1)}
+        maxDate={new Date(2026, 8, 7)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(getByText(/10\.03\.2026/));
+    });
+
+    expect(getByTestId('date-range-calendar').props.initialDate).toBe('2026-03-10');
+  });
+
+  it('falls back to a defined month when no range is set', async () => {
+    const { getByTestId, getByLabelText } = await render(
+      <DateRangeField
+        dateFrom={null}
+        dateTo={null}
+        minDate={new Date(2025, 0, 1)}
+        maxDate={new Date(2026, 8, 7)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Date range'));
+    });
+
+    expect(getByTestId('date-range-calendar').props.initialDate).toBeDefined();
   });
 });
 

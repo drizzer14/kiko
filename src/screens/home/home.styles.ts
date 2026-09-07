@@ -104,10 +104,11 @@ export const styles = StyleSheet.create((theme) => ({
   // the top and the container scrolls once its content overflows, but an
   // empty/short list still grows to fill the viewport so `empty` can center.
   // Bottom padding is lifted clear of the floating native glass tab bar by
-  // `bottomClearance` (the bar's measured height plus the bottom safe-area
-  // inset, computed at the call site — the same pattern as the Screen
-  // primitive's own footer/content clearance), so the last transaction row
-  // is never left partially hidden beneath the bar.
+  // `bottomClearance` — the bar's measured height MINUS the bottom safe-area
+  // inset, computed at the call site through `resolveBottomClearance`
+  // (design-system/components/screen/bottom-clearance.ts). The inset is
+  // subtracted, not added: Screen's `SafeAreaView` already reserves it around
+  // this content, so including it here would count it twice.
   listContent: (bottomClearance: number) => ({
     flexGrow: 1,
     paddingBottom: bottomClearance,

@@ -8,6 +8,11 @@
 // behaviour for the two APIs app code actually reaches at test time:
 //
 // - `useAnimatedRef` — the grid screens' drag auto-scroll ref.
+// - `useScrollOffset` — the live `contentOffset.y` the large-title tab roots
+//   hand to `useScrollToTopOnTabPress` so it can skip a scroll when the content
+//   is already at the top. Returns the same stable `{ value }` box shape a real
+//   shared value exposes on the JS thread; nothing in the suite scrolls, so it
+//   stays at its initial `0`.
 // - the shared-value + animated-style set the shared `BottomSheet` uses for its
 //   drag-down-to-close (`useSharedValue`, `useAnimatedStyle`, `withSpring`,
 //   `runOnJS`, and the animated `View`). The Pan runs `.runOnJS(true)`, so its
@@ -29,6 +34,7 @@ const useSharedValue = (initial) => {
   }
   return box.current;
 };
+const useScrollOffset = () => useSharedValue(0);
 const useAnimatedStyle = (factory) => factory();
 const withSpring = (toValue) => toValue;
 const withTiming = (toValue) => toValue;
@@ -39,6 +45,7 @@ const base = {
   __esModule: true,
   useAnimatedRef,
   useSharedValue,
+  useScrollOffset,
   useAnimatedStyle,
   withSpring,
   withTiming,

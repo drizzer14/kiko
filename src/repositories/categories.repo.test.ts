@@ -14,12 +14,15 @@ jest.mock('../db/client', () => {
   };
 });
 
+import type { SQL } from 'drizzle-orm';
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
+
+import { categories, categoryOverrides, transactions } from '../db/schema';
+
 // CANONICAL_SEED is the canonical seed the migration must insert: one stable
 // slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
-import { categories, categoryOverrides, transactions } from '../db/schema';
-
 import { SEEDED_CATEGORIES as CANONICAL_SEED } from './__fixtures__/seeded-categories';
 import { categoriesRepo } from './categories.repo';
 
@@ -211,19 +214,23 @@ describe('categoriesRepo.delete', () => {
   const makeTx = (settingsRows: { defaultCategoryKey: string }[]) => {
     const captured: {
       txUpdate?: Record<string, unknown>;
+      txWhere?: unknown;
       overrideUpdate?: Record<string, unknown>;
+      overrideWhere?: unknown;
       deletedTable?: unknown;
     } = {};
     const tx = {
       select: () => ({ from: () => Promise.resolve(settingsRows) }),
       update: (table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
-          where: () => {
+          where: (predicate: unknown) => {
             if (table === transactions) {
               captured.txUpdate = values;
+              captured.txWhere = predicate;
             }
             if (table === categoryOverrides) {
               captured.overrideUpdate = values;
+              captured.overrideWhere = predicate;
             }
             return Promise.resolve();
           },
@@ -249,6 +256,55 @@ describe('categoriesRepo.delete', () => {
     expect(captured.txUpdate).toEqual({ category: 'other' });
     expect(captured.overrideUpdate).toEqual({ category: 'other' });
     expect(captured.deletedTable).toBe(categories);
+  });
+
+  // The reassign predicates are the thing under test here, and this suite
+  // drives a FAKE transaction handle (there is no in-memory SQLite in the Jest
+  // environment — op-sqlite is a native module), so the observable behaviour is
+  // the SQL the repository compiles. Render it through Drizzle's own SQLite
+  // dialect and assert the comparison is case-insensitive: a row synced before
+  // `categoryForMcc` emitted slugs stores 'Groceries', and neither column is
+  // COLLATE NOCASE, so a plain `category = 'groceries'` would match none of
+  // them and leave them orphaned on a deleted category.
+  const dialect = new SQLiteSyncDialect();
+  const renderPredicate = (predicate: unknown): { sql: string; params: unknown[] } => {
+    const query = dialect.sqlToQuery(predicate as SQL);
+
+    return { sql: query.sql, params: [...query.params] };
+  };
+
+  it('reassigns a capitalized legacy category on delete', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
+    mockTx = tx;
+
+    await categoriesRepo.delete('groceries');
+
+    expect(renderPredicate(captured.txWhere)).toEqual({
+      sql: 'lower("transactions"."category") = ?',
+      params: ['groceries'],
+    });
+  });
+
+  it('reassigns a capitalized legacy override on delete', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
+    mockTx = tx;
+
+    await categoriesRepo.delete('groceries');
+
+    expect(renderPredicate(captured.overrideWhere)).toEqual({
+      sql: 'lower("category_overrides"."category") = ?',
+      params: ['groceries'],
+    });
+  });
+
+  it('compares against the lowercased key even when the key itself is capitalized', async () => {
+    const { tx, captured } = makeTx([{ defaultCategoryKey: 'other' }]);
+    mockTx = tx;
+
+    await categoriesRepo.delete('Groceries');
+
+    expect(renderPredicate(captured.txWhere).params).toEqual(['groceries']);
+    expect(renderPredicate(captured.overrideWhere).params).toEqual(['groceries']);
   });
 
   it('reassigns to the CURRENT (configurable) default, not a hardcoded one', async () => {

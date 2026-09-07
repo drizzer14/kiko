@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { type FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
@@ -12,10 +13,7 @@ import type { AppLockSettingProps } from './app-lock-setting.props';
 
 // A pure helper (no hook access), so the translator function is threaded in
 // from the component's own `useTranslation()` rather than called globally.
-const sensorHint = (
-  status: SensorStatus | undefined,
-  t: (key: string) => string,
-): string | undefined =>
+const sensorHint = (status: SensorStatus | undefined, t: TFunction): string | undefined =>
   match(status?.kind)
     .with(undefined, () => undefined)
     .with('available', () => undefined)

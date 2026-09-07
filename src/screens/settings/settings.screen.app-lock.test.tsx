@@ -1,7 +1,27 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 
+import {
+  asNavigationProp,
+  asRouteProp,
+  type NavigationSpy,
+  navigationSpy,
+} from '../../test-support/navigation-props';
+
 import SettingsScreen from './settings.screen';
+
+type SettingsProps = ComponentProps<typeof SettingsScreen>;
+
+// The screen takes both React Navigation props; only `navigation` is read, so a
+// test that asserts on a navigate passes its own spy and the rest default.
+const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
+  render(
+    <SettingsScreen
+      navigation={asNavigationProp<SettingsProps['navigation']>(navigation)}
+      route={asRouteProp<SettingsProps['route']>('Settings')}
+    />,
+  );
 
 // APP_LOCK_ENABLED flipped ON: the App Lock card mounts. The default-off path
 // (card hidden) is covered in settings.screen.test.tsx.
@@ -34,12 +54,12 @@ describe('SettingsScreen App Lock card (APP_LOCK_ENABLED on)', () => {
   });
 
   it('renders the App Lock setting in its own card', async () => {
-    const { getByTestId } = await render(<SettingsScreen />);
+    const { getByTestId } = await renderScreen();
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
   });
 
   it('calls setLockEnabled when the App Lock switch is toggled', async () => {
-    const { findByRole } = await render(<SettingsScreen />);
+    const { findByRole } = await renderScreen();
 
     await fireEvent(await findByRole('switch'), 'valueChange', true);
 

@@ -34,11 +34,29 @@ struct NetWorthSnapshot: Codable {
         let value: Double
     }
 
+    /// Every user-facing string the widget renders, resolved by the APP through
+    /// `i18n.t` at snapshot-build time. Deliberately not a Localizable.strings
+    /// bundle: a .lproj bundle follows the DEVICE language, while Kiko's
+    /// language is a persisted in-app setting, so the two would disagree.
+    /// One entry per string the widget renders FROM a snapshot, no more — the
+    /// no-snapshot placeholder below cannot read this, so it holds no key here.
+    /// Mirrors `NetWorthSnapshot['labels']` in src/widget/net-worth-snapshot.ts.
+    struct Labels: Codable {
+        let title: String
+    }
+
     let baseCurrency: String
     let total: Total
     let breakdown: [BreakdownItem]
     let trend: [TrendPoint]
     let updatedAt: Int
+    // Non-optional ON PURPOSE, like every other field here: a snapshot written
+    // before this shipped has no `labels` key, so it fails to decode,
+    // `SnapshotLoader.load()` returns nil, and the widget shows its placeholder
+    // until the app writes again (which it does on every backgrounding). That
+    // self-healing miss is preferable to an optional that would let a
+    // half-localized widget render indefinitely. Do not "fix" it to `Labels?`.
+    let labels: Labels
 }
 
 enum SnapshotLoader {
