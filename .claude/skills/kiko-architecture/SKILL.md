@@ -188,6 +188,49 @@ the already-injectable `now`/`sleep` deps, so a test controls it
 without a new seam — and a `gate` dep would let a test share one gate
 across two `runSync` calls, defeating the per-invocation scoping.
 
+### Two complementary rate-limit invariants: the gate AND the single-flight lock
+
+The per-invocation gate above paces requests **within** one run. It is
+NOT enough on its own: the rate limit is per token, and all three sync
+entry points drive the same connected token —
+
+- `useAutoSync` (`src/screens/use-auto-sync.ts`) on app open,
+- `useSyncAll` (`src/screens/use-sync-all.ts`) on pull-to-refresh,
+- `useSync` (`src/screens/use-sync.ts`) on the manual button —
+
+so two of them firing at once produced two concurrent runs, two
+independent gates, and colliding 429s (the reported "inconsistent"
+sync). `runSync` therefore holds a **module-level single-flight lock**
+(`inFlightSync` in `src/monobank/sync.ts`): while a run is in flight,
+every new trigger JOINS (awaits) the in-flight promise and observes its
+result rather than starting a second run; the lock releases the instant
+the run settles (success OR failure). Read `runSync`/`runSyncInner` for
+the exact shape rather than trusting a restated one here.
+
+The two invariants are **complementary, not interchangeable** — the
+gate throttles requests inside a run; the lock forbids two runs at once.
+Do NOT remove or weaken either to "simplify" the other. **Join** (not
+queue) semantics are safe because the three triggers are equivalent
+syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
+already-connected account, so no run competes with a first-time Connect
+(a `targetAccountId` sync), and a re-sync that joins an in-flight run of
+the same connected token gets exactly the result it would have computed.
+
+### Partial-progress resilience across cards
+
+`runSync`'s per-card import loop is **fault-isolated**: one card's
+transient failure (a 429/timeout) no longer aborts the whole run —
+every other card still imports (each `importAccount` -> `addTransactions`
+is its own `db.transaction()`, so a completed card's rows are durable
+regardless). The shared `settings.lastSyncAt` cursor advances **only on
+a fully clean run**; on a partial failure it stays put and `runSync`
+re-throws, so the failed card's window is re-covered next time. A
+re-fetch is idempotent (the `(source, external_id)` upsert refreshes
+rather than duplicates), so nothing already imported is lost or
+re-imported. Kiko has no per-CARD cursor — that would need a schema
+change — so a partial failure does re-fetch the cards that already
+finished; the dedup layer keeps that correct, only slower.
+
 ## DB encryption + flag gate
 
 The SQLCipher database-encryption migration (cluster 2) is flag-gated

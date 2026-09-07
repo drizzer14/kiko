@@ -263,6 +263,8 @@ export const en = {
     invalidToken: 'Invalid token',
     lastSync: 'Last sync: {{time}}',
     monobankAlreadyConnected: 'A Monobank account is already connected',
+    monobankRateLimited: 'Monobank is rate-limiting requests right now. Please try again shortly.',
+    monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
     noConnectionFound: 'No {{name}} connection found',
