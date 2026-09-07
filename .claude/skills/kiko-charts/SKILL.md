@@ -118,6 +118,50 @@ at once by largest-remainder (Hare quota) allocation, so the column under
 the ring always sums to exactly 100 (or 0 for an empty set). Read that
 function for the tie-break rule before touching legend percent rendering.
 
+## category-trend-line (spending trend by category)
+
+`CategoryTrendLine`
+(`src/design-system/components/category-trend-line/category-trend-line.component.tsx`)
+is the "Spending Trend by Category" chart: a multi-line plot, one
+`<Polyline>` per category, each point that category's total EXPENSE
+inside one calendar-month bucket (a per-period figure, never
+cumulative), in the base currency's MAJOR units.
+
+The builder, `buildCategoryTrend`
+(`src/statistics/category-trend.ts`), reuses the donut's exact
+expense/exclusion/default-fold/conversion rules — see
+`category-breakdown.ts` (`buildCategoryBreakdown`) rather than
+restating them here — and resolves each line's color the same way the
+donut does, via `resolveCategoryColor`. It buckets every kept expense
+by UTC calendar month, zero-fills every month in the earliest-to-latest
+span for every series so all lines share one set of X positions even
+where a category had no spend in a given month, and sorts the returned
+series by total spend descending.
+
+The component follows this file's "Fixed logical coordinate space" and
+"Hand-rolled scale/tick builders" conventions above, mirroring
+`net-worth-line`'s `VIEW_WIDTH` + `preserveAspectRatio="none"` +
+hand-rolled `buildScales`/`buildTicks`/`buildXTicks` split — but its
+Y-scale is rooted at 0 with headroom only above the peak, not anchored
+to a start-value reference baseline the way `net-worth-line`'s is,
+since spending has no natural reference point to diff against.
+
+Its `testID`-per-primitive scheme (see "testID scheme per SVG
+primitive" above for why): `category-trend-line-line-<key>` (one
+`<Polyline>` per series), `category-trend-line-y-grid-<index>` and
+`category-trend-line-x-grid-<fraction>` (gridlines),
+`category-trend-line-legend-<key>` (one legend entry per series), and
+`category-trend-line-empty` (the empty state when `series` is `[]`).
+
+It needs no new entry in `__mocks__/react-native-svg.tsx` — it only
+uses `Polyline`, `Line`, `G`, `Svg`, and `Text`, all already exported
+by that mock.
+
+Which categories the chart draws (e.g. a top-3-by-expense default) is
+screen state owned by `statistics.screen.tsx`, not this component's
+concern — `CategoryTrendLine` only renders whatever `series` array it
+is given.
+
 ## PieChart donut mode
 
 `PieChart` (`src/design-system/components/pie-chart/pie-chart.component.tsx`)
