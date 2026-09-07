@@ -1,4 +1,4 @@
-import { darkTheme } from './theme';
+import { entityColorsByScheme } from './palette';
 
 // A subtle color-tint background: the entity's own color (one of
 // `theme.colors.entityColors`, see theme.ts) blended at a low, consistent
@@ -14,6 +14,12 @@ import { darkTheme } from './theme';
 // as a whisper of tint rather than a wash that fights the card surface,
 // high enough that a saturated color (`red`, `violet`) stays perceptible
 // against `theme.colors.surface`.
+//
+// This `0.1` was calibrated by eye on the DARK surface only and still needs
+// a light-mode design-review calibration (spec Section 5) — it is NOT
+// changed here; it is a flagged follow-up (see the light-color-scheme plan's
+// Non-Goals), not something Task 3 (scheme-aware `entityCardBackground` /
+// `resolveEntityColor`) touches.
 export const ENTITY_TINT_OPACITY = 0.1;
 
 const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
@@ -58,9 +64,13 @@ const isValidHex = (value: string | null | undefined): value is string =>
 
 // The guaranteed-safe swatch `resolveEntityColor` falls back to when BOTH the
 // stored color and the kind/type default are unusable — a neutral gray that
-// always exists on `theme.colors.entityColors`, so a card's background can
-// never throw or vanish.
-const FALLBACK_ENTITY_COLOR = darkTheme.colors.entityColors.gray;
+// always exists on every per-theme palette, so a card's background can never
+// throw or vanish. Resolved from the per-theme palette by the active scheme
+// (spec Section 1/5) — still gray, but picked from the correct light/dark
+// set. Defaults to 'dark' so existing two-arg callers are unchanged until
+// Task 8 threads the real scheme.
+const FALLBACK_ENTITY_COLOR = (colorScheme: 'light' | 'dark'): string =>
+  entityColorsByScheme[colorScheme].gray;
 
 // Resolves an account/holding's EFFECTIVE color, robust to two real gaps a
 // bare `stored ?? typeDefault` misses (the pattern every card call site used
@@ -85,9 +95,14 @@ const FALLBACK_ENTITY_COLOR = darkTheme.colors.entityColors.gray;
 // render. This resolves BOTH gaps and falls back one more level to
 // `FALLBACK_ENTITY_COLOR` so a card's background always has a valid color to
 // resolve.
+// `colorScheme` (default `'dark'`, backward-compatible with existing
+// two-arg callers) only affects the final gray fallback; a valid stored
+// color or typeDefault still wins unchanged regardless of scheme. Task 8
+// threads the real active scheme through every call site.
 export const resolveEntityColor = (
   storedColor: string | null | undefined,
   typeDefault: string | undefined,
+  colorScheme: 'light' | 'dark' = 'dark',
 ): string => {
   if (isValidHex(storedColor)) {
     return storedColor;
@@ -97,7 +112,7 @@ export const resolveEntityColor = (
     return typeDefault;
   }
 
-  return FALLBACK_ENTITY_COLOR;
+  return FALLBACK_ENTITY_COLOR(colorScheme);
 };
 
 // Darkens a `#RRGGBB` hex toward black by `percent` (0-100): each channel
@@ -112,6 +127,21 @@ export const darkenHex = (hex: string, percent: number): string => {
       .padStart(2, '0');
 
   return `#${darken(red)}${darken(green)}${darken(blue)}`;
+};
+
+// Lightens a `#RRGGBB` hex toward white by `percent` (0-100): each channel
+// moves `percent`% of the way to 255. The light-theme mirror of `darkenHex`,
+// so a bright swatch resolves into a near-WHITE card tone that carries a
+// hint of the entity hue, with BLACK body text (light `textPrimary`) legible
+// on top.
+export const lightenHex = (hex: string, percent: number): string => {
+  const [red, green, blue] = parseHex(hex);
+  const lighten = (channel: number): string =>
+    Math.round(channel + (255 - channel) * (percent / 100))
+      .toString(16)
+      .padStart(2, '0');
+
+  return `#${lighten(red)}${lighten(green)}${lighten(blue)}`;
 };
 
 // DEVICE BUG (F4): a card used to look at `CARD_DARKEN_PERCENT = 10` fed
@@ -134,17 +164,32 @@ export const darkenHex = (hex: string, percent: number): string => {
 // hue, the chosen target).
 const CARD_DARKEN_PERCENT = 90;
 
-// A card's flat, OPAQUE background: the resolved entity hue, darkened
-// (`CARD_DARKEN_PERCENT`) and used as-is — a plain `#RRGGBB`, not passed
-// through `entityTintBackground`'s alpha compositing. A card's wash is
-// painted as a `View` sibling over an already-opaque base (the flat themed
-// surface on the fallback path, the Liquid Glass material on the glass
-// path — see `GlassSurface`), so an opaque fill FULLY replaces whatever is
-// underneath: the visible result is identical on both paths and cannot be
-// diluted by a base layer it never blends with. This replaced a 45deg
-// two-stop gradient wash (design review: a plain darker solid reads calmer
-// and is simpler to reason about than a diagonal blend of two
-// near-identical hues), then a translucent flat wash (the F4 device bug
-// above). Feed the result straight to `GlassSurface`'s `tint` prop.
-export const entityCardBackground = (colorHex: string): string =>
-  darkenHex(colorHex, CARD_DARKEN_PERCENT);
+// Mirror of CARD_DARKEN_PERCENT for the light theme. 90% pulls a swatch
+// nearly to white while keeping a hint of hue. DEVICE-REVIEWABLE, like the
+// darken percent's own history (55 -> 70 -> 90): confirm on the light theme
+// on-device and adjust if a card reads too washed-out or too saturated.
+const CARD_LIGHTEN_PERCENT = 90;
+
+// A card's flat, OPAQUE background, direction-chosen by the active theme:
+// the resolved entity hue darkened (dark theme) or lightened (light theme)
+// so body text — which flips white/black with `textPrimary` — stays
+// legible, and used as-is — a plain `#RRGGBB`, not passed through
+// `entityTintBackground`'s alpha compositing. A card's wash is painted as a
+// `View` sibling over an already-opaque base (the flat themed surface on
+// the fallback path, the Liquid Glass material on the glass path — see
+// `GlassSurface`), so an opaque fill FULLY replaces whatever is underneath:
+// the visible result is identical on both paths and cannot be diluted by a
+// base layer it never blends with. This replaced a 45deg two-stop gradient
+// wash (design review: a plain darker solid reads calmer and is simpler to
+// reason about than a diagonal blend of two near-identical hues), then a
+// translucent flat wash (the F4 device bug above). Feed the result straight
+// to `GlassSurface`'s `tint` prop. `colorScheme` defaults to `'dark'` so
+// existing single-arg callers are unchanged until Task 8 threads the real
+// active scheme through every call site.
+export const entityCardBackground = (
+  colorHex: string,
+  colorScheme: 'light' | 'dark' = 'dark',
+): string =>
+  colorScheme === 'light'
+    ? lightenHex(colorHex, CARD_LIGHTEN_PERCENT)
+    : darkenHex(colorHex, CARD_DARKEN_PERCENT);

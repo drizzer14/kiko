@@ -181,17 +181,29 @@ where they can drift. As of this writing the pipeline is:
   `stored ?? typeDefault` — that pattern misses an empty-string stored
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
-  of silently falling back.
-- `entityCardBackground` (`entity-tint.ts`) — a card's flat, solid
-  background: the resolved color, darkened, then applied at the
-  shared tint opacity — one `rgba(...)` string, fed straight to
-  `GlassSurface`'s `tint` prop. Replaced a 45deg two-stop gradient
-  wash (design review: a plain darker solid reads calmer than a
-  diagonal blend of two near-identical hues).
-- `entityTintBackground` / `darkenHex` (`entity-tint.ts`) — the
-  lower-level building blocks `entityCardBackground` composes; reach
-  for them directly only when you need one flat (non-darkened) tint or
-  one darkened hex on its own, not the composed card background.
+  of silently falling back. Takes an optional third `colorScheme`
+  argument (`'light' | 'dark'`, defaults to `'dark'`) that only
+  affects the gray fallback — it resolves the fallback gray from the
+  matching per-theme palette (`entityColorsByScheme` in
+  `palette.ts`), not a single hardcoded gray.
+- `entityCardBackground` (`entity-tint.ts`) — a card's flat, OPAQUE
+  `#RRGGBB` background (never an `rgba(...)` string; it does not go
+  through `entityTintBackground`'s alpha compositing): the resolved
+  color darkened (dark theme) or lightened (light theme), fed
+  straight to `GlassSurface`'s `tint` prop. Direction is an optional
+  second `colorScheme` argument (`'light' | 'dark'`, defaults to
+  `'dark'`) — darken keeps white body text legible, lighten keeps
+  black body text legible. Replaced a 45deg two-stop gradient wash
+  (design review: a plain darker solid reads calmer than a diagonal
+  blend of two near-identical hues), then a translucent flat wash
+  (a device bug: darkening a color that is then stamped at low alpha
+  only shifts the final pixel imperceptibly).
+- `entityTintBackground` / `darkenHex` / `lightenHex`
+  (`entity-tint.ts`) — the lower-level building blocks
+  `entityCardBackground` composes; reach for them directly only when
+  you need one flat (non-darkened) translucent tint, or one
+  darkened/lightened opaque hex on its own, not the composed card
+  background.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
