@@ -7,71 +7,25 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		074B488E1A728371359F9EAE /* NetWorthWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685726ADD524ED1C877D049 /* NetWorthWidgetView.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		1F48019BD56C1E6B69B588B5 /* NetWorthWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBF932596F1B3760042488D /* NetWorthWidget.swift */; };
-		33686E6913B5C626A2BF26D6 /* WidgetBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F381DD6F9805F108467FE5 /* WidgetBridge.swift */; };
-		5A725DCC5EB5DB545ADB16CD /* WidgetBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A205F24D771C486AA035C4AE /* WidgetBridge.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
-		79B8D81054CA3252D4291A33 /* NetWorthSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAB1DF91D74E540848C7F99 /* NetWorthSnapshot.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
-		954D254DF723211C67A2B111 /* KikoWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7159DA2A786047A89294D15A /* KikoWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AF302165096A0E369EF46EF3 /* libPods-Kiko.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EB644446D98F6DD2E63A735C /* libPods-Kiko.a */; };
-		B163AFEE2B9F2E1B52100D64 /* KikoWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57D4147568F57EF2BF33F712 /* KikoWidgetBundle.swift */; };
 		C4919CFE9414F1AE8AF0D959 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
-		CD13019BB59E7D243972C8E3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60291CB80BC53C3DE51D523B /* Foundation.framework */; };
-		D21621AE2A0CD01C149A966C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4DBEE4AB0FA8D64BB694B8E0 /* SwiftUI.framework */; };
-		E49DAA398505D7D553EEB1F1 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 831446390A28F18A29DB535C /* WidgetKit.framework */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		29BAD69A8724B8ABE1D638FD /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 3E696B0283B715A875819796;
-			remoteInfo = KikoWidget;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		E8169A1CACF38CC8D9E5E450 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				954D254DF723211C67A2B111 /* KikoWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* Kiko.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kiko.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Kiko/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Kiko/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Kiko/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		1685726ADD524ED1C877D049 /* NetWorthWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetWorthWidgetView.swift; sourceTree = "<group>"; };
-		4DBEE4AB0FA8D64BB694B8E0 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
-		573D4418EA40A70D1B46296D /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		57D4147568F57EF2BF33F712 /* KikoWidgetBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KikoWidgetBundle.swift; sourceTree = "<group>"; };
-		60291CB80BC53C3DE51D523B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		7159DA2A786047A89294D15A /* KikoWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KikoWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Kiko/AppDelegate.swift; sourceTree = "<group>"; };
 		8098F761CFA53B4B7DE31FE1 /* Pods-Kiko.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.release.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.release.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Kiko/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		82B8A86134DE0544CF48D278 /* Pods-Kiko.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.debug.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.debug.xcconfig"; sourceTree = "<group>"; };
-		831446390A28F18A29DB535C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
-		96F381DD6F9805F108467FE5 /* WidgetBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Kiko/WidgetBridge.swift; sourceTree = "<group>"; };
-		A205F24D771C486AA035C4AE /* WidgetBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Kiko/WidgetBridge.m; sourceTree = "<group>"; };
-		AE6B792F111F2A0D164C6360 /* KikoWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = KikoWidget.entitlements; sourceTree = "<group>"; };
 		B23A81201A6576C1474D2FB8 /* Kiko.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Kiko/Kiko.entitlements; sourceTree = "<group>"; };
-		DBAB1DF91D74E540848C7F99 /* NetWorthSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetWorthSnapshot.swift; sourceTree = "<group>"; };
 		EB644446D98F6DD2E63A735C /* libPods-Kiko.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Kiko.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		FBBF932596F1B3760042488D /* NetWorthWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetWorthWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,16 +34,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF302165096A0E369EF46EF3 /* libPods-Kiko.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		658977408911F89B82076949 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CD13019BB59E7D243972C8E3 /* Foundation.framework in Frameworks */,
-				D21621AE2A0CD01C149A966C /* SwiftUI.framework in Frameworks */,
-				E49DAA398505D7D553EEB1F1 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,8 +48,6 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
-				96F381DD6F9805F108467FE5 /* WidgetBridge.swift */,
-				A205F24D771C486AA035C4AE /* WidgetBridge.m */,
 				B23A81201A6576C1474D2FB8 /* Kiko.entitlements */,
 			);
 			name = Kiko;
@@ -116,33 +58,8 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				EB644446D98F6DD2E63A735C /* libPods-Kiko.a */,
-				597282449A7EABC28538934C /* iOS */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		2FB17B031F4FF5B408D52E26 /* KikoWidget */ = {
-			isa = PBXGroup;
-			children = (
-				57D4147568F57EF2BF33F712 /* KikoWidgetBundle.swift */,
-				FBBF932596F1B3760042488D /* NetWorthWidget.swift */,
-				1685726ADD524ED1C877D049 /* NetWorthWidgetView.swift */,
-				DBAB1DF91D74E540848C7F99 /* NetWorthSnapshot.swift */,
-				573D4418EA40A70D1B46296D /* Info.plist */,
-				AE6B792F111F2A0D164C6360 /* KikoWidget.entitlements */,
-			);
-			name = KikoWidget;
-			path = KikoWidget;
-			sourceTree = "<group>";
-		};
-		597282449A7EABC28538934C /* iOS */ = {
-			isa = PBXGroup;
-			children = (
-				60291CB80BC53C3DE51D523B /* Foundation.framework */,
-				4DBEE4AB0FA8D64BB694B8E0 /* SwiftUI.framework */,
-				831446390A28F18A29DB535C /* WidgetKit.framework */,
-			);
-			name = iOS;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -160,7 +77,6 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
-				2FB17B031F4FF5B408D52E26 /* KikoWidget */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -171,7 +87,6 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* Kiko.app */,
-				7159DA2A786047A89294D15A /* KikoWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -199,34 +114,15 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				81CFFED591FFFF28AA5FBF50 /* [CP] Embed Pods Frameworks */,
 				561476BB934C0E96F3DA047B /* [CP] Copy Pods Resources */,
-				E8169A1CACF38CC8D9E5E450 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				3D8E0968ABAD8D564F901287 /* PBXTargetDependency */,
 			);
 			name = Kiko;
 			productName = Kiko;
 			productReference = 13B07F961A680F5B00A75B9A /* Kiko.app */;
 			productType = "com.apple.product-type.application";
-		};
-		3E696B0283B715A875819796 /* KikoWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 56C3CF605817FC421BED236F /* Build configuration list for PBXNativeTarget "KikoWidget" */;
-			buildPhases = (
-				F022859108041BC711D065E0 /* Sources */,
-				658977408911F89B82076949 /* Frameworks */,
-				98612CFB209FDE6E449E1A5E /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = KikoWidget;
-			productName = KikoWidget;
-			productReference = 7159DA2A786047A89294D15A /* KikoWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -255,7 +151,6 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* Kiko */,
-				3E696B0283B715A875819796 /* KikoWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -268,13 +163,6 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				C4919CFE9414F1AE8AF0D959 /* PrivacyInfo.xcprivacy in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		98612CFB209FDE6E449E1A5E /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,32 +249,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
-				33686E6913B5C626A2BF26D6 /* WidgetBridge.swift in Sources */,
-				5A725DCC5EB5DB545ADB16CD /* WidgetBridge.m in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		F022859108041BC711D065E0 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B163AFEE2B9F2E1B52100D64 /* KikoWidgetBundle.swift in Sources */,
-				1F48019BD56C1E6B69B588B5 /* NetWorthWidget.swift in Sources */,
-				074B488E1A728371359F9EAE /* NetWorthWidgetView.swift in Sources */,
-				79B8D81054CA3252D4291A33 /* NetWorthSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		3D8E0968ABAD8D564F901287 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = KikoWidget;
-			target = 3E696B0283B715A875819796 /* KikoWidget */;
-			targetProxy = 29BAD69A8724B8ABE1D638FD /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -611,61 +477,6 @@
 			};
 			name = Release;
 		};
-		AB1ACE81EFE8FB1697E6AF18 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_ENTITLEMENTS = KikoWidget/KikoWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = M52858LNYL;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = KikoWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff.KikoWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		F23ACC4A3CE6FFB26A3F4912 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_ENTITLEMENTS = KikoWidget/KikoWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = M52858LNYL;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = KikoWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff.KikoWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -674,15 +485,6 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		56C3CF605817FC421BED236F /* Build configuration list for PBXNativeTarget "KikoWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				F23ACC4A3CE6FFB26A3F4912 /* Release */,
-				AB1ACE81EFE8FB1697E6AF18 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
