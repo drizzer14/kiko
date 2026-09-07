@@ -2,7 +2,7 @@
 
 Date: 2026-09-04 · Status: research (not implemented)
 App: bare RN iOS, New Arch + Hermes, local-only data, connects to
-Monobank with the user's own personal token. Bundle `com.dmytro.pff`.
+Monobank with the user's own personal token. Bundle `com.dmytro-vasylkivskyi.kiko`.
 
 ## Config: correct vs blocking (from `ios/`)
 Correct: bundle id, team `M52858LNYL` (automatic signing), version 1.0,

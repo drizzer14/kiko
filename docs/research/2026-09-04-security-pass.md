@@ -1,6 +1,7 @@
 # Security pass — audit and hardening plan
 
 Date: 2026-09-04 · Status: research (not implemented)
+Superseded by the 2026-09-06 follow-up audit: docs/security/2026-09-06-security-pass-findings.md (F1–F8 status table in its §2).
 App: bare RN 0.87.1 iOS, local-first, no own backend.
 
 ## Threat model

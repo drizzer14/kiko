@@ -4,7 +4,7 @@
 >
 > This plan has two task groups. **Group A (Tasks A1–A7) is code/config work** for the `developer` agent (with `ops` running the build checkpoint). **Group B (Tasks B1–B12) is a manual, human-in-the-loop process** — the user drives Apple Developer / App Store Connect / Xcode Organizer; an agent can prepare text and run local commands but cannot click through Apple's web UI, pay, or accept agreements. Every Group B task is marked `MANUAL`.
 
-**Goal:** Ship the first App Store submission of Кіко (bundle `com.dmytro.pff`): fix the six wrong-or-missing `ios/` config values, then walk the enrollment → App Store Connect → archive → TestFlight → submit checklist with the Guideline 3.2.1(viii) read-only framing attached.
+**Goal:** Ship the first App Store submission of Кіко (bundle `com.dmytro-vasylkivskyi.kiko`): fix the six wrong-or-missing `ios/` config values, then walk the enrollment → App Store Connect → archive → TestFlight → submit checklist with the Guideline 3.2.1(viii) read-only framing attached.
 
 **Architecture:** No app code changes. Group A edits three existing config files (`ios/Kiko/Info.plist`, `ios/Kiko.xcodeproj/project.pbxproj`, `app.json`), adds one localized strings file wired into the Xcode project (`ios/Kiko/uk.lproj/InfoPlist.strings`), and adds the privacy-policy text the store listing must link to. Group B is an ordered checklist of Apple-side steps with the exact values to type in. The work lands on top of `drizzer14/pff-ux-round` (commit `e7cc1fa`), which already carries the app icon PNGs and `CFBundleDisplayName = Кіко`; those two items are **verified as preconditions, never redone**.
 
@@ -21,7 +21,7 @@
 - Device family is iPhone-only: `TARGETED_DEVICE_FAMILY = "1"`. No iPad layout, no iPad screenshots.
 - `ITSAppUsesNonExemptEncryption = false` (standard HTTPS + Keychain only). Export compliance answer is "exempt".
 - App Privacy answer is **"Data Not Collected"**; it must stay consistent with `ios/Kiko/PrivacyInfo.xcprivacy` (`NSPrivacyCollectedDataTypes` empty, `NSPrivacyTracking = false`). No analytics or crash reporting may be added.
-- Do not touch (verified correct): bundle id `com.dmytro.pff`, `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`, `CODE_SIGN_STYLE = Automatic`, `ENABLE_BITCODE = NO`, `RCTNewArchEnabled = true`, `NSAllowsArbitraryLoads = false`, `PrivacyInfo.xcprivacy`.
+- Do not touch (verified correct): bundle id `com.dmytro-vasylkivskyi.kiko`, `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`, `CODE_SIGN_STYLE = Automatic`, `ENABLE_BITCODE = NO`, `RCTNewArchEnabled = true`, `NSAllowsArbitraryLoads = false`, `PrivacyInfo.xcprivacy`.
 - Never commit the demo Monobank token, any real token, or a screenshot of a real connected account. `npm run check:secrets` (gitleaks) runs on every write.
 - Project commit rule: **do not commit** at the end of a task. The user reviews the diff in the worktree (Orca inline comments) and commits when they choose. Each task therefore ends with "hand off for review", not `git commit`.
 - Harness checkpoints: `npm run check:all` at the end of Group A (Task A7); `npm run check:deep` before the final submit (Task B11).
@@ -560,7 +560,7 @@ ios/build/Build/Products/Release-iphonesimulator/Kiko.app/Assets.car
 ```bash
 xcrun simctl boot 'iPhone 17 Pro Max' 2>/dev/null; open -a Simulator
 xcrun simctl install booted ios/build/Build/Products/Release-iphonesimulator/Kiko.app
-xcrun simctl launch booted com.dmytro.pff
+xcrun simctl launch booted com.dmytro-vasylkivskyi.kiko
 ```
 
 Expected: the Home Screen label under the icon reads `Кіко`; the icon renders (light), and switching the simulator to Dark appearance swaps to the dark icon.
@@ -676,8 +676,8 @@ Each task below is an ordered checklist. Values in backticks are typed exactly a
 
 - [ ] **Step 1:** Xcode → Settings → Accounts → `+` → add the enrolled Apple ID. The team list must show the paid team (role Agent), not only "Personal Team".
 - [ ] **Step 2 (conditional edit):** Compare the paid team's Team ID (Task B1 Step 4) with `DEVELOPMENT_TEAM = M52858LNYL` in `ios/Kiko.xcodeproj/project.pbxproj` (lines 265 and 298, target Debug and Release). **If they are identical, do nothing.** If they differ (this happens when a formerly free Personal Team is superseded by a new paid team), change both lines to the new ID, e.g. `DEVELOPMENT_TEAM = <new Team ID>;`, then `plutil -lint ios/Kiko.xcodeproj/project.pbxproj` → `OK`. This is the one Group B step that may touch a repo file; it goes through the same review-before-commit rule.
-- [ ] **Step 3:** Open `ios/Kiko.xcworkspace` in Xcode → target `Kiko` → Signing & Capabilities: **Automatically manage signing** checked; Team = the paid team; Bundle Identifier shows `com.dmytro.pff`. Xcode registers the App ID `com.dmytro.pff` in Certificates, Identifiers & Profiles and creates an Apple Development certificate + profile here; the **Apple Distribution** certificate and App Store profile are created automatically at the first Archive → Distribute (Task B5).
-- [ ] **Step 4 (verify):** the Signing pane shows no red error; "Provisioning Profile: Xcode Managed Profile"; "Signing Certificate: Apple Development: <name> (<id>)". `https://developer.apple.com/account/resources/identifiers/list` lists `com.dmytro.pff` (explicit App ID, no capabilities).
+- [ ] **Step 3:** Open `ios/Kiko.xcworkspace` in Xcode → target `Kiko` → Signing & Capabilities: **Automatically manage signing** checked; Team = the paid team; Bundle Identifier shows `com.dmytro-vasylkivskyi.kiko`. Xcode registers the App ID `com.dmytro-vasylkivskyi.kiko` in Certificates, Identifiers & Profiles and creates an Apple Development certificate + profile here; the **Apple Distribution** certificate and App Store profile are created automatically at the first Archive → Distribute (Task B5).
+- [ ] **Step 4 (verify):** the Signing pane shows no red error; "Provisioning Profile: Xcode Managed Profile"; "Signing Certificate: Apple Development: <name> (<id>)". `https://developer.apple.com/account/resources/identifiers/list` lists `com.dmytro-vasylkivskyi.kiko` (explicit App ID, no capabilities).
 
 ### Task B4 (MANUAL): App Store Connect app record
 
@@ -686,12 +686,12 @@ Each task below is an ordered checklist. Values in backticks are typed exactly a
   - Platforms: **iOS**
   - Name: `Кіко`
   - Primary Language: **Ukrainian**
-  - Bundle ID: `com.dmytro.pff` (select from the dropdown — it appears after Task B3 Step 3; if absent, register it manually at Identifiers → `+` → App IDs → App → Description `Kiko` → Bundle ID explicit `com.dmytro.pff`, no capabilities)
-  - SKU: `com.dmytro.pff`
+  - Bundle ID: `com.dmytro-vasylkivskyi.kiko` (select from the dropdown — it appears after Task B3 Step 3; if absent, register it manually at Identifiers → `+` → App IDs → App → Description `Kiko` → Bundle ID explicit `com.dmytro-vasylkivskyi.kiko`, no capabilities)
+  - SKU: `com.dmytro-vasylkivskyi.kiko`
   - User Access: **Full Access**
 - [ ] **Step 3:** If ASC rejects the name as already in use: **STOP** and report — an alternate store name is a user decision (spec Assumption 3), not something to pick here.
 - [ ] **Step 4:** In the new app → App Information: Primary Category **Finance**, Secondary Category none. Content Rights: **does not contain, show, or access third-party content**. Age Rating: done in Task B8.
-- [ ] **Step 5 (verify):** App Information shows Bundle ID `com.dmytro.pff`, SKU `com.dmytro.pff`, Primary Language Ukrainian, Category Finance. The iOS App 1.0 "Prepare for Submission" page exists.
+- [ ] **Step 5 (verify):** App Information shows Bundle ID `com.dmytro-vasylkivskyi.kiko`, SKU `com.dmytro-vasylkivskyi.kiko`, Primary Language Ukrainian, Category Finance. The iOS App 1.0 "Prepare for Submission" page exists.
 
 ### Task B5 (MANUAL): Archive and upload build 1.0 (1)
 

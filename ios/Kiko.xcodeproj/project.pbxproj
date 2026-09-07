@@ -413,7 +413,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro-vasylkivskyi.kiko;
 				PRODUCT_NAME = Kiko;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -446,7 +446,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro-vasylkivskyi.kiko;
 				PRODUCT_NAME = Kiko;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -628,7 +628,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff.KikoWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro-vasylkivskyi.kiko.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -655,7 +655,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro.pff.KikoWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmytro-vasylkivskyi.kiko.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
