@@ -1,8 +1,7 @@
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import { darkTheme } from '../design-system/theme';
+import { useUnistyles } from 'react-native-unistyles';
 
 import AccountsStack from './accounts.stack';
 import HomeStack from './home.stack';
@@ -22,22 +21,26 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * navigation theme `primary` and computes the inactive tint at runtime
  * (`Color(text).mix(card, 0.5)`), so the scheme is implicit and the native
  * tab bar can flash an unexpected tint on interaction. Pinning both makes
- * the scheme deterministic while keeping accent blue as the active color.
+ * the scheme deterministic while keeping the active theme's accent color as
+ * the active tint.
  *
  * `tabBarStyle.backgroundColor` pins the bar's *background* (Bug B1). The
  * library rebuilds the UITabBar appearance on every tab's `onAppear`
  * (react-native-bottom-tabs `TabAppearModifier` → `configureStandardAppearance`).
  * With no `tabBarStyle` that rebuild calls `configureWithDefaultBackground()`,
  * whose glass material re-resolves against the ambient `userInterfaceStyle` —
- * and because the app pins dark only in JS (the `NavigationContainer` theme),
- * not natively (no `UIUserInterfaceStyle` in Info.plist), that ambient style
- * is unpinned, so the bar flips light/dark between pages. Setting
- * `tabBarStyle.backgroundColor` forces `appearance.backgroundColor` to the
- * concrete, scheme-independent dark background token on every rebuild, so the
- * bar holds one consistent scheme.
+ * and because the app pins its color scheme only in JS (the
+ * `NavigationContainer` theme, itself now driven by the active Unistyles
+ * theme), not natively (no `UIUserInterfaceStyle` in Info.plist), that
+ * ambient style is unpinned, so the bar flips light/dark between pages.
+ * Setting `tabBarStyle.backgroundColor` forces `appearance.backgroundColor`
+ * to the concrete, ACTIVE theme's background token on every rebuild, so the
+ * bar holds one consistent scheme that tracks the chosen theme (not a fixed
+ * dark constant).
  */
 const RootNavigator: FC = () => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
 
   return (
     <Tabs.Navigator
@@ -52,9 +55,9 @@ const RootNavigator: FC = () => {
       // flipped light/dark between pages (bug B1). The Info.plist
       // `UIUserInterfaceStyle = Dark` key removes the ambient variance too;
       // both fixes are wanted, this one pins the concrete color.
-      tabBarStyle={{ backgroundColor: darkTheme.colors.background }}
-      tabBarActiveTintColor={darkTheme.colors.accent}
-      tabBarInactiveTintColor={darkTheme.colors.textSecondary}
+      tabBarStyle={{ backgroundColor: theme.colors.background }}
+      tabBarActiveTintColor={theme.colors.accent}
+      tabBarInactiveTintColor={theme.colors.textSecondary}
     >
       <Tabs.Screen
         name="HomeTab"

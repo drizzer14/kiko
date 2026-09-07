@@ -37,7 +37,7 @@ describe('RootNavigator', () => {
   // `appearance.backgroundColor` to a concrete, scheme-independent color on
   // every rebuild, keeping one consistent dark scheme. `barTintColor` is NOT
   // a real prop of the native navigator — see root.navigator.tsx.
-  it('pins the tab-bar background to the dark background token so the scheme cannot flip', async () => {
+  it('pins the tab-bar background to the active theme background so the scheme cannot flip', async () => {
     const { findByTestId } = await render(
       <NavigationContainer theme={navigationDarkTheme}>
         <RootNavigator />
@@ -45,5 +45,61 @@ describe('RootNavigator', () => {
     );
     const tabBar = await findByTestId('tab-bar');
     expect(tabBar.props.tabBarStyle.backgroundColor).toBe(darkTheme.colors.background);
+  });
+
+  // Task 6: the tab bar's colors must be read from `useUnistyles().theme` at
+  // render time, not from a hardcoded `darkTheme` import. Under the global
+  // Jest mock (`react-native-unistyles/mocks`), `useUnistyles().theme`
+  // always resolves to the same `darkTheme` object as the static import (the
+  // first-registered theme — see design-system/unistyles.ts), so a plain
+  // value assertion cannot tell the two sourcing strategies apart. This test
+  // spies on the hook itself to return a theme whose color values are
+  // deliberately distinct from `darkTheme`, proving the navigator reads
+  // through the hook rather than the static import.
+  //
+  // `jest.requireMock`, not `import * as` — `import * as X` compiles through
+  // Babel's `_interopRequireWildcard`, which for a plain (non-`__esModule`)
+  // CJS mock object COPIES each property by value onto a fresh namespace
+  // object rather than exposing a live reference; spying on that copy leaves
+  // the module's own cached export — the one `root.navigator.tsx`'s named
+  // import actually reads — untouched. `jest.requireMock` returns the exact
+  // cached mock module object instead.
+  it("reads the tab bar's colors from the active theme via useUnistyles, not a hardcoded darkTheme import", async () => {
+    const Unistyles = jest.requireMock(
+      'react-native-unistyles',
+    ) as typeof import('react-native-unistyles');
+    // `UnistylesTheme` itself is an internal type not re-exported from the
+    // package root; derive the active-theme shape from the hook's own
+    // return type instead of reaching into an unexported path. `fakeTheme`
+    // deliberately holds colors outside the closed dark/light union (see the
+    // comment above), so the cast through `unknown` is the sanctioned
+    // boundary for a synthetic test fixture, not an `any` bypass.
+    type ActiveTheme = ReturnType<typeof Unistyles.useUnistyles>['theme'];
+    const fakeTheme = {
+      ...darkTheme,
+      colors: {
+        ...darkTheme.colors,
+        background: '#123456',
+        accent: '#abcdef',
+        textSecondary: '#fedcba',
+      },
+    } as unknown as ActiveTheme;
+    jest.spyOn(Unistyles, 'useUnistyles').mockReturnValue({
+      theme: fakeTheme,
+      rt: Unistyles.UnistylesRuntime,
+    });
+
+    const { findByTestId } = await render(
+      <NavigationContainer theme={navigationDarkTheme}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    const tabBar = await findByTestId('tab-bar');
+
+    expect(tabBar.props.tabBarStyle.backgroundColor).toBe(fakeTheme.colors.background);
+    expect(tabBar.props.tabBarActiveTintColor).toBe(fakeTheme.colors.accent);
+    expect(tabBar.props.tabBarInactiveTintColor).toBe(fakeTheme.colors.textSecondary);
+
+    jest.restoreAllMocks();
   });
 });

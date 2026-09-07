@@ -35,11 +35,15 @@ type MockScreenProps = {
 // Native tab-bar appearance props the real navigator forwards to the
 // UITabBar. Surfaced here on the `tab-bar` view so tests can assert the app
 // pins them (e.g. `tabBarStyle.backgroundColor` to keep the bar's scheme
-// deterministic). Neither is a real `ViewProps` member, so the host element
-// below is cast through `TabBarView` rather than typed as plain `View`.
+// deterministic, `tabBarActiveTintColor`/`tabBarInactiveTintColor` to keep the
+// tints theme-reactive — Task 6). None of these are real `ViewProps`
+// members, so the host element below is cast through `TabBarView` rather
+// than typed as plain `View`.
 type MockTabBarProps = {
   tabBarStyle?: { backgroundColor?: string };
   translucent?: boolean;
+  tabBarActiveTintColor?: string;
+  tabBarInactiveTintColor?: string;
 };
 
 // `View`'s own type has no room for `MockTabBarProps` — they are native
@@ -58,16 +62,23 @@ type MockNavigatorProps = MockTabBarProps & {
   // `tabBarStyle?.backgroundColor` (TabView.tsx:477). A mock that accepted and
   // painted `barTintColor` made root.navigator.test.tsx green while the device
   // tab bar still flipped light/dark (bug B1). Keep this mock's prop surface
-  // narrower than the app's, never wider.
-  tabBarActiveTintColor?: string;
-  tabBarInactiveTintColor?: string;
+  // narrower than the app's, never wider. `tabBarActiveTintColor` /
+  // `tabBarInactiveTintColor` ARE real NativeBottomTabNavigatorProps members
+  // (unlike `barTintColor`), so this mock forwards them onto the `tab-bar`
+  // view below for tests to assert on (Task 6: theme-reactive tab bar).
 };
 
 function Screen(_props: MockScreenProps): null {
   return null;
 }
 
-function Navigator({ children, tabBarStyle, translucent }: MockNavigatorProps) {
+function Navigator({
+  children,
+  tabBarStyle,
+  translucent,
+  tabBarActiveTintColor,
+  tabBarInactiveTintColor,
+}: MockNavigatorProps) {
   const screens = Children.toArray(children).filter(
     isValidElement,
   ) as ReactElement<MockScreenProps>[];
@@ -75,7 +86,13 @@ function Navigator({ children, tabBarStyle, translucent }: MockNavigatorProps) {
   const ActiveComponent = active?.props.component;
   return (
     <>
-      <TabBarView testID="tab-bar" tabBarStyle={tabBarStyle} translucent={translucent}>
+      <TabBarView
+        testID="tab-bar"
+        tabBarStyle={tabBarStyle}
+        translucent={translucent}
+        tabBarActiveTintColor={tabBarActiveTintColor}
+        tabBarInactiveTintColor={tabBarInactiveTintColor}
+      >
         {screens.map((screen) => (
           <Text key={screen.props.name}>{screen.props.options?.title ?? screen.props.name}</Text>
         ))}
