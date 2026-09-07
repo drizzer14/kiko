@@ -50,9 +50,10 @@ const titleByScreen = (): Record<string, string | undefined> => {
 };
 
 describe('SettingsStack', () => {
-  it('gives the Settings and Categories screens a static, localized title', () => {
+  it('gives the Settings, System, and Categories screens a static, localized title', () => {
     const titles = titleByScreen();
     expect(titles.Settings).toBe('Settings');
+    expect(titles.System).toBe('System');
     expect(titles.Categories).toBe('Categories');
   });
 });

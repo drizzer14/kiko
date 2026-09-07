@@ -43,6 +43,7 @@ export const uk: typeof en = {
     baseCurrency: 'Основна валюта',
     categories: 'Категорії',
     language: 'Мова',
+    system: 'Система',
     title: 'Налаштування',
   },
   language: {

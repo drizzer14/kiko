@@ -49,6 +49,7 @@ export type AccountsStackParamList = {
 
 export type SettingsStackParamList = {
   Settings: undefined;
+  System: undefined;
   Categories: undefined;
 };
 
