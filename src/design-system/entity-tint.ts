@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import { entityColorsByScheme } from './palette';
 
 // A subtle color-tint background: the entity's own color (one of
@@ -190,6 +192,7 @@ export const entityCardBackground = (
   colorHex: string,
   colorScheme: 'light' | 'dark' = 'dark',
 ): string =>
-  colorScheme === 'light'
-    ? lightenHex(colorHex, CARD_LIGHTEN_PERCENT)
-    : darkenHex(colorHex, CARD_DARKEN_PERCENT);
+  match(colorScheme)
+    .with('light', () => lightenHex(colorHex, CARD_LIGHTEN_PERCENT))
+    .with('dark', () => darkenHex(colorHex, CARD_DARKEN_PERCENT))
+    .exhaustive();

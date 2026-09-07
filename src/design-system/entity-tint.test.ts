@@ -188,6 +188,7 @@ describe('entityCardBackground direction', () => {
       Number.parseInt(hex.slice(3, 5), 16),
       Number.parseInt(hex.slice(5, 7), 16),
     ];
+
     for (const hex of Object.values(palette)) {
       const [cr, cg, cb] = channels(entityCardBackground(hex, 'light'));
       const [rr, rg, rb] = channels(hex);
