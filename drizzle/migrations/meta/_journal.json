@@ -120,6 +120,13 @@
       "when": 1788745896000,
       "tag": "0016_add_transaction_hold",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788745897000,
+      "tag": "0017_default_category_colors",
+      "breakpoints": true
     }
   ]
 }

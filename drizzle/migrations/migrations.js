@@ -17,6 +17,7 @@ import m0013 from './0013_add_category_sort_order.sql';
 import m0014 from './0014_lowercase_categories.sql';
 import m0015 from './0015_add_exchange_marker.sql';
 import m0016 from './0016_add_transaction_hold.sql';
+import m0017 from './0017_default_category_colors.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -39,5 +40,6 @@ export default {
     m0014,
     m0015,
     m0016,
+    m0017,
   },
 };

@@ -380,8 +380,16 @@ describe('categories seed migration', () => {
       expect(icon.length).toBeGreaterThan(0);
       expect(sql).toContain(`'${key}'`);
       expect(sql).toContain(`'${title}'`);
-      expect(sql).toContain(`'${icon}'`);
+      // The seed's own transport icon is the pre-refinement 'car' (asserted
+      // just below); every other row's seeded icon equals the effective
+      // default this fixture models, so it must appear in the seed SQL.
+      if (key !== 'transport') {
+        expect(sql).toContain(`'${icon}'`);
+      }
     }
+    // The transport row is seeded with 'car'; 0014_default_category_colors
+    // later refines it to the effective default 'bus' (asserted separately).
+    expect(sql).toContain("'car'");
 
     // `INSERT OR IGNORE` keeps the seed idempotent: re-applying it against a
     // table that already holds some (or all) canonical rows must not throw on
@@ -417,5 +425,54 @@ describe('categories seed migration', () => {
     // `sort_order = 0` tie (mirrors 0006_backfill_sort_order for accounts/holdings).
     expect((alter as { sql: string }).sql).toMatch(/UPDATE `categories` SET `sort_order`/i);
     expect((alter as { sql: string }).sql).toContain('rowid');
+  });
+
+  it('paints the eight default category colors and refines the transport icon to bus in a later, guarded migration', () => {
+    const files = migrationFiles();
+    const seed = seedMigration();
+
+    // The eight categories that carry a settled default color, each with the
+    // hex of its `entityColors` token (src/design-system/theme.ts). `utilities`
+    // and `entertainment` are intentionally left uncolored.
+    const defaultColors: Record<string, string> = {
+      groceries: '#30D158',
+      dining: '#FF9F0A',
+      transport: '#0A84FF',
+      shopping: '#FF375F',
+      health: '#FF453A',
+      cash: '#BDB76B',
+      transfers: '#FFFFFF',
+      other: '#98989D',
+    };
+
+    // A data-only migration, later than the seed, owns every color UPDATE.
+    const colorMigration = files.find(({ sql }) =>
+      /UPDATE `categories` SET `color` = '#30D158'/i.test(sql),
+    );
+    expect(colorMigration).toBeDefined();
+    const { name, sql } = colorMigration as { name: string; sql: string };
+    expect(name > seed.name).toBe(true);
+
+    for (const [key, hex] of Object.entries(defaultColors)) {
+      // Guarded by `color IS NULL` so a color the user picked themselves is
+      // never clobbered, and so the migration converges on both a fresh install
+      // and a database upgraded from the old app.
+      expect(sql).toMatch(
+        new RegExp(
+          `UPDATE \`categories\` SET \`color\` = '${hex}' WHERE \`key\` = '${key}' AND \`color\` IS NULL`,
+          'i',
+        ),
+      );
+    }
+
+    // Neither excluded category is colored.
+    expect(sql).not.toContain("'utilities'");
+    expect(sql).not.toContain("'entertainment'");
+
+    // The transport icon is refined from the seeded 'car' to 'bus', guarded on
+    // the seeded value so a user-chosen icon is preserved.
+    expect(sql).toMatch(
+      /UPDATE `categories` SET `icon` = 'bus' WHERE `key` = 'transport' AND `icon` = 'car'/i,
+    );
   });
 });
