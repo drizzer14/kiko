@@ -7,6 +7,7 @@ import { readDbKey, toSQLCipherRawKey } from '../keys/db-key';
 
 import { migrationBridge } from './migration-bridge';
 import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';
+import { deleteWithSidecars } from './migration-files';
 
 const PLAINTEXT_ALIAS = 'plaintext_out';
 
@@ -37,9 +38,10 @@ export const exportForNewApp = async (): Promise<void> => {
 
   const exportPath = `${container}/${EXPORT_DB_FILE}`;
 
-  if (await migrationBridge.fileExists(exportPath)) {
-    await migrationBridge.deleteFile(exportPath);
-  }
+  // Clear any stale target from an aborted prior export — the main file AND its
+  // -wal/-shm/-journal sidecars. A leftover journal/WAL could otherwise shadow
+  // the freshly-created target before sqlcipher_export writes it.
+  await deleteWithSidecars(exportPath);
 
   const encrypted = open({
     name: ENCRYPTED_DATABASE_NAME,

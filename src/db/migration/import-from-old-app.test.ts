@@ -118,10 +118,13 @@ describe('importFromOldApp', () => {
 });
 
 describe('finalizeImportBridge', () => {
-  it('deletes both bridge files from the shared container', async () => {
+  it('deletes both bridge files AND the export DB sidecars from the shared container', async () => {
     await finalizeImportBridge();
 
     expect(mockBridge.deleteFile).toHaveBeenCalledWith(EXPORT_PATH);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-wal`);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-shm`);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-journal`);
     expect(mockBridge.deleteFile).toHaveBeenCalledWith(SECRETS_PATH);
   });
 

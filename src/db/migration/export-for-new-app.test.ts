@@ -67,12 +67,15 @@ describe('exportForNewApp', () => {
     expect(encClose).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes a stale export target before writing a fresh one', async () => {
-    mockBridge.fileExists.mockResolvedValue(true);
-
+  it('deletes a stale export target AND its sidecars before writing a fresh one', async () => {
     await exportForNewApp();
 
+    // The main file plus every SQLite sidecar, so a leftover -wal/-journal from
+    // an aborted prior export cannot shadow the freshly-created target.
     expect(mockBridge.deleteFile).toHaveBeenCalledWith(EXPORT_PATH);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-wal`);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-shm`);
+    expect(mockBridge.deleteFile).toHaveBeenCalledWith(`${EXPORT_PATH}-journal`);
   });
 
   it('writes both secrets as one JSON file, wallet address never included', async () => {

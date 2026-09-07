@@ -10,6 +10,7 @@ import { readDbKey } from '../keys/db-key';
 
 import { migrationBridge } from './migration-bridge';
 import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';
+import { deleteWithSidecars } from './migration-files';
 
 type MigrationSecrets = {
   monobankToken: string | null;
@@ -140,7 +141,10 @@ export const finalizeImportBridge = async (): Promise<void> => {
       return;
     }
 
-    await migrationBridge.deleteFile(`${container}/${EXPORT_DB_FILE}`);
+    // Delete the export DB with its -wal/-shm/-journal sidecars, not just the
+    // main file — a lingering plaintext -wal would otherwise stay at rest in the
+    // shared container until the Phase 5 cleanup build.
+    await deleteWithSidecars(`${container}/${EXPORT_DB_FILE}`);
     await migrationBridge.deleteFile(`${container}/${SECRETS_FILE}`);
   } catch {
     // Non-fatal: the next launch retries the wipe (the caller invokes this on
