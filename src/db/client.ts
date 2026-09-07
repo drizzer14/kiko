@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/op-sqlite';
 import { DB_ENCRYPTION_ENABLED } from './db-config';
 import { openEncryptedDatabase } from './encrypted-database';
 import { migrateLegacyDatabase } from './migrate-legacy-db';
+import { finalizeImportBridge, importFromOldApp } from './migration/import-from-old-app';
 import * as schema from './schema';
 
 let connection: DB | undefined;
@@ -56,6 +57,9 @@ const openConnection = (): Promise<DB> =>
   DB_ENCRYPTION_ENABLED ? openEncryptedDatabase() : Promise.resolve(migrateLegacyDatabase());
 
 const openAndConfigure = async (): Promise<void> => {
+  // Run the one-time old-app import BEFORE opening the connection, so
+  // establishKey() finds the just-copied kiko.db. A no-op once a key exists.
+  const imported = await importFromOldApp();
   const opened = await openConnection();
   // SQLite defaults foreign_keys OFF per connection; op-sqlite's open() does not
   // change it. Enable enforcement once, on the raw connection, before any
@@ -63,6 +67,11 @@ const openAndConfigure = async (): Promise<void> => {
   // transaction, so it must run here rather than inside `write`.
   await opened.execute('PRAGMA foreign_keys = ON');
   connection = opened;
+  // Wipe the shared bridge container LAST — only after init fully resolved, and
+  // only when this launch actually imported. Best-effort, never blocks startup.
+  if (imported) {
+    await finalizeImportBridge();
+  }
 };
 
 // A concurrent or repeat invocation (a gate remount) must not open two

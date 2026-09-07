@@ -26,6 +26,15 @@ jest.mock('./db-config', () => ({
   },
 }));
 
+// The migration module reaches for the native bridge, so mock it. Default to a
+// no-op import (false) so every pre-existing suite is unaffected.
+const mockImportFromOldApp = jest.fn(async () => false);
+const mockFinalizeImportBridge = jest.fn(async () => undefined);
+jest.mock('./migration/import-from-old-app', () => ({
+  importFromOldApp: () => mockImportFromOldApp(),
+  finalizeImportBridge: () => mockFinalizeImportBridge(),
+}));
+
 import { wrapClientForDrizzle } from './client';
 
 const loadClient = (): typeof import('./client') =>
@@ -78,6 +87,7 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
+    mockImportFromOldApp.mockResolvedValue(false);
     // These cases exercise the cluster-2 encrypted launch path.
     mockEncryptionEnabled = true;
   });
@@ -132,12 +142,48 @@ describe('initDatabase / rawDatabase (encryption enabled)', () => {
 
     expect(mockOpenEncryptedDatabase).toHaveBeenCalledTimes(2);
   });
+
+  it('runs the old-app import before opening the connection', async () => {
+    const order: string[] = [];
+    mockImportFromOldApp.mockImplementation(async () => {
+      order.push('import');
+      return true;
+    });
+    mockOpenEncryptedDatabase.mockImplementation(async () => {
+      order.push('open');
+      return mockOpened;
+    });
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(order).toEqual(['import', 'open']);
+  });
+
+  it('wipes the bridge only after init resolves, and only when it imported', async () => {
+    mockImportFromOldApp.mockResolvedValue(true);
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(mockFinalizeImportBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wipe the bridge when nothing was imported', async () => {
+    mockImportFromOldApp.mockResolvedValue(false);
+    const { initDatabase } = loadClient();
+
+    await initDatabase();
+
+    expect(mockFinalizeImportBridge).not.toHaveBeenCalled();
+  });
 });
 
 describe('initDatabase (encryption disabled: plaintext launch path)', () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
+    mockImportFromOldApp.mockResolvedValue(false);
     mockEncryptionEnabled = false;
   });
 
