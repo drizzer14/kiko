@@ -1,6 +1,8 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
+import * as colorSchemeModule from '../../design-system/color-scheme';
+import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { holdingsRepo } from '../../repositories/holdings.repo';
@@ -637,6 +639,24 @@ describe('HoldingFormScreen color follows type until dirty', () => {
     const screen = await renderScreen();
 
     expect(screen.getByLabelText('Color blue').props.accessibilityState.selected).toBe(true);
+  });
+
+  it("resolves the default type's color from the LIGHT entity set on the light theme", async () => {
+    // Spy the scheme resolver → 'light' so `defaultHoldingColor(scheme)` picks
+    // the light entity set (see color-scheme.ts / palette.ts). A bank create
+    // defaults to term_deposit, whose default is `blue`; the identity icon
+    // ('calendar', the term_deposit glyph) wears the resolved effective color.
+    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
+    try {
+      const screen = await renderScreen();
+
+      expect(screen.getByLabelText('Icon calendar').props.tintColor).toBe(
+        entityColorsByScheme.light.blue,
+      );
+      expect(entityColorsByScheme.light.blue).not.toBe(entityColorsByScheme.dark.blue);
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('re-derives the color to the newly selected type default while not dirty', async () => {
