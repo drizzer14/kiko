@@ -18,8 +18,28 @@ const readPrice = guard(
       throw new Error(`CoinGecko request failed: ${response.status}`);
     },
   ],
-  (response: Response): Promise<CoinGeckoPrice> => response.json(),
+  (response: Response): Promise<unknown> => response.json(),
 );
+
+// A 200 with an unexpected body is as real a failure as a 429 — CoinGecko's
+// free tier returns `{}` (and sometimes an error object) under load. Reading
+// `data.bitcoin.usd` off it threw a bare `TypeError` that told the caller
+// nothing, and `refreshRates` turned that into "the whole sync failed".
+const isCoinGeckoPrice = (value: unknown): value is CoinGeckoPrice => {
+  if (typeof value !== 'object' || value === null || !('bitcoin' in value)) {
+    return false;
+  }
+
+  const { bitcoin } = value as { bitcoin: unknown };
+
+  return (
+    typeof bitcoin === 'object' &&
+    bitcoin !== null &&
+    'usd' in bitcoin &&
+    typeof (bitcoin as { usd: unknown }).usd === 'number' &&
+    Number.isFinite((bitcoin as { usd: number }).usd)
+  );
+};
 
 /**
  * Fetch the current BTC price in USD from CoinGecko's public simple-price
@@ -28,7 +48,11 @@ const readPrice = guard(
  */
 export const fetchBTCPrice = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
   const response = await fetchImpl(PRICE_ENDPOINT);
-  const data = await readPrice(response);
+  const data: unknown = await readPrice(response);
+
+  if (!isCoinGeckoPrice(data)) {
+    throw new Error('CoinGecko price response did not contain a finite bitcoin.usd value');
+  }
 
   return [{ base: 'BTC', quote: 'USD', rate: data.bitcoin.usd, source: 'coingecko' }];
 };

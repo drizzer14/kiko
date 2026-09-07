@@ -93,18 +93,50 @@ const donutArc = (
   ].join(' ');
 };
 
-const toPercent = (share: number): string => `${Math.round(share * 100)}%`;
+/**
+ * Whole-percent labels for a set of shares, allocated by largest remainder
+ * (the Hare quota): floor each share, then hand the leftover points to the
+ * slices with the biggest discarded fractions.
+ *
+ * Rounding each slice INDEPENDENTLY with `Math.round(share * 100)` made the
+ * column under the ring sum to 99 or 101 — three equal thirds read 33/33/33,
+ * and `[0.5, 0.25, 0.125, 0.125]` read 50/25/13/13. The allocation has to see
+ * the whole set at once, so it happens here, once, rather than per legend row.
+ *
+ * Ties on the remainder are broken by index, so the labels are stable across
+ * renders for an unchanged slice order.
+ */
+const allocatePercents = (shares: readonly number[]): number[] => {
+  const exact = shares.map((share) => share * 100);
+  const floors = exact.map((value) => Math.floor(value));
+  const allocated = floors.reduce((sum, value) => sum + value, 0);
+  const remainder = Math.round(exact.reduce((sum, value) => sum + value, 0)) - allocated;
+
+  const order = exact
+    .map((value, index) => ({ index, fraction: value - floors[index] }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+
+  const result = [...floors];
+
+  for (let step = 0; step < remainder; step += 1) {
+    const target = order[step % order.length];
+    result[target.index] += 1;
+  }
+
+  return result;
+};
 
 // One legend row, laid out as three aligned table columns: the swatch + account
 // name fills the remaining width on the left, then a fixed-width right-aligned
 // value column, then a fixed-width right-aligned percent column — so the figures
 // line up vertically down the list regardless of magnitude. The swatch wears the
 // slice's own entity color, matching its pie arc and the account card.
-const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; testID: string }> = ({
-  slice,
-  baseCurrency,
-  testID,
-}) => {
+const PieLegendEntry: FC<{
+  slice: AccountSlice;
+  baseCurrency: Currency;
+  testID: string;
+  percent: number;
+}> = ({ slice, baseCurrency, testID, percent }) => {
   return (
     <View testID={`${testID}-legend-${slice.accountId}`} style={styles.legendRow}>
       <View style={styles.legendName}>
@@ -130,7 +162,7 @@ const PieLegendEntry: FC<{ slice: AccountSlice; baseCurrency: Currency; testID: 
 
       <View testID={`${testID}-legend-percent-${slice.accountId}`} style={styles.legendPercent}>
         <Text variant="caption" tone="textSecondary">
-          {toPercent(slice.share)}
+          {`${percent}%`}
         </Text>
       </View>
     </View>
@@ -160,6 +192,7 @@ const PieChart: FC<PieChartProps> = ({
 
   const center = size / 2;
   const arcs = withAngles(slices);
+  const percents = allocatePercents(slices.map((slice) => slice.share));
 
   return (
     <Box style={styles.container}>
@@ -198,12 +231,13 @@ const PieChart: FC<PieChartProps> = ({
       </View>
 
       <Box style={styles.legend}>
-        {slices.map((slice) => (
+        {slices.map((slice, index) => (
           <PieLegendEntry
             key={slice.accountId}
             slice={slice}
             baseCurrency={baseCurrency}
             testID={testID}
+            percent={percents[index]}
           />
         ))}
       </Box>

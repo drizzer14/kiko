@@ -24,23 +24,35 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * tab bar can flash an unexpected tint on interaction. Pinning both makes
  * the scheme deterministic while keeping accent blue as the active color.
  *
- * `barTintColor` pins the bar's *background* (Bug B1). The library rebuilds
- * the UITabBar appearance on every tab's `onAppear` (react-native-bottom-tabs
- * `TabAppearModifier` → `configureStandardAppearance`). With no `barTintColor`
- * that rebuild calls `configureWithDefaultBackground()`, whose glass material
- * re-resolves against the ambient `userInterfaceStyle` — and because the app
- * pins dark only in JS (the `NavigationContainer` theme), not natively (no
- * `UIUserInterfaceStyle` in Info.plist), that ambient style is unpinned, so
- * the bar flips light/dark between pages. Setting `barTintColor` forces
- * `appearance.backgroundColor` to the concrete, scheme-independent dark
- * background token on every rebuild, so the bar holds one consistent scheme.
+ * `tabBarStyle.backgroundColor` pins the bar's *background* (Bug B1). The
+ * library rebuilds the UITabBar appearance on every tab's `onAppear`
+ * (react-native-bottom-tabs `TabAppearModifier` → `configureStandardAppearance`).
+ * With no `tabBarStyle` that rebuild calls `configureWithDefaultBackground()`,
+ * whose glass material re-resolves against the ambient `userInterfaceStyle` —
+ * and because the app pins dark only in JS (the `NavigationContainer` theme),
+ * not natively (no `UIUserInterfaceStyle` in Info.plist), that ambient style
+ * is unpinned, so the bar flips light/dark between pages. Setting
+ * `tabBarStyle.backgroundColor` forces `appearance.backgroundColor` to the
+ * concrete, scheme-independent dark background token on every rebuild, so the
+ * bar holds one consistent scheme.
  */
 const RootNavigator: FC = () => {
   const { t } = useTranslation();
 
   return (
     <Tabs.Navigator
-      barTintColor={darkTheme.colors.background}
+      // `tabBarStyle.backgroundColor` — NOT `barTintColor` — is the real
+      // NativeBottomTabNavigationConfig member. `barTintColor` is not a
+      // NativeBottomTabNavigatorProps member at all: the adapter passes it
+      // through `...rest` and react-native-bottom-tabs' TabView then
+      // re-declares `barTintColor={tabBarStyle?.backgroundColor}` AFTER that
+      // spread (TabView.tsx:477), so the native view received `undefined` and
+      // `configureWithDefaultBackground()` re-resolved the bar's glass against
+      // the ambient userInterfaceStyle on every tab's `onAppear` — the bar
+      // flipped light/dark between pages (bug B1). The Info.plist
+      // `UIUserInterfaceStyle = Dark` key removes the ambient variance too;
+      // both fixes are wanted, this one pins the concrete color.
+      tabBarStyle={{ backgroundColor: darkTheme.colors.background }}
       tabBarActiveTintColor={darkTheme.colors.accent}
       tabBarInactiveTintColor={darkTheme.colors.textSecondary}
     >

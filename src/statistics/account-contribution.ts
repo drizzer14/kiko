@@ -1,5 +1,6 @@
 import type { Currency } from '../currency/currency';
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { resolveEntityColor } from '../design-system/entity-tint';
 import { defaultAccountColor } from '../holdings/entity-colors';
 import type { RateTable } from '../rates/conversion';
 import { guardedNetWorth } from '../rates/net-worth-view';
@@ -54,7 +55,16 @@ export const buildAccountContribution = (input: {
     .map((account) => {
       const accountHoldings = holdings.filter((holding) => holding.accountId === account.id);
       const amount = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now).minorUnits;
-      const color = account.color ?? defaultAccountColor[account.kind];
+      // `resolveEntityColor` (design-system/entity-tint.ts) is the ONE function
+      // that picks an entity's effective color: a valid stored hex, else the
+      // kind default, else a safe gray. A bare `stored ?? default` let an
+      // empty-string color and an unmapped kind (a row written under a
+      // since-removed enum member — the schema enum is TS-only, no CHECK
+      // constraint) reach the chart as `''`/`undefined`, so `<Path fill>` drew
+      // black on the black card and the legend swatch was transparent while
+      // the slice still consumed ring share. Every other call site in the app
+      // already uses this; this was the last hold-out.
+      const color = resolveEntityColor(account.color, defaultAccountColor[account.kind]);
 
       return { accountId: account.id, name: account.name, amount, color };
     })

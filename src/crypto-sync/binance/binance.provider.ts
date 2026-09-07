@@ -41,6 +41,30 @@ const toSatoshis = (balance: BinanceBalance): number =>
   Money.fromMajor('BTC', Number(balance.free)).add(Money.fromMajor('BTC', Number(balance.locked)))
     .minorUnits;
 
+/**
+ * Whether the parsed `/api/v3/account` body carries a usable balances array.
+ *
+ * `fetchAccount` returns the parsed 200 body with no runtime shape check, and
+ * `(account.balances ?? [])` turned a malformed payload into a 0-satoshi
+ * balance that was WRITTEN OVER the stored BTC holding — a fabricated number
+ * indistinguishable from a real zero. Binance answers a throttled or
+ * misconfigured request with a 200-plus-error-object often enough that this is
+ * a real path, not a hypothetical one.
+ */
+const hasBalances = (body: unknown): body is { balances: unknown[] } =>
+  typeof body === 'object' &&
+  body !== null &&
+  'balances' in body &&
+  Array.isArray((body as { balances: unknown }).balances);
+
+/**
+ * Whether one balances entry is a usable BTC row. `free`/`locked` arrive as
+ * decimal STRINGS; `Number('x')` is `NaN`, which `toSatoshis` propagated
+ * straight into a `notNull` integer column.
+ */
+const isFiniteAmount = (value: unknown): boolean =>
+  typeof value === 'string' && Number.isFinite(Number(value));
+
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
   kind: 'exchange',
@@ -52,15 +76,27 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
       throw new Error('No Binance credentials stored; connect Binance before syncing');
     }
 
-    const account = await deps.fetchAccount(credentials.apiKey, credentials.secret, {
+    const account: unknown = await deps.fetchAccount(credentials.apiKey, credentials.secret, {
       fetchImpl: deps.fetchImpl,
       now: deps.now,
     });
-    // `fetchAccount` returns the parsed 200 body without a runtime shape check, so
-    // `balances` can be absent on an unexpected payload; default to empty (0 sat).
-    const balanceMinorUnits = (account.balances ?? [])
-      .filter(isBTCBalance)
-      .reduce((sum, balance) => sum + toSatoshis(balance), 0);
+
+    if (!hasBalances(account)) {
+      throw new Error('Binance account response did not contain a balances array');
+    }
+
+    const btcBalances = account.balances.filter(
+      (balance): balance is BinanceBalance =>
+        typeof balance === 'object' && balance !== null && isBTCBalance(balance as BinanceBalance),
+    );
+
+    for (const balance of btcBalances) {
+      if (!isFiniteAmount(balance.free) || !isFiniteAmount(balance.locked)) {
+        throw new Error('Binance balance contained a non-numeric free/locked amount');
+      }
+    }
+
+    const balanceMinorUnits = btcBalances.reduce((sum, balance) => sum + toSatoshis(balance), 0);
 
     return [
       {

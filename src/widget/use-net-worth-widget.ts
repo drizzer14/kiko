@@ -40,7 +40,16 @@ export const useNetWorthWidget = (): void => {
   // Mirrors `useAppLock`'s own derivation (src/auth/use-app-lock.ts): the lock is
   // only real when the compile-time master switch is on AND the user enabled it.
   const lockEnabled = APP_LOCK_ENABLED && (settingsRows.at(0)?.lockEnabled ?? false);
+  // The persisted language, in `writeNow`'s dependency list below: every
+  // formatted string in the snapshot is locale-dependent (₴1,234.56 vs
+  // 1 234,56 ₴, and since the widget's labels are carried in the snapshot, the
+  // labels themselves), but a language switch writes only `settings.language` —
+  // no other watched table, and `baseCurrency` is unchanged — so `writeNow`'s
+  // identity was stable, the debounce never re-fired, and the widget kept the
+  // previous locale until something unrelated changed.
+  const language = settingsRows.at(0)?.language ?? null;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver) `assembleSnapshot` -> `buildNetWorthSnapshot` resolves `labels.title` through `i18n.t`, which reads the active language off the global i18next singleton rather than off anything in this closure — `language` is never read directly in the body above, but `writeNow`'s identity must still invalidate on it, or a language switch (which touches no other watched table and leaves `baseCurrency` unchanged) would never re-fire the debounced write.
   const writeNow = useCallback(async (): Promise<void> => {
     // Lock on: leave no real snapshot on disk; the next tick after the user
     // turns the lock off writes one again.
@@ -61,7 +70,7 @@ export const useNetWorthWidget = (): void => {
 
     await widgetBridge.writeSnapshot(snapshot);
     widgetBridge.reloadWidget();
-  }, [accounts, holdings, rates, baseCurrency, lockEnabled]);
+  }, [accounts, holdings, rates, baseCurrency, lockEnabled, language]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

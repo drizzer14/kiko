@@ -1,5 +1,7 @@
 import { buildCategoryDisplayMap } from '../categories/category-display';
+import { readSeedCategoryColors } from '../db/__fixtures__/seed-category-colors';
 import { darkTheme } from '../design-system/theme';
+import { SEEDED_CATEGORIES } from '../repositories/__fixtures__/seeded-categories';
 
 import {
   type BreakdownTransaction,
@@ -22,6 +24,7 @@ const tx = (over: Partial<BreakdownTransaction>): BreakdownTransaction => ({
   mcc: null,
   counterIban: null,
   description: '',
+  exchangeCounterpartHoldingId: null,
   currency: 'UAH',
   ...over,
 });
@@ -140,6 +143,30 @@ describe('buildCategoryBreakdown', () => {
     expect(slices).toHaveLength(1);
     expect(slices[0].key).toBe('other');
     expect(slices[0].amount).toBe(15_00);
+  });
+
+  it('folds a category absent from the display map into the default slice', () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [
+        tx({ id: 'a', category: 'Groceries', amountMinorUnits: -500_00 }),
+        tx({ id: 'b', category: 'other', amountMinorUnits: -100_00 }),
+      ],
+      // 'Groceries' lowercases to 'groceries', which is NOT in this map — the
+      // same fold `resolveCategoryKey` applies for Home's filter chips, so an
+      // unresolvable slug merges into the default instead of becoming its own
+      // wedge carrying the default's title in a different palette hue.
+      categoryDisplay: buildCategoryDisplayMap([
+        { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
+      ]),
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+    });
+
+    expect(slices).toHaveLength(1);
+    expect(slices[0].key).toBe('other');
+    expect(slices[0].amount).toBe(600_00);
+    expect(slices[0].share).toBe(1);
   });
 
   it('folds null spending into the CONFIGURED default key, not a hardcoded one', () => {
@@ -276,5 +303,39 @@ describe('categoryColor', () => {
   it('always returns a hue drawn from the shared chart palette', () => {
     expect(darkTheme.colors.chartSeries).toContain(categoryColor('anything'));
     expect(darkTheme.colors.chartSeries).toContain(categoryColor(''));
+  });
+});
+
+// T-21: the ten categories `0002_seed_categories.sql` seeds hash onto the
+// 8-entry `chartSeries` palette with FOUR collisions (verified: shopping,
+// entertainment, transfers, other all land on #0A84FF). Migration
+// `0017_seed_category_colors.sql` gives each seeded key an explicit, distinct
+// `categories.color`, which `resolveCategoryColor` prefers over the hash — this
+// is the contract test between that migration and the chart layer.
+//
+// `seeded` is parsed from the REAL migration file (via
+// `readSeedCategoryColors`, `db/__fixtures__/seed-category-colors.ts`) rather
+// than hand-typed here, so this file's assertions and the migration's own
+// registration tests (`db/schema.category-overrides.test.ts`) read the same
+// source and cannot drift apart. That file owns asserting the parsed key set
+// against `SEEDED_CATEGORIES` and every color against
+// `theme.colors.entityColors`; this file owns the chart-layer contract —
+// `resolveCategoryColor` given those real pairs.
+describe('seeded category colors (T-21)', () => {
+  const seeded: Record<string, string> = Object.fromEntries(
+    readSeedCategoryColors().map(({ key, color }) => [key, color]),
+  );
+
+  it('resolves the ten seeded categories to ten distinct colors', () => {
+    const resolved = Object.entries(seeded).map(([key, color]) => resolveCategoryColor(color, key));
+
+    expect(new Set(resolved).size).toBe(10);
+    expect(resolved).toEqual(Object.values(seeded));
+  });
+
+  it('still collapses the ten keys onto fewer than ten hues WITHOUT stored colors, which is why the seed exists', () => {
+    const keys = SEEDED_CATEGORIES.map((category) => category.key);
+
+    expect(new Set(keys.map((key) => categoryColor(key))).size).toBeLessThan(10);
   });
 });

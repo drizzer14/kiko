@@ -45,17 +45,18 @@ const holdingTypeLabel = (type: HoldingType, t: ReturnType<typeof useTranslation
     .exhaustive();
 
 // One bar row: the type name and its converted amount above a bar whose width
-// is proportional to `amount / max`.
-const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; max: number; color: string }> = ({
+// is proportional to `abs(amount) / scale`.
+const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; scale: number; color: string }> = ({
   slice,
   baseCurrency,
-  max,
+  scale,
   color,
 }) => {
   const { t } = useTranslation();
-  // `max` is the largest entry (data is sorted desc, so `data[0]`), guarded
-  // non-zero by the caller; the widest bar therefore fills the plot exactly.
-  const width = (slice.amount / max) * VIEW_WIDTH;
+  // Clamped into the plot: the magnitude scale below already keeps the ratio
+  // in [0, 1], and the clamp makes a future mis-scaled value structurally
+  // incapable of producing an invisible (negative-width) or overflowing bar.
+  const width = Math.min(Math.max((Math.abs(slice.amount) / scale) * VIEW_WIDTH, 0), VIEW_WIDTH);
 
   return (
     <View style={styles.row}>
@@ -102,8 +103,17 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
     );
   }
 
-  // Data is sorted descending, so the first entry is the largest.
-  const max = data[0].amount;
+  // Scale against the largest MAGNITUDE, not the largest signed value. `data`
+  // is sorted descending and `buildTypeBreakdown` keeps negatives (an
+  // overdrawn Monobank credit card writes `account.balance` verbatim), so
+  // `data[0].amount` could be a negative maximum — which made every bar's
+  // `amount / max` ratio >= 1 and rendered them all full-width, and made a
+  // single negative slice among positives a NEGATIVE width that
+  // CGPathAddRoundedRect silently drew as nothing while the money label still
+  // read the real figure. Guarded non-zero: `buildTypeBreakdown` filters
+  // `amount !== 0`, but an empty-after-filter list is handled above and a
+  // defensive `|| 1` keeps the division total.
+  const scale = Math.max(...data.map((slice) => Math.abs(slice.amount))) || 1;
 
   return (
     <Box style={styles.container}>
@@ -112,7 +122,7 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
           key={slice.type}
           slice={slice}
           baseCurrency={baseCurrency}
-          max={max}
+          scale={scale}
           // Match the holding cards: each type's bar wears the same entity color
           // its holdings do, keyed off the slice's type.
           color={defaultHoldingColor[slice.type]}

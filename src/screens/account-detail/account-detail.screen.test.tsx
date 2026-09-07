@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -7,6 +7,7 @@ import '../../design-system/unistyles';
 import { formatDateTime } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
 
 import AccountDetailScreen from './account-detail.screen';
@@ -188,7 +189,9 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   ...overrides,
 });
 
-const route = { params: { accountId: 'a' } } as never;
+type AccountDetailProps = ComponentProps<typeof AccountDetailScreen>;
+
+const route = asRouteProp<AccountDetailProps['route']>('AccountDetail', { accountId: 'a' });
 
 // A UAH + USD holding pair with a USD->UAH rate: the overall converts to
 // 1,000.00 ₴ + $50.00 * 40 = 3,000.00 ₴. Shared by the two balance tests.
@@ -208,10 +211,14 @@ const multiCurrencyData = {
  * boilerplate. Live data is seeded per-test (or by `beforeEach`) before this.
  */
 const renderScreen = async () => {
-  const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
-  const view = await render(<AccountDetailScreen route={route} navigation={navigation} />, {
-    wrapper: gestureRootWrapper,
-  });
+  const navigation = navigationSpy();
+  const view = await render(
+    <AccountDetailScreen
+      route={route}
+      navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
+    />,
+    { wrapper: gestureRootWrapper },
+  );
   return { ...view, navigation };
 };
 
@@ -669,7 +676,7 @@ describe('AccountDetailScreen', () => {
 
   it('renders no context menu on a synced holding (monobankId)', async () => {
     setLiveData({
-      accounts: [account()],
+      accounts: [account({ institution: 'monobank' })],
       holdings: [
         {
           id: 'h1',
@@ -684,6 +691,27 @@ describe('AccountDetailScreen', () => {
     // A synced holding is owned by the sync, so its card renders bare with no
     // native context menu to offer a delete.
     expect(queryByTestId('card-context-menu')).toBeNull();
+  });
+
+  it('renders the context menu on a holding whose account was disconnected', async () => {
+    setLiveData({
+      // A disconnect clears the institution but KEEPS the holding's monobankId,
+      // so a later reconnect re-adopts the row. Nothing syncs the balance
+      // anymore, so the card is deletable again and offers its menu.
+      accounts: [account({ institution: null })],
+      holdings: [
+        {
+          id: 'h1',
+          name: 'Black card',
+          currency: 'UAH',
+          balanceMinorUnits: 100000,
+          metadata: { monobankId: 'mono-1' },
+        },
+      ],
+    });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('card-context-menu')).not.toBeNull();
   });
 
   it('renders a view-only header with no inline name, icon, or color editors', async () => {

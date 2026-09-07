@@ -55,4 +55,5 @@ fi
 "$DIR/deps.sh" || exit 2
 "$DIR/semgrep-rules.sh" || exit 2
 "$DIR/plist.sh" || exit 2
+"$DIR/typecheck.sh" || exit 2
 exit 0

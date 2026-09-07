@@ -100,4 +100,46 @@ describe('refreshRates', () => {
 
     expect(captured).toHaveLength(1);
   });
+
+  it('still stores fiat pairs when the BTC provider rejects', async () => {
+    const { deps, captured } = makeDeps({
+      fetchBTCPrice: () => Promise.reject(new Error('429')),
+    });
+
+    await refreshRates(deps);
+
+    expect(captured).toHaveLength(1);
+    const pairs = captured[0];
+
+    expect(pairs.some((pair) => pair.base === 'USD' && pair.quote === 'UAH')).toBe(true);
+    expect(pairs.some((pair) => pair.base === 'BTC')).toBe(false);
+  });
+
+  it('does not reject when both providers fail', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('offline')),
+      fetchBTCPrice: () => Promise.reject(new Error('429')),
+    });
+
+    await expect(refreshRates(deps)).resolves.toBeUndefined();
+
+    expect(captured).toHaveLength(0);
+  });
+
+  // BTC is anchored through the fiat USD/UAH rate (see `buildUahPrice`): a
+  // surviving BTC provider alone cannot support any pair without that
+  // anchor, and fabricating one (e.g. assuming USD:UAH = 1) would silently
+  // store a false exchange rate. "the pairs the surviving anchors support"
+  // is correctly zero pairs here, exactly like the both-fail case above —
+  // the previously stored (stale) rates are left untouched rather than
+  // being overwritten with an invented one.
+  it('composes no pairs when only the BTC provider survives (no USD anchor)', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('offline')),
+    });
+
+    await refreshRates(deps);
+
+    expect(captured).toHaveLength(0);
+  });
 });

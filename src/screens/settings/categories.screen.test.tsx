@@ -1,7 +1,9 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 
@@ -67,6 +69,19 @@ jest.mock('../../db/use-live-query', () => ({
     keys?.[0] === 'settings' ? { data: mockSettingsRows } : { data: mockLiveQueryData },
 }));
 
+type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
+
+// The screen reads neither prop (it navigates through hooks), but React
+// Navigation still types both as required, so every render supplies the pair
+// from the shared, singly-cast test doubles.
+const renderScreen = () =>
+  render(
+    <CategoriesScreen
+      navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
+      route={asRouteProp<CategoriesProps['route']>('Categories')}
+    />,
+  );
+
 describe('CategoriesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -76,7 +91,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('lists every seeded category by its title', async () => {
-    const { getByDisplayValue } = await render(<CategoriesScreen />);
+    const { getByDisplayValue } = await renderScreen();
 
     for (const category of SEEDED_CATEGORIES) {
       expect(getByDisplayValue(category.title)).toBeTruthy();
@@ -84,7 +99,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('renders each category as its own card, plus one trailing add-category card', async () => {
-    const { getAllByTestId, getByTestId } = await render(<CategoriesScreen />);
+    const { getAllByTestId, getByTestId } = await renderScreen();
 
     // One GlassSurface card per category — not a single shared surface housing
     // every row.
@@ -94,7 +109,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('renames a category via updateTitle and shows the new title in the field', async () => {
-    const { getByLabelText, getByDisplayValue } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByDisplayValue } = await renderScreen();
 
     const field = getByLabelText('Groceries title');
     await fireEvent.changeText(field, 'Food');
@@ -105,7 +120,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('does not call updateTitle when the trimmed new title is empty', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     const field = getByLabelText('Dining title');
     await fireEvent.changeText(field, '   ');
@@ -115,7 +130,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('opens the icon picker modal when a category icon is tapped', async () => {
-    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, queryByLabelText } = await renderScreen();
 
     // The modal — and its options — is absent until the icon chip is tapped.
     expect(queryByLabelText('Choose icon basket')).toBeNull();
@@ -126,7 +141,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('changes a category icon via updateIcon and closes the modal when a curated icon is chosen', async () => {
-    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, queryByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
     await fireEvent.press(getByLabelText('Choose icon basket'));
@@ -137,7 +152,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('closes the modal on cancel without changing the icon', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
     await fireEvent.press(getByText('Cancel'));
@@ -147,7 +162,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('offers a fixed curated icon set (not a free-text field) in the picker', async () => {
-    const { getByLabelText, queryByPlaceholderText } = await render(<CategoriesScreen />);
+    const { getByLabelText, queryByPlaceholderText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
 
@@ -157,7 +172,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('no longer overlays a pencil edit badge on the category icons', async () => {
-    const { queryAllByTestId } = await render(<CategoriesScreen />);
+    const { queryAllByTestId } = await renderScreen();
 
     // The bordered icon chip is now the sole edit affordance; the overlaid
     // pencil badge was removed.
@@ -165,7 +180,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('reveals the inline add-category form when the add row is tapped', async () => {
-    const { getByLabelText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, queryByLabelText } = await renderScreen();
 
     // The name field is absent until the collapsed "Add category" row is tapped.
     expect(queryByLabelText('Name')).toBeNull();
@@ -176,7 +191,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('auto-focuses the name field when the add-category form is revealed', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
 
@@ -188,12 +203,12 @@ describe('CategoriesScreen', () => {
   it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {
     // The scroll is deferred to the next frame so the just-revealed fields are
     // measured first; run that frame synchronously to assert the effect.
-    const rafSpy = jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb) => {
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
       cb(0);
       return 0;
     });
 
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
 
@@ -203,7 +218,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
@@ -221,7 +236,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('creates a category with the picked color when a swatch is tapped', async () => {
-    const { getByLabelText, getByText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), 'Travel');
@@ -236,7 +251,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('recolors a category via updateColor when a row swatch is tapped', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     // Each row's picker prefixes its swatch labels with the category title, so
     // the Groceries row's yellow swatch is addressable on its own.
@@ -246,7 +261,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('does not create a category when the name is empty', async () => {
-    const { getByLabelText, getByText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
     await fireEvent.changeText(getByLabelText('Name'), '   ');
@@ -256,7 +271,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
     // Enter a name, then back out — Cancel must be a real escape hatch.
@@ -271,7 +286,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('offers an expanded curated icon pool covering common finance categories', async () => {
-    const { getByLabelText, getAllByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText, getAllByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
 
@@ -294,7 +309,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('hides the delete control on the default category card and shows a filled star marker instead', async () => {
-    const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
+    const { queryByLabelText, getByLabelText } = await renderScreen();
 
     // `other` is the default: no delete, a filled star marker (`star.fill`)
     // instead — and the default card offers no "Set as default" either.
@@ -308,7 +323,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('shows the delete control at the bottom with a visible "Delete" label', async () => {
-    const { getAllByText, getByLabelText } = await render(<CategoriesScreen />);
+    const { getAllByText, getByLabelText } = await renderScreen();
 
     // The delete affordance now carries a visible "Delete" text label — one per
     // non-default card ('other' is the default and shows no delete), not just an
@@ -319,7 +334,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('puts the "Set as default" control in the header slot on the non-default cards and hides it on the default', async () => {
-    const { queryByLabelText, getByLabelText } = await render(<CategoriesScreen />);
+    const { queryByLabelText, getByLabelText } = await renderScreen();
 
     // The default card shows the filled-star marker in its header slot instead
     // of a "Set as default" control.
@@ -330,7 +345,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('sets a category as the default when its "Set as default" is pressed', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Set Groceries as default'));
 
@@ -338,7 +353,7 @@ describe('CategoriesScreen', () => {
   });
 
   it('confirms via the native action sheet before deleting, then deletes by key on confirm', async () => {
-    const { getByLabelText } = await render(<CategoriesScreen />);
+    const { getByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Delete Groceries'));
 
@@ -358,7 +373,7 @@ describe('CategoriesScreen', () => {
     const keys = SEEDED_CATEGORIES.map((category) => category.key);
 
     it('moves a category to the top when its move-to-top button is pressed', async () => {
-      const { getByLabelText } = await render(<CategoriesScreen />);
+      const { getByLabelText } = await renderScreen();
 
       // Transport is the third card; move-to-top lifts it above every other,
       // keeping the rest in their existing relative order.
@@ -371,7 +386,7 @@ describe('CategoriesScreen', () => {
     });
 
     it('moves a category to the bottom when its move-to-bottom button is pressed', async () => {
-      const { getByLabelText } = await render(<CategoriesScreen />);
+      const { getByLabelText } = await renderScreen();
 
       // Transport drops below every other, the rest keeping their order.
       await fireEvent.press(getByLabelText('Move Transport to bottom'));
@@ -383,7 +398,7 @@ describe('CategoriesScreen', () => {
     });
 
     it('persists a drag reorder through onGridDragEnd (only when the item actually moved)', async () => {
-      const { getByTestId } = await render(<CategoriesScreen />);
+      const { getByTestId } = await renderScreen();
 
       // A release-in-place (fromIndex === toIndex) is a held-not-dragged gesture:
       // onGridDragEnd persists nothing.
@@ -409,6 +424,19 @@ describe('CategoriesScreen', () => {
       });
       expect(mockReorder).toHaveBeenCalledWith(reordered);
     });
+
+    // Every card here wraps a live rename TextInput, unlike the accounts and
+    // holdings grids. The library's default 200ms drag-activation is shorter
+    // than iOS's own text-selection hold, so a hold meant to place the cursor
+    // (or open Paste) started a card drag instead — this grid needs a delay
+    // above that threshold (kiko-gestures).
+    it('gives the categories grid a drag delay above the iOS text-selection threshold', async () => {
+      const { getByTestId } = await renderScreen();
+
+      const grid = getByTestId('sortable-grid');
+
+      expect(grid.props.dragActivationDelay).toBeGreaterThanOrEqual(500);
+    });
   });
 
   describe('localization', () => {
@@ -423,7 +451,7 @@ describe('CategoriesScreen', () => {
         await i18n.changeLanguage('uk');
       });
 
-      const { getByDisplayValue, queryByDisplayValue } = await render(<CategoriesScreen />);
+      const { getByDisplayValue, queryByDisplayValue } = await renderScreen();
 
       expect(getByDisplayValue('Продукти')).toBeTruthy();
       expect(queryByDisplayValue('Groceries')).toBeNull();
@@ -439,7 +467,7 @@ describe('CategoriesScreen', () => {
         await i18n.changeLanguage('uk');
       });
 
-      const { getByLabelText } = await render(<CategoriesScreen />);
+      const { getByLabelText } = await renderScreen();
 
       const field = getByLabelText('Назва Groceries');
       await fireEvent(field, 'focus');
@@ -453,7 +481,7 @@ describe('CategoriesScreen', () => {
         await i18n.changeLanguage('uk');
       });
 
-      const { getByLabelText, getByDisplayValue } = await render(<CategoriesScreen />);
+      const { getByLabelText, getByDisplayValue } = await renderScreen();
 
       const field = getByLabelText('Назва Groceries');
       await fireEvent(field, 'focus');
@@ -467,7 +495,7 @@ describe('CategoriesScreen', () => {
         await i18n.changeLanguage('uk');
       });
 
-      const { getByLabelText } = await render(<CategoriesScreen />);
+      const { getByLabelText } = await renderScreen();
 
       const field = getByLabelText('Назва Groceries');
       await fireEvent(field, 'focus');

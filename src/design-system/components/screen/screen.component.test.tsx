@@ -1,5 +1,7 @@
 import { render, within } from '@testing-library/react-native';
-import { StyleSheet, Text } from 'react-native';
+import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
+
+import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so
@@ -97,12 +99,17 @@ const CONTENT_BASE_PADDING = 16;
 // above). Summing both is the only way to assert the TOTAL gap between the
 // button and the tab bar's top edge without hard-coding how `Screen` chooses
 // to split that responsibility between the two.
-type StyledElement = { props: { style?: unknown }; parent: { props: { style?: unknown } } | null };
-const totalBottomOffset = (edgeElement: StyledElement) => {
-  const ownStyle = StyleSheet.flatten(edgeElement.props.style);
-  const parentStyle = StyleSheet.flatten(edgeElement.parent?.props.style);
-  return (ownStyle.paddingBottom ?? 0) + (parentStyle.paddingBottom ?? 0);
+// `paddingBottom` is a `DimensionValue`, so it can legitimately be a percentage
+// string or absent; only a real number contributes to the summed gap these
+// tests assert on.
+const bottomPaddingOf = (style: StyleProp<ViewStyle>): number => {
+  const flattened = StyleSheet.flatten(style);
+
+  return typeof flattened?.paddingBottom === 'number' ? flattened.paddingBottom : 0;
 };
+
+const totalBottomOffset = (edgeElement: RenderedElement): number =>
+  bottomPaddingOf(edgeElement.props.style) + bottomPaddingOf(edgeElement.parent?.props.style);
 
 describe('Screen', () => {
   it('renders children in a plain (non-scrolling) View by default', async () => {

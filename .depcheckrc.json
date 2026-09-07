@@ -6,6 +6,7 @@
     "@stryker-mutator/core",
     "@stryker-mutator/jest-runner",
     "@types/jest",
+    "@types/node",
     "@typescript/native-preview",
     "babel-plugin-inline-import",
     "depcheck",

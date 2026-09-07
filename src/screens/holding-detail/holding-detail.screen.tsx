@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { TFunction } from 'i18next';
 import { type FC, useLayoutEffect } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -40,7 +41,7 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { defaultTransactionDescription } from '../../transactions/default-description';
+import { transactionRowDescription } from '../../transactions/row-description';
 import EditHeaderButton from '../edit-header-button';
 import EntityAmountHeader from '../entity-amount-header';
 import EntityHeaderIcon from '../entity-header-icon';
@@ -181,6 +182,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // + custom `headerTitle` toggle, which briefly blanked the pushed screen's back
   // button and flashed the large title collapsing on load.
   const holdingName = holding?.name ?? initialName;
+  // Counterpart holding names, so an Exchange/Convert leg on this holding reads
+  // as "Exchange to/from <the OTHER holding's CURRENT name>" in the active
+  // language — nothing is persisted (see transactions/row-description.ts).
+  const holdingNameById = new Map(holdings.map((candidate) => [candidate.id, candidate.name]));
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
@@ -336,12 +341,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                         />
                         <Box style={styles.rowDescription}>
                           <Text variant="body">
-                            {row.transaction.description ||
-                              defaultTransactionDescription(
-                                holdingName ?? '',
-                                row.transaction.amountMinorUnits,
-                                t,
-                              )}
+                            {transactionRowDescription({
+                              transaction: row.transaction,
+                              holdingName: holdingName ?? '',
+                              holdingNameById,
+                              t,
+                            })}
                           </Text>
                         </Box>
                       </Box>

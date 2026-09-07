@@ -1,6 +1,11 @@
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, Pressable, ScrollView } from 'react-native';
+import {
+  type LayoutChangeEvent,
+  Pressable,
+  ScrollView,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
@@ -33,7 +38,7 @@ const CategoryField = ({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // Each option row's vertical offset inside the ScrollView content, keyed by
   // option.key and filled from each row's onLayout. Rows can differ in height
   // (a wrapped title runs taller), so a measured offset map lands the selected

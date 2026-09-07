@@ -86,6 +86,24 @@ describe('addMonths', () => {
   });
 });
 
+describe('addMonths month-end clamping', () => {
+  it('clamps 31 Jan + 1 month to 28 Feb, not 3 Mar', () => {
+    expect(addMonths(local(2026, 0, 31), 1)).toBe(local(2026, 1, 28));
+  });
+
+  it('clamps 31 Aug + 6 months to 28 Feb, not 3 Mar', () => {
+    expect(addMonths(local(2025, 7, 31), 6)).toBe(local(2026, 1, 28));
+  });
+
+  it('clamps a backwards step the same way', () => {
+    expect(addMonths(local(2026, 2, 31), -1)).toBe(local(2026, 1, 28));
+  });
+
+  it('leaves a day that fits the target month untouched', () => {
+    expect(addMonths(local(2026, 0, 15), 1)).toBe(local(2026, 1, 15));
+  });
+});
+
 describe('periodBoundary', () => {
   it('lands each monthly boundary on the calendar anniversary of the start', () => {
     // Winter boundaries (no DST shift): the k-th monthly boundary is the 1st of
@@ -98,6 +116,16 @@ describe('periodBoundary', () => {
     // to the DST hour shift addMonths carries across a spring boundary.
     expect(periodBoundary(START, 'quarterly', 1)).toBe(addMonths(START, 3));
     expect(periodBoundary(START, 'annually', 1)).toBe(addMonths(START, 12));
+  });
+});
+
+describe('periodBoundary month-end', () => {
+  it('walks month-ends without skipping February', () => {
+    const start = local(2026, 0, 31);
+
+    expect(periodBoundary(start, 'monthly', 1)).toBe(local(2026, 1, 28));
+    expect(periodBoundary(start, 'monthly', 2)).toBe(local(2026, 2, 31));
+    expect(periodBoundary(start, 'monthly', 3)).toBe(local(2026, 3, 30));
   });
 });
 
@@ -114,6 +142,12 @@ describe('depositMaturity', () => {
     expect(depositMaturity([{ date: later }, { date: START }], 12)).toBe(
       new Date(START).setMonth(new Date(START).getMonth() + 12),
     );
+  });
+});
+
+describe('depositMaturity month-end', () => {
+  it('matures a 31 Aug 2025 six-month deposit on 28 Feb 2026', () => {
+    expect(depositMaturity([{ date: local(2025, 7, 31) }], 6)).toBe(local(2026, 1, 28));
   });
 });
 
@@ -349,6 +383,22 @@ describe('bondCouponDates — mid-month-15th + exact-maturity, stepped back from
       local(2024, 5, 15), // 15 Jun 2024
       local(2025, 5, 10), // 10 Jun 2025 = maturity, exact
     ]);
+  });
+});
+
+describe('bondCouponDates month-end maturity', () => {
+  it('pays three semiannual coupons for a 31 Oct 2026 maturity bought 1 May 2025', () => {
+    expect(bondCouponDates(local(2025, 4, 1), local(2026, 9, 31), 'semiannually')).toEqual([
+      local(2025, 9, 15),
+      local(2026, 3, 15),
+      local(2026, 9, 31),
+    ]);
+  });
+
+  it('emits no duplicate instants for a monthly month-end maturity', () => {
+    const dates = bondCouponDates(local(2025, 11, 1), local(2026, 2, 31), 'monthly');
+
+    expect(new Set(dates).size).toBe(dates.length);
   });
 });
 

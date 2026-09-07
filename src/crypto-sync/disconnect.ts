@@ -6,10 +6,12 @@ import type { BalanceProviderId } from './provider';
 /**
  * Disconnect a wallet- or Binance-connected account, the required first step
  * before it can be deleted. Mirrors `monobank/disconnect.ts`: the DB mutation
- * (`accountsRepo.disconnect` — clear `institution`, strip the sync keys from
- * the holdings) commits first; only then is the non-transactional Keychain
- * item cleared, and only for Binance — a wallet stores no secret. If the DB
- * write throws, the credentials stay put and the account stays connected.
+ * (`accountsRepo.disconnect` — clear `institution`, drop the stale `syncedAt`
+ * stamp, and KEEP each holding's `walletAddress` / `binanceAsset` so a later
+ * reconnect re-adopts those rows) commits first; only then is the
+ * non-transactional Keychain item cleared, and only for Binance — a wallet
+ * stores no secret. If the DB write throws, the credentials stay put and the
+ * account stays connected.
  */
 export const disconnectCryptoAccount = async (
   accountId: string,

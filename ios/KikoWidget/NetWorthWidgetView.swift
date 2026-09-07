@@ -36,6 +36,14 @@ struct NetWorthWidgetView: View {
         .widgetBackground()
     }
 
+    /// Shown ONLY when no snapshot could be decoded — a first install before the
+    /// app has ever run, a container/JSON failure, or a snapshot written by a
+    /// build older than `NetWorthSnapshot.Labels`. Its precondition is
+    /// literally "there is no snapshot", so there is nothing to read `labels`
+    /// from and the extension cannot reach the app's catalogues: these two
+    /// strings are the ONE place the widget is allowed to hold an English
+    /// literal, which is why `NetWorthSnapshot.Labels` carries no key for them.
+    /// Every string on the populated path below comes from `snapshot.labels`.
     private var placeholder: some View {
         VStack(spacing: 8) {
             Image(systemName: "wallet.pass")
@@ -62,7 +70,7 @@ struct NetWorthWidgetView: View {
         // currency code stay outside it and are always visible. See
         // docs/security/README.md (S2/S3).
         VStack(spacing: 4) {
-            Text("Net worth")
+            Text(snapshot.labels.title)
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Self.textSecondary)
 

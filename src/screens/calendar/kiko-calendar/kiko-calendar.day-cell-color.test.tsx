@@ -11,6 +11,7 @@ import BasicDay from 'react-native-calendars/src/calendar/day/basic';
 import PeriodDay from 'react-native-calendars/src/calendar/day/period';
 
 import { darkTheme } from '../../../design-system/theme';
+import type { RenderedElement } from '../../../test-support/rendered-element';
 
 // Mirrors the exact token mapping KikoCalendar hands react-native-calendars via its `theme`
 // prop (kiko-calendar.component.tsx's `calendarTheme`) — same tokens, not a parallel literal
@@ -23,7 +24,7 @@ const calendarTheme = {
   calendarBackground: darkTheme.colors.surfaceHigh,
 };
 
-const textColorOf = (node: { props: { style: unknown } }): unknown =>
+const textColorOf = (node: RenderedElement): unknown =>
   StyleSheet.flatten(node.props.style as never).color;
 
 describe('day-cell text color precedence — DateField single-day sheet (BasicDay)', () => {

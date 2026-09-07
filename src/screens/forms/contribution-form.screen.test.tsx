@@ -1,10 +1,14 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
+
+type ContributionFormProps = ComponentProps<typeof ContributionFormScreen>;
 
 const mockUseLiveQuery = jest.fn();
 
@@ -18,8 +22,10 @@ jest.mock('../../repositories/holdings.repo', () => ({
   },
 }));
 
-const navigation = { goBack: jest.fn(), setOptions: jest.fn() } as never;
-const route = { params: { holdingId: 'h-1' } } as never;
+const navigation = navigationSpy();
+const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {
+  holdingId: 'h-1',
+});
 
 const depositHolding = { id: 'h-1', currency: 'UAH', balanceMinorUnits: 0 };
 
@@ -27,7 +33,13 @@ const seed = (holding: unknown = depositHolding): void => {
   mockUseLiveQuery.mockImplementation(() => ({ data: [holding] }));
 };
 
-const renderScreen = () => render(<ContributionFormScreen navigation={navigation} route={route} />);
+const renderScreen = () =>
+  render(
+    <ContributionFormScreen
+      navigation={asNavigationProp<ContributionFormProps['navigation']>(navigation)}
+      route={route}
+    />,
+  );
 
 // Local midnight of today — the screen's default date, and the value these
 // tests expect when the calendar is not touched.
@@ -40,7 +52,7 @@ const today = (): number => {
 // Drive the DateField calendar: open its sheet, then fire the mocked calendar's
 // day-press for the given local day. Mirrors the holding-form date helper.
 const pickDate = async (
-  utils: ReturnType<typeof render>,
+  utils: Awaited<ReturnType<typeof render>>,
   year: number,
   month: number,
   day: number,
@@ -98,6 +110,45 @@ describe('ContributionFormScreen', () => {
       date: new Date(2025, 5, 1).getTime(),
     });
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('appends one contribution for a double-tapped Save', async () => {
+    // Hold the write open (never auto-resolving) so the first press's `await`
+    // genuinely has not settled when the second press lands — firing two real
+    // `fireEvent.press` calls back to back without awaiting between them trips
+    // React's "overlapping act() calls" guard (each is independently wrapped
+    // in its own act()), so the two presses are awaited sequentially instead;
+    // the guard is still exercised because the write only resolves when this
+    // test says so.
+    let resolveWrite: () => void = () => {};
+    (holdingsRepo.appendDepositContribution as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
+
+    const save = utils.getByText('Save contribution');
+
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+
+    expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveWrite();
+    });
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledTimes(1);
+
+    // jest.clearAllMocks() (this file's beforeEach) clears call history but
+    // not a custom mockImplementation — reset it explicitly so it does not
+    // leak this test's never-auto-resolving write into the next test.
+    (holdingsRepo.appendDepositContribution as jest.Mock).mockReset();
   });
 
   it('defaults the date to today when the calendar is not touched', async () => {

@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import type { ScrollView } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import type { AnimatedRef } from 'react-native-reanimated';
 
 export type ScreenProps = {
@@ -10,10 +10,13 @@ export type ScreenProps = {
   // so a drag near an edge can auto-scroll the parent list (the grid cannot
   // scroll a scrollable it does not hold a ref to). A screen that only needs to
   // scroll the page back to the top (e.g. the active-tab re-tap) passes a plain
-  // `useRef<ScrollView>()` instead — both are just forwarded to the ScrollView's
+  // `useRef<ScrollViewInstance>()` instead — both are just forwarded to the
+  // ScrollView's
   // `ref`, which accepts either. Only meaningful in `scroll` mode; ignored
   // otherwise.
-  scrollableRef?: AnimatedRef<ScrollView> | RefObject<ScrollView | null>;
+  // RN 0.87 split component from instance type: a ScrollView ref holds a
+  // `ScrollViewInstance`, not a `ScrollView` (which now names the component).
+  scrollableRef?: AnimatedRef<ScrollViewInstance> | RefObject<ScrollViewInstance | null>;
   // Opt-in scroll mode for a large-title screen: the native large title needs
   // a scrollable content root (`contentInsetAdjustmentBehavior="automatic"`)
   // to measure and collapse correctly. Defaults to `false`, preserving the

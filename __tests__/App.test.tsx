@@ -2,7 +2,7 @@
  * @format
  */
 
-import { render, waitFor } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
@@ -22,11 +22,11 @@ jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
 // The real Settings screen (wired into RootNavigator, rendered inside App)
 // also pulls in db/client directly (via useLiveQuery), which opens a real
 // op-sqlite connection at module load. Stub it the same way every repo test
-// does.
-const mockEnsure = jest.fn(() => Promise.resolve());
+// does. `ensure` runs from inside MigrationsGate now (stubbed to a
+// passthrough above, so it is never reached from here) — that call is
+// asserted in migrations.gate.test.tsx instead, not here.
 jest.mock('../src/repositories/settings.repo', () => ({
   settingsRepo: {
-    ensure: () => mockEnsure(),
     // Two consumers read this: the Home screen (initial route), via
     // useLiveQuery (mocked below to ignore its query argument, so the
     // resolved value's shape doesn't matter there), and useAutoSync (wired
@@ -66,17 +66,8 @@ jest.mock('../src/db/use-live-query', () => ({
 import App from '../App';
 
 describe('App', () => {
-  beforeEach(() => {
-    mockEnsure.mockClear();
-  });
-
   it('boots to the Home screen', async () => {
     const { findByText } = await render(<App />);
     expect(await findByText('Home')).toBeTruthy();
-  });
-
-  it('ensures the settings row exists once migrations succeed', async () => {
-    await render(<App />);
-    await waitFor(() => expect(mockEnsure).toHaveBeenCalledTimes(1));
   });
 });

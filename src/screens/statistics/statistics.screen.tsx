@@ -1,13 +1,13 @@
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ScrollView } from 'react-native';
-import { useAnimatedRef } from 'react-native-reanimated';
+import type { ScrollViewInstance } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
-import { DAY_MS } from '../../dates/duration';
+import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
@@ -41,6 +41,7 @@ import {
   buildCategoryBreakdown,
   type CategorySlice,
 } from '../../statistics/category-breakdown';
+import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { internalTransferTxIds } from '../../statistics/internal-transfers';
 import { buildNetWorthSeries } from '../../statistics/net-worth-series';
@@ -53,18 +54,6 @@ import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
 
 import { styles } from './statistics.styles';
-
-// UTC-midnight of the LOCAL calendar day a timestamp falls on. The date field's
-// picks are local calendar days, but the rate history stores each day as its
-// UTC-midnight instant; mapping the picked local day onto that UTC-midnight (not
-// the local one) keeps the series' bucket lookups on the correct day. In a
-// positive-UTC-offset locale (e.g. UA) a local-midnight bound sits on the
-// previous UTC day, which would read the previous day's rate.
-const startOfLocalDay = (time: number): number => {
-  const date = new Date(time);
-
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-};
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -131,15 +120,16 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
  * The Statistics tab: four blocks, in order — a converted net-worth line over
  * time (historical rates), a by-type horizontal bar chart of current value, a
  * per-account pie of current net worth, and an "Expenses by Category" donut. A
- * shared account multi-select and a date range scope the first three; the date
- * range additionally bounds the line's window. The category donut has its own,
+ * shared account multi-select scopes all four blocks. The date range bounds
+ * the net-worth line's window AND the category donut's transaction set; the
+ * by-type bar and the account pie are "now" snapshots of current value and
+ * read no range at all. The category donut additionally has its own,
  * separate category filter (title, then filter, then chart) and shows the
- * summed spend at its center. The bar and pies are "now" snapshots on the
- * current rate table and render immediately; the line reads the historical
- * rate-history table and shows a loading state while an incremental,
- * non-blocking backfill fills it in. All the chart math lives in
- * `src/statistics/`; this screen only shapes repository rows, holds the filter
- * state, and drives the backfill.
+ * summed spend at its center. The bar and pies render immediately off the
+ * current rate table; the line reads the historical rate-history table and
+ * shows a loading state while an incremental, non-blocking backfill fills it
+ * in. All the chart math lives in `src/statistics/`; this screen only shapes
+ * repository rows, holds the filter state, and drives the backfill.
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
@@ -147,8 +137,10 @@ const StatisticsScreen: FC = () => {
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
   // tab navigator's `tabPress`.
-  const scrollRef = useAnimatedRef<ScrollView>();
-  useScrollToTopOnTabPress(scrollRef);
+  const scrollRef = useAnimatedRef<ScrollViewInstance>();
+  // The live `contentOffset.y`, so the hook can skip a redundant scroll.
+  const scrollOffset = useScrollOffset(scrollRef);
+  useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
@@ -223,10 +215,20 @@ const StatisticsScreen: FC = () => {
   const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
 
   // The line's effective window: the picked range when set, otherwise the full
-  // transaction span (earliest transaction to now). The `to` bound extends to the
-  // end of its day so a same-day pick still captures that day's buckets.
+  // transaction span (earliest transaction to now). Both bounds are TRUE local
+  // midnight (`startOfLocalDay`/`endOfLocalDay`, same helpers Home uses), never
+  // a UTC-anchored approximation — a Kyiv (UTC+2/+3) pick using `Date.UTC(y, m,
+  // d)` instead used to exclude the first 2-3 local hours of every picked day
+  // from this range, silently dropping them from the donut and the net-worth
+  // line. `buildNetWorthSeries` (below) does its OWN UTC-day normalization per
+  // bucket internally (`toUtcMidnight`, since `currency_rate_history.day` is
+  // UTC-midnight) — that is a rate LOOKUP KEY concern, entirely separate from
+  // these user-facing range bounds, and this screen has no other UTC-day-key
+  // use, so no local `utcDayKey`-style helper is needed here. The `to` bound
+  // extends to the end of its day so a same-day pick still captures that
+  // day's buckets, DST-correct on a 23/25-hour local day.
   const rangeFrom = dateFrom !== null ? startOfLocalDay(dateFrom.getTime()) : spanStart;
-  const rangeTo = dateTo !== null ? startOfLocalDay(dateTo.getTime()) + DAY_MS - 1 : now;
+  const rangeTo = dateTo !== null ? endOfLocalDay(dateTo.getTime()) : now;
 
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
@@ -334,6 +336,15 @@ const StatisticsScreen: FC = () => {
   // its amount is in — a transaction row has no currency of its own — dropping
   // any whose holding is filtered out. BOTH signs are kept so the internal-
   // transfer matcher below can see the credit legs.
+  //
+  // Deliberately NOT range-filtered: every exclusion rule below (the matched-
+  // pair internal-transfer matcher especially) must see BOTH legs of a
+  // transfer even when only one falls inside the active range, or a pair that
+  // straddles `rangeFrom`/`rangeTo` gets only half-excluded and its in-range
+  // leg wrongly counts as spending. The range is applied further down, only
+  // to the rows that actually feed the breakdown (see
+  // `rangeFilteredBreakdownTransactions`) — exclusion is by id, so an
+  // out-of-range leg excluded here never reaches the breakdown anyway.
   const transactionsWithCurrency = useMemo(() => {
     const currencyByHolding = new Map(
       filtered.visibleHoldings.map((holding) => [holding.id, holding.currency]),
@@ -368,9 +379,34 @@ const StatisticsScreen: FC = () => {
         mcc: transaction.mcc,
         counterIban: transaction.counterIban,
         description: transaction.description,
+        exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
         currency: transaction.currency,
       })),
     [transactionsWithCurrency],
+  );
+
+  // The active-range slice of `transactionsWithCurrency`: this is what
+  // actually feeds the breakdown drawn on screen (both the filter menu's
+  // option list and the pie itself — see `allCategorySlices`/`categorySlices`
+  // below), so the donut and its center total agree with the range field
+  // rendered above them. The exclusion sets above are computed over the
+  // FULL, unfiltered ledger (see `transactionsWithCurrency`'s comment); only
+  // the rows actually SHOWN are scoped to the range here.
+  const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
+    () =>
+      transactionsWithCurrency
+        .filter((transaction) => transaction.time >= rangeFrom && transaction.time <= rangeTo)
+        .map((transaction) => ({
+          id: transaction.id,
+          category: transaction.category,
+          amountMinorUnits: transaction.amountMinorUnits,
+          mcc: transaction.mcc,
+          counterIban: transaction.counterIban,
+          description: transaction.description,
+          exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
+          currency: transaction.currency,
+        })),
+    [transactionsWithCurrency, rangeFrom, rangeTo],
   );
 
   // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
@@ -404,20 +440,38 @@ const StatisticsScreen: FC = () => {
     [breakdownTransactions],
   );
 
-  // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // and the cheap secondary matched-pair matcher. A row is dropped from the
-  // spending pie if ANY rule catches it.
-  const excludedTransactionIds = useMemo(
-    () => new Set([...internalTransferIds, ...mccExcludedIds, ...descriptionExcludedIds]),
-    [internalTransferIds, mccExcludedIds, descriptionExcludedIds],
+  // Exchange/Convert legs: an internal movement between the user's own
+  // holdings, structurally marked by `exchangeCounterpartHoldingId`. No other
+  // rule can see them — null mcc, empty description, and a cross-currency
+  // pair the matched-pair matcher rejects.
+  const exchangeExcludedIds = useMemo(
+    () => exchangeExcludedTxIds(breakdownTransactions),
+    [breakdownTransactions],
   );
 
-  // The unfiltered breakdown of every spending category: it feeds the filter
-  // menu's option list, and — translated below — the exclusion the pie applies.
+  // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
+  // the exchange-marker rule, and the cheap secondary matched-pair matcher. A
+  // row is dropped from the spending pie if ANY rule catches it.
+  const excludedTransactionIds = useMemo(
+    () =>
+      new Set([
+        ...internalTransferIds,
+        ...mccExcludedIds,
+        ...descriptionExcludedIds,
+        ...exchangeExcludedIds,
+      ]),
+    [internalTransferIds, mccExcludedIds, descriptionExcludedIds, exchangeExcludedIds],
+  );
+
+  // The active-range breakdown of every spending category (category-filter-
+  // unaware): it feeds the filter menu's option list, and — translated below
+  // — the exclusion the pie applies. Scoped to `rangeFilteredBreakdownTransactions`
+  // (not the full `breakdownTransactions`) so the filter menu never offers a
+  // category with zero spending IN the visible range.
   const allCategorySlices = useMemo(
     () =>
       buildCategoryBreakdown({
-        transactions: breakdownTransactions,
+        transactions: rangeFilteredBreakdownTransactions,
         categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
@@ -425,7 +479,7 @@ const StatisticsScreen: FC = () => {
         excludedTransactionIds,
       }),
     [
-      breakdownTransactions,
+      rangeFilteredBreakdownTransactions,
       categoryByKey,
       rateTable,
       baseCurrency,
@@ -494,7 +548,7 @@ const StatisticsScreen: FC = () => {
   const categorySlices = useMemo(
     () =>
       buildCategoryBreakdown({
-        transactions: breakdownTransactions,
+        transactions: rangeFilteredBreakdownTransactions,
         categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
@@ -503,7 +557,7 @@ const StatisticsScreen: FC = () => {
         excludedTransactionIds,
       }),
     [
-      breakdownTransactions,
+      rangeFilteredBreakdownTransactions,
       categoryByKey,
       rateTable,
       baseCurrency,

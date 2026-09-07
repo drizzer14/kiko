@@ -1,8 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ScrollView } from 'react-native';
-import { useAnimatedRef } from 'react-native-reanimated';
+import type { ScrollViewInstance } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 
 import type { Currency } from '../../currency/currency';
 import { APP_LOCK_ENABLED } from '../../db/db-config';
@@ -26,8 +26,10 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
-  const scrollRef = useAnimatedRef<ScrollView>();
-  useScrollToTopOnTabPress(scrollRef);
+  const scrollRef = useAnimatedRef<ScrollViewInstance>();
+  // The live `contentOffset.y`, so the hook can skip a redundant scroll.
+  const scrollOffset = useScrollOffset(scrollRef);
+  useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
   const { t } = useTranslation();
 

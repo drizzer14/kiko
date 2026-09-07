@@ -2,6 +2,11 @@ import { Money } from '../currency/money';
 
 import { convert, netWorth } from './conversion';
 
+// A fixed evaluation instant. Every holding in these cases is plain cash (no
+// `type`), so `holdingValue` takes its flat branch and the instant cannot
+// affect a total — it is pinned only to keep the call deterministic.
+const NOW = Date.UTC(2026, 0, 1);
+
 const rates = {
   'USD:UAH': 40,
   'EUR:UAH': 43,
@@ -28,16 +33,26 @@ describe('convert', () => {
 describe('netWorth', () => {
   it('sums holdings converted to the base currency', () => {
     const holdings = [
-      { currency: 'USD' as const, balanceMinorUnits: 10_000 },
-      { currency: 'UAH' as const, balanceMinorUnits: 100_000 },
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+      {
+        currency: 'UAH' as const,
+        balanceMinorUnits: 100_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
     ];
-    const total = netWorth(holdings, 'UAH', rates);
+    const total = netWorth(holdings, 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(500_000); // 4000 + 1000 UAH
   });
 
   it('returns zero in the base currency for no holdings', () => {
-    const total = netWorth([], 'UAH', rates);
+    const total = netWorth([], 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(0);
   });

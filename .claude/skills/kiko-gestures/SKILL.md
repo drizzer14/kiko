@@ -9,6 +9,7 @@ Source files: `src/screens/grid-interaction.ts`,
 `src/screens/card-context-menu.component.tsx`,
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
+`src/screens/settings/categories.screen.tsx`,
 `src/design-system/components/swipeable-row/gesture.ts`,
 `src/design-system/components/bottom-sheet/bottom-sheet.gesture.ts`.
 
@@ -71,6 +72,17 @@ the card up too far) and `autoScrollActivationOffset={75}`.
 - **`onDragEnd` always routes through `onGridDragEnd`** (`grid-interaction.ts`)
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.
+- **A grid whose cards contain a live text input needs a longer
+  `dragActivationDelay`, not a `customHandle`.** The categories grid
+  (`categories.screen.tsx`) is the one grid where every card wraps an
+  editable rename `TextInput`; the library's default 200ms activation is
+  shorter than iOS's own text-selection hold, so a hold meant to place the
+  cursor or open Paste started a card drag instead. It sets
+  `dragActivationDelay={CATEGORY_DRAG_ACTIVATION_MS}` (600ms, above that
+  threshold) rather than adding a handle, so it does not diverge from the
+  accounts/holdings grids' handle-free interaction model. Retune the
+  constant on-device if 600ms ever feels sluggish for a reorder — do not
+  guess a replacement value.
 
 ## "Synced entity renders no gesture" rule
 

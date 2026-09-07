@@ -31,11 +31,23 @@ in `net-worth-line.component.tsx` are hand-rolled. Read that file for
 their current shape before extending or copying the pattern to a new
 chart; it is the most complete example in the app and includes:
 
-- a Y-axis tick set (`buildTicks`) spread evenly across the true data
-  range, drawn with a narrow, fixed-width label column
+- a Y-axis tick set (`buildTicks`) spread evenly across the y-domain,
+  which `buildScales` and `buildTicks` both anchor SYMMETRICALLY on
+  `startReference` (`[startReference ± halfRange]`, where `halfRange` is
+  the larger distance from the reference to either data extreme) rather
+  than tightly auto-fitting the data's own min/max — so the dashed
+  baseline holds a STABLE centred position and a dip below it renders
+  proportionally instead of the baseline flipping from domain-min to
+  domain-max (teleporting across the plot) the instant net worth crosses
+  the reference; drawn with a narrow, fixed-width label column
   (`net-worth-line.styles.ts`'s `Y_AXIS_WIDTH_UNITS`) sized for a compact
   money string (`adjustsFontSizeToFit`), not the widest possible label —
-  the column is deliberately narrow so it does not steal plot width;
+  the column is deliberately narrow so it does not steal plot width — plus
+  a FLAT-range collapse case (every amount equal to `startReference`, e.g.
+  a single point or a balance that never moved) that returns just one tick
+  instead of spreading `TICK_COUNT` ticks across a zero-width range, which
+  would otherwise draw every label and every Y gridline on top of each
+  other at the same y;
 - an X-axis (time) tick set (`buildXTicks`) with intermediate date labels
   between the two range extremes, each pinned under its own vertical
   gridline by a percentage `left` offset computed from the same `x()`
@@ -96,6 +108,15 @@ color without touching native SVG internals — the same
 native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
+
+## Legend percent labels sum to 100
+
+`pie-chart.component.tsx`'s legend column never rounds a slice's share
+independently (`Math.round(share * 100)` per slice can sum to 99 or 101
+across a set). `allocatePercents` computes the whole set's integer labels
+at once by largest-remainder (Hare quota) allocation, so the column under
+the ring always sums to exactly 100 (or 0 for an empty set). Read that
+function for the tie-break rule before touching legend percent rendering.
 
 ## PieChart donut mode
 

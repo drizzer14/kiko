@@ -63,6 +63,15 @@ const DateField: FC<DateFieldProps> = ({
       ? undefined
       : { [toCalendarKey(value)]: { selected: true, selectedColor: theme.colors.accent } };
 
+  // Open on the field's current value rather than letting react-native-calendars
+  // default to the current month — same fix as the Home date-range field's
+  // calendar (see date-range-field.component.tsx): reopening on an already-set
+  // day showed no marks when that day was outside the current month. With no
+  // value yet there is nothing to anchor on, so this falls back to today, matching
+  // the range field's own no-active-range fallback (a defined day, not a blank
+  // prop left for react-native-calendars to default itself).
+  const initialDate = toCalendarKey(value ?? Date.now());
+
   return (
     <Box gap={1}>
       <Text variant="caption" tone="textSecondary">
@@ -91,6 +100,7 @@ const DateField: FC<DateFieldProps> = ({
         <KikoCalendar
           testID={`${label} calendar`}
           markedDates={markedDates}
+          initialDate={initialDate}
           onDayPress={handleDayPress}
         />
       </BottomSheet>

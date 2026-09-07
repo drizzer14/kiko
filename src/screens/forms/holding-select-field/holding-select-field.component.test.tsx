@@ -1,4 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import '../../../design-system/unistyles';
 import HoldingSelectField from '.';
@@ -50,6 +53,28 @@ describe('HoldingSelectField', () => {
     );
 
     expect(getByText('USD Deposit')).toBeTruthy();
+  });
+
+  it("right-aligns the selected holding's account caption within the field", async () => {
+    const { getByText } = await render(
+      <HoldingSelectField
+        label="To"
+        placeholder="Select holding"
+        options={options}
+        selectedId="h2"
+        onSelect={jest.fn()}
+      />,
+    );
+
+    // The trailing caption is pushed to the field's right edge with
+    // `marginLeft: 'auto'`. That is a LAYOUT style, so it lives on the Box
+    // WRAPPING the caption rather than on the Text itself — `TextProps['style']`
+    // admits only typography keys. Pinned here so a refactor cannot flatten that
+    // wrapper away (or move the style back onto Text, where it no longer
+    // typechecks) and silently lose the alignment.
+    const wrapper = ancestorWithStyle(getByText('Personal'), 'marginLeft');
+
+    expect(StyleSheet.flatten(wrapper.props.style).marginLeft).toBe('auto');
   });
 
   it('opens the sheet and reports the picked id', async () => {

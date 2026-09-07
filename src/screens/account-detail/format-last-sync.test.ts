@@ -1,14 +1,28 @@
+import '../../i18n';
 import { formatDateTime } from '../../dates/format';
+import { i18n } from '../../i18n';
 
 import { formatLastSyncAt, latestSyncedAt } from './format-last-sync';
 
 describe('formatLastSyncAt', () => {
-  it('renders Never for a null timestamp', () => {
-    expect(formatLastSyncAt(null)).toBe('Never');
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
   });
 
-  it('renders the shared date-time format otherwise', () => {
-    expect(formatLastSyncAt(1_700_000_000_000)).toBe(formatDateTime(1_700_000_000_000));
+  it('resolves the never label from the catalogue', () => {
+    expect(formatLastSyncAt(null, i18n.t)).toBe(i18n.t('accountDetail.never'));
+  });
+
+  it('resolves the never label in Ukrainian', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(formatLastSyncAt(null, i18n.t)).toBe('Ніколи');
+
+    await i18n.changeLanguage('en');
+  });
+
+  it('still formats a real timestamp', () => {
+    expect(formatLastSyncAt(1_700_000_000_000, i18n.t)).toBe(formatDateTime(1_700_000_000_000));
   });
 });
 

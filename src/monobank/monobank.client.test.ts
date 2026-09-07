@@ -24,7 +24,7 @@ describe('fetchClientInfo', () => {
     expect(result.accounts.length).toBeGreaterThan(0);
     expect(result.accounts[0].currencyCode).toBe(980);
     expect(result.accounts[0].maskedPan[0]).toContain('*');
-    expect(result.jars[0].goal).toBe(20000000);
+    expect(result.jars?.[0].goal).toBe(20000000);
     expect(result.clientId).toBe('3MSaMMtczs');
   });
 

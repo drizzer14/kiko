@@ -22,13 +22,15 @@ below).
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
+| `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
-  lint, dup, knip, deps, security, rules, plist, secrets, overrides.
+  lint, dup, knip, deps, security, rules, plist, secrets, overrides,
+  typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint.
@@ -39,17 +41,20 @@ Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
-fixtures, and the Info.plist security assertions project-wide) runs
-on `Stop` and `SubagentStop`, and stays silent only when the session
-changed neither a source file nor a harness input — a rule `.yml`, a
-file under `rules/fixtures/`, a wrapper in `scripts/checks/`, or
-`ios/Kiko/Info.plist`. A session that edited only a rule, a fixture,
-or the plist is the one most likely to have broken a rule (or
-unpinned a credential-bearing host), so it must not be the one that
-runs nothing. Both wrappers exit `2` on failure and
-print the structured block to stderr, which is how Claude Code
-surfaces the failure back to the agent. A fresh checkout must run
-`npm install` before these hooks work — every wrapper's tool lives in
+fixtures, the Info.plist security assertions, and typecheck
+project-wide) runs on `Stop` and `SubagentStop`, and stays silent
+only when the session changed neither a source file nor a harness
+input — a rule `.yml`, a file under `rules/fixtures/`, a wrapper in
+`scripts/checks/`, or `ios/Kiko/Info.plist`. A session that edited
+only a rule, a fixture, or the plist is the one most likely to have
+broken a rule (or unpinned a credential-bearing host), so it must not
+be the one that runs nothing. `tsc --noEmit` is project-wide by
+nature — a type error surfaces in the file that CONSUMES a changed
+type, not only in the file that was edited — so it never takes a
+changed-file argument. Both wrappers exit `2` on failure and print
+the structured block to stderr, which is how Claude Code surfaces the
+failure back to the agent. A fresh checkout must run `npm install`
+before these hooks work — every wrapper's tool lives in
 `node_modules`.
 
 ## Override protocol
@@ -97,13 +102,44 @@ verified usage, not dead weight:
   `babel.config.js` (it inlines the drizzle-orm migration `.sql`
   files as string exports), never imported from source, so Knip's
   static scan cannot see the usage.
+- **`tsconfig.json` `compilerOptions.types`**: the base
+  `@react-native/typescript-config` pins `types: ["jest"]`, which
+  drops the Node ambient globals and module typings that four test
+  files legitimately use — `src/db/schema.category-overrides.test.ts`
+  and `src/repositories/categories.repo.test.ts` read
+  `drizzle/migrations` through `node:fs` + `__dirname`,
+  `__tests__/info-plist.test.ts` reads `ios/Kiko/Info.plist` the same
+  way, and `src/holdings/interest.test.ts` sets `process.env.TZ` to
+  force a DST-observing zone. Jest runs on Node, so these are real,
+  available globals, not a shim; the list is widened to
+  `["jest", "node"]` (never to `[]`, which would admit every
+  `@types/*` package in `node_modules` and silently weaken the
+  check). This is a genuine widening of what `check:typecheck` can
+  see, not a suppression of any error it reports. The two other
+  `global` uses were fixed in the code instead — `jest.spyOn(global,
+  ...)` became `jest.spyOn(globalThis, ...)`, which needs no Node
+  typings at all. Be honest about the cost: `tsconfig.json` is a
+  SINGLE project covering source and tests alike, so this widening is
+  project-wide — a **production** file that imported `node:fs` would
+  now typecheck clean instead of failing, even though React Native has
+  no Node runtime and it would crash on device. Nothing does that
+  today, and `check:security`/review are the backstop; the eventual
+  remedy is a second, test-scoped tsconfig project (tests reference a
+  `tsconfig.test.json` that adds `node`, while the app project keeps
+  `types: ["jest"]`), which would make the widening unreachable from
+  `src/**` non-test code. That is deferred, not forgotten.
 - **`.depcheckrc.json` `ignores`**: the same CLI-only-invoked tools
   (`jscpd`, `knip`, `depcheck`) plus `@babel/runtime`,
   `@react-native-community/cli` and `-cli-platform-ios` (invoked by
   the `react-native` CLI, not imported), `@stryker-mutator/core` /
   `-jest-runner` (used via `stryker.conf.json` + npx), `@types/jest`
-  (type-only), and `typescript` (provides `tsc`/type declarations for
-  the toolchain, not directly invoked in a script). Also
+  (type-only), `@types/node` (type-only, in the same class as
+  `@types/jest`: it is never imported, it is reached through
+  `tsconfig.json`'s `types: ["jest", "node"]` so the file-reading
+  tests can see `node:fs`/`node:path`/`__dirname`/`process`), and
+  `typescript` (provides `tsc`/type declarations for the toolchain,
+  and now backs `check:typecheck`, but is still never imported from
+  source). Also
   `react-native-screens` (a required runtime peer of
   `@react-navigation/native-stack` — the native stack renders through
   it; it is imported inside `native-stack`, never by app code, so

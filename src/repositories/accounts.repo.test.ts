@@ -21,19 +21,34 @@ import { captureSetTx } from './capture-set-tx';
 // `createCashAccount` first read the current max `sort_order` via
 // `select(...).from(accounts)` (to append the new row at `max + 1`), then
 // insert. This answers that max query with `maxSortOrder` and captures every
-// insert payload in issue order.
-const makeCreateTx = (maxSortOrder = -1): { tx: unknown; inserts: Record<string, unknown>[] } => {
+// insert payload in issue order, alongside the NAME of the table each one
+// targeted (index-aligned) — `createCashAccount` writes to three different
+// tables. The name, not the drizzle table object: a failed `toBe(table)`
+// assertion makes Jest serialize that object, which is circular.
+const tableNameOf = (table: unknown): string => {
+  if (table === accounts) {
+    return 'accounts';
+  }
+
+  return table === holdings ? 'holdings' : 'transactions';
+};
+
+const makeCreateTx = (
+  maxSortOrder = -1,
+): { tx: unknown; inserts: Record<string, unknown>[]; insertTables: string[] } => {
   const inserts: Record<string, unknown>[] = [];
+  const insertTables: string[] = [];
   const tx = {
     select: () => ({ from: () => Promise.resolve([{ value: maxSortOrder }]) }),
-    insert: () => ({
+    insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
+        insertTables.push(tableNameOf(table));
         return Promise.resolve();
       },
     }),
   };
-  return { tx, inserts };
+  return { tx, inserts, insertTables };
 };
 
 describe('accountsRepo', () => {
@@ -149,7 +164,8 @@ describe('accountsRepo', () => {
       initialBalanceMinorUnits: 25050,
     });
 
-    expect(inserts).toHaveLength(2);
+    // Account, holding, and the holding's opening ledger row — one transaction.
+    expect(inserts).toHaveLength(3);
     const [accountInsert, holdingInsert] = inserts as [
       Record<string, unknown>,
       Record<string, unknown>,
@@ -164,6 +180,50 @@ describe('accountsRepo', () => {
     });
     expect(typeof accountInsert.id).toBe('string');
     expect((accountInsert.id as string).length).toBeGreaterThan(0);
+  });
+
+  it('seeds an opening transaction for the initial balance', async () => {
+    const { tx, inserts, insertTables } = makeCreateTx();
+    mockTx = tx;
+
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalanceMinorUnits: 250_00,
+    });
+
+    // The initial balance is a manual adjustment like any other: without its own
+    // ledger row, `holdingValueAt` back-derives an opening balance the ledger
+    // cannot explain, and the whole historical net-worth series carries a step.
+    const [, holdingInsert, openingRow] = inserts as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(insertTables).toEqual(['accounts', 'holdings', 'transactions']);
+    expect(openingRow).toMatchObject({
+      holdingId: holdingInsert.id,
+      amountMinorUnits: 250_00,
+      source: 'manual',
+      // No persisted sentence and no category: the label resolves at render time.
+      description: '',
+      category: null,
+    });
+    expect(typeof openingRow.time).toBe('number');
+  });
+
+  it('seeds no transaction for a zero initial balance', async () => {
+    const { tx, inserts, insertTables } = makeCreateTx();
+    mockTx = tx;
+
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalanceMinorUnits: 0,
+    });
+
+    expect(inserts).toHaveLength(2);
+    expect(insertTables).toEqual(['accounts', 'holdings']);
   });
 });
 
@@ -261,7 +321,7 @@ const makeDisconnectTx = (
 };
 
 describe('accountsRepo.disconnect', () => {
-  it('clears the account institution and strips monobankId from each synced holding', async () => {
+  it('clears the account institution and KEEPS each holding sync key', async () => {
     const { tx, captured } = makeDisconnectTx([
       { id: 'card-1', metadata: { monobankId: 'mono-card', iban: 'UA123', maskedPan: ['1234'] } },
       { id: 'jar-1', metadata: { monobankId: 'mono-jar' } },
@@ -270,19 +330,15 @@ describe('accountsRepo.disconnect', () => {
 
     await accountsRepo.disconnect('acc-1');
 
-    // First write clears the account's institution.
-    expect(captured.updates[0]).toEqual({ table: accounts, set: { institution: null } });
-    // The card holding keeps its other metadata but loses monobankId.
-    expect(captured.updates[1]).toEqual({
-      table: holdings,
-      set: { metadata: { iban: 'UA123', maskedPan: ['1234'] } },
-    });
-    // The jar holding had only monobankId, so its metadata is emptied to null.
-    expect(captured.updates[2]).toEqual({ table: holdings, set: { metadata: null } });
-    expect(captured.updates).toHaveLength(3);
+    // The only write is the institution clear: the sync keys stay on the
+    // holdings so a later reconnect re-adopts these very rows (the
+    // metadata-key upsert matches on them) instead of inserting duplicates
+    // that double-count the balance. Neither holding carries a `syncedAt`
+    // stamp, so no metadata rewrite is issued at all.
+    expect(captured.updates).toEqual([{ table: accounts, set: { institution: null } }]);
   });
 
-  it('leaves a manual holding (no monobankId) under the account untouched', async () => {
+  it('leaves a manual holding (no sync key) under the account untouched', async () => {
     const { tx, captured } = makeDisconnectTx([
       { id: 'manual-1', metadata: { contributions: [] } },
       { id: 'card-1', metadata: { monobankId: 'mono-card' } },
@@ -291,11 +347,28 @@ describe('accountsRepo.disconnect', () => {
 
     await accountsRepo.disconnect('acc-1');
 
-    // Only the institution clear and the synced-holding rewrite are issued.
-    expect(captured.updates).toEqual([
-      { table: accounts, set: { institution: null } },
-      { table: holdings, set: { metadata: null } },
+    expect(captured.updates).toEqual([{ table: accounts, set: { institution: null } }]);
+  });
+
+  it('empties metadata to null when the syncedAt stamp was its only key', async () => {
+    const { tx, captured } = makeDisconnectTx([{ id: 'btc-1', metadata: { syncedAt: 1 } }]);
+    mockTx = tx;
+
+    await accountsRepo.disconnect('acc-crypto');
+
+    expect(captured.updates[1]).toEqual({ table: holdings, set: { metadata: null } });
+  });
+
+  it('skips a holding whose metadata is not a record rather than throwing', async () => {
+    const { tx, captured } = makeDisconnectTx([
+      { id: 'odd-1', metadata: 'legacy-string' },
+      { id: 'card-1', metadata: null },
     ]);
+    mockTx = tx;
+
+    await accountsRepo.disconnect('acc-1');
+
+    expect(captured.updates).toEqual([{ table: accounts, set: { institution: null } }]);
   });
 
   it('clears the institution even when the account has no holdings', async () => {
@@ -307,22 +380,26 @@ describe('accountsRepo.disconnect', () => {
     expect(captured.updates).toEqual([{ table: accounts, set: { institution: null } }]);
   });
 
-  it('produces rows that no longer read as synced, so remove then accepts them and cascades', async () => {
-    const { tx, captured } = makeDisconnectTx([
+  it('leaves rows that no longer read as synced, so remove then accepts them and cascades', async () => {
+    const holdingRows = [
       { id: 'card-1', metadata: { monobankId: 'mono-card', iban: 'UA123' } },
       { id: 'jar-1', metadata: { monobankId: 'mono-jar' } },
-    ]);
+    ];
+    const { tx, captured } = makeDisconnectTx(holdingRows);
     mockTx = tx;
 
     await accountsRepo.disconnect('acc-1');
 
-    // Reconstruct the account and holdings as disconnect left them, then prove
-    // the deletability predicates flip to false — the exact contract remove relies on.
-    const [accountUpdate, ...holdingUpdates] = captured.updates;
+    // Reconstruct the account as disconnect left it, then prove the
+    // deletability predicates flip to false — the exact contract remove relies
+    // on. Each holding KEEPS its sync key; it is the cleared institution alone
+    // that makes it read as manual.
+    const [accountUpdate] = captured.updates;
     const disconnectedAccount = { institution: accountUpdate.set.institution as string | null };
     expect(isSyncedAccount(disconnectedAccount)).toBe(false);
-    for (const holdingUpdate of holdingUpdates) {
-      expect(isSyncedHolding({ metadata: holdingUpdate.set.metadata })).toBe(false);
+    for (const holdingRow of holdingRows) {
+      expect(typeof holdingRow.metadata.monobankId).toBe('string');
+      expect(isSyncedHolding(holdingRow, disconnectedAccount)).toBe(false);
     }
 
     // The now-manual account is accepted by remove and cascades to holdings/transactions.
@@ -337,7 +414,7 @@ describe('accountsRepo.disconnect', () => {
     expect(removeCaptured.deletedFrom).toEqual([transactions, transactions, holdings, accounts]);
   });
 
-  it('strips walletAddress and syncedAt from a wallet-synced holding, emptying its metadata', async () => {
+  it('drops the stale syncedAt stamp from a wallet-synced holding but keeps its address', async () => {
     const { tx, captured } = makeDisconnectTx([
       {
         id: 'btc-1',
@@ -353,11 +430,14 @@ describe('accountsRepo.disconnect', () => {
 
     expect(captured.updates).toEqual([
       { table: accounts, set: { institution: null } },
-      { table: holdings, set: { metadata: null } },
+      {
+        table: holdings,
+        set: { metadata: { walletAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' } },
+      },
     ]);
   });
 
-  it('strips binanceAsset and syncedAt but keeps unrelated metadata keys', async () => {
+  it('drops syncedAt from a Binance holding but keeps binanceAsset and unrelated keys', async () => {
     const { tx, captured } = makeDisconnectTx([
       { id: 'bnb-1', metadata: { binanceAsset: 'BTC', syncedAt: 1_704_326_400_000, note: 'spot' } },
     ]);
@@ -365,7 +445,10 @@ describe('accountsRepo.disconnect', () => {
 
     await accountsRepo.disconnect('acc-crypto');
 
-    expect(captured.updates[1]).toEqual({ table: holdings, set: { metadata: { note: 'spot' } } });
+    expect(captured.updates[1]).toEqual({
+      table: holdings,
+      set: { metadata: { binanceAsset: 'BTC', note: 'spot' } },
+    });
   });
 });
 

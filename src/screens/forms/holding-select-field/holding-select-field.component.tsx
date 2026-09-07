@@ -61,9 +61,22 @@ const HoldingSelectField = ({
           </Text>
 
           {selected && (
-            <Text variant="caption" tone="textSecondary" style={styles.fieldAccount}>
-              {selected.accountName}
-            </Text>
+            // The right-push is a LAYOUT concern, so it sits on a Box rather
+            // than on Text — `TextProps['style']` deliberately admits only
+            // typography keys (fontSize/fontWeight/textAlign/textTransform),
+            // because `tone`/`variant` must stay the authority on appearance.
+            // Same shape as the selected row's `checkmark` Box below.
+            //
+            // NOTE: this moved `fieldAccount` one node UP. Text forwards `style`
+            // straight to RNText, so the caption WAS already right-pushed before
+            // — the push now applies to this wrapper instead. The component test
+            // pins the wrapper's `marginLeft: 'auto'` so a refactor cannot
+            // flatten the Box away and silently lose the alignment.
+            <Box style={styles.fieldAccount}>
+              <Text variant="caption" tone="textSecondary">
+                {selected.accountName}
+              </Text>
+            </Box>
           )}
         </Box>
       </Pressable>

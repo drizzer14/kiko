@@ -68,9 +68,21 @@ const buildScales = (points: NetWorthPoint[], startReference: number, height: nu
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  const valuePad = (maxValue - minValue || 1) * VALUE_PADDING_RATIO;
-  const paddedMin = minValue - valuePad;
-  const paddedSpan = maxValue - minValue + valuePad * 2 || 1;
+  // Anchor the domain symmetrically on `startReference`: the half-range is the
+  // larger of the two distances from the reference to the data extremes, so the
+  // dashed baseline holds a STABLE vertical position (centred) and a dip below
+  // it renders proportionally instead of flipping from domain-min to domain-max
+  // (and teleporting the baseline across the plot) the instant net worth crosses
+  // the reference. `buildTicks` mirrors this exact domain for the labels.
+  const halfRange = Math.max(
+    Math.abs(maxValue - startReference),
+    Math.abs(startReference - minValue),
+  );
+  const anchoredMin = startReference - halfRange;
+  const anchoredMax = startReference + halfRange;
+  const valuePad = (anchoredMax - anchoredMin || 1) * VALUE_PADDING_RATIO;
+  const paddedMin = anchoredMin - valuePad;
+  const paddedSpan = anchoredMax - anchoredMin + valuePad * 2 || 1;
   const plotWidth = VIEW_WIDTH - PADDING_X * 2;
   const plotHeight = height - PADDING_Y * 2;
 
@@ -87,15 +99,51 @@ type Tick = { key: string; value: number };
 
 // The evenly-spaced Y-axis ticks, top (max) to bottom (min), taken from the true
 // data-and-reference range so the labels read clean extremes.
+//
+// A FLAT range (every amount equal to `startReference` — a single point, or a
+// holding whose balance never moved in the window) collapses to ONE tick, the
+// same way `buildXTicks` collapses a single-instant time range below. Spreading
+// TICK_COUNT ticks across a zero-width range put all of them at the same value
+// AND the same y: four labels drawn on top of each other and four coincident
+// gridlines.
+//
+// A non-flat range whose ticks nonetheless format to the SAME compact-money
+// string (e.g. four ticks all rendering "5K" — see `compact.ts`'s unit-choice
+// fallthrough) is a separate, label-only collapse: the geometry (distinct
+// values, distinct y positions) stays correct, only the text repeats. That is
+// out of scope here — the reported bug is the geometry collapsing, not the
+// label text.
 const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
+  // Mirror `buildScales`'s symmetric anchoring so the labels line up with the
+  // gridlines: the ticks span the same `[startReference ± halfRange]` domain the
+  // line/reference geometry is drawn in.
+  const halfRange = Math.max(
+    Math.abs(maxValue - startReference),
+    Math.abs(startReference - minValue),
+  );
+
+  // A zero half-range is the flat/degenerate case (every amount equal to
+  // `startReference` — a single point, or a balance that never moved): collapse
+  // to ONE centred tick instead of spreading TICK_COUNT ticks across a
+  // zero-width range (which would stack every label and gridline at one y and,
+  // worse, divide by zero when normalising the fraction below).
+  if (halfRange === 0) {
+    return [{ key: '0.0000', value: startReference }];
+  }
+
+  const anchoredMin = startReference - halfRange;
+  const anchoredMax = startReference + halfRange;
 
   return Array.from({ length: TICK_COUNT }, (_, index) => {
     const fraction = index / (TICK_COUNT - 1);
 
-    return { key: fraction.toFixed(4), value: maxValue - fraction * (maxValue - minValue) };
+    return {
+      key: fraction.toFixed(4),
+      value: anchoredMax - fraction * (anchoredMax - anchoredMin),
+    };
   });
 };
 
@@ -241,6 +289,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               {ticks.map((tick) => (
                 <Line
                   key={tick.key}
+                  testID={`net-worth-line-y-grid-${tick.key}`}
                   x1={PADDING_X}
                   y1={scales.y(tick.value)}
                   x2={VIEW_WIDTH - PADDING_X}

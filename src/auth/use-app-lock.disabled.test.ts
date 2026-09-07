@@ -12,7 +12,7 @@ import { useAppLock } from './use-app-lock';
 // `import type`s from it (erased) and defers the real import behind the flag.
 jest.mock('../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
-const mockAuthenticate = jest.fn(async () => ({ kind: 'success' }) as const);
+const mockAuthenticate = jest.fn(async (..._args: unknown[]) => ({ kind: 'success' }) as const);
 jest.mock('./biometrics', () => ({
   authenticate: (...args: unknown[]) => mockAuthenticate(...args),
 }));

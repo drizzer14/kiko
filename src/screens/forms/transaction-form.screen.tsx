@@ -1,5 +1,6 @@
+import type { TFunction } from 'i18next';
 import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -8,7 +9,7 @@ import {
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
 } from '../../categories/category-display';
-import { type Currency, currencyScale, currencySymbol } from '../../currency/currency';
+import { type Currency, currencySymbol } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
@@ -42,8 +43,9 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { defaultTransactionDescription } from '../../transactions/default-description';
+import { normalizeTransactionName } from '../../transactions/normalize-name';
 
-import { groupAmount } from './amount-format';
+import { groupAmount, majorAmountText } from './amount-format';
 import CategoryField from './category-field';
 import ChipRow from './chip-row';
 import ConvertExchangeFields from './convert-exchange-fields';
@@ -51,6 +53,7 @@ import DateField from './date-field';
 import ExchangeFields from './exchange-fields';
 import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
 import TimeField from './time-field';
+import { useSubmitOnce } from './use-submit-once';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
@@ -148,11 +151,14 @@ const resolveDescriptionPlaceholder = (
     : t('forms.transaction.description');
 
 // Whether the footer's Save button is disabled: a fresh income/expense add is
-// saveable only once it has BOTH an amount and a category. An edit, an
-// Exchange, and a convert are never disabled here — each validates its own
-// inputs inside `save` — so ONLY a create still missing its amount or category
-// blocks the button. Kept module-level and pure so its boolean chain stays out
-// of the screen component's cognitive-complexity budget.
+// saveable only once it has BOTH a positive amount and a category. An edit,
+// an Exchange, and a convert are never disabled here — each validates its own
+// inputs inside `save` — so ONLY a create still missing its amount, category,
+// or typing a non-positive amount blocks the button. The button now reflects
+// the same `<= 0` rejection `tryWriteManual` applies, instead of leaving a
+// zero-amount tap to silently do nothing. Kept module-level and pure so its
+// boolean chain stays out of the screen component's cognitive-complexity
+// budget.
 const isSaveDisabled = (
   isEditing: boolean,
   isExchange: boolean,
@@ -164,7 +170,31 @@ const isSaveDisabled = (
     return false;
   }
 
-  return amount.trim() === '' || selectedCategory === null;
+  const magnitude = parseAmount(amount);
+
+  return (
+    amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0 || selectedCategory === null
+  );
+};
+
+// Whether `save` needs to raise the propagation-confirm sheet, and with what
+// payload: only when the category actually changed AND the affected name is
+// non-blank. `upsertCategoryOverride` refuses to write a rule for a blank
+// normalized name (it must not become a catch-all), so confirming propagation
+// for one asked `Apply "Groceries" to all transactions named ""?` and then
+// wrote nothing — the row's own category is already persisted by `writeManual`
+// regardless, so `save` just returns to the list instead. Kept module-level
+// and pure for the same cognitive-complexity-budget reason as `isSaveDisabled`.
+const resolveCategoryOverrideRequest = (
+  categoryChanged: boolean,
+  selectedCategory: string | null,
+  name: string,
+): { name: string; category: string } | null => {
+  if (!categoryChanged || selectedCategory === null || normalizeTransactionName(name) === '') {
+    return null;
+  }
+
+  return { name, category: selectedCategory };
 };
 
 // The mode row's options: Exchange is a CREATE-ONLY mode, offered only from a
@@ -222,10 +252,8 @@ const toAmountFields = (
   currency: Currency,
   amountMinorUnits: number,
 ): { amount: string; sign: Sign } => {
-  const factor = 10 ** currencyScale[currency];
-
   return {
-    amount: (Math.abs(amountMinorUnits) / factor).toString(),
+    amount: majorAmountText(currency, amountMinorUnits),
     sign: amountMinorUnits < 0 ? 'expense' : 'income',
   };
 };
@@ -256,7 +284,7 @@ const resolveConvertView = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
   holdingId: string | undefined,
-  t: (key: string) => string,
+  t: TFunction,
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — Requirement B's cash-only restriction
@@ -340,7 +368,7 @@ type FieldGroupProps = {
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
-  t: (key: string) => string;
+  t: TFunction;
 };
 
 const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
@@ -431,7 +459,7 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
-// The mode chip row, category picker, "Convert to Exchange" action, and
+// The mode chip row, category picker, "Convert to exchange" action, and
 // Delete button: everything below the main field group EXCEPT while
 // converting (a convert has no mode toggle, no category, and no delete —
 // just the convert group and Save). Extracted to its own module-level
@@ -453,7 +481,7 @@ type ModeAndActionsProps = {
   onPressConvert: () => void;
   isEditing: boolean;
   onPressDelete: () => void;
-  t: (key: string) => string;
+  t: TFunction;
 };
 
 const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
@@ -710,14 +738,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     navigation.setOptions({ title });
   }, [navigation, title]);
 
-  // Persist the amount/description edit on a manual row (edit vs. add), leaving
-  // the category to the always-propagating override path below. Only ever
-  // called from the income/expense path (`save` branches Exchange off to
+  // Persist the amount/description edit on a manual row (edit vs. add). Only
+  // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
   const writeManual = async (): Promise<void> => {
     const amountMinorUnits = signedMinorUnits(currency, amount, mode as Sign);
 
     if (editingId) {
+      // Leave the category to the always-propagating override path below:
+      // `transactionsRepo.update` deliberately handles only amount/time/
+      // description with its own balance-delta logic, and an edit's category
+      // change still routes through the override rule.
       await transactionsRepo.update({
         transactionId: editingId,
         amountMinorUnits,
@@ -729,7 +760,20 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
 
     if (holdingId) {
-      await transactionsRepo.recordManual({ holdingId, amountMinorUnits, time, description });
+      await transactionsRepo.recordManual({
+        holdingId,
+        amountMinorUnits,
+        time,
+        description,
+        // The row carries its OWN category. The override sheet below governs
+        // only whether the pick ALSO propagates to every same-name row; it is
+        // not what categorises this row. Previously the pick was persisted
+        // only through the override rule, which returns early on a blank
+        // normalized name — so a blank-description row (and any row whose
+        // override the user cancelled) was written uncategorised despite
+        // `isSaveDisabled` forcing a pick on create.
+        category: selectedCategory,
+      });
     }
   };
 
@@ -747,6 +791,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     );
     navigation.goBack();
   };
+
+  // A second `useSubmitOnce` instance, not the Save button's: this guards the
+  // sheet's "Apply" write, an independent action reachable only once `save()`
+  // has already returned (its own guard is idle again by then) and the sheet
+  // is showing. Sharing one instance would conflate two different actions'
+  // in-flight state under a single boolean — either action could wrongly
+  // block the other — for no benefit, since neither button is ever pressed
+  // while the other's write is in flight.
+  const { onPress: onApplyOverride, isSubmitting: isApplyingOverride } =
+    useSubmitOnce(applyOverride);
 
   const cancelOverride = (): void => {
     navigation.goBack();
@@ -790,10 +844,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
     await transactionsRepo.recordExchange({
       sourceHoldingId: holding.id,
-      sourceName: holding.name,
       valueOutMinorUnits: valueOut.minorUnits,
       destinationHoldingId: destination.id,
-      destinationName: destination.name,
       destinationType: destination.type,
       valueInMinorUnits: valueInMoney.minorUnits,
       time,
@@ -809,7 +861,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const saveConvert = async (): Promise<void> => {
     const counterpart = holdings.find((candidate) => candidate.id === counterpartHoldingId);
 
-    if (existing === undefined || counterpart === undefined || convertView.direction === null) {
+    // `holding` (the EXISTING row's own holding) is required, not optional:
+    // its id becomes the new leg's exchange marker, and a marker pointing at
+    // nothing would leave the leg unlabelable at render time.
+    if (
+      existing === undefined ||
+      counterpart === undefined ||
+      holding === undefined ||
+      convertView.direction === null
+    ) {
       return;
     }
 
@@ -826,19 +886,28 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       counterpartHoldingId: counterpart.id,
       counterpartType: counterpart.type,
       amountMinorUnits: counterpartMoney.minorUnits,
-      existingHoldingName: holding?.name ?? '',
+      existingTransactionId: existing.id,
+      existingHoldingId: holding.id,
       time,
     });
 
     navigation.goBack();
   };
 
-  // Guard: reject an empty or non-numeric amount (no zero-amount row), then
-  // write the manual edit. Returns whether the write happened, so `save` can
-  // abort the whole flow (including the category confirm below) on a bad
-  // amount without its own nested branch.
+  // Guard: reject an empty, non-numeric, or NON-POSITIVE amount, then write
+  // the manual edit. Returns whether the write happened, so `save` can abort
+  // the whole flow (including the category confirm below) on a bad amount
+  // without its own nested branch.
+  //
+  // The magnitude test is the same `<= 0` rejection `saveExchange` and
+  // `saveConvert` already apply. Testing only empty/NaN let `"0"` through and
+  // created a 0.00 row, contradicting this guard's own "no zero-amount row"
+  // claim. The user's income/expense chip carries the sign, so the typed
+  // magnitude is always non-negative here — `<= 0` means "zero".
   const tryWriteManual = async (): Promise<boolean> => {
-    if (amount.trim() === '' || Number.isNaN(parseAmount(amount))) {
+    const magnitude = parseAmount(amount);
+
+    if (amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0) {
       return false;
     }
 
@@ -866,17 +935,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       return;
     }
 
-    if (categoryChanged && selectedCategory !== null) {
-      // The rule keys on the synced row's own description (read-only) or the
-      // just-saved manual description.
-      const name = isReadOnly ? (existing?.description ?? '') : description;
-      setPendingOverride({ name, category: selectedCategory });
+    // The rule keys on the synced row's own description (read-only) or the
+    // just-saved manual description.
+    const name = isReadOnly ? (existing?.description ?? '') : description;
+    const overrideRequest = resolveCategoryOverrideRequest(categoryChanged, selectedCategory, name);
+
+    if (overrideRequest) {
+      setPendingOverride(overrideRequest);
 
       return;
     }
 
     navigation.goBack();
   };
+
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
   // A manual row can be deleted; the confirm dialog guards the destructive write,
   // and only its "Delete" button runs the removal, then returns to the list.
@@ -907,7 +980,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scroll
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={save} disabled={disableSave}>
+            <Button onPress={onSave} disabled={disableSave || isSubmitting}>
               {t('common.save')}
             </Button>
           ) : undefined
@@ -955,7 +1028,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             t,
           })}
 
-          {/* The mode chip row, category picker, "Convert to Exchange" action,
+          {/* The mode chip row, category picker, "Convert to exchange" action,
             and Delete button — everything below the main field group EXCEPT
             while converting. The `!converting` gate and every `&&`-conditional
             live in the module-level `renderModeAndActions` (see above). */}
@@ -1001,7 +1074,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {overrideMessage}
         </Text>
 
-        <Button onPress={applyOverride}>{t('forms.transaction.apply')}</Button>
+        <Button onPress={onApplyOverride} disabled={isApplyingOverride}>
+          {t('forms.transaction.apply')}
+        </Button>
 
         <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
           {t('common.cancel')}

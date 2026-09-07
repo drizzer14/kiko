@@ -1,8 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { TFunction } from 'i18next';
 import type { FC } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { type TFunction, useTranslation } from 'react-i18next';
-import { Alert, type ScrollView } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
@@ -131,7 +132,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
-  const scrollableRef = useAnimatedRef<ScrollView>();
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
   const isBankAccount = account?.kind === 'bank';
   const isCryptoAccount = account?.kind === 'crypto';
@@ -256,7 +257,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 <SymbolIcon name="clock" tone="textSecondary" />
                 <Text variant="body" tone="textSecondary">
                   {t('accountDetail.lastSync', {
-                    time: formatLastSyncAt(settingsRows.at(0)?.lastSyncAt ?? null),
+                    time: formatLastSyncAt(settingsRows.at(0)?.lastSyncAt ?? null, t),
                   })}
                 </Text>
               </Box>
@@ -338,7 +339,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 <Box testID="holding-grid-item">
                   <CardContextMenu
                     name={item.name}
-                    deletable={!isSyncedHolding(item)}
+                    deletable={!isSyncedHolding(item, account)}
                     onDelete={() => holdingsRepo.remove(item.id)}
                   >
                     <HoldingCard
@@ -354,8 +355,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                   </CardContextMenu>
                 </Box>
               )}
-              onDragEnd={({ key, fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd({ key, fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
+              onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
               }
             />
           </Box>

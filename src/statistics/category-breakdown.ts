@@ -1,4 +1,8 @@
-import { resolveCategoryDisplay } from '../categories/category-display';
+import {
+  type CategoryDisplay,
+  resolveCategoryDisplay,
+  resolveCategoryKey,
+} from '../categories/category-display';
 import type { Currency } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow, TransactionRow } from '../db/schema';
@@ -16,7 +20,13 @@ const { chartSeries } = darkTheme.colors;
  */
 export type BreakdownTransaction = Pick<
   TransactionRow,
-  'id' | 'category' | 'amountMinorUnits' | 'mcc' | 'counterIban' | 'description'
+  | 'id'
+  | 'category'
+  | 'amountMinorUnits'
+  | 'mcc'
+  | 'counterIban'
+  | 'description'
+  | 'exchangeCounterpartHoldingId'
 > & {
   currency: HoldingRow['currency'];
 };
@@ -73,13 +83,19 @@ export const resolveCategoryColor = (
     ? storedColor
     : categoryColor(key);
 
-// The normalized grouping key for a transaction's category: lowercased to match
-// `resolveCategoryDisplay`'s own lookup convention, with a null/empty category
-// folding into the DEFAULT category key so uncategorized spending merges into
-// the default's slice rather than a separate bucket.
-const groupKey = (category: string | null, defaultKey: string): string => {
-  return category?.toLowerCase() || defaultKey;
-};
+// The normalized grouping key for a transaction's category: lowercased, with a
+// null/empty category AND a slug the display map cannot resolve both folding
+// into the DEFAULT category key. This is the same fold `resolveCategoryKey`
+// (categories/category-display.ts) applies for Home's filter chips — keeping an
+// unresolvable slug as its own bucket produced several wedges all labelled with
+// the default's title, in different palette hues, because
+// `resolveCategoryDisplay` had already folded the TITLE while this kept the KEY.
+// One fold, one place.
+const groupKey = (
+  category: string | null,
+  byKey: ReadonlyMap<string, CategoryDisplay>,
+  defaultKey: string,
+): string => resolveCategoryKey(category, byKey, defaultKey);
 
 /**
  * Build one pie slice per spending category for the "Spending by Category"
@@ -92,14 +108,15 @@ const groupKey = (category: string | null, defaultKey: string): string => {
  * shares are computed, so the visible slices always reshare to ~1. Individual
  * rows listed in `excludedTransactionIds` (e.g. the debit leg of an internal
  * transfer — the credit leg is already ignored as income) are dropped by id. A
- * null/empty category folds into `defaultCategoryKey` (a `categories.key` read
- * from settings at the call site, never hardcoded here), so uncategorized
- * spending merges into the default's slice. Empty categories are excluded and
- * the rest are sorted by amount descending.
+ * null/empty category — or one whose slug `categoryDisplay` cannot resolve —
+ * folds into `defaultCategoryKey` (a `categories.key` read from settings at the
+ * call site, never hardcoded here), so uncategorized spending merges into the
+ * default's slice. Empty categories are excluded and the rest are sorted by
+ * amount descending.
  */
 export const buildCategoryBreakdown = (input: {
   transactions: BreakdownTransaction[];
-  categoryDisplay: ReadonlyMap<string, { title: string; icon: string; color: string | null }>;
+  categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
@@ -134,7 +151,7 @@ export const buildCategoryBreakdown = (input: {
       continue;
     }
 
-    const key = groupKey(transaction.category, defaultCategoryKey);
+    const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
     if (excluded.has(key)) {
       continue;
     }

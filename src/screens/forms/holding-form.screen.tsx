@@ -5,7 +5,7 @@ import { match } from 'ts-pattern';
 
 import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
-import { Money, toMajor } from '../../currency/money';
+import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -14,6 +14,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
 import TextField from '../../design-system/components/text-field';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
@@ -35,11 +36,12 @@ import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 
-import { groupAmount } from './amount-format';
+import { groupAmount, majorAmountText } from './amount-format';
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';
 import DateField from './date-field';
 import HoldingIdentityField from './holding-identity-field';
+import { useSubmitOnce } from './use-submit-once';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -51,7 +53,7 @@ type Contribution = { id: number; amount: string; date: number | null };
 const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribution[] =>
   meta.contributions.map((contribution, index) => ({
     id: index,
-    amount: groupAmount(String(toMajor(contribution.amountMinorUnits, currency))),
+    amount: groupAmount(majorAmountText(currency, contribution.amountMinorUnits)),
     date: contribution.date,
   }));
 
@@ -60,9 +62,9 @@ const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribut
 // plain-number fields (quantity, coupon %) render verbatim.
 const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   quantity: groupAmount(String(meta.quantity)),
-  faceValue: groupAmount(String(toMajor(meta.faceValueMinorUnits, currency))),
+  faceValue: groupAmount(majorAmountText(currency, meta.faceValueMinorUnits)),
   couponPct: String(meta.couponPct),
-  purchasePrice: groupAmount(String(toMajor(meta.purchasePriceMinorUnits, currency))),
+  purchasePrice: groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits)),
   purchaseDate: meta.purchaseDate,
   maturityDate: meta.maturityDate,
   bondKind: meta.bondKind,
@@ -177,8 +179,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const editingHolding = isEdit ? editHoldings.at(0) : undefined;
   // A synced (Monobank) holding's balance is owned by the sync, not the user:
   // its name/icon/color stay editable, but the balance field is hidden and never
-  // written back so an edit does not clobber the last synced balance.
-  const isSyncedEdit = editingHolding !== undefined && isSyncedHolding(editingHolding);
+  // written back so an edit does not clobber the last synced balance. The
+  // account row loaded above gates this: a disconnected account KEEPS its
+  // holdings' sync keys (so a reconnect re-adopts them), and the user owns
+  // those balances again meanwhile.
+  const isSyncedEdit =
+    editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
   const [name, setName] = useState('');
   // The selected type starts at `card`, then the effect below snaps it to the
@@ -200,7 +206,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // that swatch and switching type moves it. Once picked (color !== null,
   // "dirty"), the choice sticks and type changes no longer move it.
   const [color, setColor] = useState<string | null>(null);
-  const effectiveColor = color ?? defaultHoldingColor[type];
+  // `resolveEntityColor` — not a bare nullish-coalesce onto the type default —
+  // because `color` here is seeded straight from a stored row
+  // (setColor(holding.color) below): a stored empty-string color reaches
+  // here as an unusable value the bare pattern would let through as ''.
+  const effectiveColor = resolveEntityColor(color, defaultHoldingColor[type]);
 
   // Keep the selected type valid for what the form currently OFFERS. The account
   // loads asynchronously, so once its option set is known, a default (or
@@ -285,7 +295,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    setOpeningBalance(groupAmount(String(toMajor(holding.balanceMinorUnits, holding.currency))));
+    setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
   }, [isEdit, editingHolding]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
@@ -427,7 +437,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // deposit/bond write metadata, every other type writes its balance). The
       // icon routes through setIcon (so a cleared icon persists an explicit
       // null), the same split the create path uses. Type/currency are read-only.
-      await holdingsRepo.update(
+      //
+      // `updateWithBalanceDelta`, not `update`: an edited balance also has to
+      // land on the ledger as a `manual` transaction for the difference, or the
+      // holding's history stops being derivable from its transactions and the
+      // whole past net-worth series shifts under the edit (kiko-domain). A patch
+      // with no balance in it (a deposit/bond, or a synced holding) writes no
+      // ledger row, so this is the right call for every edit.
+      await holdingsRepo.updateWithBalanceDelta(
         holdingId,
         buildHoldingPatch({
           name,
@@ -438,6 +455,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           metadata,
           isSynced: isSyncedEdit,
         }),
+        Date.now(),
       );
 
       // Write the icon unconditionally in edit mode so clearing a custom icon
@@ -471,11 +489,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     navigation.goBack();
   };
 
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
   return (
     <Screen
       scroll
       footer={
-        <Button onPress={save} disabled={!isValid}>
+        <Button onPress={onSave} disabled={!isValid || isSubmitting}>
           {t('common.save')}
         </Button>
       }

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -48,6 +48,61 @@ describe('PieChart', () => {
     expect(getByText(/\$600\.00/)).toBeTruthy();
     expect(getByText('60%')).toBeTruthy();
     expect(getByText('10%')).toBeTruthy();
+  });
+
+  it('legend percents sum to 100 for four uneven slices', async () => {
+    const { getByTestId } = await render(
+      <PieChart
+        testID="pie"
+        slices={[
+          { accountId: 'a', name: 'A', amount: 50, share: 0.5, color: '#0A84FF' },
+          { accountId: 'b', name: 'B', amount: 25, share: 0.25, color: '#30D158' },
+          { accountId: 'c', name: 'C', amount: 12.5, share: 0.125, color: '#FF9F0A' },
+          { accountId: 'd', name: 'D', amount: 12.5, share: 0.125, color: '#BF5AF2' },
+        ]}
+        baseCurrency="UAH"
+      />,
+    );
+
+    const percents = ['a', 'b', 'c', 'd'].map((key) =>
+      Number(
+        String(
+          within(getByTestId(`pie-legend-percent-${key}`)).getByText(/%$/).props.children,
+        ).replace('%', ''),
+      ),
+    );
+
+    expect(percents.reduce((sum, value) => sum + value, 0)).toBe(100);
+  });
+
+  it('legend percents sum to 100 for three equal slices', async () => {
+    // 33/33/33 = 99 under per-slice rounding; the largest-remainder pass gives
+    // one of them 34.
+    const third = 1 / 3;
+    const { getByTestId } = await render(
+      <PieChart
+        testID="pie"
+        slices={['a', 'b', 'c'].map((key, index) => ({
+          accountId: key,
+          name: key,
+          amount: 1,
+          share: third,
+          color: ['#0A84FF', '#30D158', '#FF9F0A'][index],
+        }))}
+        baseCurrency="UAH"
+      />,
+    );
+
+    const percents = ['a', 'b', 'c'].map((key) =>
+      Number(
+        String(
+          within(getByTestId(`pie-legend-percent-${key}`)).getByText(/%$/).props.children,
+        ).replace('%', ''),
+      ),
+    );
+
+    expect(percents.reduce((sum, value) => sum + value, 0)).toBe(100);
+    expect(percents.filter((value) => value === 34)).toHaveLength(1);
   });
 
   it("colors each arc and its legend swatch with the slice's entity color", async () => {

@@ -1,9 +1,18 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
+
+import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import TransactionFormScreen from './transaction-form.screen';
+
+type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
+
+const transactionFormRoute = (params: TransactionFormParams) =>
+  asRouteProp<TransactionFormProps['route']>('TransactionForm', params);
 
 // A react-test-renderer JSON node's `children` mixes further nodes and raw
 // text leaves. Walking only `children` (never `props`) and keeping just the
@@ -122,26 +131,27 @@ const setLiveData = (
   });
 };
 
-const navigation = { goBack: jest.fn(), setOptions: jest.fn() } as never;
+const navigation = navigationSpy();
+const navigationProp = asNavigationProp<TransactionFormProps['navigation']>(navigation);
 
 const renderAddFromHolding = (holdingId: string): ReturnType<typeof render> => {
-  const route = { params: { holdingId } } as never;
+  const route = transactionFormRoute({ holdingId });
 
-  return render(<TransactionFormScreen route={route} navigation={navigation} />);
+  return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
 };
 
 const renderAdd = (): ReturnType<typeof render> => renderAddFromHolding('h1');
 
 const renderEdit = (transactionId: string): ReturnType<typeof render> => {
-  const route = { params: { transactionId } } as never;
+  const route = transactionFormRoute({ transactionId });
 
-  return render(<TransactionFormScreen route={route} navigation={navigation} />);
+  return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
 };
 
 // Drive the DateField calendar: open the "Date" sheet, then fire the mocked
 // calendar's day-press for the given local day, so a test can backdate a row.
 const pickDate = async (
-  utils: ReturnType<typeof render>,
+  utils: Awaited<ReturnType<typeof render>>,
   year: number,
   month: number,
   day: number,
@@ -161,7 +171,10 @@ const pickDate = async (
 // inline chip row, so the option is only mounted once the sheet opens. A create
 // now requires a category before Save enables, so the add-mode cases pick one
 // through the same path the category-editing cases use.
-const pickCategory = async (utils: ReturnType<typeof render>, title: string): Promise<void> => {
+const pickCategory = async (
+  utils: Awaited<ReturnType<typeof render>>,
+  title: string,
+): Promise<void> => {
   await fireEvent.press(utils.getByLabelText('Category'));
   await fireEvent.press(utils.getByText(title));
 };
@@ -200,6 +213,51 @@ describe('TransactionFormScreen — add mode', () => {
       }),
     );
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('records one transaction for a double-tapped Save', async () => {
+    // Hold the write open (never auto-resolving) so the first press's `await`
+    // genuinely has not settled when the second press lands — firing two real
+    // `fireEvent.press` calls back to back without awaiting between them trips
+    // React's "overlapping act() calls" guard (each is independently wrapped
+    // in its own act()), so the two presses are awaited sequentially instead;
+    // the guard is still exercised because the write only resolves when this
+    // test says so.
+    let resolveWrite: () => void = () => {};
+    mockRecordManual.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    // Leave the description blank: a non-blank description picks the
+    // category-override confirm sheet path (see "skips the override sheet
+    // entirely when the description is blank" above), which needs its own
+    // "Apply" tap and would make this test about the override flow instead of
+    // the double-tap guard.
+    await pickCategory(utils, 'Groceries');
+
+    const save = getByText('Save');
+
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+
+    expect(mockRecordManual).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveWrite();
+    });
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockRecordManual).toHaveBeenCalledTimes(1);
+
+    // jest.clearAllMocks() (this file's beforeEach) clears call history but
+    // not a custom mockImplementation — reset it explicitly so it does not
+    // leak this test's never-auto-resolving write into the next test.
+    mockRecordManual.mockReset();
   });
 
   it('negates the amount for an expense', async () => {
@@ -261,6 +319,83 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.changeText(getByLabelText('Description'), 'No amount');
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('does not write a zero-amount row', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '0');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('does not write a 0.00 row', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '0.00');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('still writes the smallest representable amount', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '0.01');
+    await fireEvent.press(getByText('Expense'));
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ amountMinorUnits: -1 }),
+    );
+  });
+
+  it('disables Save for a zero amount', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '0');
+    await pickCategory(utils, 'Groceries');
+    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('writes the picked category onto the row even with a blank description', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries', description: '' }),
+    );
+  });
+
+  it('skips the override sheet entirely when the description is blank', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText, queryByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    expect(queryByText(/Apply/)).toBeNull();
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('keeps the row categorised when the user cancels the override sheet', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'ATB');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    await fireEvent.press(getByText('Cancel'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries' }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
   });
 
   it('keeps the income/expense field order: Amount, Description, Date, Time, mode row, Category', async () => {
@@ -347,6 +482,24 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByLabelText('Description').props.value).toBe('Coffee');
     // A negative stored amount pre-selects the Expense sign.
     expect(getByLabelText('Amount').props.editable).not.toBe(false);
+  });
+
+  it('hydrates a 50-satoshi BTC transaction to 0.0000005, not 57', async () => {
+    // Below 100 satoshis, `String(minor / 1e8)` emits exponential notation
+    // ("5e-7"), which the grouping formatter used to strip down to its digits
+    // ("57") — a 50-satoshi transaction rendered, and saved, as 57 BTC.
+    setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
+      id: 'tx-1',
+      holdingId: 'h-btc',
+      amountMinorUnits: -50,
+      time: 0,
+      description: '',
+      source: 'manual',
+    });
+
+    const { getByLabelText } = await renderEdit('tx-1');
+
+    expect(getByLabelText('Amount').props.value).toBe('0.0000005');
   });
 
   it('calls update (not recordManual) with the transaction id and edited amount on save', async () => {
@@ -521,6 +674,53 @@ describe('TransactionFormScreen — category editing', () => {
       expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
     );
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('propagates one override for a double-tapped Apply', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      category: 'groceries',
+    });
+
+    // Hold the write open (never auto-resolving) so the first press's `await`
+    // genuinely has not settled when the second press lands — see "records
+    // one transaction for a double-tapped Save" above for why the two
+    // presses are awaited sequentially instead of fired back to back.
+    let resolveWrite: () => void = () => {};
+    mockUpsertCategoryOverride.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+    );
+
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    const apply = utils.getByText('Apply');
+
+    await fireEvent.press(apply);
+    await fireEvent.press(apply);
+
+    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveWrite();
+    });
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+
+    // jest.clearAllMocks() (this describe's beforeEach) clears call history
+    // but not a custom mockImplementation — reset it explicitly so it does
+    // not leak this test's never-auto-resolving write into the next test.
+    mockUpsertCategoryOverride.mockReset();
   });
 
   it('renders the picked category icon in white in the confirm modal', async () => {
@@ -732,10 +932,8 @@ describe('TransactionFormScreen — Exchange mode', () => {
       expect(mockRecordExchange).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceHoldingId: 'cash-1',
-          sourceName: 'Cash UAH',
           valueOutMinorUnits: 10_000,
           destinationHoldingId: 'cash-usd-1',
-          destinationName: 'Cash USD',
           destinationType: 'cash',
           valueInMinorUnits: 250,
         }),
@@ -844,10 +1042,8 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
       expect(mockRecordExchange).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceHoldingId: 'cash-1',
-          sourceName: 'Cash UAH',
           valueOutMinorUnits: 10_000, // 100 UAH -> minor (scale 2)
           destinationHoldingId: 'cash-usd-1',
-          destinationName: 'Cash USD',
           destinationType: 'cash',
           valueInMinorUnits: 250, // 2.50 USD -> minor (scale 2)
         }),
@@ -967,9 +1163,9 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
       CATEGORIES,
       CONVERT_ACCOUNTS,
     );
-    const route = { params: { transactionId } } as never;
+    const route = transactionFormRoute({ transactionId });
 
-    return render(<TransactionFormScreen route={route} navigation={navigation} />);
+    return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
   };
 
   beforeEach(() => {
@@ -978,24 +1174,24 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
   it('shows the action for a non-zero expense on a cash/card holding (manual AND synced)', async () => {
     const manual = await renderEdit('expense-manual');
-    expect(manual.queryByText('Convert to Exchange')).toBeTruthy();
+    expect(manual.queryByText('Convert to exchange')).toBeTruthy();
 
     const synced = await renderEdit('expense-synced');
-    expect(synced.queryByText('Convert to Exchange')).toBeTruthy();
+    expect(synced.queryByText('Convert to exchange')).toBeTruthy();
   });
 
   it('does NOT show the action for a zero amount or a non-liquid holding', async () => {
     const zero = await renderEdit('zero-amount');
-    expect(zero.queryByText('Convert to Exchange')).toBeNull();
+    expect(zero.queryByText('Convert to exchange')).toBeNull();
 
     const deposit = await renderEdit('deposit-txn');
-    expect(deposit.queryByText('Convert to Exchange')).toBeNull();
+    expect(deposit.queryByText('Convert to exchange')).toBeNull();
   });
 
   it('opens the destination ("To") form for an expense-sourced convert', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
 
     // Expense source: the fixed side is Value Out; the picked leg is a destination ("To").
     expect(getByText('Value Out')).toBeTruthy();
@@ -1006,7 +1202,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('opens the source ("From") form for an income-sourced convert', async () => {
     const { getByText, getByLabelText } = await renderEdit('income-manual');
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
 
     // Income destination: the fixed side is Value In; the picked leg is a source ("From").
     expect(getByText('Value In')).toBeTruthy();
@@ -1014,11 +1210,11 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(getByLabelText('Value Out')).toBeTruthy();
   });
 
-  it('writes the destination leg with the right sign, id, and description for an expense convert', async () => {
+  it('writes the destination leg with the right sign, id, and exchange marker for an expense convert', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
     // existing: holding 'cash-1' name 'Cash UAH', amount -10_000 (100.00 UAH)
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD')); // a cash destination in another account
     await fireEvent.changeText(getByLabelText('Value In'), '2.50');
@@ -1032,7 +1228,11 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
           counterpartHoldingId: 'cash-usd-1',
           counterpartType: 'cash',
           amountMinorUnits: 250, // 2.50 USD -> minor
-          existingHoldingName: 'Cash UAH',
+          // The EXISTING row's own id and holding id: the row is marked as the
+          // other leg of this movement, and its holding becomes the new leg's
+          // structural exchange marker (no English description is persisted).
+          existingTransactionId: 'expense-manual',
+          existingHoldingId: 'cash-1',
         }),
       ),
     );
@@ -1041,7 +1241,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('restricts the source picker to cash/card for an income convert', async () => {
     const { getByText, getByLabelText, queryByText } = await renderEdit('income-manual');
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
     await fireEvent.press(getByLabelText('From'));
 
     expect(getByText('Cash USD')).toBeTruthy(); // cash offered
@@ -1053,7 +1253,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('rejects a blank/zero/negative counterpart amount (no write)', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
     // leave Value In blank
@@ -1065,7 +1265,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('never calls update/remove on the existing row when converting', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-synced');
 
-    await fireEvent.press(getByText('Convert to Exchange'));
+    await fireEvent.press(getByText('Convert to exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
     await fireEvent.changeText(getByLabelText('Value In'), '5');

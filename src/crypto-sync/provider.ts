@@ -1,4 +1,4 @@
-import type { TFunction } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { match } from 'ts-pattern';
 
 import type { HoldingRow } from '../db/schema';

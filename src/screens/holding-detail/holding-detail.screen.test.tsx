@@ -1,11 +1,15 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
+
+type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
 
 // The Text primitive's tone -> color mapping lives inside a unistyles variant
 // that the project Jest mock strips before a test can inspect it, so a money
@@ -28,7 +32,7 @@ jest.mock('../../design-system/components/money-text', () => {
 
 // The test-renderer instance type, derived from RNTL's own query rather than
 // imported from react-test-renderer directly (which is not a declared dep).
-type TextNode = ReturnType<ReturnType<typeof render>['getByText']>;
+type TextNode = ReturnType<Awaited<ReturnType<typeof render>>['getByText']>;
 
 // The tightest ancestor of `label` that contains a money amount (UAH formats
 // with a trailing ₴), scoped to a single ledger/breakdown row — the mocked
@@ -92,8 +96,11 @@ jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-const navigation = { navigate: jest.fn(), setOptions: jest.fn() } as never;
-const route = { params: { holdingId: 'h-1' } } as never;
+const navigation = navigationSpy();
+const route = asRouteProp<HoldingDetailProps['route']>('HoldingDetail', {
+  holdingId: 'h-1',
+  name: 'My deposit',
+});
 
 const cashHolding = {
   id: 'h-1',
@@ -149,21 +156,43 @@ const futureDepositHolding = {
 // Key each live-query result to its tag so a state-driven re-render (e.g. the
 // add-contribution form) keeps returning the same data instead of draining a
 // one-shot queue.
-const seed = (holding: unknown, transactions: unknown[] = [], categories: unknown[] = []): void => {
+const seed = (
+  holding: unknown,
+  transactions: unknown[] = [],
+  categories: unknown[] = [],
+  // Other holdings the screen can see. The holdings live query is unfiltered on
+  // device, so a row referencing ANOTHER holding (an exchange leg's counterpart)
+  // can resolve its name from it.
+  otherHoldings: unknown[] = [],
+): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
     if (keys[0] === 'holdings') {
-      return { data: [holding] };
+      return { data: [holding, ...otherHoldings] };
     }
 
     if (keys[0] === 'categories') {
       return { data: categories };
     }
 
-    return { data: transactions };
+    // SQLite returns NULL, never undefined, for a column a row does not set, so
+    // default every nullable marker the screen reads the same way — an
+    // `undefined` here would be a fixture artefact the device never produces.
+    return {
+      data: transactions.map((row) => ({
+        exchangeCounterpartHoldingId: null,
+        ...(row as Record<string, unknown>),
+      })),
+    };
   });
 };
 
-const renderScreen = () => render(<HoldingDetailScreen navigation={navigation} route={route} />);
+const renderScreen = () =>
+  render(
+    <HoldingDetailScreen
+      navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+      route={route}
+    />,
+  );
 
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
@@ -312,6 +341,32 @@ describe('HoldingDetailScreen', () => {
 
     expect(getByText('Everyday card expense')).toBeTruthy();
     expect(getByText('Everyday card income')).toBeTruthy();
+  });
+
+  it('labels an unlabelled exchange leg from its counterpart holding, not as an expense', async () => {
+    // The leg persists no description — only the counterpart's holding id — so
+    // the row must read as an exchange rather than falling back to this
+    // holding's own income/expense default.
+    seed(
+      cardHolding,
+      [
+        {
+          id: 'x3',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+      ],
+      [],
+      [{ id: 'h-2', name: 'Savings', type: 'cash', currency: 'USD', balanceMinorUnits: 0 }],
+    );
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Exchange to Savings')).toBeTruthy();
+    expect(queryByText('Everyday card expense')).toBeNull();
   });
 
   it('pins the Add transaction action to the screen footer', async () => {

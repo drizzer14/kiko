@@ -1,21 +1,51 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
+
 import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
+import { resolveBottomClearance } from '../../design-system/components/screen';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '../../test-support/mock-text-tone';
+import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HomeScreen from './home.screen';
+
+type HomeProps = ComponentProps<typeof HomeScreen>;
+
 import { FILTER_ALL } from './transaction-filter-bar';
 
 jest.mock('../../design-system/components/text', () => ({
   __esModule: true,
   default: mockTextTone,
 }));
+
+// The transaction list's own bottom clearance (see `home.screen.tsx`) is the
+// tab-bar height MINUS the bottom safe-area inset, mirroring
+// `screen.component.test.tsx:16-31`'s constants and rationale: a ZERO inset
+// (the global mocks' default — see `jest/setup.js` and
+// `__mocks__/react-native-bottom-tabs.tsx`) makes the pre-fix "add the full
+// bar height" formula indistinguishable from the correct one, which is
+// exactly how the double-counting regression shipped unnoticed.
+const MOCK_TAB_BAR_HEIGHT = 80;
+jest.mock('react-native-bottom-tabs', () => ({
+  useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+}));
+
+const MOCK_BOTTOM_INSET = 34;
+jest.mock('react-native-safe-area-context', () => {
+  const actual = jest.requireActual('react-native-safe-area-context');
+
+  return {
+    ...actual,
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
+  };
+});
 
 const mockUseLiveQuery = jest.fn();
 
@@ -57,6 +87,8 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
 
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
 type Holding = {
+  id?: string;
+  name?: string;
   accountId: string;
   currency: string;
   balanceMinorUnits: number;
@@ -74,6 +106,7 @@ type Transaction = {
   accountId: string;
   accountName: string;
   holdingName: string;
+  exchangeCounterpartHoldingId: string | null;
 };
 type Category = { key: string; title: string; icon: string };
 
@@ -108,11 +141,17 @@ const setLiveData = (data: LiveData): void => {
   }));
 };
 
-const navigation = { navigate: jest.fn() } as never;
+const navigation = navigationSpy();
 
 const MONOBANK: Account = { id: 'a', name: 'Monobank', kind: 'bank' };
 const PRIVATBANK: Account = { id: 'b', name: 'PrivatBank', kind: 'bank' };
-const UAH_HOLDING: Holding = { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 };
+const UAH_HOLDING: Holding = {
+  id: 'h-uah',
+  name: 'Чорна картка',
+  accountId: 'a',
+  currency: 'UAH',
+  balanceMinorUnits: 100000,
+};
 
 // `time` defaults to "now" — the Home screen's date filter defaults to the
 // last 30 days on mount, so a fixed historical default would fall outside it
@@ -123,10 +162,14 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   currency: 'UAH',
   time: Date.now(),
   description: 'Coffee',
-  category: 'Food',
+  category: 'food',
   accountId: 'a',
   accountName: 'Monobank',
   holdingName: 'Card',
+  // The query projects this column for every row; an ordinary transaction is
+  // not an exchange leg, so its marker is NULL (what SQLite returns), never
+  // undefined.
+  exchangeCounterpartHoldingId: null,
   ...overrides,
 });
 
@@ -135,7 +178,13 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
 const seed = (data: LiveData = {}): void =>
   setLiveData({ accounts: [MONOBANK], holdings: [UAH_HOLDING], ...data });
 
-const renderHome = (): ReturnType<typeof render> => render(<HomeScreen navigation={navigation} />);
+const renderHome = (): ReturnType<typeof render> =>
+  render(
+    <HomeScreen
+      navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+      route={asRouteProp<HomeProps['route']>('Home')}
+    />,
+  );
 
 // The filter controls are two custom dropdown sheets, one per dimension. A
 // filter toggle opens the sheet (press its anchor testID), taps the option row
@@ -202,7 +251,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders the account-name and the resolved category title for a transaction', async () => {
-    seed({ transactions: [transaction({ category: 'Groceries' })] });
+    seed({ transactions: [transaction({ category: 'groceries' })] });
     const { getByText } = await renderHome();
     expect(getByText('Monobank · Groceries')).toBeTruthy();
   });
@@ -213,7 +262,7 @@ describe('HomeScreen', () => {
     // stored raw key or any hard-coded map.
     seed({
       categories: [{ key: 'groceries', title: 'Supermarket', icon: 'basket' }],
-      transactions: [transaction({ category: 'Groceries', description: 'Milk' })],
+      transactions: [transaction({ category: 'groceries', description: 'Milk' })],
     });
     const { getByText, getByLabelText } = await renderHome();
     expect(getByText('Monobank · Supermarket')).toBeTruthy();
@@ -225,6 +274,28 @@ describe('HomeScreen', () => {
     const { getByText, getByLabelText } = await renderHome();
     expect(getByText('Monobank · Other')).toBeTruthy();
     expect(getByLabelText('Other').props.name).toBe('square.grid.2x2');
+  });
+
+  it('gives a row icon and its filter chip the same resolved color', async () => {
+    // A synced row whose stored slug is absent from the categories table. The
+    // filter chip folds it onto the default key, so the row icon must fold it
+    // the same way — hashing the icon on the raw slug while the chip hashes on
+    // the resolved key renders one category in two different hues.
+    seed({
+      categories: [{ key: 'other', title: 'Other', icon: 'square.grid.2x2' }],
+      transactions: [transaction({ category: 'Groceries' })],
+    });
+    const { getByLabelText, getByTestId, getAllByLabelText } = await renderHome();
+
+    expect(getByLabelText('Other').props.tintColor).toBe(resolveCategoryColor(null, 'other'));
+
+    await act(async () => {
+      fireEvent.press(getByTestId('category-filter-menu'));
+    });
+    const tints = getAllByLabelText('Other').map((node) => node.props.tintColor);
+
+    expect(tints.length).toBeGreaterThan(1);
+    expect(new Set(tints).size).toBe(1);
   });
 
   it('renders the signed transaction amount', async () => {
@@ -288,18 +359,18 @@ describe('HomeScreen', () => {
     expect(getByText('4,000.00 ₴')).toBeTruthy();
   });
 
-  it('does not crash when a holding has no rate; excludes it from the total but still lists it', async () => {
+  it('does not crash when a holding has no rate; excludes it from both the total and the breakdown', async () => {
     seed({
       holdings: [{ accountId: 'a', currency: 'BTC', balanceMinorUnits: 100000000 }],
       rates: [],
       transactions: [],
     });
-    const { getByText, getAllByText, queryByText } = await renderHome();
+    const { getAllByText, queryByText } = await renderHome();
     // The unconvertible holding is dropped from the converted headline total...
     expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
-    // ...but the per-currency breakdown still lists it, and there is no
-    // "Rates unavailable" fallback anymore.
-    expect(getByText('BTC')).toBeTruthy();
+    // ...and from the breakdown beneath it too, so the rows always sum to the
+    // headline. There is no "Rates unavailable" fallback anymore.
+    expect(queryByText('BTC')).toBeNull();
     expect(queryByText(/rates unavailable/i)).toBeNull();
   });
 
@@ -319,7 +390,7 @@ describe('HomeScreen', () => {
     expect(getByText(/\$50\.00/)).toBeTruthy();
   });
 
-  it('omits the "Rates unavailable" state and still lists every currency when a rate is missing', async () => {
+  it('omits the "Rates unavailable" state and only lists convertible currencies when a rate is missing', async () => {
     seed({
       holdings: [UAH_HOLDING, { accountId: 'a', currency: 'BTC', balanceMinorUnits: 100000000 }],
       rates: [],
@@ -328,7 +399,21 @@ describe('HomeScreen', () => {
     const { getByText, queryByText } = await renderHome();
     expect(queryByText(/rates unavailable/i)).toBeNull();
     expect(getByText('UAH')).toBeTruthy();
-    expect(getByText('BTC')).toBeTruthy();
+    // BTC has no cached rate, so it is excluded from the breakdown too — it
+    // must match the headline total, which already excludes it.
+    expect(queryByText('BTC')).toBeNull();
+  });
+
+  it('lists only the currencies the headline total includes', async () => {
+    seed({
+      holdings: [UAH_HOLDING, { accountId: 'a', currency: 'BTC', balanceMinorUnits: 50_000_000 }],
+      rates: [],
+      transactions: [],
+    });
+
+    const { queryByText } = await renderHome();
+
+    expect(queryByText('BTC')).toBeNull();
   });
 
   it('renders the net-worth number as a plain solid MoneyText with no wash', async () => {
@@ -407,9 +492,9 @@ describe('HomeScreen', () => {
   it('keeps both categories active and shows transactions from either when two are toggled on', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
-        transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
-        transaction({ id: 't3', category: 'Utilities', description: 'Rent' }),
+        transaction({ id: 't1', category: 'dining', description: 'Coffee' }),
+        transaction({ id: 't2', category: 'transport', description: 'Groceries' }),
+        transaction({ id: 't3', category: 'utilities', description: 'Rent' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
@@ -433,8 +518,8 @@ describe('HomeScreen', () => {
         { key: 'transport', title: 'Transport', icon: 'car' },
       ],
       transactions: [
-        transaction({ id: 't1', category: 'Transport', description: 'Bus' }),
-        transaction({ id: 't2', category: 'Dining', description: 'Coffee' }),
+        transaction({ id: 't1', category: 'transport', description: 'Bus' }),
+        transaction({ id: 't2', category: 'dining', description: 'Coffee' }),
       ],
     });
     const { getByTestId, getAllByTestId } = await renderHome();
@@ -453,8 +538,8 @@ describe('HomeScreen', () => {
   it('removes a category from the set when its action is toggled off again', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
-        transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
+        transaction({ id: 't1', category: 'dining', description: 'Coffee' }),
+        transaction({ id: 't2', category: 'transport', description: 'Groceries' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
@@ -470,8 +555,8 @@ describe('HomeScreen', () => {
   it('clears the category dimension and shows every transaction when All is pressed', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
-        transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
+        transaction({ id: 't1', category: 'dining', description: 'Coffee' }),
+        transaction({ id: 't2', category: 'transport', description: 'Groceries' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
@@ -488,9 +573,9 @@ describe('HomeScreen', () => {
   it('keeps the category dropdown open through several toggles and applies them all', async () => {
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Dining', description: 'Coffee' }),
-        transaction({ id: 't2', category: 'Transport', description: 'Groceries' }),
-        transaction({ id: 't3', category: 'Utilities', description: 'Rent' }),
+        transaction({ id: 't1', category: 'dining', description: 'Coffee' }),
+        transaction({ id: 't2', category: 'transport', description: 'Groceries' }),
+        transaction({ id: 't3', category: 'utilities', description: 'Rent' }),
       ],
     });
     const { getByText, queryByText, getByTestId, queryByTestId } = await renderHome();
@@ -548,7 +633,7 @@ describe('HomeScreen', () => {
       transactions: [
         transaction({ id: 't1', category: 'Groceries', description: 'SyncedRow' }),
         transaction({ id: 't2', category: 'groceries', description: 'OverriddenRow' }),
-        transaction({ id: 't3', category: 'Transport', description: 'OtherRow' }),
+        transaction({ id: 't3', category: 'transport', description: 'OtherRow' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
@@ -685,14 +770,14 @@ describe('HomeScreen', () => {
           id: 't1',
           accountId: 'a',
           accountName: 'Monobank',
-          category: 'Food',
+          category: 'food',
           description: 'Coffee',
         }),
         transaction({
           id: 't2',
           accountId: 'b',
           accountName: 'PrivatBank',
-          category: 'Transport',
+          category: 'transport',
           description: 'Groceries',
         }),
       ],
@@ -715,6 +800,22 @@ describe('HomeScreen', () => {
       'settings',
       'transactions',
     ]);
+  });
+
+  it('clears the tab bar without double-counting the safe-area inset', async () => {
+    const { getByTestId } = await renderHome();
+
+    const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+
+    // The regression this guards: Home used to pass the FULL tab-bar height
+    // as its own clearance on top of the bottom inset Screen's SafeAreaView
+    // already reserves (see `home.screen.tsx`), leaving 130pt of dead space
+    // under the last row instead of the 96pt every other screen has.
+    expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET));
+
+    // Total dead space under the last row must match every other screen's 96:
+    // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
+    expect(MOCK_BOTTOM_INSET + 16 + listPadding).toBe(96);
   });
 
   it('runs a full sync when the transaction list is pulled to refresh', async () => {
@@ -789,8 +890,8 @@ describe('HomeScreen — localization', () => {
     // option's stable value is unaffected, only its rendered LABEL changes.
     seed({
       transactions: [
-        transaction({ id: 't1', category: 'Groceries', description: 'Milk' }),
-        transaction({ id: 't2', category: 'Transport', description: 'Bus' }),
+        transaction({ id: 't1', category: 'groceries', description: 'Milk' }),
+        transaction({ id: 't2', category: 'transport', description: 'Bus' }),
       ],
     });
     const { getByText, queryByText, getByTestId } = await renderHome();
@@ -817,5 +918,32 @@ describe('HomeScreen — localization', () => {
       getByTestId('category-filter-menu-option-groceries').props.accessibilityState?.checked,
     ).toBe(true);
     expect(getByText('Продукти')).toBeTruthy();
+  });
+
+  it('renders an exchange leg in the active language, resolved from its counterpart holding', async () => {
+    // The leg persists NO description — only the counterpart's holding id — so
+    // its label must be built at render time from the Ukrainian catalogue and
+    // the counterpart's CURRENT name, never from a stored English sentence.
+    seed({
+      holdings: [
+        UAH_HOLDING,
+        { id: 'h-usd', name: 'Ощадний', accountId: 'a', currency: 'USD', balanceMinorUnits: 0 },
+      ],
+      transactions: [
+        transaction({
+          id: 'ex-out',
+          amountMinorUnits: -1_000_000,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-usd',
+        }),
+      ],
+    });
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText } = await renderHome();
+
+    expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
   });
 });

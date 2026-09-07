@@ -16,6 +16,7 @@ import { holdingsRepo } from '../../repositories/holdings.repo';
 
 import { groupAmount } from './amount-format';
 import DateField from './date-field';
+import { useSubmitOnce } from './use-submit-once';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -69,8 +70,17 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     navigation.goBack();
   };
 
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
   return (
-    <Screen scroll footer={<Button onPress={save}>{t('forms.contribution.save')}</Button>}>
+    <Screen
+      scroll
+      footer={
+        <Button onPress={onSave} disabled={isSubmitting}>
+          {t('forms.contribution.save')}
+        </Button>
+      }
+    >
       <Box gap={4}>
         <TextField
           label={t('forms.fields.amount')}

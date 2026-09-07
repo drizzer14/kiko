@@ -109,21 +109,28 @@ describe('descriptionExcludedTransferTxIds', () => {
 
 describe('mccExcludedTransferTxIds', () => {
   it('collects the ids of exactly the mcc-excluded rows, keyed on mcc not the stored category', () => {
-    const ids = mccExcludedTransferTxIds(
-      [
-        // A cash-out whose category has DRIFTED to 'groceries' — mcc wins, excluded.
-        { id: 'cash', mcc: 6011, counterIban: null, category: 'groceries' },
-        // An own-account 4829 transfer — excluded by own IBAN.
-        { id: 'own', mcc: 4829, counterIban: 'UA-OWN-1', category: 'transfers' },
-        // A real P2P 4829 payment to a stranger — kept.
-        { id: 'p2p', mcc: 4829, counterIban: 'UA-STRANGER', category: 'transfers' },
-        // A genuine grocery purchase — kept.
-        { id: 'buy', mcc: 5411, counterIban: null, category: 'groceries' },
-        // A manual row with no mcc — kept (falls through to the pair matcher).
-        { id: 'manual', mcc: null, counterIban: null, category: 'transfers' },
-      ],
-      ownIbans,
-    );
+    // `category` is carried on purpose: these rows are what proves the exclusion
+    // keys off the immutable `mcc` and NOT the drift-prone stored category. It is
+    // surplus to the parameter type, so the fixture is named before it is passed —
+    // an inline literal would trip excess-property checking.
+    const rows: readonly {
+      id: string;
+      mcc: number | null;
+      counterIban: string | null;
+      category: string;
+    }[] = [
+      // A cash-out whose category has DRIFTED to 'groceries' — mcc wins, excluded.
+      { id: 'cash', mcc: 6011, counterIban: null, category: 'groceries' },
+      // An own-account 4829 transfer — excluded by own IBAN.
+      { id: 'own', mcc: 4829, counterIban: 'UA-OWN-1', category: 'transfers' },
+      // A real P2P 4829 payment to a stranger — kept.
+      { id: 'p2p', mcc: 4829, counterIban: 'UA-STRANGER', category: 'transfers' },
+      // A genuine grocery purchase — kept.
+      { id: 'buy', mcc: 5411, counterIban: null, category: 'groceries' },
+      // A manual row with no mcc — kept (falls through to the pair matcher).
+      { id: 'manual', mcc: null, counterIban: null, category: 'transfers' },
+    ];
+    const ids = mccExcludedTransferTxIds(rows, ownIbans);
 
     expect(ids).toEqual(new Set(['cash', 'own']));
   });

@@ -17,9 +17,18 @@ jest.mock('react-i18next', () => ({
     t: (key: string) => {
       const { en } = require('../i18n/locales/en');
 
+      // The accumulator is a NESTED catalogue node, not a string, and it becomes
+      // `undefined` the moment a key part is missing — so the reduce is typed over
+      // `unknown` and each step narrows before indexing.
       return key
         .split('.')
-        .reduce((node: Record<string, unknown>, part: string) => node?.[part], en);
+        .reduce<unknown>(
+          (node, part) =>
+            typeof node === 'object' && node !== null
+              ? (node as Record<string, unknown>)[part]
+              : undefined,
+          en,
+        );
     },
   }),
 }));

@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { resolveBottomClearance } from './bottom-clearance';
 import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
 
@@ -40,21 +41,11 @@ const Screen: FC<ScreenProps> = ({
   // Both `SafeAreaView` branches below already reserve `insets.bottom`
   // themselves as real padding — `edges` includes `'bottom'` in the scroll
   // branch's explicit list, and in the plain branch's default (an unset
-  // `edges` prop reserves every edge). `RNCSafeAreaViewShadowNode`'s
-  // `'additive'` edge mode literally adds the inset to whatever padding was
-  // already on the view (`insets.bottom + edgeValue`), so that reservation is
-  // real native padding one level up from `footer`/`content`, not merely a
-  // hook value nothing yet consumes. Since the tab bar's measured height
-  // above already spans that same inset, adding the FULL tab-bar height again
-  // here — on top of what `SafeAreaView` already reserved — double-counts the
-  // inset a second time and pushes the footer a whole home-indicator strip
-  // too high (the "bottom margin is bigger than the top margin" bug). Only
-  // the amount by which the tab bar exceeds what `SafeAreaView` already
-  // reserved needs adding here. `Math.max(..., 0)` keeps this from going
-  // negative on a tab-bar-less consumer where `tabBarHeight` is 0 and
-  // `insets.bottom` alone exceeds it — `SafeAreaView`'s own reservation is
-  // then already the full, correct clearance and this adds nothing on top.
-  const bottomClearance = Math.max(tabBarHeight - insets.bottom, 0);
+  // `edges` prop reserves every edge). Adding the FULL tab-bar height again
+  // on top of that reservation double-counts the inset. See
+  // `bottom-clearance.ts` for the shared arithmetic (also used by every
+  // `bleedBottom` child, e.g. Home's transaction list) and its full rationale.
+  const bottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom);
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a
@@ -71,15 +62,23 @@ const Screen: FC<ScreenProps> = ({
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
-          // scroll-to-top hook's `-headerHeight` target — more negative than that
-          // `0` top edge — would be clamped away and the collapsed large title
-          // would never re-expand. This prop disables RN's clamp, letting the
-          // negative target reach iOS `setContentOffset`. iOS does NOT clamp an
-          // animated programmatic scroll, so an UNBOUNDED target would overshoot
-          // into a void of empty space; the hook keeps the target bounded to the
-          // header inset (`-headerHeight`), which lands exactly at the expanded
-          // large-title top and can never overshoot. Programmatic-scroll only;
-          // user scrolling is unaffected. See `use-scroll-to-top-on-tab-press.ts`.
+          // scroll-to-top hook's negative target — more negative than that `0`
+          // top edge — would be clamped away and the collapsed large title would
+          // never re-expand. This prop disables RN's clamp, letting the negative
+          // target reach iOS `setContentOffset`.
+          //
+          // The trade-off: with the clamp off, iOS does NOT clamp an animated
+          // programmatic scroll either, so an over-large target parks the content
+          // in a void of empty space with nothing to bring it back. Only a
+          // correct target prevents that, so the hook targets the EXPANDED header
+          // height the DEVICE itself reports rather than adding a guessed
+          // constant to a live value — exactly the bug that produced a 52pt void
+          // when the large title was already open. (Its "already at or above the
+          // target" skip is a separate guard, against a redundant scroll and
+          // against an UNDERSHOOTING target pushing content back down; it cannot
+          // catch an overshoot.) See `use-scroll-to-top-on-tab-press.ts`.
+          //
+          // Programmatic-scroll only; user scrolling is unaffected.
           scrollToOverflowEnabled={true}
           // Default "never" consumes the first tap to dismiss the keyboard, so
           // focusing another input (or opening a date field) needs a second

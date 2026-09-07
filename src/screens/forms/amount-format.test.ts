@@ -1,6 +1,8 @@
+import { type Currency, currencyOptions, currencyScale } from '../../currency/currency';
+import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 
-import { groupAmount } from './amount-format';
+import { groupAmount, majorAmountText } from './amount-format';
 
 describe('groupAmount', () => {
   it('leaves an empty string empty', () => {
@@ -72,6 +74,75 @@ describe('groupAmount', () => {
 
   it('reads a trailing dot decimal as the mark when a grouping comma precedes it', () => {
     expect(groupAmount('1,234.56')).toBe('1 234.56');
+  });
+});
+
+describe('majorAmountText', () => {
+  it('renders sub-1e-6 BTC amounts at full scale, never in exponent form', () => {
+    expect(majorAmountText('BTC', 50)).toBe('0.0000005');
+    expect(majorAmountText('BTC', 10)).toBe('0.0000001');
+    expect(majorAmountText('BTC', 99)).toBe('0.00000099');
+    expect(majorAmountText('BTC', 1)).toBe('0.00000001');
+  });
+
+  it('trims trailing zeros but keeps a meaningful fraction', () => {
+    expect(majorAmountText('BTC', 100_000_000)).toBe('1');
+    expect(majorAmountText('BTC', 150_000_000)).toBe('1.5');
+    expect(majorAmountText('UAH', 123_456)).toBe('1234.56');
+    expect(majorAmountText('UAH', 100)).toBe('1');
+    expect(majorAmountText('UAH', 0)).toBe('0');
+  });
+
+  it('renders the unsigned magnitude (the sign chip carries polarity)', () => {
+    expect(majorAmountText('UAH', -123_456)).toBe('1234.56');
+  });
+});
+
+describe('groupAmount fail-safe', () => {
+  it('never turns an exponent string into a fabricated digit run', () => {
+    expect(groupAmount('5e-7')).not.toBe('57');
+    expect(groupAmount('5e-7')).toBe('');
+  });
+
+  it('still round-trips ordinary typed input', () => {
+    expect(groupAmount('1000000')).toBe('1 000 000');
+    expect(groupAmount('12,')).toBe('12,');
+    expect(groupAmount('007')).toBe('007');
+    expect(groupAmount(',')).toBe(',');
+    expect(groupAmount('-1234.5')).toBe('-1 234.5');
+    expect(groupAmount('0.0000005')).toBe('0.0000005');
+  });
+});
+
+// Money precision rule: exact parity. Every string `majorAmountText` renders
+// must round-trip — through the same pipeline the form uses (`groupAmount`
+// then `parseAmount`) — back to the EXACT stored minor units, for every
+// currency scale in the table, not just BTC's dust case.
+describe('majorAmountText -> groupAmount -> parseAmount round-trip (exact parity)', () => {
+  const samplesByCurrency: Record<Currency, number[]> = {
+    BTC: [0, 1, 5, 10, 50, 99, 12_345, 100_000_000, 150_000_000, 123_456_789],
+    UAH: [0, 1, 50, 99, 100, 12_345, 123_456],
+    USD: [0, 1, 50, 99, 100, 250_000],
+    EUR: [0, 1, 50, 99, 100, 250_000],
+  };
+
+  it.each(currencyOptions)('round-trips every sample minor-units value for %s', (currency) => {
+    for (const minorUnits of samplesByCurrency[currency]) {
+      const rendered = majorAmountText(currency, minorUnits);
+      const grouped = groupAmount(rendered);
+      const parsed = parseAmount(grouped);
+
+      expect(Money.fromMajor(currency, parsed).minorUnits).toBe(minorUnits);
+    }
+  });
+
+  it('never emits a fractional digit beyond the currency scale', () => {
+    for (const currency of currencyOptions) {
+      const rendered = majorAmountText(currency, 123_456_789);
+      const fractionDigits = rendered.includes('.') ? rendered.split('.')[1].length : 0;
+
+      expect(fractionDigits).toBeLessThanOrEqual(currencyScale[currency]);
+    }
   });
 });
 

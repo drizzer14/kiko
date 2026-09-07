@@ -8,13 +8,15 @@ import { resolveDefaultCategoryTitle } from '../i18n/default-category-title';
 // pure resolvers take the resolved key as a parameter and never reference this.
 export const DEFAULT_CATEGORY_KEY = 'other';
 
-// A transaction stores a category as a stable key (the MCC category name,
-// lowercased — see Task 13's slug convention). The categories table maps that
-// key to the user-editable title + icon + optional color, so the display
-// resolves through the table rather than any hard-coded map. `color` is the
-// category's stored `#RRGGBB` hex, or null when none is picked (the chart layer
-// then falls back to the per-key palette hash via resolveCategoryColor).
-type CategoryDisplay = { title: string; icon: string; color: string | null };
+// A transaction stores a category as its stable `categories.key` slug (the
+// lowercase MCC category name — see `monobank/mcc-category.ts`). The categories
+// table maps that key to the user-editable title + icon + optional color, so
+// the display resolves through the table rather than any hard-coded map.
+// `color` is the category's stored `#RRGGBB` hex, or null when none is picked
+// (the chart layer then falls back to the per-key palette hash via
+// resolveCategoryColor). Exported so every consumer of a key -> display map
+// (the spending breakdown) names the same shape instead of restating it.
+export type CategoryDisplay = { title: string; icon: string; color: string | null };
 
 // The ultimate fallback, shown only when a category cannot be resolved AND the
 // table has no default-category row either (e.g. before the seed migration
