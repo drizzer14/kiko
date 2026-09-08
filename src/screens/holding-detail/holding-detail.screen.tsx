@@ -306,12 +306,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       />
                     </Box>
                   </Box>
-                  <Text variant="caption" tone="textSecondary">
-                    {row.entry.isFuture
-                      ? t('holdingDetail.projected')
-                      : t('holdingDetail.computed')}{' '}
-                    · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
-                  </Text>
+                  <Box style={styles.rowFooter}>
+                    <Text variant="caption" tone="textSecondary">
+                      {row.entry.isFuture
+                        ? t('holdingDetail.projected')
+                        : t('holdingDetail.computed')}{' '}
+                      · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
+                    </Text>
+                  </Box>
                 </Box>
               );
             }
@@ -375,11 +377,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                         />
                       </Box>
                     </Box>
-                    <Text variant="caption" tone="textSecondary">
-                      {showTime
-                        ? formatDateTime(row.transaction.time)
-                        : formatDate(row.transaction.time)}
-                    </Text>
+                    <Box style={styles.rowFooter}>
+                      <Text variant="caption" tone="textSecondary">
+                        {showTime
+                          ? formatDateTime(row.transaction.time)
+                          : formatDate(row.transaction.time)}
+                      </Text>
+                    </Box>
                   </Box>
                 </Pressable>
               </SwipeableRow>
@@ -439,6 +443,14 @@ const styles = StyleSheet.create((theme) => ({
   // no matter how long the description grows.
   rowAmount: {
     flexShrink: 0,
+  },
+  // The row's secondary line: the timestamp caption pinned to the right so it
+  // sits BELOW the value column instead of left-aligned under the description —
+  // mirroring the Home row's `rowFooter` (home.styles.ts), where the time is
+  // bottom-right of the row. Here the caption is the only footer content, so a
+  // right-aligned self is enough (no space-between split needed).
+  rowFooter: {
+    alignSelf: 'flex-end',
   },
 }));
 

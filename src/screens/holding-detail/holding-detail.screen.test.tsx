@@ -1,12 +1,13 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import * as colorSchemeModule from '../../design-system/color-scheme';
 import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -374,6 +375,32 @@ describe('HoldingDetailScreen', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('15.01.2024 09:05')).toBeTruthy();
+  });
+
+  it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
+    const at = new Date(2024, 0, 15, 9, 5).getTime();
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    // The timestamp caption is wrapped in a right-aligned footer container
+    // (alignSelf 'flex-end') so it lands under the amount column rather than
+    // left-aligned under the description — mirroring the Home row layout.
+    const footer = ancestorWithStyle(getByText('15.01.2024 09:05'), 'alignSelf');
+    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+  });
+
+  it('right-aligns the derived lifecycle row caption so it sits below the value', async () => {
+    seed(depositHolding);
+
+    const { getAllByText } = await renderScreen();
+
+    // The derived "Computed · date" caption uses the same right-aligned footer
+    // container, so it too sits under the amount column.
+    const footer = ancestorWithStyle(getAllByText(/^Computed ·/)[0], 'alignSelf');
+    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
   });
 
   it.each([
