@@ -475,11 +475,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         {/* A global "a sync is running" signal, driven by the reactive
             sync-status store. Sits BELOW the filters (above the list) so it
-            reads as a status line for the transactions below it. Additive to
-            the pull-to-refresh spinner — it shows for ANY sync trigger
-            (auto-sync on open, the account-detail button) and persists through
-            a slow multi-card run, rendering nothing when idle. */}
-        <SyncingIndicator />
+            reads as a status line for the transactions below it. It shows for
+            ANY sync trigger (auto-sync on open, the account-detail button) and
+            persists through a slow multi-card run, rendering nothing when idle.
+
+            Suppressed during a pull-to-refresh (`isSyncing`, which is
+            pull-specific — it drives the RefreshControl below): on that path
+            the native pull spinner is the single indicator, so rendering the
+            custom one too would show BOTH at once. On every NON-pull sync
+            (auto-sync on app open, the manual button) `isSyncing` is false and
+            the RefreshControl is not refreshing, so this custom indicator is
+            the only signal and must stay. This guarantees never-both. */}
+        {!isSyncing && <SyncingIndicator />}
 
         <SectionList
           ref={listRef}

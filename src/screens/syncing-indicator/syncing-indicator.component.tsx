@@ -31,6 +31,7 @@ const SyncingIndicator: FC = () => {
     <Box
       accessible
       accessibilityLabel={t('common.syncing')}
+      testID="syncing-indicator"
       direction="row"
       gap={2}
       style={styles.container}

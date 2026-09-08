@@ -78,6 +78,16 @@ jest.mock('../use-sync-all', () => ({
   useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
 }));
 
+// The global sync-status store drives the custom <SyncingIndicator/>. Mocked so
+// a test can independently drive the GLOBAL "a sync is running" flag apart from
+// Home's PULL-specific `isSyncing` (mocked via `useSyncAll` above), which is
+// exactly the two-signal interplay the "never show both indicators" rule turns
+// on.
+const mockUseSyncStatus = jest.fn();
+jest.mock('../../monobank/sync-status', () => ({
+  useSyncStatus: () => mockUseSyncStatus(),
+}));
+
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render has none of; stand it in with a spy so this test
 // can assert the screen hands it the transaction list's own ref.
@@ -217,6 +227,7 @@ describe('HomeScreen', () => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
     mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
   });
 
   it('renders the net worth caption', async () => {
@@ -876,6 +887,33 @@ describe('HomeScreen', () => {
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(true);
   });
 
+  it('hides the custom syncing indicator during a pull, leaving the native spinner as the only signal', async () => {
+    // A pull-to-refresh drives BOTH Home's pull-specific `isSyncing` (the native
+    // RefreshControl spinner) AND the global sync-status store (which lit the
+    // custom indicator). Showing both at once is the duplicate this guards: on
+    // the pull path the custom indicator must be suppressed.
+    mockUseSyncAll.mockReturnValue({ isSyncing: true, failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(true);
+    const { queryByTestId } = await renderHome();
+
+    expect(queryByTestId('syncing-indicator')).toBeNull();
+    // The native spinner IS the indicator on this path.
+    expect(queryByTestId('home-transactions')?.props.refreshControl.props.refreshing).toBe(true);
+  });
+
+  it('shows the custom syncing indicator for a non-pull sync (auto-sync on open)', async () => {
+    // No pull is active (`isSyncing` false ⇒ the RefreshControl is not
+    // refreshing), but the global store reports a sync in flight — the
+    // auto-sync-on-open / manual-button path. The custom indicator is then the
+    // ONLY signal and must render.
+    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(true);
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('syncing-indicator')).toBeTruthy();
+    expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
+  });
+
   it('surfaces a message naming the accounts that failed to sync', async () => {
     mockUseSyncAll.mockReturnValue({
       isSyncing: false,
@@ -894,6 +932,7 @@ describe('HomeScreen — localization', () => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
     mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
   });
 
   afterEach(async () => {
