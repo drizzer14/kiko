@@ -459,15 +459,23 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     }
   }
 
-  // Move the DISPLAY "last synced" stamp whenever this run actually imported
-  // rows — BEFORE the partial-failure throw below, so a run where some cards
-  // succeeded and one failed still updates the time the user sees. This is
-  // decoupled from the statement cursor (`setLastSyncAt`), which advances only
-  // on a fully clean run: a partial failure must re-cover the failed card's
-  // window, so the cursor stays put while the display moves. A run that
-  // imported nothing (a clean re-sync, or a total failure) leaves the display
-  // untouched — there are no fresh rows to announce.
-  if (importedTransactions > 0) {
+  // Move the DISPLAY "last synced" stamp whenever this run REACHED Monobank
+  // successfully — i.e. at least one card synced without error — regardless of
+  // whether any new rows imported. The label means "Last sync", not "last
+  // import": a clean re-sync that fetched every card but found nothing new is
+  // still a real, successful sync and must refresh the time the user sees.
+  // Stamping only on `importedTransactions > 0` froze the display at the last
+  // IMPORT time, so a later no-new-rows sync left "Last sync" stale.
+  //
+  // Gated on "≥1 card succeeded" (`failures.length < accounts.length`), not on
+  // an unconditional stamp: a TOTAL failure (every card errored) never reached
+  // any statement, so it must NOT announce a fresh "Last sync". A PARTIAL
+  // success (some cards imported, one failed) still stamps — this sits BEFORE
+  // the partial-failure `throw` below. This is decoupled from the statement
+  // cursor (`setLastSyncAt`), which advances only on a fully clean run: a
+  // partial failure must re-cover the failed card's window, so the cursor stays
+  // put while the display moves.
+  if (failures.length < accounts.length) {
     await deps.setLastSyncDisplayAt(deps.now());
   }
 

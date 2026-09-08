@@ -442,13 +442,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           </Box>
         </GlassSurface>
 
-        {/* A global "a sync is running" signal in the header area, driven by the
-            reactive sync-status store. Additive to the pull-to-refresh spinner
-            below — it shows for ANY sync trigger (auto-sync on open, the
-            account-detail button) and persists through a slow multi-card run,
-            rendering nothing when idle. */}
-        <SyncingIndicator />
-
         {failures.length > 0 && (
           <Text variant="body" tone="negative">
             {t('home.syncFailedMessage', { accounts: failures.join(', ') })}
@@ -479,6 +472,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             />
           </Box>
         </Box>
+
+        {/* A global "a sync is running" signal, driven by the reactive
+            sync-status store. Sits BELOW the filters (above the list) so it
+            reads as a status line for the transactions below it. Additive to
+            the pull-to-refresh spinner — it shows for ANY sync trigger
+            (auto-sync on open, the account-detail button) and persists through
+            a slow multi-card run, rendering nothing when idle. */}
+        <SyncingIndicator />
 
         <SectionList
           ref={listRef}

@@ -857,9 +857,11 @@ describe('runSync', () => {
     expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
   });
 
-  // A partial failure where NOTHING imported (every card failed) must not stamp
-  // the display either — there is nothing new to show as "just synced".
-  it('does not stamp the display timestamp on a failure that imported nothing', async () => {
+  // A TOTAL failure (every card errored) never reached any statement, so it
+  // must not stamp the display — there was no successful sync to announce.
+  // This is the lower bound of the "≥1 card succeeded" gate: with every card
+  // failing, `failures.length === accounts.length`, so the stamp is skipped.
+  it('does not stamp the display timestamp on a total failure', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(() => [], [connected]);
     deps.fetchStatement = async () => {
@@ -892,16 +894,19 @@ describe('runSync', () => {
     expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
   });
 
-  // A clean run that imported nothing (a re-sync with no new rows) leaves BOTH
-  // stamps as they were: the cursor advances (the window was fully covered) but
-  // the display must not move, since no fresh rows arrived to show.
-  it('does not stamp the display timestamp on a clean run that imported nothing', async () => {
+  // A clean run that imported nothing (a re-sync with no new rows) is still a
+  // real, successful sync: every card was reached, so the DISPLAY stamp moves
+  // (the label means "Last sync", not "last import") AND the cursor advances
+  // (the window was fully covered). This is the BUG1 fix — the display used to
+  // freeze at the last IMPORT time and go stale on a no-new-rows re-sync.
+  it('stamps the display timestamp on a clean run that imported nothing', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
     const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
     const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
     deps.setLastSyncAt = setLastSyncAt;
     deps.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    deps.now = () => 1_700_000_000_000;
 
     await runSync(deps); // first run imports the fixture rows
     setLastSyncDisplayAt.mockClear();
@@ -910,7 +915,8 @@ describe('runSync', () => {
 
     expect(second.importedTransactions).toBe(0);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
-    expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
+    expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
   });
 
   // The reactive sync-in-progress signal: `runSync` lights it the instant it
