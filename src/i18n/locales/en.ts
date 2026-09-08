@@ -37,6 +37,7 @@ export const en = {
     changeIconLabel: 'Change {{label}}',
     iconLabel: 'Icon {{name}}',
     noDataForRange: 'No Data For This Range',
+    syncing: 'Syncing…',
   },
   settings: {
     appLock: {

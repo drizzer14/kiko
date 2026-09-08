@@ -45,6 +45,7 @@ import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../transactions/row-description';
+import SyncingIndicator from '../syncing-indicator';
 import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
@@ -440,6 +441,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             </Box>
           </Box>
         </GlassSurface>
+
+        {/* A global "a sync is running" signal in the header area, driven by the
+            reactive sync-status store. Additive to the pull-to-refresh spinner
+            below — it shows for ANY sync trigger (auto-sync on open, the
+            account-detail button) and persists through a slow multi-card run,
+            rendering nothing when idle. */}
+        <SyncingIndicator />
 
         {failures.length > 0 && (
           <Text variant="body" tone="negative">

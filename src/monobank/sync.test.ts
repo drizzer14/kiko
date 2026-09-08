@@ -9,6 +9,7 @@ import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
 import { mapAccountToHolding, mapStatementItem, runSync, type SyncDeps } from './sync';
+import { getSnapshot as isSyncingSnapshot } from './sync-status';
 
 describe('mapStatementItem', () => {
   it('maps a Monobank item to a transaction with the source and external id', () => {
@@ -910,5 +911,44 @@ describe('runSync', () => {
     expect(second.importedTransactions).toBe(0);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
     expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
+  });
+
+  // The reactive sync-in-progress signal: `runSync` lights it the instant it
+  // acquires the single-flight lock and clears it when the run settles, so any
+  // trigger drives the same global indicator.
+  it('lights the sync-status signal while a run is in flight and clears it after', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+
+    // Hold client-info open so the run is provably still in flight when we read
+    // the signal.
+    let release!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    deps.fetchClientInfo = async () => {
+      await opened;
+      return {
+        accounts: clientInfo.accounts as MonobankAccount[],
+        jars: clientInfo.jars as MonobankJar[],
+      };
+    };
+
+    expect(isSyncingSnapshot()).toBe(false);
+    const run = runSync(deps);
+    expect(isSyncingSnapshot()).toBe(true);
+    release();
+    await run;
+    expect(isSyncingSnapshot()).toBe(false);
+  });
+
+  it('clears the sync-status signal even when the run fails', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    deps.fetchClientInfo = jest.fn(() => Promise.reject(new Error('401')));
+
+    await expect(runSync(deps)).rejects.toThrow('401');
+
+    expect(isSyncingSnapshot()).toBe(false);
   });
 });

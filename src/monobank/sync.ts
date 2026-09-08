@@ -9,6 +9,7 @@ import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
+import { setSyncing } from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
 import { readToken } from './token';
 
@@ -387,10 +388,18 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   }
   const run = runSyncInner(overrides);
   inFlightSync = run;
+  // Light the transient "syncing" signal the instant this run acquires the
+  // lock — before any network/DB work — so every reactive indicator
+  // (`useSyncStatus`) shows it for the whole run. A trigger that JOINS an
+  // in-flight run takes the early `return inFlightSync` above and never
+  // reaches here, so it neither re-lights nor prematurely clears the flag; the
+  // flag is cleared only when the ACTUAL run settles, in `release` below.
+  setSyncing(true);
   const release = (): void => {
     if (inFlightSync === run) {
       inFlightSync = null;
     }
+    setSyncing(false);
   };
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
