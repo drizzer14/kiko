@@ -179,7 +179,15 @@ describe('entityCardBackground direction', () => {
   });
 
   it('lightens on the light theme, toward a near-white card tone', () => {
-    expect(entityCardBackground('#FF453A', 'light')).toBe(lightenHex('#FF453A', 90));
+    expect(entityCardBackground('#FF453A', 'light')).toBe(lightenHex('#FF453A', 85));
+  });
+
+  // Regression-lock for CARD_LIGHTEN_PERCENT (provisional 85, device-review
+  // pending — see the DEVICE-REVIEWABLE comment above the constant).
+  it('light card background lightens toward white with a hint of hue', () => {
+    // systemRed light #FF3B30 at CARD_LIGHTEN_PERCENT — a pale, legible pink on
+    // white, with black body text on top.
+    expect(entityCardBackground('#FF3B30', 'light')).toBe(lightenHex('#FF3B30', 85));
   });
 
   it('reads plainly lighter than the raw hue on every channel for every swatch on light', () => {

@@ -215,11 +215,12 @@ export const lightenHex = (hex: string, percent: number): string => {
 // hue, the chosen target).
 const CARD_DARKEN_PERCENT = 90;
 
-// Mirror of CARD_DARKEN_PERCENT for the light theme. 90% pulls a swatch
-// nearly to white while keeping a hint of hue. DEVICE-REVIEWABLE, like the
-// darken percent's own history (55 -> 70 -> 90): confirm on the light theme
-// on-device and adjust if a card reads too washed-out or too saturated.
-const CARD_LIGHTEN_PERCENT = 90;
+// Mirror of CARD_DARKEN_PERCENT for the light theme. Provisional at 85 (a hint
+// stronger than the direct 90 mirror, so a light card is not washed flat to the
+// white `surface`). DEVICE-REVIEWABLE — the coordinator confirms this on the
+// light theme on-device this round and adjusts if a card reads too pale or too
+// saturated (same review loop the darken percent went through: 55 -> 70 -> 90).
+const CARD_LIGHTEN_PERCENT = 85;
 
 // A card's flat, OPAQUE background, direction-chosen by the active theme:
 // the resolved entity hue darkened (dark theme) or lightened (light theme)
