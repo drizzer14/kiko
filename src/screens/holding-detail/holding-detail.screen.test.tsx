@@ -364,6 +364,35 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Everyday card income')).toBeTruthy();
   });
 
+  it('stamps a time-specific holding row with the full date and HH:MM time', async () => {
+    // A card is time-specific: its row shows "DD.MM.YYYY HH:MM".
+    const at = new Date(2024, 0, 15, 9, 5).getTime();
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('15.01.2024 09:05')).toBeTruthy();
+  });
+
+  it.each([
+    ['a term_deposit', depositHolding],
+    ['a bond', bondHolding],
+  ])('drops the HH:MM time on %s row, showing the date only', async (_label, holding) => {
+    // A deposit/bond event is day-granular, so its row shows the date with no
+    // trailing time.
+    const at = new Date(2024, 5, 20, 9, 5).getTime();
+    seed(holding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Top-up', source: 'manual' },
+    ]);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('20.06.2024')).toBeTruthy();
+    expect(queryByText('20.06.2024 09:05')).toBeNull();
+  });
+
   it('labels an unlabelled exchange leg from its counterpart holding, not as an expense', async () => {
     // The leg persists no description — only the counterpart's holding id — so
     // the row must read as an exchange rather than falling back to this

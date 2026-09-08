@@ -107,6 +107,7 @@ type Transaction = {
   accountId: string;
   accountName: string;
   holdingName: string;
+  holdingType: string;
   exchangeCounterpartHoldingId: string | null;
 };
 type Category = { key: string; title: string; icon: string };
@@ -167,6 +168,9 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   accountId: 'a',
   accountName: 'Monobank',
   holdingName: 'Card',
+  // Default to a time-specific holding (a card), so an ordinary row keeps its
+  // HH:MM stamp; a deposit/bond test overrides this to drop the time.
+  holdingType: 'card',
   // The query projects this column for every row; an ordinary transaction is
   // not an exchange leg, so its marker is NULL (what SQLite returns), never
   // undefined.
@@ -250,6 +254,17 @@ describe('HomeScreen', () => {
     const { getByText } = await renderHome();
     expect(getByText('09:05')).toBeTruthy();
   });
+
+  it.each(['term_deposit', 'bond'])(
+    'hides the HH:MM time on a %s row (deposits and bonds are not time-specific)',
+    async (holdingType) => {
+      const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      at.setHours(9, 5, 0, 0);
+      seed({ transactions: [transaction({ time: at.getTime(), holdingType })] });
+      const { queryByText } = await renderHome();
+      expect(queryByText('09:05')).toBeNull();
+    },
+  );
 
   it('renders the account-name and the resolved category title for a transaction', async () => {
     seed({ transactions: [transaction({ category: 'groceries' })] });

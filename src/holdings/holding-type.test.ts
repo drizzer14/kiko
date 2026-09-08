@@ -3,6 +3,7 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
   isSyncOnlyHoldingType,
+  isTimeExemptHoldingType,
   syncOnlyHoldingTypes,
 } from './holding-type';
 
@@ -51,6 +52,20 @@ describe('sync-only holding types', () => {
     expect(isSyncOnlyHoldingType('bond')).toBe(false);
     expect(isSyncOnlyHoldingType('cash')).toBe(false);
     expect(isSyncOnlyHoldingType('crypto_asset')).toBe(false);
+  });
+});
+
+describe('time-exempt holding types', () => {
+  it('marks a term_deposit and a bond as time-exempt (they are not time-specific)', () => {
+    expect(isTimeExemptHoldingType('term_deposit')).toBe(true);
+    expect(isTimeExemptHoldingType('bond')).toBe(true);
+  });
+
+  it('does not mark time-specific holding types as time-exempt', () => {
+    expect(isTimeExemptHoldingType('card')).toBe(false);
+    expect(isTimeExemptHoldingType('cash')).toBe(false);
+    expect(isTimeExemptHoldingType('crypto_asset')).toBe(false);
+    expect(isTimeExemptHoldingType('jar')).toBe(false);
   });
 });
 

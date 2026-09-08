@@ -41,6 +41,14 @@ export const syncOnlyHoldingTypes = ['card', 'jar'] as const satisfies readonly 
 export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
   (syncOnlyHoldingTypes as readonly HoldingType[]).includes(type);
 
+// The holding types a transaction row must NOT stamp with a time-of-day: a
+// term_deposit contribution and a bond purchase/coupon/redemption are
+// day-granular events, not moment-in-time movements, so their rows show the
+// date only (Home drops the HH:MM entirely; Holding Detail renders the date
+// without the trailing time). Every other type keeps its HH:MM stamp.
+export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
+  type === 'term_deposit' || type === 'bond';
+
 // The holding types a user may MANUALLY CREATE under each account kind: the
 // kind's full set minus the sync-only types above. For a bank this drops card
 // and jar, leaving term_deposit and bond; cash and crypto are unchanged (their

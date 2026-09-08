@@ -85,6 +85,9 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('join "holdings"');
     expect(sql).toContain('join "accounts"');
     expect(sql).toContain('order by');
+    // Home reads the holding type to decide whether a row shows its HH:MM time
+    // (a term_deposit/bond row does not), so the type must ride the projection.
+    expect(sql).toContain('"holdings"."type"');
   });
 
   it('records a manual transaction and adjusts the balance atomically', async () => {

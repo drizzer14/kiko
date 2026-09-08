@@ -12,7 +12,7 @@ import {
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
-import { formatDateTime } from '../../dates/format';
+import { formatDate, formatDateTime } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import { resolveColorScheme } from '../../design-system/color-scheme';
@@ -31,6 +31,7 @@ import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holding
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { asBondMeta } from '../../holdings/holding-metadata';
+import { isTimeExemptHoldingType } from '../../holdings/holding-type';
 import {
   bondExpectedProfitMinor,
   type HoldingValueBreakdown,
@@ -184,6 +185,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // purchase); every other holding takes a plain transaction. The footer action
   // reads accordingly.
   const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
+  // A term_deposit/bond event is day-granular (a contribution, coupon, or
+  // redemption), so its ledger rows show the date only; every other holding
+  // keeps the full date + HH:MM stamp.
+  const showTime = holding ? !isTimeExemptHoldingType(holding.type) : true;
 
   // The nav title shows the holding NAME only — the native large title, the
   // standard iOS pattern (the identity icon now sits beside the Value amount
@@ -305,7 +310,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     {row.entry.isFuture
                       ? t('holdingDetail.projected')
                       : t('holdingDetail.computed')}{' '}
-                    · {formatDateTime(row.entry.time)}
+                    · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
                   </Text>
                 </Box>
               );
@@ -371,7 +376,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       </Box>
                     </Box>
                     <Text variant="caption" tone="textSecondary">
-                      {formatDateTime(row.transaction.time)}
+                      {showTime
+                        ? formatDateTime(row.transaction.time)
+                        : formatDate(row.transaction.time)}
                     </Text>
                   </Box>
                 </Pressable>

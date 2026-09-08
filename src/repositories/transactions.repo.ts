@@ -232,6 +232,9 @@ export const transactionsRepo = {
         accountId: accounts.id,
         accountName: accounts.name,
         holdingName: holdings.name,
+        // Home reads the holding type to drop the HH:MM stamp on a
+        // term_deposit/bond row (those are day-granular events).
+        holdingType: holdings.type,
       })
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))

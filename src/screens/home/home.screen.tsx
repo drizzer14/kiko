@@ -32,6 +32,7 @@ import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
+import { isTimeExemptHoldingType } from '../../holdings/holding-type';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
@@ -402,9 +403,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 {`${item.accountName} · ${category.title}`}
               </Text>
             </Box>
-            <Text variant="caption" tone="textSecondary">
-              {formatTime(item.time)}
-            </Text>
+            {!isTimeExemptHoldingType(item.holdingType) && (
+              <Text variant="caption" tone="textSecondary">
+                {formatTime(item.time)}
+              </Text>
+            )}
           </Box>
         </Box>
       </Pressable>
