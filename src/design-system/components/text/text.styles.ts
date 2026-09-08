@@ -14,6 +14,7 @@ export const styles = StyleSheet.create((theme) => ({
         negative: { color: theme.colors.negative },
         textPrimary: { color: theme.colors.textPrimary },
         textSecondary: { color: theme.colors.textSecondary },
+        onAccent: { color: theme.colors.onAccent },
       },
     },
   },

@@ -6,6 +6,7 @@ import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import FieldTrigger from '../field-trigger';
 
 import type { HoldingSelectFieldProps } from './holding-select-field.props';
 import { styles } from './holding-select-field.styles';
@@ -37,30 +38,15 @@ const HoldingSelectField = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
+      <FieldTrigger
+        label={label}
         onPress={() => setOpen(true)}
-      >
-        <Box direction="row" gap={2} style={styles.field}>
-          {selected && (
-            <SymbolIcon
-              name={selected.icon}
-              size={18}
-              tone="textSecondary"
-              color={selected.color}
-            />
-          )}
-
-          <Text variant="body" tone={selected ? 'textPrimary' : 'textSecondary'}>
-            {selected?.name ?? placeholder}
-          </Text>
-
-          {selected && (
+        icon={selected?.icon}
+        iconColor={selected?.color}
+        value={selected?.name ?? placeholder}
+        valueTone={selected ? 'textPrimary' : 'textSecondary'}
+        trailing={
+          selected && (
             // The right-push is a LAYOUT concern, so it sits on a Box rather
             // than on Text — `TextProps['style']` deliberately admits only
             // typography keys (fontSize/fontWeight/textAlign/textTransform),
@@ -77,9 +63,9 @@ const HoldingSelectField = ({
                 {selected.accountName}
               </Text>
             </Box>
-          )}
-        </Box>
-      </Pressable>
+          )
+        }
+      />
 
       <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={2}>
         <Text variant="heading">{label}</Text>
@@ -100,24 +86,28 @@ const HoldingSelectField = ({
               ]}
             >
               {isSelected ? (
-                // The selected row sits on the accent fill, so its glyph reads
-                // white (tone) to match the checkmark below — SymbolIcon's
-                // `color` overrides `tone`, so it must be omitted here.
-                <SymbolIcon name={option.icon} size={18} tone="textPrimary" />
+                // The selected row sits on the accent fill, so its glyph needs
+                // the always-white `onAccent` tone to match the checkmark
+                // below — `textPrimary` flips to black on the light theme and
+                // would vanish there. SymbolIcon's `color` overrides `tone`,
+                // so it must be omitted here.
+                <SymbolIcon name={option.icon} size={18} tone="onAccent" />
               ) : (
                 <SymbolIcon name={option.icon} size={18} color={option.color} />
               )}
 
               <Box style={styles.optionText}>
-                <Text variant="body">{option.name}</Text>
-                <Text variant="caption" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
+                <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
+                  {option.name}
+                </Text>
+                <Text variant="caption" tone={isSelected ? 'onAccent' : 'textSecondary'}>
                   {`${option.accountName} · ${option.currency}`}
                 </Text>
               </Box>
 
               {isSelected && (
                 <Box style={styles.checkmark}>
-                  <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
+                  <SymbolIcon name="checkmark" size={16} tone="onAccent" />
                 </Box>
               )}
             </Pressable>

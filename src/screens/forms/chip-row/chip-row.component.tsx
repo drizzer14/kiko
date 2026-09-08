@@ -55,13 +55,18 @@ const ChipRow = <Option extends string>({
                 // Only the entity selects (account Kind, holding Type) pass
                 // `icons`; the glyph tints like CategoryField's chip icon so it
                 // reads on both the accent-selected and surface-unselected chip.
+                // Selected sits on the filled accent surface, so it needs the
+                // always-white `onAccent` tone — `textPrimary` flips to black on
+                // light and would vanish there.
                 <SymbolIcon
                   name={icon}
                   size={18}
-                  tone={isSelected ? 'textPrimary' : 'textSecondary'}
+                  tone={isSelected ? 'onAccent' : 'textSecondary'}
                 />
               )}
-              <Text variant="body">{labels?.[option] ?? option}</Text>
+              <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
+                {labels?.[option] ?? option}
+              </Text>
             </Pressable>
           );
         })}

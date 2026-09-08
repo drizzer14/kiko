@@ -225,24 +225,32 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         <Box direction="row" gap={2} style={styles.grid}>
-          {CURATED_ICONS.map((icon) => (
-            <Pressable
-              key={icon}
-              accessibilityRole="button"
-              accessibilityLabel={t('categories.iconOptionLabel', { icon })}
-              accessibilityState={{ selected: icon === selectedIcon }}
-              onPress={() => onSelect(icon)}
-              style={[
-                styles.option,
-                {
-                  backgroundColor:
-                    icon === selectedIcon ? theme.colors.accent : theme.colors.surface,
-                },
-              ]}
-            >
-              <SymbolIcon name={icon} tone="textSecondary" />
-            </Pressable>
-          ))}
+          {CURATED_ICONS.map((icon) => {
+            const isSelected = icon === selectedIcon;
+
+            return (
+              <Pressable
+                key={icon}
+                accessibilityRole="button"
+                accessibilityLabel={t('categories.iconOptionLabel', { icon })}
+                accessibilityState={{ selected: isSelected }}
+                onPress={() => onSelect(icon)}
+                style={[
+                  styles.option,
+                  {
+                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.surface,
+                  },
+                ]}
+              >
+                {/* Selected sits on the filled accent surface, so it needs the
+                    always-white `onAccent` tone the same way Button's
+                    primary/destructive variants do — `textSecondary` would
+                    render black-on-blue and disappear. Unselected keeps the
+                    normal adapting `textSecondary` tone. */}
+                <SymbolIcon name={icon} tone={isSelected ? 'onAccent' : 'textSecondary'} />
+              </Pressable>
+            );
+          })}
         </Box>
       </ScrollView>
     </BottomSheet>

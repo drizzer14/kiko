@@ -8,7 +8,9 @@ import { StyleSheet } from 'react-native';
 // only way to assert the *actual* text color a day cell paints, rather than just the marks
 // data Kiko hands the library (see jest.config.js's transformIgnorePatterns comment).
 import BasicDay from 'react-native-calendars/src/calendar/day/basic';
+import type { MarkingProps } from 'react-native-calendars/src/calendar/day/marking';
 import PeriodDay from 'react-native-calendars/src/calendar/day/period';
+import type { DayState } from 'react-native-calendars/src/types';
 
 import { darkTheme } from '../../../design-system/theme';
 import type { RenderedElement } from '../../../test-support/rendered-element';
@@ -21,13 +23,32 @@ import { buildCalendarTheme } from './kiko-calendar.theme';
 const calendarTheme = {
   dayTextColor: darkTheme.colors.textPrimary,
   todayTextColor: darkTheme.colors.accent,
-  selectedDayTextColor: darkTheme.colors.textPrimary,
+  selectedDayTextColor: darkTheme.colors.onAccent,
   selectedDayBackgroundColor: darkTheme.colors.accent,
   calendarBackground: darkTheme.colors.surfaceHigh,
 };
 
 const textColorOf = (node: RenderedElement): unknown =>
   StyleSheet.flatten(node.props.style as never).color;
+
+// The two day-cell describe blocks below each render the SAME cell twice —
+// once for "today AND selected/in-range", once for "selected/in-range but not
+// today" — asserting the identical on-accent-text outcome, differing only in
+// `state`/`marking`. Sharing one render-plus-read-color helper per cell type
+// keeps the JSX in exactly one place instead of copy-pasted per case.
+const dayTextColor = async (
+  Day: typeof BasicDay | typeof PeriodDay,
+  state: DayState | undefined,
+  marking: MarkingProps | undefined,
+): Promise<unknown> => {
+  const { getByText } = await render(
+    <Day theme={calendarTheme} state={state} marking={marking} testID="d">
+      4
+    </Day>,
+  );
+
+  return textColorOf(getByText('4'));
+};
 
 describe('buildCalendarTheme — disabled-day legibility', () => {
   // react-native-calendars' own default `textDisabledColor` (#d9e1e8) is ≈ the
@@ -41,43 +62,27 @@ describe('buildCalendarTheme — disabled-day legibility', () => {
 
 describe('day-cell text color precedence — DateField single-day sheet (BasicDay)', () => {
   it('renders the on-accent (white) text, not today’s marker color, when a day is both today and selected', async () => {
-    const { getByText } = await render(
-      <BasicDay
-        theme={calendarTheme}
-        state="today"
-        marking={{ selected: true, selectedColor: darkTheme.colors.accent }}
-        testID="d"
-      >
-        4
-      </BasicDay>,
-    );
+    const color = await dayTextColor(BasicDay, 'today', {
+      selected: true,
+      selectedColor: darkTheme.colors.accent,
+    });
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.textPrimary);
+    expect(color).toBe(darkTheme.colors.onAccent);
   });
 
   it('renders the on-accent (white) text for a selected day that is not today', async () => {
-    const { getByText } = await render(
-      <BasicDay
-        theme={calendarTheme}
-        state="selected"
-        marking={{ selected: true, selectedColor: darkTheme.colors.accent }}
-        testID="d"
-      >
-        4
-      </BasicDay>,
-    );
+    const color = await dayTextColor(BasicDay, 'selected', {
+      selected: true,
+      selectedColor: darkTheme.colors.accent,
+    });
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.textPrimary);
+    expect(color).toBe(darkTheme.colors.onAccent);
   });
 
   it('keeps today’s own marker color for an unselected today', async () => {
-    const { getByText } = await render(
-      <BasicDay theme={calendarTheme} state="today" testID="d">
-        4
-      </BasicDay>,
-    );
+    const color = await dayTextColor(BasicDay, 'today', undefined);
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.accent);
+    expect(color).toBe(darkTheme.colors.accent);
   });
 });
 
@@ -85,69 +90,43 @@ describe('day-cell text color precedence — DateRangeField range sheet (PeriodD
   // Shape mirrors date-range-field.component.tsx's `buildPeriodMarks` output: `color` fills
   // the day, `selected: true` is always set on every mark it builds.
   it('renders the on-accent (white) text, not today’s marker color, when a day is both today and inside the selected range', async () => {
-    const { getByText } = await render(
-      <PeriodDay
-        theme={calendarTheme}
-        state="today"
-        marking={{
-          color: darkTheme.colors.accent,
-          startingDay: true,
-          endingDay: true,
-          selected: true,
-        }}
-        testID="d"
-      >
-        4
-      </PeriodDay>,
-    );
+    const color = await dayTextColor(PeriodDay, 'today', {
+      color: darkTheme.colors.accent,
+      startingDay: true,
+      endingDay: true,
+      selected: true,
+    });
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.textPrimary);
+    expect(color).toBe(darkTheme.colors.onAccent);
   });
 
   it('renders the on-accent (white) text for a day inside the selected range that is not today', async () => {
-    const { getByText } = await render(
-      <PeriodDay
-        theme={calendarTheme}
-        marking={{
-          color: darkTheme.colors.accent,
-          startingDay: true,
-          endingDay: true,
-          selected: true,
-        }}
-        testID="d"
-      >
-        4
-      </PeriodDay>,
-    );
+    const color = await dayTextColor(PeriodDay, undefined, {
+      color: darkTheme.colors.accent,
+      startingDay: true,
+      endingDay: true,
+      selected: true,
+    });
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.textPrimary);
+    expect(color).toBe(darkTheme.colors.onAccent);
   });
 
   it('keeps today’s own marker color for a today outside any marked range', async () => {
-    const { getByText } = await render(
-      <PeriodDay theme={calendarTheme} state="today" testID="d">
-        4
-      </PeriodDay>,
-    );
+    const color = await dayTextColor(PeriodDay, 'today', undefined);
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.accent);
+    expect(color).toBe(darkTheme.colors.accent);
   });
 
   // Regression guard for the actual shipped bug: without `selected: true` on the mark (the
   // state before the fix), a today that is also range-filled keeps the today-blue text over
   // the accent-blue fill — invisible. Locks in that `buildPeriodMarks` must keep setting it.
   it('would leave today’s marker color (not on-accent) over the fill if a range mark omitted `selected`', async () => {
-    const { getByText } = await render(
-      <PeriodDay
-        theme={calendarTheme}
-        state="today"
-        marking={{ color: darkTheme.colors.accent, startingDay: true, endingDay: true }}
-        testID="d"
-      >
-        4
-      </PeriodDay>,
-    );
+    const color = await dayTextColor(PeriodDay, 'today', {
+      color: darkTheme.colors.accent,
+      startingDay: true,
+      endingDay: true,
+    });
 
-    expect(textColorOf(getByText('4'))).toBe(darkTheme.colors.accent);
+    expect(color).toBe(darkTheme.colors.accent);
   });
 });

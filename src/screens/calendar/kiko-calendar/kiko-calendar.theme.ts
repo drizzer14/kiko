@@ -41,7 +41,10 @@ export const buildCalendarTheme = (theme: AppTheme) => ({
   todayTextColor: theme.colors.accent,
   arrowColor: theme.colors.accent,
   selectedDayBackgroundColor: theme.colors.accent,
-  selectedDayTextColor: theme.colors.textPrimary,
+  // The selected/period-filled day sits on the accent fill, so its number
+  // needs the always-white `onAccent` token — `textPrimary` flips to black
+  // on the light theme and would render invisible on the blue fill there.
+  selectedDayTextColor: theme.colors.onAccent,
   // Disabled (out-of-range) days: react-native-calendars' own default
   // (#d9e1e8) is ≈ the light theme's surfaceHigh (#E5E5EA) — which is also the
   // calendarBackground here — so disabled days vanish on light. Use the

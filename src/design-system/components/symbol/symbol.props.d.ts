@@ -1,5 +1,8 @@
-// Mirrors Text's tone union (see text.props.ts).
-type SymbolTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary';
+// Mirrors Text's tone union (see text.props.ts), including `onAccent` — the
+// always-white foreground for a glyph sitting on a filled accent surface
+// (a selected chip/pill/row's icon), which `textPrimary` cannot provide on
+// the light theme (it flips to black there).
+type SymbolTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary' | 'onAccent';
 
 export type SymbolProps = {
   name: string;

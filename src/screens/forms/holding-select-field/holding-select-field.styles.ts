@@ -1,18 +1,9 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The tappable field showing the current selection: a bordered chip matching
-  // an ACTIVE TextField / the CategoryField's own field (same border color,
-  // radius, padding, and — crucially — no surface fill, which would read as
-  // disabled), so every form picker reads as one family.
-  field: {
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    paddingVertical: theme.spacing(3),
-    paddingHorizontal: theme.spacing(3),
-  },
+  // The tappable field's own bordered-chip style now lives in the shared
+  // `FieldTrigger` (see field-trigger.styles.ts) — this file no longer needs
+  // its own copy.
   // Pushes the collapsed field's trailing account-name caption to the field's
   // right edge, so the picked holding's account reads disambiguated even
   // while the sheet is closed.

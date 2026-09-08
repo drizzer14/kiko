@@ -3,7 +3,11 @@ import type { StyleProp, TextStyle } from 'react-native';
 
 type TextVariant = 'title' | 'heading' | 'body' | 'caption';
 
-type TextTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary';
+// `onAccent` is the always-white foreground for text sitting ON a filled
+// accent/destructive surface (a selected chip/pill/row's label) — the same
+// token Button's primary/destructive label uses. `textPrimary` flips to
+// black on the light theme and would vanish there; `onAccent` never does.
+type TextTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary' | 'onAccent';
 
 export type TextProps = {
   variant?: TextVariant;
