@@ -6,6 +6,7 @@ import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
+import { areaColor, toAreaPath } from './net-worth-line.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
 // test can assert a single directive regardless of how Unistyles composed it.
@@ -19,6 +20,58 @@ const points: NetWorthPoint[] = [
   { t: 86_400_000, amount: 300 },
   { t: 172_800_000, amount: 200 },
 ];
+
+describe('areaColor', () => {
+  it('is positive-green when the latest value is at/above the reference', () => {
+    const pts: NetWorthPoint[] = [
+      { t: 0, amount: 10 },
+      { t: 1, amount: 15 },
+    ];
+    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.positive);
+  });
+
+  it('is positive-green when the latest value equals the reference exactly', () => {
+    const pts: NetWorthPoint[] = [
+      { t: 0, amount: 10 },
+      { t: 1, amount: 10 },
+    ];
+    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.positive);
+  });
+
+  it('is negative-red when the latest value is below the reference', () => {
+    const pts: NetWorthPoint[] = [
+      { t: 0, amount: 10 },
+      { t: 1, amount: 5 },
+    ];
+    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.negative);
+  });
+});
+
+describe('toAreaPath', () => {
+  // An identity scale keeps the assertions readable: x(t) === t, y(v) === v.
+  const scales = {
+    x: (t: number) => t,
+    y: (v: number) => v,
+    minTime: 0,
+    maxTime: 2,
+  };
+
+  it('traces the line, then closes down to the baseline under the last and first x', () => {
+    const pts: NetWorthPoint[] = [
+      { t: 0, amount: 10 },
+      { t: 1, amount: 20 },
+      { t: 2, amount: 15 },
+    ];
+
+    const path = toAreaPath(pts, scales, 100);
+
+    // Starts at the first point, traces each point, drops to the baseline under
+    // the last x, back under the first x, and closes with Z.
+    expect(path).toBe('M 0,10 L 1,20 L 2,15 L 2,100 L 0,100 Z');
+    expect(path.startsWith('M 0,10')).toBe(true);
+    expect(path.trimEnd().endsWith('Z')).toBe(true);
+  });
+});
 
 describe('NetWorthLine', () => {
   afterEach(async () => {
@@ -312,6 +365,46 @@ describe('NetWorthLine', () => {
         process.env.TZ = originalTz;
       }
     }
+  });
+
+  it('fills a gradient area under the line, keyed green when the latest value is at/above the reference', async () => {
+    // points ends at 200, at the reference -> positive/green.
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
+    );
+
+    const area = getByTestId('net-worth-line-area');
+    expect(area.props.fill).toBe('url(#net-worth-line-gradient)');
+    expect(area.props.stroke).toBe('none');
+    expect(area.props.d.startsWith('M ')).toBe(true);
+    expect(area.props.d.trimEnd().endsWith('Z')).toBe(true);
+
+    const top = getByTestId('net-worth-line-gradient-stop-top');
+    const bottom = getByTestId('net-worth-line-gradient-stop-bottom');
+    // stopOpacity is set EXPLICITLY per kiko-charts (native masks rgba alpha):
+    // the top fades in, the bottom is fully transparent.
+    expect(top.props.stopOpacity).toBeGreaterThan(0);
+    expect(bottom.props.stopOpacity).toBe(0);
+    // Both stops carry the resolved area color.
+    expect(top.props.stopColor).toBe(darkTheme.colors.positive);
+    expect(bottom.props.stopColor).toBe(darkTheme.colors.positive);
+  });
+
+  it('keys the area red when the latest value drops below the reference', async () => {
+    const dipping: NetWorthPoint[] = [
+      { t: 0, amount: 300 },
+      { t: 1, amount: 100 },
+    ];
+    const { getByTestId } = await render(
+      <NetWorthLine points={dipping} startReference={200} baseCurrency="USD" />,
+    );
+
+    expect(getByTestId('net-worth-line-gradient-stop-top').props.stopColor).toBe(
+      darkTheme.colors.negative,
+    );
+    expect(getByTestId('net-worth-line-gradient-stop-bottom').props.stopColor).toBe(
+      darkTheme.colors.negative,
+    );
   });
 
   it('draws the net-worth line in white', async () => {

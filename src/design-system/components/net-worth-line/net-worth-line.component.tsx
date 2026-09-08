@@ -1,8 +1,23 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
-import { G, Line, Polyline, Svg } from 'react-native-svg';
+import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
+
+// react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
+// on its path-based primitives (Path, Line, Polyline) but omits it from
+// LinearGradientProps/StopProps, even though the native gradient/stop elements
+// forward it identically. kiko-charts requires a testID on EVERY SVG primitive
+// so a test can read a gradient stop's resolved color/opacity back; declare the
+// prop the native view genuinely accepts rather than casting it away.
+declare module 'react-native-svg' {
+  interface LinearGradientProps {
+    testID?: string;
+  }
+  interface StopProps {
+    testID?: string;
+  }
+}
 
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
@@ -182,6 +197,32 @@ const buildXTicks = (scales: Scales): XTick[] => {
 const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
+// The filled area under the line: the polyline path, then dropped straight down
+// to the plot baseline under the last point and back under the first, closed —
+// so a vertical gradient fills between the line and the baseline. Callers guard
+// against an empty `points` array before invoking this (the loading/empty state
+// short-circuits the render), so `points[0]` is always present here.
+export const toAreaPath = (points: NetWorthPoint[], scales: Scales, baselineY: number): string => {
+  const line = points.map((p) => `${scales.x(p.t)},${scales.y(p.amount)}`).join(' L ');
+  const firstX = scales.x(points[0].t);
+  const lastX = scales.x(points[points.length - 1].t);
+
+  return `M ${line} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+};
+
+// One color for the whole area by net sign: green when the latest value is at or
+// above the start reference, red when below. A single gradient keeps the fill
+// simple; per-segment crossing coloring (green above the reference, red below,
+// split at the crossing point) is a deferred follow-up, not built here.
+export const areaColor = (
+  points: NetWorthPoint[],
+  startReference: number,
+  theme: { colors: { positive: string; negative: string } },
+): string =>
+  points[points.length - 1].amount >= startReference
+    ? theme.colors.positive
+    : theme.colors.negative;
+
 const formatAxisTime = (t: number): string =>
   new Date(t).toLocaleDateString(activeLocale(), { month: 'short', day: 'numeric' });
 
@@ -336,6 +377,38 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               stroke={theme.colors.textSecondary}
               strokeWidth={GRID_STROKE_WIDTH}
               strokeDasharray={REFERENCE_DASH}
+            />
+
+            <Defs>
+              <LinearGradient
+                testID="net-worth-line-gradient"
+                id="net-worth-line-gradient"
+                x1="0"
+                y1={PADDING_Y}
+                x2="0"
+                y2={baselineY}
+                gradientUnits="userSpaceOnUse"
+              >
+                <Stop
+                  testID="net-worth-line-gradient-stop-top"
+                  offset="0"
+                  stopColor={areaColor(points, startReference, theme)}
+                  stopOpacity={0.3}
+                />
+                <Stop
+                  testID="net-worth-line-gradient-stop-bottom"
+                  offset="1"
+                  stopColor={areaColor(points, startReference, theme)}
+                  stopOpacity={0}
+                />
+              </LinearGradient>
+            </Defs>
+
+            <Path
+              testID="net-worth-line-area"
+              d={toAreaPath(points, scales, baselineY)}
+              fill="url(#net-worth-line-gradient)"
+              stroke="none"
             />
 
             <Polyline
