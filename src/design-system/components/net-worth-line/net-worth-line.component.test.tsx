@@ -6,7 +6,7 @@ import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
-import { toClampedAreaPath } from './net-worth-line.component';
+import { toAreaPath } from './net-worth-line.component';
 
 // Every "y,x" coordinate's Y value in a path `d` string — every number that
 // follows a comma. The area builders clamp these to `referenceY`, so a test can
@@ -14,6 +14,16 @@ import { toClampedAreaPath } from './net-worth-line.component';
 // y) and the whole red path at or below it, with no ClipPath in play.
 const pathYs = (d: string): number[] =>
   [...d.matchAll(/,(-?\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
+
+// Every plotted point's scaled Y from the rendered polyline's `points` string,
+// so a band-anchored gradient test can derive the true filled-band extremes
+// (highest above-reference pixel, lowest below-reference pixel) the component
+// computed, without re-deriving the scale math here.
+const polylineYs = (raw: string): number[] =>
+  raw
+    .trim()
+    .split(' ')
+    .map((pair) => Number(pair.split(',')[1]));
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
 // test can assert a single directive regardless of how Unistyles composed it.
@@ -28,7 +38,7 @@ const points: NetWorthPoint[] = [
   { t: 172_800_000, amount: 200 },
 ];
 
-describe('toClampedAreaPath', () => {
+describe('toAreaPath', () => {
   // An identity scale keeps the assertions readable: x(t) === t, y(v) === v. y
   // grows DOWNWARD, so a SMALLER y is above the reference and a LARGER y below.
   const scales = {
@@ -40,8 +50,8 @@ describe('toClampedAreaPath', () => {
 
   // Crossing data: starts ABOVE the reference (y 10 < 15), dips BELOW (y 20 >
   // 15), and returns above (y 12 < 15). This is the shape that exercises both
-  // clamps — the green side must ride the reference where the line goes below,
-  // the red side where it goes above.
+  // sides — and both a DOWN crossing (x 0.5) and an UP crossing (x 1.625). The
+  // interpolated crossing x is NOT either neighbour vertex's x (0 or 1 or 2).
   const crossing: NetWorthPoint[] = [
     { t: 0, amount: 10 },
     { t: 1, amount: 20 },
@@ -49,12 +59,17 @@ describe('toClampedAreaPath', () => {
   ];
   const referenceY = 15;
 
-  it('clamps the green (above) path to the reference where the line dips below it', () => {
-    const path = toClampedAreaPath(crossing, scales, referenceY, 'above');
+  it('inserts an interpolated crossing vertex at referenceY where the line dips below (above side)', () => {
+    const path = toAreaPath(crossing, scales, referenceY, 'above');
 
-    // The below vertex (y 20) rides referenceY (15); the two above vertices keep
-    // their own y. Closes to referenceY under the last then first x, then Z.
-    expect(path).toBe('M 0,10 L 1,15 L 2,12 L 2,15 L 0,15 Z');
+    // Down crossing at x = 0 + (1-0)*(15-10)/(20-10) = 0.5; up crossing at
+    // x = 1 + (2-1)*(15-20)/(12-20) = 1.625. Each lands AT referenceY (15), at
+    // the TRUE crossing x, not the neighbour vertex x (1). The below vertex
+    // rides referenceY. Closes to referenceY under the last then first x.
+    expect(path).toBe('M 0,10 L 0.5,15 L 1,15 L 1.625,15 L 2,12 L 2,15 L 0,15 Z');
+    // The inserted vertices are at the interpolated crossing x, not at x=1.
+    expect(path).toContain('0.5,15');
+    expect(path).toContain('1.625,15');
     // No vertex ever exceeds referenceY (green never dips below the baseline).
     for (const y of pathYs(path)) {
       expect(y).toBeLessThanOrEqual(referenceY);
@@ -63,12 +78,14 @@ describe('toClampedAreaPath', () => {
     expect(pathYs(path).some((y) => y < referenceY)).toBe(true);
   });
 
-  it('clamps the red (below) path to the reference where the line rises above it', () => {
-    const path = toClampedAreaPath(crossing, scales, referenceY, 'below');
+  it('inserts an interpolated crossing vertex at referenceY where the line rises above (below side)', () => {
+    const path = toAreaPath(crossing, scales, referenceY, 'below');
 
-    // The two above vertices (y 10, 12) ride referenceY (15); the below vertex
-    // (y 20) keeps its own y. Closes to referenceY under the last then first x.
-    expect(path).toBe('M 0,15 L 1,20 L 2,15 L 2,15 L 0,15 Z');
+    // Same crossing x's (0.5, 1.625) at referenceY; the below vertex (y 20)
+    // keeps its own y, the two above vertices ride referenceY.
+    expect(path).toBe('M 0,15 L 0.5,15 L 1,20 L 1.625,15 L 2,15 L 2,15 L 0,15 Z');
+    expect(path).toContain('0.5,15');
+    expect(path).toContain('1.625,15');
     // No vertex is ever above referenceY (red never rises past the baseline).
     for (const y of pathYs(path)) {
       expect(y).toBeGreaterThanOrEqual(referenceY);
@@ -77,9 +94,9 @@ describe('toClampedAreaPath', () => {
     expect(pathYs(path).some((y) => y > referenceY)).toBe(true);
   });
 
-  it('closes each clamped path to the reference baseline, not the chart bottom', () => {
+  it('closes each path to the reference baseline, not the chart bottom', () => {
     for (const side of ['above', 'below'] as const) {
-      const path = toClampedAreaPath(crossing, scales, referenceY, side);
+      const path = toAreaPath(crossing, scales, referenceY, side);
       expect(path.startsWith('M ')).toBe(true);
       expect(path.trimEnd().endsWith(`L 2,${referenceY} L 0,${referenceY} Z`)).toBe(true);
     }
@@ -478,6 +495,95 @@ describe('NetWorthLine', () => {
     expect(negLine.props.stopOpacity).toBeGreaterThan(0);
     expect(negRef.props.stopColor).toBe(darkTheme.colors.negative);
     expect(negRef.props.stopOpacity).toBe(0);
+  });
+
+  it('anchors each gradient to the ACTUAL filled band, not the whole plot half', async () => {
+    const height = 200;
+    const { getByTestId } = await render(
+      <NetWorthLine
+        points={crossingPoints}
+        startReference={200}
+        baseCurrency="USD"
+        height={height}
+      />,
+    );
+
+    const referenceY = getByTestId('net-worth-line-reference').props.y1;
+    const baselineY = height - 12;
+    const ys = polylineYs(getByTestId('net-worth-line-polyline').props.points);
+    // greenTopY: the highest pixel (smallest y) among points at or above the
+    // reference. redBottomY: the lowest pixel (largest y) among points at or
+    // below it. These are the true filled-band extremes the component anchors to.
+    const greenTopY = Math.min(...ys.filter((y) => y <= referenceY));
+    const redBottomY = Math.max(...ys.filter((y) => y >= referenceY));
+
+    const posGrad = getByTestId('net-worth-line-gradient-positive');
+    const negGrad = getByTestId('net-worth-line-gradient-negative');
+
+    // Green ramps greenTopY (opaque) -> referenceY (transparent); red ramps
+    // referenceY (transparent) -> redBottomY (opaque).
+    expect(Number(posGrad.props.y1)).toBeCloseTo(greenTopY);
+    expect(Number(posGrad.props.y2)).toBeCloseTo(referenceY);
+    expect(Number(negGrad.props.y1)).toBeCloseTo(referenceY);
+    expect(Number(negGrad.props.y2)).toBeCloseTo(redBottomY);
+
+    // NOT the old whole-plot extents (PADDING_Y at the top, baselineY at the
+    // bottom) — the ramp is compressed into the filled sliver.
+    expect(Number(posGrad.props.y1)).not.toBeCloseTo(12);
+    expect(Number(negGrad.props.y2)).not.toBeCloseTo(baselineY);
+  });
+
+  it('keeps a SHALLOW dip readable: the red opaque stop lands at redBottomY, not the plot bottom', async () => {
+    const height = 200;
+    // Starts above, dips only SLIGHTLY below the reference (199 vs 200), returns
+    // above. Under the old whole-plot ramp this dip sat where red opacity ~ 0.
+    const shallow: NetWorthPoint[] = [
+      { t: 0, amount: 250 },
+      { t: 1, amount: 199 },
+      { t: 2, amount: 250 },
+    ];
+    const { getByTestId } = await render(
+      <NetWorthLine points={shallow} startReference={200} baseCurrency="USD" height={height} />,
+    );
+
+    const referenceY = getByTestId('net-worth-line-reference').props.y1;
+    const baselineY = height - 12;
+    const ys = polylineYs(getByTestId('net-worth-line-polyline').props.points);
+    const redBottomY = Math.max(...ys.filter((y) => y >= referenceY));
+
+    const negGrad = getByTestId('net-worth-line-gradient-negative');
+    expect(Number(negGrad.props.y1)).toBeCloseTo(referenceY);
+    expect(Number(negGrad.props.y2)).toBeCloseTo(redBottomY);
+
+    // The band is a SMALL sliver just below the reference — nowhere near the
+    // plot bottom, so the 0.3 opaque stop is close to the reference where the
+    // dip actually is (this is what makes a shallow dip visibly red).
+    expect(redBottomY).toBeGreaterThan(referenceY);
+    expect(redBottomY).toBeLessThan(baselineY);
+    expect(redBottomY - referenceY).toBeLessThan((baselineY - referenceY) / 2);
+
+    // The 0.3 opaque stop is pinned at redBottomY (offset 1).
+    const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
+    expect(negLine.props.offset).toBe('1');
+    expect(negLine.props.stopOpacity).toBe(0.3);
+  });
+
+  it('renders NO red path or gradient when every point is above the reference (empty band)', async () => {
+    const allAbove: NetWorthPoint[] = [
+      { t: 0, amount: 250 },
+      { t: 1, amount: 260 },
+      { t: 2, amount: 255 },
+    ];
+    const { getByTestId, queryByTestId } = await render(
+      <NetWorthLine points={allAbove} startReference={200} baseCurrency="USD" height={200} />,
+    );
+
+    // Green band is present; red band is empty, so its Path AND gradient are
+    // both omitted (no degenerate zero-height gradient).
+    expect(getByTestId('net-worth-line-area-positive')).toBeTruthy();
+    expect(getByTestId('net-worth-line-gradient-positive')).toBeTruthy();
+    expect(queryByTestId('net-worth-line-area-negative')).toBeNull();
+    expect(queryByTestId('net-worth-line-gradient-negative')).toBeNull();
   });
 
   it('draws the net-worth line in white', async () => {

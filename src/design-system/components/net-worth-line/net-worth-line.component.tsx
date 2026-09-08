@@ -204,15 +204,24 @@ const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
 // below it rides `referenceY` and contributes no visible area. `side: 'below'`
 // clamps with `Math.max(y, referenceY)` for the mirror. Each path traces the
 // clamped line, drops to `referenceY` under the last point and back under the
-// first, and closes — so the 'above' path fills green and the 'below' path red,
-// each gradient fading to transparent EXACTLY at `referenceY`, which hides the
-// tiny per-crossing overlap sliver from clamping at the adjacent vertex rather
-// than the exact crossing. This replaces the previous single-path-plus-ClipPath
-// approach, which did not render the clipped path on real iOS react-native-svg
-// (the red region below the reference vanished on device). Callers guard against
-// an empty `points` array before invoking this (the loading/empty state
-// short-circuits the render), so `points[0]` is always present here.
-export const toClampedAreaPath = (
+// first, and closes — so the 'above' path fills green and the 'below' path red.
+// This replaces the previous single-path-plus-ClipPath approach, which did not
+// render the clipped path on real iOS react-native-svg (the red region below the
+// reference vanished on device).
+//
+// CROSSING-AWARE: where two adjacent points straddle the reference, a clamp
+// alone snaps y to `referenceY` at the ORIGINAL vertex's x, so the fill's top
+// edge near the crossing had a different slope than the plotted `<Polyline>`
+// (the top edge diverged from the line). This builder instead inserts a vertex
+// at the TRUE crossing x — `x1 + (x2 - x1) * (referenceY - y1) / (y2 - y1)`, in
+// scaled pixel space — so the 'above' path traces the real line where above,
+// meets `referenceY` exactly at each crossing, rides `referenceY` where below,
+// and re-meets the line exactly at each up-crossing; the 'below' path mirrors
+// it. Away from crossings the clamp is a no-op, so the top edge already equals
+// the line. Callers guard against an empty `points` array before invoking this
+// (the loading/empty state short-circuits the render), so `points[0]` is always
+// present here.
+export const toAreaPath = (
   points: NetWorthPoint[],
   scales: Scales,
   referenceY: number,
@@ -220,11 +229,54 @@ export const toClampedAreaPath = (
 ): string => {
   const clamp = (y: number): number =>
     side === 'above' ? Math.min(y, referenceY) : Math.max(y, referenceY);
-  const line = points.map((p) => `${scales.x(p.t)},${clamp(scales.y(p.amount))}`).join(' L ');
+
   const firstX = scales.x(points[0].t);
+  const vertices: string[] = [`${firstX},${clamp(scales.y(points[0].amount))}`];
+
+  for (let i = 1; i < points.length; i += 1) {
+    const x1 = scales.x(points[i - 1].t);
+    const y1 = scales.y(points[i - 1].amount);
+    const x2 = scales.x(points[i].t);
+    const y2 = scales.y(points[i].amount);
+
+    // Strictly-opposite sides of the reference: insert the vertex at the true
+    // crossing x. A point sitting exactly ON the reference is not a crossing
+    // (the product is 0), so this never divides by a zero (y2 - y1) span.
+    if ((y1 - referenceY) * (y2 - referenceY) < 0) {
+      const xCross = x1 + ((x2 - x1) * (referenceY - y1)) / (y2 - y1);
+      vertices.push(`${xCross},${referenceY}`);
+    }
+
+    vertices.push(`${x2},${clamp(y2)}`);
+  }
+
   const lastX = scales.x(points[points.length - 1].t);
 
-  return `M ${line} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
+  return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
+};
+
+// The vertical extremes of the ACTUAL filled bands, so each gradient anchors to
+// the sliver it fills rather than the whole plot half. `greenTopY` is the
+// highest pixel (smallest y) among points at or above the reference; `redBottomY`
+// is the lowest pixel (largest y) among points at or below it. A band with no
+// point strictly on its side collapses its extreme to `referenceY`, which the
+// caller reads as "empty" (its top === referenceY) and does not render — so a
+// degenerate zero-height gradient is never emitted. Anchoring the 0->0.3 ramp
+// into this sliver is what makes a SHALLOW dip (or rise) show readable color,
+// instead of living where the whole-plot ramp's opacity was ~0.
+const bandExtremes = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+): { greenTopY: number; redBottomY: number } => {
+  const ys = points.map((p) => scales.y(p.amount));
+  const aboveYs = ys.filter((y) => y <= referenceY);
+  const belowYs = ys.filter((y) => y >= referenceY);
+
+  return {
+    greenTopY: aboveYs.length > 0 ? Math.min(...aboveYs) : referenceY,
+    redBottomY: belowYs.length > 0 ? Math.max(...belowYs) : referenceY,
+  };
 };
 
 const formatAxisTime = (t: number): string =>
@@ -299,6 +351,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
   const referenceY = scales.y(startReference);
   const baselineY = height - PADDING_Y;
+  // Anchor each gradient to the sliver it actually fills, not the whole plot
+  // half. A band whose extreme collapses back to referenceY has no point on
+  // that side — render neither its Path nor its gradient (no degenerate
+  // zero-height gradient).
+  const { greenTopY, redBottomY } = bandExtremes(points, scales, referenceY);
+  const hasGreenBand = greenTopY < referenceY;
+  const hasRedBand = redBottomY > referenceY;
 
   return (
     <Box style={styles.container}>
@@ -385,72 +444,82 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
 
             {/* The area fills BETWEEN the line and the dashed reference
                 baseline, not the chart bottom. TWO separate paths, each the line
-                CLAMPED to one side of the reference (no clip path — ClipPath did
-                not render on real iOS react-native-svg): green above (net worth
-                over the start), red below. Each gradient fades to transparent AT
-                referenceY, so the color flips there at every crossing and the
-                tiny clamp overlap sliver is invisible. */}
+                clamped and CROSSING-AWARE to one side of the reference (no clip
+                path — ClipPath did not render on real iOS react-native-svg):
+                green above (net worth over the start), red below. Each gradient
+                is anchored to the sliver its side actually fills (greenTopY ->
+                referenceY, referenceY -> redBottomY), not the whole plot half,
+                so a shallow dip/rise still shows readable color. A side with no
+                point on it renders neither its gradient nor its Path. */}
             <Defs>
-              <LinearGradient
-                testID="net-worth-line-gradient-positive"
-                id="net-worth-line-gradient-positive"
-                x1="0"
-                y1={PADDING_Y}
-                x2="0"
-                y2={referenceY}
-                gradientUnits="userSpaceOnUse"
-              >
-                <Stop
-                  testID="net-worth-line-gradient-positive-stop-line"
-                  offset="0"
-                  stopColor={theme.colors.positive}
-                  stopOpacity={0.3}
-                />
-                <Stop
-                  testID="net-worth-line-gradient-positive-stop-reference"
-                  offset="1"
-                  stopColor={theme.colors.positive}
-                  stopOpacity={0}
-                />
-              </LinearGradient>
+              {hasGreenBand ? (
+                <LinearGradient
+                  testID="net-worth-line-gradient-positive"
+                  id="net-worth-line-gradient-positive"
+                  x1="0"
+                  y1={greenTopY}
+                  x2="0"
+                  y2={referenceY}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <Stop
+                    testID="net-worth-line-gradient-positive-stop-line"
+                    offset="0"
+                    stopColor={theme.colors.positive}
+                    stopOpacity={0.3}
+                  />
+                  <Stop
+                    testID="net-worth-line-gradient-positive-stop-reference"
+                    offset="1"
+                    stopColor={theme.colors.positive}
+                    stopOpacity={0}
+                  />
+                </LinearGradient>
+              ) : null}
 
-              <LinearGradient
-                testID="net-worth-line-gradient-negative"
-                id="net-worth-line-gradient-negative"
-                x1="0"
-                y1={referenceY}
-                x2="0"
-                y2={baselineY}
-                gradientUnits="userSpaceOnUse"
-              >
-                <Stop
-                  testID="net-worth-line-gradient-negative-stop-reference"
-                  offset="0"
-                  stopColor={theme.colors.negative}
-                  stopOpacity={0}
-                />
-                <Stop
-                  testID="net-worth-line-gradient-negative-stop-line"
-                  offset="1"
-                  stopColor={theme.colors.negative}
-                  stopOpacity={0.3}
-                />
-              </LinearGradient>
+              {hasRedBand ? (
+                <LinearGradient
+                  testID="net-worth-line-gradient-negative"
+                  id="net-worth-line-gradient-negative"
+                  x1="0"
+                  y1={referenceY}
+                  x2="0"
+                  y2={redBottomY}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <Stop
+                    testID="net-worth-line-gradient-negative-stop-reference"
+                    offset="0"
+                    stopColor={theme.colors.negative}
+                    stopOpacity={0}
+                  />
+                  <Stop
+                    testID="net-worth-line-gradient-negative-stop-line"
+                    offset="1"
+                    stopColor={theme.colors.negative}
+                    stopOpacity={0.3}
+                  />
+                </LinearGradient>
+              ) : null}
             </Defs>
 
-            <Path
-              testID="net-worth-line-area-positive"
-              d={toClampedAreaPath(points, scales, referenceY, 'above')}
-              fill="url(#net-worth-line-gradient-positive)"
-              stroke="none"
-            />
+            {hasGreenBand ? (
+              <Path
+                testID="net-worth-line-area-positive"
+                d={toAreaPath(points, scales, referenceY, 'above')}
+                fill="url(#net-worth-line-gradient-positive)"
+                stroke="none"
+              />
+            ) : null}
 
-            <Path
-              testID="net-worth-line-area-negative"
-              d={toClampedAreaPath(points, scales, referenceY, 'below')}
-              fill="url(#net-worth-line-gradient-negative)"
-              stroke="none"
-            />
+            {hasRedBand ? (
+              <Path
+                testID="net-worth-line-area-negative"
+                d={toAreaPath(points, scales, referenceY, 'below')}
+                fill="url(#net-worth-line-gradient-negative)"
+                stroke="none"
+              />
+            ) : null}
 
             <Polyline
               testID="net-worth-line-polyline"
