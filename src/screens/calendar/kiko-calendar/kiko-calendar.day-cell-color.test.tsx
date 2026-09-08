@@ -13,6 +13,8 @@ import PeriodDay from 'react-native-calendars/src/calendar/day/period';
 import { darkTheme } from '../../../design-system/theme';
 import type { RenderedElement } from '../../../test-support/rendered-element';
 
+import { buildCalendarTheme } from './kiko-calendar.theme';
+
 // Mirrors the exact token mapping KikoCalendar hands react-native-calendars via its `theme`
 // prop (kiko-calendar.component.tsx's `calendarTheme`) — same tokens, not a parallel literal
 // palette, so this test tracks the real component's wiring instead of drifting from it.
@@ -26,6 +28,16 @@ const calendarTheme = {
 
 const textColorOf = (node: RenderedElement): unknown =>
   StyleSheet.flatten(node.props.style as never).color;
+
+describe('buildCalendarTheme — disabled-day legibility', () => {
+  // react-native-calendars' own default `textDisabledColor` (#d9e1e8) is ≈ the
+  // light theme's `surfaceHigh` (#E5E5EA), which is also the calendar
+  // background — so out-of-range days vanish on light unless the theme threads
+  // its own muted-but-legible secondary tone.
+  it('sets a legible disabled-day color from the theme’s secondary tone', () => {
+    expect(buildCalendarTheme(darkTheme).textDisabledColor).toBe(darkTheme.colors.textSecondary);
+  });
+});
 
 describe('day-cell text color precedence — DateField single-day sheet (BasicDay)', () => {
   it('renders the on-accent (white) text, not today’s marker color, when a day is both today and selected', async () => {
