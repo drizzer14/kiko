@@ -35,6 +35,9 @@ describe('lightTheme iOS light palette', () => {
     expect(lightTheme.colors.negative).toBe('#FF3B30');
     expect(lightTheme.colors.border).toBe('#C6C6C8');
     expect(lightTheme.colors.scrim).toBe('rgba(0,0,0,0.40)');
+    // Locks the light onAccent value: a regression to black here (e.g. copying
+    // `textPrimary`'s light value) would otherwise pass every existing test.
+    expect(lightTheme.colors.onAccent).toBe('#FFFFFF');
   });
 });
 
