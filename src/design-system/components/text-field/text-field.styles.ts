@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+import { disabledFieldStyle } from '../../disabled-field-style';
+
 export const styles = StyleSheet.create((theme) => ({
   // `height` is explicit — Apple's 44pt minimum tap-target height,
   // `theme.spacing(11)` — rather than left to grow from `padding` plus the
@@ -21,10 +23,8 @@ export const styles = StyleSheet.create((theme) => ({
   // Applied on top of `input` when `editable === false`, so the field reads
   // clearly as non-editable rather than merely un-focusable.
   inputDisabled: {
-    borderColor: theme.colors.surfaceHigh,
-    backgroundColor: theme.colors.surface,
+    ...disabledFieldStyle(theme),
     color: theme.colors.textSecondary,
-    opacity: 0.5,
   },
   // Extra trailing room reserved on top of `input`'s own `padding` when a
   // suffix renders, so the value and the caret never slide under the pinned
