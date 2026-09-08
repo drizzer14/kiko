@@ -1,5 +1,5 @@
 import { act, render } from '@testing-library/react-native';
-import { StyleSheet, Text } from 'react-native';
+import { Appearance, StyleSheet, Text } from 'react-native';
 import { UnistylesRuntime } from 'react-native-unistyles';
 
 import '../design-system/unistyles';
@@ -30,10 +30,15 @@ jest.mock('../repositories/settings.repo', () => ({
 // module mocked, so `i18next.use(initReactI18next).init(...)`'s side effect
 // still runs — that is what makes `useTranslation()` inside the gate work.
 const mockChangeLanguage = jest.spyOn(i18n, 'changeLanguage').mockResolvedValue(i18n.t);
+// `applyPersistedAppearance` drives the scheme through the single
+// `Appearance.setColorScheme` mechanism (see src/appearance/appearance.ts). The
+// old manual `setAdaptiveThemes`/`setTheme` hybrid is gone, so those spies exist
+// only to assert they are NEVER touched now.
 const mockSetAdaptiveThemes = jest
   .spyOn(UnistylesRuntime, 'setAdaptiveThemes')
   .mockImplementation(() => {});
 const mockSetTheme = jest.spyOn(UnistylesRuntime, 'setTheme').mockImplementation(() => {});
+const mockSetColorScheme = jest.spyOn(Appearance, 'setColorScheme').mockImplementation(() => {});
 
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve!: (value: T) => void;
@@ -193,8 +198,9 @@ describe('MigrationsGate', () => {
       </MigrationsGate>,
     );
 
-    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(false);
-    expect(mockSetTheme).toHaveBeenCalledWith('dark');
+    expect(mockSetColorScheme).toHaveBeenCalledWith('dark');
+    expect(mockSetAdaptiveThemes).not.toHaveBeenCalled();
+    expect(mockSetTheme).not.toHaveBeenCalled();
   });
 
   it('applies a pinned light appearance before reporting success', async () => {
@@ -206,11 +212,12 @@ describe('MigrationsGate', () => {
       </MigrationsGate>,
     );
 
-    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(false);
-    expect(mockSetTheme).toHaveBeenCalledWith('light');
+    expect(mockSetColorScheme).toHaveBeenCalledWith('light');
+    expect(mockSetAdaptiveThemes).not.toHaveBeenCalled();
+    expect(mockSetTheme).not.toHaveBeenCalled();
   });
 
-  it("re-enables adaptiveThemes for a 'system' appearance", async () => {
+  it("clears the native override with 'auto' for a 'system' appearance", async () => {
     mockGetSettings.mockResolvedValue([{ appearance: 'system' }]);
 
     await render(
@@ -219,7 +226,8 @@ describe('MigrationsGate', () => {
       </MigrationsGate>,
     );
 
-    expect(mockSetAdaptiveThemes).toHaveBeenCalledWith(true);
+    expect(mockSetColorScheme).toHaveBeenCalledWith('auto');
+    expect(mockSetAdaptiveThemes).not.toHaveBeenCalled();
     expect(mockSetTheme).not.toHaveBeenCalled();
   });
 
