@@ -22,7 +22,7 @@ const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label
       // so a disabled toggle is announced disabled (and testable) on both.
       accessibilityState={{ disabled }}
       trackColor={{ false: theme.colors.surfaceHigh, true: theme.colors.accent }}
-      thumbColor={theme.colors.textPrimary}
+      thumbColor={theme.colors.onAccent}
     />
   );
 

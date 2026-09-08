@@ -40,6 +40,11 @@ export const darkTheme = {
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)
+    // Foreground for anything sitting ON a filled accent/destructive surface —
+    // a primary Button's label+icon, a Switch thumb on the accent track. White
+    // in BOTH themes: `textPrimary` flips to black on light and would vanish on
+    // a blue/red fill. This is the one always-white foreground token.
+    onAccent: '#FFFFFF',
     positive: '#30D158', // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
     border: '#38383A', // separator (dark)
@@ -72,6 +77,11 @@ export const lightTheme = {
     textPrimary: '#000000', // label
     textSecondary: 'rgba(60,60,67,0.60)', // secondaryLabel
     accent: '#007AFF', // systemBlue (light)
+    // Foreground for anything sitting ON a filled accent/destructive surface —
+    // a primary Button's label+icon, a Switch thumb on the accent track. White
+    // in BOTH themes: `textPrimary` flips to black on light and would vanish on
+    // a blue/red fill. This is the one always-white foreground token.
+    onAccent: '#FFFFFF',
     positive: '#34C759', // systemGreen (light)
     negative: '#FF3B30', // systemRed (light)
     border: '#C6C6C8', // separator (light)
