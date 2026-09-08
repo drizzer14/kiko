@@ -163,6 +163,47 @@ Confirm exact Monobank field names against the live API during
 implementation — the spec's shape is a best-effort description, not
 a verified schema.
 
+### Balance-diff skip
+
+`runSyncInner` (`src/monobank/sync.ts`) no longer fetches every
+card's statements on every run — a multi-card account synced over
+minutes under the per-invocation gate alone. It now SKIPS the
+statement fetch for a card whose `/personal/client-info` balance is
+unchanged since the last sync (`isBalanceDiffSkip`). The prior
+balance is read from `holdings.balanceMinorUnits` **before** this
+run's `upsertHoldings` overwrites it — that column already is "the
+balance as of the last sync" for a Monobank holding, since the sync
+rewrites it from client-info every run, so no new holdings column was
+needed for this.
+
+Two carve-outs keep the skip safe, read the code rather than trusting
+a restated list:
+
+- A card carrying an outstanding `hold: true` transaction is ALWAYS
+  fetched (a same-amount hold->settled refresh doesn't move the
+  balance) — the set comes from `holdingIdsWithHoldQuery`
+  (`src/repositories/transactions.repo.ts`).
+- The first-ever sync fetches every card (`shouldFullFetch`).
+
+Safety net: a new `settings.lastFullSyncAt` column (migration
+`0021`, schema in `src/db/schema.ts`) forces a periodic FULL fetch of
+every card regardless of balance — `shouldFullFetch` decides when,
+against the `FULL_FETCH_INTERVAL_MS` constant in `sync.ts` (read it
+there, not restated here). This catches a net-zero same-window
+transaction pair (a `+X` and a `-X` that leaves the balance unchanged)
+that the skip would otherwise miss forever. Load-bearing: the full
+fetch's from-window is derived from `lastFullSyncAt`
+(`fromCursorSeconds`), **not** the incremental `lastSyncAt` cursor —
+`lastSyncAt` advances on every clean run, including runs that skipped
+whole cards, so using it would re-fetch only the recent window and
+recover nothing. `lastFullSyncAt` is stamped only after a fully clean
+full-fetch run, matching `lastSyncAt`'s own partial-failure
+discipline (see "Partial-progress resilience across cards" below).
+
+This does not add a per-card cursor — see the note at the end of
+"Partial-progress resilience across cards": `lastFullSyncAt` is a
+single global full-fetch marker, not a per-card one.
+
 ### The rate limit is per TOKEN, not per call site
 
 Monobank's personal API allows one request per interval **per
