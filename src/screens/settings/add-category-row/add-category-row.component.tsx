@@ -1,13 +1,16 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
+import { resolveColorScheme } from '../../../design-system/color-scheme';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { categoriesRepo } from '../../../repositories/categories.repo';
+import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import ColorPicker from '../../forms/color-picker';
 import HoldingIdentityField from '../../forms/holding-identity-field';
 
@@ -32,6 +35,7 @@ type AddCategoryRowProps = {
 // collapses the form back so the action is never a dead end.
 const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const { t } = useTranslation();
+  const { rt } = useUnistyles();
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
@@ -43,6 +47,16 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const trimmedName = name.trim();
   // Save enables the moment a non-empty (non-whitespace) name is entered.
   const canSave = trimmedName !== '';
+
+  // The DISPLAY color the form rings/previews — never what persists. `color`
+  // stays null until a swatch is tapped (and null is what `create` receives), but
+  // resolveCategoryColor rings the per-key palette fallback the saved row will
+  // actually wear, so a swatch is ringed from open exactly as the accounts form
+  // rings its kind default. The preview key follows the in-progress name (falling
+  // back to a stable placeholder while empty) so the ring tracks the hue the row
+  // will land on once saved. Scheme comes from the active theme.
+  const colorScheme = resolveColorScheme(rt.themeName);
+  const previewColor = resolveCategoryColor(color, trimmedName || 'new-category', colorScheme);
 
   // Reset the form to its pristine state and collapse it — shared by a
   // successful save and an explicit Cancel.
@@ -100,9 +114,10 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           captioned={false}
           icon={icon}
           fallbackIcon={icon}
-          // Live preview: once a swatch is picked the icon tints to it (undefined
-          // while unset keeps the field's default), mirroring the account form.
-          iconColor={color ?? undefined}
+          // Live preview: the icon tints to the same resolved color the picker
+          // rings — the per-key palette fallback until a swatch is picked, then
+          // the picked hex — so the chip and the ringed swatch always match.
+          iconColor={previewColor}
           iconAccessibilityLabel={t('categories.chooseNewIconLabel')}
           onSelectIcon={setIcon}
           name={name}
@@ -114,13 +129,16 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           autoFocus
         />
 
-        {/* value='' until a swatch is tapped, so no swatch is ringed — the honest
-            "not picked yet" state, matching the row editor and the icon chip. The
-            prefix scopes the swatch a11y labels so they never collide with the
-            per-row pickers above (e.g. "New category color yellow"). */}
+        {/* value is the resolved DISPLAY color (previewColor), so a swatch is
+            ringed from open — the per-key palette fallback the saved row will
+            wear — mirroring the accounts form's kind-default ring. `color` (what
+            persists) stays null until a swatch is tapped; onSelect writes the
+            picked hex into it. The prefix scopes the swatch a11y labels so they
+            never collide with the per-row pickers above (e.g. "New category
+            color yellow"). */}
         <ColorPicker
           label={t('categories.colorLabel')}
-          value={color ?? ''}
+          value={previewColor}
           onSelect={setColor}
           accessibilityLabelPrefix={t('categories.newColorPrefix')}
         />
