@@ -724,18 +724,21 @@ const StatisticsScreen: FC = () => {
     !sameKeys(selectedTrendCategories, presetTrendKeys) &&
     !(savedTrendKeys !== null && sameKeys(selectedTrendCategories, savedTrendKeys));
 
-  // Reset is enabled whenever the current selection differs from the preset.
-  const canResetTrend = !sameKeys(selectedTrendCategories, presetTrendKeys);
+  // The target Reset restores to: the user's last SAVED selection when one
+  // exists, else the live top-3-by-expense preset. Reset no longer clears the
+  // saved value — it returns to it.
+  const resetTargetTrendKeys = savedTrendKeys ?? presetTrendKeys;
 
-  // Save persists the current selection as the saved set. Reset restores the
-  // preset AND clears the saved set to null (so a later mount re-seeds off the
-  // live preset again).
+  // Reset is enabled whenever the current selection differs from that target.
+  const canResetTrend = !sameKeys(selectedTrendCategories, resetTargetTrendKeys);
+
+  // Save persists the current selection as the saved set.
   const saveTrendSelection = (): void => {
     settingsRepo.setTrendCategoryKeys([...selectedTrendCategories]);
   };
+  // Reset restores the saved-or-preset target WITHOUT clearing the saved value.
   const resetTrendSelection = (): void => {
-    setSelectedTrendCategories(new Set(presetTrendKeys));
-    settingsRepo.setTrendCategoryKeys(null);
+    setSelectedTrendCategories(new Set(resetTargetTrendKeys));
   };
 
   // The donut's own center figure: every VISIBLE slice's spend summed back

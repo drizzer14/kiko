@@ -1053,23 +1053,24 @@ describe('StatisticsScreen', () => {
     expect(mockSetTrendCategoryKeys).toHaveBeenCalledWith(['transport', 'transfers']);
   });
 
-  it('disables Save when the current selection equals the already-saved selection', async () => {
+  it('disables both Save and Reset when the current selection equals the already-saved selection', async () => {
     seedTrend(['groceries', 'transport']);
 
     const { getByTestId } = await renderScreen();
 
     // Mounted showing exactly the saved set (which itself differs from the 3-key
-    // preset): a re-save would be a no-op, so Save is disabled while Reset — which
-    // only tracks difference from the preset — is enabled.
+    // preset): a re-save would be a no-op, so Save is disabled. Reset targets the
+    // SAVED selection now, so at the saved set Reset is a no-op too and is disabled.
     expect(getByTestId('statistics-trend-save')).toBeDisabled();
-    expect(getByTestId('statistics-trend-reset')).toBeEnabled();
+    expect(getByTestId('statistics-trend-reset')).toBeDisabled();
   });
 
-  it('disables Reset at the preset, enables it after a change, and reverts + clears the saved selection on press', async () => {
+  it('disables Reset at the preset, enables it after a change, and reverts to the preset WITHOUT clearing the saved selection', async () => {
     seedTrend(null);
 
     const { getByTestId } = await renderScreen();
 
+    // With no saved selection the Reset target is the live top-3 preset.
     expect(getByTestId('statistics-trend-reset')).toBeDisabled();
 
     await pressFilter(getByTestId, 'statistics-trend-filter', 'groceries');
@@ -1081,9 +1082,44 @@ describe('StatisticsScreen', () => {
       fireEvent.press(reset);
     });
 
-    // Reset restores the full top-3 preset and clears the saved selection to null.
+    // Reset restores the full top-3 preset and never clears the saved value.
     expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 3')).toBeTruthy();
-    expect(mockSetTrendCategoryKeys).toHaveBeenCalledWith(null);
+    expect(mockSetTrendCategoryKeys).not.toHaveBeenCalled();
+  });
+
+  it('reverts to the SAVED selection (not the live preset) on Reset, and never clears the saved value', async () => {
+    // A saved single-category selection is present; the Reset target is that
+    // SAVED set, not the live top-3 preset.
+    seedTrend(['transport']);
+
+    const view = await renderScreen();
+    const { getByTestId } = view;
+
+    // Mounted at the saved set (count 1): Reset is a no-op there and disabled.
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 1')).toBeTruthy();
+    expect(getByTestId('statistics-trend-reset')).toBeDisabled();
+
+    // Add a category, moving current away from the saved target (count 2).
+    await pressFilter(getByTestId, 'statistics-trend-filter', 'groceries');
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 2')).toBeTruthy();
+
+    const reset = getByTestId('statistics-trend-reset');
+    expect(reset).toBeEnabled();
+    await act(async () => {
+      fireEvent.press(reset);
+    });
+
+    // Reset restores the SAVED selection (count 1), NOT the 3-key preset, and
+    // never writes to settings — the saved value is untouched.
+    expect(within(getByTestId('statistics-trend-filter')).getByText('Categories · 1')).toBeTruthy();
+    expect(mockSetTrendCategoryKeys).not.toHaveBeenCalled();
+
+    // Genuine remount: the saved selection still resolves (Reset did not clear
+    // it), so a fresh tree re-seeds off the saved set and reads count 1 again.
+    const remounted = await renderScreen();
+    expect(
+      within(remounted.getByTestId('statistics-trend-filter')).getByText('Categories · 1'),
+    ).toBeTruthy();
   });
 
   it('shows the spending-trend empty state when there is no spending', async () => {
