@@ -326,35 +326,37 @@ already-connected account, so no run competes with a first-time Connect
 (a `targetAccountId` sync), and a re-sync that joins an in-flight run of
 the same connected token gets exactly the result it would have computed.
 
-### The sync signal clears early, before the run finishes
+### The sync signal tracks the WHOLE run
 
 `useSyncStatus`/`setSyncing` (`src/monobank/sync-status.ts`) is the one
-shared "a Monobank sync is running" signal, and it no longer tracks the
-WHOLE run. `runSyncInner` now calls `setSyncing(false)` right after
-`upsertHoldings` — the fast phase (client-info fetch + balance upsert,
-so net worth is already current) — rather than only when the run
-settles. The slower per-card, 60s-gated statement loop keeps running in
-the BACKGROUND after that, still holding `inFlightSync` (so a joined
-trigger never starts a second run); transactions land incrementally
-through the reactive `useLiveQuery` consumers as each card imports. The
-`release` callback in `runSync` (which also calls `setSyncing(false)`
-on settle) is a harmless no-op on this normal path — the call is
-idempotent — and remains the backstop that clears the signal if the
-fast phase itself throws. Read the comment block around this call in
-`runSyncInner` (`src/monobank/sync.ts`) rather than restating the exact
-line here.
+shared "a Monobank sync is running" signal, and it tracks the WHOLE
+run: `runSync` lights it (`setSyncing(true)`) the instant a run
+acquires the single-flight lock, and clears it (`setSyncing(false)`)
+ONLY in the `release` callback when the run settles — success OR
+failure. `release` is therefore the sole `setSyncing(false)` call site.
+Read `runSync` (`src/monobank/sync.ts`) for the exact shape rather than
+restating the lines here.
+
+An earlier R6-3 revision cleared the signal early — right after
+`upsertHoldings` (the fast phase: client-info fetch + balance upsert) —
+so the spinner ended in sub-second while the 60s-gated per-card
+statement loop ran on. That was reverted (R7): it ended the native
+spinner instantly (feeling broken) and, worse, landed the "Last sync"
+display stamp — written at the END of `runSyncInner`, ~60s+ later —
+AFTER the spinner had already stopped, so the user saw the spinner end
+while "Last sync" was still stale. Tracking the whole run means "Last
+sync" is already fresh by the time the spinner stops.
 
 The custom `SyncingIndicator` component was REMOVED. The sole
 Monobank-sync affordance is now the native Home `RefreshControl`
 spinner (`src/screens/home/home.screen.tsx`), driven by the same global
 `useSyncStatus` signal rather than a pull-local flag — so an
 auto-sync-on-open (which also drives `runSync`) spins the pull control
-WITHOUT a user pull, and a real pull spins it too. Because the signal
-now reflects only the fast phase, the spinner also ends promptly rather
-than spinning for the whole multi-card statement fetch. This is a known
-limitation, not a bug: the signal is Monobank-only, so a pull on a
-crypto-only account shows little/no spinner — see `src/screens/use-sync-all.ts`
-for the fan-out that also drives crypto accounts.
+WITHOUT a user pull, and a real pull spins it too. The spinner spans the
+whole multi-card statement fetch and clears only when the run actually
+completes. The signal is Monobank-only, so a pull on a crypto-only
+account shows little/no spinner — see `src/screens/use-sync-all.ts` for
+the fan-out that also drives crypto accounts.
 
 ### Partial-progress resilience across cards
 

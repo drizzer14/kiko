@@ -81,6 +81,27 @@ settings sub-page where the scheme toggle itself lives) — see
 "GlassSurface's own deferred remount" below for the mechanism that
 actually fixes it.
 
+React Navigation's own native chrome — the stack header, large-title,
+and screen/VC background — has the identical flip-origin repaint
+problem GlassSurface has (see "GlassSurface's own deferred remount"
+below), but the fix is different and lives one layer down, in the nav
+theme objects themselves. `navigationLightTheme`/`navigationDarkTheme`
+(`src/navigation/light-theme.ts` / `dark-theme.ts`) source their
+`colors` from iOS SYSTEM-SEMANTIC colors via `PlatformColor`, wrapped
+by `platformNavColor` (`src/navigation/platform-nav-color.ts`) to
+satisfy React Navigation's `string`-typed `Theme.colors` fields. A
+semantic color resolves per-trait, so the same
+`RNAppearance.setColorScheme` interface-style flip that
+`applyAppearance` already does repaints this native chrome for free,
+with no layout-pass hack — a concrete hex value there did NOT repaint
+without one. This is DISTINCT from the design-system Unistyles
+`theme` (`theme.ts`) described throughout this skill: that theme
+keeps its own literal hex tokens and drives JS-rendered bodies/cards,
+never native chrome, so the two color systems intentionally diverge
+in mechanism even where they agree in value. Read `light-theme.ts`,
+`dark-theme.ts`, and `platform-nav-color.ts` directly for the exact
+field mapping rather than restating it here.
+
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
 theme:
@@ -120,14 +141,31 @@ has a `direction` prop, so write `<Box direction="row">`, not
 `<Box style={{ flexDirection: 'row' }}>`. An inline style bypasses the
 one place a layout convention is supposed to live.
 
+**The `onAccent` rule.** Any text or icon sitting on a filled
+accent/destructive BACKGROUND must use the always-white `onAccent`
+color token (`theme.colors.onAccent`, `theme.ts`), never
+`textPrimary` — `textPrimary` flips to black on the light theme and
+would vanish on a blue/red fill. This applies regardless of control
+SIZE (`Button`'s `variantLabelColor` is derived from `variant`, not
+`size`, so a `size="compact"` button gets the same token as
+`size="regular"` for free — see `button.component.tsx`) and applies
+to a SELECTED icon/pill rendered on an accent fill outside `Button`
+itself, not only to `Button` — `chip-row.component.tsx` and
+`icon-picker-modal.component.tsx`'s selected states both switch to
+`onAccent` for exactly this reason. A new accent-filled control
+follows the same rule: read `theme.ts`'s own `onAccent` doc comment,
+then one of these call sites, rather than reinventing the check.
+
 ## Styling layer: react-native-unistyles v3
 
 `react-native-unistyles` (^3.3.0) is the styling layer. There are two
 themes authored as Unistyles v3 theme objects — the OLED `darkTheme`
 above and a matching `lightTheme` — both registered in
-`src/design-system/unistyles.ts` as `{ dark, light }` (dark first) with
-`adaptiveThemes: true`, so a fresh install follows the OS appearance and
-`UnistylesRuntime.setTheme` can switch by name. Style components against
+`src/design-system/unistyles.ts` as `{ dark, light }` (dark first),
+WITHOUT `adaptiveThemes` (Option B, manual theme control — see "Dark
+and light themes" above for why); `initialTheme` gives a fresh install
+the OS appearance at boot instead, and every later switch is driven
+manually via `UnistylesRuntime.setTheme`. Style components against
 the theme's tokens, not literal values, so both themes (and any future
 refinement) resolve from the same token keys — the token keys are the
 contract, the two themes just supply different values per key. The token
