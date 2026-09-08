@@ -1,35 +1,20 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
-import {
-  ClipPath,
-  Defs,
-  G,
-  Line,
-  LinearGradient,
-  Path,
-  Polyline,
-  Rect,
-  Stop,
-  Svg,
-} from 'react-native-svg';
+import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 
 // react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
 // on its path-based primitives (Path, Line, Polyline) but omits it from
-// LinearGradientProps/StopProps/ClipPathProps, even though the native
-// gradient/stop/clip-path elements forward it identically. kiko-charts requires
-// a testID on EVERY SVG primitive so a test can read a gradient stop's resolved
-// color/opacity or a clip's geometry back; declare the prop the native view
-// genuinely accepts rather than casting it away.
+// LinearGradientProps/StopProps, even though the native gradient/stop elements
+// forward it identically. kiko-charts requires a testID on EVERY SVG primitive
+// so a test can read a gradient stop's resolved color/opacity back; declare the
+// prop the native view genuinely accepts rather than casting it away.
 declare module 'react-native-svg' {
   interface LinearGradientProps {
     testID?: string;
   }
   interface StopProps {
-    testID?: string;
-  }
-  interface ClipPathProps {
     testID?: string;
   }
 }
@@ -212,16 +197,30 @@ const buildXTicks = (scales: Scales): XTick[] => {
 const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
-// The filled area between the line and the dashed REFERENCE baseline: the
-// polyline path, then dropped to `referenceY` under the last point and back
-// under the first, closed. This single closed path covers the
-// between-line-and-reference region on BOTH sides of any crossing; the caller
-// renders it twice, each clipped to one side of the reference, so a vertical
-// gradient fills green above the reference and red below. Callers guard against
+// One filled area between the line and the dashed REFERENCE baseline, CLAMPED
+// to a single side of it — no clip path. `side: 'above'` clamps every vertex's y
+// with `Math.min(y, referenceY)` (y grows downward, so a smaller y is above the
+// reference): where the line is above it keeps the line's y, where the line dips
+// below it rides `referenceY` and contributes no visible area. `side: 'below'`
+// clamps with `Math.max(y, referenceY)` for the mirror. Each path traces the
+// clamped line, drops to `referenceY` under the last point and back under the
+// first, and closes — so the 'above' path fills green and the 'below' path red,
+// each gradient fading to transparent EXACTLY at `referenceY`, which hides the
+// tiny per-crossing overlap sliver from clamping at the adjacent vertex rather
+// than the exact crossing. This replaces the previous single-path-plus-ClipPath
+// approach, which did not render the clipped path on real iOS react-native-svg
+// (the red region below the reference vanished on device). Callers guard against
 // an empty `points` array before invoking this (the loading/empty state
 // short-circuits the render), so `points[0]` is always present here.
-export const toAreaPath = (points: NetWorthPoint[], scales: Scales, referenceY: number): string => {
-  const line = points.map((p) => `${scales.x(p.t)},${scales.y(p.amount)}`).join(' L ');
+export const toClampedAreaPath = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+  side: 'above' | 'below',
+): string => {
+  const clamp = (y: number): number =>
+    side === 'above' ? Math.min(y, referenceY) : Math.max(y, referenceY);
+  const line = points.map((p) => `${scales.x(p.t)},${clamp(scales.y(p.amount))}`).join(' L ');
   const firstX = scales.x(points[0].t);
   const lastX = scales.x(points[points.length - 1].t);
 
@@ -385,11 +384,12 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
             />
 
             {/* The area fills BETWEEN the line and the dashed reference
-                baseline, not the chart bottom. One closed path (toAreaPath,
-                closing to referenceY) is rendered twice, each clipped to one
-                side of the reference, so the color flips at every crossing:
-                green above (net worth over the start), red below. Each gradient
-                fades to transparent AT referenceY. */}
+                baseline, not the chart bottom. TWO separate paths, each the line
+                CLAMPED to one side of the reference (no clip path — ClipPath did
+                not render on real iOS react-native-svg): green above (net worth
+                over the start), red below. Each gradient fades to transparent AT
+                referenceY, so the color flips there at every crossing and the
+                tiny clamp overlap sliver is invisible. */}
             <Defs>
               <LinearGradient
                 testID="net-worth-line-gradient-positive"
@@ -436,42 +436,20 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                   stopOpacity={0.3}
                 />
               </LinearGradient>
-
-              <ClipPath testID="net-worth-line-clip-above" id="net-worth-line-clip-above">
-                <Rect
-                  testID="net-worth-line-clip-above-rect"
-                  x={0}
-                  y={PADDING_Y}
-                  width={VIEW_WIDTH}
-                  height={referenceY - PADDING_Y}
-                />
-              </ClipPath>
-
-              <ClipPath testID="net-worth-line-clip-below" id="net-worth-line-clip-below">
-                <Rect
-                  testID="net-worth-line-clip-below-rect"
-                  x={0}
-                  y={referenceY}
-                  width={VIEW_WIDTH}
-                  height={baselineY - referenceY}
-                />
-              </ClipPath>
             </Defs>
 
             <Path
               testID="net-worth-line-area-positive"
-              d={toAreaPath(points, scales, referenceY)}
+              d={toClampedAreaPath(points, scales, referenceY, 'above')}
               fill="url(#net-worth-line-gradient-positive)"
               stroke="none"
-              clipPath="url(#net-worth-line-clip-above)"
             />
 
             <Path
               testID="net-worth-line-area-negative"
-              d={toAreaPath(points, scales, referenceY)}
+              d={toClampedAreaPath(points, scales, referenceY, 'below')}
               fill="url(#net-worth-line-gradient-negative)"
               stroke="none"
-              clipPath="url(#net-worth-line-clip-below)"
             />
 
             <Polyline

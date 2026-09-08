@@ -6,7 +6,14 @@ import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
-import { toAreaPath } from './net-worth-line.component';
+import { toClampedAreaPath } from './net-worth-line.component';
+
+// Every "y,x" coordinate's Y value in a path `d` string — every number that
+// follows a comma. The area builders clamp these to `referenceY`, so a test can
+// assert the whole green path stays at or above the reference (smaller-or-equal
+// y) and the whole red path at or below it, with no ClipPath in play.
+const pathYs = (d: string): number[] =>
+  [...d.matchAll(/,(-?\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
 // test can assert a single directive regardless of how Unistyles composed it.
@@ -21,8 +28,9 @@ const points: NetWorthPoint[] = [
   { t: 172_800_000, amount: 200 },
 ];
 
-describe('toAreaPath', () => {
-  // An identity scale keeps the assertions readable: x(t) === t, y(v) === v.
+describe('toClampedAreaPath', () => {
+  // An identity scale keeps the assertions readable: x(t) === t, y(v) === v. y
+  // grows DOWNWARD, so a SMALLER y is above the reference and a LARGER y below.
   const scales = {
     x: (t: number) => t,
     y: (v: number) => v,
@@ -30,24 +38,51 @@ describe('toAreaPath', () => {
     maxTime: 2,
   };
 
-  it('traces the line, then closes to the reference baseline under the last and first x', () => {
-    const pts: NetWorthPoint[] = [
-      { t: 0, amount: 10 },
-      { t: 1, amount: 20 },
-      { t: 2, amount: 15 },
-    ];
+  // Crossing data: starts ABOVE the reference (y 10 < 15), dips BELOW (y 20 >
+  // 15), and returns above (y 12 < 15). This is the shape that exercises both
+  // clamps — the green side must ride the reference where the line goes below,
+  // the red side where it goes above.
+  const crossing: NetWorthPoint[] = [
+    { t: 0, amount: 10 },
+    { t: 1, amount: 20 },
+    { t: 2, amount: 12 },
+  ];
+  const referenceY = 15;
 
-    // The closing y is the dashed REFERENCE baseline (referenceY), not the chart
-    // bottom: the closed path covers the between-line-and-reference region on both
-    // sides of any crossing, and the green/red clips split it at the reference.
-    const referenceY = 12;
-    const path = toAreaPath(pts, scales, referenceY);
+  it('clamps the green (above) path to the reference where the line dips below it', () => {
+    const path = toClampedAreaPath(crossing, scales, referenceY, 'above');
 
-    // Starts at the first point, traces each point, drops to the reference
-    // baseline under the last x, back under the first x, and closes with Z.
-    expect(path).toBe('M 0,10 L 1,20 L 2,15 L 2,12 L 0,12 Z');
-    expect(path.startsWith('M 0,10')).toBe(true);
-    expect(path.trimEnd().endsWith(`L 2,${referenceY} L 0,${referenceY} Z`)).toBe(true);
+    // The below vertex (y 20) rides referenceY (15); the two above vertices keep
+    // their own y. Closes to referenceY under the last then first x, then Z.
+    expect(path).toBe('M 0,10 L 1,15 L 2,12 L 2,15 L 0,15 Z');
+    // No vertex ever exceeds referenceY (green never dips below the baseline).
+    for (const y of pathYs(path)) {
+      expect(y).toBeLessThanOrEqual(referenceY);
+    }
+    // Non-degenerate: it still reaches genuinely above the reference.
+    expect(pathYs(path).some((y) => y < referenceY)).toBe(true);
+  });
+
+  it('clamps the red (below) path to the reference where the line rises above it', () => {
+    const path = toClampedAreaPath(crossing, scales, referenceY, 'below');
+
+    // The two above vertices (y 10, 12) ride referenceY (15); the below vertex
+    // (y 20) keeps its own y. Closes to referenceY under the last then first x.
+    expect(path).toBe('M 0,15 L 1,20 L 2,15 L 2,15 L 0,15 Z');
+    // No vertex is ever above referenceY (red never rises past the baseline).
+    for (const y of pathYs(path)) {
+      expect(y).toBeGreaterThanOrEqual(referenceY);
+    }
+    // Non-degenerate: it still reaches genuinely below the reference.
+    expect(pathYs(path).some((y) => y > referenceY)).toBe(true);
+  });
+
+  it('closes each clamped path to the reference baseline, not the chart bottom', () => {
+    for (const side of ['above', 'below'] as const) {
+      const path = toClampedAreaPath(crossing, scales, referenceY, side);
+      expect(path.startsWith('M ')).toBe(true);
+      expect(path.trimEnd().endsWith(`L 2,${referenceY} L 0,${referenceY} Z`)).toBe(true);
+    }
   });
 });
 
@@ -345,14 +380,29 @@ describe('NetWorthLine', () => {
     }
   });
 
-  it('fills two clipped gradient areas anchored to the reference baseline, not the chart bottom', async () => {
+  // Crossing data at the component level: net worth starts ABOVE the start
+  // reference (250 > 200), dips BELOW it (150 < 200), then returns above (250) —
+  // so both the green and the red area are non-empty. This is the exact shape
+  // whose red region failed to render on device under the old ClipPath approach.
+  const crossingPoints: NetWorthPoint[] = [
+    { t: 0, amount: 250 },
+    { t: 1, amount: 150 },
+    { t: 2, amount: 250 },
+  ];
+
+  it('fills two CLAMPED gradient areas anchored to the reference baseline, with no clip path', async () => {
     const height = 200;
     const { getByTestId } = await render(
-      <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
+      <NetWorthLine
+        points={crossingPoints}
+        startReference={200}
+        baseCurrency="USD"
+        height={height}
+      />,
     );
 
     // referenceY is where the dashed baseline sits; baselineY is the chart bottom
-    // (height - PADDING_Y). The area must close to the FORMER, not the latter.
+    // (height - PADDING_Y). Each area closes to the FORMER, not the latter.
     const referenceY = getByTestId('net-worth-line-reference').props.y1;
     const baselineY = height - 12;
     expect(referenceY).not.toBe(baselineY);
@@ -360,23 +410,51 @@ describe('NetWorthLine', () => {
     const positive = getByTestId('net-worth-line-area-positive');
     const negative = getByTestId('net-worth-line-area-negative');
 
-    // ONE closed path covers the whole between-line-and-reference region; the two
-    // clips split it at the reference, so both areas share the same `d`.
-    expect(positive.props.d).toBe(negative.props.d);
+    // The two paths are now DISTINCT: each is the line clamped to its own side of
+    // the reference, not one shared path split by a clip.
+    expect(positive.props.d).not.toBe(negative.props.d);
     expect(positive.props.d.startsWith('M ')).toBe(true);
-    // Closes to referenceY under the last x and back under the first x — never to
-    // the chart bottom.
-    expect(positive.props.d.trimEnd().endsWith(`,${referenceY} Z`)).toBe(true);
-    expect(positive.props.d).toContain(`,${referenceY} L `);
-    expect(positive.props.d).not.toContain(`,${baselineY}`);
+    expect(negative.props.d.startsWith('M ')).toBe(true);
 
-    // Green pass: filled from the positive gradient, clipped to the region ABOVE
-    // the reference. Red pass: negative gradient, clipped BELOW.
+    // Each closes to referenceY under the last x and back under the first x —
+    // never to the chart bottom.
+    expect(positive.props.d.trimEnd().endsWith(`,${referenceY} Z`)).toBe(true);
+    expect(negative.props.d.trimEnd().endsWith(`,${referenceY} Z`)).toBe(true);
+    expect(positive.props.d).not.toContain(`,${baselineY}`);
+    expect(negative.props.d).not.toContain(`,${baselineY}`);
+
+    // Green: every vertex is clamped to at most referenceY (above the baseline,
+    // smaller-or-equal y), so it never bleeds into the red region below.
+    for (const y of pathYs(positive.props.d)) {
+      expect(y).toBeLessThanOrEqual(referenceY);
+    }
+    // Red: every vertex is clamped to at least referenceY (below the baseline,
+    // larger-or-equal y), so it never bleeds into the green region above.
+    for (const y of pathYs(negative.props.d)) {
+      expect(y).toBeGreaterThanOrEqual(referenceY);
+    }
+    // Both non-degenerate for the crossing data: green genuinely reaches above
+    // the reference, red genuinely reaches below it.
+    expect(pathYs(positive.props.d).some((y) => y < referenceY)).toBe(true);
+    expect(pathYs(negative.props.d).some((y) => y > referenceY)).toBe(true);
+
+    // Filled from the gradients, no stroke, and — the fix — NO clipPath at all.
     expect(positive.props.stroke).toBe('none');
     expect(positive.props.fill).toBe('url(#net-worth-line-gradient-positive)');
-    expect(positive.props.clipPath).toBe('url(#net-worth-line-clip-above)');
     expect(negative.props.fill).toBe('url(#net-worth-line-gradient-negative)');
-    expect(negative.props.clipPath).toBe('url(#net-worth-line-clip-below)');
+    expect(positive.props.clipPath).toBeUndefined();
+    expect(negative.props.clipPath).toBeUndefined();
+  });
+
+  it('renders no ClipPath or clip primitives any more (the device-broken approach is gone)', async () => {
+    const { queryByTestId } = await render(
+      <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
+    );
+
+    expect(queryByTestId('net-worth-line-clip-above')).toBeNull();
+    expect(queryByTestId('net-worth-line-clip-below')).toBeNull();
+    expect(queryByTestId('net-worth-line-clip-above-rect')).toBeNull();
+    expect(queryByTestId('net-worth-line-clip-below-rect')).toBeNull();
   });
 
   it('fades each gradient to transparent at the reference baseline, green above / red below', async () => {
@@ -400,28 +478,6 @@ describe('NetWorthLine', () => {
     expect(negLine.props.stopOpacity).toBeGreaterThan(0);
     expect(negRef.props.stopColor).toBe(darkTheme.colors.negative);
     expect(negRef.props.stopOpacity).toBe(0);
-  });
-
-  it('clips the green area above and the red area below, meeting exactly at the reference baseline', async () => {
-    const height = 200;
-    const { getByTestId } = await render(
-      <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
-    );
-
-    const referenceY = getByTestId('net-worth-line-reference').props.y1;
-    const paddingY = 12;
-    const baselineY = height - paddingY;
-
-    // The above-clip runs from the plot top down to referenceY; the below-clip
-    // from referenceY down to the plot bottom. They meet at referenceY, so the
-    // fill color flips there — green above, red below — at every crossing.
-    const above = getByTestId('net-worth-line-clip-above-rect');
-    const below = getByTestId('net-worth-line-clip-below-rect');
-
-    expect(Number(above.props.y)).toBeCloseTo(paddingY);
-    expect(Number(above.props.y) + Number(above.props.height)).toBeCloseTo(referenceY);
-    expect(Number(below.props.y)).toBeCloseTo(referenceY);
-    expect(Number(below.props.y) + Number(below.props.height)).toBeCloseTo(baselineY);
   });
 
   it('draws the net-worth line in white', async () => {
