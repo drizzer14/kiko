@@ -56,7 +56,13 @@ export const entityColorsLight = {
 
 // Categorical palette for charts (line series / pie slices). Eight hues, each
 // distinct from its neighbours. Consumers cycle with
-// `series[i % series.length]`. The dark set is the pre-existing palette; the
+// `series[i % series.length]`.
+//
+// INVARIANT: every chartSeries hue MUST remain a subset of the same scheme's
+// entityColors hexes. The add-category color picker rings the swatch whose hex
+// equals the resolved category color (resolveCategoryColor), and an uncolored
+// category resolves to its chartSeries fallback — so a fallback hue with no
+// matching entityColors swatch would ring nothing. Enforced by palette.test.ts. The dark set is the pre-existing palette; the
 // light set is its light-mode counterpart, same order (index i is the same hue
 // family in both). The 7th entry is the deepened `DarkGoldenrod` `#B8860B`
 // (3.25:1 against white), matching the entity `yellow` note above.

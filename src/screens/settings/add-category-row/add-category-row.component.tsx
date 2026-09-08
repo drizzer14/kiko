@@ -49,12 +49,16 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const canSave = trimmedName !== '';
 
   // The DISPLAY color the form rings/previews — never what persists. `color`
-  // stays null until a swatch is tapped (and null is what `create` receives), but
-  // resolveCategoryColor rings the per-key palette fallback the saved row will
-  // actually wear, so a swatch is ringed from open exactly as the accounts form
-  // rings its kind default. The preview key follows the in-progress name (falling
-  // back to a stable placeholder while empty) so the ring tracks the hue the row
-  // will land on once saved. Scheme comes from the active theme.
+  // stays null until a swatch is tapped (and null is what `create` receives).
+  // This is a STABLE DECORATIVE default so a swatch reads as selected from open,
+  // matching the accounts form's always-ringed kind default — NOT a prediction
+  // of the saved category's hue. `create` stores `key: id()` (a random UUID, see
+  // categories.repo.ts / db/id.ts), so the eventual per-key palette fallback
+  // hashes that UUID, unrelated to this name-derived preview. Running it off the
+  // in-progress name (stable placeholder while empty) only keeps the ring lively
+  // as the user types. The picked-color path is faithful: onSelect stores the
+  // tapped entityColors hex, which resolveCategoryColor then rings verbatim.
+  // Scheme comes from the active theme.
   const colorScheme = resolveColorScheme(rt.themeName);
   const previewColor = resolveCategoryColor(color, trimmedName || 'new-category', colorScheme);
 
@@ -115,8 +119,8 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           icon={icon}
           fallbackIcon={icon}
           // Live preview: the icon tints to the same resolved color the picker
-          // rings — the per-key palette fallback until a swatch is picked, then
-          // the picked hex — so the chip and the ringed swatch always match.
+          // rings — the decorative default until a swatch is picked, then the
+          // picked hex — so the chip and the ringed swatch always match.
           iconColor={previewColor}
           iconAccessibilityLabel={t('categories.chooseNewIconLabel')}
           onSelectIcon={setIcon}
@@ -130,12 +134,12 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
         />
 
         {/* value is the resolved DISPLAY color (previewColor), so a swatch is
-            ringed from open — the per-key palette fallback the saved row will
-            wear — mirroring the accounts form's kind-default ring. `color` (what
-            persists) stays null until a swatch is tapped; onSelect writes the
-            picked hex into it. The prefix scopes the swatch a11y labels so they
-            never collide with the per-row pickers above (e.g. "New category
-            color yellow"). */}
+            ringed from open — a stable decorative default, mirroring the accounts
+            form's kind-default ring, not the saved row's eventual hue (that
+            hashes a random UUID key). `color` (what persists) stays null until a
+            swatch is tapped; onSelect writes the picked hex into it. The prefix
+            scopes the swatch a11y labels so they never collide with the per-row
+            pickers above (e.g. "New category color yellow"). */}
         <ColorPicker
           label={t('categories.colorLabel')}
           value={previewColor}
