@@ -9,6 +9,12 @@ describe('appearances', () => {
   });
 });
 
+// These assert the CALL CONTRACT only: with `adaptiveThemes: true` registered,
+// `setColorScheme` is the single driver, so `applyAppearance` must call ONLY it
+// and never the old manual `setAdaptiveThemes`/`setTheme` hybrid. The actual
+// live repaint that this fix delivers is a native runtime behaviour and is
+// device-verified — the Jest Unistyles mock fakes theme reactivity and cannot
+// prove it.
 describe('applyAppearance', () => {
   let setAdaptive: jest.SpyInstance;
   let setTheme: jest.SpyInstance;
@@ -21,24 +27,24 @@ describe('applyAppearance', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it("enables adaptiveThemes and clears the native override for 'system'", () => {
+  it("clears the native override with 'auto' for 'system' and touches no manual Unistyles setter", () => {
     applyAppearance('system');
-    expect(setAdaptive).toHaveBeenCalledWith(true);
-    expect(setTheme).not.toHaveBeenCalled();
     expect(setColorScheme).toHaveBeenCalledWith('auto');
+    expect(setAdaptive).not.toHaveBeenCalled();
+    expect(setTheme).not.toHaveBeenCalled();
   });
 
-  it("pins the light theme and native override for 'light'", () => {
+  it("pins the native override to 'light' for 'light' and touches no manual Unistyles setter", () => {
     applyAppearance('light');
-    expect(setAdaptive).toHaveBeenCalledWith(false);
-    expect(setTheme).toHaveBeenCalledWith('light');
     expect(setColorScheme).toHaveBeenCalledWith('light');
+    expect(setAdaptive).not.toHaveBeenCalled();
+    expect(setTheme).not.toHaveBeenCalled();
   });
 
-  it("pins the dark theme and native override for 'dark'", () => {
+  it("pins the native override to 'dark' for 'dark' and touches no manual Unistyles setter", () => {
     applyAppearance('dark');
-    expect(setAdaptive).toHaveBeenCalledWith(false);
-    expect(setTheme).toHaveBeenCalledWith('dark');
     expect(setColorScheme).toHaveBeenCalledWith('dark');
+    expect(setAdaptive).not.toHaveBeenCalled();
+    expect(setTheme).not.toHaveBeenCalled();
   });
 });
