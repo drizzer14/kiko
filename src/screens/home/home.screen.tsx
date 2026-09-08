@@ -33,6 +33,7 @@ import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { isTimeExemptHoldingType } from '../../holdings/holding-type';
+import { useSyncStatus } from '../../monobank/sync-status';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
@@ -45,7 +46,6 @@ import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../transactions/row-description';
-import SyncingIndicator from '../syncing-indicator';
 import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
@@ -178,7 +178,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // connected Monobank account plus each connected crypto account) at once,
   // bypassing the auto-sync throttle. `failures` names any account that failed
   // so a partial success can still surface which one(s) did not update.
-  const { isSyncing, failures, syncAll } = useSyncAll(accounts);
+  const { failures, syncAll } = useSyncAll(accounts);
+
+  // The single native RefreshControl spinner is driven by the GLOBAL sync-status
+  // signal, not a pull-local flag — so an auto-sync-on-open (which lights the
+  // same signal via `runSync`) spins the pull spinner WITHOUT a user pull, and a
+  // real pull spins it too. The signal reflects only the FAST phase of the
+  // Monobank sync (client-info + balance upsert), so the spinner ends promptly
+  // while the per-card statement fetches continue in the background; holdings and
+  // transactions update incrementally through the reactive `useLiveQuery`
+  // consumers above. Known limitation: the signal is Monobank-only, so a pull on
+  // a crypto-only account shows little/no spinner.
+  const isSyncing = useSyncStatus();
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -472,21 +483,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             />
           </Box>
         </Box>
-
-        {/* A global "a sync is running" signal, driven by the reactive
-            sync-status store. Sits BELOW the filters (above the list) so it
-            reads as a status line for the transactions below it. It shows for
-            ANY sync trigger (auto-sync on open, the account-detail button) and
-            persists through a slow multi-card run, rendering nothing when idle.
-
-            Suppressed during a pull-to-refresh (`isSyncing`, which is
-            pull-specific — it drives the RefreshControl below): on that path
-            the native pull spinner is the single indicator, so rendering the
-            custom one too would show BOTH at once. On every NON-pull sync
-            (auto-sync on app open, the manual button) `isSyncing` is false and
-            the RefreshControl is not refreshing, so this custom indicator is
-            the only signal and must stay. This guarantees never-both. */}
-        {!isSyncing && <SyncingIndicator />}
 
         <SectionList
           ref={listRef}

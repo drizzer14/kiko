@@ -76,7 +76,6 @@ describe('useSyncAll', () => {
     expect(mockRefreshRates).toHaveBeenCalledTimes(1);
     expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
     expect(result.current.failures).toEqual([]);
-    expect(result.current.isSyncing).toBe(false);
   });
 
   it('reports a failed account by name while the others still complete (partial success)', async () => {
@@ -124,7 +123,6 @@ describe('useSyncAll', () => {
     expect(mockRunSync).not.toHaveBeenCalled();
     expect(mockRunCryptoSync).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
-    expect(result.current.isSyncing).toBe(false);
     expect(result.current.failures).toEqual([]);
   });
 });

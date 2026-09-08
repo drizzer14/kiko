@@ -28,7 +28,6 @@ export const uk: typeof en = {
     changeIconLabel: 'Змінити {{label}}',
     iconLabel: 'Іконка {{name}}',
     noDataForRange: 'Немає даних за цей період',
-    syncing: 'Синхронізуємо…',
   },
   settings: {
     appLock: {

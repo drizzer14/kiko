@@ -14,7 +14,6 @@ import { ratesRepo } from '../repositories/rates.repo';
 type SyncableAccount = Pick<AccountRow, 'id' | 'name' | 'institution'>;
 
 type UseSyncAll = {
-  isSyncing: boolean;
   /** Names of the accounts whose sync failed on the last run — empty on full success. */
   failures: string[];
   syncAll: () => Promise<void>;
@@ -53,7 +52,6 @@ const syncJobsFor = (account: SyncableAccount): SyncJob[] => {
  * always forces a fresh sync, bypassing the auto-sync throttle.
  */
 export const useSyncAll = (accounts: SyncableAccount[]): UseSyncAll => {
-  const [isSyncing, setIsSyncing] = useState(false);
   const [failures, setFailures] = useState<string[]>([]);
 
   const syncAll = async (): Promise<void> => {
@@ -62,7 +60,6 @@ export const useSyncAll = (accounts: SyncableAccount[]): UseSyncAll => {
       return;
     }
 
-    setIsSyncing(true);
     setFailures([]);
 
     const results = await Promise.allSettled(jobs.map((job) => job.run()));
@@ -79,8 +76,7 @@ export const useSyncAll = (accounts: SyncableAccount[]): UseSyncAll => {
     });
 
     setFailures(failed);
-    setIsSyncing(false);
   };
 
-  return { isSyncing, failures, syncAll };
+  return { failures, syncAll };
 };

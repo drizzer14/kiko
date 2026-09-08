@@ -78,11 +78,10 @@ jest.mock('../use-sync-all', () => ({
   useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
 }));
 
-// The global sync-status store drives the custom <SyncingIndicator/>. Mocked so
-// a test can independently drive the GLOBAL "a sync is running" flag apart from
-// Home's PULL-specific `isSyncing` (mocked via `useSyncAll` above), which is
-// exactly the two-signal interplay the "never show both indicators" rule turns
-// on.
+// The global sync-status store is the SINGLE driver of the native
+// RefreshControl spinner: any sync trigger (a pull, or an auto-sync on open)
+// lights it via `runSync`, and Home binds `refreshing` straight to it. Mocked
+// so a test can drive the "a sync is running" flag without a real run.
 const mockUseSyncStatus = jest.fn();
 jest.mock('../../monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
@@ -226,7 +225,7 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
-    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
   });
 
@@ -880,43 +879,25 @@ describe('HomeScreen', () => {
     expect(mockSyncAll).toHaveBeenCalledTimes(1);
   });
 
-  it('reflects the syncing state on the refresh control', async () => {
-    mockUseSyncAll.mockReturnValue({ isSyncing: true, failures: [], syncAll: mockSyncAll });
+  it('spins the native refresh control off the global sync signal (covers auto-sync on open)', async () => {
+    // The single native spinner is driven by the GLOBAL sync-status store, not a
+    // pull-local flag — so an auto-sync on open (which lights the same signal via
+    // `runSync`) spins the pull spinner WITHOUT a user pull.
+    mockUseSyncStatus.mockReturnValue(true);
     const { getByTestId } = await renderHome();
 
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(true);
   });
 
-  it('hides the custom syncing indicator during a pull, leaving the native spinner as the only signal', async () => {
-    // A pull-to-refresh drives BOTH Home's pull-specific `isSyncing` (the native
-    // RefreshControl spinner) AND the global sync-status store (which lit the
-    // custom indicator). Showing both at once is the duplicate this guards: on
-    // the pull path the custom indicator must be suppressed.
-    mockUseSyncAll.mockReturnValue({ isSyncing: true, failures: [], syncAll: mockSyncAll });
-    mockUseSyncStatus.mockReturnValue(true);
-    const { queryByTestId } = await renderHome();
-
-    expect(queryByTestId('syncing-indicator')).toBeNull();
-    // The native spinner IS the indicator on this path.
-    expect(queryByTestId('home-transactions')?.props.refreshControl.props.refreshing).toBe(true);
-  });
-
-  it('shows the custom syncing indicator for a non-pull sync (auto-sync on open)', async () => {
-    // No pull is active (`isSyncing` false ⇒ the RefreshControl is not
-    // refreshing), but the global store reports a sync in flight — the
-    // auto-sync-on-open / manual-button path. The custom indicator is then the
-    // ONLY signal and must render.
-    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
-    mockUseSyncStatus.mockReturnValue(true);
+  it('leaves the native refresh control idle when no sync is in flight', async () => {
+    mockUseSyncStatus.mockReturnValue(false);
     const { getByTestId } = await renderHome();
 
-    expect(getByTestId('syncing-indicator')).toBeTruthy();
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
   });
 
   it('surfaces a message naming the accounts that failed to sync', async () => {
     mockUseSyncAll.mockReturnValue({
-      isSyncing: false,
       failures: ['Binance', 'Cold storage'],
       syncAll: mockSyncAll,
     });
@@ -931,7 +912,7 @@ describe('HomeScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
-    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
   });
 
