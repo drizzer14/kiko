@@ -8,11 +8,12 @@ import Text from '../text';
 import type { SwitchProps } from './switch.props';
 import { styles } from './switch.styles';
 
-const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label }) => {
+const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label, testID }) => {
   const { theme } = useUnistyles();
 
   const toggle = (
     <RNSwitch
+      testID={testID}
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}

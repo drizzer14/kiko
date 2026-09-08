@@ -96,9 +96,9 @@ describe('SystemScreen', () => {
   });
 
   it('calls setLockEnabled when the App Lock switch is toggled', async () => {
-    const { findByRole } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
-    await fireEvent(await findByRole('switch'), 'valueChange', true);
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', true);
 
     expect(mockSetLockEnabled).toHaveBeenCalledWith(true);
   });

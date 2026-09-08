@@ -52,9 +52,8 @@ export const uk: typeof en = {
     uk: '🇺🇦 Українська',
   },
   appearance: {
-    system: 'Системна',
-    light: 'Світла',
-    dark: 'Темна',
+    followSystem: 'Слідувати системним налаштуванням',
+    darkMode: 'Темний режим',
   },
   calendar: {
     month: {

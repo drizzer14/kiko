@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { Appearance } from '../../appearance/appearance';
 import { APP_LOCK_ENABLED } from '../../db/db-config';
 import { useLiveQuery } from '../../db/use-live-query';
-import AppearanceSwitch from '../../design-system/components/appearance-switch';
+import AppearanceToggles from '../../design-system/components/appearance-toggles';
 import Box from '../../design-system/components/box';
 import GlassSurface from '../../design-system/components/glass-surface';
 import LanguageSwitch from '../../design-system/components/language-switch';
@@ -65,7 +65,7 @@ const SystemScreen: FC<SystemScreenProps> = () => {
             icon="circle.lefthalf.filled"
             label={t('settings.colorScheme')}
           >
-            <AppearanceSwitch selected={effectiveAppearance} onSelect={handleSelectAppearance} />
+            <AppearanceToggles appearance={effectiveAppearance} onChange={handleSelectAppearance} />
           </SettingsRow>
         </GlassSurface>
 

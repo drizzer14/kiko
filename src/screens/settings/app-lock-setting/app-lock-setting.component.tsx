@@ -59,6 +59,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
     <GlassSurface testID="settings-card-app-lock" padding={3}>
       <SettingsRow testID="settings-row-app-lock" icon="faceid" label={t('settings.appLock.label')}>
         <Switch
+          testID="settings-switch-app-lock"
           value={lockEnabled}
           onValueChange={onToggle}
           disabled={!lockAvailable}

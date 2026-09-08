@@ -60,9 +60,8 @@ export const en = {
     uk: '🇺🇦 Українська',
   },
   appearance: {
-    system: 'System',
-    light: 'Light',
-    dark: 'Dark',
+    followSystem: 'Follow system setting',
+    darkMode: 'Dark mode',
   },
   calendar: {
     month: {
