@@ -94,7 +94,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           <Box direction="row" gap={3} style={styles.addRow}>
             <SymbolIcon name="plus" tone="textPrimary" />
 
-            <Text variant="body" tone="textSecondary">
+            <Text variant="body" tone="textPrimary">
               {t('categories.addCategory')}
             </Text>
           </Box>

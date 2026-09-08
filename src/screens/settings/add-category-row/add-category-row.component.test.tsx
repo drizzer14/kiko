@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
@@ -14,9 +15,38 @@ jest.mock('../../../repositories/categories.repo', () => ({
   },
 }));
 
+// The Text primitive's `tone -> color` mapping lives inside a
+// react-native-unistyles variant, which the project's Jest mock strips out of
+// the resolved style before a test can inspect it (same limitation MoneyText's
+// test documents). Mock the design-system Text to surface its `tone` prop
+// through a testID so the collapsed label's tone is assertable; children still
+// render as plain text, so every getByText/getByLabelText query is unaffected.
+// Button uses react-native's own Text, so its labels are untouched by this.
+jest.mock('../../../design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone = 'textPrimary', children }: { tone?: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
+
 describe('AddCategoryRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('renders the collapsed "Add category" label as textPrimary so it reads enabled', async () => {
+    const { getByTestId, getByText } = await render(<AddCategoryRow />);
+
+    // The whole collapsed row is a live Pressable with no disabled state, so its
+    // label must match the plus icon's textPrimary tone — textSecondary read as
+    // muted/disabled. Collapsed, this is the only Text in the tree, so the tone
+    // testID is unambiguous.
+    expect(getByText('Add category')).toBeTruthy();
+    expect(getByTestId('text-tone-textPrimary')).toBeTruthy();
   });
 
   it('is a single collapsed row until it is tapped', async () => {
