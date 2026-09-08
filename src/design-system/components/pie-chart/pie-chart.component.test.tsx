@@ -191,9 +191,9 @@ describe('PieChart', () => {
     expect(queryByTestId('pie-chart-center-total')).toBeNull();
   });
 
-  it('centers a supplied `centerTotal` in the donut hole', async () => {
+  it('centers a supplied `centerTotal` amount in the donut hole with no caption', async () => {
     const baseCurrency: Currency = 'USD';
-    const { getByTestId, getByText } = await render(
+    const { getByTestId, getByText, queryByText } = await render(
       <PieChart
         slices={slices}
         baseCurrency={baseCurrency}
@@ -201,8 +201,11 @@ describe('PieChart', () => {
       />,
     );
 
+    // The amount still renders inside the center-total wrapper...
     expect(getByTestId('pie-chart-center-total')).toBeTruthy();
     expect(getByText(/\$1,000\.00/)).toBeTruthy();
+    // ...but the "Total" caption that used to sit beneath it is gone.
+    expect(queryByText('Total')).toBeNull();
   });
 
   it('renders an empty-state message when there are no slices', async () => {

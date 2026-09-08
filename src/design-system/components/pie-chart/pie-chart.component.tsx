@@ -222,10 +222,6 @@ const PieChart: FC<PieChartProps> = ({
               adjustsFontSizeToFit
               minimumFontScale={0.5}
             />
-
-            <Text variant="caption" tone="textSecondary">
-              {t('components.pieChart.total')}
-            </Text>
           </View>
         )}
       </View>

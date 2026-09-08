@@ -370,7 +370,6 @@ export const en = {
     },
     pieChart: {
       emptyDefault: 'No Accounts To Show',
-      total: 'Total',
     },
     swipeableRow: {
       confirmMessage: 'This cannot be undone.',
