@@ -52,8 +52,8 @@ const applyPersistedLanguage = async (): Promise<void> => {
 /**
  * Apply the persisted appearance before the first gate paints — same
  * rationale as `applyPersistedLanguage` above, for `settings.appearance`
- * instead of `settings.language`. Unistyles registers `adaptiveThemes: true`
- * at import time (`src/design-system/unistyles.ts`), and the only other
+ * instead of `settings.language`. Unistyles boots on the OS scheme via
+ * `initialTheme` (`src/design-system/unistyles.ts`), and the only other
  * caller of the shared `applyAppearance` mapping,
  * `useSyncAppearanceWithSettings`, is mounted from `AppRoot` — which renders
  * only after this gate succeeds AND `LockGate` unlocks. So a user with
