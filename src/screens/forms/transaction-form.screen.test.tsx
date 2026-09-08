@@ -41,6 +41,7 @@ const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockUpsertCategoryOverride = jest.fn();
+const mockSetCategory = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('../../repositories/transactions.repo', () => ({
@@ -50,6 +51,7 @@ jest.mock('../../repositories/transactions.repo', () => ({
     recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
     remove: (...args: unknown[]) => mockRemove(...args),
+    setCategory: (...args: unknown[]) => mockSetCategory(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
@@ -697,6 +699,56 @@ describe('TransactionFormScreen — category editing', () => {
       expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
     );
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('overrides ONLY this row via setCategory when "Just for this one" is pressed, never the name rule', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      category: 'groceries',
+    });
+    mockSetCategory.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The sheet offers the single-row override alongside the all-similar one.
+    await fireEvent.press(utils.getByText('Just for this one'));
+
+    // Only the target row's category is rewritten, by id — the all-similar name
+    // rule is never touched.
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-1',
+        category: 'dining',
+      }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('does NOT offer "Just for this one" on a create flow (no transaction id to target)', async () => {
+    // Create mode: the sheet still rises (a non-blank description + a category
+    // pick), but there is no existing row to target — the just-created row
+    // already carries its category from recordManual — so the single-row
+    // override button must be absent.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'ATB');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The all-similar "Apply" is offered; the single-row override is not.
+    expect(utils.getByText('Apply')).toBeTruthy();
+    expect(utils.queryByText('Just for this one')).toBeNull();
+    expect(mockSetCategory).not.toHaveBeenCalled();
   });
 
   it('propagates one override for a double-tapped Apply', async () => {

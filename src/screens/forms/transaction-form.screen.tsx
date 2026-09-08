@@ -815,6 +815,32 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { onPress: onApplyOverride, isSubmitting: isApplyingOverride } =
     useSubmitOnce(applyOverride);
 
+  // The "just for this one" path: persist the picked category on THIS row ONLY,
+  // by id, then return to the list. Unlike `applyOverride` (the all-similar name
+  // rule), nothing propagates to other same-name rows or to future imports —
+  // `transactionsRepo.setCategory` rewrites the single target row's category and
+  // nothing else. Only reachable in EDIT mode: `editingId` targets an existing
+  // row, so the branch is guarded on it and the button is offered only when it
+  // is present. A brand-new unsaved row has no id to target — and already
+  // carries its category from `recordManual` — so this action is not offered
+  // there.
+  const applyOverrideOne = async (): Promise<void> => {
+    if (pendingOverride === null || editingId === null) {
+      return;
+    }
+    await transactionsRepo.setCategory({
+      transactionId: editingId,
+      category: pendingOverride.category,
+    });
+    navigation.goBack();
+  };
+
+  // A third independent `useSubmitOnce` instance, for the same reason
+  // `onApplyOverride` has its own (see above): each sheet action's in-flight
+  // state must stay separate so one never wrongly blocks another.
+  const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
+    useSubmitOnce(applyOverrideOne);
+
   const cancelOverride = (): void => {
     navigation.goBack();
   };
@@ -1067,8 +1093,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
       {/* The category-override confirmation, as a themed sheet rather than a
           native Alert (which cannot be styled). "Apply" is the accent-filled
-          primary; "Cancel" is a transparent ghost with a red label. Dismissing
-          the sheet (scrim/back) behaves like Cancel — it returns to the list. */}
+          primary all-similar name rule; "Just for this one" (edit mode only) is
+          the secondary single-row override; "Cancel" is a transparent ghost with
+          a red label. Dismissing the sheet (scrim/back) behaves like Cancel — it
+          returns to the list. */}
       <BottomSheet
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
@@ -1090,6 +1118,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         <Button onPress={onApplyOverride} disabled={isApplyingOverride}>
           {t('forms.transaction.apply')}
         </Button>
+
+        {editingId !== null && (
+          <Button variant="secondary" onPress={onApplyOverrideOne} disabled={isApplyingOverrideOne}>
+            {t('forms.transaction.applyToThisOne')}
+          </Button>
+        )}
 
         <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
           {t('common.cancel')}

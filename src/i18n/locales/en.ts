@@ -203,6 +203,7 @@ export const en = {
       applyCategoryMessage:
         'Apply "{{category}}" to all transactions named "{{name}}"? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
+      applyToThisOne: 'Just for this one',
       category: 'Category',
       convertToExchange: 'Convert to exchange',
       deleteConfirmMessage: 'This transaction will be permanently removed.',

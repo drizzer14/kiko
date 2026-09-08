@@ -447,6 +447,26 @@ export const transactionsRepo = {
       }
     }),
   /**
+   * Override the category of ONE transaction, by id, inside a single op-sqlite
+   * transaction. This is the "just for this one" path: it rewrites only the
+   * target row's `category` and touches nothing else — no balance, no other row.
+   *
+   * It is DELIBERATELY different from
+   * `categoryOverridesRepo.upsertCategoryOverride` (category-overrides.repo.ts),
+   * the "apply to all similar" name rule, which writes a name→category rule that
+   * rewrites every same-name row AND every future import. Here nothing
+   * propagates beyond this single row.
+   *
+   * There is NO `source` gate: a synced (bank-owned) row is still freely
+   * categorizable — the category is the user's, not the bank's. A later re-sync
+   * never clobbers the pick, because `addManyDedup`'s `onConflictDoUpdate` set
+   * names only the bank-owned columns and deliberately excludes `category`.
+   */
+  setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
+    write((tx) =>
+      tx.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
+    ),
+  /**
    * Upsert a batch of imported rows on the `(source, external_id)` unique index
    * and return how many of them were genuinely NEW — the number the sync reports
    * to the user as "imported".

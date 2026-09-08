@@ -185,6 +185,7 @@ export const uk: typeof en = {
       applyCategoryMessage:
         'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}»? Це також застосується до майбутніх імпортів.',
       applyCategoryToAll: 'Застосувати категорію до всіх',
+      applyToThisOne: 'Лише для цієї',
       category: 'Категорія',
       convertToExchange: 'Зробити обміном',
       deleteConfirmMessage: 'Цю транзакцію буде остаточно видалено.',
