@@ -216,6 +216,20 @@ export const transactionsRepo = {
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
+  /**
+   * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
+   * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
+   * fetches these cards even when their /client-info balance is unchanged,
+   * because a same-amount hold→settled refresh does not move the balance — so
+   * the balance-diff skip would otherwise never re-fetch the settled amount.
+   * `eq(transactions.hold, true)` compiles to `= 1` on the boolean-mode column,
+   * excluding NULL/false rows.
+   */
+  holdingIdsWithHoldQuery: () =>
+    database
+      .selectDistinct({ holdingId: transactions.holdingId })
+      .from(transactions)
+      .where(and(eq(transactions.source, 'monobank'), eq(transactions.hold, true))),
   listAllWithContextQuery: () =>
     database
       .select({

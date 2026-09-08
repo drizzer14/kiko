@@ -148,6 +148,13 @@
       "when": 1788867670561,
       "tag": "0020_add_last_sync_display_at",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1788881273803,
+      "tag": "0021_add_last_full_sync_at",
+      "breakpoints": true
     }
   ]
 }

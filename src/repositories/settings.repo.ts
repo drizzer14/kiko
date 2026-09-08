@@ -35,6 +35,17 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ lastSyncDisplayAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  /**
+   * Stamp the timestamp (epoch ms) of the last FULL statement fetch — the run
+   * that fetched every card regardless of its balance. Written only after a
+   * fully clean full-fetch run; drives the balance-diff skip's periodic safety
+   * net (see `lastFullSyncAt` in `db/schema.ts` and `runSyncInner` in
+   * `monobank/sync.ts`).
+   */
+  setLastFullSyncAt: (timestamp: number) =>
+    write((tx) =>
+      tx.update(settings).set({ lastFullSyncAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   setLockEnabled: (enabled: boolean) =>
     write((tx) =>
       tx.update(settings).set({ lockEnabled: enabled }).where(eq(settings.id, SETTINGS_ID)),

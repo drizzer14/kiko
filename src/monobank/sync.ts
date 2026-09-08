@@ -34,6 +34,16 @@ const RATE_LIMIT_MS = 60 * 1000;
 const MAX_ITEMS_PER_RESPONSE = 500;
 /** First-sync lookback when no previous sync timestamp is stored. */
 const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
+/**
+ * How stale the last FULL statement fetch may get before the next sync forces
+ * another one (24h). The steady-state sync SKIPS a card whose /client-info
+ * balance is unchanged since the last sync — but a net-zero same-window
+ * transaction pair (a +X and a -X landing in one sync window) leaves the
+ * balance untouched, so the skip would never fetch either row. This interval
+ * bounds that worst-case miss window: at least once a day every card is fetched
+ * regardless of balance, so such a pair is recovered within a day.
+ */
+const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The injectable seams of the sync pipeline. Network, clock and delay are
@@ -94,6 +104,25 @@ export interface SyncDeps {
    * even when the cursor deliberately stays put to re-cover a failed card.
    */
   setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * Read the epoch-ms timestamp of the last FULL statement fetch (every card
+   * fetched regardless of balance), or `null` if one has never run. Drives the
+   * balance-diff skip's periodic safety net (see `FULL_FETCH_INTERVAL_MS`).
+   */
+  getLastFullSyncAt: () => Promise<number | null>;
+  /**
+   * Stamp the last-full-fetch timestamp (epoch ms). Written only after a fully
+   * clean full-fetch run, so a partial failure re-attempts the full fetch next
+   * run.
+   */
+  setLastFullSyncAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
+   * pending authorization). Such a card is fetched even when its balance is
+   * unchanged, because a same-amount hold→settled refresh does not move the
+   * balance.
+   */
+  getHoldingIdsWithHold: () => Promise<string[]>;
 }
 
 const defaultDeps: SyncDeps = {
@@ -111,6 +140,10 @@ const defaultDeps: SyncDeps = {
   getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
   setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
   setLastSyncDisplayAt: (timestamp) => settingsRepo.setLastSyncDisplayAt(timestamp),
+  getLastFullSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastFullSyncAt ?? null,
+  setLastFullSyncAt: (timestamp) => settingsRepo.setLastFullSyncAt(timestamp),
+  getHoldingIdsWithHold: async () =>
+    (await transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId),
 };
 
 export const mapStatementItem = (
@@ -327,6 +360,73 @@ const fetchAllStatements = async (
 const mapFetched = (items: MonobankStatementItem[], holdingId: string): NewTransaction[] =>
   items.map((item) => mapStatementItem(item, holdingId));
 
+/** Index a run's holdings by their Monobank id, skipping any without one. */
+const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
+  const map = new Map<string, HoldingRow>();
+  for (const holding of holdings) {
+    const monobankId = monobankIdOf(holding.metadata);
+    if (monobankId !== undefined) {
+      map.set(monobankId, holding);
+    }
+  }
+  return map;
+};
+
+/**
+ * Whether this run fetches EVERY card regardless of balance: the first sync
+ * ever, a run with no prior full fetch, or one whose last full fetch is older
+ * than `FULL_FETCH_INTERVAL_MS`. `!lastSyncAt` short-circuits before `now()` is
+ * read, so a first sync never depends on the clock.
+ */
+const shouldFullFetch = (
+  now: () => number,
+  lastSyncAt: number | null,
+  lastFullSyncAt: number | null,
+): boolean =>
+  !lastSyncAt || lastFullSyncAt == null || now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS;
+
+/**
+ * The balance-diff skip predicate: skip a card's statement fetch only when this
+ * is NOT a full fetch, its /client-info balance equals its prior stored balance
+ * (`holdings.balanceMinorUnits` before this run's upsert), and it carries no
+ * outstanding hold. A held card is always fetched because a same-amount
+ * hold→settled refresh does not move the balance.
+ */
+const isBalanceDiffSkip = (
+  account: MonobankAccount,
+  holding: HoldingRow,
+  context: {
+    isFullFetch: boolean;
+    priorHoldingByMonobankId: Map<string, HoldingRow>;
+    holdIds: Set<string>;
+  },
+): boolean => {
+  if (context.isFullFetch) {
+    return false;
+  }
+  const priorBalance = context.priorHoldingByMonobankId.get(account.id)?.balanceMinorUnits;
+  const balanceUnchanged = priorBalance !== undefined && priorBalance === account.balance;
+  return balanceUnchanged && !context.holdIds.has(holding.id);
+};
+
+/**
+ * The inclusive from-second of this run's statement window. On a full fetch the
+ * cursor is `lastFullSyncAt` (the last time ALL cards were queried); on an
+ * incremental run it is `lastSyncAt` (the statement cursor). See the call site
+ * in `runSyncInner` for why the full fetch must widen back to `lastFullSyncAt`.
+ * A null cursor (the first sync, when both are null) falls back to the default
+ * lookback below the queried ceiling.
+ */
+const fromCursorSeconds = (
+  isFullFetch: boolean,
+  lastSyncAt: number | null,
+  lastFullSyncAt: number | null,
+  toSeconds: number,
+): number => {
+  const cursor = isFullFetch ? lastFullSyncAt : lastSyncAt;
+  return cursor ? Math.floor(cursor / 1000) : toSeconds - DEFAULT_LOOKBACK_SECONDS;
+};
+
 const importAccount = async (
   deps: SyncDeps,
   gate: RequestGate,
@@ -427,17 +527,65 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   await gate.wait();
   const { accounts, jars } = await deps.fetchClientInfo(token, deps.fetchImpl);
   await markMonobankAccount(deps, accountId);
+
+  // Capture each card/jar's PRIOR stored holding BEFORE `upsertHoldings`
+  // overwrites `holdings.balanceMinorUnits` from this run's /client-info. That
+  // column already IS "the balance as of the last sync" for a Monobank holding
+  // (the sync rewrites it every run), so the balance-diff skip needs no new
+  // column — but it must be read before the upsert clobbers it.
+  const priorHoldingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
+
   await upsertHoldings(deps, accountId, accounts, jars);
+
+  // The CURRENT holdings, after the upsert: this run's authoritative
+  // monobankId → holding map, giving each card's holding id (needed for the
+  // outstanding-hold carve-out) and confirming the holding exists. `holdIds` is
+  // the set of holding ids that still carry an outstanding Monobank hold.
+  const holdingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
+  const holdIds = new Set(await deps.getHoldingIdsWithHold());
 
   const toSeconds = Math.floor(deps.now() / 1000);
   const lastSyncAt = await deps.getLastSyncAt();
-  const fromSeconds = lastSyncAt
-    ? Math.floor(lastSyncAt / 1000)
-    : toSeconds - DEFAULT_LOOKBACK_SECONDS;
+
+  // Full-fetch decision: fetch EVERY card regardless of balance on the first
+  // sync ever, when a full fetch has never run, or once the last one is older
+  // than `FULL_FETCH_INTERVAL_MS`. Otherwise the balance-diff skip applies per
+  // card below. Computed BEFORE `fromSeconds` because it selects which cursor
+  // the from-window is derived from.
+  const lastFullSyncAt = await deps.getLastFullSyncAt();
+  const isFullFetch = shouldFullFetch(deps.now, lastSyncAt, lastFullSyncAt);
+
+  // On a full fetch, derive the from-cursor from `lastFullSyncAt` (the last
+  // time ALL cards were actually queried), NOT `lastSyncAt` (the incremental
+  // cursor, which advances on EVERY clean run — including runs that
+  // balance-diff-skip a card, so it drifts recent while whole cards were never
+  // fetched). `lastFullSyncAt <= lastSyncAt` always (a full-fetch run stamps
+  // both; later incremental runs advance only `lastSyncAt`), so on a full fetch
+  // `fromCursorSeconds` widens the window to [lastFullSyncAt, now], re-covering
+  // every window skipped since the last full fetch — including a net-zero
+  // same-window pair (a +X and a -X that left the balance unchanged) that was
+  // skipped in an OLDER window and would otherwise be lost forever.
+  // `fetchAllStatements` pages backward across the 31-day API window, so a
+  // `fromSeconds` older than 31 days is handled. On the FIRST sync `lastSyncAt`
+  // is null ⇒ `isFullFetch` true ⇒ the cursor is `lastFullSyncAt` (also null) ⇒
+  // falls back to `DEFAULT_LOOKBACK_SECONDS`, the same first-sync behavior as
+  // before.
+  const fromSeconds = fromCursorSeconds(isFullFetch, lastSyncAt, lastFullSyncAt, toSeconds);
 
   let importedTransactions = 0;
   const failures: Error[] = [];
   for (const account of accounts) {
+    // The balance-diff skip. A card is skipped — no statement fetch, no failure
+    // pushed (a skipped card is a successful no-op) — per `isBalanceDiffSkip`. A
+    // missing holding is nothing to import into (matches today's `importAccount`
+    // `if (!holding) return 0`).
+    const holding = holdingByMonobankId.get(account.id);
+    if (!holding) {
+      continue;
+    }
+    if (isBalanceDiffSkip(account, holding, { isFullFetch, priorHoldingByMonobankId, holdIds })) {
+      continue;
+    }
     try {
       importedTransactions += await importAccount(
         deps,
@@ -504,5 +652,20 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
   await deps.setLastSyncAt(toSeconds * 1000);
+
+  // Advance the full-fetch marker only on a fully clean full-fetch run: this
+  // line is reached only after the partial-failure `throw` above is passed, so
+  // a partial failure leaves BOTH the cursor and this marker put and the full
+  // fetch is re-attempted next run. Stamped with the queried ceiling
+  // (`toSeconds * 1000`), matching `setLastSyncAt`'s convention: this marker is
+  // BOTH the wall-clock staleness reference for the 24h `shouldFullFetch` check
+  // AND the from-cursor for the NEXT full fetch (see `fromCursorSeconds`), so
+  // stamping the exact window ceiling makes the next full fetch resume precisely
+  // where this one ended — no sub-second hole. `toSeconds * 1000 ≈ now`, so the
+  // staleness math (`now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS`) is
+  // unaffected (the difference from `now()` is sub-second).
+  if (isFullFetch) {
+    await deps.setLastFullSyncAt(toSeconds * 1000);
+  }
   return { importedTransactions };
 };

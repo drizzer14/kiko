@@ -177,6 +177,20 @@ export const settings = sqliteTable('settings', {
   // rows, so the display stamp moves independently. NULLABLE: rows that existed
   // before this column read null, and the display falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
+  // The epoch-ms timestamp of the last FULL statement fetch (every card
+  // fetched regardless of balance). The steady-state sync SKIPS a card whose
+  // /client-info balance is unchanged since the last sync (a "balance-diff
+  // skip") to stay under Monobank's 1-req/60s-per-token limit; this timestamp
+  // drives the periodic safety net that forces an all-cards fetch, bounding
+  // the worst-case miss window for a net-zero same-window transaction pair
+  // (a +X and a -X in one sync window that leave the balance untouched, which
+  // the balance-diff skip would otherwise never catch). It is ALSO the
+  // from-cursor of that forced full fetch: the sync re-queries [lastFullSyncAt,
+  // now] so every window skipped since the last full fetch is actually
+  // re-covered — using the recent incremental cursor instead would re-query
+  // only the already-covered recent window and recover nothing. NULL ⇒ never
+  // done a full fetch, which forces one.
+  lastFullSyncAt: integer('last_full_sync_at'),
   // The user's SAVED spending-trend category selection: a JSON array of stable
   // `categories.key` slugs that overrides the default "top 3 by expense" seed on
   // the Statistics trend chart. NULL means "no saved selection" — the chart falls
