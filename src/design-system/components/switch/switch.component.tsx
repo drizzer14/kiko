@@ -31,8 +31,12 @@ const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label
   }
 
   return (
-    <Box direction="row" style={styles.row}>
-      <Text variant="body">{label}</Text>
+    // `gap` guarantees a minimum label/toggle gutter even once the label
+    // wraps onto a second line, so wrapped text never touches the toggle.
+    <Box direction="row" gap={3} style={styles.row}>
+      <Box style={styles.label}>
+        <Text variant="body">{label}</Text>
+      </Box>
 
       {toggle}
     </Box>
