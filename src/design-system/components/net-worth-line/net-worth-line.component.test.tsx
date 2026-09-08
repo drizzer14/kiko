@@ -6,7 +6,7 @@ import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
-import { areaColor, toAreaPath } from './net-worth-line.component';
+import { toAreaPath } from './net-worth-line.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a
 // test can assert a single directive regardless of how Unistyles composed it.
@@ -21,32 +21,6 @@ const points: NetWorthPoint[] = [
   { t: 172_800_000, amount: 200 },
 ];
 
-describe('areaColor', () => {
-  it('is positive-green when the latest value is at/above the reference', () => {
-    const pts: NetWorthPoint[] = [
-      { t: 0, amount: 10 },
-      { t: 1, amount: 15 },
-    ];
-    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.positive);
-  });
-
-  it('is positive-green when the latest value equals the reference exactly', () => {
-    const pts: NetWorthPoint[] = [
-      { t: 0, amount: 10 },
-      { t: 1, amount: 10 },
-    ];
-    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.positive);
-  });
-
-  it('is negative-red when the latest value is below the reference', () => {
-    const pts: NetWorthPoint[] = [
-      { t: 0, amount: 10 },
-      { t: 1, amount: 5 },
-    ];
-    expect(areaColor(pts, 10, darkTheme)).toBe(darkTheme.colors.negative);
-  });
-});
-
 describe('toAreaPath', () => {
   // An identity scale keeps the assertions readable: x(t) === t, y(v) === v.
   const scales = {
@@ -56,20 +30,24 @@ describe('toAreaPath', () => {
     maxTime: 2,
   };
 
-  it('traces the line, then closes down to the baseline under the last and first x', () => {
+  it('traces the line, then closes to the reference baseline under the last and first x', () => {
     const pts: NetWorthPoint[] = [
       { t: 0, amount: 10 },
       { t: 1, amount: 20 },
       { t: 2, amount: 15 },
     ];
 
-    const path = toAreaPath(pts, scales, 100);
+    // The closing y is the dashed REFERENCE baseline (referenceY), not the chart
+    // bottom: the closed path covers the between-line-and-reference region on both
+    // sides of any crossing, and the green/red clips split it at the reference.
+    const referenceY = 12;
+    const path = toAreaPath(pts, scales, referenceY);
 
-    // Starts at the first point, traces each point, drops to the baseline under
-    // the last x, back under the first x, and closes with Z.
-    expect(path).toBe('M 0,10 L 1,20 L 2,15 L 2,100 L 0,100 Z');
+    // Starts at the first point, traces each point, drops to the reference
+    // baseline under the last x, back under the first x, and closes with Z.
+    expect(path).toBe('M 0,10 L 1,20 L 2,15 L 2,12 L 0,12 Z');
     expect(path.startsWith('M 0,10')).toBe(true);
-    expect(path.trimEnd().endsWith('Z')).toBe(true);
+    expect(path.trimEnd().endsWith(`L 2,${referenceY} L 0,${referenceY} Z`)).toBe(true);
   });
 });
 
@@ -367,44 +345,83 @@ describe('NetWorthLine', () => {
     }
   });
 
-  it('fills a gradient area under the line, keyed green when the latest value is at/above the reference', async () => {
-    // points ends at 200, at the reference -> positive/green.
+  it('fills two clipped gradient areas anchored to the reference baseline, not the chart bottom', async () => {
+    const height = 200;
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
+    );
+
+    // referenceY is where the dashed baseline sits; baselineY is the chart bottom
+    // (height - PADDING_Y). The area must close to the FORMER, not the latter.
+    const referenceY = getByTestId('net-worth-line-reference').props.y1;
+    const baselineY = height - 12;
+    expect(referenceY).not.toBe(baselineY);
+
+    const positive = getByTestId('net-worth-line-area-positive');
+    const negative = getByTestId('net-worth-line-area-negative');
+
+    // ONE closed path covers the whole between-line-and-reference region; the two
+    // clips split it at the reference, so both areas share the same `d`.
+    expect(positive.props.d).toBe(negative.props.d);
+    expect(positive.props.d.startsWith('M ')).toBe(true);
+    // Closes to referenceY under the last x and back under the first x — never to
+    // the chart bottom.
+    expect(positive.props.d.trimEnd().endsWith(`,${referenceY} Z`)).toBe(true);
+    expect(positive.props.d).toContain(`,${referenceY} L `);
+    expect(positive.props.d).not.toContain(`,${baselineY}`);
+
+    // Green pass: filled from the positive gradient, clipped to the region ABOVE
+    // the reference. Red pass: negative gradient, clipped BELOW.
+    expect(positive.props.stroke).toBe('none');
+    expect(positive.props.fill).toBe('url(#net-worth-line-gradient-positive)');
+    expect(positive.props.clipPath).toBe('url(#net-worth-line-clip-above)');
+    expect(negative.props.fill).toBe('url(#net-worth-line-gradient-negative)');
+    expect(negative.props.clipPath).toBe('url(#net-worth-line-clip-below)');
+  });
+
+  it('fades each gradient to transparent at the reference baseline, green above / red below', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    const area = getByTestId('net-worth-line-area');
-    expect(area.props.fill).toBe('url(#net-worth-line-gradient)');
-    expect(area.props.stroke).toBe('none');
-    expect(area.props.d.startsWith('M ')).toBe(true);
-    expect(area.props.d.trimEnd().endsWith('Z')).toBe(true);
-
-    const top = getByTestId('net-worth-line-gradient-stop-top');
-    const bottom = getByTestId('net-worth-line-gradient-stop-bottom');
     // stopOpacity is set EXPLICITLY per kiko-charts (native masks rgba alpha):
-    // the top fades in, the bottom is fully transparent.
-    expect(top.props.stopOpacity).toBeGreaterThan(0);
-    expect(bottom.props.stopOpacity).toBe(0);
-    // Both stops carry the resolved area color.
-    expect(top.props.stopColor).toBe(darkTheme.colors.positive);
-    expect(bottom.props.stopColor).toBe(darkTheme.colors.positive);
+    // opaque near the line, fully transparent AT the reference baseline. Colors
+    // are the theme tokens, applied as hex stopColor.
+    const posLine = getByTestId('net-worth-line-gradient-positive-stop-line');
+    const posRef = getByTestId('net-worth-line-gradient-positive-stop-reference');
+    expect(posLine.props.stopColor).toBe(darkTheme.colors.positive);
+    expect(posLine.props.stopOpacity).toBeGreaterThan(0);
+    expect(posRef.props.stopColor).toBe(darkTheme.colors.positive);
+    expect(posRef.props.stopOpacity).toBe(0);
+
+    const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
+    const negRef = getByTestId('net-worth-line-gradient-negative-stop-reference');
+    expect(negLine.props.stopColor).toBe(darkTheme.colors.negative);
+    expect(negLine.props.stopOpacity).toBeGreaterThan(0);
+    expect(negRef.props.stopColor).toBe(darkTheme.colors.negative);
+    expect(negRef.props.stopOpacity).toBe(0);
   });
 
-  it('keys the area red when the latest value drops below the reference', async () => {
-    const dipping: NetWorthPoint[] = [
-      { t: 0, amount: 300 },
-      { t: 1, amount: 100 },
-    ];
+  it('clips the green area above and the red area below, meeting exactly at the reference baseline', async () => {
+    const height = 200;
     const { getByTestId } = await render(
-      <NetWorthLine points={dipping} startReference={200} baseCurrency="USD" />,
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
     );
 
-    expect(getByTestId('net-worth-line-gradient-stop-top').props.stopColor).toBe(
-      darkTheme.colors.negative,
-    );
-    expect(getByTestId('net-worth-line-gradient-stop-bottom').props.stopColor).toBe(
-      darkTheme.colors.negative,
-    );
+    const referenceY = getByTestId('net-worth-line-reference').props.y1;
+    const paddingY = 12;
+    const baselineY = height - paddingY;
+
+    // The above-clip runs from the plot top down to referenceY; the below-clip
+    // from referenceY down to the plot bottom. They meet at referenceY, so the
+    // fill color flips there — green above, red below — at every crossing.
+    const above = getByTestId('net-worth-line-clip-above-rect');
+    const below = getByTestId('net-worth-line-clip-below-rect');
+
+    expect(Number(above.props.y)).toBeCloseTo(paddingY);
+    expect(Number(above.props.y) + Number(above.props.height)).toBeCloseTo(referenceY);
+    expect(Number(below.props.y)).toBeCloseTo(referenceY);
+    expect(Number(below.props.y) + Number(below.props.height)).toBeCloseTo(baselineY);
   });
 
   it('draws the net-worth line in white', async () => {

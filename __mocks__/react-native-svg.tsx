@@ -58,3 +58,10 @@ export const Defs = SvgElement;
 export const LinearGradient = SvgElement;
 
 export const Stop = SvgElement;
+
+// Added for NetWorthLine's reference-anchored area fill: the green/red passes
+// clip to the region above/below the dashed reference line via a `<ClipPath>`
+// wrapping a `<Rect>`. Both render as the same passthrough View so a test can
+// query the clip's `<Rect testID="..." y=... height=... />` by testID and read
+// back its geometry, the same pattern the other primitives above use.
+export const ClipPath = SvgElement;

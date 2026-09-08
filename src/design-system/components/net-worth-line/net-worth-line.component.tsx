@@ -1,20 +1,35 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
-import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
+import {
+  ClipPath,
+  Defs,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Polyline,
+  Rect,
+  Stop,
+  Svg,
+} from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 
 // react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
 // on its path-based primitives (Path, Line, Polyline) but omits it from
-// LinearGradientProps/StopProps, even though the native gradient/stop elements
-// forward it identically. kiko-charts requires a testID on EVERY SVG primitive
-// so a test can read a gradient stop's resolved color/opacity back; declare the
-// prop the native view genuinely accepts rather than casting it away.
+// LinearGradientProps/StopProps/ClipPathProps, even though the native
+// gradient/stop/clip-path elements forward it identically. kiko-charts requires
+// a testID on EVERY SVG primitive so a test can read a gradient stop's resolved
+// color/opacity or a clip's geometry back; declare the prop the native view
+// genuinely accepts rather than casting it away.
 declare module 'react-native-svg' {
   interface LinearGradientProps {
     testID?: string;
   }
   interface StopProps {
+    testID?: string;
+  }
+  interface ClipPathProps {
     testID?: string;
   }
 }
@@ -197,31 +212,21 @@ const buildXTicks = (scales: Scales): XTick[] => {
 const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
-// The filled area under the line: the polyline path, then dropped straight down
-// to the plot baseline under the last point and back under the first, closed —
-// so a vertical gradient fills between the line and the baseline. Callers guard
-// against an empty `points` array before invoking this (the loading/empty state
+// The filled area between the line and the dashed REFERENCE baseline: the
+// polyline path, then dropped to `referenceY` under the last point and back
+// under the first, closed. This single closed path covers the
+// between-line-and-reference region on BOTH sides of any crossing; the caller
+// renders it twice, each clipped to one side of the reference, so a vertical
+// gradient fills green above the reference and red below. Callers guard against
+// an empty `points` array before invoking this (the loading/empty state
 // short-circuits the render), so `points[0]` is always present here.
-export const toAreaPath = (points: NetWorthPoint[], scales: Scales, baselineY: number): string => {
+export const toAreaPath = (points: NetWorthPoint[], scales: Scales, referenceY: number): string => {
   const line = points.map((p) => `${scales.x(p.t)},${scales.y(p.amount)}`).join(' L ');
   const firstX = scales.x(points[0].t);
   const lastX = scales.x(points[points.length - 1].t);
 
-  return `M ${line} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+  return `M ${line} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
 };
-
-// One color for the whole area by net sign: green when the latest value is at or
-// above the start reference, red when below. A single gradient keeps the fill
-// simple; per-segment crossing coloring (green above the reference, red below,
-// split at the crossing point) is a deferred follow-up, not built here.
-export const areaColor = (
-  points: NetWorthPoint[],
-  startReference: number,
-  theme: { colors: { positive: string; negative: string } },
-): string =>
-  points[points.length - 1].amount >= startReference
-    ? theme.colors.positive
-    : theme.colors.negative;
 
 const formatAxisTime = (t: number): string =>
   new Date(t).toLocaleDateString(activeLocale(), { month: 'short', day: 'numeric' });
@@ -379,36 +384,94 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               strokeDasharray={REFERENCE_DASH}
             />
 
+            {/* The area fills BETWEEN the line and the dashed reference
+                baseline, not the chart bottom. One closed path (toAreaPath,
+                closing to referenceY) is rendered twice, each clipped to one
+                side of the reference, so the color flips at every crossing:
+                green above (net worth over the start), red below. Each gradient
+                fades to transparent AT referenceY. */}
             <Defs>
               <LinearGradient
-                testID="net-worth-line-gradient"
-                id="net-worth-line-gradient"
+                testID="net-worth-line-gradient-positive"
+                id="net-worth-line-gradient-positive"
                 x1="0"
                 y1={PADDING_Y}
+                x2="0"
+                y2={referenceY}
+                gradientUnits="userSpaceOnUse"
+              >
+                <Stop
+                  testID="net-worth-line-gradient-positive-stop-line"
+                  offset="0"
+                  stopColor={theme.colors.positive}
+                  stopOpacity={0.3}
+                />
+                <Stop
+                  testID="net-worth-line-gradient-positive-stop-reference"
+                  offset="1"
+                  stopColor={theme.colors.positive}
+                  stopOpacity={0}
+                />
+              </LinearGradient>
+
+              <LinearGradient
+                testID="net-worth-line-gradient-negative"
+                id="net-worth-line-gradient-negative"
+                x1="0"
+                y1={referenceY}
                 x2="0"
                 y2={baselineY}
                 gradientUnits="userSpaceOnUse"
               >
                 <Stop
-                  testID="net-worth-line-gradient-stop-top"
+                  testID="net-worth-line-gradient-negative-stop-reference"
                   offset="0"
-                  stopColor={areaColor(points, startReference, theme)}
-                  stopOpacity={0.3}
-                />
-                <Stop
-                  testID="net-worth-line-gradient-stop-bottom"
-                  offset="1"
-                  stopColor={areaColor(points, startReference, theme)}
+                  stopColor={theme.colors.negative}
                   stopOpacity={0}
                 />
+                <Stop
+                  testID="net-worth-line-gradient-negative-stop-line"
+                  offset="1"
+                  stopColor={theme.colors.negative}
+                  stopOpacity={0.3}
+                />
               </LinearGradient>
+
+              <ClipPath testID="net-worth-line-clip-above" id="net-worth-line-clip-above">
+                <Rect
+                  testID="net-worth-line-clip-above-rect"
+                  x={0}
+                  y={PADDING_Y}
+                  width={VIEW_WIDTH}
+                  height={referenceY - PADDING_Y}
+                />
+              </ClipPath>
+
+              <ClipPath testID="net-worth-line-clip-below" id="net-worth-line-clip-below">
+                <Rect
+                  testID="net-worth-line-clip-below-rect"
+                  x={0}
+                  y={referenceY}
+                  width={VIEW_WIDTH}
+                  height={baselineY - referenceY}
+                />
+              </ClipPath>
             </Defs>
 
             <Path
-              testID="net-worth-line-area"
-              d={toAreaPath(points, scales, baselineY)}
-              fill="url(#net-worth-line-gradient)"
+              testID="net-worth-line-area-positive"
+              d={toAreaPath(points, scales, referenceY)}
+              fill="url(#net-worth-line-gradient-positive)"
               stroke="none"
+              clipPath="url(#net-worth-line-clip-above)"
+            />
+
+            <Path
+              testID="net-worth-line-area-negative"
+              d={toAreaPath(points, scales, referenceY)}
+              fill="url(#net-worth-line-gradient-negative)"
+              stroke="none"
+              clipPath="url(#net-worth-line-clip-below)"
             />
 
             <Polyline
