@@ -23,6 +23,7 @@ import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact
 import type { Currency } from '../../../currency/currency';
 import { activeLocale } from '../../../i18n/active-locale';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
+import { resolveColorScheme } from '../../color-scheme';
 import Box from '../box';
 import Text from '../text';
 
@@ -66,6 +67,20 @@ const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
+// The line-adjacent gradient stop's opacity (the reference-adjacent stop
+// always fades to fully transparent — see the Stop opacity={0} below, which
+// is unaffected by any of this). Green/positive uses this same value on both
+// themes, and so does red/negative on LIGHT. Red/negative on DARK needs a
+// higher value: alpha-compositing a translucent color over a background is
+// `fg * alpha + bg * (1 - alpha)`, and the dark theme's background is OLED
+// true-black (`darkTheme.colors.background`, `#000000`), so a low alpha
+// blends straight down toward near-black (`bg` contributes ~0) — the same
+// 0.3 that reads clearly against light's off-white `#F2F2F7` surface
+// (`lightTheme.colors.background`) went barely visible on dark. This is
+// opacity only: the fill color itself still comes from the theme token
+// (`theme.colors.negative`) on both schemes, unchanged.
+const AREA_OPACITY = 0.3;
+const NEGATIVE_AREA_OPACITY_DARK = 0.5;
 
 type Scales = {
   x: (t: number) => number;
@@ -194,9 +209,6 @@ const buildXTicks = (scales: Scales): XTick[] => {
   });
 };
 
-const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
-  points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
-
 // One filled area between the line and the dashed REFERENCE baseline, CLAMPED
 // to a single side of it — no clip path. `side: 'above'` clamps every vertex's y
 // with `Math.min(y, referenceY)` (y grows downward, so a smaller y is above the
@@ -255,15 +267,88 @@ export const toAreaPath = (
   return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
 };
 
+// R5-D (exploratory — the user wants to SEE this, may keep or drop it; kept
+// as one cohesive, self-contained block so it reverts in a single edit).
+// Colors the net-worth STROKE by sign per segment — green where above the
+// dashed start reference, red where below — matching the FILL's own
+// crossing logic exactly rather than re-deriving it. Reuses the SAME
+// crossing-x interpolation `toAreaPath` above uses —
+// `x1 + (x2 - x1) * (referenceY - y1) / (y2 - y1)` — so a stroke segment's
+// split lands at the identical x as the fill's, and the line/fill never
+// visually disagree. `sideOfY` ties a point sitting exactly ON the
+// reference to 'above', the same inclusive convention `bandExtremes`'s
+// `aboveYs` filter uses below (`y <= referenceY`).
+type LineSegment = { key: string; side: 'above' | 'below'; points: string };
+
+const sideOfY = (y: number, referenceY: number): 'above' | 'below' =>
+  y <= referenceY ? 'above' : 'below';
+
+// Splits the plotted line into contiguous same-sign runs. A series that
+// never crosses the reference collapses to exactly ONE segment (the
+// degenerate/no-split case the fill also preserves); an empty `points` array
+// is guarded by the same caller precondition `toAreaPath` documents above.
+export const buildLineSegments = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+): LineSegment[] => {
+  // Never push the same "x,y" pair twice in a row — the crossing-x formula
+  // below degenerates to an EXISTING vertex's own x when that vertex already
+  // sits ON the reference (y1 === referenceY gives xCross = x1; y2 ===
+  // referenceY gives xCross = x2), which would otherwise duplicate it.
+  const pushVertex = (vertices: string[], x: number, y: number): void => {
+    const vertex = `${x},${y}`;
+    if (vertices[vertices.length - 1] !== vertex) {
+      vertices.push(vertex);
+    }
+  };
+
+  const firstX = scales.x(points[0].t);
+  const firstY = scales.y(points[0].amount);
+  let side = sideOfY(firstY, referenceY);
+  let vertices: string[] = [`${firstX},${firstY}`];
+  const segments: LineSegment[] = [];
+  let index = 0;
+
+  const flush = (): void => {
+    segments.push({ key: `${index}`, side, points: vertices.join(' ') });
+    index += 1;
+  };
+
+  for (let i = 1; i < points.length; i += 1) {
+    const x1 = scales.x(points[i - 1].t);
+    const y1 = scales.y(points[i - 1].amount);
+    const x2 = scales.x(points[i].t);
+    const y2 = scales.y(points[i].amount);
+    const nextSide = sideOfY(y2, referenceY);
+
+    if (nextSide !== side) {
+      const xCross = x1 + ((x2 - x1) * (referenceY - y1)) / (y2 - y1);
+      pushVertex(vertices, xCross, referenceY);
+      flush();
+      side = nextSide;
+      vertices = [`${xCross},${referenceY}`];
+    }
+
+    pushVertex(vertices, x2, y2);
+  }
+
+  flush();
+
+  return segments;
+};
+
 // The vertical extremes of the ACTUAL filled bands, so each gradient anchors to
 // the sliver it fills rather than the whole plot half. `greenTopY` is the
 // highest pixel (smallest y) among points at or above the reference; `redBottomY`
 // is the lowest pixel (largest y) among points at or below it. A band with no
 // point strictly on its side collapses its extreme to `referenceY`, which the
 // caller reads as "empty" (its top === referenceY) and does not render — so a
-// degenerate zero-height gradient is never emitted. Anchoring the 0->0.3 ramp
-// into this sliver is what makes a SHALLOW dip (or rise) show readable color,
-// instead of living where the whole-plot ramp's opacity was ~0.
+// degenerate zero-height gradient is never emitted. Anchoring the 0->opaque
+// ramp (AREA_OPACITY, or NEGATIVE_AREA_OPACITY_DARK for red on dark — see
+// those constants) into this sliver is what makes a SHALLOW dip (or rise)
+// show readable color, instead of living where the whole-plot ramp's opacity
+// was ~0.
 const bandExtremes = (
   points: NetWorthPoint[],
   scales: Scales,
@@ -319,7 +404,12 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   loading = false,
   height = DEFAULT_HEIGHT,
 }) => {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
+  // The red/negative fill needs more opacity on dark than on light (see
+  // NEGATIVE_AREA_OPACITY_DARK above) — scheme-aware, reactive to a live
+  // appearance switch the same way `theme` itself is.
+  const negativeAreaOpacity =
+    resolveColorScheme(rt.themeName) === 'dark' ? NEGATIVE_AREA_OPACITY_DARK : AREA_OPACITY;
   // formatAxisTime and formatCompactMoney below both read activeLocale() at
   // render/call time, not via a subscription of their own (formatAxisTime is
   // a module-scope helper). Subscribing here, the same as MoneyText, is what
@@ -466,7 +556,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                     testID="net-worth-line-gradient-positive-stop-line"
                     offset="0"
                     stopColor={theme.colors.positive}
-                    stopOpacity={0.3}
+                    stopOpacity={AREA_OPACITY}
                   />
                   <Stop
                     testID="net-worth-line-gradient-positive-stop-reference"
@@ -497,7 +587,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                     testID="net-worth-line-gradient-negative-stop-line"
                     offset="1"
                     stopColor={theme.colors.negative}
-                    stopOpacity={0.3}
+                    stopOpacity={negativeAreaOpacity}
                   />
                 </LinearGradient>
               ) : null}
@@ -521,13 +611,21 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               />
             ) : null}
 
-            <Polyline
-              testID="net-worth-line-polyline"
-              points={toPolylinePoints(points, scales)}
-              fill="none"
-              stroke={theme.colors.entityColors.white}
-              strokeWidth={LINE_STROKE_WIDTH}
-            />
+            {/* R5-D (exploratory, cleanly revertible as one block — see
+                buildLineSegments above): the stroke itself now reads sign at
+                a glance, green above / red below the dashed reference, split
+                at the SAME crossing x the fill above uses. A non-crossing
+                series still renders as exactly one segment/color. */}
+            {buildLineSegments(points, scales, referenceY).map((segment) => (
+              <Polyline
+                key={segment.key}
+                testID={`net-worth-line-polyline-${segment.key}`}
+                points={segment.points}
+                fill="none"
+                stroke={segment.side === 'above' ? theme.colors.positive : theme.colors.negative}
+                strokeWidth={LINE_STROKE_WIDTH}
+              />
+            ))}
           </Svg>
         </View>
       </View>
