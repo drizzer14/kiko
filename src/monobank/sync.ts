@@ -280,12 +280,41 @@ const upsertHoldings = async (
   // /personal/client-info payload, so they arrive undefined. Default to an
   // empty list so the sync never crashes iterating an absent collection.
   for (const account of accounts ?? []) {
+    // A card/jar in a currency Kiko cannot represent (anything other than
+    // UAH/USD/EUR) is SILENTLY EXCLUDED from net worth rather than crashing the
+    // whole sync. The mappers below throw `unsupportedCurrencyCode` on such a
+    // currency; calling them here — outside the per-card statement try/catch —
+    // meant one foreign sub-account (a multi-currency card, a FOP account, a
+    // foreign jar) aborted the entire run before any card imported or the
+    // cursor advanced, stranding the user in a permanent "cannot sync". Skipping
+    // the unrepresentable holding is strictly better than a total failure: every
+    // representable card still syncs. Guard BEFORE the mapper so it is never
+    // reached for an unsupported currency (it keeps throwing for every OTHER
+    // caller).
+    if (currencyFromCode(account.currencyCode) === undefined) {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real sync blocker
+      console.warn('[monobank sync] skipping holding: unrepresentable currency', {
+        currencyCode: account.currencyCode,
+        id: account.id,
+      });
+      continue;
+    }
     await deps.upsertHolding({
       ...mapAccountToHolding(account, accountId),
       monobankId: account.id,
     });
   }
   for (const jar of jars ?? []) {
+    // Same unrepresentable-currency carve-out as the accounts loop above: a
+    // foreign-currency jar is excluded from net worth, not a fatal error.
+    if (currencyFromCode(jar.currencyCode) === undefined) {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real sync blocker
+      console.warn('[monobank sync] skipping holding: unrepresentable currency', {
+        currencyCode: jar.currencyCode,
+        id: jar.id,
+      });
+      continue;
+    }
     await deps.upsertHolding({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
   }
 };

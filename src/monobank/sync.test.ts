@@ -561,6 +561,57 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(statement.length);
   });
 
+  // A foreign-currency sub-account (a multi-currency card, a FOP account, a
+  // foreign jar) carries a currency Kiko cannot represent (anything other than
+  // UAH/USD/EUR). Such an account/jar must be SILENTLY SKIPPED — excluded from
+  // net worth — rather than aborting the entire sync: the mappers throw on an
+  // unrepresentable currency, and `upsertHoldings` used to call them inside its
+  // loop with no guard, so ONE foreign card threw before any card imported and
+  // before the cursor was written, stranding the user in a permanent "cannot
+  // sync". The whole run must now COMPLETE: the supported card imports, the
+  // unsupported account and jar are never upserted, and the cursor advances.
+  it('skips an unsupported-currency account and jar, completing the sync for the supported card', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const supported = clientInfo.accounts[0] as MonobankAccount; // UAH (980)
+    const unsupportedAccount: MonobankAccount = {
+      ...(clientInfo.accounts[1] as MonobankAccount),
+      currencyCode: 985, // PLN — not representable in Kiko
+    };
+    const unsupportedJar: MonobankJar = {
+      ...(clientInfo.jars[0] as MonobankJar),
+      currencyCode: 826, // GBP — not representable in Kiko
+    };
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      connected,
+    ]);
+    deps.fetchClientInfo = async () => ({
+      accounts: [supported, unsupportedAccount],
+      jars: [unsupportedJar],
+    });
+    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncAt = setLastSyncAt;
+
+    const result = await runSync(deps);
+
+    // Only the supported card landed as a holding — the PLN account and GBP jar
+    // were skipped, never upserted.
+    expect(holdingsStore).toHaveLength(1);
+    expect(holdingsStore[0].type).toBe('card');
+    expect(holdingsStore[0].currency).toBe('UAH');
+    expect(monobankIdOf(holdingsStore[0].metadata)).toBe(supported.id);
+    expect(
+      holdingsStore.some((holding) => monobankIdOf(holding.metadata) === unsupportedAccount.id),
+    ).toBe(false);
+    expect(
+      holdingsStore.some((holding) => monobankIdOf(holding.metadata) === unsupportedJar.id),
+    ).toBe(false);
+    // The supported card still imported its statement rows, and the run
+    // completed cleanly so the cursor advanced.
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(transactionsStore).toHaveLength(statement.length);
+    expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+  });
+
   it('pages a capped window and throttles with the injected sleep', async () => {
     const cappedPage: MonobankStatementItem[] = Array.from({ length: 500 }, (_, index) => ({
       ...(statement[0] as MonobankStatementItem),

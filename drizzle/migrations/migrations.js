@@ -22,6 +22,7 @@ import m0018 from './0018_add_appearance.sql';
 import m0019 from './0019_add_trend_category_keys.sql';
 import m0020 from './0020_add_last_sync_display_at.sql';
 import m0021 from './0021_add_last_full_sync_at.sql';
+import m0022 from './0022_backfill_last_full_sync_at.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -49,5 +50,6 @@ export default {
     m0019,
     m0020,
     m0021,
+    m0022,
   },
 };
