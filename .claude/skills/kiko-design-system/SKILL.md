@@ -66,15 +66,20 @@ than trusting a copy of them here.
 
 For a live `'light'`/`'dark'` pin, `applyAppearance` calls
 `RNAppearance.setColorScheme` **before** `UnistylesRuntime.setTheme`,
-not after — settling the native window interface-style trait first is
-what makes the flip-origin screen's see-through glass re-sample the
-new interface style on the same commit, avoiding a one-frame lag on
-the new scheme. The `'system'` branch orders the other way (it reads
-the OS scheme into `setTheme` directly, then clears the native
-override with `'auto'`), which is fine since nothing there depends on
-the native trait settling first. Read `applyAppearance`
+not after — settling the native window interface-style trait as early
+as possible. The `'system'` branch orders the other way (it reads the
+OS scheme into `setTheme` directly, then clears the native override
+with `'auto'`), which is fine since nothing there depends on the
+native trait settling first. Read `applyAppearance`
 (`src/appearance/appearance.ts`) directly rather than trusting this
 ordering note if the function changes again.
+
+That ordering alone is **not** sufficient to keep a see-through
+`GlassSurface` in sync on a flip-origin screen (a screen with no
+navigation transition to force a later layout pass, e.g. the System
+settings sub-page where the scheme toggle itself lives) — see
+"GlassSurface's own deferred remount" below for the mechanism that
+actually fixes it.
 
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
@@ -354,6 +359,38 @@ in the `else` branch's `View`, not as a style merged onto
 `LiquidGlassView` "just in case." A new prop that changes the surface's
 appearance (a new tint wash, a new border style) must be applied
 to **both** branches, or it silently only works on iOS 26+.
+
+## GlassSurface's own deferred remount
+
+A bare see-through `GlassSurface` (neither `tint` nor `solidBackdrop`
+set — the gradient-less card case, e.g. settings/statistics sections)
+renders a live-sampling `LiquidGlassView` with no colored wash over it.
+The native Liquid Glass material only re-samples its light/dark
+backdrop on a layout pass — there is no imperative re-sample API — so
+remounting it with a `key` synchronously in the same commit as a
+`colorScheme` prop change samples the OLD scheme: the window's native
+interface-style trait has not visually propagated yet in that same
+runloop. On a flip-origin screen (no navigation transition to force a
+later layout pass — the System settings sub-page, where the scheme
+toggle itself lives, is the reported case) that stale sample persisted
+until the user scrolled.
+
+The fix lives entirely inside `GlassSurface`
+(`glass-surface.component.tsx`), not in `applyAppearance`: instead of
+keying the `LiquidGlassView` directly off `colorScheme`, it keys off a
+separate `remountToken` state seeded from `colorScheme` and updated
+only after a DOUBLE `requestAnimationFrame` following a `colorScheme`
+change — deferring the remount by two frames lets the native trait
+settle before the fresh view lays out and re-samples. The `colorScheme`
+prop passed to `LiquidGlassView` itself still updates synchronously on
+the commit (so `overrideUserInterfaceStyle` is set immediately); only
+the remount/re-sample is deferred. A tinted or `solidBackdrop` card
+does not need this — it already repaints via its wash/backdrop `View`,
+a token-driven layer that flips on the commit — but the component keys
+every glass base uniformly for simplicity. This is native-timing
+dependent (confirmed on-device, not something a unit test can assert
+on); read the component's own doc comments before changing the frame
+count or the deferral mechanism.
 
 ## Wrapping a React Native primitive
 

@@ -210,9 +210,11 @@ fetch's from-window is derived from `lastFullSyncAt`
 (`fromCursorSeconds`), **not** the incremental `lastSyncAt` cursor —
 `lastSyncAt` advances on every clean run, including runs that skipped
 whole cards, so using it would re-fetch only the recent window and
-recover nothing. `lastFullSyncAt` is stamped only after a fully clean
-full-fetch run, matching `lastSyncAt`'s own partial-failure
-discipline (see "Partial-progress resilience across cards" below).
+recover nothing. `lastFullSyncAt` now GRADUATES even on a partial
+failure — see "Robust graduation: `failedSyncMonobankIds`" below; this
+is a deliberate DIVERGENCE from `lastSyncAt`'s own partial-failure
+discipline (see "Partial-progress resilience across cards" below), not
+a copy of it.
 
 Migration `0021` adds `lastFullSyncAt` as NULL with no backfill, which
 would otherwise force every already-synced user into one slow,
@@ -228,6 +230,48 @@ than restating it here.
 This does not add a per-card cursor — see the note at the end of
 "Partial-progress resilience across cards": `lastFullSyncAt` is a
 single global full-fetch marker, not a per-card one.
+
+### Robust graduation: `failedSyncMonobankIds`
+
+Before this, `lastFullSyncAt` (above) graduated **only** on a fully
+clean full-fetch run. That made ONE persistently flaky card starve the
+periodic safety net forever: `lastFullSyncAt` froze, `shouldFullFetch`
+kept returning true past `FULL_FETCH_INTERVAL_MS`, and every run became
+a full N×60s fetch of every card — the balance-diff skip never got a
+chance to engage again.
+
+The fix is `settings.failedSyncMonobankIds` (migration `0023`, schema
+in `src/db/schema.ts`): a persisted set of Monobank account ids whose
+statement fetch FAILED on the last run. The next run force-fetches
+exactly those ids regardless of balance — the same carve-out shape as
+the outstanding-hold case in "Balance-diff skip" above — while
+`lastFullSyncAt` now graduates even when this run had a partial
+failure, as long as it was a full fetch. A card is dropped from the set
+the moment it succeeds, and the set is pruned to ids still present in
+client-info (so a removed card is not force-fetched forever). Read
+`nextFailedSet` and `isBalanceDiffSkip` (`src/monobank/sync.ts`) for
+the exact set algebra rather than a restated one here.
+
+This is a genuine divergence, not a relaxation of the existing
+discipline: the statement CURSOR (`settings.lastSyncAt`) still advances
+**only** on a fully clean run (unchanged "Partial-progress resilience
+across cards" behavior below), so a force-fetched card's window is
+re-derived from that un-advanced cursor and re-covered idempotently
+(the `(source, external_id)` upsert). Only the full-fetch MARKER now
+graduates early — the thing that was starving, not the thing that
+protects against data loss. Read the end-of-run sequence in
+`runSyncInner` (`src/monobank/sync.ts`) for the exact ordering: the
+failed-set persist and the `lastFullSyncAt` stamp both happen BEFORE
+the partial-failure throw.
+
+`runSyncInner` also emits one diagnostic per run —
+`console.warn('[monobank sync] done', {isFullFetch, cards, fetched,
+skipped, failures, elapsedMs})`, behind a justified `noConsole`
+OVERRIDE — so a dev can tell from a device log whether a run is
+actually taking the fast balance-diff path or is stuck in full-fetch
+mode. This is in addition to, not a replacement for, the
+unrepresentable-currency skip warn in "Map Monobank's ISO 4217..."
+above.
 
 ### The rate limit is per TOKEN, not per call site
 
@@ -281,6 +325,36 @@ syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
 already-connected account, so no run competes with a first-time Connect
 (a `targetAccountId` sync), and a re-sync that joins an in-flight run of
 the same connected token gets exactly the result it would have computed.
+
+### The sync signal clears early, before the run finishes
+
+`useSyncStatus`/`setSyncing` (`src/monobank/sync-status.ts`) is the one
+shared "a Monobank sync is running" signal, and it no longer tracks the
+WHOLE run. `runSyncInner` now calls `setSyncing(false)` right after
+`upsertHoldings` — the fast phase (client-info fetch + balance upsert,
+so net worth is already current) — rather than only when the run
+settles. The slower per-card, 60s-gated statement loop keeps running in
+the BACKGROUND after that, still holding `inFlightSync` (so a joined
+trigger never starts a second run); transactions land incrementally
+through the reactive `useLiveQuery` consumers as each card imports. The
+`release` callback in `runSync` (which also calls `setSyncing(false)`
+on settle) is a harmless no-op on this normal path — the call is
+idempotent — and remains the backstop that clears the signal if the
+fast phase itself throws. Read the comment block around this call in
+`runSyncInner` (`src/monobank/sync.ts`) rather than restating the exact
+line here.
+
+The custom `SyncingIndicator` component was REMOVED. The sole
+Monobank-sync affordance is now the native Home `RefreshControl`
+spinner (`src/screens/home/home.screen.tsx`), driven by the same global
+`useSyncStatus` signal rather than a pull-local flag — so an
+auto-sync-on-open (which also drives `runSync`) spins the pull control
+WITHOUT a user pull, and a real pull spins it too. Because the signal
+now reflects only the fast phase, the spinner also ends promptly rather
+than spinning for the whole multi-card statement fetch. This is a known
+limitation, not a bug: the signal is Monobank-only, so a pull on a
+crypto-only account shows little/no spinner — see `src/screens/use-sync-all.ts`
+for the fan-out that also drives crypto accounts.
 
 ### Partial-progress resilience across cards
 
