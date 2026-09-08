@@ -109,6 +109,38 @@ native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
 
+## Net-worth stroke is sign-colored per segment
+
+The net-worth line's `<Polyline>` STROKE is colored green where the
+line is at or above the dashed `startReference` baseline and red
+where it is below, not a single fixed color — `buildLineSegments`
+(`net-worth-line.component.tsx`) splits the plotted points into
+contiguous same-sign runs, one `<Polyline>` per run. It deliberately
+REUSES `toAreaPath`'s exact crossing-x formula so a segment's split
+lands at the identical x as the fill's own crossing, and the line and
+fill never visually disagree — read both functions together rather
+than assuming the stroke split is independently derived.
+
+The stroke `testID` changed from a single `net-worth-line-polyline`
+to per-segment `net-worth-line-polyline-${segment.key}`. This is
+load-bearing for any test/consumer that queries the stroke: a fixed
+`getByTestId('net-worth-line-polyline')` no longer matches anything
+— query with a prefix match (e.g. `getAllByTestId(/^net-worth-line-polyline-/)`),
+the pattern `statistics.screen.test.tsx` and
+`net-worth-line.component.test.tsx` already use. A non-crossing series
+still renders as exactly one segment, so the prefix query also covers
+the common case.
+
+The red/negative area gradient's opacity is scheme-aware, not a
+single constant: it reads heavier on dark than on light so a shallow
+dip against the OLED true-black background stays visible (alpha
+compositing a translucent color over near-black background reads
+faint at the same alpha that reads fine over light's off-white
+surface). Read the `NEGATIVE_AREA_OPACITY_DARK`/`AREA_OPACITY`
+constants and the `resolveColorScheme(rt.themeName)` branch in
+`net-worth-line.component.tsx` for the current values rather than
+restating them here.
+
 ## Legend percent labels sum to 100
 
 `pie-chart.component.tsx`'s legend column never rounds a slice's share

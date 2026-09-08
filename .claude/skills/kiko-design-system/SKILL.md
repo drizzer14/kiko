@@ -22,14 +22,23 @@ two are meant to coexist, read both.
 ## Dark and light themes
 
 Kiko ships both a dark theme and a light theme (`darkTheme` /
-`lightTheme` in `theme.ts`), registered with `adaptiveThemes: true`
-so a fresh install follows the OS appearance. The user can instead
+`lightTheme` in `theme.ts`), registered WITHOUT `adaptiveThemes`
+(Option B, manual theme control — `src/design-system/unistyles.ts`):
+Unistyles' adaptive mode resolves from the physical OS trait rather
+than React Native's app-level `Appearance.setColorScheme` override, so
+running both together left a manual light/dark pin flipping only
+native chrome while every Unistyles element stayed on the OS scheme.
+`initialTheme: () => Appearance.getColorScheme() ?? 'dark'` is what
+gives a fresh install the OS appearance at boot instead; every
+subsequent scheme change is driven manually, never by Unistyles'
+own adaptive tracking. The user can instead
 pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
 persisted in `settings.appearance` (`src/db/schema.ts`) and applied
 by the shared `applyAppearance` mapping (`src/appearance/appearance.ts`,
-mapped with ts-pattern's `match().exhaustive()`), which flips
-`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match AND drives the
-native iOS interface style through React Native 0.87's
+mapped with ts-pattern's `match().exhaustive()`), which manually drives
+`UnistylesRuntime.setTheme` to match — never `setAdaptiveThemes`, which
+this Option B setup does not call at all — AND drives
+the native iOS interface style through React Native 0.87's
 `Appearance.setColorScheme` (`'light'`/`'dark'` to pin, `'auto'` for
 `'system'` to clear the override). The native call is what makes native
 chrome — the bottom tab bar, stack headers/large-title blur, system
@@ -54,6 +63,18 @@ through `resolveColorScheme` (`src/design-system/color-scheme.ts`),
 not a hand-rolled mapping. Read `theme.ts`, `palette.ts`, and
 `color-scheme.ts` directly for the current values and mapping rather
 than trusting a copy of them here.
+
+For a live `'light'`/`'dark'` pin, `applyAppearance` calls
+`RNAppearance.setColorScheme` **before** `UnistylesRuntime.setTheme`,
+not after — settling the native window interface-style trait first is
+what makes the flip-origin screen's see-through glass re-sample the
+new interface style on the same commit, avoiding a one-frame lag on
+the new scheme. The `'system'` branch orders the other way (it reads
+the OS scheme into `setTheme` directly, then clears the native
+override with `'auto'`), which is fine since nothing there depends on
+the native trait settling first. Read `applyAppearance`
+(`src/appearance/appearance.ts`) directly rather than trusting this
+ordering note if the function changes again.
 
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
@@ -185,7 +206,16 @@ new component can land between reviews of this skill:
 - **Switch** — a labeled toggle wrapping RN's `Switch` with theme
   track/thumb colors.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens.
+  theme tokens. Its disabled chrome (border/background/opacity) comes
+  from the shared `disabledFieldStyle(theme)` helper
+  (`src/design-system/disabled-field-style.ts`); `DateField` and
+  `TimeField` (`src/screens/forms/`) consume the SAME helper so a
+  read-only date/time field renders identically to a read-only text
+  field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
+  token above (`disabled-opacity.ts`) — a disabled field is a different
+  control class from a disabled Button/IconButton, and the two must not
+  be conflated. A third disabled-field-like control reuses
+  `disabledFieldStyle`, not a fresh inline dim.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **CurrencySwitch** — a segmented base-currency toggle pill; not a

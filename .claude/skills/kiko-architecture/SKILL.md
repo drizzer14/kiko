@@ -151,6 +151,20 @@ The sync pipeline is deliberately functional, not OOP — see
    currency literal with `ts-pattern` (see `kiko-domain`). Amounts
    and balances already arrive in integer minor units — no float
    conversion needed there.
+
+   A card/jar whose currency code `currencyFromCode` cannot map is
+   SILENTLY SKIPPED (`upsertHoldings` in `src/monobank/sync.ts`)
+   rather than thrown — the mapper still throws for every OTHER
+   caller, but `upsertHoldings` checks `currencyFromCode` first and
+   `continue`s past an unrepresentable account/jar instead of calling
+   the mapper. This used to throw outside the per-card try/catch and
+   abort the whole sync on one foreign-currency sub-account; now every
+   other, representable card still imports and the cursor still
+   advances. The trade-off: an unrepresentable-currency holding is
+   excluded from net worth. Each skip logs via `console.warn` behind a
+   justified `biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic)`
+   — Biome's `noConsole` is otherwise `error` project-wide (`biome.json`),
+   so this is the one sanctioned console call in the app.
 5. The pipeline is a straight sequence of small transforms, not an
    `fnts` composition: map each fetched item to a row, fold duplicate
    conflict keys, hand the batch to the repository's upsert. The
@@ -199,6 +213,17 @@ whole cards, so using it would re-fetch only the recent window and
 recover nothing. `lastFullSyncAt` is stamped only after a fully clean
 full-fetch run, matching `lastSyncAt`'s own partial-failure
 discipline (see "Partial-progress resilience across cards" below).
+
+Migration `0021` adds `lastFullSyncAt` as NULL with no backfill, which
+would otherwise force every already-synced user into one slow,
+full-every-card fetch on their very next sync. Migration `0022`
+(`drizzle/migrations/0022_backfill_last_full_sync_at.sql`) is a
+data-only follow-up (no schema change, no snapshot — same class as
+`0014_lowercase_categories.sql`) that backfills
+`settings.lastFullSyncAt = settings.lastSyncAt` for a user who already
+has a non-null sync cursor, so they land straight on the fast
+balance-diff path; read the migration file for its exact guard rather
+than restating it here.
 
 This does not add a per-card cursor — see the note at the end of
 "Partial-progress resilience across cards": `lastFullSyncAt` is a
