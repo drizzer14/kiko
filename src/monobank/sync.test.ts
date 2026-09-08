@@ -1055,17 +1055,23 @@ describe('runSync', () => {
     expect(isSyncingSnapshot()).toBe(false);
   });
 
-  // The R6-3 fast/background split: the signal that drives the native spinner
-  // clears after the FAST phase (client-info + `upsertHoldings`) and BEFORE the
-  // gated per-card statement loop, so the spinner ends promptly while the
-  // statement fetches continue in the background under the single-flight lock.
-  it('clears the sync-status signal after upserting balances, before the statement fetches', async () => {
+  // R7 (reverting the R6-3 fast/background split): the signal that drives the
+  // native spinner tracks the WHOLE run, not just the fast phase. It stays ON
+  // across the gated per-card statement loop — at the FIRST gated fetch and
+  // after the LAST card — and clears ONLY once `runSync`'s returned promise
+  // settles (the `release` callback), so the spinner cannot end while the
+  // 60s-gated statement fetches (and the "Last sync" stamp written at the end)
+  // are still pending.
+  it('keeps the sync-status signal ON across the statement loop, clearing only when the run settles', async () => {
+    // Two cards so the loop genuinely spans more than one card: assert the
+    // signal is still ON at the first gated fetch AND after the last card.
+    const idA = clientInfo.accounts[0].id;
+    const idB = clientInfo.accounts[1].id;
+    const singlePage = (): MonobankStatementItem[] => [statement[0] as MonobankStatementItem];
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-    const { deps, holdingsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const { deps, holdingsStore } = makeInMemoryDeps(singlePage, [connected]);
 
-    // Observe the signal at the two seams: still ON while a balance is being
-    // upserted (the fast phase), already OFF by the time the first gated
-    // statement fetch runs. Snapshotting only the FIRST call at each seam.
+    // The signal must already be ON while the fast-phase balances are upserted.
     let signalDuringUpsert: boolean | undefined;
     const baseUpsert = deps.upsertHolding;
     if (baseUpsert === undefined) {
@@ -1078,34 +1084,49 @@ describe('runSync', () => {
       return baseUpsert(holding);
     };
 
+    // Snapshot the signal at the FIRST gated statement fetch and at the LAST
+    // card's fetch — both must be ON, proving the loop runs with the signal lit.
     let signalAtFirstFetch: boolean | undefined;
     let holdingsAtFirstFetch = 0;
+    let signalAtLastCardFetch: boolean | undefined;
     const baseFetchStatement = deps.fetchStatement;
     if (baseFetchStatement === undefined) {
       throw new Error('fetchStatement dep missing');
     }
     deps.fetchStatement = async (token, accountId, fromSeconds, toSeconds, fetchImpl) => {
+      const id = decodeURIComponent(accountId);
       if (signalAtFirstFetch === undefined) {
         signalAtFirstFetch = isSyncingSnapshot();
         holdingsAtFirstFetch = holdingsStore.length;
+      }
+      if (id === idB) {
+        signalAtLastCardFetch = isSyncingSnapshot();
       }
       return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
     };
 
     expect(isSyncingSnapshot()).toBe(false);
-    await runSync(deps);
+    const run = runSync(deps);
+
+    // The signal is lit synchronously the moment the run acquires the lock,
+    // before any awaited network/DB work.
+    expect(isSyncingSnapshot()).toBe(true);
+
+    await run;
 
     // The fast phase genuinely ran with the signal lit...
     expect(signalDuringUpsert).toBe(true);
-    // ...a gated statement fetch DID run (otherwise the ordering claim is
-    // vacuous), and balances were already persisted by then...
+    // ...a gated statement fetch DID run with balances already persisted...
     expect(signalAtFirstFetch).toBeDefined();
     expect(holdingsAtFirstFetch).toBeGreaterThan(0);
-    // ...and the signal was already cleared before that gated fetch: the spinner
-    // ends after the fast phase while the statement loop continues.
-    expect(signalAtFirstFetch).toBe(false);
-    // The whole run settled, so the `release` backstop leaves it cleared too.
+    // ...the signal STAYED ON across the statement loop: at the first gated
+    // fetch AND at the last card (card B), proving it never cleared early...
+    expect(signalAtFirstFetch).toBe(true);
+    expect(signalAtLastCardFetch).toBe(true);
+    // ...and it cleared ONLY once the run settled (the `release` callback).
     expect(isSyncingSnapshot()).toBe(false);
+    // Sanity: both cards' second account id was actually reached in the loop.
+    expect(idB).not.toBe(idA);
   });
 
   // The per-run diagnostic: a single console.warn summarising the run's

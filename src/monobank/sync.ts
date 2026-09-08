@@ -629,18 +629,6 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
 
   await upsertHoldings(deps, accountId, accounts, jars);
 
-  // FAST PHASE DONE: client-info fetched and every balance persisted, so net
-  // worth is already up to date. Clear the transient "syncing" signal HERE —
-  // the native pull-to-refresh spinner ends promptly while the per-card,
-  // 60s-gated statement loop below keeps running in the BACKGROUND (still
-  // holding `inFlightSync`, so a joined trigger never starts a second run).
-  // Transactions land incrementally through the reactive `useLiveQuery`
-  // consumers as each card imports. `setSyncing(false)` is idempotent (it
-  // early-returns when unchanged), so the `release` backstop in `runSync` — which
-  // also calls it on settle — is a harmless no-op on this normal path, and still
-  // clears the signal if the fast phase THROWS before reaching here.
-  setSyncing(false);
-
   // The CURRENT holdings, after the upsert: this run's authoritative
   // monobankId → holding map, giving each card's holding id (needed for the
   // outstanding-hold carve-out) and confirming the holding exists. `holdIds` is
