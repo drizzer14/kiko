@@ -53,8 +53,11 @@ export const applyAppearance = (appearance: Appearance): void => {
       RNAppearance.setColorScheme('auto');
     })
     .with('light', 'dark', (theme) => {
-      UnistylesRuntime.setTheme(theme);
+      // Settle the native window interface-style trait BEFORE Unistyles commits
+      // the JS theme, so the flip-origin screen's see-through glass re-samples
+      // the new interface style on the same commit (avoids a light-scheme lag).
       RNAppearance.setColorScheme(theme);
+      UnistylesRuntime.setTheme(theme);
     })
     .exhaustive();
 };
