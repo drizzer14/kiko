@@ -162,6 +162,13 @@
       "when": 1788881273804,
       "tag": "0022_backfill_last_full_sync_at",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1788889334936,
+      "tag": "0023_add_failed_sync_ids",
+      "breakpoints": true
     }
   ]
 }

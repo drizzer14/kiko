@@ -70,6 +70,18 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ trendCategoryKeys: keys }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  /**
+   * Persist the Monobank account ids whose statement fetch FAILED on the last
+   * sync run — the set the next run force-fetches regardless of balance so one
+   * flaky card cannot strand the whole account in daily full-fetch mode (see
+   * `failedSyncMonobankIds` in `db/schema.ts` and the end-of-run sequence in
+   * `monobank/sync.ts`). Stores the array, or NULL when it is empty, to keep the
+   * "no card is currently force-retried" state clean rather than an empty `[]`.
+   */
+  setFailedSyncMonobankIds: (ids: string[] | null) =>
+    write((tx) =>
+      tx.update(settings).set({ failedSyncMonobankIds: ids }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   setAppearance: (appearance: Appearance) =>
     write((tx) => tx.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID))),
 } satisfies Repository;

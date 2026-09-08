@@ -197,6 +197,14 @@ export const settings = sqliteTable('settings', {
   // back to the live top-3-by-expense preset. Written by settingsRepo
   // .setTrendCategoryKeys (Save persists the current set; Reset clears to null).
   trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
+  // The Monobank account ids whose statement fetch FAILED on the last sync run.
+  // The next run force-fetches only these (regardless of balance) so one flaky
+  // card does not strand the whole account in daily full-fetch mode: without
+  // this, a partial failure never graduates `lastFullSyncAt`, so once it ages
+  // past the full-fetch interval EVERY sync becomes a slow N×60s full fetch and
+  // the balance-diff skip never engages again. Pruned to ids still present in
+  // client-info. NULL means the empty set (no card is currently force-retried).
+  failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

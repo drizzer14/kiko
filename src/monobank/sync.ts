@@ -123,6 +123,22 @@ export interface SyncDeps {
    * balance.
    */
   getHoldingIdsWithHold: () => Promise<string[]>;
+  /**
+   * The Monobank account ids whose statement fetch FAILED on the LAST run
+   * (`settings.failedSyncMonobankIds`, or an empty set when null). The next run
+   * force-fetches exactly these, regardless of balance, so one flaky card does
+   * not strand the whole account in daily full-fetch mode — the fix for a
+   * partial failure that would otherwise never graduate `lastFullSyncAt`.
+   */
+  getFailedSyncIds: () => Promise<string[]>;
+  /**
+   * Persist the force-fetch set for the NEXT run: the ids still present in
+   * client-info that either failed this run or failed a prior run and were not
+   * re-fetched clean. Stored as null when empty (see
+   * `settingsRepo.setFailedSyncMonobankIds`). Written on BOTH the clean and the
+   * partial-failure path, before the partial-failure throw.
+   */
+  setFailedSyncIds: (ids: string[]) => Promise<unknown>;
 }
 
 const defaultDeps: SyncDeps = {
@@ -144,6 +160,8 @@ const defaultDeps: SyncDeps = {
   setLastFullSyncAt: (timestamp) => settingsRepo.setLastFullSyncAt(timestamp),
   getHoldingIdsWithHold: async () =>
     (await transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId),
+  getFailedSyncIds: async () => (await settingsRepo.getQuery()).at(0)?.failedSyncMonobankIds ?? [],
+  setFailedSyncIds: (ids) => settingsRepo.setFailedSyncMonobankIds(ids.length > 0 ? ids : null),
 };
 
 export const mapStatementItem = (
@@ -416,10 +434,13 @@ const shouldFullFetch = (
 
 /**
  * The balance-diff skip predicate: skip a card's statement fetch only when this
- * is NOT a full fetch, its /client-info balance equals its prior stored balance
- * (`holdings.balanceMinorUnits` before this run's upsert), and it carries no
- * outstanding hold. A held card is always fetched because a same-amount
- * hold→settled refresh does not move the balance.
+ * is NOT a full fetch, the card is NOT in the force-retry set (a card whose
+ * fetch failed on a prior run), its /client-info balance equals its prior stored
+ * balance (`holdings.balanceMinorUnits` before this run's upsert), and it
+ * carries no outstanding hold. A held card is always fetched because a
+ * same-amount hold→settled refresh does not move the balance; a force-retry card
+ * is always fetched so a transient failure cannot strand it once its balance
+ * settles unchanged.
  */
 const isBalanceDiffSkip = (
   account: MonobankAccount,
@@ -428,14 +449,55 @@ const isBalanceDiffSkip = (
     isFullFetch: boolean;
     priorHoldingByMonobankId: Map<string, HoldingRow>;
     holdIds: Set<string>;
+    failedSet: Set<string>;
   },
 ): boolean => {
   if (context.isFullFetch) {
     return false;
   }
+  if (context.failedSet.has(account.id)) {
+    return false;
+  }
   const priorBalance = context.priorHoldingByMonobankId.get(account.id)?.balanceMinorUnits;
   const balanceUnchanged = priorBalance !== undefined && priorBalance === account.balance;
   return balanceUnchanged && !context.holdIds.has(holding.id);
+};
+
+/**
+ * The force-fetch set to persist for the NEXT run, pure and total for testing.
+ * Starts from the prior failed set, drops every id that SUCCEEDED this run, adds
+ * every id that FAILED this run, and keeps only ids still present in client-info
+ * (`currentIds`) so a card the user removed is pruned rather than force-fetched
+ * forever. Order of the returned array is not significant.
+ */
+export const nextFailedSet = (
+  prior: string[],
+  succeeded: string[],
+  failed: string[],
+  currentIds: Set<string>,
+): string[] => {
+  const succeededSet = new Set(succeeded);
+  const result = new Set<string>();
+  for (const id of prior) {
+    if (!succeededSet.has(id) && currentIds.has(id)) {
+      result.add(id);
+    }
+  }
+  for (const id of failed) {
+    if (currentIds.has(id)) {
+      result.add(id);
+    }
+  }
+  return [...result];
+};
+
+/** Order-insensitive equality of two id sets, to skip a redundant persist. */
+const sameIdSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
 };
 
 /**
@@ -538,6 +600,7 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
 
 const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
+  const startedAt = deps.now();
   const token = await deps.readToken();
   if (!token) {
     throw new Error(i18n.t('accountDetail.noMonobankToken'));
@@ -566,12 +629,30 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
 
   await upsertHoldings(deps, accountId, accounts, jars);
 
+  // FAST PHASE DONE: client-info fetched and every balance persisted, so net
+  // worth is already up to date. Clear the transient "syncing" signal HERE —
+  // the native pull-to-refresh spinner ends promptly while the per-card,
+  // 60s-gated statement loop below keeps running in the BACKGROUND (still
+  // holding `inFlightSync`, so a joined trigger never starts a second run).
+  // Transactions land incrementally through the reactive `useLiveQuery`
+  // consumers as each card imports. `setSyncing(false)` is idempotent (it
+  // early-returns when unchanged), so the `release` backstop in `runSync` — which
+  // also calls it on settle — is a harmless no-op on this normal path, and still
+  // clears the signal if the fast phase THROWS before reaching here.
+  setSyncing(false);
+
   // The CURRENT holdings, after the upsert: this run's authoritative
   // monobankId → holding map, giving each card's holding id (needed for the
   // outstanding-hold carve-out) and confirming the holding exists. `holdIds` is
   // the set of holding ids that still carry an outstanding Monobank hold.
   const holdingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
   const holdIds = new Set(await deps.getHoldingIdsWithHold());
+
+  // The cards force-fetched this run because their statement fetch FAILED last
+  // run — fetched regardless of balance (see `isBalanceDiffSkip`). The raw prior
+  // array is kept for the end-of-run diff that decides whether to re-persist.
+  const priorFailedIds = await deps.getFailedSyncIds();
+  const failedSet = new Set(priorFailedIds);
 
   const toSeconds = Math.floor(deps.now() / 1000);
   const lastSyncAt = await deps.getLastSyncAt();
@@ -602,6 +683,10 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const fromSeconds = fromCursorSeconds(isFullFetch, lastSyncAt, lastFullSyncAt, toSeconds);
 
   let importedTransactions = 0;
+  let fetched = 0;
+  let skipped = 0;
+  const succeededIds: string[] = [];
+  const failedIds: string[] = [];
   const failures: Error[] = [];
   for (const account of accounts) {
     // The balance-diff skip. A card is skipped — no statement fetch, no failure
@@ -612,9 +697,18 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     if (!holding) {
       continue;
     }
-    if (isBalanceDiffSkip(account, holding, { isFullFetch, priorHoldingByMonobankId, holdIds })) {
+    if (
+      isBalanceDiffSkip(account, holding, {
+        isFullFetch,
+        priorHoldingByMonobankId,
+        holdIds,
+        failedSet,
+      })
+    ) {
+      skipped += 1;
       continue;
     }
+    fetched += 1;
     try {
       importedTransactions += await importAccount(
         deps,
@@ -625,6 +719,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
         fromSeconds,
         toSeconds,
       );
+      succeededIds.push(account.id);
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old
@@ -632,9 +727,28 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // cause of the reported inconsistency). The cards that DID import already
       // persisted their rows durably — each `importAccount` -> `addTransactions`
       // runs in its own `db.transaction()` — so their data is safe regardless.
+      // The failed id is force-fetched next run (see the end-of-run sequence).
       failures.push(error instanceof Error ? error : new Error(String(error)));
+      failedIds.push(account.id);
     }
   }
+
+  // Diagnostic reached on BOTH the clean and the partial-failure path (it sits
+  // before the throw below): surfaces each run's fetch/skip/failure counts and
+  // wall-clock cost so a dev can tell whether a card is stuck in daily
+  // full-fetch mode instead of the fast balance-diff path. No __DEV__ guard —
+  // one line per sync is negligible, and it must be visible from a real device
+  // log. The two-arg form with a plain object does NOT log any secret (no token,
+  // no statement contents), so it clears the secret-log rule.
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one-line per-run sync summary (counts only, no secrets) so a dev can see whether the balance-diff skip is engaging on-device
+  console.warn('[monobank sync] done', {
+    isFullFetch,
+    cards: accounts.length,
+    fetched,
+    skipped,
+    failures: failures.length,
+    elapsedMs: deps.now() - startedAt,
+  });
 
   // Move the DISPLAY "last synced" stamp whenever this run REACHED Monobank
   // successfully — i.e. at least one card synced without error — regardless of
@@ -656,6 +770,33 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.setLastSyncDisplayAt(deps.now());
   }
 
+  // Persist the force-fetch set for the NEXT run BEFORE the partial-failure
+  // throw, so a failed card is re-fetched next run even though the cursor stays
+  // put. `nextFailedSet` drops the ids that succeeded this run, adds the ones
+  // that failed, and prunes any no longer in client-info. Written only when it
+  // actually changed, to avoid a redundant transaction on the common (all-clean)
+  // path where both sets are empty.
+  const currentIds = new Set(accounts.map((account) => account.id));
+  const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
+  if (!sameIdSet(priorFailedIds, newFailedIds)) {
+    await deps.setFailedSyncIds(newFailedIds);
+  }
+
+  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
+  // change. This now runs BEFORE the throw below, so a full fetch where one card
+  // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
+  // slow N×60s full fetch every time (which starved the balance-diff skip once
+  // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed
+  // card is force-fetched next run via `failedSyncMonobankIds`, and because the
+  // cursor (`setLastSyncAt` below) stays put on a partial failure, that
+  // force-fetch derives its window from the un-advanced `lastSyncAt` and
+  // re-covers the failed card's window; dedup keeps it idempotent. Stamped with
+  // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
+  // convention, so the next full fetch resumes precisely where this one ended.
+  if (isFullFetch) {
+    await deps.setLastFullSyncAt(toSeconds * 1000);
+  }
+
   if (failures.length > 0) {
     // Partial failure: do NOT advance the shared cursor, so the failed card's
     // window is re-covered on the next run. A re-fetch is idempotent — the
@@ -663,14 +804,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     // inserting a duplicate — so nothing already imported is lost or
     // re-imported (`addTransactions` reports 0 new for a re-fetched item).
     // Surface the failure so the caller shows an error and the user retries.
-    //
-    // SCOPED DOWN: a per-CARD cursor would also spare the cards that already
-    // finished from being re-fetched next run, but Kiko stores a single global
-    // `settings.lastSyncAt` and the holdings' JSON metadata is rewritten
-    // wholesale by the client-info upsert, so a correct per-card cursor needs a
-    // schema/metadata change beyond this change's minimal, safe scope. The
-    // dedup layer already guarantees the correctness invariant; only the
-    // network re-fetch cost is left on the table. See the task report.
+    // Everything above (display stamp, failed-set persist, full-fetch
+    // graduation) already ran, so the failed card is force-fetched next run
+    // without stranding the account in permanent full-fetch mode.
     throw failures[0];
   }
 
@@ -681,20 +817,5 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
   await deps.setLastSyncAt(toSeconds * 1000);
-
-  // Advance the full-fetch marker only on a fully clean full-fetch run: this
-  // line is reached only after the partial-failure `throw` above is passed, so
-  // a partial failure leaves BOTH the cursor and this marker put and the full
-  // fetch is re-attempted next run. Stamped with the queried ceiling
-  // (`toSeconds * 1000`), matching `setLastSyncAt`'s convention: this marker is
-  // BOTH the wall-clock staleness reference for the 24h `shouldFullFetch` check
-  // AND the from-cursor for the NEXT full fetch (see `fromCursorSeconds`), so
-  // stamping the exact window ceiling makes the next full fetch resume precisely
-  // where this one ended — no sub-second hole. `toSeconds * 1000 ≈ now`, so the
-  // staleness math (`now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS`) is
-  // unaffected (the difference from `now()` is sub-second).
-  if (isFullFetch) {
-    await deps.setLastFullSyncAt(toSeconds * 1000);
-  }
   return { importedTransactions };
 };

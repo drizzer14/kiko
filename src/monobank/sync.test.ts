@@ -8,7 +8,13 @@ import { i18n } from '../i18n';
 import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
-import { mapAccountToHolding, mapStatementItem, runSync, type SyncDeps } from './sync';
+import {
+  mapAccountToHolding,
+  mapStatementItem,
+  nextFailedSet,
+  runSync,
+  type SyncDeps,
+} from './sync';
 import { getSnapshot as isSyncingSnapshot } from './sync-status';
 
 describe('mapStatementItem', () => {
@@ -100,6 +106,24 @@ describe('mapAccountToHolding', () => {
   it('throws on an unsupported currency code', () => {
     const account = { ...(clientInfo.accounts[0] as MonobankAccount), currencyCode: 999 };
     expect(() => mapAccountToHolding(account, 'account-1')).toThrow(/currency/i);
+  });
+});
+
+describe('nextFailedSet', () => {
+  it('drops succeeded ids, keeps still-failing prior ids, adds newly-failed ids, and prunes ids absent from client-info', () => {
+    const current = new Set(['a', 'b', 'c']);
+    // prior [a, b, x]: a succeeded (drop), b still failed (keep), x pruned (not
+    // in client-info); c is a fresh failure (add).
+    const result = nextFailedSet(['a', 'b', 'x'], ['a'], ['c'], current);
+    expect([...result].sort()).toEqual(['b', 'c']);
+  });
+
+  it('returns an empty set when every prior failure succeeded and nothing new failed', () => {
+    expect(nextFailedSet(['a', 'b'], ['a', 'b'], [], new Set(['a', 'b']))).toEqual([]);
+  });
+
+  it('does not duplicate an id present in both prior and failed', () => {
+    expect(nextFailedSet(['a'], [], ['a'], new Set(['a']))).toEqual(['a']);
   });
 });
 
@@ -273,6 +297,12 @@ const makeInMemoryDeps = (
     // No outstanding holds by default; a test that exercises the hold carve-out
     // overrides this with the held card's holding id.
     getHoldingIdsWithHold: async () => [],
+    // No card is force-retried by default, so an existing test is never pushed
+    // onto the force-fetch path; the `setFailedSyncIds` spy lets a test assert
+    // the persisted set without wiring a store. A test exercising the
+    // force-fetch/graduation behaviour overrides `getFailedSyncIds`.
+    getFailedSyncIds: async () => [],
+    setFailedSyncIds: jest.fn(async (_ids: string[]): Promise<void> => undefined),
   };
 
   return { deps, accountsStore, holdingsStore, transactionsStore, sleep };
@@ -1025,6 +1055,90 @@ describe('runSync', () => {
     expect(isSyncingSnapshot()).toBe(false);
   });
 
+  // The R6-3 fast/background split: the signal that drives the native spinner
+  // clears after the FAST phase (client-info + `upsertHoldings`) and BEFORE the
+  // gated per-card statement loop, so the spinner ends promptly while the
+  // statement fetches continue in the background under the single-flight lock.
+  it('clears the sync-status signal after upserting balances, before the statement fetches', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+
+    // Observe the signal at the two seams: still ON while a balance is being
+    // upserted (the fast phase), already OFF by the time the first gated
+    // statement fetch runs. Snapshotting only the FIRST call at each seam.
+    let signalDuringUpsert: boolean | undefined;
+    const baseUpsert = deps.upsertHolding;
+    if (baseUpsert === undefined) {
+      throw new Error('upsertHolding dep missing');
+    }
+    deps.upsertHolding = async (holding) => {
+      if (signalDuringUpsert === undefined) {
+        signalDuringUpsert = isSyncingSnapshot();
+      }
+      return baseUpsert(holding);
+    };
+
+    let signalAtFirstFetch: boolean | undefined;
+    let holdingsAtFirstFetch = 0;
+    const baseFetchStatement = deps.fetchStatement;
+    if (baseFetchStatement === undefined) {
+      throw new Error('fetchStatement dep missing');
+    }
+    deps.fetchStatement = async (token, accountId, fromSeconds, toSeconds, fetchImpl) => {
+      if (signalAtFirstFetch === undefined) {
+        signalAtFirstFetch = isSyncingSnapshot();
+        holdingsAtFirstFetch = holdingsStore.length;
+      }
+      return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
+    };
+
+    expect(isSyncingSnapshot()).toBe(false);
+    await runSync(deps);
+
+    // The fast phase genuinely ran with the signal lit...
+    expect(signalDuringUpsert).toBe(true);
+    // ...a gated statement fetch DID run (otherwise the ordering claim is
+    // vacuous), and balances were already persisted by then...
+    expect(signalAtFirstFetch).toBeDefined();
+    expect(holdingsAtFirstFetch).toBeGreaterThan(0);
+    // ...and the signal was already cleared before that gated fetch: the spinner
+    // ends after the fast phase while the statement loop continues.
+    expect(signalAtFirstFetch).toBe(false);
+    // The whole run settled, so the `release` backstop leaves it cleared too.
+    expect(isSyncingSnapshot()).toBe(false);
+  });
+
+  // The per-run diagnostic: a single console.warn summarising the run's
+  // fetch/skip/failure counts, so a dev reading a device log can tell whether
+  // the balance-diff skip is engaging or a card is stuck in full-fetch mode.
+  it('logs a one-line diagnostic summary once per run with the expected keys', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    // Snapshot the captured calls BEFORE restoring the spy — `mockRestore` also
+    // resets `mock.calls`, so reading them afterwards would always see [].
+    let doneCalls: unknown[][];
+    try {
+      await runSync(deps);
+      doneCalls = warn.mock.calls.filter(([message]) => message === '[monobank sync] done');
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(doneCalls).toHaveLength(1);
+    expect(doneCalls[0][1]).toEqual(
+      expect.objectContaining({
+        isFullFetch: expect.any(Boolean),
+        cards: expect.any(Number),
+        fetched: expect.any(Number),
+        skipped: expect.any(Number),
+        failures: expect.any(Number),
+        elapsedMs: expect.any(Number),
+      }),
+    );
+  });
+
   // The balance-diff skip (round 4-D option (a)): a steady-state incremental
   // sync SKIPS a card whose /client-info balance is unchanged since the last
   // sync, cutting the number of gated statement fetches (N cards ⇒ ~N×60s under
@@ -1171,11 +1285,18 @@ describe('runSync', () => {
       expect(fromSecondsForA).not.toBe(Math.floor(recentCursor / 1000));
     });
 
-    it('does not stamp the full-fetch marker or advance the cursor when a full fetch partially fails', async () => {
+    // R6-1: a full fetch where one card fails now GRADUATES `lastFullSyncAt`
+    // even though it re-throws — the fix for the "permanent full-fetch" trap
+    // where a partial failure never advanced the marker, so once it aged past
+    // the 24h interval every sync became a slow N×60s full fetch and the
+    // balance-diff skip never engaged again. The failed card is persisted for a
+    // forced retry next run; the statement cursor still stays put so that retry
+    // re-covers the failed window (dedup keeps it idempotent).
+    it('graduates the full-fetch marker on a partial failure and persists the failed card, without advancing the cursor', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
       const { deps } = makeInMemoryDeps(() => [], [connected]);
-      // First sync ever → full fetch. Card A throws, so the run partially fails
-      // and re-throws before either marker advances.
+      deps.now = () => 1_700_000_000_000;
+      // First sync ever → full fetch. Card A throws, so the run partially fails.
       deps.fetchStatement = async (_token, accountId) => {
         if (decodeURIComponent(accountId) === idA) {
           throw new Error('Monobank request failed: 500');
@@ -1184,13 +1305,82 @@ describe('runSync', () => {
       };
       const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
       const setLastFullSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+      const setFailedSyncIds = jest.fn(async (_ids: string[]): Promise<void> => undefined);
       deps.setLastSyncAt = setLastSyncAt;
       deps.setLastFullSyncAt = setLastFullSyncAt;
+      deps.setFailedSyncIds = setFailedSyncIds;
 
       await expect(runSync(deps)).rejects.toThrow();
 
+      // The marker graduates on the partial failure; the failed card is stored
+      // for a forced retry; the cursor stays put.
+      expect(setLastFullSyncAt).toHaveBeenCalledWith(1_700_000_000_000);
+      expect(setFailedSyncIds).toHaveBeenCalledWith([idA]);
       expect(setLastSyncAt).not.toHaveBeenCalled();
-      expect(setLastFullSyncAt).not.toHaveBeenCalled();
+    });
+
+    it('force-fetches a previously-failed card even when its balance is unchanged, still skipping a different unchanged card', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps } = makeInMemoryDeps(() => [], [connected]);
+
+      // First sync populates each holding's stored balance (a full fetch).
+      await runSync(deps);
+
+      // Incremental run: cursor + recent full fetch, both balances UNCHANGED.
+      // Card A is in the force-retry set, so it is fetched despite the unchanged
+      // balance; card B (unchanged, not failed, no hold) is skipped.
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+      deps.getFailedSyncIds = async () => [idA];
+      const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      expect(fetchedIds(fetchStatement)).toContain(idA);
+      expect(fetchedIds(fetchStatement)).not.toContain(idB);
+    });
+
+    it('removes a previously-failed card from the set once it syncs clean', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps } = makeInMemoryDeps(() => [], [connected]);
+      await runSync(deps);
+
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+      deps.getFailedSyncIds = async () => [idA];
+      const setFailedSyncIds = jest.fn(async (_ids: string[]): Promise<void> => undefined);
+      deps.setFailedSyncIds = setFailedSyncIds;
+      deps.fetchStatement = jest.fn(
+        async () => [] as MonobankStatementItem[],
+      ) as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      // idA is force-fetched, succeeds, and is dropped — the set is now empty,
+      // so it is persisted as [] (which the repo maps to NULL).
+      expect(setFailedSyncIds).toHaveBeenCalledWith([]);
+    });
+
+    it('prunes a stale failed id that is no longer present in client-info', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps } = makeInMemoryDeps(() => [], [connected]);
+      await runSync(deps);
+
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+      // 'ghost-card' failed on a prior run but no longer appears in client-info
+      // (the user disconnected it): it must be dropped, not force-fetched forever.
+      deps.getFailedSyncIds = async () => ['ghost-card'];
+      const setFailedSyncIds = jest.fn(async (_ids: string[]): Promise<void> => undefined);
+      deps.setFailedSyncIds = setFailedSyncIds;
+      deps.fetchStatement = jest.fn(
+        async () => [] as MonobankStatementItem[],
+      ) as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      expect(setFailedSyncIds).toHaveBeenCalledWith([]);
     });
 
     it('refreshes the display timestamp and imports zero when every card is skipped', async () => {
