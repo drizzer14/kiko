@@ -1,5 +1,5 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import type { FC, ReactNode } from 'react';
+import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -69,6 +69,33 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
 }) => {
   const { theme, rt } = useUnistyles();
   const colorScheme = resolveColorScheme(rt.themeName);
+  // Drives the see-through glass base's remount `key`. It is SEEDED from
+  // `colorScheme` so the first paint keys correctly, then updated on a
+  // POST-FLIP frame (not synchronously with the scheme flip). A bare
+  // see-through `LiquidGlassView` re-samples its light/dark backdrop only when
+  // a fresh native view lays out — there is no imperative re-sample API. If we
+  // remounted synchronously in the same commit as the scheme flip, the fresh
+  // view would lay out and sample the backdrop in that same runloop, BEFORE
+  // the window's interface-style trait (set by RNAppearance) has visually
+  // propagated — sampling the OLD scheme, which on a flip-origin screen (no
+  // navigation transition to force a later layout pass) persists until a
+  // scroll. Deferring the remount by two animation frames lets the trait
+  // settle first, so the fresh view samples the NEW scheme. The `colorScheme`
+  // PROP below still updates on the commit, so `overrideUserInterfaceStyle` is
+  // set immediately; only the backdrop RE-SAMPLE is deferred.
+  const [remountToken, setRemountToken] = useState(colorScheme);
+  useEffect(() => {
+    let inner: number | undefined;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setRemountToken(colorScheme));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      if (inner !== undefined) {
+        cancelAnimationFrame(inner);
+      }
+    };
+  }, [colorScheme]);
   const sizing = [
     { borderRadius: theme.radii[radius] },
     padding !== undefined && { padding: theme.spacing(padding) },
@@ -104,20 +131,24 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // rendering, so the parent mask is enough there.
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
-      // `key={colorScheme}` remounts the native glass view on a scheme flip.
+      // `key={remountToken}` remounts the native glass view on a scheme flip.
       // A see-through card (NEITHER `tint` NOR `solidBackdrop`) is a bare
       // live-sampling glass material with no colored wash painted over it, and
       // iOS only recomposites that material on a layout/scroll event, NOT on a
       // `colorScheme` prop change — so such a card lagged the theme until the
       // user scrolled. Changing the key forces a fresh native view that
-      // re-samples under the new interface style immediately. Tinted /
-      // solid-backdrop cards already repaint via their wash/backdrop `View`
-      // (a token-driven layer that flips on the commit), so the remount only
-      // matters for the see-through case, but keying every glass base is
-      // harmless and keeps the branch uniform. `bordered`/`tint`/
+      // re-samples under the new interface style. The token is DEFERRED off the
+      // scheme flip (see `remountToken` above): a synchronous remount would
+      // sample the pre-propagation interface-style trait and re-fix the OLD
+      // scheme, which on a flip-origin screen (the System settings sub-page,
+      // with no navigation transition to force a later layout pass) persisted
+      // until a scroll. Tinted / solid-backdrop cards already repaint via their
+      // wash/backdrop `View` (a token-driven layer that flips on the commit),
+      // so the deferral only matters for the see-through case, but keying every
+      // glass base is harmless and keeps the branch uniform. `bordered`/`tint`/
       // `solidBackdrop` all still apply — they live on sibling layers and the
       // parent `View`, unaffected by the base remount.
-      key={colorScheme}
+      key={remountToken}
       effect="regular"
       colorScheme={colorScheme}
       tintColor={tint}
