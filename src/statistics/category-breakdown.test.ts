@@ -334,6 +334,27 @@ describe('resolveCategoryColor', () => {
       categoryColor('groceries', 'light'),
     );
   });
+
+  it('reverse-maps a stored OTHER-scheme swatch hex to the current scheme pair', () => {
+    // `#FFFFFF` is the dark palette's `white`; on light `white` is `#000000`
+    // (see palette.ts). A category frozen at pick time as dark white must
+    // render as the light counterpart, not stay an invisible white.
+    expect(resolveCategoryColor('#FFFFFF', 'groceries', 'light')).toBe('#000000');
+    // And the symmetric case: light white (`#000000`) requested on dark.
+    expect(resolveCategoryColor('#000000', 'groceries', 'dark')).toBe('#FFFFFF');
+  });
+
+  it('leaves a stored hex that already belongs to the current scheme unchanged', () => {
+    // `#FFFFFF` IS the dark palette's own white, so on dark it needs no remap.
+    expect(resolveCategoryColor('#FFFFFF', 'groceries', 'dark')).toBe('#FFFFFF');
+  });
+
+  it('passes a genuine custom hex (no palette swatch) through unchanged', () => {
+    // `#FFCC00` is a swatch in neither scheme's palette — a legacy/custom
+    // value with no known counterpart, returned verbatim under either scheme.
+    expect(resolveCategoryColor('#FFCC00', 'groceries', 'light')).toBe('#FFCC00');
+    expect(resolveCategoryColor('#FFCC00', 'groceries', 'dark')).toBe('#FFCC00');
+  });
 });
 
 describe('categoryColor', () => {

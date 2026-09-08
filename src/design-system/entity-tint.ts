@@ -103,7 +103,10 @@ const REVERSE_SWATCH_MAP: Record<'light' | 'dark', Map<string, string>> = {
 // (the frozen-at-pick-time case above), it is reverse-mapped by name to this
 // scheme's paired counterpart; otherwise (a custom/legacy hex) it passes
 // through unchanged.
-const resolveStoredHexForScheme = (storedColor: string, colorScheme: 'light' | 'dark'): string => {
+export const resolveStoredHexForScheme = (
+  storedColor: string,
+  colorScheme: 'light' | 'dark',
+): string => {
   const currentSchemeValues = new Set<string>(Object.values(entityColorsByScheme[colorScheme]));
 
   if (currentSchemeValues.has(storedColor)) {
