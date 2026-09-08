@@ -122,6 +122,27 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
+  it('setLastSyncDisplayAt writes the display timestamp to the single settings row', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await settingsRepo.setLastSyncDisplayAt(1_700_000_000_000);
+
+    expect(captured.set).toEqual({ lastSyncDisplayAt: 1_700_000_000_000 });
+    expect(captured.whereCalled).toBe(true);
+  });
+
+  it('setLastSyncDisplayAt persists after ensure has run', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeSettingsRowTx(store);
+    spyOnSettingsSelect(store);
+
+    await settingsRepo.ensure();
+    await settingsRepo.setLastSyncDisplayAt(1_700_000_000_000);
+
+    expect((await settingsRepo.getQuery())[0].lastSyncDisplayAt).toBe(1_700_000_000_000);
+  });
+
   it('ensure inserts the single settings row and is idempotent', async () => {
     const store: Record<string, unknown>[] = [];
     mockTx = makeSettingsRowTx(store);

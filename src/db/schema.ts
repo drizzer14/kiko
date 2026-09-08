@@ -160,12 +160,23 @@ export const settings = sqliteTable('settings', {
   // / 'uk' is an explicit user choice made from Settings. Read by
   // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
   language: text('language', { enum: ['en', 'uk'] }),
-  // The chosen appearance: 'system' follows the OS (adaptiveThemes), 'light'/
-  // 'dark' pin the theme. Defaults to 'system' so a fresh install follows iOS.
-  // Read by useSyncAppearanceWithSettings; written by settingsRepo.setAppearance.
+  // The chosen appearance: 'system' follows the OS via unistyles `initialTheme`
+  // plus a manual `Appearance` change-listener (Option B — adaptiveThemes was
+  // removed), 'light'/'dark' pin the theme. Defaults to 'system' so a fresh
+  // install follows iOS. Read by useSyncAppearanceWithSettings; written by
+  // settingsRepo.setAppearance.
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
+  // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
+  // that imported at least one transaction — including a PARTIAL failure, where
+  // some cards imported but one threw. Decoupled from `lastSyncAt`, which stays
+  // the pure Monobank statement CURSOR (advanced only on a fully clean run). A
+  // partial failure must not advance the cursor — the failed card's window has
+  // to be re-covered — yet the user should still see that a sync just landed
+  // rows, so the display stamp moves independently. NULLABLE: rows that existed
+  // before this column read null, and the display falls back to `lastSyncAt`.
+  lastSyncDisplayAt: integer('last_sync_display_at'),
   // The user's SAVED spending-trend category selection: a JSON array of stable
   // `categories.key` slugs that overrides the default "top 3 by expense" seed on
   // the Statistics trend chart. NULL means "no saved selection" — the chart falls

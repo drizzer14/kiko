@@ -86,6 +86,13 @@ export interface SyncDeps {
   addTransactions: (transactions: NewTransaction[]) => Promise<number>;
   getLastSyncAt: () => Promise<number | null>;
   setLastSyncAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * Stamp the DISPLAY "last synced" timestamp — decoupled from the statement
+   * cursor (`setLastSyncAt`). Written on every run that imported at least one
+   * transaction, INCLUDING a partial failure, so the user sees a fresh time
+   * even when the cursor deliberately stays put to re-cover a failed card.
+   */
+  setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
 }
 
 const defaultDeps: SyncDeps = {
@@ -102,6 +109,7 @@ const defaultDeps: SyncDeps = {
   addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
   getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
   setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
+  setLastSyncDisplayAt: (timestamp) => settingsRepo.setLastSyncDisplayAt(timestamp),
 };
 
 export const mapStatementItem = (
@@ -440,6 +448,18 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // runs in its own `db.transaction()` — so their data is safe regardless.
       failures.push(error instanceof Error ? error : new Error(String(error)));
     }
+  }
+
+  // Move the DISPLAY "last synced" stamp whenever this run actually imported
+  // rows — BEFORE the partial-failure throw below, so a run where some cards
+  // succeeded and one failed still updates the time the user sees. This is
+  // decoupled from the statement cursor (`setLastSyncAt`), which advances only
+  // on a fully clean run: a partial failure must re-cover the failed card's
+  // window, so the cursor stays put while the display moves. A run that
+  // imported nothing (a clean re-sync, or a total failure) leaves the display
+  // untouched — there are no fresh rows to announce.
+  if (importedTransactions > 0) {
+    await deps.setLastSyncDisplayAt(deps.now());
   }
 
   if (failures.length > 0) {

@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `last_sync_display_at` integer;

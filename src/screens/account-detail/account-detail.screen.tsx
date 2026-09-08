@@ -266,7 +266,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 <SymbolIcon name="clock" tone="textSecondary" />
                 <Text variant="body" tone="textSecondary">
                   {t('accountDetail.lastSync', {
-                    time: formatLastSyncAt(settingsRows.at(0)?.lastSyncAt ?? null, t),
+                    // The DISPLAY stamp (moves on any run that imported rows,
+                    // including a partial failure), falling back to the pure
+                    // statement cursor for installs that predate the display
+                    // column (it reads null there).
+                    time: formatLastSyncAt(
+                      settingsRows.at(0)?.lastSyncDisplayAt ??
+                        settingsRows.at(0)?.lastSyncAt ??
+                        null,
+                      t,
+                    ),
                   })}
                 </Text>
               </Box>

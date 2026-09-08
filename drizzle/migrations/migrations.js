@@ -20,6 +20,7 @@ import m0016 from './0016_add_transaction_hold.sql';
 import m0017 from './0017_default_category_colors.sql';
 import m0018 from './0018_add_appearance.sql';
 import m0019 from './0019_add_trend_category_keys.sql';
+import m0020 from './0020_add_last_sync_display_at.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -45,5 +46,6 @@ export default {
     m0017,
     m0018,
     m0019,
+    m0020,
   },
 };

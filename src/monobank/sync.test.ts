@@ -255,6 +255,7 @@ const makeInMemoryDeps = (
     addTransactions,
     getLastSyncAt: async () => null,
     setLastSyncAt: async () => undefined,
+    setLastSyncDisplayAt: async () => undefined,
   };
 
   return { deps, accountsStore, holdingsStore, transactionsStore, sleep };
@@ -816,5 +817,98 @@ describe('runSync', () => {
     expect(transactionsStore.filter((row) => row.externalId === 'txn-B')).toHaveLength(1);
     expect(transactionsStore.filter((row) => row.externalId === 'txn-A')).toHaveLength(1);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+  });
+
+  // The DISPLAY timestamp is decoupled from the statement cursor: a partial
+  // failure that still imported at least one card's rows must move the "last
+  // synced" display (so the user sees it landed) WITHOUT advancing the cursor
+  // (so the failed card's window is re-covered next run).
+  it('stamps the display timestamp but NOT the cursor on a partial failure that imported something', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const idA = clientInfo.accounts[0].id;
+    const idB = clientInfo.accounts[1].id;
+    const itemB: MonobankStatementItem = {
+      ...(statement[0] as MonobankStatementItem),
+      id: 'txn-B',
+    };
+
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+    deps.fetchStatement = async (_token, accountId) => {
+      const id = decodeURIComponent(accountId);
+      if (id === idA) {
+        throw new Error('Monobank request failed: 500');
+      }
+      return id === idB ? [itemB] : [];
+    };
+
+    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncAt = setLastSyncAt;
+    deps.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    deps.now = () => 1_700_000_000_000;
+
+    await expect(runSync(deps)).rejects.toThrow();
+
+    // The failed card leaves the cursor put, but card B imported, so the
+    // display stamp still moves — to the injected `now`.
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+  });
+
+  // A partial failure where NOTHING imported (every card failed) must not stamp
+  // the display either — there is nothing new to show as "just synced".
+  it('does not stamp the display timestamp on a failure that imported nothing', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+    deps.fetchStatement = async () => {
+      throw new Error('Monobank request failed: 500');
+    };
+    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncDisplayAt = setLastSyncDisplayAt;
+
+    await expect(runSync(deps)).rejects.toThrow();
+
+    expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
+  });
+
+  // A fully clean run that imported rows stamps BOTH the display timestamp and
+  // the statement cursor.
+  it('stamps both the display timestamp and the cursor on a clean run that imported rows', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncAt = setLastSyncAt;
+    deps.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    deps.now = () => 1_700_000_000_000;
+
+    const result = await runSync(deps);
+
+    expect(result.importedTransactions).toBe(statement.length);
+    expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+  });
+
+  // A clean run that imported nothing (a re-sync with no new rows) leaves BOTH
+  // stamps as they were: the cursor advances (the window was fully covered) but
+  // the display must not move, since no fresh rows arrived to show.
+  it('does not stamp the display timestamp on a clean run that imported nothing', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
+    deps.setLastSyncAt = setLastSyncAt;
+    deps.setLastSyncDisplayAt = setLastSyncDisplayAt;
+
+    await runSync(deps); // first run imports the fixture rows
+    setLastSyncDisplayAt.mockClear();
+    setLastSyncAt.mockClear();
+    const second = await runSync(deps); // second run re-fetches, imports nothing new
+
+    expect(second.importedTransactions).toBe(0);
+    expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
   });
 });

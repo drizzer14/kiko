@@ -23,6 +23,16 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ lastSyncAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  /**
+   * Stamp the DISPLAY "last synced" timestamp (epoch ms). Written on every sync
+   * run that imported at least one transaction — including a partial failure —
+   * so the user sees a fresh time even when the statement cursor (`lastSyncAt`)
+   * deliberately stays put to re-cover the failed card's window next run.
+   */
+  setLastSyncDisplayAt: (timestamp: number) =>
+    write((tx) =>
+      tx.update(settings).set({ lastSyncDisplayAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   setLockEnabled: (enabled: boolean) =>
     write((tx) =>
       tx.update(settings).set({ lockEnabled: enabled }).where(eq(settings.id, SETTINGS_ID)),
