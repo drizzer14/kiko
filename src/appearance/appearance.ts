@@ -4,12 +4,17 @@ import { match } from 'ts-pattern';
 
 // The three appearance modes, mirroring src/i18n/device-language.ts's
 // appLanguages shape. 'system' follows the OS (adaptiveThemes); 'light'/'dark'
-// pin the theme. Persisted in settings.appearance, default 'system'. Ordered
-// with 'system' in the MIDDLE (not first) purely for the switcher's display
-// order (AppearanceSwitch renders this array's order as a single row of 3
-// pills) — this is a display-order choice only; nothing in the app indexes
-// into this array or otherwise depends on its element order (the persisted
-// value is the string key itself, `settings.appearance`, never an index).
+// pin the theme. Persisted in settings.appearance, default 'system'. The
+// element ORDER is now inert: the switcher UI is the two-switch
+// AppearanceToggles (a Follow-System / Dark-Mode pair driven by
+// appearance-toggles.mapping, which never reads this array), so no component
+// renders these in order any more (the old single-row AppearanceSwitch that
+// justified 'system' sitting in the middle was removed in the Task 1 two-switch
+// rework). The only consumers left are the `Appearance` union type derived
+// below (order-independent) and this array's own equality self-test in
+// appearance.test.ts; nothing indexes into it (the persisted value is the
+// string key itself, `settings.appearance`, never an index). Left unreordered
+// only to keep that self-test and git history stable.
 export const appearances = ['light', 'system', 'dark'] as const;
 export type Appearance = (typeof appearances)[number];
 
