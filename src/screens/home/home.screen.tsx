@@ -3,7 +3,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
 import type { FC, ReactElement } from 'react';
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
@@ -44,6 +44,7 @@ import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../transactions/row-description';
+import { transactionSpan } from '../../transactions/transaction-span';
 import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
@@ -126,7 +127,7 @@ const groupByDay = <Row extends { time: number }>(
 };
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // The floating native glass tab bar sits over this screen's bottom edge, so
   // this SectionList — which owns the true bottom edge, since Home passes
@@ -163,7 +164,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   type TransactionRow = (typeof transactions)[number];
 
-  const categoryByKey = buildCategoryDisplayMap(categories);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
+  const categoryByKey = useMemo(
+    () => buildCategoryDisplayMap(categories),
+    [categories, i18n.language],
+  );
 
   // Pull-to-refresh fans out a fresh sync over every syncable account (the
   // connected Monobank account plus each connected crypto account) at once,
@@ -174,12 +179,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // The single native RefreshControl spinner is driven by the GLOBAL sync-status
   // signal, not a pull-local flag — so an auto-sync-on-open (which lights the
   // same signal via `runSync`) spins the pull spinner WITHOUT a user pull, and a
-  // real pull spins it too. The signal reflects only the FAST phase of the
-  // Monobank sync (client-info + balance upsert), so the spinner ends promptly
-  // while the per-card statement fetches continue in the background; holdings and
-  // transactions update incrementally through the reactive `useLiveQuery`
-  // consumers above. Known limitation: the signal is Monobank-only, so a pull on
-  // a crypto-only account shows little/no spinner.
+  // real pull spins it too. The signal tracks the WHOLE Monobank run (da40e69/R7,
+  // reverting the earlier fast-phase-only split): it stays lit across the
+  // per-card statement loop and clears only when the run settles, so the spinner
+  // is still spinning when "Last sync" lands. Holdings and transactions update
+  // incrementally through the reactive `useLiveQuery` consumers above. Known
+  // limitation: the signal is Monobank-only, so a pull on a crypto-only account
+  // shows little/no spinner.
   const isSyncing = useSyncStatus();
 
   // The native RefreshControl below binds to this LOCAL signal, not `isSyncing`
@@ -249,7 +255,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Counterpart holding names, so an Exchange/Convert leg's label resolves to
   // the counterpart's CURRENT name in the ACTIVE language (nothing is
   // persisted — see transactions/row-description.ts).
-  const holdingNameById = new Map(holdings.map((holding) => [holding.id, holding.name]));
+  const holdingNameById = useMemo(
+    () => new Map(holdings.map((holding) => [holding.id, holding.name])),
+    [holdings],
+  );
 
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now);
@@ -259,9 +268,21 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // display when no range is active. It never filters — it only tells the user
   // the range their data covers. With no transactions both bounds fall back to
   // today so the field always has something to render.
-  const transactionTimes = transactions.map((row) => row.time);
-  const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
-  const spanEnd = transactionTimes.length > 0 ? Math.max(...transactionTimes) : now;
+  // The earliest/latest transaction time in ONE O(n) pass (see `transactionSpan`
+  // — `Math.min(...times)` spread the whole array and overflowed the stack on a
+  // long history, and re-ran on every reactive fire during a sync). Memoized on
+  // `transactions` alone; the empty-list fallback to `now` is applied outside,
+  // so a per-render `now` never invalidates the memo.
+  const span = useMemo(
+    () =>
+      transactionSpan(
+        transactions.map((row) => row.time),
+        0,
+      ),
+    [transactions],
+  );
+  const spanStart = transactions.length > 0 ? span.start : now;
+  const spanEnd = transactions.length > 0 ? span.end : now;
 
   // The date-range field's *selectable* bounds are distinct from the display
   // span above: the earliest a user may pick is the earliest transaction's day
@@ -278,18 +299,20 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // menu row; transaction matching still keys off `option.value` (the account
   // name, matched against `row.accountName` below). De-duplicated by name,
   // first-seen-wins, preserving the old `Set`-based distinctness.
-  const accountOptionsByName = new Map<string, FilterOption>();
-  for (const account of accounts) {
-    if (account.archivedAt != null || accountOptionsByName.has(account.name)) {
-      continue;
+  const accountOptions = useMemo(() => {
+    const byName = new Map<string, FilterOption>();
+    for (const account of accounts) {
+      if (account.archivedAt != null || byName.has(account.name)) {
+        continue;
+      }
+      byName.set(account.name, {
+        value: account.name,
+        icon: account.icon ?? undefined,
+        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+      });
     }
-    accountOptionsByName.set(account.name, {
-      value: account.name,
-      icon: account.icon ?? undefined,
-      color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-    });
-  }
-  const accountOptions = Array.from(accountOptionsByName.values());
+    return Array.from(byName.values());
+  }, [accounts]);
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -303,56 +326,79 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // separate "Uncategorized" bucket), so uncategorized rows share the
   // default's filter chip. The visible row LABEL is still the resolved,
   // localized display title — only the identity is the key.
-  const categoryKeyForRow = (raw: string | null): string =>
-    resolveCategoryKey(raw, categoryByKey, defaultCategoryKey);
+  const categoryKeyForRow = useCallback(
+    (raw: string | null): string => resolveCategoryKey(raw, categoryByKey, defaultCategoryKey),
+    [categoryByKey, defaultCategoryKey],
+  );
   // One option per distinct resolved key, first-seen-wins (the same
   // distinctness the old `Set` gave), each carrying the category's resolved
   // icon, effective color, and localized label for the menu row. Matching
   // keys on `option.value` (the stable key, compared to
   // `categoryKeyForRow(row.category)` below); the row renders `option.label`.
-  const categoryOptionsByKey = new Map<string, FilterOption>();
-  for (const row of transactions) {
-    const key = categoryKeyForRow(row.category);
-    if (categoryOptionsByKey.has(key)) {
-      continue;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
+  const categoryOptions = useMemo(() => {
+    const byKey = new Map<string, FilterOption>();
+    for (const row of transactions) {
+      const key = categoryKeyForRow(row.category);
+      if (byKey.has(key)) {
+        continue;
+      }
+      const display = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
+      byKey.set(key, {
+        value: key,
+        label: display.title,
+        icon: display.icon,
+        color: resolveCategoryColor(display.color, key),
+      });
     }
-    const display = resolveCategoryDisplay(row.category, categoryByKey, defaultCategoryKey);
-    categoryOptionsByKey.set(key, {
-      value: key,
-      label: display.title,
-      icon: display.icon,
-      color: resolveCategoryColor(display.color, key),
+    // Order the filter options by each category's `sortOrder` (the user-defined
+    // reorder), not the first-seen-in-transactions order the Map above yields.
+    // `categories` already arrives ordered by `sortOrder` then `key`
+    // (categoriesRepo.allQuery), so its index is the display order. A key absent
+    // from `categories` (rare) sorts last, preserving the Map's stable order
+    // among such keys via a stable sort.
+    const orderByKey = new Map<string, number>();
+    categories.forEach((category, index) => {
+      orderByKey.set(category.key, index);
     });
-  }
-  // Order the filter options by each category's `sortOrder` (the user-defined
-  // reorder), not the first-seen-in-transactions order the Map above yields.
-  // `categories` already arrives ordered by `sortOrder` then `key`
-  // (categoriesRepo.allQuery), so its index is the display order. A key absent
-  // from `categories` (rare) sorts last, preserving the Map's stable order
-  // among such keys via a stable sort.
-  const categoryOrderByKey = new Map<string, number>();
-  categories.forEach((category, index) => {
-    categoryOrderByKey.set(category.key, index);
-  });
-  const categoryOptions = Array.from(categoryOptionsByKey.values()).sort((a, b) => {
-    const orderA = categoryOrderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
-    const orderB = categoryOrderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
+    return Array.from(byKey.values()).sort((a, b) => {
+      const orderA = orderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
+      const orderB = orderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
 
-    return orderA - orderB;
-  });
-  const filteredTransactions = transactions.filter((row) => {
-    const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
-    const matchesCategory =
-      selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
-    const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
+      return orderA - orderB;
+    });
+  }, [
+    transactions,
+    categories,
+    categoryByKey,
+    defaultCategoryKey,
+    categoryKeyForRow,
+    i18n.language,
+  ]);
+  const filteredTransactions = useMemo(
+    () =>
+      transactions.filter((row) => {
+        const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
+        const matchesCategory =
+          selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
+        const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
 
-    return matchesAccount && matchesCategory && matchesDate;
-  });
+        return matchesAccount && matchesCategory && matchesDate;
+      }),
+    [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow],
+  );
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
-  // newest-day-first with each day's rows newest-first.
-  const sections = groupByDay(filteredTransactions, now, t);
+  // newest-day-first with each day's rows newest-first. Keyed on the local DAY
+  // (not the per-render `now` millisecond): the day headers only change at
+  // midnight, so this recomputes when the filtered rows change or the day rolls,
+  // not on every reactive fire during a sync.
+  const todayStart = startOfLocalDay(now);
+  const sections = useMemo(
+    () => groupByDay(filteredTransactions, todayStart, t),
+    [filteredTransactions, todayStart, t],
+  );
 
   const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => {
     const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);

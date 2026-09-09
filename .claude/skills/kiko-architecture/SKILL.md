@@ -153,11 +153,17 @@ The sync pipeline is deliberately functional, not OOP — see
    conversion needed there.
 
    A card/jar whose currency code `currencyFromCode` cannot map is
-   SILENTLY SKIPPED (`upsertHoldings` in `src/monobank/sync.ts`)
+   SILENTLY SKIPPED (`upsertAllHoldings` in `src/monobank/sync.ts`)
    rather than thrown — the mapper still throws for every OTHER
-   caller, but `upsertHoldings` checks `currencyFromCode` first and
-   `continue`s past an unrepresentable account/jar instead of calling
-   the mapper. This used to throw outside the per-card try/catch and
+   caller, but `upsertAllHoldings` checks `currencyFromCode` first and
+   skips an unrepresentable account/jar instead of calling the mapper.
+   `upsertAllHoldings` collects every representable card/jar and writes
+   them in ONE batched transaction (`holdingsRepo.upsertMonobankMany`),
+   so op-sqlite fires the reactive `holdings` callback ONCE for the fast
+   phase — not once per card. The per-card write loop it replaced fanned
+   out N+M reactive fires in a tight burst at sync start, each re-running
+   the Home screen's O(n) render and starving the JS thread (the laggy
+   pull spinner). This used to throw outside the per-card try/catch and
    abort the whole sync on one foreign-currency sub-account; now every
    other, representable card still imports and the cursor still
    advances. The trade-off: an unrepresentable-currency holding is
@@ -188,7 +194,7 @@ unchanged since its statements were last imported (`isBalanceDiffSkip`).
 The prior balance is read from the CRASH-SAFE marker
 `holdings.syncedBalanceMinorUnits` (migration `0024`, schema in
 `src/db/schema.ts`), **not** `holdings.balanceMinorUnits`. This is
-load-bearing and was a data-loss bug before: `upsertHoldings` overwrites
+load-bearing and was a data-loss bug before: `upsertAllHoldings` overwrites
 `balanceMinorUnits` (the display balance) from client-info at the START
 of every run, BEFORE the per-card statement loop. A run that committed a
 card's new balance up front and was then interrupted (app background/kill)

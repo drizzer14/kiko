@@ -185,7 +185,11 @@ const makeInMemoryDeps = (
   // back the delay each call asked for, not merely that a call happened.
   const sleep = jest.fn(async (_milliseconds: number): Promise<void> => undefined);
 
-  const upsertHolding: SyncDeps['upsertHolding'] = async ({ monobankId, metadata, ...rest }) => {
+  const upsertOne = ({
+    monobankId,
+    metadata,
+    ...rest
+  }: Parameters<SyncDeps['upsertHoldings']>[0][number]): void => {
     const merged = { ...(metadata as Record<string, unknown> | null), monobankId };
     const existing = holdingsStore.find(
       (holding) =>
@@ -213,6 +217,15 @@ const makeInMemoryDeps = (
       color: null,
       metadata: merged,
     });
+  };
+
+  // Batched holdings upsert (mirrors `holdingsRepo.upsertMonobankMany`): one call
+  // per sync writes every card/jar, so the reactive `holdings` callback fires
+  // once for the fast phase rather than once per card.
+  const upsertHoldings: SyncDeps['upsertHoldings'] = async (holdings) => {
+    for (const holding of holdings) {
+      upsertOne(holding);
+    }
   };
 
   // Mirrors `transactionsRepo.addManyDedup`'s upsert on (source, externalId): a
@@ -280,7 +293,7 @@ const makeInMemoryDeps = (
       holdingsStore
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
-    upsertHolding,
+    upsertHoldings,
     // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
     setSyncedBalance: async (holdingId, balanceMinorUnits) => {
@@ -1090,15 +1103,15 @@ describe('runSync', () => {
 
     // The signal must already be ON while the fast-phase balances are upserted.
     let signalDuringUpsert: boolean | undefined;
-    const baseUpsert = deps.upsertHolding;
+    const baseUpsert = deps.upsertHoldings;
     if (baseUpsert === undefined) {
-      throw new Error('upsertHolding dep missing');
+      throw new Error('upsertHoldings dep missing');
     }
-    deps.upsertHolding = async (holding) => {
+    deps.upsertHoldings = async (holdings) => {
       if (signalDuringUpsert === undefined) {
         signalDuringUpsert = isSyncingSnapshot();
       }
-      return baseUpsert(holding);
+      return baseUpsert(holdings);
     };
 
     // Snapshot the signal at the FIRST gated statement fetch and at the LAST
@@ -1149,6 +1162,26 @@ describe('runSync', () => {
   // The per-run diagnostic: a single console.warn summarising the run's
   // fetch/skip/failure counts, so a dev reading a device log can tell whether
   // the balance-diff skip is engaging or a card is stuck in full-fetch mode.
+  // BUG C (fan-out coalescing): the fast-phase balance upsert must be ONE
+  // batched write, so op-sqlite fires the reactive `holdings` callback once for
+  // the whole fast phase — not once per card. A per-card write loop fanned out
+  // N+M reactive fires in a tight burst at sync start, each re-running Home's
+  // O(n) render and starving the JS thread (the laggy pull spinner). `write()`
+  // flushes reactive queries once per call, so ONE dep call == ONE fire.
+  it('upserts every card and jar in ONE batched write, not once per card', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    const upsertHoldings = jest.fn(deps.upsertHoldings as SyncDeps['upsertHoldings']);
+    deps.upsertHoldings = upsertHoldings;
+
+    await runSync(deps);
+
+    // A single batched call carries all three holdings (2 cards + 1 jar from the
+    // fixture), so the reactive callback fires once rather than three times.
+    expect(upsertHoldings).toHaveBeenCalledTimes(1);
+    expect(upsertHoldings.mock.calls[0][0]).toHaveLength(3);
+  });
+
   it('logs a one-line diagnostic summary once per run with the expected keys', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);

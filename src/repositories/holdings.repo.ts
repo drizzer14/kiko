@@ -320,6 +320,25 @@ export const holdingsRepo = {
       upsertByMetadataKey(tx, { ...rest, metadataField: 'monobankId', metadataKey: monobankId }),
     ),
   /**
+   * Upsert every Monobank card/jar of ONE client-info snapshot in a SINGLE
+   * transaction, so the reactive `holdings` callback fires ONCE for the whole
+   * fast phase instead of once per card. The per-card `upsertMonobank` loop the
+   * sync used before fanned out N+M separate transactions in a tight burst at
+   * sync start, and each reactive fire re-ran the Home screen's O(n) render —
+   * starving the JS thread and stuttering the pull spinner. Atomic is also
+   * strictly better: the balance snapshot lands all-or-nothing.
+   */
+  upsertMonobankMany: (holdings: MonobankHolding[]) =>
+    write(async (tx) => {
+      for (const { monobankId, ...rest } of holdings) {
+        await upsertByMetadataKey(tx, {
+          ...rest,
+          metadataField: 'monobankId',
+          metadataKey: monobankId,
+        });
+      }
+    }),
+  /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
    * see db/schema.ts) for one Monobank card to the balance whose statements the
    * sync just imported. The sync calls this ONLY after a card's statement

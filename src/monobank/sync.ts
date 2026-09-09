@@ -92,7 +92,13 @@ export interface SyncDeps {
   listAccounts: () => Promise<AccountRow[]>;
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
-  upsertHolding: (holding: MonobankHolding) => Promise<unknown>;
+  /**
+   * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
+   * so the reactive `holdings` callback fires ONCE for the fast phase rather
+   * than once per card (a tight N+M burst that starved the JS thread and
+   * stuttered the pull spinner). See `holdingsRepo.upsertMonobankMany`.
+   */
+  upsertHoldings: (holdings: MonobankHolding[]) => Promise<unknown>;
   /**
    * Advance one card's crash-safe statement-import marker
    * (`holdings.syncedBalanceMinorUnits`) to the balance whose statements were
@@ -164,7 +170,7 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  upsertHolding: (holding) => holdingsRepo.upsertMonobank(holding),
+  upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
   setSyncedBalance: (holdingId, balanceMinorUnits) =>
     holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
   addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
@@ -303,12 +309,19 @@ const markMonobankAccount = async (deps: SyncDeps, accountId: string): Promise<v
   }
 };
 
-const upsertHoldings = async (
+const upsertAllHoldings = async (
   deps: SyncDeps,
   accountId: string,
   accounts: MonobankAccount[],
   jars: MonobankJar[] | undefined,
 ): Promise<void> => {
+  // Collect every representable card/jar and upsert them in ONE batched write,
+  // so the reactive `holdings` callback fires ONCE for the whole fast phase. The
+  // per-card write loop this replaced fanned out N+M separate transactions in a
+  // tight burst at sync start, and each reactive fire re-ran the Home screen's
+  // O(n) render — starving the JS thread and stuttering the pull spinner.
+  const holdings: MonobankHolding[] = [];
+
   // A Monobank user with no cards/jars gets those fields omitted from the
   // /personal/client-info payload, so they arrive undefined. Default to an
   // empty list so the sync never crashes iterating an absent collection.
@@ -332,10 +345,7 @@ const upsertHoldings = async (
       });
       continue;
     }
-    await deps.upsertHolding({
-      ...mapAccountToHolding(account, accountId),
-      monobankId: account.id,
-    });
+    holdings.push({ ...mapAccountToHolding(account, accountId), monobankId: account.id });
   }
   for (const jar of jars ?? []) {
     // Same unrepresentable-currency carve-out as the accounts loop above: a
@@ -348,8 +358,10 @@ const upsertHoldings = async (
       });
       continue;
     }
-    await deps.upsertHolding({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
+    holdings.push({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
   }
+
+  await deps.upsertHoldings(holdings);
 };
 
 /**
@@ -656,7 +668,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // column — but it must be read before the upsert clobbers it.
   const priorHoldingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
 
-  await upsertHoldings(deps, accountId, accounts, jars);
+  await upsertAllHoldings(deps, accountId, accounts, jars);
 
   // The CURRENT holdings, after the upsert: this run's authoritative
   // monobankId → holding map, giving each card's holding id (needed for the

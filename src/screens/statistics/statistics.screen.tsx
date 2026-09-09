@@ -54,6 +54,7 @@ import {
   mccExcludedTransferTxIds,
 } from '../../statistics/transfer-exclusion';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
+import { transactionSpan } from '../../transactions/transaction-span';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
 
@@ -247,8 +248,21 @@ const StatisticsScreen: FC = () => {
   // The full transaction span drives the date field's default display, the line's
   // default window, and the backfill's earliest day. With no transactions the
   // start falls back to now.
-  const transactionTimes = transactions.map((transaction) => transaction.time);
-  const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
+  // Earliest transaction time in ONE O(n) pass (see `transactionSpan`);
+  // `Math.min(...times)` spread the whole array and overflowed the stack on a
+  // long history. Memoized on `transactions` alone; the empty-list fallback to
+  // `now` is applied outside so a per-render `now` never invalidates the memo.
+  const earliestTime = useMemo(
+    () =>
+      transactions.length > 0
+        ? transactionSpan(
+            transactions.map((transaction) => transaction.time),
+            0,
+          ).start
+        : null,
+    [transactions],
+  );
+  const spanStart = earliestTime ?? now;
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). Both bounds are TRUE local
