@@ -394,6 +394,25 @@ describe('HoldingFormScreen term deposit', () => {
   });
 });
 
+describe('HoldingFormScreen section titles', () => {
+  it('renders "Contributions" and "Terms" section titles in the term-deposit block', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+
+    expect(screen.getByText('Contributions')).toBeTruthy();
+    expect(screen.getByText('Terms')).toBeTruthy();
+  });
+
+  it('renders the "Details" section title in the bond block', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+
+    expect(screen.getByText('Details')).toBeTruthy();
+  });
+});
+
 describe('HoldingFormScreen save validation', () => {
   beforeEach(() => {
     createMock.mockClear();
@@ -984,6 +1003,7 @@ describe('HoldingFormScreen — localization', () => {
     const { getByText } = await renderScreen();
     await fireEvent.press(getByText('Облігація'));
 
+    expect(getByText('Деталі облігації')).toBeTruthy();
     expect(getByText('Кількість')).toBeTruthy();
     expect(getByText('Номінальна вартість')).toBeTruthy();
     expect(getByText('Купон %')).toBeTruthy();

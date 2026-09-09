@@ -13,6 +13,7 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
+import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { isSyncedHolding } from '../../holdings/deletable';
@@ -554,6 +555,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type === 'term_deposit' && (
           <Box gap={4}>
+            <Text variant="heading">{t('forms.holding.contributions')}</Text>
+
             {contributions.map((contribution, index) => (
               <Box key={contribution.id} gap={2}>
                 <TextField
@@ -592,6 +595,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               {t('forms.holding.addContribution')}
             </Button>
 
+            <Text variant="heading">{t('forms.holding.terms')}</Text>
+
             <TextField
               label={t('forms.holding.annualRatePct')}
               value={annualRate}
@@ -626,6 +631,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type === 'bond' && (
           <Box gap={4}>
+            <Text variant="heading">{t('forms.holding.details')}</Text>
+
             <TextField
               label={t('forms.holding.quantity')}
               value={quantity}
