@@ -9,7 +9,7 @@ import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
-import { setSyncing } from './sync-status';
+import { setSyncing, setSyncProgress } from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
 import { readToken } from './token';
 
@@ -522,7 +522,14 @@ const isBalanceDiffSkip = (
  * client-info order. This changes ONLY the fetch order — which cards are fetched
  * (the balance-diff skip) is decided unchanged inside the loop.
  */
-export const orderStatementQueue = (
+type SkipContext = {
+  isFullFetch: boolean;
+  priorHoldingByMonobankId: Map<string, HoldingRow>;
+  holdIds: Set<string>;
+  failedSet: Set<string>;
+};
+
+const orderStatementQueue = (
   accounts: MonobankAccount[],
   context: {
     priorHoldingByMonobankId: Map<string, HoldingRow>;
@@ -544,6 +551,36 @@ export const orderStatementQueue = (
   };
 
   return [...accounts].sort((a, b) => priority(a) - priority(b));
+};
+
+/**
+ * Partition the (already changed-first ordered) accounts into the cards that
+ * WILL be fetched this run and a skipped count, so the caller knows the
+ * determinate-progress denominator BEFORE the serial fetch loop starts. A
+ * missing holding is nothing to import into (matches `importAccount`'s own
+ * guard); a balance-diff-skipped card is a successful no-op. The `toFetch`
+ * order is preserved, so the changed-first queue still holds.
+ */
+const selectCardsToFetch = (
+  orderedAccounts: MonobankAccount[],
+  holdingByMonobankId: Map<string, HoldingRow>,
+  skipContext: SkipContext,
+): { toFetch: { account: MonobankAccount; holding: HoldingRow }[]; skipped: number } => {
+  const toFetch: { account: MonobankAccount; holding: HoldingRow }[] = [];
+  let skipped = 0;
+  for (const account of orderedAccounts) {
+    const holding = holdingByMonobankId.get(account.id);
+    if (!holding) {
+      continue;
+    }
+    if (isBalanceDiffSkip(account, holding, skipContext)) {
+      skipped += 1;
+      continue;
+    }
+    toFetch.push({ account, holding });
+  }
+
+  return { toFetch, skipped };
 };
 
 /**
@@ -612,7 +649,7 @@ const fromCursorSeconds = (
  * the narrow incremental cursor. Shares the null-cursor fallback in
  * `fromCursorSeconds`.
  */
-export const fromSecondsForCard = (
+const fromSecondsForCard = (
   account: MonobankAccount,
   prior: HoldingRow | undefined,
   context: {
@@ -701,11 +738,18 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // reaches here, so it neither re-lights nor prematurely clears the flag; the
   // flag is cleared only when the ACTUAL run settles, in `release` below.
   setSyncing(true);
+  // Reset the determinate progress signal at the START of the run — before the
+  // total is known — so the transactions-list bar shows nothing until the skip
+  // decision publishes a real total.
+  setSyncProgress({ completed: 0, total: 0 });
   const release = (): void => {
     if (inFlightSync === run) {
       inFlightSync = null;
     }
     setSyncing(false);
+    // Clear the progress signal when the run settles (success OR failure), so
+    // the bar hides.
+    setSyncProgress({ completed: 0, total: 0 });
   };
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
@@ -780,32 +824,28 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   });
 
   let importedTransactions = 0;
-  let fetched = 0;
-  let skipped = 0;
   const succeededIds: string[] = [];
   const failedIds: string[] = [];
   const failures: Error[] = [];
-  for (const account of orderedAccounts) {
-    // The balance-diff skip. A card is skipped — no statement fetch, no failure
-    // pushed (a skipped card is a successful no-op) — per `isBalanceDiffSkip`. A
-    // missing holding is nothing to import into (matches today's `importAccount`
-    // `if (!holding) return 0`).
-    const holding = holdingByMonobankId.get(account.id);
-    if (!holding) {
-      continue;
-    }
-    if (
-      isBalanceDiffSkip(account, holding, {
-        isFullFetch,
-        priorHoldingByMonobankId,
-        holdIds,
-        failedSet,
-      })
-    ) {
-      skipped += 1;
-      continue;
-    }
-    fetched += 1;
+
+  // The cards that WILL be fetched this run, changed-first, with the skipped
+  // count — decided BEFORE the serial fetch loop so the progress denominator is
+  // known up front. See `selectCardsToFetch`.
+  const { toFetch, skipped } = selectCardsToFetch(orderedAccounts, holdingByMonobankId, {
+    isFullFetch,
+    priorHoldingByMonobankId,
+    holdIds,
+    failedSet,
+  });
+  const fetched = toFetch.length;
+
+  // Publish the total now that the non-skipped set is decided; `completed` rises
+  // as each card's statements import. The transactions-list progress bar
+  // (`useSyncProgress`) renders `completed / total`.
+  setSyncProgress({ completed: 0, total: toFetch.length });
+
+  let completed = 0;
+  for (const { account, holding } of toFetch) {
     // Per-card from-window: a behind/NULL-marker card (or any card on a full
     // fetch) widens back to `lastFullSyncAt` to re-cover a transaction older than
     // the incremental cursor; a normally-in-sync card keeps the narrow
@@ -837,6 +877,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // next run while it stays unchanged.
       await deps.setSyncedBalance(holding.id, account.balance);
       succeededIds.push(account.id);
+      // One card's statements have committed: advance the determinate bar.
+      completed += 1;
+      setSyncProgress({ completed, total: toFetch.length });
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old

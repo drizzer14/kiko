@@ -82,8 +82,10 @@ jest.mock('../use-sync-all', () => ({
 // lights it via `runSync`, and Home binds `refreshing` straight to it. Mocked
 // so a test can drive the "a sync is running" flag without a real run.
 const mockUseSyncStatus = jest.fn();
+const mockUseSyncProgress = jest.fn(() => ({ completed: 0, total: 0 }));
 jest.mock('../../monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
+  useSyncProgress: () => mockUseSyncProgress(),
 }));
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which

@@ -49,6 +49,7 @@ import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
+import SyncProgressBar from './sync-progress-bar';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 
@@ -534,6 +535,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           style={styles.list}
           contentContainerStyle={styles.listContent(listBottomClearance)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          // The determinate per-card sync progress bar sits at the top of the
+          // list (in-list, not a fixed banner) and hides itself when no sync is
+          // fetching. The pull spinner above is a SEPARATE signal.
+          ListHeaderComponent={<SyncProgressBar />}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>

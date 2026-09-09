@@ -15,7 +15,7 @@ import {
   runSync,
   type SyncDeps,
 } from './sync';
-import { getSnapshot as isSyncingSnapshot } from './sync-status';
+import { getProgressSnapshot, getSnapshot as isSyncingSnapshot } from './sync-status';
 
 describe('mapStatementItem', () => {
   it('maps a Monobank item to a transaction with the source and external id', () => {
@@ -1527,6 +1527,34 @@ describe('runSync', () => {
       expect(fetchedIds(fetchStatement)).toContain(idA);
       expect(fetchedIds(fetchStatement)).not.toContain(idB);
     });
+  });
+
+  // ITEM 2: the determinate progress signal that drives the transactions-list
+  // progress bar. `total` is the count of cards that WILL be fetched (known once
+  // the skip decision is made), `completed` rises as each card imports, and the
+  // signal resets to zero when the run settles so the bar hides.
+  it('publishes determinate progress: total up front, completed per card, cleared at the end', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+
+    const samples: Array<{ completed: number; total: number }> = [];
+    const base = deps.fetchStatement as SyncDeps['fetchStatement'];
+    deps.fetchStatement = async (token, accountId, from, to, fetchImpl) => {
+      samples.push({ ...getProgressSnapshot() });
+      return base(token, accountId, from, to, fetchImpl);
+    };
+
+    await runSync(deps);
+
+    // First sync = full fetch, so both fixture cards are fetched. `total` is 2
+    // before the first statement fetch; `completed` is the number of cards
+    // already imported at each fetch.
+    expect(samples).toEqual([
+      { completed: 0, total: 2 },
+      { completed: 1, total: 2 },
+    ]);
+    // Cleared once the run settles, so the bar hides.
+    expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
   });
 
   // ITEM 3: a card that changed on a monthly cadence can sit LAST in client-info
