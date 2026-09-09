@@ -50,14 +50,38 @@ if harness_unchanged "$ROOT" "mutation" "$fp"; then
   exit 0
 fi
 
+# Diff-scope the mutation to the source files THIS branch changed, so the manual
+# gate is cheap. Compare against the merge-base with $KIKO_MUTATION_BASE (default
+# main) — i.e. "what this branch changed" — and mutate only those .ts/.tsx files,
+# EXCLUDING tests and fixtures (matching the config's own mutate excludes). An
+# explicit --mutate list overrides Stryker's whole-tree glob. `KIKO_MUTATION_FULL=1`
+# forces the whole-project run; a base whose merge-base cannot be resolved also
+# falls back to the whole project (never silently mutate nothing).
+mutate_arg=""
+if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
+  base="${KIKO_MUTATION_BASE:-main}"
+  merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
+  if [ -n "$merge_base" ]; then
+    changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
+      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/)' || true)"
+    if [ -z "$changed" ]; then
+      # This branch changed no mutable source file — nothing to mutate, pass.
+      exit 0
+    fi
+    csv="$(printf '%s' "$changed" | tr '\n' ',')"
+    mutate_arg="--mutate=${csv%,}"
+  fi
+fi
+
 # Stream Stryker's output to stdout LIVE (via tee) while still capturing it for
 # the failure block and preserving its real exit code. `pipefail` is already set
 # at the top, and PIPESTATUS[0] reads the producer's status through the tee, not
 # tee's own — read immediately after the pipe, before any other command resets
 # it. check:deep is manual and NOT hook-wired, so the "silent on success" hook
-# contract does not apply: streaming a run's progress is the point.
+# contract does not apply: streaming a run's progress is the point. `$mutate_arg`
+# is a single token with no spaces (or empty), so the unquoted expansion is safe.
 tmp="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation.XXXXXX")"
-"$BIN" run 2>&1 | tee "$tmp"
+"$BIN" run $mutate_arg 2>&1 | tee "$tmp"
 code="${PIPESTATUS[0]}"
 out="$(cat "$tmp")"
 rm -f "$tmp"

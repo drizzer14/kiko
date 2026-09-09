@@ -39,6 +39,18 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `node_modules` binary, so production and the pinned-version guarantee
   are unchanged. A fast, hook-wired wrapper must still be silent on
   success.
+
+  `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
+  `.tsx` source files this branch changed vs the merge-base with
+  `${KIKO_MUTATION_BASE:-main}` (tests and fixtures — `*.test.ts(x)`,
+  `__tests__/`, `rules/fixtures/` — excluded to match the config's mutate
+  excludes), passed to Stryker as an explicit `--mutate` list that
+  overrides the whole-tree glob. An empty changed set exits 0 (nothing to
+  mutate). `KIKO_MUTATION_FULL=1` forces the whole project, and an
+  unresolvable merge-base also falls back to the whole project — the gate
+  never silently mutates nothing. This keeps the manual `check:deep`
+  cheap; the diff logic is tested hermetically (a throwaway git repo, the
+  real script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 - Fail closed: a missing required tool (semgrep, plutil, tsc) or a
   tool that crashes/exits non-zero-non-one is a **failure block**, not
   a silent pass and not a skip. A scan that never actually ran must
