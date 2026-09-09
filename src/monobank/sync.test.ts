@@ -942,16 +942,13 @@ describe('runSync', () => {
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
   });
 
-  // BUG A fix 2 — the "last sync" display must not read CURRENT while a card is
-  // stranded. A partial failure leaves the failed card's window un-covered (the
-  // cursor stays put to re-cover it next run), so the sync is NOT complete: some
-  // of the user's transactions and charts are still stale. Stamping the display
-  // then made "Last sync: just now" falsely current. The display stamp is now
-  // gated the same as a clean run — it fires ONLY when no card is left
-  // stranded/pending (`failures.length === 0`) — so a partial failure moves
-  // NEITHER the cursor NOR the display. (An EARLIER design stamped the display
-  // on a partial failure "so the user sees it landed"; that was reversed here.)
-  it('stamps NEITHER the cursor NOR the display timestamp on a partial failure', async () => {
+  // The DISPLAY timestamp is decoupled from the statement cursor: a partial
+  // failure that still imported at least one card's rows must move the "last
+  // synced" display (so the user sees it landed) WITHOUT advancing the cursor
+  // (so the failed card's window is re-covered next run). The crash-safe marker
+  // (BUG A fix 1) is what prevents a stranded card from being silently skipped,
+  // so stamping "last sync" on any success no longer reads falsely current.
+  it('stamps the display timestamp but NOT the cursor on a partial failure that imported something', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const idA = clientInfo.accounts[0].id;
     const idB = clientInfo.accounts[1].id;
@@ -977,11 +974,11 @@ describe('runSync', () => {
 
     await expect(runSync(deps)).rejects.toThrow();
 
-    // Card A failed, so the run left a card stranded: neither timestamp moves.
-    // Card B's imported rows are still durable (its own transaction committed);
-    // only the run-level "this sync is current" stamps are withheld.
+    // The failed card leaves the cursor put, but card B imported, so the
+    // display stamp still moves — to the injected `now`.
     expect(setLastSyncAt).not.toHaveBeenCalled();
-    expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
+    expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
   });
 
   // A TOTAL failure (every card errored) never reached any statement, so it

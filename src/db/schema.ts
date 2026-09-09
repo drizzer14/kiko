@@ -186,16 +186,17 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
-  // The DISPLAY "last synced" timestamp (epoch ms), updated ONLY on a sync run
-  // that leaves NO card stranded (every card synced without error), whether or
-  // not any new rows imported. It is decoupled from `lastSyncAt` (the pure
-  // Monobank statement CURSOR) in MEANING — a clean run that only refreshed held
-  // rows moves the display without advancing the cursor's queried ceiling — but
-  // it is NOT stamped on a partial failure: the failed card's window stays
-  // un-covered (the cursor deliberately holds so next run re-covers it), so the
-  // sync is not current and "Last sync: just now" would be false (BUG A). A
-  // total failure is likewise not stamped. NULLABLE: rows that existed before
-  // this column read null, and the display falls back to `lastSyncAt`.
+  // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
+  // that reached Monobank with at least one card succeeding — including a
+  // PARTIAL failure, where some cards imported but one threw. Decoupled from
+  // `lastSyncAt`, which stays the pure Monobank statement CURSOR (advanced only
+  // on a fully clean run). A partial failure must not advance the cursor — the
+  // failed card's window has to be re-covered — yet the user should still see
+  // that a sync just landed, so the display stamp moves independently. This is
+  // NOT falsely current: the crash-safe marker (`syncedBalanceMinorUnits`) makes
+  // a still-pending card re-fetch next run rather than being silently skipped.
+  // NULLABLE: rows that existed before this column read null, and the display
+  // falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
   // The epoch-ms timestamp of the last FULL statement fetch (every card
   // fetched regardless of balance). The steady-state sync SKIPS a card whose

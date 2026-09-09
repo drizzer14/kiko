@@ -115,12 +115,12 @@ export interface SyncDeps {
   setLastSyncAt: (timestamp: number) => Promise<unknown>;
   /**
    * Stamp the DISPLAY "last synced" timestamp — decoupled from the statement
-   * cursor (`setLastSyncAt`) in WHAT it means but gated the same way. Written
-   * ONLY on a run that leaves no card stranded (`failures.length === 0`),
-   * whether or not any new rows imported, so "Last sync" never reads current
-   * while a partial failure's failed card is still un-covered (BUG A). It is
-   * still decoupled from the cursor in value — a clean run that only refreshed
-   * held rows advances the display without moving the cursor's queried ceiling.
+   * cursor (`setLastSyncAt`). Written on every run that REACHED Monobank with at
+   * least one card succeeding (INCLUDING a partial failure), regardless of
+   * whether any new rows imported, so the user sees a fresh time even when the
+   * cursor deliberately stays put to re-cover a failed card. The crash-safe
+   * marker (`syncedBalanceMinorUnits`) makes a still-pending card re-fetch next
+   * run, so stamping on any success is honest, not falsely current.
    */
   setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
   /**
@@ -789,20 +789,26 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     elapsedMs: deps.now() - startedAt,
   });
 
-  // Move the DISPLAY "last synced" stamp ONLY when this run leaves NO card
-  // stranded — i.e. every card synced without error (`failures.length === 0`).
-  // The label means "Last sync", so it must not read CURRENT while a card's
-  // window is still un-covered: a PARTIAL failure keeps the statement cursor put
-  // to re-cover the failed card next run, so some of the user's transactions and
-  // charts are still stale, and stamping then made "Last sync: just now" falsely
-  // current (BUG A). A TOTAL failure is likewise not stamped (it reached no
-  // statement). A clean run still stamps regardless of whether any new rows
-  // imported — a re-sync that fetched every card and found nothing new, or one
-  // that skipped every unchanged-and-imported card, is a real, successful sync
-  // (the label is "Last sync", not "last import"), and the crash-safe marker
-  // (`syncedBalanceMinorUnits`) guarantees a skipped card is genuinely imported,
-  // never silently stranded. This still sits BEFORE the partial-failure `throw`.
-  if (failures.length === 0) {
+  // Move the DISPLAY "last synced" stamp whenever this run REACHED Monobank
+  // successfully — i.e. at least one card synced without error — regardless of
+  // whether any new rows imported. The label means "Last sync", not "last
+  // import": a clean re-sync that fetched every card but found nothing new is
+  // still a real, successful sync and must refresh the time the user sees.
+  //
+  // Gated on "≥1 card succeeded" (`failures.length < accounts.length`), not on
+  // an unconditional stamp: a TOTAL failure (every card errored) never reached
+  // any statement, so it must NOT announce a fresh "Last sync". A PARTIAL
+  // success (some cards imported, one failed) still stamps — this sits BEFORE
+  // the partial-failure `throw` below. This is decoupled from the statement
+  // cursor (`setLastSyncAt`), which advances only on a fully clean run.
+  //
+  // Stamping on ANY success does NOT re-introduce the false-current bug: the
+  // crash-safe marker (`syncedBalanceMinorUnits`, BUG A fix 1) makes a
+  // still-pending card RE-FETCH next run rather than being skipped, so "Last
+  // sync" tracking the last reached-Monobank run is honest. Stamping only on a
+  // fully clean run would instead FREEZE "Last sync" whenever one card fails
+  // persistently, which is the outcome the user rejected.
+  if (failures.length < accounts.length) {
     await deps.setLastSyncDisplayAt(deps.now());
   }
 
