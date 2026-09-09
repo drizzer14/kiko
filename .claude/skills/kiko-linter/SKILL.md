@@ -26,7 +26,19 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   DO-NOT block) to stderr, then `exit 2`.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
-  wrapper and every hook relies on.
+  wrapper and every hook relies on. The ONE exception is the deep,
+  manual tier that is NOT hook-wired (`scripts/checks/mutation.sh`):
+  `check:deep` is run by hand, never on `Stop`/`SubagentStop`, so the
+  hook contract does not apply and it STREAMS Stryker's output to stdout
+  live (`"$BIN" run 2>&1 | tee "$tmp"`, exit code via `PIPESTATUS[0]`) so
+  a multi-minute run shows progress. It still prints the structured block
+  and `exit 2` on failure, and still records the content-dedup pass
+  fingerprint on success. Its streaming and exit-code behavior is tested
+  against a stub binary through the `KIKO_MUTATION_BIN` seam
+  (`__tests__/mutation-stream.test.ts`); the seam defaults to the pinned
+  `node_modules` binary, so production and the pinned-version guarantee
+  are unchanged. A fast, hook-wired wrapper must still be silent on
+  success.
 - Fail closed: a missing required tool (semgrep, plutil, tsc) or a
   tool that crashes/exits non-zero-non-one is a **failure block**, not
   a silent pass and not a skip. A scan that never actually ran must

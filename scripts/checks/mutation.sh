@@ -4,7 +4,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-BIN="$ROOT/node_modules/.bin/stryker"
+# The pinned Stryker binary. KIKO_MUTATION_BIN overrides it ONLY so this
+# wrapper's streaming and exit-code behavior is testable against a fast stub
+# binary (scripts/checks/mutation.test via __tests__/) without a multi-minute
+# real mutation run. It defaults to the pinned node_modules binary, so
+# production is unchanged and the pinned-version guarantee still holds.
+BIN="${KIKO_MUTATION_BIN:-$ROOT/node_modules/.bin/stryker}"
 
 if [ ! -x "$BIN" ]; then
   print_block \
@@ -45,8 +50,17 @@ if harness_unchanged "$ROOT" "mutation" "$fp"; then
   exit 0
 fi
 
-out="$("$BIN" run 2>&1)"
-code=$?
+# Stream Stryker's output to stdout LIVE (via tee) while still capturing it for
+# the failure block and preserving its real exit code. `pipefail` is already set
+# at the top, and PIPESTATUS[0] reads the producer's status through the tee, not
+# tee's own — read immediately after the pipe, before any other command resets
+# it. check:deep is manual and NOT hook-wired, so the "silent on success" hook
+# contract does not apply: streaming a run's progress is the point.
+tmp="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation.XXXXXX")"
+"$BIN" run 2>&1 | tee "$tmp"
+code="${PIPESTATUS[0]}"
+out="$(cat "$tmp")"
+rm -f "$tmp"
 if [ "$code" -ne 0 ]; then
   print_block \
     "Stryker (mutation testing)" \
