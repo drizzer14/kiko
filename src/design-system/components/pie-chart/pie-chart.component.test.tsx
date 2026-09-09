@@ -1,4 +1,4 @@
-import { render, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -206,6 +206,103 @@ describe('PieChart', () => {
     expect(getByText(/\$1,000\.00/)).toBeTruthy();
     // ...but the "Total" caption that used to sit beneath it is gone.
     expect(queryByText('Total')).toBeNull();
+  });
+
+  // A set with two slices at or above 5% (a, b) and two below (c at exactly the
+  // 0.05 boundary is KEPT, d below it is cropped) — so a collapsed legend hides
+  // exactly one row while the ring still draws all four arcs.
+  const mixedShareSlices: AccountSlice[] = [
+    { accountId: 'a', name: 'Alpha', amount: 800, share: 0.8, color: '#FF375F' },
+    { accountId: 'b', name: 'Bravo', amount: 120, share: 0.12, color: '#30D158' },
+    { accountId: 'c', name: 'Charlie', amount: 50, share: 0.05, color: '#0A84FF' },
+    { accountId: 'd', name: 'Delta', amount: 30, share: 0.03, color: '#FF9F0A' },
+  ];
+
+  it('without `legendMinShare`, shows every legend row and renders no toggle', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <PieChart slices={mixedShareSlices} baseCurrency="USD" />,
+    );
+
+    expect(getByTestId('pie-chart-legend-a')).toBeTruthy();
+    expect(getByTestId('pie-chart-legend-d')).toBeTruthy();
+    expect(queryByTestId('pie-chart-legend-toggle')).toBeNull();
+  });
+
+  it('with `legendMinShare`, crops the legend to slices at or above the threshold and shows a toggle', async () => {
+    const { getByTestId, getByText, queryByTestId } = await render(
+      <PieChart slices={mixedShareSlices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    // a/b/c are at or above 0.05 and stay; d (0.03) is cropped by default.
+    expect(getByTestId('pie-chart-legend-a')).toBeTruthy();
+    expect(getByTestId('pie-chart-legend-b')).toBeTruthy();
+    expect(getByTestId('pie-chart-legend-c')).toBeTruthy();
+    expect(queryByTestId('pie-chart-legend-d')).toBeNull();
+
+    // The percent labels stay allocated over ALL four slices, so a kept row
+    // reads its full-set share (a is 80%), not a share recomputed over the
+    // cropped subset.
+    expect(getByText('80%')).toBeTruthy();
+
+    const toggle = getByTestId('pie-chart-legend-toggle');
+    expect(within(toggle).getByText('Show all')).toBeTruthy();
+  });
+
+  it('reveals the sub-threshold rows when "Show all" is tapped, then collapses on "Show less"', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <PieChart slices={mixedShareSlices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    await fireEvent.press(getByTestId('pie-chart-legend-toggle'));
+
+    expect(getByTestId('pie-chart-legend-d')).toBeTruthy();
+    expect(within(getByTestId('pie-chart-legend-toggle')).getByText('Show less')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('pie-chart-legend-toggle'));
+
+    expect(queryByTestId('pie-chart-legend-d')).toBeNull();
+    expect(within(getByTestId('pie-chart-legend-toggle')).getByText('Show all')).toBeTruthy();
+  });
+
+  it('still draws every arc while the legend is collapsed — the ring is never cropped', async () => {
+    const { getByTestId } = await render(
+      <PieChart slices={mixedShareSlices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    // d's legend row is cropped, but its ring arc still draws.
+    expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
+    expect(getByTestId('pie-chart-arc-d')).toBeTruthy();
+  });
+
+  it('shows every row and renders no toggle when no slice reaches the threshold', async () => {
+    // 25 equal slices of 0.04 each — every share is below 0.05, so there is
+    // nothing to crop and no toggle to render.
+    const allTinySlices: AccountSlice[] = Array.from({ length: 25 }, (_, index) => ({
+      accountId: `t${index}`,
+      name: `Tiny ${index}`,
+      amount: 4,
+      share: 0.04,
+      color: '#0A84FF',
+    }));
+
+    const { getByTestId, queryByTestId } = await render(
+      <PieChart slices={allTinySlices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    expect(getByTestId('pie-chart-legend-t0')).toBeTruthy();
+    expect(getByTestId('pie-chart-legend-t24')).toBeTruthy();
+    expect(queryByTestId('pie-chart-legend-toggle')).toBeNull();
+  });
+
+  it('renders no toggle when every slice already reaches the threshold', async () => {
+    // slices (0.6/0.3/0.1) are all at or above 0.05 — nothing is cropped.
+    const { getByTestId, queryByTestId } = await render(
+      <PieChart slices={slices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    expect(getByTestId('pie-chart-legend-a1')).toBeTruthy();
+    expect(getByTestId('pie-chart-legend-a3')).toBeTruthy();
+    expect(queryByTestId('pie-chart-legend-toggle')).toBeNull();
   });
 
   it('renders an empty-state message when there are no slices', async () => {

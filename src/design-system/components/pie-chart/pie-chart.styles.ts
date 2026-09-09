@@ -44,6 +44,17 @@ export const styles = StyleSheet.create((theme) => ({
     width: theme.spacing(11),
     alignItems: 'flex-end',
   },
+  // The "Show all" / "Show less" legend toggle: a self-aligned tap target sat
+  // under the legend rows, padded vertically so the touch area clears the row
+  // gap. It reads as a caption-sized accent link, not a filled button.
+  legendToggle: {
+    alignSelf: 'flex-start',
+    paddingVertical: theme.spacing(1),
+  },
+  // The toggle label wears the accent color so it reads as a tappable link.
+  legendToggleLabel: {
+    color: theme.colors.accent,
+  },
   // The small square swatch; its background colour is filled per-entry from
   // the slice palette, so only the shared shape lives here.
   swatch: {

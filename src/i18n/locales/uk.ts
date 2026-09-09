@@ -334,6 +334,8 @@ export const uk: typeof en = {
     },
     pieChart: {
       emptyDefault: 'Немає рахунків для показу',
+      showAll: 'Показати всі',
+      showLess: 'Згорнути',
     },
     swipeableRow: {
       confirmMessage: 'Це неможливо скасувати.',
