@@ -3,8 +3,6 @@ import { buildCategoryDisplayMap } from '../categories/category-display';
 import { type BreakdownTransaction, categoryColor } from './category-breakdown';
 import { buildCategoryTrend, type TrendTransaction } from './category-trend';
 
-const DARK = 'dark' as const;
-
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
   { key: 'transport', title: 'Transport', icon: 'car' },
@@ -45,7 +43,6 @@ const buildTrend = (
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
-    colorScheme: DARK,
     now: NOW,
     ...extra,
   });
@@ -78,15 +75,7 @@ describe('buildCategoryTrend', () => {
     const series = buildTrend([tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00 })]);
 
     expect(series[0].title).toBe('Groceries');
-    expect(series[0].color).toBe(categoryColor('groceries', 'dark'));
-  });
-
-  it('threads the color scheme into the series color (light differs from dark)', () => {
-    const series = buildTrend([tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00 })], {
-      colorScheme: 'light',
-    });
-
-    expect(series[0].color).toBe(categoryColor('groceries', 'light'));
+    expect(series[0].color).toBe(categoryColor('groceries'));
   });
 
   it('ignores income (non-negative amounts) entirely', () => {

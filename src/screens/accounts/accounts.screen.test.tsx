@@ -6,9 +6,7 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
 
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import { entityCardBackground } from '../../design-system/entity-tint';
-import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -370,23 +368,6 @@ describe('AccountsScreen', () => {
 
     // A `cash` account with no color reads the cash kind default (khaki).
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
-  });
-
-  it('resolves the kind default color from the LIGHT entity set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the card list's `defaultAccountColor`
-    // lookup picks the light entity set (see color-scheme.ts / palette.ts). The
-    // card `renderItem` reuses the single scheme read at the screen top.
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-      const { getByLabelText } = await renderAccounts();
-
-      // The cash kind default is `khaki`, resolved from the LIGHT set here.
-      expect(getByLabelText('Cash icon').props.tintColor).toBe(entityColorsByScheme.light.khaki);
-      expect(entityColorsByScheme.light.khaki).not.toBe(entityColorsByScheme.dark.khaki);
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('washes each account card with a flat darkened background of its color on first render', async () => {

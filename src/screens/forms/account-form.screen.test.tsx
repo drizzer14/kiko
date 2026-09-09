@@ -1,8 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
-import * as colorSchemeModule from '../../design-system/color-scheme';
-import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import {
@@ -269,24 +267,6 @@ describe('AccountFormScreen color follows kind until dirty', () => {
     const { getByLabelText } = await renderForm();
 
     expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
-  });
-
-  it("resolves the default kind's color from the LIGHT entity set on the light theme", async () => {
-    // Spy the scheme resolver → 'light' so `defaultAccountColor(scheme)` picks
-    // the light entity set (see color-scheme.ts / palette.ts). A create defaults
-    // to the `bank` kind, whose default is `white`; the identity icon (the
-    // neutral 'square.grid.2x2' placeholder) wears the resolved effective color.
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      const { getByLabelText } = await renderForm();
-
-      expect(getByLabelText('Icon square.grid.2x2').props.tintColor).toBe(
-        entityColorsByScheme.light.white,
-      );
-      expect(entityColorsByScheme.light.white).not.toBe(entityColorsByScheme.dark.white);
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('re-derives the color to the newly selected kind default while not dirty', async () => {

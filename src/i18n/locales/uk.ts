@@ -42,7 +42,6 @@ export const uk: typeof en = {
     },
     baseCurrency: 'Основна валюта',
     categories: 'Категорії',
-    colorScheme: 'Тема',
     language: 'Мова',
     system: 'Системні',
     title: 'Налаштування',
@@ -50,10 +49,6 @@ export const uk: typeof en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
-  },
-  appearance: {
-    followSystem: 'Слідувати системним налаштуванням',
-    darkMode: 'Темний режим',
   },
   calendar: {
     month: {

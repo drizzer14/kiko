@@ -106,11 +106,10 @@ describe('AddCategoryRow', () => {
   });
 
   // The entity-color swatch name whose hex the color picker rings when the empty
-  // form opens: the per-key palette fallback for the placeholder preview key,
-  // resolved off the DARK scheme (the unistyles Jest mock reports themeName
-  // undefined -> resolveColorScheme -> 'dark'). Computed from the same resolver
-  // the row uses so this stays correct if the palette hash changes.
-  const openPreviewHex = resolveCategoryColor(null, 'new-category', 'dark');
+  // form opens: the per-key palette fallback for the placeholder preview key.
+  // Computed from the same resolver the row uses so this stays correct if the
+  // palette hash changes.
+  const openPreviewHex = resolveCategoryColor(null, 'new-category');
   const openSwatchName = Object.entries(darkTheme.colors.entityColors).find(
     ([, hex]) => hex === openPreviewHex,
   )?.[0];

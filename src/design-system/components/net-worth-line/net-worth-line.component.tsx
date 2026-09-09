@@ -23,7 +23,6 @@ import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact
 import type { Currency } from '../../../currency/currency';
 import { activeLocale } from '../../../i18n/active-locale';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import { resolveColorScheme } from '../../color-scheme';
 import Box from '../box';
 import Text from '../text';
 
@@ -68,19 +67,16 @@ const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
 // The line-adjacent gradient stop's opacity (the reference-adjacent stop
-// always fades to fully transparent — see the Stop opacity={0} below, which
-// is unaffected by any of this). Green/positive uses this same value on both
-// themes, and so does red/negative on LIGHT. Red/negative on DARK needs a
-// higher value: alpha-compositing a translucent color over a background is
-// `fg * alpha + bg * (1 - alpha)`, and the dark theme's background is OLED
-// true-black (`darkTheme.colors.background`, `#000000`), so a low alpha
-// blends straight down toward near-black (`bg` contributes ~0) — the same
-// 0.3 that reads clearly against light's off-white `#F2F2F7` surface
-// (`lightTheme.colors.background`) went barely visible on dark. This is
-// opacity only: the fill color itself still comes from the theme token
-// (`theme.colors.negative`) on both schemes, unchanged.
+// always fades to fully transparent — see the Stop opacity={0} below). The
+// green/positive band uses `AREA_OPACITY`; the red/negative band needs a
+// higher value on the OLED true-black background (`darkTheme.colors.background`,
+// `#000000`): alpha-compositing a translucent color over a background is
+// `fg * alpha + bg * (1 - alpha)`, so a low alpha blends straight down toward
+// near-black (`bg` contributes ~0) and reads barely visible — `0.5` keeps a
+// shallow dip legible. This is opacity only: the fill color itself still comes
+// from the theme token (`theme.colors.negative`).
 const AREA_OPACITY = 0.3;
-const NEGATIVE_AREA_OPACITY_DARK = 0.5;
+const NEGATIVE_AREA_OPACITY = 0.5;
 
 type Scales = {
   x: (t: number) => number;
@@ -345,7 +341,7 @@ export const buildLineSegments = (
 // point strictly on its side collapses its extreme to `referenceY`, which the
 // caller reads as "empty" (its top === referenceY) and does not render — so a
 // degenerate zero-height gradient is never emitted. Anchoring the 0->opaque
-// ramp (AREA_OPACITY, or NEGATIVE_AREA_OPACITY_DARK for red on dark — see
+// ramp (AREA_OPACITY, or NEGATIVE_AREA_OPACITY for red — see
 // those constants) into this sliver is what makes a SHALLOW dip (or rise)
 // show readable color, instead of living where the whole-plot ramp's opacity
 // was ~0.
@@ -404,12 +400,10 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   loading = false,
   height = DEFAULT_HEIGHT,
 }) => {
-  const { theme, rt } = useUnistyles();
-  // The red/negative fill needs more opacity on dark than on light (see
-  // NEGATIVE_AREA_OPACITY_DARK above) — scheme-aware, reactive to a live
-  // appearance switch the same way `theme` itself is.
-  const negativeAreaOpacity =
-    resolveColorScheme(rt.themeName) === 'dark' ? NEGATIVE_AREA_OPACITY_DARK : AREA_OPACITY;
+  const { theme } = useUnistyles();
+  // The red/negative fill needs more opacity than the green band on the OLED
+  // true-black background (see NEGATIVE_AREA_OPACITY above).
+  const negativeAreaOpacity = NEGATIVE_AREA_OPACITY;
   // formatAxisTime and formatCompactMoney below both read activeLocale() at
   // render/call time, not via a subscription of their own (formatAxisTime is
   // a module-scope helper). Subscribing here, the same as MoneyText, is what

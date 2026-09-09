@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm';
 
-import type { Appearance } from '../appearance/appearance';
 import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { settings } from '../db/schema';
@@ -82,6 +81,4 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ failedSyncMonobankIds: ids }).where(eq(settings.id, SETTINGS_ID)),
     ),
-  setAppearance: (appearance: Appearance) =>
-    write((tx) => tx.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID))),
 } satisfies Repository;

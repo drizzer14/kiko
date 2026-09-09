@@ -2,7 +2,6 @@ import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
@@ -10,7 +9,6 @@ import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -161,13 +159,6 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
-
-  // The active color scheme (light/dark), read ONCE here and threaded into every
-  // palette consumer below (the three chart builders and the account entity
-  // color) so each picks the matching light/dark set (see color-scheme.ts /
-  // palette.ts). Read from the active Unistyles theme name, never `darkTheme`.
-  const { rt } = useUnistyles();
-  const colorScheme = resolveColorScheme(rt.themeName);
 
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
@@ -362,9 +353,8 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
-        colorScheme,
       }),
-    [filtered, rateTable, baseCurrency, now, colorScheme],
+    [filtered, rateTable, baseCurrency, now],
   );
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in
@@ -542,7 +532,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         excludedTransactionIds,
       }),
     [
@@ -551,7 +540,6 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       excludedTransactionIds,
     ],
   );
@@ -621,7 +609,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         excludedCategories: excludedCategoryKeys,
         excludedTransactionIds,
       }),
@@ -631,7 +618,6 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       excludedCategoryKeys,
       excludedTransactionIds,
     ],
@@ -661,7 +647,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         now,
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
@@ -672,7 +657,6 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       now,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
@@ -760,11 +744,7 @@ const StatisticsScreen: FC = () => {
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
     value: account.name,
     icon: account.icon ?? undefined,
-    color: resolveEntityColor(
-      account.color,
-      defaultAccountColor(colorScheme)[account.kind],
-      colorScheme,
-    ),
+    color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
   }));
 
   return (

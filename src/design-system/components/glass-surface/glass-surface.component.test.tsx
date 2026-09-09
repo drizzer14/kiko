@@ -5,7 +5,6 @@ import { StyleSheet, Text } from 'react-native';
 // assertion reads the expected value from the same source the style uses.
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../unistyles';
-import * as colorSchemeModule from '../../color-scheme';
 import { darkTheme } from '../../theme';
 
 // Imported through the folder's index (the real path a screen consumes,
@@ -254,38 +253,14 @@ describe('GlassSurface', () => {
       expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
     });
 
-    // The active theme drives the native glass's colorScheme, not a hardcoded
-    // literal — the global mock resolves `rt.themeName === undefined` through
-    // `resolveColorScheme` to 'dark', so the default assertion here is 'dark'.
-    // The light-branch case below spies on `resolveColorScheme` (the seam this
-    // task introduces) rather than fighting the Unistyles mock's frozen runtime.
-    it("passes the active theme's colorScheme to the native glass (dark by default under mock)", async () => {
+    // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.
+    it('passes a fixed dark colorScheme to the native glass', async () => {
       const { getByTestId } = await render(
         <GlassSurface testID="glass-surface" tint="rgba(255,69,58,0.1)">
           <Text>content</Text>
         </GlassSurface>,
       );
       expect(getByTestId('glass-surface-base').props.colorScheme).toBe('dark');
-    });
-  });
-
-  describe('GlassSurface on the light theme', () => {
-    beforeEach(() => {
-      liquidGlass.isLiquidGlassSupported = true;
-      jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    });
-    afterEach(() => {
-      liquidGlass.isLiquidGlassSupported = false;
-      jest.restoreAllMocks();
-    });
-
-    it('passes the resolved light colorScheme to the native glass', async () => {
-      const { getByTestId } = await render(
-        <GlassSurface testID="glass-surface" tint="rgba(255,69,58,0.1)">
-          <Text>content</Text>
-        </GlassSurface>,
-      );
-      expect(getByTestId('glass-surface-base').props.colorScheme).toBe('light');
     });
   });
 });

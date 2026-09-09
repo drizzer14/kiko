@@ -5,7 +5,6 @@ import '../../design-system/unistyles';
 import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import { resolveBottomClearance } from '../../design-system/components/screen';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
@@ -313,9 +312,7 @@ describe('HomeScreen', () => {
     });
     const { getByLabelText, getByTestId, getAllByLabelText } = await renderHome();
 
-    expect(getByLabelText('Other').props.tintColor).toBe(
-      resolveCategoryColor(null, 'other', 'dark'),
-    );
+    expect(getByLabelText('Other').props.tintColor).toBe(resolveCategoryColor(null, 'other'));
 
     await act(async () => {
       fireEvent.press(getByTestId('category-filter-menu'));
@@ -324,29 +321,6 @@ describe('HomeScreen', () => {
 
     expect(tints.length).toBeGreaterThan(1);
     expect(new Set(tints).size).toBe(1);
-  });
-
-  it('resolves an uncolored category from the LIGHT set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the per-row category icon color picks
-    // the light chart set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      seed({
-        categories: [{ key: 'other', title: 'Other', icon: 'square.grid.2x2' }],
-        transactions: [transaction({ category: 'NoSuchCategory' })],
-      });
-      const { getByLabelText } = await renderHome();
-
-      expect(getByLabelText('Other').props.tintColor).toBe(
-        resolveCategoryColor(null, 'other', 'light'),
-      );
-      // Sanity: the light hue differs from the dark one.
-      expect(resolveCategoryColor(null, 'other', 'light')).not.toBe(
-        resolveCategoryColor(null, 'other', 'dark'),
-      );
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('renders the signed transaction amount', async () => {

@@ -7,10 +7,9 @@ description: Invoke when touching theme tokens, react-native-unistyles styles, a
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
-`src/design-system/theme.ts`, which now ships two themes —
-`darkTheme` and `lightTheme` — sharing one shape (spacing, radii,
-typography) but each with its own `colors` and its own per-scheme
-entity/chart palette (`palette.ts`). This skill states the method and
+`src/design-system/theme.ts`, which ships a single `darkTheme` (spacing,
+radii, typography, `colors`) plus its own entity/chart palette
+(`palette.ts`). The app is dark-only. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
 current values rather than trusting a copy of them here.
 
@@ -19,88 +18,33 @@ This project skill carries domain/design knowledge. The plugin's
 is a separate, thin process-wrapper skill for the designer role — the
 two are meant to coexist, read both.
 
-## Dark and light themes
+## Dark-only theme
 
-Kiko ships both a dark theme and a light theme (`darkTheme` /
-`lightTheme` in `theme.ts`), registered WITHOUT `adaptiveThemes`
-(Option B, manual theme control — `src/design-system/unistyles.ts`):
-Unistyles' adaptive mode resolves from the physical OS trait rather
-than React Native's app-level `Appearance.setColorScheme` override, so
-running both together left a manual light/dark pin flipping only
-native chrome while every Unistyles element stayed on the OS scheme.
-`initialTheme: () => Appearance.getColorScheme() ?? 'dark'` is what
-gives a fresh install the OS appearance at boot instead; every
-subsequent scheme change is driven manually, never by Unistyles'
-own adaptive tracking. The user can instead
-pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
-persisted in `settings.appearance` (`src/db/schema.ts`) and applied
-by the shared `applyAppearance` mapping (`src/appearance/appearance.ts`,
-mapped with ts-pattern's `match().exhaustive()`), which manually drives
-`UnistylesRuntime.setTheme` to match — never `setAdaptiveThemes`, which
-this Option B setup does not call at all — AND drives
-the native iOS interface style through React Native 0.87's
-`Appearance.setColorScheme` (`'light'`/`'dark'` to pin, `'auto'` for
-`'system'` to clear the override). The native call is what makes native
-chrome — the bottom tab bar, stack headers/large-title blur, system
-controls, the native date picker — follow the chosen scheme; without it
-those surfaces resolve against the OS style (or, formerly, a hard
-`UIUserInterfaceStyle = Dark` Info.plist pin that is now removed). The
-`'light'`/`'dark'` literal from the exhaustive match is already the
-concrete native scheme, so no `resolveColorScheme` mapping is needed
-inside `applyAppearance` itself. Two callers
-apply it: `useSyncAppearanceWithSettings`
-(`src/appearance/use-sync-appearance-with-settings.ts`), mounted from
-`AppRoot` for a LIVE change from the Settings screen, and
-`MigrationsGate`'s `applyPersistedAppearance`
-(`src/db/migrations.gate.tsx`), which reads the persisted value and
-applies it before `MigrationsGate`/`LockGate` first paint — those
-gates mount before `AppRoot` does, so without this a user who pinned
-`'light'`/`'dark'` would see a cold-launch flash of the OS appearance
-first. Any native
-surface that needs a plain `'light' | 'dark'` scheme rather than a
-Unistyles theme name (a `LiquidGlassView`, a native tab bar) goes
-through `resolveColorScheme` (`src/design-system/color-scheme.ts`),
-not a hand-rolled mapping. Read `theme.ts`, `palette.ts`, and
-`color-scheme.ts` directly for the current values and mapping rather
-than trusting a copy of them here.
-
-For a live `'light'`/`'dark'` pin, `applyAppearance` calls
-`RNAppearance.setColorScheme` **before** `UnistylesRuntime.setTheme`,
-not after — settling the native window interface-style trait as early
-as possible. The `'system'` branch orders the other way (it reads the
-OS scheme into `setTheme` directly, then clears the native override
-with `'auto'`), which is fine since nothing there depends on the
-native trait settling first. Read `applyAppearance`
-(`src/appearance/appearance.ts`) directly rather than trusting this
-ordering note if the function changes again.
-
-That ordering alone is **not** sufficient to keep a see-through
-`GlassSurface` in sync on a flip-origin screen (a screen with no
-navigation transition to force a later layout pass, e.g. the System
-settings sub-page where the scheme toggle itself lives) — see
-"GlassSurface's own deferred remount" below for the mechanism that
-actually fixes it.
-
-React Navigation's own native chrome — the stack header, large-title,
-and screen/VC background — has the identical flip-origin repaint
-problem GlassSurface has (see "GlassSurface's own deferred remount"
-below), but the fix is different and lives one layer down, in the nav
-theme objects themselves. `navigationLightTheme`/`navigationDarkTheme`
-(`src/navigation/light-theme.ts` / `dark-theme.ts`) source their
-`colors` from iOS SYSTEM-SEMANTIC colors via `PlatformColor`, wrapped
-by `platformNavColor` (`src/navigation/platform-nav-color.ts`) to
-satisfy React Navigation's `string`-typed `Theme.colors` fields. A
-semantic color resolves per-trait, so the same
-`RNAppearance.setColorScheme` interface-style flip that
-`applyAppearance` already does repaints this native chrome for free,
-with no layout-pass hack — a concrete hex value there did NOT repaint
-without one. This is DISTINCT from the design-system Unistyles
-`theme` (`theme.ts`) described throughout this skill: that theme
-keeps its own literal hex tokens and drives JS-rendered bodies/cards,
-never native chrome, so the two color systems intentionally diverge
-in mechanism even where they agree in value. Read `light-theme.ts`,
-`dark-theme.ts`, and `platform-nav-color.ts` directly for the exact
+Kiko is dark-only: there is no appearance toggle, no light theme, and
+no runtime scheme switching. `src/design-system/unistyles.ts` registers
+a single `darkTheme` (`{ dark }`) with `initialTheme: 'dark'` — there
+is nothing to pick between, so `adaptiveThemes` is not used either.
+`UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
+is what keeps native chrome (bottom tab bar, stack headers/large-title
+blur, system controls, the native date picker) on the dark appearance
+regardless of the device's own OS setting — there is no
+`Appearance.setColorScheme` call anywhere driving it live. React
+Navigation's own native chrome uses `navigationDarkTheme`
+(`src/navigation/dark-theme.ts`), which now sources its `colors` from
+concrete dark hex values matching the design-system dark tokens
+directly, rather than an OS-trait-resolving `PlatformColor` — with a
+single fixed appearance there is nothing for a semantic color to
+repaint in response to. Read `dark-theme.ts` directly for the exact
 field mapping rather than restating it here.
+
+`settings.appearance` (`src/db/schema.ts`) still exists as a schema
+column — migrations here are additive-only, so a removed feature's
+harmless column is retained rather than dropped — but it has no reader
+or writer anywhere in `src/` any more; it is pinned as a documented
+dead column in `src/db/settings-columns.test.ts`'s
+`DOCUMENTED_READERLESS_COLUMNS` list, the same treatment as
+`settings.lockGraceSeconds` (see `kiko-domain`'s "App lock / security
+settings").
 
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
@@ -144,8 +88,11 @@ one place a layout convention is supposed to live.
 **The `onAccent` rule.** Any text or icon sitting on a filled
 accent/destructive BACKGROUND must use the always-white `onAccent`
 color token (`theme.colors.onAccent`, `theme.ts`), never
-`textPrimary` — `textPrimary` flips to black on the light theme and
-would vanish on a blue/red fill. This applies regardless of control
+`textPrimary` — kept as its own token, distinct from `textPrimary`,
+specifically so text on a blue/red fill stays legible even if
+`textPrimary`'s value ever changes; the two happen to share a value
+today (both white) but that is not a guarantee to rely on. This
+applies regardless of control
 SIZE (`Button`'s `variantLabelColor` is derived from `variant`, not
 `size`, so a `size="compact"` button gets the same token as
 `size="regular"` for free — see `button.component.tsx`) and applies
@@ -158,19 +105,17 @@ then one of these call sites, rather than reinventing the check.
 
 ## Styling layer: react-native-unistyles v3
 
-`react-native-unistyles` (^3.3.0) is the styling layer. There are two
-themes authored as Unistyles v3 theme objects — the OLED `darkTheme`
-above and a matching `lightTheme` — both registered in
-`src/design-system/unistyles.ts` as `{ dark, light }` (dark first),
-WITHOUT `adaptiveThemes` (Option B, manual theme control — see "Dark
-and light themes" above for why); `initialTheme` gives a fresh install
-the OS appearance at boot instead, and every later switch is driven
-manually via `UnistylesRuntime.setTheme`. Style components against
-the theme's tokens, not literal values, so both themes (and any future
-refinement) resolve from the same token keys — the token keys are the
-contract, the two themes just supply different values per key. The token
-values live in `theme.ts` (`darkTheme`/`lightTheme`) and
-`palette.ts`; read those directly rather than restating them here.
+`react-native-unistyles` (^3.3.0) is the styling layer. A single
+Unistyles v3 theme object — the OLED `darkTheme` above — is registered
+in `src/design-system/unistyles.ts` as `themes = { dark: darkTheme }`,
+with `settings: { initialTheme: 'dark' }`. There is no second theme to
+switch to, so there is no `adaptiveThemes` and no runtime
+`UnistylesRuntime.setTheme` call anywhere. Style components against
+the theme's tokens, not literal values, so the token keys stay the one
+contract every component styles against, even though there is only one
+theme supplying values today. The token values live in `theme.ts`
+(`darkTheme`) and `palette.ts`; read those directly rather than
+restating them here.
 
 ## Component set
 
@@ -271,9 +216,9 @@ new component can land between reviews of this skill:
   wrap (`CurrencySwitch`'s 4 options, `LanguageSwitch`'s 2) via an
   optional `columns` prop (default `2`); a consumer with a different,
   known option count that must render as a single equal-width row
-  instead of wrapping — `AppearanceSwitch`'s 3 — passes
-  `columns={appearances.length}`. Do not add a second, parallel way to
-  force a row count; extend/override `columns` instead.
+  instead of wrapping passes an explicit `columns={n}` matching its own
+  option count. Do not add a second, parallel way to force a row count;
+  extend/override `columns` instead.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
@@ -310,35 +255,14 @@ where they can drift. As of this writing the pipeline is:
   `stored ?? typeDefault` — that pattern misses an empty-string stored
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
-  of silently falling back. Takes an optional third `colorScheme`
-  argument (`'light' | 'dark'`, defaults to `'dark'`) that affects both
-  the gray fallback AND a valid stored hex: a stored override is
-  persisted as an absolute `#RRGGBB` of whichever theme was active
-  when the user picked it (`ColorPicker` hands `onSelect` the active
-  theme's raw swatch hex), so an existing row can hold, forever, the
-  OTHER scheme's hex for a swatch — e.g. `white` picked on dark
-  (`#FFFFFF`) with no update after the user switches to light, where
-  `white` should render as `#000000` (see `palette.ts`). Rather than a
-  destructive migration rewriting stored rows, `resolveEntityColor`
-  reverse-maps a stored hex it recognizes as a swatch of the OTHER
-  scheme's palette to the CURRENT scheme's paired counterpart, by
-  swatch NAME (the two palettes are paired 1:1 by key — "only ever
-  GROW a set" per `palette.ts`'s own doc comment, so the pairing never
-  dangles). A hex that already belongs to the current scheme's own
-  palette, or that isn't a recognized swatch of EITHER scheme (a
-  genuine custom/legacy value), passes through unchanged — this is
-  what keeps a value that predates the palette safe. The gray fallback
-  resolves from the matching per-theme palette
-  (`entityColorsByScheme` in `palette.ts`), not a single hardcoded
-  gray.
+  of silently falling back. The gray fallback resolves from the single
+  dark palette (`entityColorsDark` in `palette.ts`).
 - `entityCardBackground` (`entity-tint.ts`) — a card's flat, OPAQUE
   `#RRGGBB` background (never an `rgba(...)` string; it does not go
   through `entityTintBackground`'s alpha compositing): the resolved
-  color darkened (dark theme) or lightened (light theme), fed
-  straight to `GlassSurface`'s `tint` prop. Direction is an optional
-  second `colorScheme` argument (`'light' | 'dark'`, defaults to
-  `'dark'`) — darken keeps white body text legible, lighten keeps
-  black body text legible. Replaced a 45deg two-stop gradient wash
+  color darkened toward black, fed straight to `GlassSurface`'s `tint`
+  prop — darkening keeps white body text legible on the dark theme.
+  Replaced a 45deg two-stop gradient wash
   (design review: a plain darker solid reads calmer than a diagonal
   blend of two near-identical hues), then a translucent flat wash
   (a device bug: darkening a color that is then stamped at low alpha
@@ -397,38 +321,6 @@ in the `else` branch's `View`, not as a style merged onto
 `LiquidGlassView` "just in case." A new prop that changes the surface's
 appearance (a new tint wash, a new border style) must be applied
 to **both** branches, or it silently only works on iOS 26+.
-
-## GlassSurface's own deferred remount
-
-A bare see-through `GlassSurface` (neither `tint` nor `solidBackdrop`
-set — the gradient-less card case, e.g. settings/statistics sections)
-renders a live-sampling `LiquidGlassView` with no colored wash over it.
-The native Liquid Glass material only re-samples its light/dark
-backdrop on a layout pass — there is no imperative re-sample API — so
-remounting it with a `key` synchronously in the same commit as a
-`colorScheme` prop change samples the OLD scheme: the window's native
-interface-style trait has not visually propagated yet in that same
-runloop. On a flip-origin screen (no navigation transition to force a
-later layout pass — the System settings sub-page, where the scheme
-toggle itself lives, is the reported case) that stale sample persisted
-until the user scrolled.
-
-The fix lives entirely inside `GlassSurface`
-(`glass-surface.component.tsx`), not in `applyAppearance`: instead of
-keying the `LiquidGlassView` directly off `colorScheme`, it keys off a
-separate `remountToken` state seeded from `colorScheme` and updated
-only after a DOUBLE `requestAnimationFrame` following a `colorScheme`
-change — deferring the remount by two frames lets the native trait
-settle before the fresh view lays out and re-samples. The `colorScheme`
-prop passed to `LiquidGlassView` itself still updates synchronously on
-the commit (so `overrideUserInterfaceStyle` is set immediately); only
-the remount/re-sample is deferred. A tinted or `solidBackdrop` card
-does not need this — it already repaints via its wash/backdrop `View`,
-a token-driven layer that flips on the commit — but the component keys
-every glass base uniformly for simplicity. This is native-timing
-dependent (confirmed on-device, not something a unit test can assert
-on); read the component's own doc comments before changing the frame
-count or the deferral mechanism.
 
 ## Wrapping a React Native primitive
 

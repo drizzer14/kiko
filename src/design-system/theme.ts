@@ -1,5 +1,5 @@
-// iOS system palette — two themes sharing one shape (spec Section 2: they
-// differ only in `colors`; spacing, radii, and typography are shared).
+// iOS system palette — the single dark theme (spec Section 2: spacing, radii,
+// and typography are shared with the token shape).
 //
 // Dark re-derived from Apple's dark-mode system colors (see
 // docs/superpowers/specs/2026-08-30-kiko-foundation-design.md and
@@ -10,15 +10,11 @@
 // - systemBlue for the accent, systemGreen/systemRed for money tones
 // - separator for hairline borders
 //
-// Light uses Apple's light-mode system colors (spec Section 1 table).
-//
-// The named entity-color and chart-series palettes now live in ./palette as
-// per-theme sets (entityColorsDark/Light, chartSeriesDark/Light); each theme
-// references its own set so a light/dark switch swaps the whole palette.
+// The named entity-color and chart-series palettes live in ./palette
+// (entityColorsDark, chartSeriesDark); the theme references those sets.
 
-import { chartSeriesDark, chartSeriesLight, entityColorsDark, entityColorsLight } from './palette';
+import { chartSeriesDark, entityColorsDark } from './palette';
 
-// Shared across both themes — spec Section 2: they differ only in `colors`.
 const spacing = (multiplier: number) => multiplier * 4;
 const radii = { sm: 6, md: 10, lg: 16 } as const;
 const typography = {
@@ -41,9 +37,9 @@ export const darkTheme = {
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)
     // Foreground for anything sitting ON a filled accent/destructive surface —
-    // a primary Button's label+icon, a Switch thumb on the accent track. White
-    // in BOTH themes: `textPrimary` flips to black on light and would vanish on
-    // a blue/red fill. This is the one always-white foreground token.
+    // a primary Button's label+icon, a Switch thumb on the accent track. Always
+    // white and kept as its own token (never `textPrimary`) so text on a
+    // blue/red fill stays legible.
     onAccent: '#FFFFFF',
     positive: '#30D158', // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
@@ -59,35 +55,6 @@ export const darkTheme = {
     scrim: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
-  },
-  spacing,
-  radii,
-  typography,
-} as const;
-
-export const lightTheme = {
-  colors: {
-    // The three background-family light values set the white-card-on-
-    // light-gray-ground hierarchy: `background` is the grouped-ground gray,
-    // `surface` is the white card floating on it, `surfaceHigh` the next
-    // step up for a raised control on that card.
-    background: '#F2F2F7', // systemGroupedBackground (light)
-    surface: '#FFFFFF', // secondarySystemGrouped
-    surfaceHigh: '#E5E5EA', // systemGray5
-    textPrimary: '#000000', // label
-    textSecondary: 'rgba(60,60,67,0.60)', // secondaryLabel
-    accent: '#007AFF', // systemBlue (light)
-    // Foreground for anything sitting ON a filled accent/destructive surface —
-    // a primary Button's label+icon, a Switch thumb on the accent track. White
-    // in BOTH themes: `textPrimary` flips to black on light and would vanish on
-    // a blue/red fill. This is the one always-white foreground token.
-    onAccent: '#FFFFFF',
-    positive: '#34C759', // systemGreen (light)
-    negative: '#FF3B30', // systemRed (light)
-    border: '#C6C6C8', // separator (light)
-    scrim: 'rgba(0,0,0,0.40)',
-    entityColors: entityColorsLight,
-    chartSeries: chartSeriesLight,
   },
   spacing,
   radii,

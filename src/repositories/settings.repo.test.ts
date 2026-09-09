@@ -112,16 +112,6 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
-  it('setAppearance updates the single settings row with the chosen appearance', async () => {
-    const { captured, tx } = captureSetTx();
-    mockTx = tx;
-
-    await settingsRepo.setAppearance('light');
-
-    expect(captured.set).toEqual({ appearance: 'light' });
-    expect(captured.whereCalled).toBe(true);
-  });
-
   it('setLastSyncDisplayAt writes the display timestamp to the single settings row', async () => {
     const { captured, tx } = captureSetTx();
     mockTx = tx;

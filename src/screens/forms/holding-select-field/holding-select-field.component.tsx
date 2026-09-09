@@ -50,7 +50,7 @@ const HoldingSelectField = ({
             // The right-push is a LAYOUT concern, so it sits on a Box rather
             // than on Text — `TextProps['style']` deliberately admits only
             // typography keys (fontSize/fontWeight/textAlign/textTransform),
-            // because `tone`/`variant` must stay the authority on appearance.
+            // because `tone`/`variant` must stay the authority on styling.
             // Same shape as the selected row's `checkmark` Box below.
             //
             // NOTE: this moved `fieldAccount` one node UP. Text forwards `style`

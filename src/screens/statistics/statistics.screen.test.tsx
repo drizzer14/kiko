@@ -19,7 +19,6 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { defaultDateRange } from '../../dates/default-range';
 import { formatDate } from '../../dates/format';
 import { startOfLocalDay } from '../../dates/local-day';
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import { i18n } from '../../i18n';
 import { toUtcMidnight } from '../../rates/history-entry';
 import { categoryColor } from '../../statistics/category-breakdown';
@@ -672,28 +671,18 @@ describe('StatisticsScreen', () => {
     expect(getByLabelText('Transport').props.name).toBe('car');
   });
 
-  it('colors an uncolored category slice from the LIGHT chart set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so every palette consumer on the screen
-    // (here the category breakdown feeding the filter option's tint) picks the
-    // light set. The seeded categories carry no stored color, so the option tint
-    // is `categoryColor(key, 'light')` — a hue from `chartSeriesLight`.
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      seedSpending();
+  it('colors an uncolored category slice from the chart set hash', async () => {
+    // The seeded categories carry no stored color, so the option tint is
+    // `categoryColor(key)` — a hue from `chartSeriesDark`.
+    seedSpending();
 
-      const { getByTestId, getByLabelText } = await renderScreen();
+    const { getByTestId, getByLabelText } = await renderScreen();
 
-      await act(async () => {
-        fireEvent.press(getByTestId(CATEGORY_FILTER));
-      });
+    await act(async () => {
+      fireEvent.press(getByTestId(CATEGORY_FILTER));
+    });
 
-      expect(getByLabelText('Groceries').props.tintColor).toBe(categoryColor('groceries', 'light'));
-      // Sanity: the light hue differs from the dark one, so this is not a
-      // vacuous match against the default scheme.
-      expect(categoryColor('groceries', 'light')).not.toBe(categoryColor('groceries', 'dark'));
-    } finally {
-      jest.restoreAllMocks();
-    }
+    expect(getByLabelText('Groceries').props.tintColor).toBe(categoryColor('groceries'));
   });
 
   it('orders the category filter options by the custom category order, not by spending magnitude', async () => {

@@ -48,10 +48,9 @@ export const buildAccountContribution = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
-  colorScheme: 'light' | 'dark';
 }): AccountSlice[] => {
-  const { accounts, holdings, rateTable, baseCurrency, now, colorScheme } = input;
-  const accountDefaults = defaultAccountColor(colorScheme);
+  const { accounts, holdings, rateTable, baseCurrency, now } = input;
+  const accountDefaults = defaultAccountColor;
 
   const valued = accounts
     .map((account) => {
@@ -66,7 +65,7 @@ export const buildAccountContribution = (input: {
       // black on the black card and the legend swatch was transparent while
       // the slice still consumed ring share. Every other call site in the app
       // already uses this; this was the last hold-out.
-      const color = resolveEntityColor(account.color, accountDefaults[account.kind], colorScheme);
+      const color = resolveEntityColor(account.color, accountDefaults[account.kind]);
 
       return { accountId: account.id, name: account.name, amount, color };
     })

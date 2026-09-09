@@ -10,7 +10,7 @@ export type OptionPillsProps<T extends string | number> = {
   // Number of equal-width columns the grid wraps at. Defaults to 2 (the
   // original always-2-column grid CurrencySwitch's 4 options and
   // LanguageSwitch's 2 options both rely on). Pass the exact option count
-  // (e.g. AppearanceSwitch's 3) to force a single row of equal-width cells
-  // instead of wrapping.
+  // (e.g. 3 for a three-option control) to force a single row of equal-width
+  // cells instead of wrapping.
   columns?: number;
 };

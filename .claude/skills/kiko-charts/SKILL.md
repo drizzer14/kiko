@@ -131,13 +131,13 @@ the pattern `statistics.screen.test.tsx` and
 still renders as exactly one segment, so the prefix query also covers
 the common case.
 
-The red/negative area gradient's opacity is scheme-aware, not a
-single constant: it reads heavier on dark than on light so a shallow
-dip against the OLED true-black background stays visible (alpha
-compositing a translucent color over near-black background reads
-faint at the same alpha that reads fine over light's off-white
-surface). Read the `NEGATIVE_AREA_OPACITY_DARK`/`AREA_OPACITY`
-constants and the `resolveColorScheme(rt.themeName)` branch in
+The red/negative area gradient uses a HIGHER opacity than the
+green/positive one, not the same constant for both: alpha-compositing
+a translucent color over the OLED true-black background
+(`darkTheme.colors.background`, `#000000`) reads faint at an alpha
+that would read fine over a lighter surface, so the negative band
+needs more opacity to stay visibly legible against true black. Read
+the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
 `net-worth-line.component.tsx` for the current values rather than
 restating them here.
 

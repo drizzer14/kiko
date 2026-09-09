@@ -2,7 +2,6 @@ import { render } from '@testing-library/react-native';
 
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
-import * as colorSchemeModule from '../../color-scheme';
 import '../../unistyles';
 import BarChart from './index';
 
@@ -51,31 +50,13 @@ describe('BarChart', () => {
   it("colors each bar with its holding type's entity color", async () => {
     const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
 
-    expect(getByTestId('bar-chart-bar-card').props.fill).toBe(defaultHoldingColor('dark').card);
+    expect(getByTestId('bar-chart-bar-card').props.fill).toBe(defaultHoldingColor.card);
     expect(getByTestId('bar-chart-bar-term_deposit').props.fill).toBe(
-      defaultHoldingColor('dark').term_deposit,
+      defaultHoldingColor.term_deposit,
     );
     expect(getByTestId('bar-chart-bar-crypto_asset').props.fill).toBe(
-      defaultHoldingColor('dark').crypto_asset,
+      defaultHoldingColor.crypto_asset,
     );
-  });
-
-  it('colors each bar from the LIGHT entity set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so each bar's type default resolves from
-    // the light entity set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
-
-      expect(getByTestId('bar-chart-bar-card').props.fill).toBe(defaultHoldingColor('light').card);
-      expect(getByTestId('bar-chart-bar-crypto_asset').props.fill).toBe(
-        defaultHoldingColor('light').crypto_asset,
-      );
-      // Sanity: the light card default differs from the dark one.
-      expect(defaultHoldingColor('light').card).not.toBe(defaultHoldingColor('dark').card);
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('renders an empty-state message when there is no data', async () => {

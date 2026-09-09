@@ -1,8 +1,7 @@
 import type { UnistylesThemes } from 'react-native-unistyles';
 
-// The registered app theme (dark | light) — the same object `useUnistyles()`
-// hands the component. Kept as the union so `buildCalendarTheme` accepts either
-// scheme.
+// The registered app theme — the same object `useUnistyles()` hands the
+// component. Derived from the theme registration so it stays in sync.
 type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 
 // react-native-calendars' own fixed per-cell heights (see
@@ -42,14 +41,11 @@ export const buildCalendarTheme = (theme: AppTheme) => ({
   arrowColor: theme.colors.accent,
   selectedDayBackgroundColor: theme.colors.accent,
   // The selected/period-filled day sits on the accent fill, so its number
-  // needs the always-white `onAccent` token — `textPrimary` flips to black
-  // on the light theme and would render invisible on the blue fill there.
+  // needs the always-white `onAccent` token, never `textPrimary`.
   selectedDayTextColor: theme.colors.onAccent,
-  // Disabled (out-of-range) days: react-native-calendars' own default
-  // (#d9e1e8) is ≈ the light theme's surfaceHigh (#E5E5EA) — which is also the
-  // calendarBackground here — so disabled days vanish on light. Use the
-  // theme's muted-but-legible secondary tone so they read dimmed yet visible
-  // on both schemes.
+  // Disabled (out-of-range) days: use the theme's muted-but-legible secondary
+  // tone so they read dimmed yet visible, rather than react-native-calendars'
+  // own near-invisible default.
   textDisabledColor: theme.colors.textSecondary,
   'stylesheet.calendar.main': {
     monthView: {

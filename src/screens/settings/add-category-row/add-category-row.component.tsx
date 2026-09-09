@@ -1,9 +1,7 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 
-import { resolveColorScheme } from '../../../design-system/color-scheme';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
@@ -35,7 +33,6 @@ type AddCategoryRowProps = {
 // collapses the form back so the action is never a dead end.
 const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const { t } = useTranslation();
-  const { rt } = useUnistyles();
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICON);
@@ -58,9 +55,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   // in-progress name (stable placeholder while empty) only keeps the ring lively
   // as the user types. The picked-color path is faithful: onSelect stores the
   // tapped entityColors hex, which resolveCategoryColor then rings verbatim.
-  // Scheme comes from the active theme.
-  const colorScheme = resolveColorScheme(rt.themeName);
-  const previewColor = resolveCategoryColor(color, trimmedName || 'new-category', colorScheme);
+  const previewColor = resolveCategoryColor(color, trimmedName || 'new-category');
 
   // Reset the form to its pristine state and collapse it — shared by a
   // successful save and an explicit Cancel.

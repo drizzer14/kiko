@@ -50,7 +50,6 @@ export const en = {
     },
     baseCurrency: 'Base Currency',
     categories: 'Categories',
-    colorScheme: 'Color Scheme',
     language: 'Language',
     system: 'System',
     title: 'Settings',
@@ -58,10 +57,6 @@ export const en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
-  },
-  appearance: {
-    followSystem: 'Follow system setting',
-    darkMode: 'Dark mode',
   },
   calendar: {
     month: {

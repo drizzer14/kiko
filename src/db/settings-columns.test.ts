@@ -17,6 +17,12 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // cold-launch-only. Deliberately not dropped — see docs/security/README.md
   // and the comment on the column in schema.ts.
   'lockGraceSeconds',
+  // Legacy: the removed light/dark color-scheme feature. The app is now
+  // dark-only, so nothing reads or writes this column any more. Deliberately
+  // not dropped (migrations here are additive-only — a removed feature's
+  // harmless retained column stays) — see the comment on the column in
+  // schema.ts.
+  'appearance',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');

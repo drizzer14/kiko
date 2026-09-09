@@ -6,8 +6,7 @@ import {
 import type { Currency } from '../currency/currency';
 import { Money } from '../currency/money';
 import type { HoldingRow, TransactionRow } from '../db/schema';
-import { resolveStoredHexForScheme } from '../design-system/entity-tint';
-import { chartSeriesByScheme } from '../design-system/palette';
+import { chartSeriesDark } from '../design-system/palette';
 import { convert, type RateTable } from '../rates/conversion';
 import { canConvert } from '../rates/net-worth-view';
 
@@ -55,13 +54,10 @@ export type CategorySlice = {
  * regardless of which other categories are present, so an uncolored slice's
  * color stays put as the filter toggles other categories in and out. See
  * `resolveCategoryColor` below for how a stored color, when present, wins over
- * this fallback. `colorScheme` picks the active per-theme chart set
- * (`chartSeriesByScheme[colorScheme]`, see palette.ts) — REQUIRED, so a
- * category's fallback hue always comes from the active set and a missing
- * argument is a compile error rather than a silent dark default.
+ * this fallback.
  */
-export const categoryColor = (key: string, colorScheme: 'light' | 'dark'): string => {
-  const chartSeries = chartSeriesByScheme[colorScheme];
+export const categoryColor = (key: string): string => {
+  const chartSeries = chartSeriesDark;
   let hash = 0;
   for (let index = 0; index < key.length; index += 1) {
     hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
@@ -77,25 +73,14 @@ export const categoryColor = (key: string, colorScheme: 'light' | 'dark'): strin
  * exactly as it did before category colors existed. Guards a stored empty string
  * (which `??` would let through and a bad hex would leak downstream) the same way
  * resolveEntityColor does.
- *
- * A stored hex is run through `resolveStoredHexForScheme` (entity-tint.ts) just
- * as `resolveEntityColor` does, so a swatch frozen at pick time under the OTHER
- * scheme reverse-maps to the CURRENT scheme's paired counterpart: a category
- * stored as `#FFFFFF` (dark 'white') renders as `#000000` on light instead of
- * staying an invisible white, and the ColorPicker's exact `value === hex` ring
- * matches the active-scheme swatch again. A genuine custom/legacy hex that is no
- * palette swatch in either scheme passes through unchanged, and a stored hex
- * that already belongs to the current scheme is returned as-is. The fallback
- * palette-hash branch is already scheme-aware via `categoryColor`.
  */
 export const resolveCategoryColor = (
   storedColor: string | null | undefined,
   key: string,
-  colorScheme: 'light' | 'dark',
 ): string =>
   typeof storedColor === 'string' && /^#[0-9a-f]{6}$/i.test(storedColor)
-    ? resolveStoredHexForScheme(storedColor, colorScheme)
-    : categoryColor(key, colorScheme);
+    ? storedColor
+    : categoryColor(key);
 
 // The normalized grouping key for a transaction's category: lowercased, with a
 // null/empty category AND a slug the display map cannot resolve both folding
@@ -134,7 +119,6 @@ export const buildCategoryBreakdown = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
-  colorScheme: 'light' | 'dark';
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
 }): CategorySlice[] => {
@@ -144,7 +128,6 @@ export const buildCategoryBreakdown = (input: {
     rateTable,
     baseCurrency,
     defaultCategoryKey,
-    colorScheme,
     excludedCategories,
     excludedTransactionIds,
   } = input;
@@ -192,7 +175,7 @@ export const buildCategoryBreakdown = (input: {
         title: display.title,
         icon: display.icon,
         amount,
-        color: resolveCategoryColor(display.color, key, colorScheme),
+        color: resolveCategoryColor(display.color, key),
       };
     })
     .filter((slice) => slice.amount > 0)

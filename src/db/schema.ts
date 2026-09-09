@@ -160,11 +160,11 @@ export const settings = sqliteTable('settings', {
   // / 'uk' is an explicit user choice made from Settings. Read by
   // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
   language: text('language', { enum: ['en', 'uk'] }),
-  // The chosen appearance: 'system' follows the OS via unistyles `initialTheme`
-  // plus a manual `Appearance` change-listener (Option B — adaptiveThemes was
-  // removed), 'light'/'dark' pin the theme. Defaults to 'system' so a fresh
-  // install follows iOS. Read by useSyncAppearanceWithSettings; written by
-  // settingsRepo.setAppearance.
+  // DEAD (retained): the removed light/dark color-scheme feature. The app is now
+  // dark-only, so nothing reads or writes this column. Deliberately NOT dropped —
+  // migrations here are additive-only, so a removed feature's harmless retained
+  // column stays rather than adding a destructive drop migration (same class as
+  // `lockGraceSeconds` above). Enforced reader-less by settings-columns.test.ts.
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),

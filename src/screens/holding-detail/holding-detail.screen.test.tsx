@@ -2,8 +2,6 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
-import * as colorSchemeModule from '../../design-system/color-scheme';
-import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { transactionsRepo } from '../../repositories/transactions.repo';
@@ -285,25 +283,6 @@ describe('HoldingDetailScreen', () => {
     expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
       darkTheme.colors.entityColors.white,
     );
-  });
-
-  it('tints the holding identity icon from the LIGHT entity set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the header identity color picks the
-    // light entity set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      seed(cardHolding);
-
-      const { getByLabelText } = await renderScreen();
-
-      // The card type default is `white`, which in the LIGHT set is black.
-      expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
-        entityColorsByScheme.light.white,
-      );
-      expect(entityColorsByScheme.light.white).not.toBe(entityColorsByScheme.dark.white);
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the type default', async () => {

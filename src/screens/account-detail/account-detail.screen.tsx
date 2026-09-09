@@ -11,7 +11,6 @@ import { useUnistyles } from 'react-native-unistyles';
 import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
@@ -72,27 +71,19 @@ const actionPresentation = (
 // count against the screen component's cognitive-complexity budget.
 const accountIdentity = (
   account: AccountRow | undefined,
-  colorScheme: 'light' | 'dark',
 ): { icon: string; color: string } | undefined =>
   account === undefined
     ? undefined
     : {
         icon: account.icon ?? accountKindSymbol[account.kind],
-        color: resolveEntityColor(
-          account.color,
-          defaultAccountColor(colorScheme)[account.kind],
-          colorScheme,
-        ),
+        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
       };
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId, name: initialName } = route.params;
-  const { theme, rt } = useUnistyles();
-  // The active color scheme, read once so the header identity color picks the
-  // matching light/dark set (see color-scheme.ts / palette.ts).
-  const colorScheme = resolveColorScheme(rt.themeName);
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
@@ -113,7 +104,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The account's effective icon + color, rendered as the identity glyph beside
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
-  const identity = accountIdentity(account, colorScheme);
+  const identity = accountIdentity(account);
   useLayoutEffect(() => {
     navigation.setOptions({
       title: accountName,
