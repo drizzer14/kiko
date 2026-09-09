@@ -32,19 +32,27 @@ their current shape before extending or copying the pattern to a new
 chart; it is the most complete example in the app and includes:
 
 - a Y-axis tick set (`buildTicks`) spread evenly across the y-domain,
-  which `buildScales` and `buildTicks` both anchor SYMMETRICALLY on
-  `startReference` (`[startReference ± halfRange]`, where `halfRange` is
-  the larger distance from the reference to either data extreme) rather
-  than tightly auto-fitting the data's own min/max — so the dashed
-  baseline holds a STABLE centred position and a dip below it renders
-  proportionally instead of the baseline flipping from domain-min to
-  domain-max (teleporting across the plot) the instant net worth crosses
-  the reference; drawn with a narrow, fixed-width label column
+  which `buildScales` and `buildTicks` both take as
+  `[niceFloor(minValue), maxValue]` — the net worth's OWN minimum
+  (floored to a nearby round number via `niceFloor`/`niceStep`) up to its
+  own maximum, where `minValue`/`maxValue` span the plotted amounts AND
+  the `startReference` (so the dashed baseline always stays on-screen and
+  the floor can never sit above it). This REPLACED an earlier symmetric
+  `[startReference ± halfRange]` domain, which pushed the bottom far below
+  the data whenever net worth sat mostly above the range start, so the
+  line hugged the top and the lower half of the plot went to waste. The
+  trade-off: the dashed baseline is no longer pinned to the plot centre —
+  it now sits at its true value position (near the bottom when it is the
+  series minimum, near the top when it is the maximum). The floor step is
+  a nice 1/2/5/10×10^k increment of about `VALUE_PADDING_RATIO` of the
+  span, so the bottom is a clean figure at most one step below the
+  minimum; drawn with a narrow, fixed-width label column
   (`net-worth-line.styles.ts`'s `Y_AXIS_WIDTH_UNITS`) sized for a compact
   money string (`adjustsFontSizeToFit`), not the widest possible label —
   the column is deliberately narrow so it does not steal plot width — plus
-  a FLAT-range collapse case (every amount equal to `startReference`, e.g.
-  a single point or a balance that never moved) that returns just one tick
+  a FLAT-range collapse case (`maxValue === minValue` — every amount and
+  the reference equal, e.g. a single point or a balance that never moved)
+  that returns just one tick
   instead of spreading `TICK_COUNT` ticks across a zero-width range, which
   would otherwise draw every label and every Y gridline on top of each
   other at the same y;

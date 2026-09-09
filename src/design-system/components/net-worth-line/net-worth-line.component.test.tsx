@@ -6,7 +6,7 @@ import type { NetWorthPoint } from '../../../statistics/net-worth-series';
 import { darkTheme } from '../../theme';
 import '../../unistyles';
 import NetWorthLine from './index';
-import { buildLineSegments, toAreaPath } from './net-worth-line.component';
+import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
 
 // Every "y,x" coordinate's Y value in a path `d` string — every number that
 // follows a comma. The area builders clamp these to `referenceY`, so a test can
@@ -190,6 +190,82 @@ describe('buildLineSegments', () => {
   });
 });
 
+describe('buildTicks', () => {
+  // The bottom Y-axis tick is the domain minimum. It now represents the net
+  // worth's OWN minimum value (the lowest plotted amount, including the start
+  // reference so the dashed baseline stays on-screen), floored to a nearby round
+  // number — NOT the old symmetric `startReference - halfRange`, which sat far
+  // below the data and made the line hug the top of the plot.
+
+  it('floors the minimum to the reference value when the whole series sits above it', async () => {
+    // All amounts are above the start reference, so the reference IS the minimum.
+    // The old symmetric domain put the bottom at 150000 - 8000 = 142000; the new
+    // one floors the true minimum (150000) to a nearby round number.
+    const ticks = buildTicks(
+      [
+        { t: 0, amount: 150_000 },
+        { t: 1, amount: 158_000 },
+        { t: 2, amount: 155_000 },
+      ],
+      150_000,
+    );
+
+    expect(ticks).toHaveLength(4);
+    // Top tick is the data max; bottom tick is the floored minimum.
+    expect(ticks[0].value).toBe(158_000);
+    expect(ticks[ticks.length - 1].value).toBe(150_000);
+  });
+
+  it('rounds a non-round minimum DOWN to a nearby round number close to it', async () => {
+    const min = 148_732;
+    const ticks = buildTicks(
+      [
+        { t: 0, amount: min },
+        { t: 1, amount: 152_110 },
+      ],
+      150_000,
+    );
+
+    const bottom = ticks[ticks.length - 1].value;
+    // Floored to a round number at or just below the true minimum — never far
+    // below it (the wasted-space bug), and never above it (which would clip the
+    // lowest point).
+    expect(bottom).toBe(148_500);
+    expect(bottom).toBeLessThanOrEqual(min);
+    expect(min - bottom).toBeLessThan(500);
+  });
+
+  it('keeps the bottom close to the minimum even when the data sits far above the reference', async () => {
+    const min = 450_000;
+    const ticks = buildTicks(
+      [
+        { t: 0, amount: min },
+        { t: 1, amount: 560_000 },
+      ],
+      450_000,
+    );
+
+    const bottom = ticks[ticks.length - 1].value;
+    // The old symmetric domain would have floored to 340000 (110000 below the
+    // data); the new one stays within one nice step of the minimum.
+    expect(bottom).toBe(440_000);
+    expect(min - bottom).toBeLessThanOrEqual(20_000);
+  });
+
+  it('collapses a flat series to a single tick at that value', async () => {
+    const ticks = buildTicks(
+      [
+        { t: 1, amount: 5000 },
+        { t: 2, amount: 5000 },
+      ],
+      5000,
+    );
+
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0].value).toBe(5000);
+  });
+});
+
 describe('NetWorthLine', () => {
   afterEach(async () => {
     await act(async () => {
@@ -258,15 +334,17 @@ describe('NetWorthLine', () => {
     expect(reference.props.strokeDasharray).toBeTruthy();
     // The reference is horizontal.
     expect(reference.props.y1).toBe(reference.props.y2);
-    // With min=100, max=300, a reference of 200 (the midpoint) sits at the
-    // vertical centre of the plot regardless of symmetric padding.
+    // With the domain [100, 300], a reference of 200 is the midpoint, so it sits
+    // at the vertical centre of the plot.
     expect(reference.props.y1).toBeCloseTo(height / 2);
   });
 
-  // NEW-2: the y-domain is anchored symmetrically on startReference, so the
-  // dashed baseline holds a stable vertical position (centred) and a dip below
-  // it renders proportionally instead of teleporting the baseline to the top.
-  it('keeps the reference centred when net worth dips below the start (NEW-2)', async () => {
+  // The Y domain now runs from the net worth's own minimum to its own maximum, so
+  // the dashed reference sits at its true value position rather than the plot
+  // centre: it rides near the TOP when it is the series maximum (net worth only
+  // dipped below it) and near the BOTTOM when it is the series minimum (net worth
+  // only rose above it).
+  it('places the reference near the top when net worth only dips below the start', async () => {
     const height = 200;
     const { getByTestId } = await render(
       <NetWorthLine
@@ -282,10 +360,11 @@ describe('NetWorthLine', () => {
 
     const reference = getByTestId('net-worth-line-reference');
     expect(reference.props.y1).toBe(reference.props.y2);
-    expect(reference.props.y1).toBeCloseTo(height / 2, 0);
+    // The reference (100) is the series maximum, so it sits above the plot centre.
+    expect(reference.props.y1).toBeLessThan(height / 2);
   });
 
-  it('keeps the reference centred when net worth rises above the start (NEW-2)', async () => {
+  it('places the reference near the bottom when net worth only rises above the start', async () => {
     const height = 200;
     const { getByTestId } = await render(
       <NetWorthLine
@@ -301,7 +380,8 @@ describe('NetWorthLine', () => {
 
     const reference = getByTestId('net-worth-line-reference');
     expect(reference.props.y1).toBe(reference.props.y2);
-    expect(reference.props.y1).toBeCloseTo(height / 2, 0);
+    // The reference (100) is the series minimum, so it sits below the plot centre.
+    expect(reference.props.y1).toBeGreaterThan(height / 2);
   });
 
   it('renders about four Y-axis tick labels spanning the value range', async () => {
@@ -389,13 +469,12 @@ describe('NetWorthLine', () => {
       <NetWorthLine points={farPoints} startReference={800_000} baseCurrency="USD" />,
     );
 
-    // The y-domain is anchored symmetrically on startReference (800K): the half
-    // range is max(|1.5M - 800K|, |800K - 200K|) = 700K, so the axis spans
-    // [100K, 1.5M]. The top tick is the data max (1.5M) and the bottom tick is
-    // the anchored min (100K = $0.1M), not the raw data min — both still render
-    // in the millions unit, which is what this test guards.
+    // The y-domain now runs from the data's own floored minimum to its own
+    // maximum: min 200K floored to a nice step (200K itself) up to max 1.5M. The
+    // top tick is $1.5M and the bottom tick is $0.2M — both render in the millions
+    // unit, which is what this test guards.
     expect(getByText('$1.5M')).toBeTruthy();
-    expect(getByText('$0.1M')).toBeTruthy();
+    expect(getByText('$0.2M')).toBeTruthy();
   });
 
   it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot (G5)', async () => {

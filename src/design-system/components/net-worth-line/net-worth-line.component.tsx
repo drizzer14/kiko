@@ -85,27 +85,55 @@ type Scales = {
   maxTime: number;
 };
 
+// The 1/2/5/10 × 10^k "nice" step factors, so an axis bottom lands on a
+// human-round figure rather than an arbitrary one.
+const NICE_FACTORS = [1, 2, 5, 10] as const;
+
+// The smallest "nice" (1/2/5/10 × 10^k) increment at or above `rough`. Used to
+// pick the rounding granularity for the Y-axis floor.
+const niceStep = (rough: number): number => {
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / magnitude;
+  const factor = NICE_FACTORS.find((candidate) => normalized <= candidate) ?? 10;
+
+  return factor * magnitude;
+};
+
+// Round the data minimum DOWN to a nearby round number, so the Y-axis bottom is
+// a clean figure that sits just below the lowest plotted value instead of far
+// beneath it. The step is a nice increment of about `VALUE_PADDING_RATIO` of the
+// value span (the same fraction as the plot's own headroom), so the floor is at
+// most one such step below the minimum — close to it, never a wasted drop. A
+// zero (flat) span has no rounding room, so the value is returned unchanged.
+const niceFloor = (value: number, span: number): number => {
+  if (!(span > 0)) {
+    return value;
+  }
+  const step = niceStep(span * VALUE_PADDING_RATIO);
+
+  return Math.floor(value / step) * step;
+};
+
 const buildScales = (points: NetWorthPoint[], startReference: number, height: number): Scales => {
   const times = points.map((point) => point.t);
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
   const timeSpan = maxTime - minTime || 1;
-  // Include the reference so the dashed baseline always falls on-screen.
+  // Include the reference so the dashed baseline always falls on-screen — it is
+  // the net worth at the range start, so it is one of the plotted values, and
+  // keeping it in the set both anchors the baseline and cannot push the floor
+  // above it.
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  // Anchor the domain symmetrically on `startReference`: the half-range is the
-  // larger of the two distances from the reference to the data extremes, so the
-  // dashed baseline holds a STABLE vertical position (centred) and a dip below
-  // it renders proportionally instead of flipping from domain-min to domain-max
-  // (and teleporting the baseline across the plot) the instant net worth crosses
-  // the reference. `buildTicks` mirrors this exact domain for the labels.
-  const halfRange = Math.max(
-    Math.abs(maxValue - startReference),
-    Math.abs(startReference - minValue),
-  );
-  const anchoredMin = startReference - halfRange;
-  const anchoredMax = startReference + halfRange;
+  // The Y domain runs from the net worth's OWN minimum — floored to a nearby
+  // round number — up to its own maximum. Earlier this was anchored symmetrically
+  // on `startReference` (`[startReference ± halfRange]`), which pushed the bottom
+  // far below the data whenever net worth sat mostly above the range start, so the
+  // line hugged the top and wasted the lower half of the plot. `buildTicks`
+  // mirrors this exact domain for the labels.
+  const anchoredMin = niceFloor(minValue, maxValue - minValue);
+  const anchoredMax = maxValue;
   const valuePad = (anchoredMax - anchoredMin || 1) * VALUE_PADDING_RATIO;
   const paddedMin = anchoredMin - valuePad;
   const paddedSpan = anchoredMax - anchoredMin + valuePad * 2 || 1;
@@ -139,29 +167,26 @@ type Tick = { key: string; value: number };
 // values, distinct y positions) stays correct, only the text repeats. That is
 // out of scope here — the reported bug is the geometry collapsing, not the
 // label text.
-const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
+export const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  // Mirror `buildScales`'s symmetric anchoring so the labels line up with the
-  // gridlines: the ticks span the same `[startReference ± halfRange]` domain the
-  // line/reference geometry is drawn in.
-  const halfRange = Math.max(
-    Math.abs(maxValue - startReference),
-    Math.abs(startReference - minValue),
-  );
 
-  // A zero half-range is the flat/degenerate case (every amount equal to
+  // A zero-width range is the flat/degenerate case (every amount equal to
   // `startReference` — a single point, or a balance that never moved): collapse
-  // to ONE centred tick instead of spreading TICK_COUNT ticks across a
-  // zero-width range (which would stack every label and gridline at one y and,
-  // worse, divide by zero when normalising the fraction below).
-  if (halfRange === 0) {
-    return [{ key: '0.0000', value: startReference }];
+  // to ONE tick instead of spreading TICK_COUNT ticks across a zero-width range
+  // (which would stack every label and gridline at one y and, worse, divide by
+  // zero when normalising the fraction below).
+  if (maxValue === minValue) {
+    return [{ key: '0.0000', value: minValue }];
   }
 
-  const anchoredMin = startReference - halfRange;
-  const anchoredMax = startReference + halfRange;
+  // Mirror `buildScales`'s domain so the labels line up with the gridlines: the
+  // ticks span the same `[niceFloor(minValue), maxValue]` domain the
+  // line/reference geometry is drawn in — the data's own floored minimum up to
+  // its own maximum.
+  const anchoredMin = niceFloor(minValue, maxValue - minValue);
+  const anchoredMax = maxValue;
 
   return Array.from({ length: TICK_COUNT }, (_, index) => {
     const fraction = index / (TICK_COUNT - 1);
