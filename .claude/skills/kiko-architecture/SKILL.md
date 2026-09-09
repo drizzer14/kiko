@@ -393,32 +393,49 @@ the same connected token gets exactly the result it would have computed.
 `src/monobank/sync-status.ts` holds THREE separate module-level stores.
 Do NOT collapse them — each drives a different affordance:
 
-1. `isSyncing` (`useSyncStatus`/`setSyncing`) — the WHOLE-run "a Monobank
-   sync is running" signal. `runSync` lights it (`setSyncing(true)`) the
-   instant a run acquires the single-flight lock and clears it ONLY in
-   the `release` callback when the run settles (success OR failure);
-   `release` is the sole `setSyncing(false)` call site. It stays lit
-   across the 60s-gated per-card statement loop, so it is still on when
-   the "Last sync" stamp lands at the END of `runSyncInner`.
+1. `isSyncing` (`useSyncStatus`/`setSyncing`) — the WHOLE-run "a sync is
+   running" signal. It now RIDES the progress session (see signal 2):
+   `beginProgressSession` lights it on the FIRST contributor and
+   `endProgressSession` clears it on the LAST, so it spans the whole
+   fan-out — the Monobank `runSync` PLUS any concurrent crypto
+   `runBalanceSync` — not the Monobank run alone. A crypto-only fan-out
+   (no Monobank run) still lights it. It stays lit across the 60s-gated
+   per-card statement loop, so it is still on when the "Last sync" stamp
+   lands at the END of `runSyncInner`. `setSyncing` remains the low-level
+   primitive the session drives; `runSync` no longer calls it directly.
 2. `progress` (`useSyncProgress`/`getProgressSnapshot`/`setSyncProgress`,
    `{ completed, total }`) — the determinate progress, counted in
-   HOLDINGS, NOT cards/statements. `total` is the number of holdings the
-   user sees (active holdings across EVERY account — see
-   `deps.countActiveHoldings`, which reads `activeHoldings`), and
-   `completed` STARTS at the holdings that do NOT require syncing
-   (`total` minus the cards fetched this run — see `selectCardsToFetch`)
-   and rises by one as each fetched card commits, ending at `total`. So 3
-   holdings with 1 card to fetch render "2 / 3" while it syncs, then
-   "3 / 3" when it finishes. `runSync` resets it to `{ 0, 0 }` at the
-   start and end of every run; `runSyncInner` publishes the baseline +
-   holdings total once the balance-diff skip has decided the non-skipped
-   set — and publishes NOTHING when no card is fetched (`fetched === 0`),
-   so the bar never flashes a full "N / N" for a no-op sync. The
-   predicate for "a holding that requires syncing" is exactly membership
-   in `toFetch`: a connected Monobank card that is not balance-diff-skipped
-   (a manual holding, a crypto holding, a jar, and a skipped card all count
-   as already done). Because only the Monobank `runSync` drives this store,
-   a crypto holding sits in the baseline, not the syncing set.
+   HOLDINGS, NOT cards/statements, and DERIVED by a reference-counted
+   progress SESSION that spans the whole fan-out. `total` is the number
+   of holdings the user sees (active holdings across EVERY account — see
+   the shared `countActiveHoldings`, `src/holdings/count-active-holdings.ts`,
+   used by both the Monobank and crypto default deps). `completed` STARTS
+   at the NON-syncing baseline (`total` minus this run's syncable set) and
+   rises by one as each syncable holding's balance/statements commit,
+   ending at `total`. So 3 holdings with 1 syncable holding render "2 / 3"
+   while it syncs, then "3 / 3" when it finishes. Each sync path brackets
+   its work with `beginProgressSession()` / `endProgressSession()` (first
+   begin resets, last end clears), calls `registerSyncableHoldings(total,
+   syncable)` once, then `commitSyncableHoldings(n)` as its holdings
+   commit — see `src/monobank/sync-status.ts`. A path that registers
+   NOTHING syncable publishes nothing, so the bar never flashes a full
+   "N / N" for a run that refreshes nothing (the no-op guard, now spanning
+   the fan-out).
+
+   The SYNCABLE predicate ("anything syncable counts", the user's decision;
+   confirm on device):
+   - a Monobank CARD in `toFetch` — a connected card NOT balance-diff-skipped
+     (`selectCardsToFetch`), completing when its statements commit;
+   - a Monobank JAR whose /client-info balance MOVED since its prior stored
+     balance, or a new jar (jars have no statements, so a changed jar
+     completes at the fast phase; an UNCHANGED jar stays baseline — the jar
+     has no crash-safe marker, so a moved balance is its only "changed"
+     signal, `runSyncInner`);
+   - every crypto/exchange holding a `runBalanceSync` upserts (Binance
+     Spot/Funding/Earn, or a wallet) — a crypto sync has NO balance-diff
+     skip, it always reads live balances, so each returned holding counts.
+   NON-syncable baseline = every MANUAL holding, every balance-diff-skipped
+   card, and every unchanged jar.
 3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
    — a one-shot "balances have landed" signal. `runSyncInner` fires
    `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the
@@ -476,7 +493,10 @@ The hook's behavior is unit-tested in isolation
 
 `SyncProgressBar` is the WHOLE-RUN indicator, driven by `isSyncing` +
 `useSyncProgress` (never `fastPhaseDone`), so it tracks every trigger —
-a pull, the manual button, and an auto-sync-on-open. It is PINNED above
+a pull, the manual button, and an auto-sync-on-open — across the whole
+fan-out (the Monobank run AND every connected crypto account; a
+crypto-only fan-out lights it too, since `isSyncing` now rides the
+session). It is PINNED above
 the `SectionList` in `home.screen.tsx`, OUTSIDE the scroll content —
 NOT a `ListHeaderComponent`. As the header it scrolled away and drew
 behind the cells; pinning it above the list keeps it in view for the
