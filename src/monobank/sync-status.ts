@@ -55,7 +55,7 @@ export const useSyncStatus = (): boolean => useSyncExternalStore(subscribe, getS
  * once the balance-diff skip has decided the non-skipped set, and increments
  * `completed` as each card's statements import.
  */
-export type SyncProgress = { completed: number; total: number };
+type SyncProgress = { completed: number; total: number };
 
 let progress: SyncProgress = { completed: 0, total: 0 };
 const progressListeners = new Set<Listener>();
