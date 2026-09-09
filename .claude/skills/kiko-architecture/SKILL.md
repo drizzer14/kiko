@@ -401,12 +401,24 @@ Do NOT collapse them — each drives a different affordance:
    across the 60s-gated per-card statement loop, so it is still on when
    the "Last sync" stamp lands at the END of `runSyncInner`.
 2. `progress` (`useSyncProgress`/`getProgressSnapshot`/`setSyncProgress`,
-   `{ completed, total }`) — the determinate per-card progress. `runSync`
-   resets it to `{ 0, 0 }` at the start and end of every run;
-   `runSyncInner` publishes `total` (the count of cards that WILL be
-   fetched — see `selectCardsToFetch`) once the balance-diff skip has
-   decided the non-skipped set, then increments `completed` after each
-   card's statements commit.
+   `{ completed, total }`) — the determinate progress, counted in
+   HOLDINGS, NOT cards/statements. `total` is the number of holdings the
+   user sees (active holdings across EVERY account — see
+   `deps.countActiveHoldings`, which reads `activeHoldings`), and
+   `completed` STARTS at the holdings that do NOT require syncing
+   (`total` minus the cards fetched this run — see `selectCardsToFetch`)
+   and rises by one as each fetched card commits, ending at `total`. So 3
+   holdings with 1 card to fetch render "2 / 3" while it syncs, then
+   "3 / 3" when it finishes. `runSync` resets it to `{ 0, 0 }` at the
+   start and end of every run; `runSyncInner` publishes the baseline +
+   holdings total once the balance-diff skip has decided the non-skipped
+   set — and publishes NOTHING when no card is fetched (`fetched === 0`),
+   so the bar never flashes a full "N / N" for a no-op sync. The
+   predicate for "a holding that requires syncing" is exactly membership
+   in `toFetch`: a connected Monobank card that is not balance-diff-skipped
+   (a manual holding, a crypto holding, a jar, and a skipped card all count
+   as already done). Because only the Monobank `runSync` drives this store,
+   a crypto holding sits in the baseline, not the syncing set.
 3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
    — a one-shot "balances have landed" signal. `runSyncInner` fires
    `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the
@@ -424,8 +436,9 @@ distinct Monobank-sync affordances on Home, DECOUPLED from each other:
 1. The native `RefreshControl` spinner — the PULL GESTURE indicator ALONE.
 2. A determinate `SyncProgressBar`
    (`src/screens/home/sync-progress-bar/`) — the WHOLE-RUN indicator,
-   with a label ("Syncing transactions N/M") above a `completed / total`
-   fill.
+   with a label ("Syncing holdings N/M", i18n key `home.syncingHoldings`)
+   above a `completed / total` fill; the fraction counts HOLDINGS (see
+   the `progress` store above).
 
 **The spinner is decoupled from the whole run (do NOT re-bind it).**
 Binding `RefreshControl.refreshing` to the whole-run `isSyncing` flag

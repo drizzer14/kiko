@@ -4,6 +4,7 @@
 // through SyncDeps, so the real repos are never exercised here.
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
+import { activeHoldings } from '../rates/active-holdings';
 
 import clientInfo from './__fixtures__/client-info.json';
 import statement from './__fixtures__/statement.json';
@@ -19,6 +20,7 @@ import {
   getProgressSnapshot,
   isFastPhaseDone,
   getSnapshot as isSyncingSnapshot,
+  subscribeProgress,
 } from './sync-status';
 
 describe('mapStatementItem', () => {
@@ -297,6 +299,11 @@ const makeInMemoryDeps = (
       holdingsStore
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
+    // The count of holdings the user sees (active = open holding under a
+    // non-archived account), mirroring the real dep's `activeHoldings` read. The
+    // holdings-based progress bar's denominator. A test can override it to model
+    // extra manual/crypto holdings the sync itself never touches.
+    countActiveHoldings: async () => activeHoldings(holdingsStore, accountsStore).length,
     upsertHoldings,
     // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
@@ -1587,13 +1594,18 @@ describe('runSync', () => {
   });
 
   // ITEM 2: the determinate progress signal that drives the transactions-list
-  // progress bar. `total` is the count of cards that WILL be fetched (known once
-  // the skip decision is made), `completed` rises as each card imports, and the
-  // signal resets to zero when the run settles so the bar hides.
-  it('publishes determinate progress: total up front, completed per card, cleared at the end', async () => {
+  // progress bar. `total` is the count of the HOLDINGS the user sees (active
+  // holdings), NOT the card/statement count. `completed` STARTS at the count of
+  // holdings that do not require syncing (total minus the cards fetched this
+  // run), rises as each syncing card imports, and the signal resets to zero when
+  // the run settles so the bar hides.
+  it('publishes holdings-based progress: total = active holdings, completed starts at the non-syncing baseline, cleared at the end', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(() => [], [connected]);
 
+    // The fixture upserts 2 cards + 1 jar = 3 active holdings the user sees. Only
+    // the 2 cards enqueue a statement fetch (a jar has no statements), so the
+    // baseline is 3 - 2 = 1: the jar counts as already done.
     const samples: Array<{ completed: number; total: number }> = [];
     const base = deps.fetchStatement as SyncDeps['fetchStatement'];
     deps.fetchStatement = async (token, accountId, from, to, fetchImpl) => {
@@ -1603,15 +1615,69 @@ describe('runSync', () => {
 
     await runSync(deps);
 
-    // First sync = full fetch, so both fixture cards are fetched. `total` is 2
-    // before the first statement fetch; `completed` is the number of cards
-    // already imported at each fetch.
+    // `total` is 3 (the visible holdings). `completed` starts at the baseline 1
+    // (the jar, which does not require syncing) and is the number of syncing
+    // cards already imported PLUS that baseline at each fetch.
     expect(samples).toEqual([
-      { completed: 0, total: 2 },
-      { completed: 1, total: 2 },
+      { completed: 1, total: 3 },
+      { completed: 2, total: 3 },
     ]);
     // Cleared once the run settles, so the bar hides.
     expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+  });
+
+  // ITEM 2 (holdings model): the user's on-device example. 3 holdings, 2 do not
+  // require syncing, 1 requires syncing → show "2 / 3" while it syncs, then
+  // "3 / 3" when it finishes.
+  it('counts down from the non-syncing baseline to full (2/3 → 3/3) for one syncing holding', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+
+    // Exactly one card requires syncing this run.
+    const singleCard = clientInfo.accounts[0] as MonobankAccount;
+    deps.fetchClientInfo = async () => ({ accounts: [singleCard], jars: [] });
+    // The user sees 3 holdings in total; 2 of them do not require syncing.
+    deps.countActiveHoldings = async () => 3;
+
+    const emissions: Array<{ completed: number; total: number }> = [];
+    const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+    await runSync(deps);
+    unsubscribe();
+
+    // The baseline 2 is published up front, rises to 3 as the single card
+    // commits, then resets to 0 when the run settles.
+    expect(emissions).toEqual([
+      { completed: 2, total: 3 },
+      { completed: 3, total: 3 },
+      { completed: 0, total: 0 },
+    ]);
+  });
+
+  // A run with NO card to fetch (every card balance-diff-skipped) must publish no
+  // progress, so the bar never flashes a full "N / N" for a no-op sync.
+  it('publishes no progress when no holding requires syncing', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+    deps.countActiveHoldings = async () => 3;
+
+    const emissions: Array<{ completed: number; total: number }> = [];
+    const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+    // Seed the run so nothing changed: recent cursors (no full fetch) and each
+    // card's marker already equal to its /client-info balance.
+    deps.getLastSyncAt = async () => 1704326400000 - 1000;
+    deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+    // First sync populates markers; a second identical run then skips every card.
+    await runSync(deps);
+    emissions.length = 0;
+
+    await runSync(deps);
+    unsubscribe();
+
+    // No non-zero progress was ever published — every emission stays at the
+    // reset value.
+    expect(emissions.every((sample) => sample.completed === 0 && sample.total === 0)).toBe(true);
   });
 
   // ITEM 3: a card that changed on a monthly cadence can sit LAST in client-info

@@ -46,14 +46,19 @@ export const getSnapshot = (): boolean => isSyncing;
 export const useSyncStatus = (): boolean => useSyncExternalStore(subscribe, getSnapshot);
 
 /**
- * The DETERMINATE progress of the current run: how many of the cards that WILL
- * be fetched this run have finished importing (`completed`) out of the total
- * that will be fetched (`total`). A SEPARATE store from `isSyncing` above, so
- * the transactions-list progress bar can render `completed / total` without the
- * pull-to-refresh spinner (driven by `isSyncing`) reacting to it. `runSync`
- * resets it to `{ 0, 0 }` at the start and end of every run, publishes `total`
- * once the balance-diff skip has decided the non-skipped set, and increments
- * `completed` as each card's statements import.
+ * The DETERMINATE progress of the current run, counted in HOLDINGS (not cards):
+ * `total` is the number of holdings the user sees (active holdings across every
+ * account), and `completed` STARTS at the holdings that do NOT require syncing
+ * (everything except the cards fetched this run) and rises by one as each fetched
+ * card's statements import. So 3 holdings with 1 card to sync render "2 / 3"
+ * while it syncs, then "3 / 3" when it finishes. A SEPARATE store from
+ * `isSyncing` above, so the transactions-list progress bar can render
+ * `completed / total` without the pull-to-refresh spinner (driven by `isSyncing`)
+ * reacting to it. `runSync` resets it to `{ 0, 0 }` at the start and end of every
+ * run; `runSyncInner` publishes the holdings total with the non-syncing baseline
+ * once the balance-diff skip has decided the non-skipped set (and publishes
+ * NOTHING when no card is fetched, so the bar never flashes full for a no-op
+ * sync).
  */
 type SyncProgress = { completed: number; total: number };
 

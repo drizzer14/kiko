@@ -305,7 +305,7 @@ export const uk: typeof en = {
     filterCategories: 'Категорії',
     netWorth: 'Капітал',
     syncFailedMessage: 'Не вдалося синхронізувати {{accounts}}.',
-    syncingTransactions: 'Синхронізація транзакцій {{completed}}/{{total}}',
+    syncingHoldings: 'Синхронізація активів {{completed}}/{{total}}',
     title: 'Головна',
     today: 'Сьогодні',
     yesterday: 'Вчора',

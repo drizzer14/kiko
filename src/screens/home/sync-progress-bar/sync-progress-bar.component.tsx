@@ -8,7 +8,7 @@ import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { useSyncProgress, useSyncStatus } from '../../../monobank/sync-status';
 
-// The fill creeps toward JUST SHORT of the next card's completion over roughly
+// The fill creeps toward JUST SHORT of the next holding's completion over roughly
 // the per-token rate-limit cadence, so a card whose statements span several 60s
 // pages does not look frozen. A real per-card completion recomputes the target a
 // full step higher. Per-card is the honest granularity — the bar may pause
@@ -18,9 +18,11 @@ const NEXT_STEP_CREEP = 0.9;
 
 /**
  * The determinate progress bar for the Home transactions list, driven by the
- * real per-card Monobank sync progress (`useSyncProgress`). It shows a label
- * ("Syncing transactions N/M") above a `completed / total` fill while a sync
- * fetches statements, and hides when the run ends.
+ * holdings-based Monobank sync progress (`useSyncProgress`). It shows a label
+ * ("Syncing holdings N/M") above a `completed / total` fill while a sync fetches
+ * statements, and hides when the run ends. The fraction counts HOLDINGS (the
+ * holdings the user sees), with `completed` starting at the holdings that do not
+ * require syncing — see `sync-status.ts`.
  *
  * This bar is the WHOLE-RUN indicator: it tracks every trigger (a pull, the
  * manual button, and an auto-sync-on-open) through `isSyncing` + `useSyncProgress`,
@@ -53,7 +55,7 @@ const SyncProgressBar: FC = () => {
   return (
     <Box gap={1}>
       <Text variant="caption" tone="textSecondary">
-        {t('home.syncingTransactions', { completed, total })}
+        {t('home.syncingHoldings', { completed, total })}
       </Text>
 
       <View

@@ -26,28 +26,29 @@ describe('SyncProgressBar', () => {
     mockUseSyncProgress.mockReturnValue({ completed: 0, total: 0 });
   });
 
-  it('renders the determinate fraction while a multi-card sync fetches', async () => {
+  it('renders the determinate fraction while a sync fetches', async () => {
     mockUseSyncStatus.mockReturnValue(true);
     mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
 
     const { getByTestId } = await render(<SyncProgressBar />);
 
     // The honest fraction is exposed as the progressbar's accessibility value —
-    // 1 of 3 cards imported — regardless of the animated fill's current width.
+    // 1 of 3 holdings synced — regardless of the animated fill's current width.
     const bar = getByTestId('sync-progress-bar');
     expect(bar.props.accessibilityRole).toBe('progressbar');
     expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 3, now: 1 });
   });
 
-  it('renders a user-facing label naming the card fraction being synced', async () => {
+  it('renders a user-facing label naming the holdings fraction being synced', async () => {
     mockUseSyncStatus.mockReturnValue(true);
-    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    mockUseSyncProgress.mockReturnValue({ completed: 2, total: 3 });
 
-    // The bar is now the whole-run indicator, so it carries a readable label
-    // ("Syncing transactions 1/3") rather than a bare bar.
+    // The bar is the whole-run indicator, so it carries a readable label. The
+    // fraction now counts HOLDINGS (the holdings the user sees), not cards: the
+    // completed count starts at the holdings that do not require syncing.
     const { getByText } = await render(<SyncProgressBar />);
 
-    expect(getByText('Syncing transactions 1/3')).toBeTruthy();
+    expect(getByText('Syncing holdings 2/3')).toBeTruthy();
   });
 
   it('does not render when no sync is in flight', async () => {

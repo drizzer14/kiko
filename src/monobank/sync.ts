@@ -1,5 +1,6 @@
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
+import { activeHoldings } from '../rates/active-holdings';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
 import { settingsRepo } from '../repositories/settings.repo';
@@ -93,6 +94,17 @@ export interface SyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   /**
+   * The count of HOLDINGS the user sees — active holdings, meaning an open
+   * holding (`closedAt == null`) under a non-archived account, the same
+   * `activeHoldings` set net worth uses. It is the denominator of the
+   * determinate progress bar (see `setSyncProgress` in `runSyncInner`): the bar
+   * counts holdings, NOT cards/statements. It spans EVERY account (manual, crypto
+   * and Monobank), not just the connected Monobank one, so a manual/crypto
+   * holding — which this Monobank run never fetches — counts toward the
+   * already-done baseline.
+   */
+  countActiveHoldings: () => Promise<number>;
+  /**
    * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
    * so the reactive `holdings` callback fires ONCE for the fast phase rather
    * than once per card (a tight N+M burst that starved the JS thread and
@@ -170,6 +182,13 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
+  countActiveHoldings: async () => {
+    const [holdingsList, accountsList] = await Promise.all([
+      holdingsRepo.allQuery(),
+      accountsRepo.listQuery(),
+    ]);
+    return activeHoldings(holdingsList, accountsList).length;
+  },
   upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
   setSyncedBalance: (holdingId, balanceMinorUnits) =>
     holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
@@ -852,12 +871,29 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   });
   const fetched = toFetch.length;
 
-  // Publish the total now that the non-skipped set is decided; `completed` rises
-  // as each card's statements import. The transactions-list progress bar
-  // (`useSyncProgress`) renders `completed / total`.
-  setSyncProgress({ completed: 0, total: toFetch.length });
+  // The determinate progress bar counts HOLDINGS, not cards. Its denominator is
+  // the total number of holdings the user sees (active holdings across EVERY
+  // account); its numerator STARTS at the holdings that do not require syncing
+  // (everything except the cards fetched this run — manual holdings, crypto
+  // holdings, jars, and balance-diff-skipped cards) and rises by one as each
+  // fetched card commits. So 3 holdings with 1 card to fetch shows "2 / 3" while
+  // that card syncs, then "3 / 3" when it finishes.
+  //
+  // The count is read only when at least one card is fetched: a run that fetches
+  // nothing publishes NO progress (the store stays at the run-start reset), so
+  // the bar never flashes a full "N / N" for a no-op sync. `total` is floored at
+  // `fetched` so the fraction can never exceed 1 even if a fetched card's holding
+  // is somehow excluded from the active set.
+  let baseline = 0;
+  let total = 0;
+  if (fetched > 0) {
+    const visibleHoldings = await deps.countActiveHoldings();
+    total = Math.max(visibleHoldings, fetched);
+    baseline = total - fetched;
+    setSyncProgress({ completed: baseline, total });
+  }
 
-  let completed = 0;
+  let completed = baseline;
   for (const { account, holding } of toFetch) {
     // Per-card from-window: a behind/NULL-marker card (or any card on a full
     // fetch) widens back to `lastFullSyncAt` to re-cover a transaction older than
@@ -890,9 +926,10 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // next run while it stays unchanged.
       await deps.setSyncedBalance(holding.id, account.balance);
       succeededIds.push(account.id);
-      // One card's statements have committed: advance the determinate bar.
+      // One card's statements have committed: advance the determinate bar by one
+      // holding above the non-syncing baseline.
       completed += 1;
-      setSyncProgress({ completed, total: toFetch.length });
+      setSyncProgress({ completed, total });
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old

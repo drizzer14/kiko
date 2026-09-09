@@ -333,8 +333,10 @@ export const en = {
     netWorth: 'Net worth',
     syncFailedMessage: "Couldn't sync {{accounts}}.",
     // The determinate sync progress bar's label — the whole-run indicator on the
-    // transactions list. `completed`/`total` are card counts (see useSyncProgress).
-    syncingTransactions: 'Syncing transactions {{completed}}/{{total}}',
+    // transactions list. `completed`/`total` are HOLDINGS counts, not cards: the
+    // count of the holdings the user sees, with `completed` starting at the
+    // holdings that do not require syncing (see useSyncProgress).
+    syncingHoldings: 'Syncing holdings {{completed}}/{{total}}',
     title: 'Home',
     today: 'Today',
     yesterday: 'Yesterday',
