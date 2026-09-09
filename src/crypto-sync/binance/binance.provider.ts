@@ -1,5 +1,6 @@
 import { Money } from '../../currency/money';
-import type { BalanceProvider } from '../provider';
+import type { HoldingRow } from '../../db/schema';
+import type { BalanceProvider, ProviderBalance } from '../provider';
 
 import {
   type BinanceAccount,
@@ -44,8 +45,29 @@ export const defaultBinanceDeps: BinanceDeps = {
 /** The only asset the sync reads; every other asset in every wallet is ignored. */
 const BINANCE_ASSET = 'BTC';
 
-/** Display name of the holding the first sync creates. */
-const BINANCE_HOLDING_NAME = 'Binance BTC';
+/**
+ * Match keys stored under `metadata.binanceAsset`, one holding per Binance
+ * wallet. Spot REUSES the legacy 'BTC' key that the pre-split single aggregated
+ * holding used, so the first post-split sync UPDATES that existing row in place
+ * into the Spot holding (matched by `upsertByMetadataKey`) — no orphan, no
+ * duplicate. Funding and Earn are new keys, so they are created fresh. Earn is
+ * the Flexible + Locked positions COMBINED into one holding.
+ */
+const SPOT_KEY = BINANCE_ASSET;
+const FUNDING_KEY = 'BTC:funding';
+const EARN_KEY = 'BTC:earn';
+
+/**
+ * Default display names for the holdings a first sync creates. 'Binance' and its
+ * wallet names are brand terms, read the same in every language (the same
+ * convention as `providerDisplayName` and the prior single 'Binance BTC'
+ * holding), and each name is user-editable after creation — the upsert never
+ * rewrites it, so a transitioned Spot holding keeps its existing (possibly
+ * user-edited) name rather than being renamed to 'Binance Spot'.
+ */
+const SPOT_HOLDING_NAME = 'Binance Spot';
+const FUNDING_HOLDING_NAME = 'Binance Funding';
+const EARN_HOLDING_NAME = 'Binance Earn';
 
 /**
  * Sum a set of decimal-string BTC amounts into satoshis. Each string is
@@ -163,25 +185,69 @@ const positionSatoshis = (
 /**
  * Run one non-Spot wallet's read and parse. Any failure — a missing API-key
  * permission, a throttle, a malformed body — SKIPS that wallet only (logging
- * which one) and contributes 0, so a single wallet never breaks the whole sync.
+ * which one) and returns `null`, so a single wallet never breaks the whole sync
+ * AND its holding is left untouched rather than clobbered with a fabricated 0.
+ * `null` (skipped) is deliberately distinct from `0` (a genuine empty wallet).
  * Spot is deliberately NOT wrapped: its failure must fail the sync.
  */
-const skipOnError = async (wallet: string, satoshis: () => Promise<number>): Promise<number> => {
+const walletSatoshis = async (
+  wallet: string,
+  satoshis: () => Promise<number>,
+): Promise<number | null> => {
   try {
     return await satoshis();
   } catch (error) {
     // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one wallet's failure (a missing API-key permission, a throttle) must skip only that wallet, not break the whole Binance sync; log which one so a device log shows what was dropped.
     console.warn(`[binance sync] skipped the ${wallet} wallet`, error);
 
-    return 0;
+    return null;
   }
+};
+
+/** The `binanceAsset` match keys already present among a target's holdings. */
+const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
+  const keys = new Set<string>();
+  for (const holding of holdings) {
+    const key = (holding.metadata as { binanceAsset?: unknown } | null)?.binanceAsset;
+    if (typeof key === 'string') {
+      keys.add(key);
+    }
+  }
+  return keys;
+};
+
+/**
+ * Append one non-Spot wallet's holding to the batch, applying the skip/zero
+ * rules that keep the split correct without cluttering the grid:
+ * - read FAILED (`satoshis === null`): omit — leave any existing holding at its
+ *   last-good balance (never overwrite it with a fabricated 0).
+ * - read succeeded, > 0: write (the upsert creates or updates the holding).
+ * - read succeeded, 0, holding ALREADY exists: write 0 — a wallet the user
+ *   emptied must be zeroed, not left stale at its previous balance.
+ * - read succeeded, 0, no holding yet: omit — a never-used wallet creates no
+ *   empty holding the user cannot easily delete.
+ */
+const appendWallet = (
+  batch: ProviderBalance[],
+  satoshis: number | null,
+  metadataKey: string,
+  name: string,
+  existingKeys: Set<string>,
+): void => {
+  if (satoshis === null) {
+    return;
+  }
+  if (satoshis === 0 && !existingKeys.has(metadataKey)) {
+    return;
+  }
+  batch.push({ currency: 'BTC', balanceMinorUnits: satoshis, metadataKey, name });
 };
 
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
   kind: 'exchange',
   metadataField: 'binanceAsset',
-  fetchBalances: async (deps) => {
+  fetchBalances: async (deps, target) => {
     const credentials = await deps.readCredentials();
 
     if (credentials === undefined) {
@@ -191,31 +257,40 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const { apiKey, secret } = credentials;
     const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
 
-    // Spot MUST succeed — its failure fails the whole Binance sync.
+    // Spot MUST succeed — its failure fails the whole Binance sync. It is the
+    // connection's proof of life and the split's anchor, so it is ALWAYS written
+    // (a genuine zero included), and it reuses the legacy key so the pre-split
+    // aggregated holding is updated in place into the Spot holding.
     const spot = spotSatoshis(await deps.fetchAccount(apiKey, secret, options));
+    const balances: ProviderBalance[] = [
+      { currency: 'BTC', balanceMinorUnits: spot, metadataKey: SPOT_KEY, name: SPOT_HOLDING_NAME },
+    ];
 
-    // Each additional wallet skips ONLY itself on any error, so Spot still lands.
-    const funding = await skipOnError('funding', async () =>
+    const existingKeys = existingBinanceKeys(target.holdings);
+
+    // Funding: its own holding; a failure skips only it.
+    const funding = await walletSatoshis('funding', async () =>
       fundingSatoshis(await deps.fetchFundingAsset(apiKey, secret, options)),
     );
-    const flexible = await skipOnError('flexible earn', async () =>
-      positionSatoshis(await deps.fetchFlexiblePosition(apiKey, secret, options), 'totalAmount'),
-    );
-    const locked = await skipOnError('locked earn', async () =>
-      positionSatoshis(await deps.fetchLockedPosition(apiKey, secret, options), 'amount'),
-    );
+    appendWallet(balances, funding, FUNDING_KEY, FUNDING_HOLDING_NAME, existingKeys);
 
-    // All wallets' BTC is summed into ONE holding. Cross-wallet addition is plain
-    // integer satoshis, so no float drift is possible here.
-    const balanceMinorUnits = spot + funding + flexible + locked;
+    // Earn: Flexible + Locked COMBINED into ONE holding. A failure in EITHER read
+    // skips the WHOLE Earn holding — importing one side alone would silently
+    // UNDER-COUNT the user's Earn balance — so both reads sit inside one
+    // `walletSatoshis` guard rather than two.
+    const earn = await walletSatoshis('earn', async () => {
+      const flexible = positionSatoshis(
+        await deps.fetchFlexiblePosition(apiKey, secret, options),
+        'totalAmount',
+      );
+      const locked = positionSatoshis(
+        await deps.fetchLockedPosition(apiKey, secret, options),
+        'amount',
+      );
+      return flexible + locked;
+    });
+    appendWallet(balances, earn, EARN_KEY, EARN_HOLDING_NAME, existingKeys);
 
-    return [
-      {
-        currency: 'BTC',
-        balanceMinorUnits,
-        metadataKey: BINANCE_ASSET,
-        name: BINANCE_HOLDING_NAME,
-      },
-    ];
+    return balances;
   },
 };

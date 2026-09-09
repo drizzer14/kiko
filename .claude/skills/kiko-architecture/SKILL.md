@@ -473,11 +473,14 @@ here:
 
 ## Binance exchange sync — every wallet, one holding
 
-`binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) sums a
-user's BTC across ALL of Binance's wallets into the single "Binance BTC"
-holding, not the Spot wallet alone. The four reads, all signed by the one
-shared `signedRequest` helper in `binance.client.ts` (HMAC-SHA256 over the
-same `timestamp=…&recvWindow=…` query; read-only key is enough):
+`binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) reads a
+user's BTC across ALL of Binance's wallets and writes THREE separate
+holdings — Spot, Funding, and Earn (Simple Earn Flexible + Locked
+COMBINED into one Earn holding) — each its own `binanceAsset` match key,
+NOT one aggregated "Binance BTC" holding (that was the prior model). The
+four reads, all signed by the one shared `signedRequest` helper in
+`binance.client.ts` (HMAC-SHA256 over the same `timestamp=…&recvWindow=…`
+query; read-only key is enough):
 
 | Wallet | Client fn | Method + path | BTC amount |
 |---|---|---|---|
@@ -486,26 +489,43 @@ same `timestamp=…&recvWindow=…` query; read-only key is enough):
 | Simple Earn Flexible | `fetchFlexiblePosition` | `GET /sapi/v1/simple-earn/flexible/position` | `totalAmount` |
 | Simple Earn Locked | `fetchLockedPosition` | `GET /sapi/v1/simple-earn/locked/position` | `amount` |
 
-Two load-bearing rules, verified in `binance.provider.test.ts` rather
-than restated here:
+Load-bearing rules, verified in `binance.provider.test.ts` rather than
+restated here:
 
-- **Spot is strict; the other three are error-tolerant.** Spot's failure
-  fails the whole sync (its balance must be trusted). Each other wallet
-  runs through `skipOnError`: a missing API-key permission, a throttle, or
-  a malformed body SKIPS that wallet only — it contributes 0, logs one
-  `console.warn` (behind a justified `noConsole` OVERRIDE), and never
-  breaks the sync. A Spot-only key still imports the Spot balance.
-- **The Simple Earn position reads MUST paginate.** The flexible and
-  locked position endpoints are paged (`current` from 1, `size` per page
-  capped at 100, response `{ rows, total }`); reading page 1 alone
-  UNDER-COUNTS a user whose positions span more than one page (locked
+- **Three holdings, one match key each.** Spot reuses the LEGACY `'BTC'`
+  key, Funding is `'BTC:funding'`, Earn is `'BTC:earn'` (stored under
+  `metadata.binanceAsset`, matched by `upsertByMetadataKey`). Earn combines
+  Simple Earn Flexible + Locked into ONE holding. The keys are asymmetric on
+  purpose: see the data transition below.
+- **Data transition from the old single holding.** The pre-split model wrote
+  one aggregated holding keyed `'BTC'`. Because Spot reuses that same key, the
+  first post-split sync UPDATES that existing row IN PLACE into the Spot
+  holding (no orphan, no duplicate), while Funding and Earn are created under
+  their new keys. The upsert never rewrites a holding's name, so a transitioned
+  Spot holding keeps its existing (possibly user-edited) name rather than being
+  renamed to `'Binance Spot'`.
+- **Spot is strict; Funding and Earn are per-holding error-tolerant.** Spot's
+  failure fails the whole sync (its balance must be trusted) and Spot is ALWAYS
+  written — a genuine zero included — as the connection's anchor. Each other
+  wallet runs through `walletSatoshis`, which returns `null` (NOT 0) on a
+  missing API-key permission, a throttle, or a malformed body: `appendWallet`
+  then OMITS that holding, leaving any existing one at its last-good balance
+  rather than clobbering it with a fabricated 0, and logs one `console.warn`
+  (behind a justified `noConsole` OVERRIDE). A successful read of 0 writes 0
+  ONLY when a holding for that wallet already exists (to zero an emptied
+  wallet); an all-zero never-used wallet creates no empty holding. A Spot-only
+  key still writes the Spot holding.
+- **The Simple Earn position reads MUST paginate, and Earn skips as a whole.**
+  The flexible and locked position endpoints are paged (`current` from 1,
+  `size` per page capped at 100, response `{ rows, total }`); reading page 1
+  alone UNDER-COUNTS a user whose positions span more than one page (locked
   especially — each locked subscription is its own row). `fetchAllPositions`
-  in `binance.client.ts` loops `current` until the gathered rows cover
-  `total` (short-page and a hard 50-page cap are the backstops). A failure
-  on ANY page rejects the whole walk, so `skipOnError` drops the WHOLE Earn
-  wallet rather than importing a partial, silently-under-counted total. The
-  funding read is a full array — NOT paginated. All three SAPI reads send
-  `asset=BTC` to shrink the payload.
+  in `binance.client.ts` loops `current` until the gathered rows cover `total`
+  (short-page and a hard 50-page cap are the backstops). Both Earn reads sit
+  inside ONE `walletSatoshis` guard, so a failure on EITHER read (or any page)
+  skips the WHOLE Earn holding rather than writing a partial, silently
+  under-counted total. The funding read is a full array — NOT paginated. All
+  three SAPI reads send `asset=BTC` to shrink the payload.
 - **Amounts sum as `Money`, never as floats.** Each decimal-string field
   is converted with `Money.fromMajor('BTC', …)` and added via `sumSatoshis`
   (see `kiko-domain`); a non-finite amount is rejected before it can reach

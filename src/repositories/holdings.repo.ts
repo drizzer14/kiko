@@ -338,8 +338,11 @@ export const holdingsRepo = {
     ),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot
-   * per provider, matched on `walletAddress` / `binanceAsset`. No transaction
-   * import — a wallet or exchange gives a number, not a statement.
+   * per holding, matched on `walletAddress` / `binanceAsset`. A provider may
+   * write MORE than one — Binance splits into a Spot, a Funding and an Earn
+   * holding, each its own `binanceAsset` match key (see `binance.provider.ts`);
+   * a wallet writes one. No transaction import — a wallet or exchange gives a
+   * number, not a statement.
    */
   upsertExchange: (holding: ExchangeHolding) => write((tx) => upsertByMetadataKey(tx, holding)),
   /**
