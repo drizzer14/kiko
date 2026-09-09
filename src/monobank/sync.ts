@@ -10,7 +10,13 @@ import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
-import { setFastPhaseDone, setSyncing, setSyncProgress } from './sync-status';
+import {
+  beginProgressSession,
+  commitSyncableHoldings,
+  endProgressSession,
+  registerSyncableHoldings,
+  setFastPhaseDone,
+} from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
 import { readToken } from './token';
 
@@ -748,31 +754,28 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   if (inFlightSync) {
     return inFlightSync;
   }
-  const run = runSyncInner(overrides);
-  inFlightSync = run;
-  // Light the transient "syncing" signal the instant this run acquires the
-  // lock — before any network/DB work — so every reactive indicator
-  // (`useSyncStatus`) shows it for the whole run. A trigger that JOINS an
-  // in-flight run takes the early `return inFlightSync` above and never
-  // reaches here, so it neither re-lights nor prematurely clears the flag; the
-  // flag is cleared only when the ACTUAL run settles, in `release` below.
-  setSyncing(true);
-  // Reset the determinate progress signal at the START of the run — before the
-  // total is known — so the transactions-list bar shows nothing until the skip
-  // decision publishes a real total.
-  setSyncProgress({ completed: 0, total: 0 });
+  // Enter the shared progress SESSION the instant this run acquires the lock —
+  // before any network/DB work. The first contributor lights the transient
+  // "syncing" signal (`useSyncStatus`) and resets the determinate progress, so
+  // every reactive indicator shows the run; the session spans the whole fan-out
+  // (this run plus any concurrent crypto `runBalanceSync`), so `isSyncing` and
+  // the bar stay lit until the LAST path settles. A trigger that JOINS an
+  // in-flight run takes the early `return inFlightSync` above and never reaches
+  // here, so it neither re-enters nor prematurely leaves the session.
+  beginProgressSession();
   // Reset the fast-phase-done signal at the START of the run, so a joined pull
   // observes THIS run's balance commit, not a stale one from a prior run. It
   // flips ON in `runSyncInner` once `upsertAllHoldings` commits the balances.
   setFastPhaseDone(false);
+  const run = runSyncInner(overrides);
+  inFlightSync = run;
   const release = (): void => {
     if (inFlightSync === run) {
       inFlightSync = null;
     }
-    setSyncing(false);
-    // Clear the progress signal when the run settles (success OR failure), so
-    // the bar hides.
-    setSyncProgress({ completed: 0, total: 0 });
+    // Leave the shared progress session when the run settles (success OR
+    // failure). The LAST contributor clears `isSyncing` and the progress bar.
+    endProgressSession();
     // Clear the fast-phase-done signal when the run settles, so the next run
     // starts from a clean OFF state.
     setFastPhaseDone(false);
@@ -871,29 +874,49 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   });
   const fetched = toFetch.length;
 
+  // A jar has no statements, so it is syncable ONLY when its balance MOVED since
+  // the last stored value (a new jar counts as changed). A changed jar's balance
+  // already landed in the fast-phase upsert, so it completes immediately below;
+  // an unchanged jar stays in the non-syncing baseline. `priorHoldingByMonobankId`
+  // was captured BEFORE the upsert, so it still holds the prior stored balance.
+  // Unrepresentable-currency jars are not upserted at all, so they never count.
+  const changedJars = (jars ?? []).filter((jar) => {
+    if (currencyFromCode(jar.currencyCode) === undefined) {
+      return false;
+    }
+    const prior = priorHoldingByMonobankId.get(jar.id);
+    return prior === undefined || prior.balanceMinorUnits !== jar.balance;
+  }).length;
+
+  // This run's Monobank syncable set: the cards it will fetch statements for plus
+  // the jars whose balance moved. A balance-diff-skipped card and an unchanged jar
+  // are NOT syncable — they belong to the already-done baseline.
+  const syncableCount = fetched + changedJars;
+
   // The determinate progress bar counts HOLDINGS, not cards. Its denominator is
   // the total number of holdings the user sees (active holdings across EVERY
-  // account); its numerator STARTS at the holdings that do not require syncing
-  // (everything except the cards fetched this run — manual holdings, crypto
-  // holdings, jars, and balance-diff-skipped cards) and rises by one as each
-  // fetched card commits. So 3 holdings with 1 card to fetch shows "2 / 3" while
-  // that card syncs, then "3 / 3" when it finishes.
+  // account); its numerator STARTS at the non-syncing baseline (total minus this
+  // run's syncable set — manual holdings, crypto holdings a Monobank run does not
+  // touch, balance-diff-skipped cards, and unchanged jars) and rises by one as
+  // each syncable holding commits. So 3 holdings with 1 syncable card shows
+  // "2 / 3" while it syncs, then "3 / 3" when it finishes.
   //
-  // The count is read only when at least one card is fetched: a run that fetches
-  // nothing publishes NO progress (the store stays at the run-start reset), so
-  // the bar never flashes a full "N / N" for a no-op sync. `total` is floored at
-  // `fetched` so the fraction can never exceed 1 even if a fetched card's holding
-  // is somehow excluded from the active set.
-  let baseline = 0;
-  let total = 0;
-  if (fetched > 0) {
+  // The count is registered only when at least one holding is syncable: a run
+  // that refreshes nothing syncable registers nothing, so the bar never flashes a
+  // full "N / N" for a no-op sync (the round-5 guard). `total` is floored at
+  // `syncableCount` so the fraction can never exceed 1 even if a syncable holding
+  // is somehow excluded from the active set. The session accumulates this run's
+  // set into any concurrent crypto run's, so one fan-out drives one bar.
+  if (syncableCount > 0) {
     const visibleHoldings = await deps.countActiveHoldings();
-    total = Math.max(visibleHoldings, fetched);
-    baseline = total - fetched;
-    setSyncProgress({ completed: baseline, total });
+    registerSyncableHoldings(Math.max(visibleHoldings, syncableCount), syncableCount);
+    // Changed jars have no statements — their balances landed in the fast-phase
+    // upsert — so mark them complete now, before the per-card statement loop.
+    if (changedJars > 0) {
+      commitSyncableHoldings(changedJars);
+    }
   }
 
-  let completed = baseline;
   for (const { account, holding } of toFetch) {
     // Per-card from-window: a behind/NULL-marker card (or any card on a full
     // fetch) widens back to `lastFullSyncAt` to re-cover a transaction older than
@@ -928,8 +951,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       succeededIds.push(account.id);
       // One card's statements have committed: advance the determinate bar by one
       // holding above the non-syncing baseline.
-      completed += 1;
-      setSyncProgress({ completed, total });
+      commitSyncableHoldings();
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old

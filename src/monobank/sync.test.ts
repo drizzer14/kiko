@@ -1680,6 +1680,47 @@ describe('runSync', () => {
     expect(emissions.every((sample) => sample.completed === 0 && sample.total === 0)).toBe(true);
   });
 
+  // A jar has no statements, so it is syncable ONLY when its balance actually
+  // MOVES since the last stored value (a new jar counts as changed). A changed
+  // jar completes at the fast phase — its balance lands in the up-front upsert —
+  // even when every card is balance-diff-skipped and no card is fetched.
+  it('counts a CHANGED jar as syncable and completes it at the fast phase, with every card skipped', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(() => [], [connected]);
+    // Recent cursors so this is never a full fetch — the card skip can engage.
+    deps.getLastSyncAt = async () => 1704326400000 - 1000;
+    deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+
+    // A mutable jar balance: the second run sees a CHANGED jar while the two
+    // cards stay unchanged (and so balance-diff-skipped).
+    let jarBalance = 5_000_000;
+    deps.fetchClientInfo = async () => ({
+      accounts: clientInfo.accounts as MonobankAccount[],
+      jars: [{ ...(clientInfo.jars[0] as MonobankJar), balance: jarBalance }],
+    });
+
+    // First run establishes the card markers and stores the jar at 5,000,000.
+    await runSync(deps);
+
+    // The jar balance moves; the cards do not.
+    jarBalance = 6_000_000;
+
+    const emissions: Array<{ completed: number; total: number }> = [];
+    const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+    await runSync(deps);
+    unsubscribe();
+
+    // total = 3 (2 cards + 1 jar). Every card is skipped, so the ONLY syncable
+    // holding is the changed jar: baseline 2, then 3 as the jar commits at the
+    // fast phase, then cleared.
+    expect(emissions).toEqual([
+      { completed: 2, total: 3 },
+      { completed: 3, total: 3 },
+      { completed: 0, total: 0 },
+    ]);
+  });
+
   // ITEM 3: a card that changed on a monthly cadence can sit LAST in client-info
   // order. The old serial 60s-gated loop fetched cards in fixed client-info
   // order and derived one shared from-window, so a just-changed last card was
