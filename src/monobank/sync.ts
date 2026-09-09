@@ -1,6 +1,6 @@
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+import { countActiveHoldings } from '../holdings/count-active-holdings';
 import { i18n } from '../i18n';
-import { activeHoldings } from '../rates/active-holdings';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
 import { settingsRepo } from '../repositories/settings.repo';
@@ -188,13 +188,7 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  countActiveHoldings: async () => {
-    const [holdingsList, accountsList] = await Promise.all([
-      holdingsRepo.allQuery(),
-      accountsRepo.listQuery(),
-    ]);
-    return activeHoldings(holdingsList, accountsList).length;
-  },
+  countActiveHoldings,
   upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
   setSyncedBalance: (holdingId, balanceMinorUnits) =>
     holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),

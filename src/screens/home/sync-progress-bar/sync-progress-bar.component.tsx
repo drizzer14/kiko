@@ -18,18 +18,20 @@ const NEXT_STEP_CREEP = 0.9;
 
 /**
  * The determinate progress bar for the Home transactions list, driven by the
- * holdings-based Monobank sync progress (`useSyncProgress`). It shows a label
- * ("Syncing holdings N/M") above a `completed / total` fill while a sync fetches
- * statements, and hides when the run ends. The fraction counts HOLDINGS (the
+ * holdings-based sync progress (`useSyncProgress`). It shows a label ("Syncing
+ * holdings N/M") above a `completed / total` fill while a sync run refreshes
+ * holdings, and hides when the run ends. The fraction counts HOLDINGS (the
  * holdings the user sees), with `completed` starting at the holdings that do not
- * require syncing — see `sync-status.ts`.
+ * require syncing — see the progress session in `sync-status.ts`.
  *
  * This bar is the WHOLE-RUN indicator: it tracks every trigger (a pull, the
- * manual button, and an auto-sync-on-open) through `isSyncing` + `useSyncProgress`,
- * and stays lit across the slow per-card statement loop. The native
- * pull-to-refresh spinner is a SEPARATE, decoupled signal that ends at the fast
- * balance phase (see the `RefreshControl` in `home.screen.tsx` and
- * `use-refresh-control-signal.ts`).
+ * manual button, an auto-sync-on-open) through `isSyncing` + `useSyncProgress`,
+ * across the WHOLE fan-out — the Monobank run AND every connected crypto account —
+ * and stays lit across the slow per-card statement loop. Because `isSyncing` now
+ * rides the shared progress session, a crypto-only fan-out (no Monobank run) still
+ * lights the bar. The native pull-to-refresh spinner is a SEPARATE, decoupled
+ * signal that ends at the fast balance phase (see the `RefreshControl` in
+ * `home.screen.tsx` and `use-refresh-control-signal.ts`).
  */
 const SyncProgressBar: FC = () => {
   const { theme } = useUnistyles();

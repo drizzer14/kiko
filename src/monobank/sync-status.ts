@@ -1,14 +1,15 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * A tiny module-level store for the TRANSIENT "a Monobank sync is running" UI
+ * A tiny module-level store for the TRANSIENT "a sync run is in flight" UI
  * signal. It is deliberately NOT a database row and NOT a live query: nothing
- * about a run-in-progress is persisted, and it must flip the instant `runSync`
- * acquires/releases its single-flight lock — long before any row is written.
- * `runSync` (sync.ts) drives it from the lock's acquire/settle points, so any
- * trigger (auto-sync on open, pull-to-refresh, the manual button) lights the
- * same signal; every subscribed indicator observes it through
- * `useSyncStatus()`.
+ * about a run-in-progress is persisted, and it must flip long before any row is
+ * written. It now rides the progress SESSION below (`beginProgressSession` lights
+ * it on the first contributor, `endProgressSession` clears it on the last), so it
+ * spans the WHOLE fan-out — the Monobank `runSync` plus any concurrent crypto
+ * `runBalanceSync` — not the Monobank run alone. Any trigger (auto-sync on open,
+ * pull-to-refresh, the manual button, a crypto-only fan-out) lights the same
+ * signal; every subscribed indicator observes it through `useSyncStatus()`.
  *
  * The `subscribe`/`getSnapshot`/`setSyncing` triple is shaped for React's
  * `useSyncExternalStore`: `subscribe` and `getSnapshot` are stable
@@ -49,16 +50,15 @@ export const useSyncStatus = (): boolean => useSyncExternalStore(subscribe, getS
  * The DETERMINATE progress of the current run, counted in HOLDINGS (not cards):
  * `total` is the number of holdings the user sees (active holdings across every
  * account), and `completed` STARTS at the holdings that do NOT require syncing
- * (everything except the cards fetched this run) and rises by one as each fetched
- * card's statements import. So 3 holdings with 1 card to sync render "2 / 3"
- * while it syncs, then "3 / 3" when it finishes. A SEPARATE store from
- * `isSyncing` above, so the transactions-list progress bar can render
- * `completed / total` without the pull-to-refresh spinner (driven by `isSyncing`)
- * reacting to it. `runSync` resets it to `{ 0, 0 }` at the start and end of every
- * run; `runSyncInner` publishes the holdings total with the non-syncing baseline
- * once the balance-diff skip has decided the non-skipped set (and publishes
- * NOTHING when no card is fetched, so the bar never flashes full for a no-op
- * sync).
+ * and rises by one as each syncable holding's balance/statements commit. So 3
+ * holdings with 1 syncable holding render "2 / 3" while it syncs, then "3 / 3"
+ * when it finishes. A SEPARATE store from `isSyncing` above, so the
+ * transactions-list progress bar can render `completed / total` without the
+ * pull-to-refresh spinner reacting to it. The published value is DERIVED by the
+ * progress SESSION below, which spans the whole fan-out — the Monobank `runSync`
+ * plus any concurrent crypto `runBalanceSync`, each contributing its syncable set
+ * (see the session for the syncable predicate and the no-op guard). Direct
+ * `setSyncProgress` remains the low-level primitive the session and tests use.
  */
 type SyncProgress = { completed: number; total: number };
 

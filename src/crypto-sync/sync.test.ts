@@ -5,6 +5,14 @@
 // here.
 import type { AccountRow, HoldingRow } from '../db/schema';
 import { i18n } from '../i18n';
+import {
+  getProgressSnapshot,
+  getSnapshot as isSyncingSnapshot,
+  setSyncing,
+  setSyncProgress,
+  subscribeProgress,
+} from '../monobank/sync-status';
+import { activeHoldings } from '../rates/active-holdings';
 
 import type { BalanceProvider, ProviderBalance, SyncTarget } from './provider';
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
@@ -124,12 +132,23 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
     upsertHolding,
+    // The count of holdings the user sees — the determinate progress bar's
+    // denominator. A progress test overrides it to model manual holdings the
+    // crypto sync itself never touches.
+    countActiveHoldings: async () => activeHoldings(holdingsStore, accountsStore).length,
   };
 
   return { deps, accountsStore, holdingsStore };
 };
 
 describe('runBalanceSync', () => {
+  // runBalanceSync now drives the shared progress session (module-level singleton
+  // state); reset it after each test so one test's progress never leaks.
+  afterEach(() => {
+    setSyncProgress({ completed: 0, total: 0 });
+    setSyncing(false);
+  });
+
   it('marks the target account with the provider id and upserts one BTC crypto_asset holding stamped syncedAt', async () => {
     const { provider, calls } = makeProvider();
     const { deps, accountsStore, holdingsStore } = makeInMemoryDeps([cryptoAccount()]);
@@ -261,5 +280,89 @@ describe('runBalanceSync', () => {
     ).rejects.toThrow('Block explorer request failed: 400');
     expect(accountsStore[0].institution).toBeNull();
     expect(holdingsStore).toHaveLength(0);
+  });
+
+  // The crypto sync feeds the same determinate progress bar as the Monobank run
+  // (the shared session in `sync-status.ts`). Every returned holding is syncable:
+  // a crypto sync has no balance-diff skip — it always reads live balances — so
+  // each holding counts and completes as its upsert commits.
+  describe('progress session', () => {
+    // Distinct match keys so three Spot/Funding/Earn balances upsert as three
+    // holdings, not one (the in-memory double keys on metadataKey).
+    const btcBalance = (metadataKey: string, balanceMinorUnits: number): ProviderBalance => ({
+      currency: 'BTC',
+      balanceMinorUnits,
+      metadataKey,
+      name: metadataKey,
+    });
+
+    it('publishes the non-syncing baseline then rises to full as its one holding commits', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+      // The user sees 3 holdings; this crypto holding is the only syncable one.
+      deps.countActiveHoldings = async () => 3;
+
+      const emissions: Array<{ completed: number; total: number }> = [];
+      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+      await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
+      unsubscribe();
+
+      expect(emissions).toEqual([
+        { completed: 2, total: 3 }, // baseline 3 - 1 syncable
+        { completed: 3, total: 3 }, // the crypto holding commits
+        { completed: 0, total: 0 }, // session cleared on end
+      ]);
+    });
+
+    it('counts every returned wallet holding as syncable (Spot / Funding / Earn)', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
+      deps.targetAccountId = 'acc-1';
+      // 5 holdings the user sees; 3 of them are this connection's syncable set.
+      deps.countActiveHoldings = async () => 5;
+
+      const emissions: Array<{ completed: number; total: number }> = [];
+      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+      await runBalanceSync(
+        provider,
+        {
+          balances: [btcBalance('BTC', 1), btcBalance('BTC:funding', 2), btcBalance('BTC:earn', 3)],
+        },
+        deps,
+      );
+      unsubscribe();
+
+      expect(emissions).toEqual([
+        { completed: 2, total: 5 }, // baseline 5 - 3 syncable
+        { completed: 3, total: 5 },
+        { completed: 4, total: 5 },
+        { completed: 5, total: 5 },
+        { completed: 0, total: 0 },
+      ]);
+    });
+
+    it('leaves the session clean (isSyncing off, progress cleared) when the provider fetch fails', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      await expect(
+        runBalanceSync(
+          provider,
+          { balances: new Error('Block explorer request failed: 400') },
+          deps,
+        ),
+      ).rejects.toThrow('Block explorer request failed: 400');
+
+      expect(isSyncingSnapshot()).toBe(false);
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+    });
   });
 });

@@ -1,5 +1,12 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
+import { countActiveHoldings } from '../holdings/count-active-holdings';
 import { i18n } from '../i18n';
+import {
+  beginProgressSession,
+  commitSyncableHoldings,
+  endProgressSession,
+  registerSyncableHoldings,
+} from '../monobank/sync-status';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '../repositories/holdings.repo';
 
@@ -24,6 +31,12 @@ export interface BalanceSyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   upsertHolding: (holding: ExchangeHolding) => Promise<unknown>;
+  /**
+   * The count of holdings the user sees — the determinate sync-progress bar's
+   * denominator (the shared progress session in `src/monobank/sync-status.ts`).
+   * Shared with the Monobank run so one fan-out drives one bar.
+   */
+  countActiveHoldings: () => Promise<number>;
 }
 
 export type BalanceSyncResult = { syncedHoldings: number };
@@ -34,6 +47,7 @@ const defaultDeps: BalanceSyncDeps = {
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
   upsertHolding: (holding) => holdingsRepo.upsertExchange(holding),
+  countActiveHoldings,
 };
 
 /**
@@ -101,26 +115,45 @@ export const runBalanceSync = async <Deps>(
   overrides: Partial<BalanceSyncDeps> = {},
 ): Promise<BalanceSyncResult> => {
   const deps: BalanceSyncDeps = { ...defaultDeps, ...overrides };
-  const accountId = await resolveTargetAccount(deps, provider.id);
-  const holdings = await deps.listHoldingsByAccount(accountId);
-  const balances = await provider.fetchBalances(providerDeps, { accountId, holdings });
+  // Enter the shared progress session (see `src/monobank/sync-status.ts`) so this
+  // crypto sync feeds the same determinate bar as a concurrent Monobank run. The
+  // `finally` leaves it on EVERY path — a failed fetch never strands the bar.
+  beginProgressSession();
+  try {
+    const accountId = await resolveTargetAccount(deps, provider.id);
+    const holdings = await deps.listHoldingsByAccount(accountId);
+    const balances = await provider.fetchBalances(providerDeps, { accountId, holdings });
 
-  await deps.updateAccount(accountId, { institution: provider.id });
-  const syncedAt = deps.now();
+    await deps.updateAccount(accountId, { institution: provider.id });
+    const syncedAt = deps.now();
 
-  for (const balance of balances) {
-    await deps.upsertHolding({
-      accountId,
-      name: balance.name,
-      type: 'crypto_asset',
-      currency: balance.currency,
-      balanceMinorUnits: balance.balanceMinorUnits,
-      metadata: { syncedAt },
-      metadataField: provider.metadataField,
-      metadataKey: balance.metadataKey,
-      renameFromDefault: balance.renameFromDefault,
-    });
+    // Every returned holding is syncable: a crypto sync has no balance-diff skip
+    // — it always reads live balances — so each counts toward the bar and
+    // completes as its upsert commits. Registered BEFORE the first upsert so its
+    // holdings never briefly sit in the already-done baseline.
+    if (balances.length > 0) {
+      const total = await deps.countActiveHoldings();
+      registerSyncableHoldings(Math.max(total, balances.length), balances.length);
+    }
+
+    for (const balance of balances) {
+      await deps.upsertHolding({
+        accountId,
+        name: balance.name,
+        type: 'crypto_asset',
+        currency: balance.currency,
+        balanceMinorUnits: balance.balanceMinorUnits,
+        metadata: { syncedAt },
+        metadataField: provider.metadataField,
+        metadataKey: balance.metadataKey,
+        renameFromDefault: balance.renameFromDefault,
+      });
+      // One crypto holding's balance has committed: advance the bar by one.
+      commitSyncableHoldings();
+    }
+
+    return { syncedHoldings: balances.length };
+  } finally {
+    endProgressSession();
   }
-
-  return { syncedHoldings: balances.length };
 };
