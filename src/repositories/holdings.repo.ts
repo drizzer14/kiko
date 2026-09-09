@@ -36,37 +36,55 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
  * balance provider. Upserts match on that key so a re-sync updates the balance
  * in place instead of duplicating the holding.
  */
-type SyncedHolding = NewHolding & { metadataField: SyncedMetadataField; metadataKey: string };
+type SyncedHolding = NewHolding & {
+  metadataField: SyncedMetadataField;
+  metadataKey: string;
+  // One-time transition rename: rewrite an EXISTING matched holding's name to
+  // `name` ONLY IF its current name still equals this exact old default (a
+  // user-edited name never matches). See `renameFromDefault` in provider.ts.
+  renameFromDefault?: string;
+};
 
 type MonobankHolding = NewHolding & { monobankId: string };
 
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
+  renameFromDefault?: string;
 };
 
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The JSON path is bound as a parameter (json_extract takes any text
 // expression), so this one helper serves every synced field. The holding's
-// name is written only on insert — a user rename survives a re-sync.
+// name is written on insert and otherwise preserved on update — a user rename
+// survives a re-sync — with ONE exception: the transition rename, applied only
+// when the stored name still equals `renameFromDefault` (see provider.ts).
 const upsertByMetadataKey = async (
   tx: typeof database,
-  { metadataField, metadataKey, metadata, ...rest }: SyncedHolding,
+  { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await tx
-    .select({ id: holdings.id })
+    .select({ id: holdings.id, name: holdings.name })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
   const current = existing.at(0);
 
   if (current) {
+    // Name is preserved on update (a user rename survives a re-sync), EXCEPT the
+    // one-time transition rename: rewrite it only when the stored name still
+    // equals the exact old default `renameFromDefault` names.
+    const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
     await tx
       .update(holdings)
-      .set({ balanceMinorUnits: rest.balanceMinorUnits ?? 0, metadata: merged })
+      .set({
+        balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+        metadata: merged,
+        ...(rename ? { name: rest.name } : {}),
+      })
       .where(eq(holdings.id, current.id));
 
     return;

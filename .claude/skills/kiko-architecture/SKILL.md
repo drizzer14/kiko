@@ -477,7 +477,7 @@ here:
   `src/transactions/row-description.ts`), so a marker column and a
   persisted sentence are not interchangeable here. See `kiko-domain`.
 
-## Binance exchange sync — every wallet, one holding
+## Binance exchange sync — every wallet, three holdings (Spot / Funding / Earn)
 
 `binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) reads a
 user's BTC across ALL of Binance's wallets and writes THREE separate
@@ -507,9 +507,12 @@ restated here:
   one aggregated holding keyed `'BTC'`. Because Spot reuses that same key, the
   first post-split sync UPDATES that existing row IN PLACE into the Spot
   holding (no orphan, no duplicate), while Funding and Earn are created under
-  their new keys. The upsert never rewrites a holding's name, so a transitioned
-  Spot holding keeps its existing (possibly user-edited) name rather than being
-  renamed to `'Binance Spot'`.
+  their new keys. The Spot balance carries `renameFromDefault: 'Binance BTC'`
+  (the old default name), so the upsert relabels the legacy holding to
+  `'Binance Spot'` ONLY IF its name is still that exact default — a user-edited
+  name never matches and is preserved. This is the one exception to the upsert's
+  name-preserve-on-update rule (`upsertByMetadataKey`); a wallet omits the
+  marker and is never renamed.
 - **Spot is strict; Funding and Earn are per-holding error-tolerant.** Spot's
   failure fails the whole sync (its balance must be trusted) and Spot is ALWAYS
   written — a genuine zero included — as the connection's anchor. Each other

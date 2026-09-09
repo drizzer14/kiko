@@ -138,6 +138,8 @@ describe('binanceProvider — Spot holding', () => {
       balanceMinorUnits: 75_000_000, // 0.5 + 0.25 BTC
       metadataKey: 'BTC',
       name: 'Binance Spot',
+      // The transition marker: relabel a still-default legacy holding to Spot.
+      renameFromDefault: 'Binance BTC',
     });
   });
 
@@ -411,5 +413,19 @@ describe('binanceProvider — data transition from the single aggregated holding
     expect(byKey(balances, 'BTC:funding')?.balanceMinorUnits).toBe(40_000_000);
     expect(byKey(balances, 'BTC:earn')?.balanceMinorUnits).toBe(30_000_000);
     expect(balances.filter((balance) => balance.metadataKey === 'BTC')).toHaveLength(1);
+  });
+
+  // The legacy aggregated holding kept the old default name "Binance BTC"; once
+  // it becomes Spot-only it must relabel to "Binance Spot" so the grid does not
+  // mix "Binance BTC" with "Binance Funding"/"Binance Earn". The Spot balance
+  // carries the old default as `renameFromDefault`, so the upsert renames a
+  // still-default holding while leaving a user-edited name untouched.
+  it('marks the Spot balance to relabel a legacy default-named holding to "Binance Spot"', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'BTC')?.name).toBe('Binance Spot');
+    expect(byKey(balances, 'BTC')?.renameFromDefault).toBe('Binance BTC');
   });
 });

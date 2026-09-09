@@ -118,6 +118,7 @@ export const runBalanceSync = async <Deps>(
       metadata: { syncedAt },
       metadataField: provider.metadataField,
       metadataKey: balance.metadataKey,
+      renameFromDefault: balance.renameFromDefault,
     });
   }
 

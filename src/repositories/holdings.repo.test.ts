@@ -406,7 +406,7 @@ describe('appendDepositContribution', () => {
 // directly) and inserts; on a hit it updates. `selectResults` answers the two
 // reads in that order; every insert/update payload is captured.
 const makeUpsertTx = (
-  matchRows: { id: string }[],
+  matchRows: { id: string; name?: string }[],
   maxSortOrder = -1,
 ): { tx: unknown; inserts: Record<string, unknown>[]; updates: Record<string, unknown>[] } => {
   const inserts: Record<string, unknown>[] = [];
@@ -516,6 +516,39 @@ describe('holdingsRepo.upsertExchange', () => {
     await holdingsRepo.upsertExchange(withoutBalance);
 
     expect(updates[0]).toMatchObject({ balanceMinorUnits: 0 });
+  });
+
+  // The one-time transition rename: when `renameFromDefault` is set and the
+  // matched holding's name STILL equals that old default, the update rewrites
+  // the name; a user-edited name never matches and is left untouched.
+  it('renames a matched holding whose name is still the old default', async () => {
+    const { tx, updates } = makeUpsertTx([{ id: 'h-legacy', name: 'Binance BTC' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertExchange({
+      ...walletHolding,
+      name: 'Binance Spot',
+      metadataField: 'binanceAsset',
+      metadataKey: 'BTC',
+      renameFromDefault: 'Binance BTC',
+    });
+
+    expect(updates[0]).toMatchObject({ name: 'Binance Spot' });
+  });
+
+  it('preserves a user-edited name even when renameFromDefault is set', async () => {
+    const { tx, updates } = makeUpsertTx([{ id: 'h-legacy', name: 'My Binance stack' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertExchange({
+      ...walletHolding,
+      name: 'Binance Spot',
+      metadataField: 'binanceAsset',
+      metadataKey: 'BTC',
+      renameFromDefault: 'Binance BTC',
+    });
+
+    expect(updates[0]).not.toHaveProperty('name');
   });
 });
 

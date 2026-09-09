@@ -70,6 +70,14 @@ const FUNDING_HOLDING_NAME = 'Binance Funding';
 const EARN_HOLDING_NAME = 'Binance Earn';
 
 /**
+ * The pre-split default name of the single aggregated holding. The Spot balance
+ * carries it as `renameFromDefault`, so the upsert relabels a still-default
+ * legacy holding to 'Binance Spot' on the first post-split sync while leaving a
+ * user-edited name untouched (see `renameFromDefault` in `../provider`).
+ */
+const LEGACY_HOLDING_NAME = 'Binance BTC';
+
+/**
  * Sum a set of decimal-string BTC amounts into satoshis. Each string is
  * converted on its own and added as `Money`, so no float addition happens before
  * rounding — a value already validated as finite by `isFiniteAmount`.
@@ -263,7 +271,15 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // aggregated holding is updated in place into the Spot holding.
     const spot = spotSatoshis(await deps.fetchAccount(apiKey, secret, options));
     const balances: ProviderBalance[] = [
-      { currency: 'BTC', balanceMinorUnits: spot, metadataKey: SPOT_KEY, name: SPOT_HOLDING_NAME },
+      {
+        currency: 'BTC',
+        balanceMinorUnits: spot,
+        metadataKey: SPOT_KEY,
+        name: SPOT_HOLDING_NAME,
+        // Relabel a legacy aggregated holding still named 'Binance BTC' to
+        // 'Binance Spot' on the first post-split sync; a user rename is preserved.
+        renameFromDefault: LEGACY_HOLDING_NAME,
+      },
     ];
 
     const existingKeys = existingBinanceKeys(target.holdings);
