@@ -505,6 +505,48 @@ const isBalanceDiffSkip = (
 };
 
 /**
+ * Order the statement-fetch queue CHANGED-FIRST, so a genuinely-active card
+ * imports in the earliest 60s slot even when it sits LAST in client-info order.
+ * The serial per-token gate fetches one card per ~60s; a run interrupted (app
+ * background/kill) partway through the loop otherwise starves a just-changed
+ * last card — the reported missing-today-transaction bug. Three stable groups:
+ *
+ * 0. the card's /client-info balance differs from its PRIOR STORED balance
+ *    (real recent activity). The signal is the prior STORED balance, NOT the
+ *    crash-safe marker, so it discriminates even on the NULL-marker recovery
+ *    build where every marker is null.
+ * 1. the card holds an outstanding authorization, or is in the force-retry set.
+ * 2. the rest (recovery/unchanged).
+ *
+ * `Array.prototype.sort` is stable, so cards within one group keep their
+ * client-info order. This changes ONLY the fetch order — which cards are fetched
+ * (the balance-diff skip) is decided unchanged inside the loop.
+ */
+export const orderStatementQueue = (
+  accounts: MonobankAccount[],
+  context: {
+    priorHoldingByMonobankId: Map<string, HoldingRow>;
+    holdingByMonobankId: Map<string, HoldingRow>;
+    holdIds: Set<string>;
+    failedSet: Set<string>;
+  },
+): MonobankAccount[] => {
+  const priority = (account: MonobankAccount): number => {
+    const prior = context.priorHoldingByMonobankId.get(account.id);
+    if (prior != null && prior.balanceMinorUnits !== account.balance) {
+      return 0;
+    }
+    const holding = context.holdingByMonobankId.get(account.id);
+    if ((holding != null && context.holdIds.has(holding.id)) || context.failedSet.has(account.id)) {
+      return 1;
+    }
+    return 2;
+  };
+
+  return [...accounts].sort((a, b) => priority(a) - priority(b));
+};
+
+/**
  * The force-fetch set to persist for the NEXT run, pure and total for testing.
  * Starts from the prior failed set, drops every id that SUCCEEDED this run, adds
  * every id that FAILED this run, and keeps only ids still present in client-info
@@ -557,6 +599,38 @@ const fromCursorSeconds = (
 ): number => {
   const cursor = isFullFetch ? lastFullSyncAt : lastSyncAt;
   return cursor ? Math.floor(cursor / 1000) : toSeconds - DEFAULT_LOOKBACK_SECONDS;
+};
+
+/**
+ * The inclusive from-second of ONE card's statement window. A card whose
+ * crash-safe marker is NULL or BEHIND its /client-info balance — unimported
+ * activity, or the NULL-marker recovery build — widens back to the
+ * `lastFullSyncAt` cursor, re-covering a transaction older than the incremental
+ * `lastSyncAt` (the cursor advances on every clean run, including runs that skip
+ * whole cards, so a stranded older transaction sits behind it). A card on a full
+ * fetch widens the same way. A normally-in-sync card (marker == balance) keeps
+ * the narrow incremental cursor. Shares the null-cursor fallback in
+ * `fromCursorSeconds`.
+ */
+export const fromSecondsForCard = (
+  account: MonobankAccount,
+  prior: HoldingRow | undefined,
+  context: {
+    isFullFetch: boolean;
+    lastSyncAt: number | null;
+    lastFullSyncAt: number | null;
+    toSeconds: number;
+  },
+): number => {
+  const priorSynced = prior?.syncedBalanceMinorUnits;
+  const markerBehind = priorSynced == null || priorSynced !== account.balance;
+
+  return fromCursorSeconds(
+    context.isFullFetch || markerBehind,
+    context.lastSyncAt,
+    context.lastFullSyncAt,
+    context.toSeconds,
+  );
 };
 
 const importAccount = async (
@@ -689,27 +763,21 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // Full-fetch decision: fetch EVERY card regardless of balance on the first
   // sync ever, when a full fetch has never run, or once the last one is older
   // than `FULL_FETCH_INTERVAL_MS`. Otherwise the balance-diff skip applies per
-  // card below. Computed BEFORE `fromSeconds` because it selects which cursor
-  // the from-window is derived from.
+  // card below. Computed BEFORE the window because it widens the from-cursor.
   const lastFullSyncAt = await deps.getLastFullSyncAt();
   const isFullFetch = shouldFullFetch(deps.now, lastSyncAt, lastFullSyncAt);
 
-  // On a full fetch, derive the from-cursor from `lastFullSyncAt` (the last
-  // time ALL cards were actually queried), NOT `lastSyncAt` (the incremental
-  // cursor, which advances on EVERY clean run — including runs that
-  // balance-diff-skip a card, so it drifts recent while whole cards were never
-  // fetched). `lastFullSyncAt <= lastSyncAt` always (a full-fetch run stamps
-  // both; later incremental runs advance only `lastSyncAt`), so on a full fetch
-  // `fromCursorSeconds` widens the window to [lastFullSyncAt, now], re-covering
-  // every window skipped since the last full fetch — including a net-zero
-  // same-window pair (a +X and a -X that left the balance unchanged) that was
-  // skipped in an OLDER window and would otherwise be lost forever.
-  // `fetchAllStatements` pages backward across the 31-day API window, so a
-  // `fromSeconds` older than 31 days is handled. On the FIRST sync `lastSyncAt`
-  // is null ⇒ `isFullFetch` true ⇒ the cursor is `lastFullSyncAt` (also null) ⇒
-  // falls back to `DEFAULT_LOOKBACK_SECONDS`, the same first-sync behavior as
-  // before.
-  const fromSeconds = fromCursorSeconds(isFullFetch, lastSyncAt, lastFullSyncAt, toSeconds);
+  // Order the queue CHANGED-FIRST so a genuinely-active card imports in the
+  // earliest 60s slot even when it sits last in client-info order — a run
+  // interrupted partway through the serial gated loop would otherwise starve it.
+  // This changes only the ORDER; the balance-diff skip below still decides which
+  // cards are actually fetched. See `orderStatementQueue`.
+  const orderedAccounts = orderStatementQueue(accounts, {
+    priorHoldingByMonobankId,
+    holdingByMonobankId,
+    holdIds,
+    failedSet,
+  });
 
   let importedTransactions = 0;
   let fetched = 0;
@@ -717,7 +785,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const succeededIds: string[] = [];
   const failedIds: string[] = [];
   const failures: Error[] = [];
-  for (const account of accounts) {
+  for (const account of orderedAccounts) {
     // The balance-diff skip. A card is skipped — no statement fetch, no failure
     // pushed (a skipped card is a successful no-op) — per `isBalanceDiffSkip`. A
     // missing holding is nothing to import into (matches today's `importAccount`
@@ -738,6 +806,16 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       continue;
     }
     fetched += 1;
+    // Per-card from-window: a behind/NULL-marker card (or any card on a full
+    // fetch) widens back to `lastFullSyncAt` to re-cover a transaction older than
+    // the incremental cursor; a normally-in-sync card keeps the narrow
+    // `lastSyncAt` cursor. See `fromSecondsForCard`.
+    const fromSeconds = fromSecondsForCard(account, priorHoldingByMonobankId.get(account.id), {
+      isFullFetch,
+      lastSyncAt,
+      lastFullSyncAt,
+      toSeconds,
+    });
     try {
       importedTransactions += await importAccount(
         deps,

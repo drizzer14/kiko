@@ -1528,4 +1528,137 @@ describe('runSync', () => {
       expect(fetchedIds(fetchStatement)).not.toContain(idB);
     });
   });
+
+  // ITEM 3: a card that changed on a monthly cadence can sit LAST in client-info
+  // order. The old serial 60s-gated loop fetched cards in fixed client-info
+  // order and derived one shared from-window, so a just-changed last card was
+  // starved by an interruption and, even when fetched, missed a transaction
+  // older than the incremental cursor. FIX A orders the queue changed-first;
+  // FIX C widens the from-window per card for a behind/NULL marker.
+  describe('statement queue priority and per-card window (ITEM 3)', () => {
+    const idA = clientInfo.accounts[0].id;
+    const idB = clientInfo.accounts[1].id;
+    const fetchedIds = (fetchStatement: jest.Mock): string[] =>
+      fetchStatement.mock.calls.map(([, accountId]) => decodeURIComponent(accountId as string));
+
+    // FIX A. The priority signal is the PRIOR STORED balance (captured before the
+    // up-front upsert), not the crash-safe marker — so this discriminates even on
+    // the NULL-marker recovery build. idB is the second (last) card in the
+    // fixture; a change on it must move it to the FIRST 60s slot.
+    it('fetches a changed card first even when it is ordered last in client-info', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps } = makeInMemoryDeps(() => [], [connected]);
+
+      // First sync stores each card's balance and the full-fetch marker.
+      await runSync(deps);
+
+      // A periodic full fetch (both cards fetched) where only card B's balance
+      // moved since the last sync. Client-info order is [A, B]; changed-first
+      // ordering must fetch B before A.
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      deps.fetchClientInfo = async () => ({
+        accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
+          account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
+        ),
+        jars: clientInfo.jars as MonobankJar[],
+      });
+      const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      const order = fetchedIds(fetchStatement);
+      expect(order).toContain(idA);
+      expect(order.indexOf(idB)).toBeLessThan(order.indexOf(idA));
+    });
+
+    // FIX C. On an INCREMENTAL run (no periodic full fetch), a card whose marker
+    // is behind its client-info balance fetches the WIDE lastFullSyncAt-derived
+    // window; a normally-in-sync card (fetched here because it holds an
+    // outstanding authorization) keeps the NARROW incremental lastSyncAt cursor.
+    it('fetches a wide window for a behind-marker card and the incremental cursor for an in-sync card', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps, holdingsStore } = makeInMemoryDeps(() => [], [connected]);
+
+      await runSync(deps);
+
+      const heldHoldingId = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idA)
+        ?.id as string;
+      // lastFullSyncAt sits inside the 24h interval (so this is NOT a periodic
+      // full fetch) but strictly before the near-now incremental cursor, so the
+      // behind-marker card's window reaches further back than the in-sync card's.
+      const lastSyncAt = 1704326400000 - 1000;
+      const lastFullSyncAt = 1704326400000 - 2 * 60 * 60 * 1000;
+      deps.getLastSyncAt = async () => lastSyncAt;
+      deps.getLastFullSyncAt = async () => lastFullSyncAt;
+      deps.getHoldingIdsWithHold = async () => [heldHoldingId];
+      deps.fetchClientInfo = async () => ({
+        accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
+          account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
+        ),
+        jars: clientInfo.jars as MonobankJar[],
+      });
+      const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      const fromFor = (id: string): number | undefined => {
+        const call = (fetchStatement as jest.Mock).mock.calls.find(
+          ([, accountId]) => decodeURIComponent(accountId as string) === id,
+        );
+        return call?.[2] as number | undefined;
+      };
+      expect(fromFor(idA)).toBe(Math.floor(lastSyncAt / 1000));
+      expect(fromFor(idB)).toBe(Math.floor(lastFullSyncAt / 1000));
+      // The behind-marker card reaches strictly further back, re-covering a
+      // transaction older than the incremental cursor.
+      expect(fromFor(idB)).toBeLessThan(fromFor(idA) as number);
+    });
+
+    // FIX A durability: the changed card is fetched first and its statements
+    // commit in their own transaction, so a failure/interruption on a LATER card
+    // never loses the changed card's just-imported transactions.
+    it('imports the changed card first, durable even when a later card fails', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
+
+      await runSync(deps);
+
+      const bToday: MonobankStatementItem = {
+        ...(statement[0] as MonobankStatementItem),
+        id: 'b-today',
+        time: 1704300000,
+      };
+      // Periodic full fetch: both cards fetched. Only B changed, so B is fetched
+      // first; the later card A then fails, modelling a run cut short after the
+      // first (changed) card.
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      deps.fetchClientInfo = async () => ({
+        accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
+          account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
+        ),
+        jars: clientInfo.jars as MonobankJar[],
+      });
+      const fetchStatement = jest.fn(async (_token: string, accountId: string) => {
+        const id = decodeURIComponent(accountId);
+        if (id === idA) {
+          throw new Error('interrupted after the first card');
+        }
+        if (id === idB) {
+          return [bToday];
+        }
+        return [];
+      });
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      await expect(runSync(deps)).rejects.toThrow('interrupted after the first card');
+
+      const order = fetchedIds(fetchStatement);
+      expect(order[0]).toBe(idB);
+      expect(transactionsStore.some((row) => row.externalId === 'b-today')).toBe(true);
+    });
+  });
 });

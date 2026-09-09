@@ -252,6 +252,47 @@ This does not add a per-card cursor — see the note at the end of
 "Partial-progress resilience across cards": `lastFullSyncAt` is a
 single global full-fetch marker, not a per-card one.
 
+### Statement queue priority AND per-card from-window
+
+The serial per-card statement loop is gated at one card per ~60s (the
+per-token rate limit), and `upsertAllHoldings` writes every card's
+DISPLAY balance up front at t0. Two consequences fixed a
+missing-today-transaction bug where a monthly-updating card that is
+LATE in client-info order dropped a real transaction:
+
+- **Changed-first queue order** (`orderStatementQueue`,
+  `src/monobank/sync.ts`). `runSyncInner` STABLE-sorts the accounts
+  before the loop into three groups: (0) a card whose /client-info
+  balance differs from its PRIOR STORED balance
+  (`priorHoldingByMonobankId`, captured BEFORE the up-front upsert),
+  (1) a card with an outstanding hold or in the force-retry set, (2)
+  the rest. So a genuinely-active card imports in the FIRST 60s slot
+  even when it sits last in client-info order, and an interrupted run
+  (app background/kill partway through the loop) no longer starves it.
+  The priority signal is deliberately the prior STORED balance, NOT the
+  crash-safe marker — the marker is NULL for every card on the recovery
+  build, so it cannot discriminate there, whereas the stored display
+  balance still moves. This changes only the ORDER; `isBalanceDiffSkip`
+  still decides WHICH cards are fetched, unchanged, inside the loop.
+- **Per-card from-window** (`fromSecondsForCard`, `src/monobank/sync.ts`).
+  The from-cursor is now computed PER CARD, not once for the whole run.
+  A card whose marker is NULL or BEHIND its /client-info balance
+  (unimported activity, or the recovery build) — or any card on a full
+  fetch — widens back to the `lastFullSyncAt` cursor, re-covering a
+  transaction older than the incremental `lastSyncAt` (which advances on
+  every clean run, including runs that skip whole cards, so a stranded
+  older transaction sits behind it). A normally-in-sync card
+  (marker == balance) keeps the narrow `lastSyncAt` cursor. Both cases
+  route through the shared `fromCursorSeconds` (its null-cursor fallback
+  to `DEFAULT_LOOKBACK_SECONDS` is unchanged), so a full fetch still
+  widens to `lastFullSyncAt` for every card exactly as before.
+
+This fix carries NO data backfill: marking the just-changed card
+synced-through-its-new-balance (a backfill) would SKIP its unimported
+transaction. The recovery re-fetch (a NULL marker fetches every card
+once) is the deliberate one-time cost that recovers stranded cards —
+read `runSyncInner` end to end rather than trusting a restated shape.
+
 ### Robust graduation: `failedSyncMonobankIds`
 
 Before this, `lastFullSyncAt` (above) graduated **only** on a fully
