@@ -711,20 +711,22 @@ describe('HomeScreen', () => {
 
     const { getByLabelText, getByTestId, getByText, queryByText } = await renderHome();
 
-    // Narrow away from the 30-day default: pick today alone and apply it, which
-    // excludes both the "Recent" (2 days ago) and "TooOld" rows.
+    // Narrow away from the 30-day default: the picker moves the bound nearer to
+    // the pick, so picking 3 days ago pulls the `to` bound down to it. That
+    // excludes both the "Recent" (2 days ago) and "TooOld" (40 days ago) rows.
     await act(async () => {
       fireEvent.press(getByLabelText('Date range'));
     });
-    const today = new Date();
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
     const calendar = getByTestId('date-range-calendar').props as {
       onDayPress: (day: unknown) => void;
     };
     await act(async () => {
       calendar.onDayPress({
-        year: today.getFullYear(),
-        month: today.getMonth() + 1,
-        day: today.getDate(),
+        year: threeDaysAgo.getFullYear(),
+        month: threeDaysAgo.getMonth() + 1,
+        day: threeDaysAgo.getDate(),
       });
     });
     await act(async () => {

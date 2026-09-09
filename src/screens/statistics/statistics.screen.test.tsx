@@ -1093,25 +1093,30 @@ describe('StatisticsScreen', () => {
   it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
     const { getByLabelText, getByTestId, getByText } = await renderScreen();
 
-    // Narrow away from the 30-day default by picking a single day (today).
+    const range = defaultDateRange();
+
+    // Narrow away from the 30-day default: the picker moves the bound nearer to
+    // the pick, so picking 3 days ago pulls the `to` bound down to it while the
+    // `from` bound stays on the default range start.
     await act(async () => {
       fireEvent.press(getByLabelText('Date range'));
     });
-    const today = new Date();
+    const narrowedTo = new Date();
+    narrowedTo.setDate(narrowedTo.getDate() - 3);
     const calendar = getByTestId('date-range-calendar').props as {
       onDayPress: (day: unknown) => void;
     };
     await act(async () => {
       calendar.onDayPress({
-        year: today.getFullYear(),
-        month: today.getMonth() + 1,
-        day: today.getDate(),
+        year: narrowedTo.getFullYear(),
+        month: narrowedTo.getMonth() + 1,
+        day: narrowedTo.getDate(),
       });
     });
     await act(async () => {
       fireEvent.press(getByText('Apply'));
     });
-    expect(getByText(`${formatDate(today)} – ${formatDate(today)}`)).toBeTruthy();
+    expect(getByText(`${formatDate(range.from)} – ${formatDate(narrowedTo)}`)).toBeTruthy();
 
     // Clearing must land back on the 30-day default, NOT on all-time.
     await act(async () => {
@@ -1121,7 +1126,6 @@ describe('StatisticsScreen', () => {
       fireEvent.press(getByText('Clear'));
     });
 
-    const range = defaultDateRange();
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
   });
 });
