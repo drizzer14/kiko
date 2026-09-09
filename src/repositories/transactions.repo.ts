@@ -217,6 +217,19 @@ export const transactionsRepo = {
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   /**
+   * The newest imported time for a holding's rows of one sync `source` (a single
+   * `{ time }` row, or none). The crypto-sync transaction import reads this as an
+   * incremental cursor: the next Binance fetch starts from just before this time
+   * rather than re-walking the full history every sync.
+   */
+  latestSyncedTimeQuery: (holdingId: string, source: TransactionRow['source']) =>
+    database
+      .select({ time: transactions.time })
+      .from(transactions)
+      .where(and(eq(transactions.holdingId, holdingId), eq(transactions.source, source)))
+      .orderBy(desc(transactions.time))
+      .limit(1),
+  /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
    * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
    * fetches these cards even when their /client-info balance is unchanged,
