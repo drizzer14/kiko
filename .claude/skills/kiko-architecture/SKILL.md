@@ -358,6 +358,20 @@ completes. The signal is Monobank-only, so a pull on a crypto-only
 account shows little/no spinner — see `src/screens/use-sync-all.ts` for
 the fan-out that also drives crypto accounts.
 
+Home does NOT bind `RefreshControl.refreshing` to `useSyncStatus`
+directly. It binds to a LOCAL signal from
+`useRefreshControlSignal(isSyncing)`
+(`src/screens/home/use-refresh-control-signal.ts`). iOS drops the native
+spin animation when the list leaves the window on a tab blur, and a plain
+render leaves `refreshing` still `true` on refocus — RN sees no
+`false`->`true` edge, so it never re-calls the native `beginRefreshing()`
+and the spinner stays frozen for the rest of a long sync. The hook mirrors
+`isSyncing` while the screen stays focused, and on each refocus while a
+sync is still in flight it re-issues a `false`->`true` edge (`false` now,
+`true` on the next `requestAnimationFrame`) to restart the spin. The
+re-drive logic is unit-testable in isolation
+(`use-refresh-control-signal.test.tsx`); the native spin itself is not.
+
 ### Partial-progress resilience across cards
 
 `runSync`'s per-card import loop is **fault-isolated**: one card's
