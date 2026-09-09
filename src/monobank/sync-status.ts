@@ -90,3 +90,47 @@ export const getProgressSnapshot = (): SyncProgress => progress;
 /** The current sync progress (`{ completed, total }`), reactively tracked. */
 export const useSyncProgress = (): SyncProgress =>
   useSyncExternalStore(subscribeProgress, getProgressSnapshot);
+
+/**
+ * The FAST-PHASE-DONE signal: `true` from the instant a run's client-info fetch
+ * and balance upsert commit (`upsertAllHoldings` in `sync.ts`) until the run
+ * settles. It marks the "balances have landed" moment, LONG before the per-card
+ * statement loop finishes.
+ *
+ * The pull-to-refresh spinner ends on THIS signal, not on the whole run: the
+ * native `RefreshControl` was previously bound to the whole-run `isSyncing`
+ * flag, which fights iOS across navigation/detach/scroll (the spinner froze or
+ * vanished). Decoupling the spinner from the whole run — ending it when the
+ * fast phase resolves — leaves the determinate progress bar (`useSyncProgress`)
+ * as the whole-run indicator.
+ *
+ * A SEPARATE store from `isSyncing` and `progress`, so the pull path can
+ * observe "balances committed" without either the spinner reacting to progress
+ * or the progress bar reacting to the pull. It is a plain imperative
+ * signal (no React hook): the pull path reads it inside an event handler, not
+ * during render.
+ */
+let fastPhaseDone = false;
+const fastPhaseListeners = new Set<Listener>();
+
+/** Flip the fast-phase-done flag; notifies subscribers only on an actual change. */
+export const setFastPhaseDone = (next: boolean): void => {
+  if (fastPhaseDone === next) {
+    return;
+  }
+  fastPhaseDone = next;
+  for (const listener of fastPhaseListeners) {
+    listener();
+  }
+};
+
+/** The current fast-phase-done flag, read synchronously. */
+export const isFastPhaseDone = (): boolean => fastPhaseDone;
+
+/** Register a fast-phase-done change listener; the returned function unsubscribes it. */
+export const subscribeFastPhase = (listener: Listener): (() => void) => {
+  fastPhaseListeners.add(listener);
+  return () => {
+    fastPhaseListeners.delete(listener);
+  };
+};

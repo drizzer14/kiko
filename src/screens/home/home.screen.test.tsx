@@ -96,18 +96,19 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 
-// The refresh-control signal hook uses `useFocusEffect`, which needs a
-// NavigationContainer a standalone screen render has none of. Stand it in with a
-// pass-through: `refreshing` mirrors the global sync signal and `onRefresh` is
-// the caller's own refresh fn (Home's `syncAll`) unwrapped, so the RefreshControl
-// still binds to the signal and a pull still calls `syncAll` here. The hook's own
-// synchronous pull flag and re-drive-on-refocus behavior are covered by
+// The refresh-control signal hook is the PULL GESTURE indicator, DECOUPLED from
+// the whole sync run. Stand it in with a controllable `refreshing` so this test
+// can assert the RefreshControl binds to the hook's pull flag (NOT the global
+// sync signal) and that a pull calls the caller's `syncAll`. The hook's own
+// synchronous pull flag and fast-phase-clear behavior are covered by
 // `use-refresh-control-signal.test.tsx`.
+const mockRefreshing = jest.fn(() => false);
+const mockUseRefreshControlSignal = jest.fn();
 jest.mock('./use-refresh-control-signal', () => ({
-  useRefreshControlSignal: (isSyncing: boolean, onRefresh: () => Promise<void>) => ({
-    refreshing: isSyncing,
-    onRefresh,
-  }),
+  useRefreshControlSignal: (onRefresh: () => Promise<void>) => {
+    mockUseRefreshControlSignal(onRefresh);
+    return { refreshing: mockRefreshing(), onRefresh };
+  },
 }));
 
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
@@ -242,6 +243,7 @@ describe('HomeScreen', () => {
     seed({ transactions: [transaction()] });
     mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
   });
 
   it('renders the net worth caption', async () => {
@@ -869,18 +871,28 @@ describe('HomeScreen', () => {
     expect(mockSyncAll).toHaveBeenCalledTimes(1);
   });
 
-  it('spins the native refresh control off the global sync signal (covers auto-sync on open)', async () => {
-    // The single native spinner is driven by the GLOBAL sync-status store, not a
-    // pull-local flag — so an auto-sync on open (which lights the same signal via
-    // `runSync`) spins the pull spinner WITHOUT a user pull.
-    mockUseSyncStatus.mockReturnValue(true);
+  it('binds the native refresh control to the pull flag, not the global sync signal', async () => {
+    // The spinner is the PULL GESTURE indicator alone: it reflects the hook's
+    // pull flag, decoupled from the whole run.
+    mockRefreshing.mockReturnValue(true);
     const { getByTestId } = await renderHome();
 
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(true);
   });
 
-  it('leaves the native refresh control idle when no sync is in flight', async () => {
-    mockUseSyncStatus.mockReturnValue(false);
+  it('leaves the native refresh control idle when no pull is active', async () => {
+    mockRefreshing.mockReturnValue(false);
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it('does not spin the pull control for an auto-sync-on-open (decoupled from isSyncing)', async () => {
+    // An auto-sync-on-open lights the global sync signal but there is NO pull:
+    // the native spinner must stay idle (the progress bar shows the auto-sync),
+    // proving the spinner no longer mirrors `isSyncing`.
+    mockUseSyncStatus.mockReturnValue(true);
+    mockRefreshing.mockReturnValue(false);
     const { getByTestId } = await renderHome();
 
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);

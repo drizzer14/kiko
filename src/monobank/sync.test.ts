@@ -15,7 +15,11 @@ import {
   runSync,
   type SyncDeps,
 } from './sync';
-import { getProgressSnapshot, getSnapshot as isSyncingSnapshot } from './sync-status';
+import {
+  getProgressSnapshot,
+  isFastPhaseDone,
+  getSnapshot as isSyncingSnapshot,
+} from './sync-status';
 
 describe('mapStatementItem', () => {
   it('maps a Monobank item to a transaction with the source and external id', () => {
@@ -1154,6 +1158,59 @@ describe('runSync', () => {
     expect(isSyncingSnapshot()).toBe(false);
     // Sanity: both cards' second account id was actually reached in the loop.
     expect(idB).not.toBe(idA);
+  });
+
+  // The fast-phase-done signal marks the "balances have landed" moment: it
+  // fires the instant `upsertAllHoldings` commits the client-info balances,
+  // BEFORE the per-card statement loop runs, and clears when the run settles.
+  // The pull-to-refresh spinner ends on this signal, so it is decoupled from
+  // the whole run.
+  it('fires the fast-phase-done signal after balances commit and clears it when the run settles', async () => {
+    const idB = clientInfo.accounts[1].id;
+    const singlePage = (): MonobankStatementItem[] => [statement[0] as MonobankStatementItem];
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(singlePage, [connected]);
+
+    // At the upsert itself the balances are not yet committed, so the signal is
+    // still OFF (it flips ON only after `upsertAllHoldings` returns).
+    let fastPhaseDuringUpsert: boolean | undefined;
+    const baseUpsert = deps.upsertHoldings;
+    if (baseUpsert === undefined) {
+      throw new Error('upsertHoldings dep missing');
+    }
+    deps.upsertHoldings = async (holdings) => {
+      if (fastPhaseDuringUpsert === undefined) {
+        fastPhaseDuringUpsert = isFastPhaseDone();
+      }
+      return baseUpsert(holdings);
+    };
+
+    // At the FIRST gated statement fetch — which runs AFTER the fast phase — the
+    // signal must already be ON: balances are committed, only the slow
+    // transaction fetch remains.
+    let fastPhaseAtFirstFetch: boolean | undefined;
+    const baseFetchStatement = deps.fetchStatement;
+    if (baseFetchStatement === undefined) {
+      throw new Error('fetchStatement dep missing');
+    }
+    deps.fetchStatement = async (token, accountId, fromSeconds, toSeconds, fetchImpl) => {
+      if (fastPhaseAtFirstFetch === undefined) {
+        fastPhaseAtFirstFetch = isFastPhaseDone();
+      }
+      return baseFetchStatement(token, accountId, fromSeconds, toSeconds, fetchImpl);
+    };
+
+    expect(isFastPhaseDone()).toBe(false);
+    await runSync(deps);
+
+    // The upsert ran with the signal still OFF...
+    expect(fastPhaseDuringUpsert).toBe(false);
+    // ...the signal was ON by the first statement fetch (balances committed)...
+    expect(fastPhaseAtFirstFetch).toBe(true);
+    // ...and it cleared once the whole run settled.
+    expect(isFastPhaseDone()).toBe(false);
+    // Sanity: the second card exists, so the fetch loop genuinely ran.
+    expect(idB).not.toBe(clientInfo.accounts[0].id);
   });
 
   // The per-run diagnostic: a single console.warn summarising the run's

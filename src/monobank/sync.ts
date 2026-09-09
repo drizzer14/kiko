@@ -9,7 +9,7 @@ import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
-import { setSyncing, setSyncProgress } from './sync-status';
+import { setFastPhaseDone, setSyncing, setSyncProgress } from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
 import { readToken } from './token';
 
@@ -742,6 +742,10 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // total is known — so the transactions-list bar shows nothing until the skip
   // decision publishes a real total.
   setSyncProgress({ completed: 0, total: 0 });
+  // Reset the fast-phase-done signal at the START of the run, so a joined pull
+  // observes THIS run's balance commit, not a stale one from a prior run. It
+  // flips ON in `runSyncInner` once `upsertAllHoldings` commits the balances.
+  setFastPhaseDone(false);
   const release = (): void => {
     if (inFlightSync === run) {
       inFlightSync = null;
@@ -750,6 +754,9 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
     // Clear the progress signal when the run settles (success OR failure), so
     // the bar hides.
     setSyncProgress({ completed: 0, total: 0 });
+    // Clear the fast-phase-done signal when the run settles, so the next run
+    // starts from a clean OFF state.
+    setFastPhaseDone(false);
   };
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
@@ -787,6 +794,12 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const priorHoldingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
 
   await upsertAllHoldings(deps, accountId, accounts, jars);
+
+  // The FAST phase is done: client-info is fetched and the balances are
+  // committed. Fire the signal now — the pull-to-refresh spinner ends here,
+  // decoupled from the slow per-card statement loop that follows. The
+  // determinate progress bar carries the rest of the run.
+  setFastPhaseDone(true);
 
   // The CURRENT holdings, after the upsert: this run's authoritative
   // monobankId → holding map, giving each card's holding id (needed for the

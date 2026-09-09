@@ -31,7 +31,6 @@ import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { isTimeExemptHoldingType } from '../../holdings/holding-type';
-import { useSyncStatus } from '../../monobank/sync-status';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
@@ -177,27 +176,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // so a partial success can still surface which one(s) did not update.
   const { failures, syncAll } = useSyncAll(accounts);
 
-  // The single native RefreshControl spinner is driven by the GLOBAL sync-status
-  // signal, not a pull-local flag — so an auto-sync-on-open (which lights the
-  // same signal via `runSync`) spins the pull spinner WITHOUT a user pull, and a
-  // real pull spins it too. The signal tracks the WHOLE Monobank run (da40e69/R7,
-  // reverting the earlier fast-phase-only split): it stays lit across the
-  // per-card statement loop and clears only when the run settles, so the spinner
-  // is still spinning when "Last sync" lands. Holdings and transactions update
-  // incrementally through the reactive `useLiveQuery` consumers above. Known
-  // limitation: the signal is Monobank-only, so a pull on a crypto-only account
-  // shows little/no spinner.
-  const isSyncing = useSyncStatus();
-
-  // The native RefreshControl below binds to this LOCAL signal, not `isSyncing`
-  // directly: iOS drops the spin when the list leaves the window on a tab blur,
-  // so on refocus the hook re-issues a false->true edge to restart the spin
-  // while a sync is still in flight. The hook also wraps `syncAll` in
-  // `onRefresh`, setting a local pull flag synchronously so the spinner is
-  // already on in the commit right after the pull — the `isSyncing` mirror lands
-  // two commits too late and iOS retracts the spinner. See
+  // The native RefreshControl below is the PULL GESTURE indicator ALONE, DECOUPLED
+  // from the whole sync run: the hook wraps `syncAll`, sets a local flag
+  // synchronously on the pull so the spinner is already on in the commit right
+  // after it, and ends the spinner when the FAST balance phase resolves (not on
+  // the whole run, which fought iOS across navigation/detach/scroll). The
+  // whole-run indicator is the determinate `SyncProgressBar` below. See
   // `use-refresh-control-signal.ts`.
-  const { refreshing, onRefresh } = useRefreshControlSignal(isSyncing, syncAll);
+  const { refreshing, onRefresh } = useRefreshControlSignal(syncAll);
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
