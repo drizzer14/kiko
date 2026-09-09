@@ -456,6 +456,41 @@ here:
   `src/transactions/row-description.ts`), so a marker column and a
   persisted sentence are not interchangeable here. See `kiko-domain`.
 
+## Binance exchange sync — every wallet, one holding
+
+`binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) sums a
+user's BTC across ALL of Binance's wallets into the single "Binance BTC"
+holding, not the Spot wallet alone. The four reads, all signed by the one
+shared `signedRequest` helper in `binance.client.ts` (HMAC-SHA256 over the
+same `timestamp=…&recvWindow=…` query; read-only key is enough):
+
+| Wallet | Client fn | Method + path | BTC amount |
+|---|---|---|---|
+| Spot | `fetchAccount` | `GET /api/v3/account` | `free + locked` |
+| Funding | `fetchFundingAsset` | `POST /sapi/v1/asset/get-funding-asset` | `free + locked + freeze + withdrawing` |
+| Simple Earn Flexible | `fetchFlexiblePosition` | `GET /sapi/v1/simple-earn/flexible/position` | `totalAmount` |
+| Simple Earn Locked | `fetchLockedPosition` | `GET /sapi/v1/simple-earn/locked/position` | `amount` |
+
+Two load-bearing rules, verified in `binance.provider.test.ts` rather
+than restated here:
+
+- **Spot is strict; the other three are error-tolerant.** Spot's failure
+  fails the whole sync (its balance must be trusted). Each other wallet
+  runs through `skipOnError`: a missing API-key permission, a throttle, or
+  a malformed body SKIPS that wallet only — it contributes 0, logs one
+  `console.warn` (behind a justified `noConsole` OVERRIDE), and never
+  breaks the sync. A Spot-only key still imports the Spot balance.
+- **Amounts sum as `Money`, never as floats.** Each decimal-string field
+  is converted with `Money.fromMajor('BTC', …)` and added via `sumSatoshis`
+  (see `kiko-domain`); a non-finite amount is rejected before it can reach
+  the `notNull` satoshi column. Cross-wallet addition is plain integer
+  satoshis, so no drift is possible there.
+
+Confirm each Binance endpoint's path, params, and response shape against
+the live API (or the official Binance Postman collection / SDK models)
+during any change — the field names above (`totalAmount` for flexible,
+`amount` for locked, funding's four fields) are the ones the parse keys on.
+
 ## Price data
 
 - Fiat cross rates: `GET /bank/currency` (public Monobank endpoint,

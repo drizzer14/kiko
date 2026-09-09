@@ -51,21 +51,101 @@ const readBody = guard(
 );
 
 /**
- * `GET /api/v3/account`, signed: HMAC-SHA256 over `timestamp=…&recvWindow=…`
- * under the API secret, appended as `signature`, with the key in the
- * `X-MBX-APIKEY` header. Read-only: a key with only "Enable Reading" is enough.
+ * One signed Binance request. HMAC-SHA256 over `timestamp=…&recvWindow=…` under
+ * the API secret, appended as `signature`, with the key in the `X-MBX-APIKEY`
+ * header. Every read endpoint (Spot account, Funding wallet, Simple Earn
+ * positions) shares this exact signed query — only the method and path differ —
+ * so a key with only "Enable Reading" is enough. Throws on a non-ok response
+ * (via `readBody`), which is what lets a caller SKIP a single failing wallet.
+ */
+const signedRequest = async (
+  apiKey: string,
+  secret: string,
+  method: 'GET' | 'POST',
+  path: string,
+  { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
+): Promise<unknown> => {
+  const query = `timestamp=${now()}&recvWindow=${RECV_WINDOW_MS}`;
+  const signature = signQuery(secret, query);
+  const response = await fetchImpl(
+    `${BINANCE_API_ENDPOINT}${path}?${query}&signature=${signature}`,
+    {
+      method,
+      headers: { 'X-MBX-APIKEY': apiKey },
+    },
+  );
+
+  return readBody(response);
+};
+
+/**
+ * `GET /api/v3/account` (Spot wallet). Read-only. The Spot balance is the one
+ * wallet that MUST succeed — its failure fails the whole Binance sync.
  */
 export const fetchAccount = async (
   apiKey: string,
   secret: string,
-  { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
-): Promise<BinanceAccount> => {
-  const query = `timestamp=${now()}&recvWindow=${RECV_WINDOW_MS}`;
-  const signature = signQuery(secret, query);
-  const response = await fetchImpl(
-    `${BINANCE_API_ENDPOINT}/api/v3/account?${query}&signature=${signature}`,
-    { headers: { 'X-MBX-APIKEY': apiKey } },
-  );
+  options: FetchAccountOptions = {},
+): Promise<BinanceAccount> =>
+  (await signedRequest(apiKey, secret, 'GET', '/api/v3/account', options)) as BinanceAccount;
 
-  return (await readBody(response)) as BinanceAccount;
+/** One Funding-wallet balance from `/sapi/v1/asset/get-funding-asset` — decimal strings. */
+export type BinanceFundingAsset = {
+  asset: string;
+  free: string;
+  locked: string;
+  freeze: string;
+  withdrawing: string;
 };
+
+/**
+ * `POST /sapi/v1/asset/get-funding-asset` (Funding wallet). Returns one entry per
+ * held asset; the BTC amount is `free + locked + freeze + withdrawing`. Requires
+ * the API key's "Enable Reading" permission only.
+ */
+export const fetchFundingAsset = async (
+  apiKey: string,
+  secret: string,
+  options: FetchAccountOptions = {},
+): Promise<BinanceFundingAsset[]> =>
+  (await signedRequest(
+    apiKey,
+    secret,
+    'POST',
+    '/sapi/v1/asset/get-funding-asset',
+    options,
+  )) as BinanceFundingAsset[];
+
+/** One Simple Earn Flexible position — its BTC amount is `totalAmount` (decimal string). */
+export type BinanceFlexiblePosition = { rows: { asset: string; totalAmount: string }[] };
+
+/** `GET /sapi/v1/simple-earn/flexible/position` (Simple Earn Flexible). */
+export const fetchFlexiblePosition = async (
+  apiKey: string,
+  secret: string,
+  options: FetchAccountOptions = {},
+): Promise<BinanceFlexiblePosition> =>
+  (await signedRequest(
+    apiKey,
+    secret,
+    'GET',
+    '/sapi/v1/simple-earn/flexible/position',
+    options,
+  )) as BinanceFlexiblePosition;
+
+/** One Simple Earn Locked position — its BTC amount is `amount` (decimal string). */
+export type BinanceLockedPosition = { rows: { asset: string; amount: string }[] };
+
+/** `GET /sapi/v1/simple-earn/locked/position` (Simple Earn Locked). */
+export const fetchLockedPosition = async (
+  apiKey: string,
+  secret: string,
+  options: FetchAccountOptions = {},
+): Promise<BinanceLockedPosition> =>
+  (await signedRequest(
+    apiKey,
+    secret,
+    'GET',
+    '/sapi/v1/simple-earn/locked/position',
+    options,
+  )) as BinanceLockedPosition;
