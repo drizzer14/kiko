@@ -1,8 +1,11 @@
 import { type FC, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useUnistyles } from 'react-native-unistyles';
 
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
 import { useSyncProgress, useSyncStatus } from '../../../monobank/sync-status';
 
 // The fill creeps toward JUST SHORT of the next card's completion over roughly
@@ -14,15 +17,21 @@ const STEP_CREEP_MS = 55_000;
 const NEXT_STEP_CREEP = 0.9;
 
 /**
- * A thin determinate progress bar for the Home transactions list, driven by the
- * real per-card Monobank sync progress (`useSyncProgress`). It shows
- * `completed / total` while a sync is fetching statements and hides when the run
- * ends. The native pull-to-refresh spinner is a SEPARATE signal (see the
- * `RefreshControl` in `home.screen.tsx`); this bar is the list-level progress
- * affordance the user asked for, not a replacement for that spinner.
+ * The determinate progress bar for the Home transactions list, driven by the
+ * real per-card Monobank sync progress (`useSyncProgress`). It shows a label
+ * ("Syncing transactions N/M") above a `completed / total` fill while a sync
+ * fetches statements, and hides when the run ends.
+ *
+ * This bar is the WHOLE-RUN indicator: it tracks every trigger (a pull, the
+ * manual button, and an auto-sync-on-open) through `isSyncing` + `useSyncProgress`,
+ * and stays lit across the slow per-card statement loop. The native
+ * pull-to-refresh spinner is a SEPARATE, decoupled signal that ends at the fast
+ * balance phase (see the `RefreshControl` in `home.screen.tsx` and
+ * `use-refresh-control-signal.ts`).
  */
 const SyncProgressBar: FC = () => {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const isSyncing = useSyncStatus();
   const { completed, total } = useSyncProgress();
 
@@ -42,21 +51,27 @@ const SyncProgressBar: FC = () => {
   }
 
   return (
-    <View
-      testID="sync-progress-bar"
-      accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: total, now: completed }}
-      style={{
-        height: theme.spacing(1),
-        borderRadius: theme.radii.sm,
-        backgroundColor: theme.colors.surfaceHigh,
-        overflow: 'hidden',
-      }}
-    >
-      <Animated.View
-        style={[{ height: '100%', backgroundColor: theme.colors.accent }, fillStyle]}
-      />
-    </View>
+    <Box gap={1}>
+      <Text variant="caption" tone="textSecondary">
+        {t('home.syncingTransactions', { completed, total })}
+      </Text>
+
+      <View
+        testID="sync-progress-bar"
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: total, now: completed }}
+        style={{
+          height: theme.spacing(1),
+          borderRadius: theme.radii.sm,
+          backgroundColor: theme.colors.surfaceHigh,
+          overflow: 'hidden',
+        }}
+      >
+        <Animated.View
+          style={[{ height: '100%', backgroundColor: theme.colors.accent }, fillStyle]}
+        />
+      </View>
+    </Box>
   );
 };
 

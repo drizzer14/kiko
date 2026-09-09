@@ -4,6 +4,9 @@ import { render } from '@testing-library/react-native';
 // isolated render (the app entry imports it transitively; a lone component test
 // must import it itself).
 import '../../../design-system/unistyles';
+// Initialize i18next so the bar's `t()` label resolves to the real catalogue
+// string rather than the bare key.
+import '../../../i18n';
 
 // The determinate progress bar reads the two sync-status signals directly; drive
 // them from the test so a render can assert the rendered fraction and the
@@ -34,6 +37,17 @@ describe('SyncProgressBar', () => {
     const bar = getByTestId('sync-progress-bar');
     expect(bar.props.accessibilityRole).toBe('progressbar');
     expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 3, now: 1 });
+  });
+
+  it('renders a user-facing label naming the card fraction being synced', async () => {
+    mockUseSyncStatus.mockReturnValue(true);
+    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+
+    // The bar is now the whole-run indicator, so it carries a readable label
+    // ("Syncing transactions 1/3") rather than a bare bar.
+    const { getByText } = await render(<SyncProgressBar />);
+
+    expect(getByText('Syncing transactions 1/3')).toBeTruthy();
   });
 
   it('does not render when no sync is in flight', async () => {

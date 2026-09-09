@@ -332,6 +332,9 @@ export const en = {
     // bundle, and reuses THIS key so the two can never drift apart.
     netWorth: 'Net worth',
     syncFailedMessage: "Couldn't sync {{accounts}}.",
+    // The determinate sync progress bar's label — the whole-run indicator on the
+    // transactions list. `completed`/`total` are card counts (see useSyncProgress).
+    syncingTransactions: 'Syncing transactions {{completed}}/{{total}}',
     title: 'Home',
     today: 'Today',
     yesterday: 'Yesterday',

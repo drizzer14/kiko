@@ -887,6 +887,20 @@ describe('HomeScreen', () => {
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
   });
 
+  it('pins the sync progress bar above the list, not as a scrolling list header', async () => {
+    mockUseSyncStatus.mockReturnValue(true);
+    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    const { getByTestId, queryByTestId } = await renderHome();
+
+    // The bar is a pinned sibling ABOVE the SectionList, so it renders while a
+    // sync is in flight...
+    expect(queryByTestId('sync-progress-bar')).not.toBeNull();
+    // ...and it is NOT the list's scrolling header. As the header it would
+    // scroll away with the content and draw behind the cells (the z-index
+    // symptom); pinning it above the list subsumes that by construction.
+    expect(getByTestId('home-transactions').props.ListHeaderComponent).toBeUndefined();
+  });
+
   it('does not spin the pull control for an auto-sync-on-open (decoupled from isSyncing)', async () => {
     // An auto-sync-on-open lights the global sync signal but there is NO pull:
     // the native spinner must stay idle (the progress bar shows the auto-sync),

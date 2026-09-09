@@ -510,6 +510,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           </Box>
         </Box>
 
+        {/* The determinate whole-run sync progress bar is PINNED here, above the
+            SectionList and OUTSIDE its scroll content — never a
+            `ListHeaderComponent`. As the list header it scrolled away with the
+            content and drew behind the cells; pinning it above the list keeps it
+            in view for the whole run and removes the z-index symptom by
+            construction. It hides itself when no sync is fetching. The content
+            column's `gap(4)` sits between it and the list. */}
+        <SyncProgressBar />
+
         <SectionList
           ref={listRef}
           testID="home-transactions"
@@ -521,10 +530,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           style={styles.list}
           contentContainerStyle={styles.listContent(listBottomClearance)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          // The determinate per-card sync progress bar sits at the top of the
-          // list (in-list, not a fixed banner) and hides itself when no sync is
-          // fetching. The pull spinner above is a SEPARATE signal.
-          ListHeaderComponent={<SyncProgressBar />}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
