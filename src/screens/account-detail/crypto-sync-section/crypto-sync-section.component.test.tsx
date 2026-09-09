@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 
 import { formatDateTime } from '../../../dates/format';
@@ -183,6 +183,24 @@ describe('CryptoSyncSection', () => {
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();
+  });
+
+  it('spaces the last-sync line and Sync now button as widely as Sync now and Disconnect', async () => {
+    // The three stacked connected-state elements — the "last synced" line, the
+    // "Sync now" button, and the "Disconnect" button — must be evenly spaced.
+    // The gap inside the status/actions group (last sync ↔ Sync now) must equal
+    // the section root's gap (the actions group ↔ Disconnect).
+    const { getByTestId, toJSON } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'btc_wallet' })}
+        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
+      />,
+    );
+
+    const rootGap = StyleSheet.flatten(toJSON()?.props.style).gap;
+    const groupGap = StyleSheet.flatten(getByTestId('crypto-sync-status-actions').props.style).gap;
+
+    expect(groupGap).toBe(rootGap);
   });
 
   it('shows Never when a connected account has no synced holding yet', async () => {
