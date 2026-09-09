@@ -358,6 +358,20 @@ completes. The signal is Monobank-only, so a pull on a crypto-only
 account shows little/no spinner — see `src/screens/use-sync-all.ts` for
 the fan-out that also drives crypto accounts.
 
+Home does NOT bind `RefreshControl.refreshing` to `useSyncStatus`
+directly. It binds to a LOCAL signal from
+`useRefreshControlSignal(isSyncing)`
+(`src/screens/home/use-refresh-control-signal.ts`). iOS drops the native
+spin animation when the list leaves the window on a tab blur, and a plain
+render leaves `refreshing` still `true` on refocus — RN sees no
+`false`->`true` edge, so it never re-calls the native `beginRefreshing()`
+and the spinner stays frozen for the rest of a long sync. The hook mirrors
+`isSyncing` while the screen stays focused, and on each refocus while a
+sync is still in flight it re-issues a `false`->`true` edge (`false` now,
+`true` on the next `requestAnimationFrame`) to restart the spin. The
+re-drive logic is unit-testable in isolation
+(`use-refresh-control-signal.test.tsx`); the native spin itself is not.
+
 ### Partial-progress resilience across cards
 
 `runSync`'s per-card import loop is **fault-isolated**: one card's
@@ -441,6 +455,52 @@ here:
   through `t` (`src/transactions/exchange-description.ts`, applied by
   `src/transactions/row-description.ts`), so a marker column and a
   persisted sentence are not interchangeable here. See `kiko-domain`.
+
+## Binance exchange sync — every wallet, one holding
+
+`binanceProvider` (`src/crypto-sync/binance/binance.provider.ts`) sums a
+user's BTC across ALL of Binance's wallets into the single "Binance BTC"
+holding, not the Spot wallet alone. The four reads, all signed by the one
+shared `signedRequest` helper in `binance.client.ts` (HMAC-SHA256 over the
+same `timestamp=…&recvWindow=…` query; read-only key is enough):
+
+| Wallet | Client fn | Method + path | BTC amount |
+|---|---|---|---|
+| Spot | `fetchAccount` | `GET /api/v3/account` | `free + locked` |
+| Funding | `fetchFundingAsset` | `POST /sapi/v1/asset/get-funding-asset` | `free + locked + freeze + withdrawing` |
+| Simple Earn Flexible | `fetchFlexiblePosition` | `GET /sapi/v1/simple-earn/flexible/position` | `totalAmount` |
+| Simple Earn Locked | `fetchLockedPosition` | `GET /sapi/v1/simple-earn/locked/position` | `amount` |
+
+Two load-bearing rules, verified in `binance.provider.test.ts` rather
+than restated here:
+
+- **Spot is strict; the other three are error-tolerant.** Spot's failure
+  fails the whole sync (its balance must be trusted). Each other wallet
+  runs through `skipOnError`: a missing API-key permission, a throttle, or
+  a malformed body SKIPS that wallet only — it contributes 0, logs one
+  `console.warn` (behind a justified `noConsole` OVERRIDE), and never
+  breaks the sync. A Spot-only key still imports the Spot balance.
+- **The Simple Earn position reads MUST paginate.** The flexible and
+  locked position endpoints are paged (`current` from 1, `size` per page
+  capped at 100, response `{ rows, total }`); reading page 1 alone
+  UNDER-COUNTS a user whose positions span more than one page (locked
+  especially — each locked subscription is its own row). `fetchAllPositions`
+  in `binance.client.ts` loops `current` until the gathered rows cover
+  `total` (short-page and a hard 50-page cap are the backstops). A failure
+  on ANY page rejects the whole walk, so `skipOnError` drops the WHOLE Earn
+  wallet rather than importing a partial, silently-under-counted total. The
+  funding read is a full array — NOT paginated. All three SAPI reads send
+  `asset=BTC` to shrink the payload.
+- **Amounts sum as `Money`, never as floats.** Each decimal-string field
+  is converted with `Money.fromMajor('BTC', …)` and added via `sumSatoshis`
+  (see `kiko-domain`); a non-finite amount is rejected before it can reach
+  the `notNull` satoshi column. Cross-wallet addition is plain integer
+  satoshis, so no drift is possible there.
+
+Confirm each Binance endpoint's path, params, and response shape against
+the live API (or the official Binance Postman collection / SDK models)
+during any change — the field names above (`totalAmount` for flexible,
+`amount` for locked, funding's four fields) are the ones the parse keys on.
 
 ## Price data
 

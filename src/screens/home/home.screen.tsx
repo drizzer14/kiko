@@ -49,6 +49,7 @@ import { useSyncAll } from '../use-sync-all';
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
+import { useRefreshControlSignal } from './use-refresh-control-signal';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
@@ -180,6 +181,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // consumers above. Known limitation: the signal is Monobank-only, so a pull on
   // a crypto-only account shows little/no spinner.
   const isSyncing = useSyncStatus();
+
+  // The native RefreshControl below binds to this LOCAL signal, not `isSyncing`
+  // directly: iOS drops the spin when the list leaves the window on a tab blur,
+  // so on refocus the hook re-issues a false->true edge to restart the spin
+  // while a sync is still in flight. See `use-refresh-control-signal.ts`.
+  const refreshing = useRefreshControlSignal(isSyncing);
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -476,7 +483,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           stickySectionHeadersEnabled={false}
           style={styles.list}
           contentContainerStyle={styles.listContent(listBottomClearance)}
-          refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncAll} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={syncAll} />}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>

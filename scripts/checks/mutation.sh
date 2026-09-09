@@ -4,7 +4,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-BIN="$ROOT/node_modules/.bin/stryker"
+# The pinned Stryker binary. KIKO_MUTATION_BIN overrides it ONLY so this
+# wrapper's streaming and exit-code behavior is testable against a fast stub
+# binary (scripts/checks/mutation.test via __tests__/) without a multi-minute
+# real mutation run. It defaults to the pinned node_modules binary, so
+# production is unchanged and the pinned-version guarantee still holds.
+BIN="${KIKO_MUTATION_BIN:-$ROOT/node_modules/.bin/stryker}"
 
 if [ ! -x "$BIN" ]; then
   print_block \
@@ -45,8 +50,41 @@ if harness_unchanged "$ROOT" "mutation" "$fp"; then
   exit 0
 fi
 
-out="$("$BIN" run 2>&1)"
-code=$?
+# Diff-scope the mutation to the source files THIS branch changed, so the manual
+# gate is cheap. Compare against the merge-base with $KIKO_MUTATION_BASE (default
+# main) — i.e. "what this branch changed" — and mutate only those .ts/.tsx files,
+# EXCLUDING tests and fixtures (matching the config's own mutate excludes). An
+# explicit --mutate list overrides Stryker's whole-tree glob. `KIKO_MUTATION_FULL=1`
+# forces the whole-project run; a base whose merge-base cannot be resolved also
+# falls back to the whole project (never silently mutate nothing).
+mutate_arg=""
+if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
+  base="${KIKO_MUTATION_BASE:-main}"
+  merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
+  if [ -n "$merge_base" ]; then
+    changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
+      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/)' || true)"
+    if [ -z "$changed" ]; then
+      # This branch changed no mutable source file — nothing to mutate, pass.
+      exit 0
+    fi
+    csv="$(printf '%s' "$changed" | tr '\n' ',')"
+    mutate_arg="--mutate=${csv%,}"
+  fi
+fi
+
+# Stream Stryker's output to stdout LIVE (via tee) while still capturing it for
+# the failure block and preserving its real exit code. `pipefail` is already set
+# at the top, and PIPESTATUS[0] reads the producer's status through the tee, not
+# tee's own — read immediately after the pipe, before any other command resets
+# it. check:deep is manual and NOT hook-wired, so the "silent on success" hook
+# contract does not apply: streaming a run's progress is the point. `$mutate_arg`
+# is a single token with no spaces (or empty), so the unquoted expansion is safe.
+tmp="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation.XXXXXX")"
+"$BIN" run $mutate_arg 2>&1 | tee "$tmp"
+code="${PIPESTATUS[0]}"
+out="$(cat "$tmp")"
+rm -f "$tmp"
 if [ "$code" -ne 0 ]; then
   print_block \
     "Stryker (mutation testing)" \

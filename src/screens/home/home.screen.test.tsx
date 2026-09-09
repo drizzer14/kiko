@@ -94,6 +94,15 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
 }));
 
+// The refresh-control signal hook uses `useFocusEffect`, which needs a
+// NavigationContainer a standalone screen render has none of. Stand it in with a
+// pass-through so the RefreshControl still binds to the global sync signal here;
+// its own re-drive-on-refocus behavior is covered by
+// `use-refresh-control-signal.test.tsx`.
+jest.mock('./use-refresh-control-signal', () => ({
+  useRefreshControlSignal: (isSyncing: boolean) => isSyncing,
+}));
+
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
 type Holding = {
   id?: string;
