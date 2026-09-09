@@ -290,7 +290,7 @@ const linearRegressionSlope = (ys: number[]): number => {
  * category to pick the top N. Each returned measure carries the category's
  * `total` (Contribution), `count` (Frequency), and `risingSlope` (Rising). The
  * result order is not significant — `selectTopCategories` re-ranks by the chosen
- * measure — but is total-desc for readability. Empty input (or every row
+ * measure, and the exclusion path reads it as a set. Empty input (or every row
  * excluded / out of window) returns `[]`.
  */
 export const buildCategoryMeasures = (input: {
@@ -326,6 +326,5 @@ export const buildCategoryMeasures = (input: {
       total: entry.total,
       count: entry.count,
       risingSlope: linearRegressionSlope(days.map((t) => entry.byDay.get(t) ?? 0)),
-    }))
-    .sort((a, b) => b.total - a.total);
+    }));
 };
