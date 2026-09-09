@@ -98,7 +98,7 @@ export type BinanceTxSyncDeps = {
   ) => Promise<BinanceWithdrawal[]>;
 };
 
-export const defaultBinanceTxDeps: BinanceTxSyncDeps = {
+const defaultBinanceTxDeps: BinanceTxSyncDeps = {
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,

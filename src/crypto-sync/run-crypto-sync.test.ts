@@ -1,10 +1,15 @@
 const mockRunBalanceSync = jest.fn();
+const mockSyncBinanceTransactions = jest.fn();
 
 // `./sync` pulls the repos (and so op-sqlite) into the graph; replacing the
-// whole module keeps this a pure dispatch test. The Binance credentials module
-// imports react-native-keychain, whose native binding is absent under Jest.
+// whole module keeps this a pure dispatch test. `./binance/binance.transactions`
+// is replaced for the same reason. The Binance credentials module imports
+// react-native-keychain, whose native binding is absent under Jest.
 jest.mock('./sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
+}));
+jest.mock('./binance/binance.transactions', () => ({
+  syncBinanceTransactions: (...args: unknown[]) => mockSyncBinanceTransactions(...args),
 }));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
@@ -20,6 +25,7 @@ describe('runCryptoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1 });
+    mockSyncBinanceTransactions.mockResolvedValue({ imported: 0 });
   });
 
   it('runs the wallet provider with the connect-time address on a wallet request', async () => {
@@ -37,6 +43,7 @@ describe('runCryptoSync', () => {
       { ...defaultBitcoinWalletDeps, address: ADDRESS },
       { targetAccountId: 'acc-1' },
     );
+    expect(mockSyncBinanceTransactions).not.toHaveBeenCalled();
   });
 
   it('runs the wallet provider without an address on a wallet re-sync', async () => {
@@ -49,11 +56,24 @@ describe('runCryptoSync', () => {
     );
   });
 
-  it('runs the Binance provider with its default deps on a Binance request', async () => {
-    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+  it('runs the Binance balance sync then imports its transaction history', async () => {
+    const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
+    expect(result).toEqual({ syncedHoldings: 1 });
     expect(mockRunBalanceSync).toHaveBeenCalledWith(binanceProvider, defaultBinanceDeps, {
       targetAccountId: 'acc-2',
     });
+    expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-2' });
+  });
+
+  it('still resolves with the balance result when the transaction import fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used'));
+
+    const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    expect(result).toEqual({ syncedHoldings: 1 });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

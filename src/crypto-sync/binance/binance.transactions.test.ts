@@ -43,6 +43,11 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
   ...over,
 });
 
+// A typed, empty deposit-history mock. The explicit params type `mock.calls[n][2]`
+// as the HistoryWindow so the window-walk assertions read it without a cast.
+const emptyDepositFetch = () =>
+  jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => []);
+
 const makeDeps = (over: Partial<BinanceTxSyncDeps> = {}): BinanceTxSyncDeps => ({
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
@@ -141,7 +146,7 @@ describe('syncBinanceTransactions', () => {
   });
 
   it('re-sync from a recent cursor scans exactly the last 89-day window', async () => {
-    const fetchDepositHistory = jest.fn(async () => []);
+    const fetchDepositHistory = emptyDepositFetch();
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY,
       fetchDepositHistory,
@@ -150,13 +155,13 @@ describe('syncBinanceTransactions', () => {
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
     expect(fetchDepositHistory).toHaveBeenCalledTimes(1);
-    const window = fetchDepositHistory.mock.calls[0][2] as HistoryWindow;
+    const window = fetchDepositHistory.mock.calls[0][2];
     expect(window.startTime).toBe(NOW - 89 * DAY);
     expect(window.endTime).toBe(NOW);
   });
 
   it('walks contiguous windows back to a cursor older than one window', async () => {
-    const fetchDepositHistory = jest.fn(async () => []);
+    const fetchDepositHistory = emptyDepositFetch();
     // A cursor 200 days back: overlap widens the start to 201 days, spanning
     // three 89-day windows (89 + 89 + 23).
     const deps = makeDeps({
@@ -166,14 +171,14 @@ describe('syncBinanceTransactions', () => {
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
-    const windows = fetchDepositHistory.mock.calls.map((call) => call[2] as HistoryWindow);
+    const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows).toHaveLength(3);
     expect(windows[0].startTime).toBe(NOW - 201 * DAY);
     expect(windows[2].endTime).toBe(NOW);
   });
 
   it('first sync (no cursor) walks from the history floor to now', async () => {
-    const fetchDepositHistory = jest.fn(async () => []);
+    const fetchDepositHistory = emptyDepositFetch();
     const deps = makeDeps({
       latestTransactionTime: async () => undefined,
       fetchDepositHistory,
@@ -181,7 +186,7 @@ describe('syncBinanceTransactions', () => {
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
-    const windows = fetchDepositHistory.mock.calls.map((call) => call[2] as HistoryWindow);
+    const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows[0].startTime).toBe(HISTORY_FLOOR_MS);
     expect(windows[windows.length - 1].endTime).toBe(NOW);
   });
