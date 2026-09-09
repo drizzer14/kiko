@@ -28,6 +28,24 @@ export const holdings = sqliteTable('holdings', {
   icon: text('icon'),
   color: text('color'),
   balanceMinorUnits: integer('balance_minor_units').notNull().default(0),
+  // The card balance THROUGH WHICH this Monobank card's statements were last
+  // SUCCESSFULLY imported — the crash-safe marker the balance-diff skip compares
+  // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
+  // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
+  // /client-info at the START of every sync, BEFORE the per-card statement loop
+  // runs. Comparing the skip against that display balance was a data-loss bug: a
+  // run that committed a card's new balance up front and was then interrupted
+  // (app background/kill) before importing that card's statements left display
+  // balance == /client-info balance, so every later run skipped the card and its
+  // transactions never imported (until the 24h full fetch). This marker advances
+  // ONLY after a card's statements commit (see the per-card loop in
+  // `runSyncInner`), so an interrupted run leaves it behind and the next run
+  // re-imports the card. NULL for a never-synced-through holding: every
+  // non-Monobank holding, and a Monobank card upgraded before this column
+  // existed — its first post-upgrade sync fetches it once (NULL never matches a
+  // balance, so the skip cannot fire), which also RECOVERS any card the old bug
+  // had stranded, and then sets the marker.
+  syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),
@@ -168,14 +186,16 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
-  // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
-  // that imported at least one transaction — including a PARTIAL failure, where
-  // some cards imported but one threw. Decoupled from `lastSyncAt`, which stays
-  // the pure Monobank statement CURSOR (advanced only on a fully clean run). A
-  // partial failure must not advance the cursor — the failed card's window has
-  // to be re-covered — yet the user should still see that a sync just landed
-  // rows, so the display stamp moves independently. NULLABLE: rows that existed
-  // before this column read null, and the display falls back to `lastSyncAt`.
+  // The DISPLAY "last synced" timestamp (epoch ms), updated ONLY on a sync run
+  // that leaves NO card stranded (every card synced without error), whether or
+  // not any new rows imported. It is decoupled from `lastSyncAt` (the pure
+  // Monobank statement CURSOR) in MEANING — a clean run that only refreshed held
+  // rows moves the display without advancing the cursor's queried ceiling — but
+  // it is NOT stamped on a partial failure: the failed card's window stays
+  // un-covered (the cursor deliberately holds so next run re-covers it), so the
+  // sync is not current and "Last sync: just now" would be false (BUG A). A
+  // total failure is likewise not stamped. NULLABLE: rows that existed before
+  // this column read null, and the display falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
   // The epoch-ms timestamp of the last FULL statement fetch (every card
   // fetched regardless of balance). The steady-state sync SKIPS a card whose

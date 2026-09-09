@@ -183,12 +183,27 @@ a verified schema.
 card's statements on every run — a multi-card account synced over
 minutes under the per-invocation gate alone. It now SKIPS the
 statement fetch for a card whose `/personal/client-info` balance is
-unchanged since the last sync (`isBalanceDiffSkip`). The prior
-balance is read from `holdings.balanceMinorUnits` **before** this
-run's `upsertHoldings` overwrites it — that column already is "the
-balance as of the last sync" for a Monobank holding, since the sync
-rewrites it from client-info every run, so no new holdings column was
-needed for this.
+unchanged since its statements were last imported (`isBalanceDiffSkip`).
+
+The prior balance is read from the CRASH-SAFE marker
+`holdings.syncedBalanceMinorUnits` (migration `0024`, schema in
+`src/db/schema.ts`), **not** `holdings.balanceMinorUnits`. This is
+load-bearing and was a data-loss bug before: `upsertHoldings` overwrites
+`balanceMinorUnits` (the display balance) from client-info at the START
+of every run, BEFORE the per-card statement loop. A run that committed a
+card's new balance up front and was then interrupted (app background/kill)
+before importing that card's statements — and before the failed-set
+persist — left `balanceMinorUnits` == client-info, so a display-balance
+comparison skipped the card on every later run and its transactions never
+imported until the 24h full fetch. `syncedBalanceMinorUnits` advances ONLY
+after a card's statements commit (`deps.setSyncedBalance` in the per-card
+loop, `holdingsRepo.setSyncedBalance`), so an interrupted card's marker
+stays behind and the next run re-imports it. A NULL marker (a fresh column
+on upgrade, or a never-imported holding) never equals a balance, so the
+first post-upgrade sync fetches every Monobank card once — which also
+RECOVERS any card the old bug had stranded — then sets the marker. The
+column is deliberately NOT backfilled to `balanceMinorUnits`: that would
+re-hide a currently-stranded card.
 
 Two carve-outs keep the skip safe, read the code rather than trusting
 a restated list:

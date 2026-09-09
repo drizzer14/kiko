@@ -23,12 +23,13 @@ export const settingsRepo = {
       tx.update(settings).set({ lastSyncAt: timestamp }).where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
-   * Stamp the DISPLAY "last synced" timestamp (epoch ms). Written on every run
-   * that reached Monobank with at least one card succeeding, regardless of
-   * whether any new rows were imported — decoupled from `lastSyncAt`, the pure
-   * statement cursor. So the user sees a fresh time even when a run imported no
-   * new transactions, and even when the cursor deliberately stays put to
-   * re-cover a failed card's window next run.
+   * Stamp the DISPLAY "last synced" timestamp (epoch ms). Written ONLY on a run
+   * that leaves no card stranded (every card synced without error), regardless
+   * of whether any new rows were imported. It is NOT stamped on a partial or a
+   * total failure: a failed card's window stays un-covered, so "Last sync" must
+   * not read current while some transactions are still stale (BUG A). Decoupled
+   * from `lastSyncAt` (the pure statement cursor) in meaning — a clean run that
+   * only refreshed held rows moves this without advancing the cursor's ceiling.
    */
   setLastSyncDisplayAt: (timestamp: number) =>
     write((tx) =>

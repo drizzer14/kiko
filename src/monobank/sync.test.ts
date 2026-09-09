@@ -202,6 +202,10 @@ const makeInMemoryDeps = (
       closedAt: null,
       createdAt: 0,
       balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+      // A fresh holding has never had its statements imported, so the crash-safe
+      // marker starts NULL. The sync advances it (via `setSyncedBalance`) only
+      // after a card's statements commit — the real repository does the same.
+      syncedBalanceMinorUnits: null,
       ...rest,
       // The dep's input carries neither column, but a stored row declares both
       // as `string | null` — the real repository defaults them the same way.
@@ -277,6 +281,14 @@ const makeInMemoryDeps = (
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
     upsertHolding,
+    // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
+    // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
+    setSyncedBalance: async (holdingId, balanceMinorUnits) => {
+      const target = holdingsStore.find((holding) => holding.id === holdingId);
+      if (target) {
+        target.syncedBalanceMinorUnits = balanceMinorUnits;
+      }
+    },
     addTransactions,
     getLastSyncAt: async () => null,
     setLastSyncAt: async () => undefined,
@@ -917,11 +929,16 @@ describe('runSync', () => {
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
   });
 
-  // The DISPLAY timestamp is decoupled from the statement cursor: a partial
-  // failure that still imported at least one card's rows must move the "last
-  // synced" display (so the user sees it landed) WITHOUT advancing the cursor
-  // (so the failed card's window is re-covered next run).
-  it('stamps the display timestamp but NOT the cursor on a partial failure that imported something', async () => {
+  // BUG A fix 2 — the "last sync" display must not read CURRENT while a card is
+  // stranded. A partial failure leaves the failed card's window un-covered (the
+  // cursor stays put to re-cover it next run), so the sync is NOT complete: some
+  // of the user's transactions and charts are still stale. Stamping the display
+  // then made "Last sync: just now" falsely current. The display stamp is now
+  // gated the same as a clean run — it fires ONLY when no card is left
+  // stranded/pending (`failures.length === 0`) — so a partial failure moves
+  // NEITHER the cursor NOR the display. (An EARLIER design stamped the display
+  // on a partial failure "so the user sees it landed"; that was reversed here.)
+  it('stamps NEITHER the cursor NOR the display timestamp on a partial failure', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const idA = clientInfo.accounts[0].id;
     const idB = clientInfo.accounts[1].id;
@@ -947,11 +964,11 @@ describe('runSync', () => {
 
     await expect(runSync(deps)).rejects.toThrow();
 
-    // The failed card leaves the cursor put, but card B imported, so the
-    // display stamp still moves — to the injected `now`.
+    // Card A failed, so the run left a card stranded: neither timestamp moves.
+    // Card B's imported rows are still durable (its own transaction committed);
+    // only the run-level "this sync is current" stamps are withheld.
     expect(setLastSyncAt).not.toHaveBeenCalled();
-    expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
-    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+    expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
   });
 
   // A TOTAL failure (every card errored) never reached any statement, so it
@@ -1427,6 +1444,58 @@ describe('runSync', () => {
       expect(result.importedTransactions).toBe(0);
       expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
       expect(setLastSyncAt).toHaveBeenCalledTimes(1);
+    });
+
+    // BUG A fix 1 — the crash-safe marker. `upsertHoldings` commits each card's
+    // DISPLAY balance (`balanceMinorUnits`) up front, BEFORE the per-card
+    // statement loop. If a run advances a card's balance but is interrupted (app
+    // background/kill) before importing that card's statements — and before any
+    // failed-set record is written — the display balance already equals
+    // /client-info, so the OLD skip (which compared the display balance) skipped
+    // the card on every later run and its transactions never imported until the
+    // 24h full fetch. The skip now compares `syncedBalanceMinorUnits`, which
+    // advances ONLY after a card's statements commit, so such a card is
+    // re-fetched next run even with no failed-set record and no outstanding hold
+    // — the marker is the ONLY thing that can force this re-fetch here.
+    it('re-fetches a card whose display balance advanced but whose statements never imported', async () => {
+      const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+      const { deps, holdingsStore } = makeInMemoryDeps(() => [], [connected]);
+
+      // A clean full fetch populates each holding's marker at its client-info
+      // balance (each card is fetched, so `setSyncedBalance` runs for both).
+      await runSync(deps);
+
+      const holdingA = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idA);
+      const holdingB = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idB);
+      if (!holdingA || !holdingB) {
+        throw new Error('expected both card holdings to exist after the first sync');
+      }
+
+      // Model the interrupted run: card A's DISPLAY balance advanced (as
+      // `upsertHoldings` would have committed it up front) but its statements
+      // never imported, so its marker stays behind. No failed-set record and no
+      // hold — only the marker/display-balance mismatch can force a re-fetch.
+      const advanced = (holdingA.syncedBalanceMinorUnits ?? 0) + 5000;
+      holdingA.balanceMinorUnits = advanced;
+
+      deps.getLastSyncAt = async () => 1704326400000 - 1000;
+      deps.getLastFullSyncAt = async () => 1704326400000 - 1000;
+      deps.getFailedSyncIds = async () => [];
+      deps.fetchClientInfo = async () => ({
+        accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
+          account.id === idA ? { ...account, balance: advanced } : { ...account },
+        ),
+        jars: clientInfo.jars as MonobankJar[],
+      });
+      const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
+      deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
+
+      await runSync(deps);
+
+      // Card A is re-fetched (its marker never reached the advanced balance);
+      // card B, genuinely unchanged and fully imported, is still skipped.
+      expect(fetchedIds(fetchStatement)).toContain(idA);
+      expect(fetchedIds(fetchStatement)).not.toContain(idB);
     });
   });
 });

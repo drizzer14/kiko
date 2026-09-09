@@ -320,6 +320,23 @@ export const holdingsRepo = {
       upsertByMetadataKey(tx, { ...rest, metadataField: 'monobankId', metadataKey: monobankId }),
     ),
   /**
+   * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
+   * see db/schema.ts) for one Monobank card to the balance whose statements the
+   * sync just imported. The sync calls this ONLY after a card's statement
+   * fetch+upsert commits, so an interrupted run leaves the marker behind and the
+   * next run re-imports the card rather than skipping it on an unchanged display
+   * balance. A bare field write — it moves no money and emits no ledger row, so
+   * it stays off `updateWithBalanceDelta`. Distinct from `balanceMinorUnits`,
+   * which `upsertMonobank` writes up front from /client-info every run.
+   */
+  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) =>
+    write((tx) =>
+      tx
+        .update(holdings)
+        .set({ syncedBalanceMinorUnits: balanceMinorUnits })
+        .where(eq(holdings.id, holdingId)),
+    ),
+  /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot
    * per provider, matched on `walletAddress` / `binanceAsset`. No transaction
    * import — a wallet or exchange gives a number, not a statement.

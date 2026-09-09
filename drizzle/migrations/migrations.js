@@ -24,6 +24,7 @@ import m0020 from './0020_add_last_sync_display_at.sql';
 import m0021 from './0021_add_last_full_sync_at.sql';
 import m0022 from './0022_backfill_last_full_sync_at.sql';
 import m0023 from './0023_add_failed_sync_ids.sql';
+import m0024 from './0024_add_synced_balance.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -53,5 +54,6 @@ export default {
     m0021,
     m0022,
     m0023,
+    m0024,
   },
 };

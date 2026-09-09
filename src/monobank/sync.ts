@@ -93,15 +93,28 @@ export interface SyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   upsertHolding: (holding: MonobankHolding) => Promise<unknown>;
+  /**
+   * Advance one card's crash-safe statement-import marker
+   * (`holdings.syncedBalanceMinorUnits`) to the balance whose statements were
+   * just imported. Called ONLY after a card's statement fetch+import commits, so
+   * the marker never leads the imported data: an interrupted run leaves it
+   * behind and the next run re-imports the card. The balance-diff skip compares
+   * against THIS marker, not `holdings.balanceMinorUnits` (the display balance
+   * `upsertHolding` overwrites up front every run).
+   */
+  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
   /** Resolves the number of rows actually INSERTED — a refreshed row is not one. */
   addTransactions: (transactions: NewTransaction[]) => Promise<number>;
   getLastSyncAt: () => Promise<number | null>;
   setLastSyncAt: (timestamp: number) => Promise<unknown>;
   /**
    * Stamp the DISPLAY "last synced" timestamp — decoupled from the statement
-   * cursor (`setLastSyncAt`). Written on every run that imported at least one
-   * transaction, INCLUDING a partial failure, so the user sees a fresh time
-   * even when the cursor deliberately stays put to re-cover a failed card.
+   * cursor (`setLastSyncAt`) in WHAT it means but gated the same way. Written
+   * ONLY on a run that leaves no card stranded (`failures.length === 0`),
+   * whether or not any new rows imported, so "Last sync" never reads current
+   * while a partial failure's failed card is still un-covered (BUG A). It is
+   * still decoupled from the cursor in value — a clean run that only refreshed
+   * held rows advances the display without moving the cursor's queried ceiling.
    */
   setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
   /**
@@ -152,6 +165,8 @@ const defaultDeps: SyncDeps = {
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
   upsertHolding: (holding) => holdingsRepo.upsertMonobank(holding),
+  setSyncedBalance: (holdingId, balanceMinorUnits) =>
+    holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
   addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
   getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
   setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
@@ -435,12 +450,26 @@ const shouldFullFetch = (
 /**
  * The balance-diff skip predicate: skip a card's statement fetch only when this
  * is NOT a full fetch, the card is NOT in the force-retry set (a card whose
- * fetch failed on a prior run), its /client-info balance equals its prior stored
- * balance (`holdings.balanceMinorUnits` before this run's upsert), and it
- * carries no outstanding hold. A held card is always fetched because a
- * same-amount hold→settled refresh does not move the balance; a force-retry card
- * is always fetched so a transient failure cannot strand it once its balance
- * settles unchanged.
+ * fetch failed on a prior run), its /client-info balance equals the CRASH-SAFE
+ * marker (`holdings.syncedBalanceMinorUnits` — the balance through which its
+ * statements were last SUCCESSFULLY imported, read before this run's upsert),
+ * and it carries no outstanding hold.
+ *
+ * The comparison is against the marker, NOT `holdings.balanceMinorUnits`. That
+ * display balance is overwritten by `upsertHoldings` at the START of every run,
+ * before the statement loop: a run that committed a card's new balance up front
+ * and was then interrupted (app background/kill) before importing its statements
+ * left `balanceMinorUnits` == /client-info, so a display-balance comparison
+ * skipped the card forever and its transactions never imported (until the 24h
+ * full fetch). The marker advances ONLY after a card's statements commit, so an
+ * interrupted card's marker stays behind and this predicate re-fetches it. A
+ * NULL marker (never synced through — a fresh column on upgrade, or a holding
+ * that never completed a statement import) never equals a balance, so the card
+ * is fetched, which also recovers any card the old bug had stranded.
+ *
+ * A held card is always fetched because a same-amount hold→settled refresh does
+ * not move the balance; a force-retry card is always fetched so a transient
+ * failure cannot strand it once its balance settles unchanged.
  */
 const isBalanceDiffSkip = (
   account: MonobankAccount,
@@ -458,8 +487,8 @@ const isBalanceDiffSkip = (
   if (context.failedSet.has(account.id)) {
     return false;
   }
-  const priorBalance = context.priorHoldingByMonobankId.get(account.id)?.balanceMinorUnits;
-  const balanceUnchanged = priorBalance !== undefined && priorBalance === account.balance;
+  const priorSynced = context.priorHoldingByMonobankId.get(account.id)?.syncedBalanceMinorUnits;
+  const balanceUnchanged = priorSynced != null && priorSynced === account.balance;
   return balanceUnchanged && !context.holdIds.has(holding.id);
 };
 
@@ -707,6 +736,16 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
         fromSeconds,
         toSeconds,
       );
+      // Advance the crash-safe marker ONLY now that this card's statements have
+      // committed. `upsertHoldings` already wrote `balanceMinorUnits` (the
+      // display balance) up front, but the balance-diff skip compares against
+      // THIS marker instead — so a run interrupted after the up-front balance
+      // write but before this point leaves the marker behind, and the next run
+      // re-imports the card rather than skipping it on a matching display
+      // balance. Written even when the card had zero new items: the card was
+      // still successfully fetched THROUGH this balance, so it is safe to skip
+      // next run while it stays unchanged.
+      await deps.setSyncedBalance(holding.id, account.balance);
       succeededIds.push(account.id);
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
@@ -738,23 +777,20 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     elapsedMs: deps.now() - startedAt,
   });
 
-  // Move the DISPLAY "last synced" stamp whenever this run REACHED Monobank
-  // successfully — i.e. at least one card synced without error — regardless of
-  // whether any new rows imported. The label means "Last sync", not "last
-  // import": a clean re-sync that fetched every card but found nothing new is
-  // still a real, successful sync and must refresh the time the user sees.
-  // Stamping only on `importedTransactions > 0` froze the display at the last
-  // IMPORT time, so a later no-new-rows sync left "Last sync" stale.
-  //
-  // Gated on "≥1 card succeeded" (`failures.length < accounts.length`), not on
-  // an unconditional stamp: a TOTAL failure (every card errored) never reached
-  // any statement, so it must NOT announce a fresh "Last sync". A PARTIAL
-  // success (some cards imported, one failed) still stamps — this sits BEFORE
-  // the partial-failure `throw` below. This is decoupled from the statement
-  // cursor (`setLastSyncAt`), which advances only on a fully clean run: a
-  // partial failure must re-cover the failed card's window, so the cursor stays
-  // put while the display moves.
-  if (failures.length < accounts.length) {
+  // Move the DISPLAY "last synced" stamp ONLY when this run leaves NO card
+  // stranded — i.e. every card synced without error (`failures.length === 0`).
+  // The label means "Last sync", so it must not read CURRENT while a card's
+  // window is still un-covered: a PARTIAL failure keeps the statement cursor put
+  // to re-cover the failed card next run, so some of the user's transactions and
+  // charts are still stale, and stamping then made "Last sync: just now" falsely
+  // current (BUG A). A TOTAL failure is likewise not stamped (it reached no
+  // statement). A clean run still stamps regardless of whether any new rows
+  // imported — a re-sync that fetched every card and found nothing new, or one
+  // that skipped every unchanged-and-imported card, is a real, successful sync
+  // (the label is "Last sync", not "last import"), and the crash-safe marker
+  // (`syncedBalanceMinorUnits`) guarantees a skipped card is genuinely imported,
+  // never silently stranded. This still sits BEFORE the partial-failure `throw`.
+  if (failures.length === 0) {
     await deps.setLastSyncDisplayAt(deps.now());
   }
 
