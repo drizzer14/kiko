@@ -169,4 +169,19 @@ describe('settingsRepo', () => {
     await settingsRepo.setTrendCategoryKeys(null);
     expect(store[0].trendCategoryKeys).toBeNull();
   });
+
+  it('round-trips a saved trend filter and clears it with null', async () => {
+    const store: Record<string, unknown>[] = [{ id: 1 }];
+    mockTx = makeSettingsRowTx(store);
+    spyOnSettingsSelect(store);
+
+    await settingsRepo.setTrendFilter({ mode: 'manual', keys: ['groceries', 'transport'] });
+    expect(store[0].trendFilter).toEqual({ mode: 'manual', keys: ['groceries', 'transport'] });
+
+    await settingsRepo.setTrendFilter({ mode: 'top', amount: 4, by: 'rising' });
+    expect(store[0].trendFilter).toEqual({ mode: 'top', amount: 4, by: 'rising' });
+
+    await settingsRepo.setTrendFilter(null);
+    expect(store[0].trendFilter).toBeNull();
+  });
 });

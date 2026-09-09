@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+import type { TrendFilter } from '../statistics/trend-filter';
+
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -212,12 +214,21 @@ export const settings = sqliteTable('settings', {
   // only the already-covered recent window and recover nothing. NULL ⇒ never
   // done a full fetch, which forces one.
   lastFullSyncAt: integer('last_full_sync_at'),
-  // The user's SAVED spending-trend category selection: a JSON array of stable
-  // `categories.key` slugs that overrides the default "top 3 by expense" seed on
-  // the Statistics trend chart. NULL means "no saved selection" — the chart falls
-  // back to the live top-3-by-expense preset. Written by settingsRepo
-  // .setTrendCategoryKeys (Save persists the current set; Reset clears to null).
+  // DEAD (retained): the previous spending-trend selection — a JSON array of
+  // stable `categories.key` slugs. Superseded by `trendFilter` below, into which
+  // migration 0025 copies any non-null value as `{ mode: 'manual', keys }`.
+  // Nothing in `src/` reads or writes it any more; deliberately NOT dropped
+  // (migrations here are additive-only — same class as `appearance` /
+  // `lockGraceSeconds`). Enforced reader-less by settings-columns.test.ts.
   trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
+  // The user's SAVED spending-trend filter (see `TrendFilter`). A discriminated
+  // union stored as JSON: `{ mode: 'manual', keys }` pins explicit categories
+  // (empty = every category); `{ mode: 'top', amount, by }` re-selects the top N
+  // by the chosen measure from live data on each render. NULL means "no saved
+  // filter" — the chart falls back to `DEFAULT_TREND_FILTER` (top 3 by
+  // contribution). Written by settingsRepo.setTrendFilter (Save persists; there
+  // is no clear-to-null path from the UI, but the setter accepts null).
+  trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
   // The Monobank account ids whose statement fetch FAILED on the last sync run.
   // The next run force-fetches only these (regardless of balance) so one flaky
   // card does not strand the whole account in daily full-fetch mode: without

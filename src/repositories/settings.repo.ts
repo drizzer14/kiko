@@ -4,6 +4,7 @@ import type { Currency } from '../currency/currency';
 import { database, write } from '../db/client';
 import { settings } from '../db/schema';
 import type { AppLanguage } from '../i18n';
+import type { TrendFilter } from '../statistics/trend-filter';
 
 import type { Repository } from './repository';
 
@@ -63,13 +64,23 @@ export const settingsRepo = {
   setLanguage: (language: AppLanguage) =>
     write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
   /**
-   * Persist (or clear) the user's saved spending-trend category selection: a
-   * JSON array of stable `categories.key` slugs, or `null` to fall back to the
-   * live top-3-by-expense preset. Written by Save; cleared to `null` by Reset.
+   * DEPRECATED (removed with the trend filter sheet rewire): the previous
+   * spending-trend selection setter, kept only until the Statistics screen stops
+   * reading `trendCategoryKeys`. Superseded by `setTrendFilter` below.
    */
   setTrendCategoryKeys: (keys: string[] | null) =>
     write((tx) =>
       tx.update(settings).set({ trendCategoryKeys: keys }).where(eq(settings.id, SETTINGS_ID)),
+    ),
+  /**
+   * Persist (or clear) the user's saved spending-trend filter (see
+   * `TrendFilter`): the whole config as JSON, or `null` to fall back to
+   * `DEFAULT_TREND_FILTER` (top 3 by contribution). Written by the trend
+   * filter sheet's Save.
+   */
+  setTrendFilter: (filter: TrendFilter | null) =>
+    write((tx) =>
+      tx.update(settings).set({ trendFilter: filter }).where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
    * Persist the Monobank account ids whose statement fetch FAILED on the last
