@@ -577,7 +577,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
                 {contributions.length > 1 && (
                   <Button
-                    variant="secondary"
+                    variant="destructive"
                     size="compact"
                     fullWidth={false}
                     accessibilityLabel={t('forms.holding.removeContribution', {
@@ -591,7 +591,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               </Box>
             ))}
 
-            <Button variant="secondary" size="compact" fullWidth={false} onPress={addContribution}>
+            <Button variant="primary" size="compact" fullWidth={false} onPress={addContribution}>
               {t('forms.holding.addContribution')}
             </Button>
 
