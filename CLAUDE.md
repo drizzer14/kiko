@@ -33,7 +33,11 @@ Composite scripts:
   typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
-  wired to any hook because it is slow; it is a manual checkpoint.
+  wired to any hook because it is slow; it is a manual checkpoint. By
+  default the mutation step mutates ONLY the source files changed
+  against the merge-base with `${KIKO_MUTATION_BASE:-main}`
+  (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
+  whole-project run. See the `kiko-linter` skill.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
