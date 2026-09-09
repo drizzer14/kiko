@@ -24,9 +24,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * focus event (mount and blur->refocus), never on an isSyncing change in place;
  * a manual pull then flows through the mirror alone, a single `true` with no
  * intervening `false`.
+ *
+ * The `isSyncing` mirror alone is TOO LATE for a manual pull. The native iOS
+ * `RefreshControl` retracts the spinner on finger-release unless `refreshing` is
+ * ALREADY true at the commit right after `onRefresh`. `isSyncing` only rises two
+ * commits later (onRefresh -> `setSyncing(true)` -> store notify -> commit
+ * isSyncing=true -> this mirror effect -> commit refreshing=true), so the pull
+ * spinner dropped. The hook therefore wraps the caller's `onRefresh` and sets a
+ * LOCAL pull flag `true` SYNCHRONOUSLY inside it — before any await — so
+ * `refreshing` is true in that first commit without waiting on `isSyncing`. The
+ * flag clears when the run settles (`.finally`). The returned `refreshing` is
+ * `localPull OR the isSyncing mirror`: the local flag covers the pull's start,
+ * the mirror keeps the spinner lit across the whole run and drives an
+ * auto-sync-on-open that had no pull at all.
  */
-export const useRefreshControlSignal = (isSyncing: boolean): boolean => {
+export const useRefreshControlSignal = (
+  isSyncing: boolean,
+  onRefresh: () => Promise<void>,
+): { refreshing: boolean; onRefresh: () => void } => {
   const [refreshing, setRefreshing] = useState(isSyncing);
+
+  // The synchronous pull flag: set true the instant the user pulls (inside the
+  // wrapped `onRefresh`, before any await), cleared when the run settles. This
+  // is what lands `refreshing` true in the commit right after the pull, before
+  // iOS retracts the native spinner.
+  const [localPull, setLocalPull] = useState(false);
 
   // The latest signal, read by the focus re-drive without making it a dependency
   // (see the doc comment above). Updated in render so it is current the instant
@@ -65,5 +87,16 @@ export const useRefreshControlSignal = (isSyncing: boolean): boolean => {
     }, []),
   );
 
-  return refreshing;
+  // Wrap the caller's refresh. Set the local pull flag SYNCHRONOUSLY, before the
+  // await inside `onRefresh` runs, so `refreshing` is already true in the commit
+  // right after this handler. Clear it once the run settles (success or failure)
+  // — `onRefresh` (Home's `syncAll`) never rejects, so `.finally` alone is safe.
+  const handleRefresh = (): void => {
+    setLocalPull(true);
+    onRefresh().finally(() => {
+      setLocalPull(false);
+    });
+  };
+
+  return { refreshing: localPull || refreshing, onRefresh: handleRefresh };
 };

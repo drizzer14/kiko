@@ -191,8 +191,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // The native RefreshControl below binds to this LOCAL signal, not `isSyncing`
   // directly: iOS drops the spin when the list leaves the window on a tab blur,
   // so on refocus the hook re-issues a false->true edge to restart the spin
-  // while a sync is still in flight. See `use-refresh-control-signal.ts`.
-  const refreshing = useRefreshControlSignal(isSyncing);
+  // while a sync is still in flight. The hook also wraps `syncAll` in
+  // `onRefresh`, setting a local pull flag synchronously so the spinner is
+  // already on in the commit right after the pull — the `isSyncing` mirror lands
+  // two commits too late and iOS retracts the spinner. See
+  // `use-refresh-control-signal.ts`.
+  const { refreshing, onRefresh } = useRefreshControlSignal(isSyncing, syncAll);
 
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -529,7 +533,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           stickySectionHeadersEnabled={false}
           style={styles.list}
           contentContainerStyle={styles.listContent(listBottomClearance)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={syncAll} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <Box style={styles.empty}>
               <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>

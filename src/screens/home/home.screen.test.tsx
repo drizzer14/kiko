@@ -96,11 +96,16 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
 
 // The refresh-control signal hook uses `useFocusEffect`, which needs a
 // NavigationContainer a standalone screen render has none of. Stand it in with a
-// pass-through so the RefreshControl still binds to the global sync signal here;
-// its own re-drive-on-refocus behavior is covered by
+// pass-through: `refreshing` mirrors the global sync signal and `onRefresh` is
+// the caller's own refresh fn (Home's `syncAll`) unwrapped, so the RefreshControl
+// still binds to the signal and a pull still calls `syncAll` here. The hook's own
+// synchronous pull flag and re-drive-on-refocus behavior are covered by
 // `use-refresh-control-signal.test.tsx`.
 jest.mock('./use-refresh-control-signal', () => ({
-  useRefreshControlSignal: (isSyncing: boolean) => isSyncing,
+  useRefreshControlSignal: (isSyncing: boolean, onRefresh: () => Promise<void>) => ({
+    refreshing: isSyncing,
+    onRefresh,
+  }),
 }));
 
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };

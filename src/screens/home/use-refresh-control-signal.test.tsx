@@ -84,10 +84,18 @@ const flush = async (): Promise<void> => {
   });
 };
 
+// A no-op refresh for the mirror/refocus tests, which drive `isSyncing` directly
+// rather than through a pull. The wrapped `onRefresh` is exercised by its own
+// test below.
+const noopRefresh = (): Promise<void> => Promise.resolve();
+
 const renderSignal = (syncing: boolean) =>
-  renderHook(({ isSyncing }: { isSyncing: boolean }) => useRefreshControlSignal(isSyncing), {
-    initialProps: { isSyncing: syncing },
-  });
+  renderHook(
+    ({ isSyncing }: { isSyncing: boolean }) => useRefreshControlSignal(isSyncing, noopRefresh),
+    {
+      initialProps: { isSyncing: syncing },
+    },
+  );
 
 describe('useRefreshControlSignal', () => {
   it('re-issues a false->true edge on refocus while a sync is still running', async () => {
@@ -96,16 +104,16 @@ describe('useRefreshControlSignal', () => {
     // Focused with a sync running: the spinner settles on.
     await fireFocus();
     await flush();
-    expect(result.current).toBe(true);
+    expect(result.current.refreshing).toBe(true);
 
     // Refocus while the sync is STILL running. The prop is already true, so only
     // a fresh false->true edge makes RN re-call the native beginRefreshing().
     await fireFocus();
     // The leading edge: the flag drops to false immediately on refocus...
-    expect(result.current).toBe(false);
+    expect(result.current.refreshing).toBe(false);
     // ...and rises to true on the next frame.
     await flush();
-    expect(result.current).toBe(true);
+    expect(result.current.refreshing).toBe(true);
   });
 
   it('stays idle on focus when no sync is running and schedules no frame', async () => {
@@ -114,18 +122,18 @@ describe('useRefreshControlSignal', () => {
     await fireFocus();
     await flush();
 
-    expect(result.current).toBe(false);
+    expect(result.current.refreshing).toBe(false);
     expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
   });
 
   it('starts the spinner when a sync begins while the screen stays focused', async () => {
     const { result, rerender } = await renderSignal(false);
     await fireFocus();
-    expect(result.current).toBe(false);
+    expect(result.current.refreshing).toBe(false);
 
     await rerender({ isSyncing: true });
 
-    expect(result.current).toBe(true);
+    expect(result.current.refreshing).toBe(true);
   });
 
   // BUG B (regression of 663f2e5): a manual pull-to-refresh flips isSyncing
@@ -137,13 +145,13 @@ describe('useRefreshControlSignal', () => {
   it('does not blip false on an in-place isSyncing change while focused (manual pull)', async () => {
     const { result, rerender } = await renderSignal(false);
     await fireFocus();
-    expect(result.current).toBe(false);
+    expect(result.current.refreshing).toBe(false);
 
     // The manual pull: isSyncing rises while focused, without a refocus.
     await rerender({ isSyncing: true });
 
     // Straight to true — the re-drive path (which drops to false first) never ran.
-    expect(result.current).toBe(true);
+    expect(result.current.refreshing).toBe(true);
     expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
   });
 
@@ -151,10 +159,47 @@ describe('useRefreshControlSignal', () => {
     const { result, rerender } = await renderSignal(true);
     await fireFocus();
     await flush();
-    expect(result.current).toBe(true);
+    expect(result.current.refreshing).toBe(true);
 
     await rerender({ isSyncing: false });
 
-    expect(result.current).toBe(false);
+    expect(result.current.refreshing).toBe(false);
+  });
+
+  // BUG B (real fix): the native iOS RefreshControl retracts on finger-release
+  // unless `refreshing` is ALREADY true at the commit right after onRefresh. The
+  // isSyncing mirror lands `refreshing` two commits late (onRefresh -> setSyncing
+  // -> store notify -> commit isSyncing=true -> mirror effect -> commit
+  // refreshing=true), so the spinner drops. The fix sets a LOCAL pull flag true
+  // synchronously inside onRefresh, so refreshing is true WITHOUT waiting on any
+  // isSyncing change, and clears it when the run settles.
+  it('turns refreshing on synchronously when the pull starts and clears it when the run settles', async () => {
+    let settle: () => void = () => undefined;
+    const onRefresh = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { result } = await renderHook(
+      ({ isSyncing }: { isSyncing: boolean }) => useRefreshControlSignal(isSyncing, onRefresh),
+      { initialProps: { isSyncing: false } },
+    );
+    await fireFocus();
+
+    // The pull starts. `refreshing` must be true even though isSyncing never
+    // changes — the local pull flag drives it, not the isSyncing mirror.
+    await act(async () => {
+      result.current.onRefresh();
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.refreshing).toBe(true);
+
+    // The run settles: the flag clears.
+    await act(async () => {
+      settle();
+      await Promise.resolve();
+    });
+    expect(result.current.refreshing).toBe(false);
   });
 });
