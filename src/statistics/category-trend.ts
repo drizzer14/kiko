@@ -73,11 +73,13 @@ const daysWindow = (now: number): number[] => {
 
 // Per category key: the running spend total (base minor units, for the series
 // sort), a representative raw category value (so the display resolves off the
-// same key the Home screen stored), and the per-day spend map (base minor
-// units) the points are read from.
+// same key the Home screen stored), the count of kept expense rows (the
+// Frequency ranking measure), and the per-day spend map (base minor units) the
+// points and the Rising slope are read from.
 type TrendAccumulator = {
   representative: string | null;
   total: number;
+  count: number;
   byDay: Map<number, number>;
 };
 
@@ -141,9 +143,11 @@ const accumulateSpend = (input: {
     const entry = totals.get(key) ?? {
       representative: transaction.category,
       total: 0,
+      count: 0,
       byDay: new Map<number, number>(),
     };
     entry.total += spend;
+    entry.count += 1;
     entry.byDay.set(day, (entry.byDay.get(day) ?? 0) + spend);
     totals.set(key, entry);
   }
@@ -229,4 +233,99 @@ export const buildCategoryTrend = (input: {
       color: series.color,
       points: series.points,
     }));
+};
+
+/**
+ * One category's three ranking measures over the SAME fixed last-30-days window
+ * `buildCategoryTrend` uses, feeding the "Top N" trend filter mode. `total` is
+ * that category's summed spend (base minor units) — the Contribution measure.
+ * `count` is the number of kept expense rows — the Frequency measure.
+ * `risingSlope` is the least-squares slope of daily spend across the window's 30
+ * daily points — the Rising measure (a positive value climbs, a negative value
+ * falls).
+ */
+export type CategoryMeasure = {
+  key: string;
+  total: number;
+  count: number;
+  risingSlope: number;
+};
+
+// The least-squares (ordinary linear regression) slope of `ys` against its own
+// index positions x = 0, 1, …, n-1 (one point per window day, 0 on a no-spend
+// day). With the standard closed form
+//   slope = (n·Σ(x·y) − Σx·Σy) / (n·Σ(x²) − (Σx)²)
+// the denominator depends only on n (a positive constant for n = 30), so the
+// slope's SIGN and the cross-category ORDERING follow the numerator alone — the
+// base-currency minor-units scale of y cancels out of any comparison. Fewer than
+// two points, or a zero-variance x (unreachable at n = 30), yields 0.
+const linearRegressionSlope = (ys: number[]): number => {
+  const n = ys.length;
+  if (n < 2) {
+    return 0;
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (let i = 0; i < n; i += 1) {
+    sumX += i;
+    sumY += ys[i];
+    sumXY += i * ys[i];
+    sumXX += i * i;
+  }
+
+  const denominator = n * sumXX - sumX * sumX;
+
+  return denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+};
+
+/**
+ * Build the per-category ranking measures for the trend filter's "Top N" mode,
+ * over the SAME fixed last-30-days window and the SAME expense/exclusion/
+ * default-fold/conversion rules as `buildCategoryTrend` (it shares
+ * `accumulateSpend`). It applies `excludedTransactionIds` (internal transfers,
+ * exchange legs) but NEVER a category exclusion — Top mode ranks over EVERY
+ * category to pick the top N. Each returned measure carries the category's
+ * `total` (Contribution), `count` (Frequency), and `risingSlope` (Rising). The
+ * result order is not significant — `selectTopCategories` re-ranks by the chosen
+ * measure — but is total-desc for readability. Empty input (or every row
+ * excluded / out of window) returns `[]`.
+ */
+export const buildCategoryMeasures = (input: {
+  transactions: TrendTransaction[];
+  rateTable: RateTable;
+  baseCurrency: Currency;
+  defaultCategoryKey: string;
+  now: number;
+  excludedTransactionIds?: ReadonlySet<string>;
+}): CategoryMeasure[] => {
+  const { transactions, rateTable, baseCurrency, defaultCategoryKey, now } = input;
+  const excludedIds = input.excludedTransactionIds ?? new Set<string>();
+
+  const days = daysWindow(now);
+  const startDay = days[0];
+  const endDay = days[days.length - 1];
+
+  const totals = accumulateSpend({
+    transactions,
+    rateTable,
+    baseCurrency,
+    defaultCategoryKey,
+    excluded: new Set<string>(),
+    excludedIds,
+    startDay,
+    endDay,
+  });
+
+  return Array.from(totals.entries())
+    .filter(([, entry]) => entry.total > 0)
+    .map(([key, entry]) => ({
+      key,
+      total: entry.total,
+      count: entry.count,
+      risingSlope: linearRegressionSlope(days.map((t) => entry.byDay.get(t) ?? 0)),
+    }))
+    .sort((a, b) => b.total - a.total);
 };
