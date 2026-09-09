@@ -224,3 +224,95 @@ export const fetchLockedPosition = async (
     '/sapi/v1/simple-earn/locked/position',
     options,
   );
+
+/**
+ * Binance caps the deposit/withdraw history page at 1000 rows (the default too).
+ * A page of exactly this many rows means "there may be more" — the caller pages
+ * on `offset` until a short page. Exported so the offset-paging walk in
+ * `binance.transactions.ts` uses the SAME limit the request sends.
+ */
+export const HISTORY_PAGE_LIMIT = 1000;
+
+/**
+ * One offset page of a ≤90-day history window. Both history endpoints share this
+ * shape: `startTime`/`endTime` bound the window (the API rejects a span of 90
+ * days or more), `offset` pages within it.
+ */
+export type HistoryWindow = { startTime: number; endTime: number; offset: number };
+
+/** One deposit from `/sapi/v1/capital/deposit/hisrec`. `insertTime` is epoch ms. */
+export type BinanceDeposit = {
+  id: string;
+  amount: string;
+  coin: string;
+  txId: string;
+  insertTime: number;
+  status: number;
+};
+
+/**
+ * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), filtered to BTC, for
+ * ONE offset page of ONE window. Signed, read-only. Returns the raw page; the
+ * offset-paging and window walk live in `binance.transactions.ts`.
+ */
+export const fetchDepositHistory = async (
+  apiKey: string,
+  secret: string,
+  window: HistoryWindow,
+  options: FetchAccountOptions = {},
+): Promise<BinanceDeposit[]> =>
+  (await signedRequest(
+    apiKey,
+    secret,
+    'GET',
+    '/sapi/v1/capital/deposit/hisrec',
+    {
+      coin: BINANCE_ASSET,
+      startTime: String(window.startTime),
+      endTime: String(window.endTime),
+      offset: String(window.offset),
+      limit: String(HISTORY_PAGE_LIMIT),
+    },
+    options,
+  )) as BinanceDeposit[];
+
+/**
+ * One withdrawal from `/sapi/v1/capital/withdraw/history`. `applyTime` is a UTC
+ * datetime STRING ("2019-10-12 11:12:02"), NOT epoch ms — see
+ * `parseWithdrawTime` in `binance.transactions.ts`.
+ */
+export type BinanceWithdrawal = {
+  id: string;
+  amount: string;
+  transactionFee: string;
+  coin: string;
+  txId: string;
+  applyTime: string;
+  status: number;
+};
+
+/**
+ * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), filtered to BTC,
+ * for ONE offset page of ONE window. Signed, read-only. Same window/paging
+ * contract as `fetchDepositHistory`.
+ */
+export const fetchWithdrawHistory = async (
+  apiKey: string,
+  secret: string,
+  window: HistoryWindow,
+  options: FetchAccountOptions = {},
+): Promise<BinanceWithdrawal[]> =>
+  (await signedRequest(
+    apiKey,
+    secret,
+    'GET',
+    '/sapi/v1/capital/withdraw/history',
+    {
+      coin: BINANCE_ASSET,
+      startTime: String(window.startTime),
+      endTime: String(window.endTime),
+      offset: String(window.offset),
+      limit: String(HISTORY_PAGE_LIMIT),
+    },
+    options,
+  )) as BinanceWithdrawal[];

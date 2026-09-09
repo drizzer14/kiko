@@ -1,8 +1,11 @@
 import {
   fetchAccount,
+  fetchDepositHistory,
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
+  fetchWithdrawHistory,
+  HISTORY_PAGE_LIMIT,
 } from './binance.client';
 
 const NOW = 1_704_326_400_000;
@@ -302,6 +305,120 @@ describe('fetchFlexiblePosition', () => {
       fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
         fetchImpl: spyFetch,
         now: () => NOW,
+      }),
+    ).rejects.toThrow('Too much request weight used');
+  });
+});
+
+// A 90-day history window: deposit/withdraw history is offset-paged within a
+// single window, so each client call carries a startTime/endTime/offset.
+const WINDOW = { startTime: 1_700_000_000_000, endTime: NOW, offset: 0 };
+
+describe('fetchDepositHistory', () => {
+  it('GETs /sapi/v1/capital/deposit/hisrec filtered to BTC with the window, offset and limit, signed', async () => {
+    let sentUrl = '';
+    let sentInit: SpyInit = { headers: {} };
+    const spyFetch = (async (url: string, init: SpyInit) => {
+      sentUrl = url;
+      sentInit = init;
+      return { ok: true, json: async () => [], status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+      fetchImpl: spyFetch,
+      now: () => NOW,
+    });
+
+    const url = new URL(sentUrl);
+    expect(url.pathname).toBe('/sapi/v1/capital/deposit/hisrec');
+    expect(url.searchParams.get('coin')).toBe('BTC');
+    expect(url.searchParams.get('startTime')).toBe(String(WINDOW.startTime));
+    expect(url.searchParams.get('endTime')).toBe(String(WINDOW.endTime));
+    expect(url.searchParams.get('offset')).toBe('0');
+    expect(url.searchParams.get('limit')).toBe(String(HISTORY_PAGE_LIMIT));
+    expect(url.searchParams.get('recvWindow')).toBe('5000');
+    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
+    expect(url.searchParams.get('signature')).toBeTruthy();
+    expect(sentInit.method).toBe('GET');
+    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+  });
+
+  it('returns the parsed deposit array', async () => {
+    const body = [{ id: '1', amount: '0.5', coin: 'BTC', txId: 'abc', insertTime: NOW, status: 1 }];
+
+    const result = await fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+      fetchImpl: makeFetch(body),
+      now: () => NOW,
+    });
+
+    expect(result).toEqual(body);
+  });
+
+  it('rejects on a non-ok response so the caller can surface the failure', async () => {
+    const invalidBody = { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' };
+
+    await expect(
+      fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+        fetchImpl: makeFetch(invalidBody, false, 401),
+      }),
+    ).rejects.toThrow('Invalid API-key, IP, or permissions for action.');
+  });
+});
+
+describe('fetchWithdrawHistory', () => {
+  it('GETs /sapi/v1/capital/withdraw/history filtered to BTC with the window, offset and limit, signed', async () => {
+    let sentUrl = '';
+    let sentInit: SpyInit = { headers: {} };
+    const spyFetch = (async (url: string, init: SpyInit) => {
+      sentUrl = url;
+      sentInit = init;
+      return { ok: true, json: async () => [], status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+      fetchImpl: spyFetch,
+      now: () => NOW,
+    });
+
+    const url = new URL(sentUrl);
+    expect(url.pathname).toBe('/sapi/v1/capital/withdraw/history');
+    expect(url.searchParams.get('coin')).toBe('BTC');
+    expect(url.searchParams.get('startTime')).toBe(String(WINDOW.startTime));
+    expect(url.searchParams.get('endTime')).toBe(String(WINDOW.endTime));
+    expect(url.searchParams.get('offset')).toBe('0');
+    expect(url.searchParams.get('limit')).toBe(String(HISTORY_PAGE_LIMIT));
+    expect(url.searchParams.get('signature')).toBeTruthy();
+    expect(sentInit.method).toBe('GET');
+    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+  });
+
+  it('returns the parsed withdrawal array', async () => {
+    const body = [
+      {
+        id: '9',
+        amount: '0.25',
+        transactionFee: '0.0001',
+        coin: 'BTC',
+        txId: 'def',
+        applyTime: '2023-11-15 08:30:00',
+        status: 6,
+      },
+    ];
+
+    const result = await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+      fetchImpl: makeFetch(body),
+      now: () => NOW,
+    });
+
+    expect(result).toEqual(body);
+  });
+
+  it('rejects on a non-ok response so the caller can surface the failure', async () => {
+    const invalidBody = { code: -1003, msg: 'Too much request weight used' };
+
+    await expect(
+      fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+        fetchImpl: makeFetch(invalidBody, false, 429),
       }),
     ).rejects.toThrow('Too much request weight used');
   });
