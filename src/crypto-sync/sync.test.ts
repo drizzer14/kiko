@@ -346,6 +346,39 @@ describe('runBalanceSync', () => {
       ]);
     });
 
+    it('never renders a negative label on a first connect (whole-app count read before the new holdings exist)', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
+      deps.targetAccountId = 'acc-1';
+      // A first connect: countActiveHoldings is read BEFORE the 3 new holdings
+      // are upserted, so it under-counts — here it returns 0 while the sync
+      // creates 3 syncable holdings.
+      deps.countActiveHoldings = async () => 0;
+
+      const emissions: Array<{ completed: number; total: number }> = [];
+      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+      await runBalanceSync(
+        provider,
+        {
+          balances: [btcBalance('BTC', 1), btcBalance('BTC:funding', 2), btcBalance('BTC:earn', 3)],
+        },
+        deps,
+      );
+      unsubscribe();
+
+      // Every emission stays in [0, total]: the denominator floors at the 3
+      // syncable holdings and completed never goes negative.
+      expect(emissions.every((e) => e.completed >= 0 && e.completed <= e.total)).toBe(true);
+      expect(emissions).toEqual([
+        { completed: 0, total: 3 },
+        { completed: 1, total: 3 },
+        { completed: 2, total: 3 },
+        { completed: 3, total: 3 },
+        { completed: 0, total: 0 },
+      ]);
+    });
+
     it('leaves the session clean (isSyncing off, progress cleared) when the provider fetch fails', async () => {
       const { provider } = makeProvider();
       const { deps } = makeInMemoryDeps([

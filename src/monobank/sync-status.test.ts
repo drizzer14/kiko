@@ -202,6 +202,30 @@ describe('sync-status store', () => {
       expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
     });
 
+    it('never shows a negative completed or a fraction over 1 when summed syncable exceeds the counted total', () => {
+      // A crypto first-connect (or a racy Monobank + crypto overlap): each path
+      // reads the whole-app count BEFORE this run's new holdings exist, so the
+      // counted total (a MAX across paths) is smaller than the summed syncable
+      // set (a SUM). The shown total must floor at the syncable count and
+      // `completed` must never go negative — otherwise the label reads "-2 / 3".
+      beginProgressSession(); // Monobank path
+      beginProgressSession(); // crypto path
+      registerSyncableHoldings(3, 2); // Monobank: 2 syncable, saw 3 holdings
+      registerSyncableHoldings(3, 3); // crypto first-connect: 3 NEW holdings, still saw 3
+
+      const snap = getProgressSnapshot();
+      expect(snap.total).toBe(5); // floored at the summed syncable count, not 3
+      expect(snap.completed).toBe(0); // baseline 5 - 5, never negative
+      expect(snap.completed).toBeGreaterThanOrEqual(0);
+      expect(snap.completed).toBeLessThanOrEqual(snap.total);
+
+      commitSyncableHoldings(5);
+      expect(getProgressSnapshot()).toEqual({ completed: 5, total: 5 });
+
+      endProgressSession();
+      endProgressSession();
+    });
+
     it('clamps completed to the total when a contributor over-commits', () => {
       beginProgressSession();
       registerSyncableHoldings(3, 1);

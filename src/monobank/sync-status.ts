@@ -138,9 +138,16 @@ const publishSessionProgress = (): void => {
     setSyncProgress({ completed: 0, total: 0 });
     return;
   }
-  const baseline = sessionTotal - sessionSyncable;
-  const completed = Math.min(sessionTotal, baseline + sessionCommitted);
-  setSyncProgress({ completed, total: sessionTotal });
+  // `sessionTotal` is a MAX across paths while `sessionSyncable` is a SUM, and a
+  // path reads the whole-app count BEFORE it creates this run's new holdings (a
+  // crypto first-connect), so the summed syncable set can transiently EXCEED the
+  // counted total. Floor the shown total at the syncable count so the baseline is
+  // never negative; clamp `completed` into `[0, total]` so the label can never
+  // read "-2 / 3" nor a fraction above 1.
+  const total = Math.max(sessionTotal, sessionSyncable);
+  const baseline = total - sessionSyncable;
+  const completed = Math.min(total, Math.max(0, baseline + sessionCommitted));
+  setSyncProgress({ completed, total });
 };
 
 /** Enter one contributor to the shared progress session. */
