@@ -237,6 +237,23 @@ describe('AccountDetailScreen', () => {
     });
   });
 
+  it('spaces the connected Monobank last-sync line, Sync now and Disconnect evenly', async () => {
+    // The three stacked connected-state elements — the "last synced" line, the
+    // "Sync now" button, and the "Disconnect" button — must be evenly spaced. The
+    // gap inside the status/actions group (last sync ↔ Sync now) must equal the
+    // content container's gap (the actions group ↔ Disconnect).
+    setLiveData({ accounts: [account({ institution: 'monobank' })] });
+
+    const { getByTestId } = await renderScreen();
+
+    const contentGap = StyleSheet.flatten(getByTestId('account-detail-content').props.style).gap;
+    const groupGap = StyleSheet.flatten(
+      getByTestId('monobank-sync-status-actions').props.style,
+    ).gap;
+
+    expect(groupGap).toBe(contentGap);
+  });
+
   it('lists holdings for the account', async () => {
     const { getByText } = await renderScreen();
     expect(getByText('Black card')).toBeTruthy();

@@ -226,7 +226,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         </Button>
       }
     >
-      <Box gap={4}>
+      <Box gap={4} testID="account-detail-content">
         <Box gap={1} style={styles.balanceBlock}>
           <EntityAmountHeader
             label={t('accountDetail.balanceLabel')}
@@ -251,7 +251,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
 
         {showActionButton && (
-          <Box gap={2}>
+          // gap={4} (not 2) so the "last synced" line ↔ "Sync now" spacing equals
+          // the "Sync now" ↔ "Disconnect" spacing (the content container's
+          // gap={4}), giving the three stacked elements one even rhythm — the same
+          // fix applied to the crypto sync section.
+          <Box gap={4} testID="monobank-sync-status-actions">
             {isConnectedToMonobank && (
               <Box direction="row" gap={2} style={styles.statusLine}>
                 <SymbolIcon name="clock" tone="textSecondary" />
