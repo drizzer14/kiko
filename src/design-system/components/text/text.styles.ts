@@ -15,6 +15,7 @@ export const styles = StyleSheet.create((theme) => ({
         textPrimary: { color: theme.colors.textPrimary },
         textSecondary: { color: theme.colors.textSecondary },
         onAccent: { color: theme.colors.onAccent },
+        accent: { color: theme.colors.accent },
       },
     },
   },

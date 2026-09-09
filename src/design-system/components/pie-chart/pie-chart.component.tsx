@@ -266,7 +266,7 @@ const PieChart: FC<PieChartProps> = ({
             onPress={() => setLegendExpanded((expanded) => !expanded)}
             style={styles.legendToggle}
           >
-            <Text variant="caption" style={styles.legendToggleLabel}>
+            <Text variant="caption" tone="accent">
               {legendExpanded
                 ? t('components.pieChart.showLess')
                 : t('components.pieChart.showAll')}

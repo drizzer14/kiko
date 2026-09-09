@@ -143,6 +143,12 @@ const groupByHolding = (
 // so it renders no center total and has no need to thin its ring for one.
 const CATEGORY_DONUT_INNER_RATIO = 0.78;
 
+// The category donut can have a long tail of tiny categories, so its legend
+// crops to categories at 5% share or more by default, with a "Show all" toggle
+// to reveal the rest. The ring still draws every category. The
+// account-contribution pie passes no threshold, so its legend is uncropped.
+const CATEGORY_LEGEND_MIN_SHARE = 0.05;
+
 /**
  * The Statistics tab: four blocks, in order — a converted net-worth line over
  * time (historical rates), a by-type horizontal bar chart of current value, a
@@ -841,6 +847,7 @@ const StatisticsScreen: FC = () => {
               emptyLabel={t('statistics.noSpendingToShow')}
               innerRatio={CATEGORY_DONUT_INNER_RATIO}
               centerTotal={categoryTotal}
+              legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
             />
           </Box>
         </GlassSurface>

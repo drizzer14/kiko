@@ -51,10 +51,6 @@ export const styles = StyleSheet.create((theme) => ({
     alignSelf: 'flex-start',
     paddingVertical: theme.spacing(1),
   },
-  // The toggle label wears the accent color so it reads as a tappable link.
-  legendToggleLabel: {
-    color: theme.colors.accent,
-  },
   // The small square swatch; its background colour is filled per-entry from
   // the slice palette, so only the shared shape lives here.
   swatch: {

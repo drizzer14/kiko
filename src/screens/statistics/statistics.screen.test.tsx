@@ -620,6 +620,53 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-legend-groceries')).toBeTruthy();
   });
 
+  it('crops the category legend to categories at or above 5% share, with a Show all toggle', async () => {
+    // groceries 94% and transport 5% stay; transfers 1% is cropped by default.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [
+        {
+          id: 'c1',
+          holdingId: 'h1',
+          time: now - 2 * DAY,
+          amountMinorUnits: -940_00,
+          category: 'groceries',
+        },
+        {
+          id: 'c2',
+          holdingId: 'h1',
+          time: now - 2 * DAY,
+          amountMinorUnits: -50_00,
+          category: 'transport',
+        },
+        {
+          id: 'c3',
+          holdingId: 'h1',
+          time: now - 2 * DAY,
+          amountMinorUnits: -10_00,
+          category: 'transfers',
+        },
+      ],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // Cropped by default: groceries and transport show, transfers is hidden,
+    // but the ring still draws all three arcs.
+    expect(getByTestId('category-pie-legend-groceries')).toBeTruthy();
+    expect(getByTestId('category-pie-legend-transport')).toBeTruthy();
+    expect(queryByTestId('category-pie-legend-transfers')).toBeNull();
+    expect(getByTestId('category-pie-arc-transfers')).toBeTruthy();
+
+    // The toggle reveals the cropped transfers row on tap.
+    await fireEvent.press(getByTestId('category-pie-legend-toggle'));
+    expect(getByTestId('category-pie-legend-transfers')).toBeTruthy();
+  });
+
   it('titles the category donut "Expenses by Category", with its filter below the title and above the chart', async () => {
     seedSpending();
 
