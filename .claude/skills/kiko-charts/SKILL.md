@@ -211,6 +211,20 @@ that hole) — the Expenses-by-Category donut is the current caller.
 Read that file directly for the default ratio and exact prop shape
 rather than trusting a restated number here.
 
+It also supports an opt-in `legendMinShare` prop: when set, the LEGEND
+(never the ring) crops to slices whose `share` is at or above that
+fraction, with a `${testID}-legend-toggle` Pressable that flips local
+`useState` to reveal or re-hide the cropped rows ("Show all" /
+"Show less", `components.pieChart.showAll`/`showLess`). The ring always
+draws every arc, and `allocatePercents` still runs over the whole set,
+so a kept row keeps its full-set percent. The toggle renders only when
+cropping actually hides a row — at least one slice below the threshold
+AND at least one at or above it — so an all-below set (nothing to keep)
+and an all-above set (nothing to crop) both show the full legend with no
+toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
+(`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
+account-contribution pie passes nothing, so its legend is uncropped.
+
 ## Reuse the entity-color system for fills
 
 A chart fill color is never a chart-local palette. `bar-chart` fills each

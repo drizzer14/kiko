@@ -142,7 +142,11 @@ new component can land between reviews of this skill:
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
-  color tokens; other text usage composes on top of this.
+  color tokens; other text usage composes on top of this. Its `style`
+  prop intentionally EXCLUDES `color` so the `tone` token stays
+  authoritative — a tappable inline link (the pie legend's "Show all"
+  toggle) uses `tone="accent"` (systemBlue), never an inline color;
+  read `text.props.d.ts`/`text.styles.ts` for the current tone set.
 - **MoneyText** — formats a `Money` value (see `kiko-domain`) and
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
