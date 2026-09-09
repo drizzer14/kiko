@@ -29,17 +29,19 @@ export type GlassSurfaceProps = ViewProps & {
   // darkened hue for both the glass tint and the fallback wash, not two
   // gradient stops.
   tint?: string;
-  // Opts a tint-LESS glass surface into the opaque themed backdrop that a
-  // tinted card gets automatically (see `GlassSurface`'s `backdrop`). It paints
-  // the same neutral `styles.opaqueBase` fill UNDER the glass so the
-  // translucent material samples a CONSTANT color instead of live screen
-  // content — the anti-drift/anti-pop-in fix — but adds NO color wash, so the
-  // card stays visually neutral. Use it for a neutral card that must not drift
-  // or pop in (the settings categories card) but must not carry an entity
-  // color either. Ignored on the non-glass fallback path (its base already IS
-  // opaque) and redundant when a `tint` is set (a tint enables the backdrop on
-  // its own). Defaults to `false`.
-  solidBackdrop?: boolean;
+  // Renders the surface as a see-through frosted glass PANEL: the neutral
+  // translucent variant. On the glass path it paints a TRANSLUCENT
+  // `styles.translucentBase` backdrop UNDER the see-through material (not the
+  // opaque backdrop a tinted card gets), so the material samples a
+  // PARTIALLY-pinned color — the lightness drift and drag pop-in are softened,
+  // not fully removed, while the screen behind reads through. On the non-glass
+  // fallback path it uses the SAME translucent fill as the base, so that path
+  // reads see-through too. It carries NO color wash, so the panel stays
+  // visually neutral. Use it for a neutral card meant to read as airy
+  // see-through glass (the settings and category cards). It is a NEUTRAL
+  // variant, so a `tint` (an entity card, which must stay opaque) always wins:
+  // `transparent` is ignored when a `tint` is set. Defaults to `false`.
+  transparent?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the
   // component (not a plain inline `borderWidth`/`borderColor`) for the same

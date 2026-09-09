@@ -166,7 +166,7 @@ const CategoryListRow: FC<{
   };
 
   return (
-    <GlassSurface testID="category-card" padding={4} bordered solidBackdrop>
+    <GlassSurface testID="category-card" padding={4} bordered transparent>
       <Box gap={2}>
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>

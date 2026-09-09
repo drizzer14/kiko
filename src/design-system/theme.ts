@@ -32,6 +32,16 @@ export const darkTheme = {
   colors: {
     background: '#000000', // systemBackground (dark)
     surface: '#1C1C1E', // secondarySystemBackground
+    // The `surface` hue (#1C1C1E) at 60% alpha — the see-through frosted-panel
+    // fill for a `transparent` GlassSurface (see its `transparent` prop). It is
+    // used in two matching places so the glass and the non-glass fallback paths
+    // read alike: as the translucent backdrop the see-through glass material
+    // samples (a partial pin that softens the live-sample lightness drift), and
+    // as the flat fill on the non-glass fallback. Over the true-black
+    // `background` it composites to ~rgb(17,17,18), so white `textPrimary` body
+    // text stays legible on it. This is a distinct token from `scrim` (the
+    // modal dim) — same alpha convention, different role.
+    surfaceTranslucent: 'rgba(28,28,30,0.60)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel

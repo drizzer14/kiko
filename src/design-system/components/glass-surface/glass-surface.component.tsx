@@ -14,10 +14,11 @@ import { styles } from './glass-surface.styles';
 //
 // The surface is composed as stacked `absoluteFill` layers inside one plain
 // parent `View`, painted back-to-front:
-//   1. the `backdrop` (glass path; a tinted card, or a neutral card that opts
-//      in via `solidBackdrop`) — an opaque themed `View` painted UNDER the
-//      glass so the translucent backdrop-sampling material refracts a FIXED
-//      color instead of live screen content;
+//   1. the `backdrop` (glass path) — a themed `View` painted UNDER the glass so
+//      the translucent backdrop-sampling material refracts a FIXED color
+//      instead of live screen content. Its fill depends on the variant: OPAQUE
+//      `surface` for a tinted entity card, TRANSLUCENT `surfaceTranslucent` for
+//      a `transparent` frosted panel, and NONE for a plain live-glass surface;
 //   2. the base — the Liquid Glass material (glass path) or the flat themed
 //      background (fallback path), a layer with NO children;
 //   3. the `wash` — the entity-color flat tint, a SIBLING drawn OVER the base;
@@ -37,12 +38,17 @@ import { styles } from './glass-surface.styles';
 //     the material samples a constant color, not the live screen — pinning the
 //     card's lightness across scroll/reorder/navigation. This opaque backdrop
 //     is the prescribed anti-drift mechanism, and it also stops the glass
-//     compositing a frame over nothing solid (the pop-in). A NEUTRAL card that
-//     needs the same stability but must carry NO entity color opts into the
-//     identical backdrop via `solidBackdrop` (no wash). Gradient-less surfaces
-//     (settings/statistics sections) that opt into neither keep the
-//     see-through live glass: they carry no entity tint and are not the
-//     unstable-card case.
+//     compositing a frame over nothing solid (the pop-in).
+//
+// A `transparent` NEUTRAL surface (the frosted see-through panel — settings and
+// category cards) sits between the two: it gets a TRANSLUCENT
+// `surfaceTranslucent` backdrop instead of an opaque one. The translucent
+// backdrop is a real filled `View`, so it still gives the glass something solid
+// to composite over (no pop-in) and PARTIALLY pins the sampled color (the
+// lightness drift is softened, not fully removed), while its alpha lets the
+// screen behind read through — the see-through look. It carries NO entity color
+// wash. A plain surface that opts into neither `tint` nor `transparent` keeps
+// the fully-live see-through glass: no backdrop, no wash.
 //
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
@@ -60,7 +66,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   padding,
   radius = 'md',
   tint,
-  solidBackdrop = false,
+  transparent = false,
   bordered = false,
   testID,
   ...props
@@ -73,18 +79,26 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // The card edge goes through the Unistyles-managed `bordered` member so it
   // lands on the first paint (see the `bordered` prop docs).
   const edge = bordered ? styles.bordered : false;
-  // The opaque backdrop UNDER the glass. It pins what the translucent glass
-  // samples to a fixed color so the card's lightness cannot drift on
-  // recomposite AND so the material never composites a frame over nothing solid
-  // (the pop-in) — see the block comment. Rendered for a tinted entity card (a
-  // `tint` is set) OR for a neutral card that opts in via `solidBackdrop`
-  // (same anti-drift fill, no color wash). A tint-less, non-opted-in glass
-  // surface renders NO backdrop and keeps the live see-through material. The
-  // fallback (non-glass) branch needs no backdrop: its base already IS the
-  // opaque themed surface.
-  const backdrop: ReactNode = isLiquidGlassSupported && (tint !== undefined || solidBackdrop) && (
+  // `transparent` is a NEUTRAL-surface variant, so a `tint` (an entity card)
+  // always wins over it — the two are contradictory and a tinted card must stay
+  // opaque.
+  const isTransparent = transparent && tint === undefined;
+  // The backdrop UNDER the glass, and its fill, both depend on the variant:
+  //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
+  //     translucent glass samples so the card's lightness cannot drift and the
+  //     material never composites over nothing solid (the pop-in);
+  //   - a `transparent` frosted panel gets the TRANSLUCENT `surfaceTranslucent`
+  //     fill — a real filled View (so still no pop-in) that partially pins the
+  //     sample and lets the screen behind read through;
+  //   - a plain surface (neither) renders NO backdrop and keeps the fully-live
+  //     see-through material.
+  // The fallback (non-glass) branch needs no backdrop: its own base IS the flat
+  // themed fill (see `base`).
+  const backdropFill =
+    tint !== undefined ? styles.opaqueBase : isTransparent && styles.translucentBase;
+  const backdrop: ReactNode = isLiquidGlassSupported && backdropFill && (
     <View
-      style={[RNStyleSheet.absoluteFill, styles.opaqueBase]}
+      style={[RNStyleSheet.absoluteFill, backdropFill]}
       testID={testID && `${testID}-backdrop`}
     />
   );
@@ -98,7 +112,9 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // from the glass view's own corner config, so the parent's `overflow:
   // hidden` mask alone hard-crops a SQUARE box — the glass needs the radius
   // directly to round its material. The flat fallback has no corner-aware
-  // rendering, so the parent mask is enough there.
+  // rendering, so the parent mask is enough there — but a `transparent` surface
+  // uses the TRANSLUCENT fill there so the non-glass path reads see-through too.
+  const fallbackFill = isTransparent ? styles.translucentBase : styles.opaqueBase;
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       // The app is dark-only (native chrome is pinned dark via
@@ -112,10 +128,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
       testID={testID && `${testID}-base`}
     />
   ) : (
-    <View
-      style={[RNStyleSheet.absoluteFill, styles.opaqueBase]}
-      testID={testID && `${testID}-base`}
-    />
+    <View style={[RNStyleSheet.absoluteFill, fallbackFill]} testID={testID && `${testID}-base`} />
   );
   // The flat entity-color wash: an `absoluteFill` sibling layered OVER the
   // base, below `children`. A plain colored `View`, not a gradient — see the
