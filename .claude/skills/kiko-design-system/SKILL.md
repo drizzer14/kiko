@@ -171,8 +171,16 @@ new component can land between reviews of this skill:
   Statistics trend Reset); use `Button` when there is a text label.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
-  optional `bordered` edge, and an optional flat entity-color tint
-  background — see "Entity color and tint" below.
+  optional `bordered` edge, and three neutral/tinted variants of the
+  backdrop under the glass. A `tint` (an entity card) paints an OPAQUE
+  `surface` backdrop and an entity-color wash — see "Entity color and
+  tint" below. A `transparent` (a neutral frosted see-through PANEL —
+  the settings and category cards) paints a TRANSLUCENT
+  `surfaceTranslucent` backdrop and no wash, so the screen behind reads
+  through while the drift/pop-in stays softened; a `tint` always wins
+  over it. Neither prop keeps the fully-live see-through material (no
+  backdrop). Read `glass-surface.props.d.ts` for the exact current prop
+  set rather than trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
@@ -324,7 +332,10 @@ as a plain `View` with no glass effect — so the fallback styling lives
 in the `else` branch's `View`, not as a style merged onto
 `LiquidGlassView` "just in case." A new prop that changes the surface's
 appearance (a new tint wash, a new border style) must be applied
-to **both** branches, or it silently only works on iOS 26+.
+to **both** branches, or it silently only works on iOS 26+. The
+`transparent` variant is the canonical case: it paints its translucent
+fill as a backdrop UNDER the glass on the glass path AND as the base
+fill on the fallback path, so both paths read see-through.
 
 ## Wrapping a React Native primitive
 
