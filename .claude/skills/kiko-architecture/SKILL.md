@@ -388,84 +388,88 @@ already-connected account, so no run competes with a first-time Connect
 (a `targetAccountId` sync), and a re-sync that joins an in-flight run of
 the same connected token gets exactly the result it would have computed.
 
-### The sync signal tracks the WHOLE run
+### Three sync signals; the spinner is DECOUPLED from the whole run
 
-`useSyncStatus`/`setSyncing` (`src/monobank/sync-status.ts`) is the one
-shared "a Monobank sync is running" signal, and it tracks the WHOLE
-run: `runSync` lights it (`setSyncing(true)`) the instant a run
-acquires the single-flight lock, and clears it (`setSyncing(false)`)
-ONLY in the `release` callback when the run settles — success OR
-failure. `release` is therefore the sole `setSyncing(false)` call site.
-Read `runSync` (`src/monobank/sync.ts`) for the exact shape rather than
-restating the lines here.
+`src/monobank/sync-status.ts` holds THREE separate module-level stores.
+Do NOT collapse them — each drives a different affordance:
 
-An earlier R6-3 revision cleared the signal early — right after
-`upsertHoldings` (the fast phase: client-info fetch + balance upsert) —
-so the spinner ended in sub-second while the 60s-gated per-card
-statement loop ran on. That was reverted (R7): it ended the native
-spinner instantly (feeling broken) and, worse, landed the "Last sync"
-display stamp — written at the END of `runSyncInner`, ~60s+ later —
-AFTER the spinner had already stopped, so the user saw the spinner end
-while "Last sync" was still stale. Tracking the whole run means "Last
-sync" is already fresh by the time the spinner stops.
+1. `isSyncing` (`useSyncStatus`/`setSyncing`) — the WHOLE-run "a Monobank
+   sync is running" signal. `runSync` lights it (`setSyncing(true)`) the
+   instant a run acquires the single-flight lock and clears it ONLY in
+   the `release` callback when the run settles (success OR failure);
+   `release` is the sole `setSyncing(false)` call site. It stays lit
+   across the 60s-gated per-card statement loop, so it is still on when
+   the "Last sync" stamp lands at the END of `runSyncInner`.
+2. `progress` (`useSyncProgress`/`getProgressSnapshot`/`setSyncProgress`,
+   `{ completed, total }`) — the determinate per-card progress. `runSync`
+   resets it to `{ 0, 0 }` at the start and end of every run;
+   `runSyncInner` publishes `total` (the count of cards that WILL be
+   fetched — see `selectCardsToFetch`) once the balance-diff skip has
+   decided the non-skipped set, then increments `completed` after each
+   card's statements commit.
+3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
+   — a one-shot "balances have landed" signal. `runSyncInner` fires
+   `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the
+   client-info balances, LONG before the statement loop finishes.
+   `runSync` resets it `false` at run start and clears it on settle. It
+   is a plain imperative signal (no React hook): the pull path reads it
+   inside an event handler, not during render.
+
+Read `runSync`/`runSyncInner` (`src/monobank/sync.ts`) for the exact
+call sites rather than restating the lines here.
 
 The custom `SyncingIndicator` component was REMOVED. There are now TWO
-distinct Monobank-sync affordances on Home, driven by two SEPARATE
-signals — do NOT collapse them into one:
+distinct Monobank-sync affordances on Home, DECOUPLED from each other:
 
-1. The native `RefreshControl` spinner, for the pull GESTURE.
-2. A determinate `SyncProgressBar` (`src/screens/home/sync-progress-bar/`),
-   an in-list `ListHeaderComponent` — NOT a fixed banner — showing
-   `completed / total` cards imported this run.
+1. The native `RefreshControl` spinner — the PULL GESTURE indicator ALONE.
+2. A determinate `SyncProgressBar`
+   (`src/screens/home/sync-progress-bar/`) — the WHOLE-RUN indicator,
+   with a label ("Syncing transactions N/M") above a `completed / total`
+   fill.
 
-The native `RefreshControl` spinner (`src/screens/home/home.screen.tsx`)
-still tracks the whole run via `useSyncStatus`, so an auto-sync-on-open
-(which also drives `runSync`) spins it WITHOUT a user pull and a real
-pull spins it too. The signal is Monobank-only, so a pull on a
-crypto-only account shows little/no spinner — see
-`src/screens/use-sync-all.ts` for the fan-out that also drives crypto
-accounts.
+**The spinner is decoupled from the whole run (do NOT re-bind it).**
+Binding `RefreshControl.refreshing` to the whole-run `isSyncing` flag
+(the design before this decouple) fought iOS across navigation,
+window-detach and scroll: the spinner froze, vanished every other Home
+navigation, or drew behind the list cells. `useRefreshControlSignal(onRefresh)`
+(`src/screens/home/use-refresh-control-signal.ts`) now drives `refreshing`
+from a LOCAL pull flag ALONE — no `isSyncing` mirror, no `useFocusEffect`
+re-drive:
 
-Home does NOT bind `RefreshControl.refreshing` to `useSyncStatus`
-directly. It binds to a LOCAL signal from
-`useRefreshControlSignal(isSyncing, onRefresh)`
-(`src/screens/home/use-refresh-control-signal.ts`), which does two
-things:
+- It sets the local flag `true` SYNCHRONOUSLY inside the `onRefresh` it
+  wraps (before any await), so `refreshing` is already true in the commit
+  right after the pull — the native iOS `RefreshControl` retracts on
+  finger-release unless `refreshing` is ALREADY true at that commit.
+- It ends the spinner when the FAST balance phase resolves — on the
+  `fastPhaseDone` signal — NOT on the whole run. This is deliberate: the
+  spinner shows a brief native spin while balances load, then hands the
+  slow per-card fetch to the progress bar. (An earlier R6-3 revision
+  ended the whole-run SIGNAL early and was reverted as R7; that concern
+  does not apply here — `isSyncing` still tracks the whole run and drives
+  the progress bar, so activity stays visible until "Last sync" lands.
+  Only the SPINNER ends early, by design.)
+- The flag clears on the FIRST of `fastPhaseDone` OR the run settling
+  (`onRefresh`'s `.finally`). The settle path is the fallback for a
+  fan-out with NO Monobank job (a crypto-only account, or no syncable
+  account — see `src/screens/use-sync-all.ts`), which fires no
+  `fastPhaseDone`, so the spinner can never hang. A pull that JOINS a run
+  whose fast phase already committed clears immediately.
+- The `fastPhaseDone` signal is read only inside the pull handler, so an
+  auto-sync-on-open (same signal, NO pull) never lights the spinner — it
+  drives only the progress bar.
 
-- It sets a LOCAL pull flag `true` SYNCHRONOUSLY inside the `onRefresh`
-  it wraps (before any await), and returns
-  `refreshing = localPull || isSyncing-mirror`. The `isSyncing` store
-  update lands `refreshing` ~2 React commits after the pull (setSyncing
-  -> store notify -> commit -> mirror effect -> commit), and the native
-  iOS `RefreshControl` retracts on finger-release unless `refreshing` is
-  ALREADY true at the commit right after `onRefresh` — so the local flag
-  is what keeps the pulled spinner up. The flag clears on the run's
-  `.finally`.
-- It mirrors `isSyncing` while the screen stays focused, and on each
-  refocus while a sync is still in flight it re-issues a `false`->`true`
-  edge (`false` now, `true` on the next `requestAnimationFrame`) to
-  restart the spin — iOS drops the native spin animation when the list
-  leaves the window on a tab blur, and a plain render leaves `refreshing`
-  still `true` on refocus (no `false`->`true` edge, so RN never re-calls
-  `beginRefreshing()` and the spinner stays frozen). The re-drive callback
-  is STABLE (reads `isSyncing` via a ref), so an in-place isSyncing
-  change (a manual pull) flows through the mirror alone with no false
-  blip.
-
-Both behaviors are unit-tested in isolation
+The hook's behavior is unit-tested in isolation
 (`use-refresh-control-signal.test.tsx`); the native spin itself is not.
 
-The determinate progress signal is a SECOND store in
-`src/monobank/sync-status.ts` — `useSyncProgress` /
-`getProgressSnapshot` / `setSyncProgress`, `{ completed, total }` —
-separate from `isSyncing` so the pull spinner never reacts to it.
-`runSync` resets it to `{ 0, 0 }` at the start and end of every run;
-`runSyncInner` publishes `total` (the count of cards that WILL be
-fetched — see `selectCardsToFetch`) once the balance-diff skip has
-decided the non-skipped set, then increments `completed` after each
-card's statements commit. `SyncProgressBar` renders `completed / total`
-(reanimated fill that creeps toward the next step so a card's multi-page
-fetch does not look frozen; per-card is the honest granularity) and
+`SyncProgressBar` is the WHOLE-RUN indicator, driven by `isSyncing` +
+`useSyncProgress` (never `fastPhaseDone`), so it tracks every trigger —
+a pull, the manual button, and an auto-sync-on-open. It is PINNED above
+the `SectionList` in `home.screen.tsx`, OUTSIDE the scroll content —
+NOT a `ListHeaderComponent`. As the header it scrolled away and drew
+behind the cells; pinning it above the list keeps it in view for the
+whole run and removes the z-index symptom by construction. It renders a
+reanimated fill that creeps toward the next step so a card's multi-page
+fetch does not look frozen (per-card is the honest granularity) and
 hides when `!isSyncing || total <= 0`. Statistics does NOT render the
 bar — it lists no transactions, only charts.
 
