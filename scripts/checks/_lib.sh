@@ -102,6 +102,56 @@ harness_unlock() {
   rm -rf "$1" 2>/dev/null || true
 }
 
+# harness_global_lock_dir : the machine-wide (per-user) single-flight lock
+# path for mutation runs. It is a FIXED path, NOT keyed by the worktree, so
+# only ONE Stryker can run at a time across ALL worktrees. TMPDIR is stable
+# per user, so every worktree resolves the same path; the tests override
+# TMPDIR to isolate. This is deliberately not the per-worktree state dir
+# (harness_state_dir), which the content-dedup fingerprints still use.
+harness_global_lock_dir() {
+  printf '%s/kiko-harness/mutation.global.lock' "${TMPDIR:-/tmp}"
+}
+
+# harness_try_lock <lockdir> [holder_info] : fail-fast single-flight acquire
+# via mkdir (atomic). Unlike harness_lock it NEVER waits: it returns 1
+# immediately when a LIVE holder holds the lock, so the caller can fail fast
+# instead of queueing. A lock whose recorded holder process is gone is
+# reclaimed once, then acquired. On acquire it records this process's pid and
+# the holder_info (for example the worktree path) inside the lock dir, so a
+# refusal message can name who holds it. Returns 0 on acquire, 1 on refusal.
+harness_try_lock() {
+  local lock="$1" info="${2:-}" pid
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s' "$$" > "$lock/pid" 2>/dev/null || true
+    printf '%s' "$info" > "$lock/holder" 2>/dev/null || true
+    return 0
+  fi
+  # The lock exists. Reclaim it only if the recorded holder process is gone.
+  pid="$(cat "$lock/pid" 2>/dev/null || true)"
+  if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+    rm -rf "$lock" 2>/dev/null || true
+    if mkdir "$lock" 2>/dev/null; then
+      printf '%s' "$$" > "$lock/pid" 2>/dev/null || true
+      printf '%s' "$info" > "$lock/holder" 2>/dev/null || true
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# harness_lock_holder <lockdir> : print a short description of the current
+# lock holder ("pid <n> (worktree <path>)") for a refusal message.
+harness_lock_holder() {
+  local lock="$1" pid info
+  pid="$(cat "$lock/pid" 2>/dev/null || printf 'unknown')"
+  info="$(cat "$lock/holder" 2>/dev/null || true)"
+  if [ -n "$info" ]; then
+    printf 'pid %s (worktree %s)' "$pid" "$info"
+  else
+    printf 'pid %s' "$pid"
+  fi
+}
+
 # harness_code_fingerprint <root> : a hash of only the inputs that change a
 # code check's result — the .ts/.tsx/.js source state relative to HEAD plus
 # the manifest and config files. A change that touches none of these (an
