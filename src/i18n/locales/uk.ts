@@ -19,6 +19,7 @@ export const uk: typeof en = {
   common: {
     all: 'Усі',
     save: 'Зберегти',
+    clear: 'Очистити',
     cancel: 'Скасувати',
     delete: 'Видалити',
     deleteNamed: 'Видалити «{{name}}»',
@@ -318,9 +319,34 @@ export const uk: typeof en = {
     filterCategories: 'Категорії',
     netWorthOverTime: 'Капітал з часом',
     noSpendingToShow: 'Немає витрат для показу',
-    resetTrendCategories: 'Скинути',
     spendingTrendByCategory: 'Тренд витрат за категоріями',
     title: 'Статистика',
+    trendFilter: {
+      title: 'Фільтри',
+      selection: 'Вибір',
+      manual: 'Вручну',
+      top: 'Топ',
+      amount: 'Кількість',
+      by: 'За',
+      // The instrumental-case measure words — shown on the "By" chips AND
+      // interpolated into the `top` button label ("Топ 3 за Внеском").
+      measure: {
+        contribution: 'Внеском',
+        frequency: 'Частотою',
+        rising: 'Зростанням',
+      },
+      // The three Ukrainian plural forms for the manual count, selected by
+      // i18next's uk plural rule: _one (1 Категорія), _few (2-4 Категорії),
+      // _many (0, 5-20 Категорій), _other (fractional, unreachable here).
+      button: {
+        allCategories: 'Всі категорії',
+        manual_one: '{{count}} Категорія',
+        manual_few: '{{count}} Категорії',
+        manual_many: '{{count}} Категорій',
+        manual_other: '{{count}} Категорії',
+        top: 'Топ {{count}} за {{measure}}',
+      },
+    },
   },
   transactions: {
     defaultDescriptionExpense: 'Витрата: {{name}}',

@@ -40,6 +40,20 @@ objects to dotted leaf paths and asserts the two sets are equal — read
 that file to see the current mechanism, do not restate the key list
 here; it drifts the moment either catalogue gains a key.
 
+**i18next plurals keep parity by carrying every form in BOTH catalogues.**
+The parity test compares EXACT leaf-key sets, and `uk.ts` is typed
+`typeof en` (excess keys are a `tsc` error), so a plural key defines the
+SAME suffix set in both languages: Ukrainian needs `_one` / `_few` /
+`_many` / `_other` (its CLDR plural categories), so English defines all
+four too — English selects `_one` / `_other`; its `_few` / `_many` are
+inert duplicates of the plural form kept only to satisfy both invariants.
+Never make the parity test plural-aware to allow different suffix sets per
+language — that would break the `typeof en` typing. The first plural in the
+app is `statistics.trendFilter.button.manual` (the trend Filters button's
+"{{count}} Category"/"Categories", Ukrainian "Категорія/Категорії/Категорій").
+i18next resolves the right form per language at `t('...', { count })` time;
+init uses the default JSON v4 plural format (see `src/i18n/index.ts`).
+
 ## Catalogue typing: `typeof en`, never `as const`
 
 `src/i18n/i18next.d.ts` types `t()`/`useTranslation()` off `typeof en`

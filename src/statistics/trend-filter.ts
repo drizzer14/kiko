@@ -17,9 +17,9 @@ export type TrendFilter =
   | { mode: 'manual'; keys: string[] }
   | { mode: 'top'; amount: number; by: TrendMeasure };
 
-/** The lowest and highest "Top N" amount the picker offers. */
-export const MIN_TOP_AMOUNT = 1;
-export const MAX_TOP_AMOUNT = 5;
+// The lowest and highest "Top N" amount the picker offers.
+const MIN_TOP_AMOUNT = 1;
+const MAX_TOP_AMOUNT = 5;
 
 /** The fallback filter when nothing is saved: the top 3 by contribution. */
 export const DEFAULT_TREND_FILTER: TrendFilter = { mode: 'top', amount: 3, by: 'contribution' };

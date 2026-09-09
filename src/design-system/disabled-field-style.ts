@@ -12,7 +12,7 @@ type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 // has no fill at all — see the `field` doc comment in date-field.styles.ts /
 // time-field.styles.ts), and dims to 0.5 opacity. This 0.5 is deliberately
 // NOT the shared `DISABLED_OPACITY` token (`disabled-opacity.ts`, 0.4) — that
-// token dims a disabled PRESSABLE action (Button, IconButton), a different
+// token dims a disabled PRESSABLE action (e.g. Button), a different
 // control class from a disabled, still-legible field.
 export const disabledFieldStyle = (theme: AppTheme) => ({
   borderColor: theme.colors.surfaceHigh,

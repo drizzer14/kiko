@@ -158,18 +158,6 @@ describe('settingsRepo', () => {
     expect((await settingsRepo.getQuery())[0].baseCurrency).toBe('USD');
   });
 
-  it('persists a saved trend selection and clears it with null', async () => {
-    const store: Record<string, unknown>[] = [{ id: 1 }];
-    mockTx = makeSettingsRowTx(store);
-    spyOnSettingsSelect(store);
-
-    await settingsRepo.setTrendCategoryKeys(['groceries', 'transport']);
-    expect(store[0].trendCategoryKeys).toEqual(['groceries', 'transport']);
-
-    await settingsRepo.setTrendCategoryKeys(null);
-    expect(store[0].trendCategoryKeys).toBeNull();
-  });
-
   it('round-trips a saved trend filter and clears it with null', async () => {
     const store: Record<string, unknown>[] = [{ id: 1 }];
     mockTx = makeSettingsRowTx(store);

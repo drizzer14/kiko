@@ -197,10 +197,20 @@ It needs no new entry in `__mocks__/react-native-svg.tsx` — it only
 uses `Polyline`, `Line`, `G`, `Svg`, and `Text`, all already exported
 by that mock.
 
-Which categories the chart draws (e.g. a top-3-by-expense default) is
-screen state owned by `statistics.screen.tsx`, not this component's
-concern — `CategoryTrendLine` only renders whatever `series` array it
-is given.
+Which categories the chart draws is decided by the saved trend filter
+(`settings.trendFilter`, a `manual | top` union — see `kiko-domain`),
+resolved in `statistics.screen.tsx`, not this component's concern —
+`CategoryTrendLine` only renders whatever `series` array it is given. The
+screen owns a `TrendFilterField`
+(`src/screens/statistics/trend-filter-field/`) — a single "Filters" button
+opening a `BottomSheet` — and feeds the result through the SAME
+`excludedCategories` path the builder already had. Manual mode passes explicit
+keys; Top mode ranks the categories live over the fixed 30-day window with
+`buildCategoryMeasures` + `selectTopCategories`
+(`src/statistics/category-trend.ts`, `src/statistics/trend-filter.ts`) by one
+of three measures — Contribution (total spend), Frequency (kept-row count), or
+Rising (the least-squares slope of daily spend across the 30 window days,
+most-positive first) — then excludes every windowed category NOT in the top N.
 
 ## PieChart donut mode
 

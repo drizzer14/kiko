@@ -64,15 +64,6 @@ export const settingsRepo = {
   setLanguage: (language: AppLanguage) =>
     write((tx) => tx.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID))),
   /**
-   * DEPRECATED (removed with the trend filter sheet rewire): the previous
-   * spending-trend selection setter, kept only until the Statistics screen stops
-   * reading `trendCategoryKeys`. Superseded by `setTrendFilter` below.
-   */
-  setTrendCategoryKeys: (keys: string[] | null) =>
-    write((tx) =>
-      tx.update(settings).set({ trendCategoryKeys: keys }).where(eq(settings.id, SETTINGS_ID)),
-    ),
-  /**
    * Persist (or clear) the user's saved spending-trend filter (see
    * `TrendFilter`): the whole config as JSON, or `null` to fall back to
    * `DEFAULT_TREND_FILTER` (top 3 by contribution). Written by the trend

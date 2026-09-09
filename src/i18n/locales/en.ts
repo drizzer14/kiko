@@ -28,6 +28,7 @@ export const en = {
   common: {
     all: 'All',
     save: 'Save',
+    clear: 'Clear',
     cancel: 'Cancel',
     delete: 'Delete',
     deleteNamed: 'Delete "{{name}}"',
@@ -349,9 +350,39 @@ export const en = {
     filterCategories: 'Categories',
     netWorthOverTime: 'Net Worth Over Time',
     noSpendingToShow: 'No Spending To Show',
-    resetTrendCategories: 'Reset',
     spendingTrendByCategory: 'Spending Trend by Category',
     title: 'Statistics',
+    // The spending-trend chart's filter: a single "Filters" button (its label
+    // reflects the applied selection) opening a bottom sheet.
+    trendFilter: {
+      title: 'Filters',
+      selection: 'Selection',
+      manual: 'Manual',
+      top: 'Top',
+      amount: 'Amount',
+      by: 'By',
+      // The three "Top N" ranking measures. Shared by the "By" chips AND the
+      // button's `{{measure}}` interpolation (English has no case inflection).
+      measure: {
+        contribution: 'Contribution',
+        frequency: 'Frequency',
+        rising: 'Rising',
+      },
+      // The applied-filter button label. `manual` uses i18next plurals on
+      // `count` (English selects _one / _other; the _few / _many forms exist
+      // only to mirror Ukrainian's plural set — see uk.ts — so the two
+      // catalogues keep an identical key set and `typeof en` still types uk).
+      // `allCategories` is the empty-manual case. `top` interpolates the
+      // instrumental-case `{{measure}}`.
+      button: {
+        allCategories: 'All Categories',
+        manual_one: '{{count}} Category',
+        manual_few: '{{count}} Categories',
+        manual_many: '{{count}} Categories',
+        manual_other: '{{count}} Categories',
+        top: 'Top {{count}} by {{measure}}',
+      },
+    },
   },
   // The Home and Holding-detail rows both render the same fallback label
   // (src/transactions/default-description.ts) for a transaction with no

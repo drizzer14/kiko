@@ -157,18 +157,16 @@ new component can land between reviews of this skill:
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
-- **IconButton** (`src/design-system/components/icon-button/`) — the
-  icon-only action button: a single tappable SF Symbol (`symbol` prop),
-  with `onPress`, `disabled`, `accessibilityLabel`, `testID`, and
-  theme-driven `tint`/`size`. An icon-only control has no visible text,
-  so it must be given an `accessibilityLabel`. `disabled` dims to the
-  shared `DISABLED_OPACITY` token (`src/design-system/disabled-opacity.ts`)
-  — the SAME dimming the `Button` uses; neither primitive hardcodes the
-  value, and a third disabled control must reuse the token too, never a
-  fresh inline `opacity`. Left unset, `tint` falls back to `SymbolIcon`'s
-  own default tone and `size` defaults to the Button icon size (18).
-  Reach for `IconButton` for any control that is JUST an icon (e.g. the
-  Statistics trend Reset); use `Button` when there is a text label.
+  The shared `DISABLED_OPACITY` token
+  (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
+  pressable applies — `Button` reads it, and any new disabled pressable
+  reuses it too, never a fresh inline `opacity`. (There is no `IconButton`
+  primitive: an icon-only action button once lived at
+  `src/design-system/components/icon-button/`, but its only consumer — the
+  Statistics trend Reset — was removed with the trend filter sheet redesign,
+  so the dead primitive was deleted. Build an icon-only control from a
+  `Pressable` + `SymbolIcon` with an `accessibilityLabel`, or reinstate the
+  primitive if several consumers appear.)
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and three neutral/tinted variants of the
@@ -213,8 +211,8 @@ new component can land between reviews of this skill:
   read-only date/time field renders identically to a read-only text
   field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
   token above (`disabled-opacity.ts`) — a disabled field is a different
-  control class from a disabled Button/IconButton, and the two must not
-  be conflated. A third disabled-field-like control reuses
+  control class from a disabled pressable (e.g. Button), and the two must
+  not be conflated. A third disabled-field-like control reuses
   `disabledFieldStyle`, not a fresh inline dim.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
