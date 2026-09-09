@@ -199,7 +199,7 @@ describe('fetchFlexiblePosition', () => {
     expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
   });
 
-  it('stops after one page when the first page is shorter than the page size', async () => {
+  it('stops once the gathered rows cover the reported total', async () => {
     const calls: string[] = [];
     const fetchImpl = pagedFetch(
       { '1': { rows: [{ asset: 'BTC', totalAmount: '0.5' }], total: 1 } },
@@ -213,6 +213,49 @@ describe('fetchFlexiblePosition', () => {
 
     expect(result).toEqual({ rows: [{ asset: 'BTC', totalAmount: '0.5' }], total: 1 });
     expect(calls).toHaveLength(1);
+  });
+
+  it('keeps paging when a page is shorter than the page size but the total is not yet covered', async () => {
+    const calls: string[] = [];
+    // A SHORT (< 100-row) first page while more rows remain. Termination must
+    // depend on `total`, not on a page being "full" — Binance is not guaranteed
+    // to honor size=100, and an early short-page break would under-count here.
+    const fetchImpl = pagedFetch(
+      {
+        '1': { rows: Array.from({ length: 80 }, () => flexRow), total: 120 },
+        '2': { rows: Array.from({ length: 40 }, () => flexRow), total: 120 },
+      },
+      calls,
+    );
+
+    const result = await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
+      fetchImpl,
+      now: () => NOW,
+    });
+
+    expect(result.rows).toHaveLength(120);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('stops on an empty page when the reported total is never reached (over-reported total)', async () => {
+    const calls: string[] = [];
+    // The server over-reports `total` (999) but has only 50 rows; the next page
+    // comes back empty. An empty page is the backstop that ends the walk.
+    const fetchImpl = pagedFetch(
+      {
+        '1': { rows: Array.from({ length: 50 }, () => flexRow), total: 999 },
+        '2': { rows: [], total: 999 },
+      },
+      calls,
+    );
+
+    const result = await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
+      fetchImpl,
+      now: () => NOW,
+    });
+
+    expect(result.rows).toHaveLength(50);
+    expect(calls).toHaveLength(2);
   });
 
   it('walks `current` until the gathered rows cover `total`, accumulating every page', async () => {

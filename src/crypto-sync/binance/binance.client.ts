@@ -141,10 +141,14 @@ const MAX_POSITION_PAGES = 50;
 
 /**
  * Walk every page of a Simple Earn position endpoint, filtered to BTC, and
- * accumulate the rows. Stops when a page is shorter than the page size or the
- * gathered rows cover `total`; the page cap is the final backstop. A failure on
- * ANY page rejects the whole walk, so the caller (via `skipOnError`) drops the
- * WHOLE wallet rather than importing a partial, silently-under-counted total.
+ * accumulate the rows. Termination depends on `total`, NOT on a page being
+ * "full": it stops once the gathered rows cover the reported `total`, or when a
+ * page comes back empty (the backstop for an over-reported `total`); the
+ * `MAX_POSITION_PAGES` cap is the final stop. This does not assume Binance
+ * honors `size=100` — a short but non-empty page while rows still remain keeps
+ * paging rather than under-counting. A failure on ANY page rejects the whole
+ * walk, so the caller (via `skipOnError`) drops the WHOLE wallet rather than
+ * importing a partial, silently-under-counted total.
  */
 const fetchAllPositions = async <Row>(
   apiKey: string,
@@ -175,7 +179,7 @@ const fetchAllPositions = async <Row>(
       total = page.total;
     }
 
-    if (pageRows.length < POSITION_PAGE_SIZE || rows.length >= total) {
+    if (rows.length >= total || pageRows.length === 0) {
       break;
     }
   }

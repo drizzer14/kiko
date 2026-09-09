@@ -225,6 +225,32 @@ describe('binanceProvider — all Binance wallets', () => {
     expect(balance.balanceMinorUnits).toBe(50_000_000); // 0.3 + 0.2 = 0.5 BTC
   });
 
+  it('sums MULTIPLE BTC rows within a position wallet (the paginated-then-summed path)', async () => {
+    // A wallet whose paginated read returned several BTC position rows: every
+    // row must be summed, not just the first. Guards the reduce over the
+    // accumulated pages.
+    const deps = makeDeps([]); // no Spot BTC
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [
+        { asset: 'BTC', totalAmount: '0.3' },
+        { asset: 'BTC', totalAmount: '0.2' },
+      ],
+      total: 2,
+    });
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [
+        { asset: 'BTC', amount: '0.1' },
+        { asset: 'BTC', amount: '0.05' },
+      ],
+      total: 2,
+    });
+
+    const [balance] = await binanceProvider.fetchBalances(deps, target);
+
+    // 0.3 + 0.2 + 0.1 + 0.05 = 0.65 BTC = 65_000_000 satoshis.
+    expect(balance.balanceMinorUnits).toBe(65_000_000);
+  });
+
   it('skips ONLY the funding wallet on error; Spot still imports', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0.25' }]); // 0.75 BTC
     deps.fetchFundingAsset.mockRejectedValue(
