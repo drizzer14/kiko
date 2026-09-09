@@ -69,7 +69,10 @@ export const buildAccountContribution = (input: {
 
       return { accountId: account.id, name: account.name, amount, color };
     })
-    .filter((slice) => slice.amount > 0);
+    .filter((slice) => slice.amount > 0)
+    // Largest contributor first, so the biggest slice leads the ring and the
+    // legend column reads top-down by size.
+    .sort((a, b) => b.amount - a.amount);
 
   const total = valued.reduce((sum, slice) => sum + slice.amount, 0);
 
