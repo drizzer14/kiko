@@ -97,6 +97,95 @@ export const useSyncProgress = (): SyncProgress =>
   useSyncExternalStore(subscribeProgress, getProgressSnapshot);
 
 /**
+ * Determinate-progress SESSION coordination. The determinate bar now spans a
+ * whole sync RUN that may fan out across several concurrent sync paths — the
+ * Monobank `runSync` plus one `runBalanceSync` per connected crypto account (see
+ * `useSyncAll`). Each path brackets its contribution with `beginProgressSession()`
+ * and `endProgressSession()`; the FIRST begin lights `isSyncing` and resets the
+ * accumulators, the LAST end clears both. A plain per-run reset/clear raced when
+ * two runs overlapped — one path wiped another's start, or cleared the bar while
+ * another path was still running — so the bracket is REFERENCE COUNTED.
+ *
+ * Between the brackets a path calls `registerSyncableHoldings(total, syncable)`
+ * once — `total` is the whole-app active-holdings count (the same for every path,
+ * taken as a max so a race cannot shrink it) and `syncable` is the number of THIS
+ * path's holdings being refreshed this run — then `commitSyncableHoldings(n)` as
+ * each of its holdings' balances/statements commit.
+ *
+ * The published `{ completed, total }` is derived: `completed` STARTS at the
+ * non-syncing baseline `total - syncable` (every manual holding, every
+ * balance-diff-skipped card, every unchanged jar) and rises by one per committed
+ * syncable holding, ending at `total`. When nothing syncable is registered
+ * (`syncable === 0`) the published value stays `{ 0, 0 }`, so the bar never
+ * flashes a full "N / N" for a run that refreshes nothing syncable (the round-5
+ * no-op guard, now spanning the whole fan-out). `isSyncing` rides this session,
+ * so a crypto-only fan-out (no Monobank run) still lights the whole-run indicator.
+ */
+let sessionDepth = 0;
+let sessionTotal = 0;
+let sessionSyncable = 0;
+let sessionCommitted = 0;
+
+const resetSessionAccumulators = (): void => {
+  sessionTotal = 0;
+  sessionSyncable = 0;
+  sessionCommitted = 0;
+};
+
+/** Recompute and publish the derived progress from the session accumulators. */
+const publishSessionProgress = (): void => {
+  if (sessionSyncable <= 0 || sessionTotal <= 0) {
+    setSyncProgress({ completed: 0, total: 0 });
+    return;
+  }
+  const baseline = sessionTotal - sessionSyncable;
+  const completed = Math.min(sessionTotal, baseline + sessionCommitted);
+  setSyncProgress({ completed, total: sessionTotal });
+};
+
+/** Enter one contributor to the shared progress session. */
+export const beginProgressSession = (): void => {
+  if (sessionDepth === 0) {
+    resetSessionAccumulators();
+    setSyncing(true);
+  }
+  sessionDepth += 1;
+  publishSessionProgress();
+};
+
+/**
+ * Register this contributor's syncable-holding numbers. Call once per path,
+ * before it reports any completion. `total` is taken as a max across paths;
+ * `syncable` accumulates (each path adds its own set).
+ */
+export const registerSyncableHoldings = (total: number, syncable: number): void => {
+  sessionTotal = Math.max(sessionTotal, total);
+  sessionSyncable += Math.max(0, syncable);
+  publishSessionProgress();
+};
+
+/** Report that `count` of this run's syncable holdings have committed. */
+export const commitSyncableHoldings = (count = 1): void => {
+  sessionCommitted += count;
+  publishSessionProgress();
+};
+
+/** Leave one contributor. The LAST end clears `isSyncing` and the progress. */
+export const endProgressSession = (): void => {
+  if (sessionDepth === 0) {
+    return;
+  }
+  sessionDepth -= 1;
+  if (sessionDepth === 0) {
+    resetSessionAccumulators();
+    setSyncProgress({ completed: 0, total: 0 });
+    setSyncing(false);
+    return;
+  }
+  publishSessionProgress();
+};
+
+/**
  * The FAST-PHASE-DONE signal: `true` from the instant a run's client-info fetch
  * and balance upsert commit (`upsertAllHoldings` in `sync.ts`) until the run
  * settles. It marks the "balances have landed" moment, LONG before the per-card

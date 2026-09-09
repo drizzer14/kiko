@@ -1,7 +1,11 @@
 import {
+  beginProgressSession,
+  commitSyncableHoldings,
+  endProgressSession,
   getProgressSnapshot,
   getSnapshot,
   isFastPhaseDone,
+  registerSyncableHoldings,
   setFastPhaseDone,
   setSyncing,
   setSyncProgress,
@@ -105,6 +109,112 @@ describe('sync-status store', () => {
 
       // Flipping isSyncing must not notify a progress subscriber.
       expect(progressListener).not.toHaveBeenCalled();
+    });
+  });
+
+  // The determinate bar now spans a whole sync RUN that fans out across several
+  // concurrent sync paths — the Monobank `runSync` plus one `runBalanceSync` per
+  // connected crypto account (see `useSyncAll`). Each path brackets its work with
+  // `beginProgressSession()` / `endProgressSession()`; the FIRST begin lights
+  // `isSyncing` and resets the accumulators, the LAST end clears both. Between the
+  // brackets a path calls `registerSyncableHoldings(total, syncable)` once, then
+  // `commitSyncableHoldings(n)` as each of its holdings commits. `completed`
+  // starts at the non-syncing baseline `total - syncable` and rises to `total`.
+  describe('progress session (fan-out coordination)', () => {
+    it('lights isSyncing on the first begin and clears it plus the progress on the last end', () => {
+      beginProgressSession();
+      expect(getSnapshot()).toBe(true);
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+
+      endProgressSession();
+      expect(getSnapshot()).toBe(false);
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+    });
+
+    it('publishes the non-syncing baseline for one contributor and rises to full as it commits', () => {
+      beginProgressSession();
+      registerSyncableHoldings(3, 1);
+      // Baseline = 3 total - 1 syncable = 2, the user's "2 / 3" example.
+      expect(getProgressSnapshot()).toEqual({ completed: 2, total: 3 });
+
+      commitSyncableHoldings();
+      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 3 });
+
+      endProgressSession();
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+    });
+
+    it('publishes nothing when a session registers no syncable holding (no-op guard)', () => {
+      const listener = jest.fn();
+      subscribeProgress(listener);
+
+      beginProgressSession();
+      registerSyncableHoldings(3, 0);
+      commitSyncableHoldings(0);
+      endProgressSession();
+
+      // The bar never flashes a full "N / N" for a run that refreshes nothing.
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('keeps isSyncing lit until the LAST contributor ends (reference counted)', () => {
+      beginProgressSession();
+      beginProgressSession();
+      expect(getSnapshot()).toBe(true);
+
+      endProgressSession();
+      // One contributor still running — the signal stays lit.
+      expect(getSnapshot()).toBe(true);
+
+      endProgressSession();
+      expect(getSnapshot()).toBe(false);
+    });
+
+    it('sums the syncable set across two contributors and ends at full (a mixed Monobank + crypto run)', () => {
+      // The fan-out shape: a Monobank path (2 syncable cards) and a crypto path
+      // (3 syncable holdings) over a 5-holding app (0 manual). Both paths report
+      // the same whole-app total; it is taken as a max so a race cannot shrink it.
+      beginProgressSession(); // Monobank path begins
+      beginProgressSession(); // crypto path begins
+
+      registerSyncableHoldings(5, 2); // Monobank registers 2 syncable cards
+      // Crypto's 3 holdings still sit in the baseline until crypto registers.
+      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
+
+      registerSyncableHoldings(5, 3); // crypto registers 3 syncable holdings
+      // Baseline is now 0: every one of the 5 holdings is syncable.
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 5 });
+
+      commitSyncableHoldings(3); // crypto commits its 3 holdings
+      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
+
+      endProgressSession(); // crypto path ends — Monobank still running
+      expect(getSnapshot()).toBe(true);
+      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
+
+      commitSyncableHoldings(); // Monobank commits card 1
+      commitSyncableHoldings(); // Monobank commits card 2
+      expect(getProgressSnapshot()).toEqual({ completed: 5, total: 5 });
+
+      endProgressSession(); // Monobank path ends — last contributor
+      expect(getSnapshot()).toBe(false);
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+    });
+
+    it('clamps completed to the total when a contributor over-commits', () => {
+      beginProgressSession();
+      registerSyncableHoldings(3, 1);
+      commitSyncableHoldings(5); // more commits than syncable holdings
+
+      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 3 });
+      endProgressSession();
+    });
+
+    it('ignores an unbalanced end with no active session', () => {
+      endProgressSession();
+      expect(getSnapshot()).toBe(false);
+      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
     });
   });
 
