@@ -480,6 +480,17 @@ than restated here:
   a malformed body SKIPS that wallet only — it contributes 0, logs one
   `console.warn` (behind a justified `noConsole` OVERRIDE), and never
   breaks the sync. A Spot-only key still imports the Spot balance.
+- **The Simple Earn position reads MUST paginate.** The flexible and
+  locked position endpoints are paged (`current` from 1, `size` per page
+  capped at 100, response `{ rows, total }`); reading page 1 alone
+  UNDER-COUNTS a user whose positions span more than one page (locked
+  especially — each locked subscription is its own row). `fetchAllPositions`
+  in `binance.client.ts` loops `current` until the gathered rows cover
+  `total` (short-page and a hard 50-page cap are the backstops). A failure
+  on ANY page rejects the whole walk, so `skipOnError` drops the WHOLE Earn
+  wallet rather than importing a partial, silently-under-counted total. The
+  funding read is a full array — NOT paginated. All three SAPI reads send
+  `asset=BTC` to shrink the payload.
 - **Amounts sum as `Money`, never as floats.** Each decimal-string field
   is converted with `Money.fromMajor('BTC', …)` and added via `sumSatoshis`
   (see `kiko-domain`); a non-finite amount is rejected before it can reach

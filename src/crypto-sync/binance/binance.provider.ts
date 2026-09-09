@@ -155,7 +155,9 @@ const positionSatoshis = (
     }
   }
 
-  return btcRows.reduce((sum, row) => sum + sumSatoshis([String(row[amountField])]), 0);
+  // `isFiniteAmount` above already proved each value is a finite decimal string,
+  // so the cast is safe and no runtime `String()` conversion is needed.
+  return btcRows.reduce((sum, row) => sum + sumSatoshis([row[amountField] as string]), 0);
 };
 
 /**

@@ -38,8 +38,8 @@ const makeDeps = (balances: { asset: string; free: string; locked: string }[]): 
   readCredentials: jest.fn(async () => credentials),
   fetchAccount: jest.fn(async () => ({ balances })),
   fetchFundingAsset: jest.fn(async () => []),
-  fetchFlexiblePosition: jest.fn(async () => ({ rows: [] })),
-  fetchLockedPosition: jest.fn(async () => ({ rows: [] })),
+  fetchFlexiblePosition: jest.fn(async () => ({ rows: [], total: 0 })),
+  fetchLockedPosition: jest.fn(async () => ({ rows: [], total: 0 })),
 });
 
 describe('binanceProvider', () => {
@@ -157,8 +157,12 @@ describe('binanceProvider — all Binance wallets', () => {
     ]);
     deps.fetchFlexiblePosition.mockResolvedValue({
       rows: [{ asset: 'BTC', totalAmount: '0.3' }],
+      total: 1,
     }); // 0.3 BTC
-    deps.fetchLockedPosition.mockResolvedValue({ rows: [{ asset: 'BTC', amount: '0.05' }] }); // 0.05 BTC
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', amount: '0.05' }],
+      total: 1,
+    }); // 0.05 BTC
 
     const [balance] = await binanceProvider.fetchBalances(deps, target);
 
@@ -206,12 +210,14 @@ describe('binanceProvider — all Binance wallets', () => {
         { asset: 'BTC', totalAmount: '0.3' },
         { asset: 'ETH', totalAmount: '5' },
       ],
+      total: 2,
     });
     deps.fetchLockedPosition.mockResolvedValue({
       rows: [
         { asset: 'BTC', amount: '0.2' },
         { asset: 'USDT', amount: '100' },
       ],
+      total: 2,
     });
 
     const [balance] = await binanceProvider.fetchBalances(deps, target);
@@ -224,7 +230,10 @@ describe('binanceProvider — all Binance wallets', () => {
     deps.fetchFundingAsset.mockRejectedValue(
       new Error('Binance request failed: 401: Invalid API-key, IP, or permissions for action.'),
     );
-    deps.fetchFlexiblePosition.mockResolvedValue({ rows: [{ asset: 'BTC', totalAmount: '0.1' }] });
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: '0.1' }],
+      total: 1,
+    });
 
     const [balance] = await binanceProvider.fetchBalances(deps, target);
 
@@ -236,7 +245,10 @@ describe('binanceProvider — all Binance wallets', () => {
   it('skips a failing flexible-earn wallet without touching the rest', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]); // 1 BTC
     deps.fetchFlexiblePosition.mockRejectedValue(new Error('boom'));
-    deps.fetchLockedPosition.mockResolvedValue({ rows: [{ asset: 'BTC', amount: '0.5' }] });
+    deps.fetchLockedPosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', amount: '0.5' }],
+      total: 1,
+    });
 
     const [balance] = await binanceProvider.fetchBalances(deps, target);
 

@@ -102,12 +102,14 @@ describe('fetchAccount', () => {
   });
 });
 
-// Every signed endpoint reuses the SAME `timestamp=…&recvWindow=…` query, so the
-// signature is identical to the fetchAccount fixture above (see binance.hmac.test.ts).
+// The base `timestamp=…&recvWindow=…` signing is pinned to EXPECTED_SIGNATURE by
+// the fetchAccount tests above; the SAPI reads add an `asset=BTC` filter (and the
+// position reads add pagination params), so these assert the param set and that a
+// signature is present rather than re-deriving the HMAC.
 type SpyInit = { method?: string; headers: Record<string, string> };
 
 describe('fetchFundingAsset', () => {
-  it('POSTs a signed query to /sapi/v1/asset/get-funding-asset with the api-key header', async () => {
+  it('POSTs to /sapi/v1/asset/get-funding-asset filtered to BTC, signed, with the api-key header', async () => {
     let sentUrl = '';
     let sentInit: SpyInit = { headers: {} };
     const spyFetch = (async (url: string, init: SpyInit) => {
@@ -121,9 +123,12 @@ describe('fetchFundingAsset', () => {
       now: () => NOW,
     });
 
-    expect(sentUrl).toBe(
-      `https://api.binance.com/sapi/v1/asset/get-funding-asset?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
-    );
+    const url = new URL(sentUrl);
+    expect(url.pathname).toBe('/sapi/v1/asset/get-funding-asset');
+    expect(url.searchParams.get('asset')).toBe('BTC');
+    expect(url.searchParams.get('recvWindow')).toBe('5000');
+    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
+    expect(url.searchParams.get('signature')).toBeTruthy();
     expect(sentInit.method).toBe('POST');
     expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
   });
@@ -150,8 +155,25 @@ describe('fetchFundingAsset', () => {
   });
 });
 
+// A fetch that answers each `current` page from the given map. A page absent from
+// the map answers an empty final page, so a test lists only the pages it cares
+// about. Records every requested URL so a test can assert the walked pages.
+const pagedFetch = (
+  pagesByCurrent: Record<string, { rows: unknown[]; total: number }>,
+  calls: string[],
+): typeof fetch =>
+  (async (url: string) => {
+    calls.push(url);
+    const current = new URL(url).searchParams.get('current') ?? '1';
+    const page = pagesByCurrent[current] ?? { rows: [], total: 0 };
+    return { ok: true, status: 200, json: async () => page };
+  }) as unknown as typeof fetch;
+
+// One BTC flexible row of a fixed amount, for building multi-page fixtures.
+const flexRow = { asset: 'BTC', totalAmount: '0.01' };
+
 describe('fetchFlexiblePosition', () => {
-  it('GETs a signed query to /sapi/v1/simple-earn/flexible/position with the api-key header', async () => {
+  it('GETs the first page filtered to BTC, size 100, current 1, signed, with the api-key header', async () => {
     let sentUrl = '';
     let sentInit: SpyInit = { headers: {} };
     const spyFetch = (async (url: string, init: SpyInit) => {
@@ -165,27 +187,85 @@ describe('fetchFlexiblePosition', () => {
       now: () => NOW,
     });
 
-    expect(sentUrl).toBe(
-      `https://api.binance.com/sapi/v1/simple-earn/flexible/position?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
-    );
+    const url = new URL(sentUrl);
+    expect(url.pathname).toBe('/sapi/v1/simple-earn/flexible/position');
+    expect(url.searchParams.get('asset')).toBe('BTC');
+    expect(url.searchParams.get('current')).toBe('1');
+    expect(url.searchParams.get('size')).toBe('100');
+    expect(url.searchParams.get('recvWindow')).toBe('5000');
+    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
+    expect(url.searchParams.get('signature')).toBeTruthy();
     expect(sentInit.method).toBe('GET');
     expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
   });
 
-  it('returns the parsed rows body (flexible positions carry totalAmount)', async () => {
-    const body = { rows: [{ asset: 'BTC', totalAmount: '0.5' }], total: 1 };
+  it('stops after one page when the first page is shorter than the page size', async () => {
+    const calls: string[] = [];
+    const fetchImpl = pagedFetch(
+      { '1': { rows: [{ asset: 'BTC', totalAmount: '0.5' }], total: 1 } },
+      calls,
+    );
 
     const result = await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
-      fetchImpl: makeFetch(body),
+      fetchImpl,
       now: () => NOW,
     });
 
-    expect(result).toEqual(body);
+    expect(result).toEqual({ rows: [{ asset: 'BTC', totalAmount: '0.5' }], total: 1 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('walks `current` until the gathered rows cover `total`, accumulating every page', async () => {
+    const calls: string[] = [];
+    // total 150 across two pages: a full 100-row page, then a 50-row page.
+    const fetchImpl = pagedFetch(
+      {
+        '1': { rows: Array.from({ length: 100 }, () => flexRow), total: 150 },
+        '2': { rows: Array.from({ length: 50 }, () => flexRow), total: 150 },
+      },
+      calls,
+    );
+
+    const result = await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
+      fetchImpl,
+      now: () => NOW,
+    });
+
+    expect(result.rows).toHaveLength(150);
+    expect(result.total).toBe(150);
+    expect(calls).toHaveLength(2);
+    expect(new URL(calls[0]).searchParams.get('current')).toBe('1');
+    expect(new URL(calls[1]).searchParams.get('current')).toBe('2');
+  });
+
+  it('rejects if a later page fails, so the caller skips the whole wallet (no partial total)', async () => {
+    const spyFetch = (async (url: string) => {
+      const current = new URL(url).searchParams.get('current');
+      if (current === '1') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ rows: Array.from({ length: 100 }, () => flexRow), total: 150 }),
+        };
+      }
+      return {
+        ok: false,
+        status: 429,
+        json: async () => ({ code: -1003, msg: 'Too much request weight used' }),
+      };
+    }) as unknown as typeof fetch;
+
+    await expect(
+      fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
+        fetchImpl: spyFetch,
+        now: () => NOW,
+      }),
+    ).rejects.toThrow('Too much request weight used');
   });
 });
 
 describe('fetchLockedPosition', () => {
-  it('GETs a signed query to /sapi/v1/simple-earn/locked/position with the api-key header', async () => {
+  it('GETs the first page of /simple-earn/locked/position filtered to BTC, size 100, current 1', async () => {
     let sentUrl = '';
     let sentInit: SpyInit = { headers: {} };
     const spyFetch = (async (url: string, init: SpyInit) => {
@@ -199,21 +279,34 @@ describe('fetchLockedPosition', () => {
       now: () => NOW,
     });
 
-    expect(sentUrl).toBe(
-      `https://api.binance.com/sapi/v1/simple-earn/locked/position?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
-    );
+    const url = new URL(sentUrl);
+    expect(url.pathname).toBe('/sapi/v1/simple-earn/locked/position');
+    expect(url.searchParams.get('asset')).toBe('BTC');
+    expect(url.searchParams.get('current')).toBe('1');
+    expect(url.searchParams.get('size')).toBe('100');
+    expect(url.searchParams.get('signature')).toBeTruthy();
     expect(sentInit.method).toBe('GET');
     expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
   });
 
-  it('returns the parsed rows body (locked positions carry amount)', async () => {
-    const body = { rows: [{ asset: 'BTC', amount: '0.25' }], total: 1 };
+  it('walks `current` until the gathered rows cover `total`, accumulating every page', async () => {
+    const calls: string[] = [];
+    const lockedRow = { asset: 'BTC', amount: '0.02' };
+    const fetchImpl = pagedFetch(
+      {
+        '1': { rows: Array.from({ length: 100 }, () => lockedRow), total: 130 },
+        '2': { rows: Array.from({ length: 30 }, () => lockedRow), total: 130 },
+      },
+      calls,
+    );
 
     const result = await fetchLockedPosition('api-key-fixture', 'secret-fixture', {
-      fetchImpl: makeFetch(body),
+      fetchImpl,
       now: () => NOW,
     });
 
-    expect(result).toEqual(body);
+    expect(result.rows).toHaveLength(130);
+    expect(result.total).toBe(130);
+    expect(calls).toHaveLength(2);
   });
 });

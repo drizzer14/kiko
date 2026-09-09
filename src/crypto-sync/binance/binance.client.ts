@@ -50,22 +50,32 @@ const readBody = guard(
   (response: Response): Promise<unknown> => response.json(),
 );
 
+/** The single asset this milestone reads; every SAPI read filters to it. */
+const BINANCE_ASSET = 'BTC';
+
 /**
- * One signed Binance request. HMAC-SHA256 over `timestamp=…&recvWindow=…` under
- * the API secret, appended as `signature`, with the key in the `X-MBX-APIKEY`
- * header. Every read endpoint (Spot account, Funding wallet, Simple Earn
- * positions) shares this exact signed query — only the method and path differ —
- * so a key with only "Enable Reading" is enough. Throws on a non-ok response
- * (via `readBody`), which is what lets a caller SKIP a single failing wallet.
+ * One signed Binance request. HMAC-SHA256 over the full query
+ * (`params…&timestamp=…&recvWindow=…`) under the API secret, appended as
+ * `signature`, with the key in the `X-MBX-APIKEY` header. Every read endpoint
+ * (Spot account, Funding wallet, Simple Earn positions) shares this signing —
+ * only the method, path, and extra params differ — so a key with only "Enable
+ * Reading" is enough. `params` (an `asset` filter, a position page's
+ * `current`/`size`) are signed together with the timestamp. Throws on a non-ok
+ * response (via `readBody`), which is what lets a caller SKIP a failing wallet.
  */
 const signedRequest = async (
   apiKey: string,
   secret: string,
   method: 'GET' | 'POST',
   path: string,
+  params: Record<string, string>,
   { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
 ): Promise<unknown> => {
-  const query = `timestamp=${now()}&recvWindow=${RECV_WINDOW_MS}`;
+  const query = new URLSearchParams({
+    ...params,
+    timestamp: String(now()),
+    recvWindow: String(RECV_WINDOW_MS),
+  }).toString();
   const signature = signQuery(secret, query);
   const response = await fetchImpl(
     `${BINANCE_API_ENDPOINT}${path}?${query}&signature=${signature}`,
@@ -87,7 +97,7 @@ export const fetchAccount = async (
   secret: string,
   options: FetchAccountOptions = {},
 ): Promise<BinanceAccount> =>
-  (await signedRequest(apiKey, secret, 'GET', '/api/v3/account', options)) as BinanceAccount;
+  (await signedRequest(apiKey, secret, 'GET', '/api/v3/account', {}, options)) as BinanceAccount;
 
 /** One Funding-wallet balance from `/sapi/v1/asset/get-funding-asset` — decimal strings. */
 export type BinanceFundingAsset = {
@@ -99,9 +109,9 @@ export type BinanceFundingAsset = {
 };
 
 /**
- * `POST /sapi/v1/asset/get-funding-asset` (Funding wallet). Returns one entry per
- * held asset; the BTC amount is `free + locked + freeze + withdrawing`. Requires
- * the API key's "Enable Reading" permission only.
+ * `POST /sapi/v1/asset/get-funding-asset` (Funding wallet). Filtered to BTC.
+ * Returns one entry per held asset (a full array, NOT paginated); the BTC amount
+ * is `free + locked + freeze + withdrawing`. "Enable Reading" permission only.
  */
 export const fetchFundingAsset = async (
   apiKey: string,
@@ -113,39 +123,100 @@ export const fetchFundingAsset = async (
     secret,
     'POST',
     '/sapi/v1/asset/get-funding-asset',
+    { asset: BINANCE_ASSET },
     options,
   )) as BinanceFundingAsset[];
 
-/** One Simple Earn Flexible position — its BTC amount is `totalAmount` (decimal string). */
-export type BinanceFlexiblePosition = { rows: { asset: string; totalAmount: string }[] };
+/**
+ * Simple Earn positions are PAGINATED (`current` from 1, `size` per page, the
+ * response an object of `{ rows, total }`). Binance caps `size` at 100; `current`
+ * starts at 1. Reading page 1 alone UNDER-COUNTS a user whose positions span more
+ * than one page — locked especially, since each locked subscription is its own
+ * position row.
+ */
+const POSITION_PAGE_SIZE = 100;
 
-/** `GET /sapi/v1/simple-earn/flexible/position` (Simple Earn Flexible). */
+/** Safety stop: a misreported `total` must not spin an unbounded page loop. */
+const MAX_POSITION_PAGES = 50;
+
+/**
+ * Walk every page of a Simple Earn position endpoint, filtered to BTC, and
+ * accumulate the rows. Stops when a page is shorter than the page size or the
+ * gathered rows cover `total`; the page cap is the final backstop. A failure on
+ * ANY page rejects the whole walk, so the caller (via `skipOnError`) drops the
+ * WHOLE wallet rather than importing a partial, silently-under-counted total.
+ */
+const fetchAllPositions = async <Row>(
+  apiKey: string,
+  secret: string,
+  path: string,
+  options: FetchAccountOptions,
+): Promise<{ rows: Row[]; total: number }> => {
+  const rows: Row[] = [];
+  let total = 0;
+
+  for (let current = 1; current <= MAX_POSITION_PAGES; current += 1) {
+    const page = (await signedRequest(
+      apiKey,
+      secret,
+      'GET',
+      path,
+      {
+        asset: BINANCE_ASSET,
+        current: String(current),
+        size: String(POSITION_PAGE_SIZE),
+      },
+      options,
+    )) as { rows?: Row[]; total?: number };
+
+    const pageRows = page.rows ?? [];
+    rows.push(...pageRows);
+    if (typeof page.total === 'number') {
+      total = page.total;
+    }
+
+    if (pageRows.length < POSITION_PAGE_SIZE || rows.length >= total) {
+      break;
+    }
+  }
+
+  return { rows, total };
+};
+
+/** One Simple Earn Flexible position — its BTC amount is `totalAmount` (decimal string). */
+export type BinanceFlexiblePosition = {
+  rows: { asset: string; totalAmount: string }[];
+  total: number;
+};
+
+/** `GET /sapi/v1/simple-earn/flexible/position` (Simple Earn Flexible), all pages. */
 export const fetchFlexiblePosition = async (
   apiKey: string,
   secret: string,
   options: FetchAccountOptions = {},
 ): Promise<BinanceFlexiblePosition> =>
-  (await signedRequest(
+  fetchAllPositions<BinanceFlexiblePosition['rows'][number]>(
     apiKey,
     secret,
-    'GET',
     '/sapi/v1/simple-earn/flexible/position',
     options,
-  )) as BinanceFlexiblePosition;
+  );
 
 /** One Simple Earn Locked position — its BTC amount is `amount` (decimal string). */
-export type BinanceLockedPosition = { rows: { asset: string; amount: string }[] };
+export type BinanceLockedPosition = {
+  rows: { asset: string; amount: string }[];
+  total: number;
+};
 
-/** `GET /sapi/v1/simple-earn/locked/position` (Simple Earn Locked). */
+/** `GET /sapi/v1/simple-earn/locked/position` (Simple Earn Locked), all pages. */
 export const fetchLockedPosition = async (
   apiKey: string,
   secret: string,
   options: FetchAccountOptions = {},
 ): Promise<BinanceLockedPosition> =>
-  (await signedRequest(
+  fetchAllPositions<BinanceLockedPosition['rows'][number]>(
     apiKey,
     secret,
-    'GET',
     '/sapi/v1/simple-earn/locked/position',
     options,
-  )) as BinanceLockedPosition;
+  );
