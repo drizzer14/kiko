@@ -1,16 +1,42 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-// The hook drives the native RefreshControl off the global sync signal, but must
-// re-issue a false->true edge on every refocus so iOS restarts the spin it drops
-// when the list leaves the window. Control the focus lifecycle by capturing the
-// `useFocusEffect` callback, so a test fires focus by hand exactly as React
-// Navigation would on a tab switch — no NavigationContainer needed.
-let focusCallback: (() => undefined | (() => void)) | null = null;
-jest.mock('@react-navigation/native', () => ({
-  useFocusEffect: (callback: () => undefined | (() => void)) => {
-    focusCallback = callback;
-  },
-}));
+// A faithful-enough `useFocusEffect`. React Navigation runs the effect callback
+// on focus, RE-RUNS it (after cleanup) whenever the callback identity changes
+// WHILE the screen is focused, and runs cleanup on blur/unmount. Model it with a
+// real `useEffect` keyed on the callback plus a shared focus flag the test
+// drives, so a test reproduces the on-device timing — in particular the
+// re-run-on-change that makes an isSyncing-DEPENDENT callback blip the flag
+// false on a manual pull. A capture-only mock cannot catch that class of bug
+// (the 663f2e5 regression), so this mock intentionally does the re-run.
+const mockNav = { focused: false, focusListeners: new Set<() => void>() };
+
+jest.mock('@react-navigation/native', () => {
+  const { useEffect } = require('react');
+  return {
+    useFocusEffect: (callback: () => undefined | (() => void)) => {
+      useEffect(() => {
+        let cleanup: undefined | (() => void);
+        const run = (): void => {
+          cleanup = callback() ?? undefined;
+        };
+        // Re-run on (re)subscribe if focused: this is what fires when the
+        // callback identity changes while the screen is focused.
+        if (mockNav.focused) {
+          run();
+        }
+        const onFocus = (): void => {
+          cleanup?.();
+          run();
+        };
+        mockNav.focusListeners.add(onFocus);
+        return () => {
+          mockNav.focusListeners.delete(onFocus);
+          cleanup?.();
+        };
+      }, [callback]);
+    },
+  };
+});
 
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 
@@ -26,7 +52,8 @@ const flushFrames = (): void => {
 };
 
 beforeEach(() => {
-  focusCallback = null;
+  mockNav.focused = false;
+  mockNav.focusListeners.clear();
   frameCallbacks.length = 0;
   jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
     frameCallbacks.push(() => callback(0));
@@ -39,12 +66,15 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// Fire one focus event: run the captured effect callback the way React
-// Navigation runs it when the screen becomes focused. `renderHook` and its
-// `rerender` are async in RNTL 14, so every state-changing step is awaited.
+// Fire a focus event the way React Navigation does when the screen becomes
+// focused. `renderHook`/`rerender` are async in RNTL 14, so every state-changing
+// step is awaited.
 const fireFocus = async (): Promise<void> => {
   await act(async () => {
-    focusCallback?.();
+    mockNav.focused = true;
+    for (const listener of [...mockNav.focusListeners]) {
+      listener();
+    }
   });
 };
 
@@ -96,6 +126,25 @@ describe('useRefreshControlSignal', () => {
     await rerender({ isSyncing: true });
 
     expect(result.current).toBe(true);
+  });
+
+  // BUG B (regression of 663f2e5): a manual pull-to-refresh flips isSyncing
+  // false->true WHILE the screen is already focused (no blur). The re-drive must
+  // NOT fire here — its leading `false` edge would retract the native spinner the
+  // user just pulled. The flag must go straight to true with no intervening false
+  // and no scheduled frame. With the earlier `[isSyncing]` focus-effect dep, an
+  // in-place change re-ran the focus callback and blipped the flag false.
+  it('does not blip false on an in-place isSyncing change while focused (manual pull)', async () => {
+    const { result, rerender } = await renderSignal(false);
+    await fireFocus();
+    expect(result.current).toBe(false);
+
+    // The manual pull: isSyncing rises while focused, without a refocus.
+    await rerender({ isSyncing: true });
+
+    // Straight to true — the re-drive path (which drops to false first) never ran.
+    expect(result.current).toBe(true);
+    expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
   });
 
   it('clears the spinner when the sync ends while the screen stays focused', async () => {
