@@ -100,8 +100,11 @@ export const transactions = sqliteTable(
     // a synced debit converted into another currency still counts as spending.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     comment: text('comment'),
-    // 'btc_wallet' / 'binance' are named for enum parity with
-    // `accounts.institution`; a balance sync writes no transaction rows today.
+    // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
+    // BALANCE sync writes no transaction rows, but the Binance crypto sync now
+    // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
+    // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
+    // 'btc_wallet' still writes none.
     source: text('source', { enum: ['manual', 'monobank', 'btc_wallet', 'binance'] }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),

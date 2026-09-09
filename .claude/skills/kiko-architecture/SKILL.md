@@ -639,6 +639,59 @@ the live API (or the official Binance Postman collection / SDK models)
 during any change — the field names above (`totalAmount` for flexible,
 `amount` for locked, funding's four fields) are the ones the parse keys on.
 
+### Binance transaction history — deposits + withdrawals on the Spot holding
+
+The Binance BALANCE sync (`runBalanceSync`) still writes no transaction
+rows — the generic balance sync gives a live number, not a ledger. A
+SEPARATE step imports the ledger: `syncBinanceTransactions`
+(`src/crypto-sync/binance/binance.transactions.ts`), which
+`runCryptoSync`'s Binance arm runs AFTER the balance sync so the Spot
+holding already exists. It is SUPPLEMENTARY — the arm captures it in an
+`either` and only logs a diagnostic `console.warn` (behind a justified
+`noConsole` OVERRIDE) on failure, so a 429 or a permission gap never
+fails the balance sync. TRADES are deliberately out of scope for this
+milestone; only DEPOSIT and WITHDRAWAL history is imported.
+
+Load-bearing rules, verified in `binance.transactions.test.ts` rather
+than restated here:
+
+- **Two signed reads.** `GET /sapi/v1/capital/deposit/hisrec` and
+  `GET /sapi/v1/capital/withdraw/history`, both `coin=BTC`, both signed
+  by the same `signedRequest` HMAC as the balance reads (read-only key).
+  Each client call is ONE offset page of ONE window; the offset-paging
+  and the window walk live in `binance.transactions.ts`, not the client.
+- **90-day windows, offset paging.** Binance rejects a `startTime`/
+  `endTime` span of 90 days or more and caps a page at 1000 rows
+  (`HISTORY_PAGE_LIMIT`). The sync walks contiguous 89-day windows and
+  offset-pages each window until a short page. `MAX_WINDOWS` /
+  `MAX_PAGES_PER_WINDOW` are the loop backstops.
+- **Incremental cursor, no schema column.** The window start is derived
+  from the newest already-imported Binance transaction time
+  (`transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')`), minus
+  a one-day overlap, and never earlier than a 2017 floor. A first sync
+  (no imported row) walks the full history from the floor; a steady-state
+  re-sync always re-scans at least the last 89-day window, so a
+  late-settling withdrawal is still caught. This mirrors Monobank's
+  incremental-and-cheap philosophy without adding a per-holding cursor
+  column.
+- **Settled records only, on the Spot holding.** Only a credited deposit
+  (`status === 1`) and a completed withdrawal (`status === 6`) are
+  imported — a pending/rejected record never shows as a balance movement.
+  Deposits/withdrawals are account-level on-chain movements, so every row
+  attaches to the SPOT holding (match key `'BTC'`); Funding/Earn get no
+  transaction rows.
+- **Idempotent via `(source, external_id)`.** Each row is
+  `source: 'binance'` with `externalId` `deposit:<id>` / `withdraw:<id>`
+  (Binance's own record id, falling back to the on-chain `txId`), imported
+  through `transactionsRepo.addManyDedup`. A re-sync refreshes rather than
+  duplicates. The withdrawal `applyTime` is a UTC datetime STRING, NOT
+  epoch ms — `parseWithdrawTime` pins it to UTC (a bare `Date.parse` would
+  shift it by the device's local offset). Amounts convert through
+  `Money.fromMajor('BTC', …)`; the withdrawal network fee is excluded from
+  the ledger line. The rows carry an EMPTY description, so the holding
+  detail + Home lists render the shared income/expense default label; a
+  bespoke "Deposit"/"Withdrawal" label is a deferred follow-up.
+
 ## Price data
 
 - Fiat cross rates: `GET /bank/currency` (public Monobank endpoint,
