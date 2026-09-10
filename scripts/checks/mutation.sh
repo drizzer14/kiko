@@ -123,11 +123,14 @@ score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?'
 [ -n "$count" ] && printf 'Mutants: %s\n' "$count"
 
 iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
+# A backward clock jump mid-run can yield dur=0; a 0s record would drag the
+# rolling ETA average toward zero, so only a strictly-positive duration is ever
+# recorded. This never changes the gate exit code or any progress output.
 if [ "$code" -ne 0 ]; then
   # A break-threshold failure (Stryker exit 1) still RAN to completion — record
   # it in history so the ETA reflects real runs. Any other non-zero code is a
   # crash, not a completed run, and is deliberately not recorded.
-  if [ "$code" -eq 1 ]; then
+  if [ "$code" -eq 1 ] && [ "$dur" -gt 0 ]; then
     harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
   fi
   print_block \
@@ -141,7 +144,8 @@ if [ "$code" -ne 0 ]; then
 fi
 
 # Passed: record this completed run in history (feeds the next run's ETA) and
-# record the fingerprint so an identical source state skips next time.
-harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
+# record the fingerprint so an identical source state skips next time. Only a
+# strictly-positive duration is recorded (see the clock-skew guard above).
+[ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
 harness_mark_pass "$ROOT" "mutation" "$fp"
 exit 0

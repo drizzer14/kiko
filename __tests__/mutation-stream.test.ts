@@ -101,20 +101,34 @@ describe('scripts/checks/mutation.sh streaming', () => {
   it('prints the no-history estimate on the first run and records that completed run', () => {
     const tmp = freshTmp();
     const callLog = join(tmp, 'calls');
-    const bin = makeStub(tmp, stubBody(0));
+    // Sleep ~1s so the run has a strictly-positive duration: the wrapper's
+    // clock-skew guard refuses to record a 0s run, so an instant stub would
+    // (correctly) leave no history. This exercises the record-on-completion path.
+    const bin = makeStub(
+      tmp,
+      [
+        '#!/usr/bin/env bash',
+        'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
+        'sleep 1',
+        'echo "STRYKER-STREAM-LINE-1"',
+        'exit 0',
+      ].join('\n'),
+    );
 
     const result = run(bin, tmp, callLog);
 
     expect(result.code).toBe(0);
     // With no prior runs the wrapper says so plainly rather than inventing an ETA.
     expect(result.stdout).toContain('No mutation history yet');
-    // A completed run is appended to the history TSV so the NEXT run can estimate.
+    // A completed positive-duration run is appended to the history TSV so the
+    // NEXT run can estimate.
     const match = result.stdout.match(/Watch live progress: {2}tail -f (\S+)/);
     expect(match).not.toBeNull();
     const historyFile = (match as RegExpMatchArray)[1].replace('progress.log', 'history.tsv');
     expect(existsSync(historyFile)).toBe(true);
-    // Record shape: iso<TAB>duration<TAB>count<TAB>score — a numeric duration field.
-    expect(readFileSync(historyFile, 'utf8').split('\t')[1]).toMatch(/^\d+$/);
+    // Record shape: iso<TAB>duration<TAB>count<TAB>score — a strictly-positive duration.
+    const duration = Number(readFileSync(historyFile, 'utf8').split('\t')[1]);
+    expect(duration).toBeGreaterThan(0);
   });
 
   it('streams the output, prints the failure block, and exits 2 on a FAILING run', () => {

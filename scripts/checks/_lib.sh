@@ -212,7 +212,11 @@ harness_fmt_duration() {
 harness_mutation_history_stats() {
   [ -f "$1" ] || return 0
   awk -F'\t' '
-    $2 ~ /^[0-9]+$/ {
+    # A record is valid only when its duration is a strictly-positive integer.
+    # A 0s duration (a mid-run backward clock jump) is filtered so it can never
+    # drag the rolling average toward zero — the wrapper also refuses to append
+    # one, this is defense-in-depth for a pre-existing/hand-edited history file.
+    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 {
       v++; dur[v]=$2; cnt[v]=$3;
       d=$1; sub(/T.*/, "", d); dt[v]=d;
     }

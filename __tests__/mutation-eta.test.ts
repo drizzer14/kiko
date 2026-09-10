@@ -96,6 +96,38 @@ describe('_lib.sh harness_mutation history + estimate (pure)', () => {
     expect(out).toBe('Estimated ~6m (last run: 6m on 2026-09-11)');
   });
 
+  it('ignores a 0-duration record (clock skew) so it never drags the average', () => {
+    const tmp = freshTmp();
+    const out = sh(
+      [
+        'root=/x/skew',
+        // A backward clock jump logged a 0s run between two real ones.
+        'harness_mutation_history_append "$root" 2026-09-10T10:00:00Z 180 100 70',
+        'harness_mutation_history_append "$root" 2026-09-10T11:00:00Z 0 0 0',
+        'harness_mutation_history_append "$root" 2026-09-10T12:00:00Z 420 120 72',
+        'harness_mutation_estimate_line "$(harness_mutation_history_file "$root")"',
+      ].join('\n'),
+      tmp,
+    );
+    // The 0s record is filtered: avg(180,420) = 300s = ~5m, and the last VALID
+    // run (420s = 7m over 120 mutants) feeds the parenthetical — not the 0s row.
+    expect(out).toBe('Estimated ~5m (last run: 7m over 120 mutants on 2026-09-10)');
+  });
+
+  it('still estimates from a lone positive record with no valid neighbours', () => {
+    const tmp = freshTmp();
+    const out = sh(
+      [
+        'root=/x/lone',
+        'harness_mutation_history_append "$root" 2026-09-10T09:00:00Z 0 0 0',
+        'harness_mutation_history_append "$root" 2026-09-10T10:00:00Z 300 90 68',
+        'harness_mutation_estimate_line "$(harness_mutation_history_file "$root")"',
+      ].join('\n'),
+      tmp,
+    );
+    expect(out).toBe('Estimated ~5m (last run: 5m over 90 mutants on 2026-09-10)');
+  });
+
   it('reports no estimate (never crashes) when the history file is corrupt', () => {
     const tmp = freshTmp();
     const out = sh(

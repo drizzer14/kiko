@@ -37,7 +37,10 @@ Composite scripts:
   default the mutation step mutates ONLY the source files changed
   against the merge-base with `${KIKO_MUTATION_BASE:-main}`
   (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. See the `kiko-linter` skill.
+  whole-project run. The mutation step tees its output to a stable,
+  tailable progress log and prints a Jenkins-style ETA from run history
+  for a human to watch directly; agents still must not poll it — the
+  exit code remains the only signal. See the `kiko-linter` skill.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
