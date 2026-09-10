@@ -23,29 +23,42 @@ import SyncProgressBar from './sync-progress-bar.component';
 describe('SyncProgressBar', () => {
   beforeEach(() => {
     mockUseSyncStatus.mockReturnValue(true);
-    mockUseSyncProgress.mockReturnValue({ completed: 0, total: 0 });
+    mockUseSyncProgress.mockReturnValue({
+      completed: 0,
+      total: 0,
+      workCompleted: 0,
+      workTotal: 0,
+    });
   });
 
-  it('renders the determinate fraction while a sync fetches', async () => {
+  it('exposes the determinate WORK fraction as the accessibility value', async () => {
     mockUseSyncStatus.mockReturnValue(true);
-    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    // 1 of 2 holdings done, but only 2 of 11 work units — a heavy card still
+    // dominates the fill. The a11y value tracks the WORK, matching the visible bar.
+    mockUseSyncProgress.mockReturnValue({
+      completed: 1,
+      total: 2,
+      workCompleted: 2,
+      workTotal: 11,
+    });
 
     const { getByTestId } = await render(<SyncProgressBar />);
 
-    // The honest fraction is exposed as the progressbar's accessibility value —
-    // 1 of 3 holdings synced — regardless of the animated fill's current width.
     const bar = getByTestId('sync-progress-bar');
     expect(bar.props.accessibilityRole).toBe('progressbar');
-    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 3, now: 1 });
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 11, now: 2 });
   });
 
-  it('renders a user-facing label naming the holdings fraction being synced', async () => {
+  it('renders a user-facing label naming the HOLDINGS fraction being synced', async () => {
     mockUseSyncStatus.mockReturnValue(true);
-    mockUseSyncProgress.mockReturnValue({ completed: 2, total: 3 });
+    // The label counts holdings (2 of 3) even though the fill is work-weighted.
+    mockUseSyncProgress.mockReturnValue({
+      completed: 2,
+      total: 3,
+      workCompleted: 5,
+      workTotal: 20,
+    });
 
-    // The bar is the whole-run indicator, so it carries a readable label. The
-    // fraction now counts HOLDINGS (the holdings the user sees), not cards: the
-    // completed count starts at the holdings that do not require syncing.
     const { getByText } = await render(<SyncProgressBar />);
 
     expect(getByText('Syncing holdings 2/3')).toBeTruthy();
@@ -53,16 +66,26 @@ describe('SyncProgressBar', () => {
 
   it('does not render when no sync is in flight', async () => {
     mockUseSyncStatus.mockReturnValue(false);
-    mockUseSyncProgress.mockReturnValue({ completed: 2, total: 3 });
+    mockUseSyncProgress.mockReturnValue({
+      completed: 2,
+      total: 3,
+      workCompleted: 5,
+      workTotal: 20,
+    });
 
     const { queryByTestId } = await render(<SyncProgressBar />);
 
     expect(queryByTestId('sync-progress-bar')).toBeNull();
   });
 
-  it('does not render before a total is known', async () => {
+  it('does not render before any work is known', async () => {
     mockUseSyncStatus.mockReturnValue(true);
-    mockUseSyncProgress.mockReturnValue({ completed: 0, total: 0 });
+    mockUseSyncProgress.mockReturnValue({
+      completed: 0,
+      total: 0,
+      workCompleted: 0,
+      workTotal: 0,
+    });
 
     const { queryByTestId } = await render(<SyncProgressBar />);
 

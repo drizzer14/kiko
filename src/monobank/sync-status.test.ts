@@ -1,11 +1,12 @@
 import {
   beginProgressSession,
-  commitSyncableHoldings,
+  commitHolding,
+  commitWork,
   endProgressSession,
   getProgressSnapshot,
   getSnapshot,
   isFastPhaseDone,
-  registerSyncableHoldings,
+  registerWork,
   setFastPhaseDone,
   setSyncing,
   setSyncProgress,
@@ -14,12 +15,15 @@ import {
   subscribeProgress,
 } from './sync-status';
 
+/** The reset/no-op progress snapshot: no work, no holdings. */
+const ZERO = { completed: 0, total: 0, workCompleted: 0, workTotal: 0 };
+
 describe('sync-status store', () => {
   // Module-level singleton state: reset it after each test so one test's flag
   // never leaks into the next.
   afterEach(() => {
     setSyncing(false);
-    setSyncProgress({ completed: 0, total: 0 });
+    setSyncProgress(ZERO);
     setFastPhaseDone(false);
   });
 
@@ -66,23 +70,30 @@ describe('sync-status store', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  // ITEM 2: the determinate sync-progress signal — how many of the cards that
-  // WILL be fetched have imported so far. A separate store from `isSyncing`, so
-  // the transactions-list progress bar can render `completed / total`.
+  // ITEM 2: the determinate sync-progress signal. It carries TWO quantities: the
+  // WORK units that drive the bar FILL (a heavy card weighs more than a light
+  // crypto fetch) and a HOLDINGS count that drives the "N/M" label. A separate
+  // store from `isSyncing`, so the transactions-list progress bar can render it
+  // without the pull-to-refresh spinner reacting.
   describe('progress', () => {
-    it('starts at zero completed of zero total', () => {
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+    it('starts at zero work and zero holdings', () => {
+      expect(getProgressSnapshot()).toEqual(ZERO);
     });
 
     it('reflects setSyncProgress in the snapshot', () => {
-      setSyncProgress({ completed: 1, total: 3 });
-      expect(getProgressSnapshot()).toEqual({ completed: 1, total: 3 });
+      setSyncProgress({ completed: 1, total: 3, workCompleted: 2, workTotal: 8 });
+      expect(getProgressSnapshot()).toEqual({
+        completed: 1,
+        total: 3,
+        workCompleted: 2,
+        workTotal: 8,
+      });
     });
 
     it('returns a STABLE snapshot reference when the values are unchanged', () => {
-      setSyncProgress({ completed: 2, total: 4 });
+      setSyncProgress({ completed: 2, total: 4, workCompleted: 2, workTotal: 4 });
       const first = getProgressSnapshot();
-      setSyncProgress({ completed: 2, total: 4 });
+      setSyncProgress({ completed: 2, total: 4, workCompleted: 2, workTotal: 4 });
 
       // useSyncExternalStore loops forever if getSnapshot returns a fresh object
       // on every read; an unchanged set must keep the same reference.
@@ -93,12 +104,24 @@ describe('sync-status store', () => {
       const listener = jest.fn();
       subscribeProgress(listener);
 
-      setSyncProgress({ completed: 0, total: 0 }); // already the initial value
+      setSyncProgress(ZERO); // already the initial value
       expect(listener).not.toHaveBeenCalled();
 
-      setSyncProgress({ completed: 1, total: 2 });
-      setSyncProgress({ completed: 1, total: 2 }); // unchanged — no second notify
+      setSyncProgress({ completed: 1, total: 2, workCompleted: 1, workTotal: 2 });
+      setSyncProgress({ completed: 1, total: 2, workCompleted: 1, workTotal: 2 }); // unchanged
       expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies when only the work advances but the holdings count is unchanged', () => {
+      const listener = jest.fn();
+      subscribeProgress(listener);
+
+      setSyncProgress({ completed: 0, total: 1, workCompleted: 1, workTotal: 10 });
+      setSyncProgress({ completed: 0, total: 1, workCompleted: 2, workTotal: 10 });
+
+      // A heavy card's page fetch advances work without completing the holding —
+      // that must still notify so the bar creeps.
+      expect(listener).toHaveBeenCalledTimes(2);
     });
 
     it('is independent of the isSyncing flag', () => {
@@ -112,49 +135,73 @@ describe('sync-status store', () => {
     });
   });
 
-  // The determinate bar now spans a whole sync RUN that fans out across several
+  // The determinate bar spans a whole sync RUN that fans out across several
   // concurrent sync paths — the Monobank `runSync` plus one `runBalanceSync` per
   // connected crypto account (see `useSyncAll`). Each path brackets its work with
   // `beginProgressSession()` / `endProgressSession()`; the FIRST begin lights
   // `isSyncing` and resets the accumulators, the LAST end clears both. Between the
-  // brackets a path calls `registerSyncableHoldings(total, syncable)` once, then
-  // `commitSyncableHoldings(n)` as each of its holdings commits. `completed`
-  // starts at the non-syncing baseline `total - syncable` and rises to `total`.
+  // brackets a path calls `registerWork(holdings, work)` once per unit, then
+  // `commitWork(units)` as it fetches and `commitHolding(count)` as each holding
+  // finishes. The bar is WEIGHTED BY WORK: `workTotal` is the sum of every syncing
+  // holding's work units, and `workCompleted` rises as work is DONE, with NO
+  // pre-filled baseline.
   describe('progress session (fan-out coordination)', () => {
     it('lights isSyncing on the first begin and clears it plus the progress on the last end', () => {
       beginProgressSession();
       expect(getSnapshot()).toBe(true);
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(getProgressSnapshot()).toEqual(ZERO);
 
       endProgressSession();
       expect(getSnapshot()).toBe(false);
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(getProgressSnapshot()).toEqual(ZERO);
     });
 
-    it('publishes the non-syncing baseline for one contributor and rises to full as it commits', () => {
+    it('weights the total by WORK units, not by holding count', () => {
       beginProgressSession();
-      registerSyncableHoldings(3, 1);
-      // Baseline = 3 total - 1 syncable = 2, the user's "2 / 3" example.
-      expect(getProgressSnapshot()).toEqual({ completed: 2, total: 3 });
+      registerWork(1, 10); // a heavy card: 1 holding, 10 statement windows
+      registerWork(1, 1); // a light crypto holding: 1 holding, 1 balance fetch
 
-      commitSyncableHoldings();
-      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 3 });
-
+      // total counts holdings (2); workTotal weights the heavy card at 10 of 11.
+      expect(getProgressSnapshot()).toEqual({
+        completed: 0,
+        total: 2,
+        workCompleted: 0,
+        workTotal: 11,
+      });
       endProgressSession();
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
     });
 
-    it('publishes nothing when a session registers no syncable holding (no-op guard)', () => {
+    it('advances the fill by work while the holding label lags, so a heavy card dominates', () => {
+      beginProgressSession();
+      registerWork(1, 10); // heavy card
+      registerWork(1, 1); // light holding
+
+      commitWork(1); // the light holding's single unit
+      commitHolding(1); // and it is done
+
+      // 1 of 2 holdings is done, but the bar is only 1/11 full — the heavy card,
+      // still unfetched, holds most of the work. This is the whole point: no
+      // pre-filled baseline, the fill tracks real fetch progress.
+      expect(getProgressSnapshot()).toEqual({
+        completed: 1,
+        total: 2,
+        workCompleted: 1,
+        workTotal: 11,
+      });
+      endProgressSession();
+    });
+
+    it('publishes nothing when a session registers no work (no-op guard)', () => {
       const listener = jest.fn();
       subscribeProgress(listener);
 
       beginProgressSession();
-      registerSyncableHoldings(3, 0);
-      commitSyncableHoldings(0);
+      registerWork(0, 0);
+      commitWork(0);
       endProgressSession();
 
-      // The bar never flashes a full "N / N" for a run that refreshes nothing.
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      // The bar never appears for a run that fetches nothing.
+      expect(getProgressSnapshot()).toEqual(ZERO);
       expect(listener).not.toHaveBeenCalled();
     });
 
@@ -171,74 +218,67 @@ describe('sync-status store', () => {
       expect(getSnapshot()).toBe(false);
     });
 
-    it('sums the syncable set across two contributors and ends at full (a mixed Monobank + crypto run)', () => {
-      // The fan-out shape: a Monobank path (2 syncable cards) and a crypto path
-      // (3 syncable holdings) over a 5-holding app (0 manual). Both paths report
-      // the same whole-app total; it is taken as a max so a race cannot shrink it.
+    it('sums the work across two contributors and ends full (a mixed Monobank + crypto run)', () => {
+      // The fan-out shape: a Monobank path (one 3-window card) and a crypto path
+      // (3 balance fetches). Work is SUMMED across paths; the bar reaches full
+      // only when all 6 units are done.
       beginProgressSession(); // Monobank path begins
       beginProgressSession(); // crypto path begins
 
-      registerSyncableHoldings(5, 2); // Monobank registers 2 syncable cards
-      // Crypto's 3 holdings still sit in the baseline until crypto registers.
-      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
+      registerWork(1, 3); // Monobank: one card, 3 statement windows
+      registerWork(3, 3); // crypto: 3 holdings, 1 unit each
+      expect(getProgressSnapshot()).toEqual({
+        completed: 0,
+        total: 4,
+        workCompleted: 0,
+        workTotal: 6,
+      });
 
-      registerSyncableHoldings(5, 3); // crypto registers 3 syncable holdings
-      // Baseline is now 0: every one of the 5 holdings is syncable.
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 5 });
-
-      commitSyncableHoldings(3); // crypto commits its 3 holdings
-      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
+      commitWork(3); // crypto fetches its 3 balances
+      commitHolding(3);
+      expect(getProgressSnapshot()).toEqual({
+        completed: 3,
+        total: 4,
+        workCompleted: 3,
+        workTotal: 6,
+      });
 
       endProgressSession(); // crypto path ends — Monobank still running
       expect(getSnapshot()).toBe(true);
-      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 5 });
 
-      commitSyncableHoldings(); // Monobank commits card 1
-      commitSyncableHoldings(); // Monobank commits card 2
-      expect(getProgressSnapshot()).toEqual({ completed: 5, total: 5 });
+      commitWork(3); // Monobank fetches its 3 windows
+      commitHolding(1);
+      expect(getProgressSnapshot()).toEqual({
+        completed: 4,
+        total: 4,
+        workCompleted: 6,
+        workTotal: 6,
+      });
 
       endProgressSession(); // Monobank path ends — last contributor
       expect(getSnapshot()).toBe(false);
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(getProgressSnapshot()).toEqual(ZERO);
     });
 
-    it('never shows a negative completed or a fraction over 1 when summed syncable exceeds the counted total', () => {
-      // A crypto first-connect (or a racy Monobank + crypto overlap): each path
-      // reads the whole-app count BEFORE this run's new holdings exist, so the
-      // counted total (a MAX across paths) is smaller than the summed syncable
-      // set (a SUM). The shown total must floor at the syncable count and
-      // `completed` must never go negative — otherwise the label reads "-2 / 3".
-      beginProgressSession(); // Monobank path
-      beginProgressSession(); // crypto path
-      registerSyncableHoldings(3, 2); // Monobank: 2 syncable, saw 3 holdings
-      registerSyncableHoldings(3, 3); // crypto first-connect: 3 NEW holdings, still saw 3
-
-      const snap = getProgressSnapshot();
-      expect(snap.total).toBe(5); // floored at the summed syncable count, not 3
-      expect(snap.completed).toBe(0); // baseline 5 - 5, never negative
-      expect(snap.completed).toBeGreaterThanOrEqual(0);
-      expect(snap.completed).toBeLessThanOrEqual(snap.total);
-
-      commitSyncableHoldings(5);
-      expect(getProgressSnapshot()).toEqual({ completed: 5, total: 5 });
-
-      endProgressSession();
-      endProgressSession();
-    });
-
-    it('clamps completed to the total when a contributor over-commits', () => {
+    it('clamps workCompleted to workTotal and completed to total when a contributor over-commits', () => {
       beginProgressSession();
-      registerSyncableHoldings(3, 1);
-      commitSyncableHoldings(5); // more commits than syncable holdings
+      registerWork(1, 2);
+      commitWork(5); // more work than registered
+      commitHolding(5); // more holdings than registered
 
-      expect(getProgressSnapshot()).toEqual({ completed: 3, total: 3 });
+      expect(getProgressSnapshot()).toEqual({
+        completed: 1,
+        total: 1,
+        workCompleted: 2,
+        workTotal: 2,
+      });
       endProgressSession();
     });
 
     it('ignores an unbalanced end with no active session', () => {
       endProgressSession();
       expect(getSnapshot()).toBe(false);
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(getProgressSnapshot()).toEqual(ZERO);
     });
   });
 
@@ -297,7 +337,7 @@ describe('sync-status store', () => {
       subscribeFastPhase(fastPhaseListener);
 
       setSyncing(true);
-      setSyncProgress({ completed: 1, total: 2 });
+      setSyncProgress({ completed: 1, total: 2, workCompleted: 1, workTotal: 2 });
 
       // Neither the isSyncing flag nor the progress signal notifies a
       // fast-phase subscriber.

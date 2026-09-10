@@ -1,11 +1,11 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
-import { countActiveHoldings } from '../holdings/count-active-holdings';
 import { i18n } from '../i18n';
 import {
   beginProgressSession,
-  commitSyncableHoldings,
+  commitHolding,
+  commitWork,
   endProgressSession,
-  registerSyncableHoldings,
+  registerWork,
 } from '../monobank/sync-status';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '../repositories/holdings.repo';
@@ -31,12 +31,6 @@ export interface BalanceSyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   upsertHolding: (holding: ExchangeHolding) => Promise<unknown>;
-  /**
-   * The count of holdings the user sees — the determinate sync-progress bar's
-   * denominator (the shared progress session in `src/monobank/sync-status.ts`).
-   * Shared with the Monobank run so one fan-out drives one bar.
-   */
-  countActiveHoldings: () => Promise<number>;
 }
 
 export type BalanceSyncResult = { syncedHoldings: number };
@@ -47,7 +41,6 @@ const defaultDeps: BalanceSyncDeps = {
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
   upsertHolding: (holding) => holdingsRepo.upsertExchange(holding),
-  countActiveHoldings,
 };
 
 /**
@@ -127,13 +120,14 @@ export const runBalanceSync = async <Deps>(
     await deps.updateAccount(accountId, { institution: provider.id });
     const syncedAt = deps.now();
 
-    // Every returned holding is syncable: a crypto sync has no balance-diff skip
-    // — it always reads live balances — so each counts toward the bar and
-    // completes as its upsert commits. Registered BEFORE the first upsert so its
-    // holdings never briefly sit in the already-done baseline.
+    // Every returned holding does real work: a crypto sync has no balance-diff
+    // skip — it always reads live balances — so each holding is ONE work unit and
+    // one holding on the weighted bar (a light balance fetch, versus a Monobank
+    // card weighted by its statement-window count). Registered BEFORE the first
+    // upsert so the denominator is known up front; a run that returns no balance
+    // registers nothing, so the bar never appears for it (the no-op guard).
     if (balances.length > 0) {
-      const total = await deps.countActiveHoldings();
-      registerSyncableHoldings(Math.max(total, balances.length), balances.length);
+      registerWork(balances.length, balances.length);
     }
 
     for (const balance of balances) {
@@ -148,8 +142,10 @@ export const runBalanceSync = async <Deps>(
         metadataKey: balance.metadataKey,
         renameFromDefault: balance.renameFromDefault,
       });
-      // One crypto holding's balance has committed: advance the bar by one.
-      commitSyncableHoldings();
+      // One crypto holding's balance has committed: advance the bar one work unit
+      // and complete the holding for the label.
+      commitWork();
+      commitHolding();
     }
 
     return { syncedHoldings: balances.length };

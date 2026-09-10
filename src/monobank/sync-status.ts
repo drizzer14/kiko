@@ -47,22 +47,35 @@ export const getSnapshot = (): boolean => isSyncing;
 export const useSyncStatus = (): boolean => useSyncExternalStore(subscribe, getSnapshot);
 
 /**
- * The DETERMINATE progress of the current run, counted in HOLDINGS (not cards):
- * `total` is the number of holdings the user sees (active holdings across every
- * account), and `completed` STARTS at the holdings that do NOT require syncing
- * and rises by one as each syncable holding's balance/statements commit. So 3
- * holdings with 1 syncable holding render "2 / 3" while it syncs, then "3 / 3"
- * when it finishes. A SEPARATE store from `isSyncing` above, so the
- * transactions-list progress bar can render `completed / total` without the
- * pull-to-refresh spinner reacting to it. The published value is DERIVED by the
- * progress SESSION below, which spans the whole fan-out — the Monobank `runSync`
- * plus any concurrent crypto `runBalanceSync`, each contributing its syncable set
- * (see the session for the syncable predicate and the no-op guard). Direct
+ * The DETERMINATE progress of the current run. It carries TWO quantities:
+ *
+ * - `workCompleted` / `workTotal` — the WORK units that drive the bar FILL. A
+ *   run is WEIGHTED BY REAL WORK: a Monobank card weighs its statement-window
+ *   count (a large history occupies more of the bar), a changed jar or a crypto
+ *   balance fetch weighs one unit, and a skipped card / unchanged jar / manual
+ *   holding weighs nothing. `workCompleted` STARTS at 0 (no pre-filled baseline)
+ *   and rises as work is DONE.
+ * - `completed` / `total` — the HOLDINGS count that drives the "N/M" label:
+ *   `total` is the number of holdings that do real work this run, `completed` is
+ *   how many have finished. The label and the fill are decoupled on purpose (the
+ *   file-copy pattern): "1 / 2 holdings" can sit at a 1/11 fill while a heavy
+ *   card is still fetching.
+ *
+ * A SEPARATE store from `isSyncing` above, so the transactions-list progress bar
+ * can render it without the pull-to-refresh spinner reacting. The published value
+ * is DERIVED by the progress SESSION below, which spans the whole fan-out — the
+ * Monobank `runSync` plus any concurrent crypto `runBalanceSync`, each
+ * contributing its own work (see the session for the no-op guard). Direct
  * `setSyncProgress` remains the low-level primitive the session and tests use.
  */
-type SyncProgress = { completed: number; total: number };
+type SyncProgress = {
+  completed: number;
+  total: number;
+  workCompleted: number;
+  workTotal: number;
+};
 
-let progress: SyncProgress = { completed: 0, total: 0 };
+let progress: SyncProgress = { completed: 0, total: 0, workCompleted: 0, workTotal: 0 };
 const progressListeners = new Set<Listener>();
 
 /**
@@ -72,7 +85,12 @@ const progressListeners = new Set<Listener>();
  * forever on a fresh object every read.
  */
 export const setSyncProgress = (next: SyncProgress): void => {
-  if (progress.completed === next.completed && progress.total === next.total) {
+  if (
+    progress.completed === next.completed &&
+    progress.total === next.total &&
+    progress.workCompleted === next.workCompleted &&
+    progress.workTotal === next.workTotal
+  ) {
     return;
   }
   progress = next;
@@ -97,57 +115,58 @@ export const useSyncProgress = (): SyncProgress =>
   useSyncExternalStore(subscribeProgress, getProgressSnapshot);
 
 /**
- * Determinate-progress SESSION coordination. The determinate bar now spans a
- * whole sync RUN that may fan out across several concurrent sync paths — the
- * Monobank `runSync` plus one `runBalanceSync` per connected crypto account (see
+ * Determinate-progress SESSION coordination. The determinate bar spans a whole
+ * sync RUN that may fan out across several concurrent sync paths — the Monobank
+ * `runSync` plus one `runBalanceSync` per connected crypto account (see
  * `useSyncAll`). Each path brackets its contribution with `beginProgressSession()`
  * and `endProgressSession()`; the FIRST begin lights `isSyncing` and resets the
  * accumulators, the LAST end clears both. A plain per-run reset/clear raced when
  * two runs overlapped — one path wiped another's start, or cleared the bar while
  * another path was still running — so the bracket is REFERENCE COUNTED.
  *
- * Between the brackets a path calls `registerSyncableHoldings(total, syncable)`
- * once — `total` is the whole-app active-holdings count (the same for every path,
- * taken as a max so a race cannot shrink it) and `syncable` is the number of THIS
- * path's holdings being refreshed this run — then `commitSyncableHoldings(n)` as
- * each of its holdings' balances/statements commit.
+ * Between the brackets a path calls `registerWork(holdings, work)` to add its
+ * work up front, then `commitWork(units)` as it fetches and `commitHolding(count)`
+ * as each holding finishes. The bar is WEIGHTED BY REAL WORK: `workTotal` is the
+ * SUM of every syncing holding's work units across every path — a Monobank card's
+ * statement-window count, one unit per changed jar or crypto balance fetch — and
+ * `workCompleted` rises as work is DONE, starting at 0 with NO pre-filled
+ * baseline. `holdingsTotal`/`holdingsCompleted` count holdings for the label only.
  *
- * The published `{ completed, total }` is derived: `completed` STARTS at the
- * non-syncing baseline `total - syncable` (every manual holding, every
- * balance-diff-skipped card, every unchanged jar) and rises by one per committed
- * syncable holding, ending at `total`. When nothing syncable is registered
- * (`syncable === 0`) the published value stays `{ 0, 0 }`, so the bar never
- * flashes a full "N / N" for a run that refreshes nothing syncable (the round-5
- * no-op guard, now spanning the whole fan-out). `isSyncing` rides this session,
- * so a crypto-only fan-out (no Monobank run) still lights the whole-run indicator.
+ * When nothing does real work (`workTotal === 0`) the published value stays the
+ * zero snapshot, so the bar never appears for a run that fetches nothing (the
+ * no-op guard, spanning the whole fan-out). `isSyncing` rides this session, so a
+ * crypto-only fan-out (no Monobank run) still lights the whole-run indicator.
  */
 let sessionDepth = 0;
-let sessionTotal = 0;
-let sessionSyncable = 0;
-let sessionCommitted = 0;
+let workTotal = 0;
+let workCompleted = 0;
+let holdingsTotal = 0;
+let holdingsCompleted = 0;
+
+const ZERO_PROGRESS: SyncProgress = { completed: 0, total: 0, workCompleted: 0, workTotal: 0 };
 
 const resetSessionAccumulators = (): void => {
-  sessionTotal = 0;
-  sessionSyncable = 0;
-  sessionCommitted = 0;
+  workTotal = 0;
+  workCompleted = 0;
+  holdingsTotal = 0;
+  holdingsCompleted = 0;
 };
 
 /** Recompute and publish the derived progress from the session accumulators. */
 const publishSessionProgress = (): void => {
-  if (sessionSyncable <= 0 || sessionTotal <= 0) {
-    setSyncProgress({ completed: 0, total: 0 });
+  if (workTotal <= 0) {
+    setSyncProgress(ZERO_PROGRESS);
     return;
   }
-  // `sessionTotal` is a MAX across paths while `sessionSyncable` is a SUM, and a
-  // path reads the whole-app count BEFORE it creates this run's new holdings (a
-  // crypto first-connect), so the summed syncable set can transiently EXCEED the
-  // counted total. Floor the shown total at the syncable count so the baseline is
-  // never negative; clamp `completed` into `[0, total]` so the label can never
-  // read "-2 / 3" nor a fraction above 1.
-  const total = Math.max(sessionTotal, sessionSyncable);
-  const baseline = total - sessionSyncable;
-  const completed = Math.min(total, Math.max(0, baseline + sessionCommitted));
-  setSyncProgress({ completed, total });
+  // Clamp both numerators into their totals so a per-card page over-count (a
+  // capped statement page beyond the up-front window estimate) or an over-commit
+  // can never draw a fill above 1 nor a label above "N / N".
+  setSyncProgress({
+    completed: Math.min(holdingsTotal, Math.max(0, holdingsCompleted)),
+    total: holdingsTotal,
+    workCompleted: Math.min(workTotal, Math.max(0, workCompleted)),
+    workTotal,
+  });
 };
 
 /** Enter one contributor to the shared progress session. */
@@ -161,19 +180,25 @@ export const beginProgressSession = (): void => {
 };
 
 /**
- * Register this contributor's syncable-holding numbers. Call once per path,
- * before it reports any completion. `total` is taken as a max across paths;
- * `syncable` accumulates (each path adds its own set).
+ * Register this contributor's work up front. Both accumulate across paths:
+ * `holdings` is the number of holdings this path will finish (the label
+ * denominator), `work` is the total work units it will do (the fill denominator).
  */
-export const registerSyncableHoldings = (total: number, syncable: number): void => {
-  sessionTotal = Math.max(sessionTotal, total);
-  sessionSyncable += Math.max(0, syncable);
+export const registerWork = (holdings: number, work: number): void => {
+  holdingsTotal += Math.max(0, holdings);
+  workTotal += Math.max(0, work);
   publishSessionProgress();
 };
 
-/** Report that `count` of this run's syncable holdings have committed. */
-export const commitSyncableHoldings = (count = 1): void => {
-  sessionCommitted += count;
+/** Report that `units` of work have been DONE (a statement page, a balance fetch). */
+export const commitWork = (units = 1): void => {
+  workCompleted += units;
+  publishSessionProgress();
+};
+
+/** Report that `count` syncing holdings have finished (advances the label). */
+export const commitHolding = (count = 1): void => {
+  holdingsCompleted += count;
   publishSessionProgress();
 };
 
@@ -185,7 +210,7 @@ export const endProgressSession = (): void => {
   sessionDepth -= 1;
   if (sessionDepth === 0) {
     resetSessionAccumulators();
-    setSyncProgress({ completed: 0, total: 0 });
+    setSyncProgress(ZERO_PROGRESS);
     setSyncing(false);
     return;
   }

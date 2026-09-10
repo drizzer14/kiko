@@ -1,5 +1,4 @@
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
-import { countActiveHoldings } from '../holdings/count-active-holdings';
 import { i18n } from '../i18n';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
@@ -12,9 +11,10 @@ import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
 import {
   beginProgressSession,
-  commitSyncableHoldings,
+  commitHolding,
+  commitWork,
   endProgressSession,
-  registerSyncableHoldings,
+  registerWork,
   setFastPhaseDone,
 } from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
@@ -100,17 +100,6 @@ export interface SyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   /**
-   * The count of HOLDINGS the user sees — active holdings, meaning an open
-   * holding (`closedAt == null`) under a non-archived account, the same
-   * `activeHoldings` set net worth uses. It is the denominator of the
-   * determinate progress bar (see `setSyncProgress` in `runSyncInner`): the bar
-   * counts holdings, NOT cards/statements. It spans EVERY account (manual, crypto
-   * and Monobank), not just the connected Monobank one, so a manual/crypto
-   * holding — which this Monobank run never fetches — counts toward the
-   * already-done baseline.
-   */
-  countActiveHoldings: () => Promise<number>;
-  /**
    * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
    * so the reactive `holdings` callback fires ONCE for the fast phase rather
    * than once per card (a tight N+M burst that starved the JS thread and
@@ -188,7 +177,6 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  countActiveHoldings,
   upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
   setSyncedBalance: (holdingId, balanceMinorUnits) =>
     holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
@@ -405,6 +393,7 @@ const fetchAllStatements = async (
   monobankAccountId: string,
   fromSeconds: number,
   toSeconds: number,
+  onPage?: () => void,
 ): Promise<MonobankStatementItem[]> => {
   const collected: MonobankStatementItem[] = [];
   let windowTo = toSeconds;
@@ -422,6 +411,11 @@ const fetchAllStatements = async (
       deps.fetchImpl,
     );
     collected.push(...items);
+    // One statement page has been fetched — advance the determinate progress
+    // bar by one work unit (the honest per-page granularity). The caller caps
+    // this at the card's up-front window estimate so a capped page cannot draw
+    // the fill above the card's share.
+    onPage?.();
     const hitCap = items.length >= MAX_ITEMS_PER_RESPONSE;
 
     if (hitCap) {
@@ -689,6 +683,19 @@ const fromSecondsForCard = (
   );
 };
 
+/**
+ * The number of 31-day statement windows a card will page over `[fromSeconds,
+ * toSeconds]`, known UP FRONT from the requested span. It is the card's WORK
+ * weight on the determinate progress bar: a card whose from-window widens back to
+ * `lastFullSyncAt` (a behind-marker or full-fetch card) weighs more than a
+ * normally-in-sync card on the narrow incremental cursor. A capped page adds real
+ * fetches beyond this estimate, but the caller caps the per-card commit at this
+ * number so the fill never exceeds the card's share; at least one window always
+ * counts.
+ */
+const estimateWindows = (fromSeconds: number, toSeconds: number): number =>
+  Math.max(1, Math.ceil((toSeconds - fromSeconds) / MAX_WINDOW_SECONDS));
+
 const importAccount = async (
   deps: SyncDeps,
   gate: RequestGate,
@@ -697,6 +704,7 @@ const importAccount = async (
   account: MonobankAccount,
   fromSeconds: number,
   toSeconds: number,
+  onPage?: () => void,
 ): Promise<number> => {
   const holdings = await deps.listHoldingsByAccount(accountId);
   const holding = holdings.find((candidate) => monobankIdOf(candidate.metadata) === account.id);
@@ -705,7 +713,15 @@ const importAccount = async (
     return 0;
   }
 
-  const items = await fetchAllStatements(deps, gate, token, account.id, fromSeconds, toSeconds);
+  const items = await fetchAllStatements(
+    deps,
+    gate,
+    token,
+    account.id,
+    fromSeconds,
+    toSeconds,
+    onPage,
+  );
   const fetched = mapFetched(items, holding.id);
 
   if (fetched.length === 0) {
@@ -716,6 +732,61 @@ const importAccount = async (
   // refreshes an existing row rather than adding one, and the user is told how
   // many transactions were IMPORTED.
   return deps.addTransactions(fetched);
+};
+
+/** One card's fetch plan: its holding, its from-window, and its WORK weight. */
+type CardPlan = {
+  account: MonobankAccount;
+  holding: HoldingRow;
+  fromSeconds: number;
+  windows: number;
+};
+
+/**
+ * Fetch and import one planned card while driving the WEIGHTED progress bar: one
+ * work unit per statement page (capped at the card's up-front window estimate so
+ * a capped page never overshoots the card's share), then a reconcile to that
+ * estimate and one holding completion once the statements commit. Advances the
+ * crash-safe marker only after the import commits. Returns the imported count; the
+ * caller isolates a failure.
+ */
+const fetchCardWithProgress = async (
+  deps: SyncDeps,
+  gate: RequestGate,
+  token: string,
+  accountId: string,
+  toSeconds: number,
+  card: CardPlan,
+): Promise<number> => {
+  let pagesCommitted = 0;
+  const onPage = (): void => {
+    if (pagesCommitted < card.windows) {
+      pagesCommitted += 1;
+      commitWork();
+    }
+  };
+
+  const imported = await importAccount(
+    deps,
+    gate,
+    token,
+    accountId,
+    card.account,
+    card.fromSeconds,
+    toSeconds,
+    onPage,
+  );
+
+  await deps.setSyncedBalance(card.holding.id, card.account.balance);
+  // Reconcile the card's work to its full up-front estimate (a card that paged
+  // fewer windows than estimated still reaches its share), then complete the
+  // holding for the label.
+  if (pagesCommitted < card.windows) {
+    commitWork(card.windows - pagesCommitted);
+  }
+  commitHolding();
+
+  return imported;
 };
 
 type SyncResult = { importedTransactions: number };
@@ -882,70 +953,56 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     return prior === undefined || prior.balanceMinorUnits !== jar.balance;
   }).length;
 
-  // This run's Monobank syncable set: the cards it will fetch statements for plus
-  // the jars whose balance moved. A balance-diff-skipped card and an unchanged jar
-  // are NOT syncable — they belong to the already-done baseline.
-  const syncableCount = fetched + changedJars;
-
-  // The determinate progress bar counts HOLDINGS, not cards. Its denominator is
-  // the total number of holdings the user sees (active holdings across EVERY
-  // account); its numerator STARTS at the non-syncing baseline (total minus this
-  // run's syncable set — manual holdings, crypto holdings a Monobank run does not
-  // touch, balance-diff-skipped cards, and unchanged jars) and rises by one as
-  // each syncable holding commits. So 3 holdings with 1 syncable card shows
-  // "2 / 3" while it syncs, then "3 / 3" when it finishes.
-  //
-  // The count is registered only when at least one holding is syncable: a run
-  // that refreshes nothing syncable registers nothing, so the bar never flashes a
-  // full "N / N" for a no-op sync (the round-5 guard). `total` is floored at
-  // `syncableCount` so the fraction can never exceed 1 even if a syncable holding
-  // is somehow excluded from the active set. The session accumulates this run's
-  // set into any concurrent crypto run's, so one fan-out drives one bar.
-  if (syncableCount > 0) {
-    const visibleHoldings = await deps.countActiveHoldings();
-    registerSyncableHoldings(Math.max(visibleHoldings, syncableCount), syncableCount);
-    // Changed jars have no statements — their balances landed in the fast-phase
-    // upsert — so mark them complete now, before the per-card statement loop.
-    if (changedJars > 0) {
-      commitSyncableHoldings(changedJars);
-    }
-  }
-
-  for (const { account, holding } of toFetch) {
-    // Per-card from-window: a behind/NULL-marker card (or any card on a full
-    // fetch) widens back to `lastFullSyncAt` to re-cover a transaction older than
-    // the incremental cursor; a normally-in-sync card keeps the narrow
-    // `lastSyncAt` cursor. See `fromSecondsForCard`.
+  // Per-card fetch plan, computed UP FRONT so the weighted progress denominator
+  // is known before the serial loop. Each card's from-window (a behind/NULL-marker
+  // or full-fetch card widens back to `lastFullSyncAt`; a normally-in-sync card
+  // keeps the narrow `lastSyncAt` cursor — see `fromSecondsForCard`) fixes its
+  // statement-window count (`estimateWindows`), which is the card's WORK weight.
+  const toFetchPlan = toFetch.map(({ account, holding }) => {
     const fromSeconds = fromSecondsForCard(account, priorHoldingByMonobankId.get(account.id), {
       isFullFetch,
       lastSyncAt,
       lastFullSyncAt,
       toSeconds,
     });
+    return { account, holding, fromSeconds, windows: estimateWindows(fromSeconds, toSeconds) };
+  });
+
+  // The determinate bar is WEIGHTED BY WORK: `totalWork` sums each fetched card's
+  // window count plus one unit per changed jar, so a card with a large statement
+  // history occupies proportionally more of the bar. `syncingHoldings` counts the
+  // holdings for the "N/M" label. A balance-diff-skipped card and an unchanged jar
+  // do NO work, so nothing is pre-filled. Registered only when there is real work,
+  // so the bar never appears for a no-op sync (the no-op guard). The session
+  // accumulates this into any concurrent crypto run's work, so one fan-out drives
+  // one bar.
+  const cardWork = toFetchPlan.reduce((sum, card) => sum + card.windows, 0);
+  const syncingHoldings = fetched + changedJars;
+  const totalWork = cardWork + changedJars;
+  if (totalWork > 0) {
+    registerWork(syncingHoldings, totalWork);
+    // Changed jars have no statements — their balances landed in the fast-phase
+    // upsert — so mark them (one unit each) complete now, before the loop.
+    if (changedJars > 0) {
+      commitWork(changedJars);
+      commitHolding(changedJars);
+    }
+  }
+
+  for (const card of toFetchPlan) {
     try {
-      importedTransactions += await importAccount(
+      // `fetchCardWithProgress` advances the crash-safe marker ONLY after the
+      // import commits, drives the weighted bar (one unit per page, reconciled to
+      // the card's estimate), and completes the holding for the label.
+      importedTransactions += await fetchCardWithProgress(
         deps,
         gate,
         token,
         accountId,
-        account,
-        fromSeconds,
         toSeconds,
+        card,
       );
-      // Advance the crash-safe marker ONLY now that this card's statements have
-      // committed. `upsertHoldings` already wrote `balanceMinorUnits` (the
-      // display balance) up front, but the balance-diff skip compares against
-      // THIS marker instead — so a run interrupted after the up-front balance
-      // write but before this point leaves the marker behind, and the next run
-      // re-imports the card rather than skipping it on a matching display
-      // balance. Written even when the card had zero new items: the card was
-      // still successfully fetched THROUGH this balance, so it is safe to skip
-      // next run while it stays unchanged.
-      await deps.setSyncedBalance(holding.id, account.balance);
-      succeededIds.push(account.id);
-      // One card's statements have committed: advance the determinate bar by one
-      // holding above the non-syncing baseline.
-      commitSyncableHoldings();
+      succeededIds.push(card.account.id);
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old
@@ -955,7 +1012,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // runs in its own `db.transaction()` — so their data is safe regardless.
       // The failed id is force-fetched next run (see the end-of-run sequence).
       failures.push(error instanceof Error ? error : new Error(String(error)));
-      failedIds.push(account.id);
+      failedIds.push(card.account.id);
     }
   }
 

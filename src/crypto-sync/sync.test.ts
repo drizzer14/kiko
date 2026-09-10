@@ -12,7 +12,6 @@ import {
   setSyncProgress,
   subscribeProgress,
 } from '../monobank/sync-status';
-import { activeHoldings } from '../rates/active-holdings';
 
 import type { BalanceProvider, ProviderBalance, SyncTarget } from './provider';
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
@@ -132,10 +131,6 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
     upsertHolding,
-    // The count of holdings the user sees — the determinate progress bar's
-    // denominator. A progress test overrides it to model manual holdings the
-    // crypto sync itself never touches.
-    countActiveHoldings: async () => activeHoldings(holdingsStore, accountsStore).length,
   };
 
   return { deps, accountsStore, holdingsStore };
@@ -145,7 +140,7 @@ describe('runBalanceSync', () => {
   // runBalanceSync now drives the shared progress session (module-level singleton
   // state); reset it after each test so one test's progress never leaks.
   afterEach(() => {
-    setSyncProgress({ completed: 0, total: 0 });
+    setSyncProgress({ completed: 0, total: 0, workCompleted: 0, workTotal: 0 });
     setSyncing(false);
   });
 
@@ -283,9 +278,9 @@ describe('runBalanceSync', () => {
   });
 
   // The crypto sync feeds the same determinate progress bar as the Monobank run
-  // (the shared session in `sync-status.ts`). Every returned holding is syncable:
-  // a crypto sync has no balance-diff skip — it always reads live balances — so
-  // each holding counts and completes as its upsert commits.
+  // (the shared session in `sync-status.ts`). Every returned holding does real
+  // work — a crypto sync has no balance-diff skip, it always reads live balances —
+  // so each holding is ONE work unit and completes as its upsert commits.
   describe('progress session', () => {
     // Distinct match keys so three Spot/Funding/Earn balances upsert as three
     // holdings, not one (the in-memory double keys on metadataKey).
@@ -296,36 +291,45 @@ describe('runBalanceSync', () => {
       name: metadataKey,
     });
 
-    it('publishes the non-syncing baseline then rises to full as its one holding commits', async () => {
+    const zero = { completed: 0, total: 0, workCompleted: 0, workTotal: 0 };
+
+    it('starts its one holding at zero work and rises to full as the balance commits', async () => {
       const { provider } = makeProvider();
       const { deps } = makeInMemoryDeps([
         cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
       ]);
       deps.targetAccountId = 'acc-1';
-      // The user sees 3 holdings; this crypto holding is the only syncable one.
-      deps.countActiveHoldings = async () => 3;
 
-      const emissions: Array<{ completed: number; total: number }> = [];
+      const emissions: Array<{
+        completed: number;
+        total: number;
+        workCompleted: number;
+        workTotal: number;
+      }> = [];
       const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
 
       await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
       unsubscribe();
 
-      expect(emissions).toEqual([
-        { completed: 2, total: 3 }, // baseline 3 - 1 syncable
-        { completed: 3, total: 3 }, // the crypto holding commits
-        { completed: 0, total: 0 }, // session cleared on end
-      ]);
+      // One holding, one work unit, no pre-filled baseline: the fill starts at 0
+      // and reaches full only as the balance commits.
+      const nonZero = emissions.filter((sample) => sample.workTotal > 0);
+      expect(nonZero[0]).toEqual({ completed: 0, total: 1, workCompleted: 0, workTotal: 1 });
+      expect(nonZero.at(-1)).toEqual({ completed: 1, total: 1, workCompleted: 1, workTotal: 1 });
+      expect(emissions.at(-1)).toEqual(zero);
     });
 
-    it('counts every returned wallet holding as syncable (Spot / Funding / Earn)', async () => {
+    it('weights three wallet holdings (Spot / Funding / Earn) as three equal work units', async () => {
       const { provider } = makeProvider();
       const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
       deps.targetAccountId = 'acc-1';
-      // 5 holdings the user sees; 3 of them are this connection's syncable set.
-      deps.countActiveHoldings = async () => 5;
 
-      const emissions: Array<{ completed: number; total: number }> = [];
+      const emissions: Array<{
+        completed: number;
+        total: number;
+        workCompleted: number;
+        workTotal: number;
+      }> = [];
       const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
 
       await runBalanceSync(
@@ -337,46 +341,31 @@ describe('runBalanceSync', () => {
       );
       unsubscribe();
 
-      expect(emissions).toEqual([
-        { completed: 2, total: 5 }, // baseline 5 - 3 syncable
-        { completed: 3, total: 5 },
-        { completed: 4, total: 5 },
-        { completed: 5, total: 5 },
-        { completed: 0, total: 0 },
-      ]);
+      const nonZero = emissions.filter((sample) => sample.workTotal > 0);
+      // 3 holdings, 3 work units, no baseline.
+      expect(nonZero.every((sample) => sample.workTotal === 3 && sample.total === 3)).toBe(true);
+      expect(nonZero[0].workCompleted).toBe(0);
+      expect(nonZero.at(-1)).toEqual({ completed: 3, total: 3, workCompleted: 3, workTotal: 3 });
+      expect(emissions.at(-1)).toEqual(zero);
     });
 
-    it('never renders a negative label on a first connect (whole-app count read before the new holdings exist)', async () => {
+    it('registers no work — so the bar never appears — when the provider returns no balance', async () => {
       const { provider } = makeProvider();
-      const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
       deps.targetAccountId = 'acc-1';
-      // A first connect: countActiveHoldings is read BEFORE the 3 new holdings
-      // are upserted, so it under-counts — here it returns 0 while the sync
-      // creates 3 syncable holdings.
-      deps.countActiveHoldings = async () => 0;
 
-      const emissions: Array<{ completed: number; total: number }> = [];
-      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
-
-      await runBalanceSync(
-        provider,
-        {
-          balances: [btcBalance('BTC', 1), btcBalance('BTC:funding', 2), btcBalance('BTC:earn', 3)],
-        },
-        deps,
+      const emissions: Array<{ workTotal: number }> = [];
+      const unsubscribe = subscribeProgress(() =>
+        emissions.push({ workTotal: getProgressSnapshot().workTotal }),
       );
+
+      await runBalanceSync(provider, { balances: [] }, deps);
       unsubscribe();
 
-      // Every emission stays in [0, total]: the denominator floors at the 3
-      // syncable holdings and completed never goes negative.
-      expect(emissions.every((e) => e.completed >= 0 && e.completed <= e.total)).toBe(true);
-      expect(emissions).toEqual([
-        { completed: 0, total: 3 },
-        { completed: 1, total: 3 },
-        { completed: 2, total: 3 },
-        { completed: 3, total: 3 },
-        { completed: 0, total: 0 },
-      ]);
+      // No balance means no work: the bar's total stays zero throughout (no-op guard).
+      expect(emissions.every((sample) => sample.workTotal === 0)).toBe(true);
     });
 
     it('leaves the session clean (isSyncing off, progress cleared) when the provider fetch fails', async () => {
@@ -395,7 +384,7 @@ describe('runBalanceSync', () => {
       ).rejects.toThrow('Block explorer request failed: 400');
 
       expect(isSyncingSnapshot()).toBe(false);
-      expect(getProgressSnapshot()).toEqual({ completed: 0, total: 0 });
+      expect(getProgressSnapshot()).toEqual(zero);
     });
   });
 });
