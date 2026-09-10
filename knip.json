@@ -4,7 +4,7 @@
     "App.tsx",
     "jest/setup.js",
     "__tests__/**/*.{test,spec}.{ts,tsx}",
-    "src/db/migration/export-self-check.ts"
+    "src/migration/export-self-check.ts"
   ],
   "project": ["**/*.{ts,tsx,js}"],
   "ignore": ["rules/fixtures/**"],

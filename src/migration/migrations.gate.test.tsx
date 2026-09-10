@@ -1,11 +1,10 @@
 import { act, render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 
-import '../design-system/unistyles';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import { i18n } from '@kiko/i18n';
 import { settingsRepo } from '@kiko/settings/settings.repo';
-
-import { darkTheme } from '../design-system/theme';
-import { i18n } from '../i18n';
 
 import MigrationsGate from './migrations.gate';
 
@@ -18,9 +17,9 @@ const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
 // `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
 // directly so it can also exercise the read-throws path.
 const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
-jest.mock('./client', () => ({ initDatabase: () => mockInitDatabase() }));
-jest.mock('./run-migrations', () => ({ runMigrations: () => mockRunMigrations() }));
-jest.mock('../monobank/token', () => ({ migrateLegacyToken: () => mockMigrateLegacyToken() }));
+jest.mock('@kiko/db/client', () => ({ initDatabase: () => mockInitDatabase() }));
+jest.mock('@kiko/db/run-migrations', () => ({ runMigrations: () => mockRunMigrations() }));
+jest.mock('@kiko/monobank/token', () => ({ migrateLegacyToken: () => mockMigrateLegacyToken() }));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { ensure: jest.fn(() => Promise.resolve()), getQuery: () => mockGetSettings() },
 }));

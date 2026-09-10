@@ -36,7 +36,7 @@ jest.mock('../db/encrypted-database', () => ({
 // design). This suite exercises ratesRepo, not the migration, and already stubs
 // the encrypted-open above, so stub the import to a clean no-op the same way
 // db/client.test.ts does.
-jest.mock('../db/migration/import-from-old-app', () => ({
+jest.mock('@kiko/migration/import-from-old-app', () => ({
   importFromOldApp: async () => false,
   finalizeImportBridge: async () => undefined,
 }));

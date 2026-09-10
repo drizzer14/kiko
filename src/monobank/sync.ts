@@ -68,7 +68,7 @@ const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
  * There is deliberately no settings-row-creation seam here either: the
  * single settings row (id = 1) that `getLastSyncAt`/`setLastSyncAt` read
  * and write is guaranteed to exist by the app-boot migrations gate
- * (`src/db/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
+ * (`src/migration/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
  * before any screen — and so before any sync — can run.
  */
 export interface SyncDeps {

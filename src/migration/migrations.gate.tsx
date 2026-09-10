@@ -1,15 +1,14 @@
+import { initDatabase } from '@kiko/db/client';
+import { runMigrations } from '@kiko/db/run-migrations';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { i18n } from '@kiko/i18n';
+import { migrateLegacyToken } from '@kiko/monobank/token';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../design-system/components/box';
-import Text from '../design-system/components/text';
-import { i18n } from '../i18n';
-import { migrateLegacyToken } from '../monobank/token';
-
-import { initDatabase } from './client';
 import { styles } from './migrations.gate.styles';
-import { runMigrations } from './run-migrations';
 
 type MigrationState =
   | { status: 'pending' }

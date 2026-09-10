@@ -1,9 +1,8 @@
+import { readCredentials } from '@kiko/crypto-sync/binance/binance.credentials';
+import { ENCRYPTED_DATABASE_NAME } from '@kiko/db/encrypted-database';
+import { readDbKey, toSQLCipherRawKey } from '@kiko/db/keys/db-key';
+import { readToken } from '@kiko/monobank/token';
 import { open } from '@op-engineering/op-sqlite';
-
-import { readCredentials } from '../../crypto-sync/binance/binance.credentials';
-import { readToken } from '../../monobank/token';
-import { ENCRYPTED_DATABASE_NAME } from '../encrypted-database';
-import { readDbKey, toSQLCipherRawKey } from '../keys/db-key';
 
 import { migrationBridge } from './migration-bridge';
 import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';

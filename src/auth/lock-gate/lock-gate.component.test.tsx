@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
 
-import MigrationsGate from '../../db/migrations.gate';
+import MigrationsGate from '@kiko/migration/migrations.gate';
 
 import LockGate from './lock-gate.component';
 

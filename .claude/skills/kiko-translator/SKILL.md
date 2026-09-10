@@ -69,7 +69,7 @@ merge, not before.
 
 ## Language must be resolved before the first gate paints
 
-`MigrationsGate` and `LockGate` (`src/db/migrations.gate.tsx`,
+`MigrationsGate` and `LockGate` (`src/migration/migrations.gate.tsx`,
 `src/auth/lock-gate/lock-gate.component.tsx`) render **before**
 `AppRoot` — which is the only place `useSyncLanguageWithSettings`
 (`src/i18n/use-sync-language-with-settings.ts`) mounts today. A device

@@ -52,7 +52,7 @@ jest.mock('react-native-nitro-sfsymbols', () => {
 
 // @op-engineering/op-sqlite is a native SQLite module with no software
 // fallback under react-test-renderer. `src/db/client.ts` opens a handle and
-// runs the legacy-database migration (`src/db/migrate-legacy-db.ts`) at module
+// runs the legacy-database migration (`src/migration/migrate-legacy-db.ts`) at module
 // load, so every test that transitively imports client.ts (each repository,
 // screen, and navigator test) needs it mocked. Registered globally here rather
 // than duplicated per-file. `executeSync` reports one existing table so the

@@ -12,7 +12,7 @@ const mockOpen = jest.fn((..._a: unknown[]) => ({ execute: encExecute, close: en
 jest.mock('@op-engineering/op-sqlite', () => ({ open: (...a: unknown[]) => mockOpen(...a) }));
 
 const mockReadDbKey = jest.fn<Promise<string | undefined>, []>();
-jest.mock('../keys/db-key', () => ({
+jest.mock('@kiko/db/keys/db-key', () => ({
   readDbKey: () => mockReadDbKey(),
   toSQLCipherRawKey: (k: string) => `x'${k}'`,
 }));
@@ -36,10 +36,10 @@ jest.mock('./migration-bridge', () => ({
 }));
 
 const mockReadToken = jest.fn<Promise<string | undefined>, []>();
-jest.mock('../../monobank/token', () => ({ readToken: () => mockReadToken() }));
+jest.mock('@kiko/monobank/token', () => ({ readToken: () => mockReadToken() }));
 
 const mockReadCredentials = jest.fn();
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   readCredentials: () => mockReadCredentials(),
 }));
 

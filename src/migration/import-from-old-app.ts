@@ -1,12 +1,11 @@
-import { open } from '@op-engineering/op-sqlite';
-
 import {
   type BinanceCredentials,
   saveCredentials,
-} from '../../crypto-sync/binance/binance.credentials';
-import { saveToken } from '../../monobank/token';
-import { LIVE_PLAINTEXT_DATABASE_NAME } from '../encrypted-database';
-import { resetDbKey } from '../keys/db-key';
+} from '@kiko/crypto-sync/binance/binance.credentials';
+import { LIVE_PLAINTEXT_DATABASE_NAME } from '@kiko/db/encrypted-database';
+import { resetDbKey } from '@kiko/db/keys/db-key';
+import { saveToken } from '@kiko/monobank/token';
+import { open } from '@op-engineering/op-sqlite';
 
 import { migrationBridge } from './migration-bridge';
 import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';

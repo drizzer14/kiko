@@ -1,6 +1,5 @@
+import { toSQLCipherRawKey } from '@kiko/db/keys/db-key';
 import { open } from '@op-engineering/op-sqlite';
-
-import { toSQLCipherRawKey } from '../keys/db-key';
 
 import { exportForNewApp } from './export-for-new-app';
 

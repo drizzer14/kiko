@@ -1,8 +1,8 @@
+import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
 import { type DB, isSQLCipher, open } from '@op-engineering/op-sqlite';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
 
 import { generateDbKey, readDbKey, storeDbKey, toSQLCipherRawKey } from './keys/db-key';
-import { migrateLegacyDatabase } from './migrate-legacy-db';
 
 /**
  * The live plaintext database. The pff->kiko rename already migrated every

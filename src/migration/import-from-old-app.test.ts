@@ -15,7 +15,7 @@ const mockOpen = jest.fn((..._a: unknown[]) => ({
 jest.mock('@op-engineering/op-sqlite', () => ({ open: (...a: unknown[]) => mockOpen(...a) }));
 
 const mockResetDbKey = jest.fn(async () => undefined);
-jest.mock('../keys/db-key', () => ({ resetDbKey: () => mockResetDbKey() }));
+jest.mock('@kiko/db/keys/db-key', () => ({ resetDbKey: () => mockResetDbKey() }));
 
 const mockBridge = {
   sharedContainerPath: jest.fn(async (..._a: unknown[]) => CONTAINER as string | null),
@@ -38,10 +38,10 @@ jest.mock('./migration-bridge', () => ({
 }));
 
 const mockSaveToken = jest.fn(async (_t: string) => undefined);
-jest.mock('../../monobank/token', () => ({ saveToken: (t: string) => mockSaveToken(t) }));
+jest.mock('@kiko/monobank/token', () => ({ saveToken: (t: string) => mockSaveToken(t) }));
 
 const mockSaveCredentials = jest.fn(async (_c: unknown) => undefined);
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (c: unknown) => mockSaveCredentials(c),
 }));
 

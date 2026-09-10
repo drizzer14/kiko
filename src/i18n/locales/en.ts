@@ -414,7 +414,7 @@ export const en = {
       confirmMessage: 'This cannot be undone.',
     },
   },
-  // The app-boot gate (src/db/migrations.gate.tsx) — its own UI is the very
+  // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very
   // first paint, before the navigator mounts, so it is keyed here rather than
   // under `common` even though it renders no other chrome.
   migrations: {

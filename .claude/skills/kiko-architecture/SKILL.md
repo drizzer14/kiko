@@ -37,7 +37,7 @@ collection" sections). This skill summarizes the settled contract.
   it never reads `when` to decide what to apply. So journal `when`
   order is NOT load-bearing: a non-monotonic `when` across worktrees is
   harmless (main itself carries a pre-existing 0006/0007 `when`
-  disorder). `src/db/migrations.gate.tsx` owns the launch UI: a loading
+  disorder). `src/migration/migrations.gate.tsx` owns the launch UI: a loading
   state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
 
@@ -120,7 +120,7 @@ The sync pipeline is deliberately functional, not OOP — see
    account half-connected; mirrors `crypto-sync/sync.ts`'s
    `runBalanceSync` ordering. `runSync` does not create the settings
    row itself — the single settings row is guaranteed to exist by the
-   app-boot migrations gate (`src/db/migrations.gate.tsx`) before any
+   app-boot migrations gate (`src/migration/migrations.gate.tsx`) before any
    sync can run.
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
    import each item as a Transaction, UPSERTED on
@@ -566,7 +566,7 @@ steps are the kind of thing that changes as the rollout progresses:
   `executeRawAsync` shape landmine — read that file's comment on
   `DrizzleOPSQLiteClient`/`wrapClientForDrizzle` before touching the
   read path.
-- `src/db/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
+- `src/migration/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
   -> `runMigrations()` -> `settingsRepo.ensure()` -> the module-level
   `applyPersistedLanguage()` helper (reads `settings.language` through
   the repo and calls `i18n.changeLanguage`, swallowing a failure — a
