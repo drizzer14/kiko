@@ -1,4 +1,4 @@
-import { currencyScale, currencySymbol } from './currency';
+import { applySymbolPlacement, currencyScale } from './currency';
 import type { Money } from './money';
 
 export const formatMoney = (money: Money, locale = 'en-US'): string => {
@@ -8,10 +8,7 @@ export const formatMoney = (money: Money, locale = 'en-US'): string => {
     minimumFractionDigits: scale,
     maximumFractionDigits: scale,
   });
-  const symbol = currencySymbol[money.currency];
   const sign = money.minorUnits < 0 ? '-' : '';
 
-  return money.currency === 'UAH'
-    ? `${sign}${formatted} ${symbol}`
-    : `${sign}${symbol}${formatted}`;
+  return applySymbolPlacement(money.currency, sign, formatted);
 };

@@ -1,4 +1,4 @@
-import { type Currency, currencySymbol } from './currency';
+import { applySymbolPlacement, type Currency } from './currency';
 
 // A compact money unit: the divisor that scales a major-unit value into the
 // unit's magnitude, the decimals to render it at, and the letter suffix. Chosen
@@ -76,7 +76,6 @@ export const formatCompactMoney = (
 ): string => {
   const sign = major < 0 ? '-' : '';
   const body = compactNumber(Math.abs(major), unit, locale) + unit.suffix;
-  const symbol = currencySymbol[currency];
 
-  return currency === 'UAH' ? `${sign}${body} ${symbol}` : `${sign}${symbol}${body}`;
+  return applySymbolPlacement(currency, sign, body);
 };
