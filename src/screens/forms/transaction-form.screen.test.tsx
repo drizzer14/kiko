@@ -857,7 +857,7 @@ describe('TransactionFormScreen — category editing', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('sizes the confirm-sheet actions by emphasis: primary Apply regular, secondaries compact', async () => {
+  it('sizes every confirm-sheet action the same as the primary Apply (full-width regular)', async () => {
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
@@ -872,19 +872,20 @@ describe('TransactionFormScreen — category editing', () => {
     await pickCategory(utils, 'Dining');
     await fireEvent.press(utils.getByText('Save'));
 
-    // The all-similar "Apply" is the sheet's single primary CTA, so it keeps the
-    // tall regular size; "Just for this one" and "Cancel" are lower-emphasis
-    // secondary actions, so each takes the compact 44pt self-hugging size.
+    // Every action in this confirm sheet matches the primary "Apply": the tall
+    // regular 50pt size, full width. "Just for this one" and "Cancel" are NOT
+    // shrunk to a compact/inline size here — they are full-width sheet actions.
     const apply = utils.getByRole('button', { name: 'Apply' });
     expect(StyleSheet.flatten(apply.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(apply.props.style).width).toBe('100%');
 
     const one = utils.getByRole('button', { name: 'Just for this one' });
-    expect(StyleSheet.flatten(one.props.style).minHeight).toBe(44);
-    expect(StyleSheet.flatten(one.props.style).width).toBeUndefined();
+    expect(StyleSheet.flatten(one.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(one.props.style).width).toBe('100%');
 
     const cancel = utils.getByRole('button', { name: 'Cancel' });
-    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(44);
-    expect(StyleSheet.flatten(cancel.props.style).width).toBeUndefined();
+    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(cancel.props.style).width).toBe('100%');
   });
 
   it('does NOT offer "Just for this one" on a create flow (no transaction id to target)', async () => {

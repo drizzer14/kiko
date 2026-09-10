@@ -98,15 +98,15 @@ describe('TrendFilterField button label', () => {
 });
 
 describe('TrendFilterField action sizes', () => {
-  it('renders the secondary Clear action as a compact button', async () => {
+  it('sizes the Clear action the same as the primary Save (regular, content-hugging)', async () => {
     const { getByTestId } = await renderField();
     await press(getByTestId(TEST_ID));
 
-    // Clear is the lower-emphasis secondary action in the sheet action row, so
-    // it takes the compact 44pt size rather than the tall regular Save size.
+    // Clear matches the primary Save's tall regular 50pt size; both hug their
+    // content in the trailing action row rather than stretching full width.
     const clear = getByTestId(`${TEST_ID}-clear`);
 
-    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(50);
     expect(StyleSheet.flatten(clear.props.style).width).toBeUndefined();
   });
 

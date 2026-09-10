@@ -150,31 +150,30 @@ describe('AddCategoryRow', () => {
     ).toBe(false);
   });
 
-  it('renders the secondary Cancel action as a compact, self-hugging button', async () => {
+  it('sizes the Cancel action the same as the primary Save (full-width regular half)', async () => {
     const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
 
     await fireEvent.press(getByLabelText('Add category'));
 
-    // Cancel is the lower-emphasis secondary of the inline two-button row, so it
-    // takes the compact 44pt size and hugs its content, unlike the primary Save.
+    // Cancel matches the primary Save: both are tall regular 50pt buttons, each
+    // filling its equal half of the two-button action row.
     const cancel = getByRole('button', { name: 'Cancel' });
 
-    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(44);
-    expect(StyleSheet.flatten(cancel.props.style).width).toBeUndefined();
+    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(cancel.props.style).width).toBe('100%');
   });
 
-  it('keeps the primary Save at the regular size but hugs content beside Cancel', async () => {
+  it('keeps the primary Save at the full-width regular size beside Cancel', async () => {
     const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
 
     await fireEvent.press(getByLabelText('Add category'));
 
-    // Save stays the tall regular primary, but both buttons now hug their
-    // content in one trailing row (no flex:1 half each), so neither stretches
-    // full width — this is what removes the old left-pinned gap beside Cancel.
+    // Save is a tall regular 50pt button filling its equal half of the row, the
+    // same size as Cancel beside it (the pre-audit equal-halves treatment).
     const save = getByRole('button', { name: 'Save' });
 
     expect(StyleSheet.flatten(save.props.style).minHeight).toBe(50);
-    expect(StyleSheet.flatten(save.props.style).width).toBeUndefined();
+    expect(StyleSheet.flatten(save.props.style).width).toBe('100%');
   });
 
   it('persists color:null when the user saves without tapping a swatch', async () => {

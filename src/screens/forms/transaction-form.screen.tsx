@@ -1218,24 +1218,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         </Button>
 
         {editingId !== null && (
-          <Button
-            variant="secondary"
-            size="compact"
-            fullWidth={false}
-            onPress={onApplyOverrideOne}
-            disabled={isApplyingOverrideOne}
-          >
+          <Button variant="secondary" onPress={onApplyOverrideOne} disabled={isApplyingOverrideOne}>
             {t('forms.transaction.applyToThisOne')}
           </Button>
         )}
 
-        <Button
-          variant="ghost"
-          size="compact"
-          fullWidth={false}
-          textColor={theme.colors.negative}
-          onPress={cancelOverride}
-        >
+        <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
           {t('common.cancel')}
         </Button>
       </BottomSheet>

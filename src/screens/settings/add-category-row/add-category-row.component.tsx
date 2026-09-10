@@ -142,14 +142,18 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           accessibilityLabelPrefix={t('categories.newColorPrefix')}
         />
 
-        <Box direction="row" gap={3} style={styles.actions}>
-          <Button variant="secondary" size="compact" fullWidth={false} onPress={collapse}>
-            {t('common.cancel')}
-          </Button>
+        <Box direction="row" gap={3}>
+          <Box style={styles.action}>
+            <Button variant="secondary" onPress={collapse}>
+              {t('common.cancel')}
+            </Button>
+          </Box>
 
-          <Button fullWidth={false} onPress={save} disabled={!canSave}>
-            {t('common.save')}
-          </Button>
+          <Box style={styles.action}>
+            <Button onPress={save} disabled={!canSave}>
+              {t('common.save')}
+            </Button>
+          </Box>
         </Box>
       </Box>
     </GlassSurface>
