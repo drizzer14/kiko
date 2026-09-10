@@ -462,6 +462,49 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     ]);
   });
 
+  // A binance import row carries the stable 'BTC' description (item 12). It rides
+  // the SAME shared upsert as Monobank, which already refreshes `description`, so
+  // an already-imported crypto row whose description was '' gains 'BTC' on the
+  // next sync — with no repo change. These two guard that the behavior B3 relies
+  // on stays intact.
+  const binanceRow = (overrides: Record<string, unknown> = {}) => ({
+    holdingId: 'h-spot',
+    amountMinorUnits: 50_000_000,
+    time: 1,
+    source: 'binance' as const,
+    description: 'BTC',
+    externalId: 'deposit:1',
+    ...overrides,
+  });
+
+  it('refreshes an imported binance description on re-sync while preserving a user category override', async () => {
+    const { tx, captured } = makeAddManyTx([]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([binanceRow()]);
+
+    // `description` is refreshed from the incoming row, so a stored '' becomes
+    // 'BTC' on re-sync; `category` (a user's pick) and `comment` stay out of the
+    // set, so a re-sync never clobbers them.
+    const setKeys = Object.keys(captured.conflict?.set ?? {});
+    expect(setKeys).toContain('description');
+    expect(setKeys).not.toContain('category');
+    expect(setKeys).not.toContain('comment');
+  });
+
+  it('keys the upsert on (source, external id) so a binance import never touches a monobank row', async () => {
+    const { tx, captured } = makeAddManyTx([]);
+    mockTx = tx;
+
+    await transactionsRepo.addManyDedup([binanceRow()]);
+
+    // The conflict target includes `source`, so a binance row can only ever
+    // refresh another binance row — never a monobank merchant row, and never a
+    // manual row (null external id, which never conflicts). This separation is
+    // what protects a Monobank/user description from the binance 'BTC' label.
+    expect(captured.conflict?.target).toEqual([transactions.source, transactions.externalId]);
+  });
+
   it('emits an upsert that copies the excluded row into the bank-owned columns only', async () => {
     const statements: string[] = [];
     // The real Drizzle SQLite dialect, driven through the proxy driver, so this
