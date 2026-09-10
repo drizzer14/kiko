@@ -310,12 +310,13 @@ describe('CategoriesScreen', () => {
     }
   });
 
-  it('gives each card control a >=44pt touch target via the shared ghost Button (iOS HIG)', async () => {
+  it('gives each card control a >=44pt tap target via the shared Button (iOS HIG)', async () => {
     const { getByLabelText } = await renderScreen();
 
-    // The set-default, delete, and both reorder controls are the shared compact
-    // ghost Button, which holds the 44pt minimum touch target (H1 in the HIG
-    // audit). A bare Pressable with only icon padding fell short.
+    // The set-default, delete, and both reorder controls are the shared Button
+    // at the `small` size — a shorter visible pill whose >= 44pt tap target (H1
+    // in the HIG audit) is restored by hitSlop. So the tap target is the visible
+    // minHeight PLUS the hitSlop above and below it, and that must reach 44.
     for (const label of [
       'Set Groceries as default',
       'Delete Groceries',
@@ -323,7 +324,12 @@ describe('CategoriesScreen', () => {
       'Move Transport to bottom',
     ]) {
       const control = getByLabelText(label);
-      expect(StyleSheet.flatten(control.props.style).minHeight).toBe(44);
+      const visibleHeight = StyleSheet.flatten(control.props.style).minHeight as number;
+      const slop = (control.props.hitSlop ?? { top: 0, bottom: 0 }) as {
+        top?: number;
+        bottom?: number;
+      };
+      expect(visibleHeight + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(44);
     }
   });
 
@@ -336,14 +342,20 @@ describe('CategoriesScreen', () => {
     expect(getByLabelText('Delete Other')).toBeDisabled();
   });
 
-  it('renders the default-star marker as the same compact ghost Button shape as the set-default star', async () => {
+  it('renders the default-star marker as the same faint-tint small Button shape as the set-default star', async () => {
     const { getByLabelText } = await renderScreen();
 
-    // The default marker is now a compact ghost Button (44pt touch target),
-    // disabled so it reads as a static marker — the SAME control shape and
-    // padding as the set-default star, not a bare icon with no padding.
+    // The default marker is the same faint-tint `small` Button as the set-default
+    // star, disabled so it reads as a static marker — the SAME control shape and
+    // padding, not a bare icon. Its >= 44pt tap target is restored via hitSlop on
+    // the shorter visible pill.
     const marker = getByLabelText('Other is the default category');
-    expect(StyleSheet.flatten(marker.props.style).minHeight).toBe(44);
+    const visibleHeight = StyleSheet.flatten(marker.props.style).minHeight as number;
+    const slop = (marker.props.hitSlop ?? { top: 0, bottom: 0 }) as {
+      top?: number;
+      bottom?: number;
+    };
+    expect(visibleHeight + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(44);
     expect(marker).toBeDisabled();
   });
 

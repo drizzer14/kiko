@@ -364,6 +364,8 @@ export const en = {
       top: 'Top',
       amount: 'Amount',
       by: 'By',
+      // The section header above the manual-mode category list.
+      categories: 'Categories',
       // The three "Top N" ranking measures. Shared by the "By" chips AND the
       // button's `{{measure}}` interpolation (English has no case inflection).
       measure: {

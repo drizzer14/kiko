@@ -419,14 +419,14 @@ describe('DateRangeField action sizes', () => {
     return utils;
   };
 
-  it('renders the secondary Clear action as a compact, self-hugging button', async () => {
+  it('sizes the Clear action the same as the primary Apply (regular, content-hugging)', async () => {
     const { getByRole } = await open();
 
-    // Clear is a lower-emphasis secondary action, so it takes the compact 44pt
-    // size and hugs its content rather than the tall full-width primary size.
+    // Clear matches the primary Apply's tall regular 50pt size; both hug their
+    // content in the trailing action row rather than stretching full width.
     const clear = getByRole('button', { name: 'Clear' });
 
-    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(50);
     expect(StyleSheet.flatten(clear.props.style).width).toBeUndefined();
   });
 

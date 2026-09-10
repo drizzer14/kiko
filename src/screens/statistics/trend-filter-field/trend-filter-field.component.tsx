@@ -1,6 +1,7 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
@@ -46,9 +47,75 @@ const draftToFilter = (draft: Draft): TrendFilter =>
     : { mode: 'top', amount: draft.amount, by: draft.by };
 
 // The selected manual row's label weight — semibold, so a chosen category reads
-// through weight on top of the raised row fill. A module-level constant (not an
+// through weight on top of the accent fill. A module-level constant (not an
 // inline object) so it stays one stable style reference (mirrors OptionPills).
 const selectedLabelStyle = { fontWeight: '600' } as const;
+
+// A grouped-list section header: the caption type step in the secondary tone,
+// the iOS grouped-form header treatment. It sits one type step BELOW the sheet
+// title and the body-size row labels, so the sheet reads with a clear
+// title > row-label > section-header hierarchy at a glance (title case, per the
+// design system's heading rule — the size and tone carry the hierarchy).
+const SectionHeader: FC<{ children: string }> = ({ children }) => (
+  <Text variant="caption" tone="textSecondary">
+    {children}
+  </Text>
+);
+
+// One manual-mode category row (or the leading "All" row). The SELECTED row
+// paints the filled accent surface — the app's standard selection vocabulary
+// (the OptionPills / ChipRow selected pill) — so a chosen category reads
+// unambiguously at a glance; unselected rows stay transparent. On the accent
+// fill the checkmark, the label, and the category icon all take the always-white
+// `onAccent` tone (the onAccent rule), which also keeps a blue-hued category's
+// glyph legible; unselected, the icon keeps the category's own identity color.
+const ManualCategoryRow: FC<{
+  option: FilterOption;
+  checked: boolean;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}> = ({ option, checked, label, onPress, testID }) => {
+  const { theme } = useUnistyles();
+
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      testID={testID}
+      onPress={onPress}
+      style={checked ? [styles.option, styles.optionSelected] : styles.option}
+    >
+      <Box direction="row" gap={2} style={styles.optionInner}>
+        <Box style={styles.check}>
+          {checked && (
+            <SymbolIcon name="checkmark" size={theme.iconSizes.caption} tone="onAccent" />
+          )}
+        </Box>
+
+        <Box style={styles.icon}>
+          {option.icon != null && (
+            <SymbolIcon
+              name={option.icon}
+              color={checked ? undefined : option.color}
+              tone={checked ? 'onAccent' : 'textSecondary'}
+              size={theme.iconSizes.body}
+              accessibilityLabel={option.label ?? option.value}
+            />
+          )}
+        </Box>
+
+        <Text
+          variant="body"
+          tone={checked ? 'onAccent' : 'textPrimary'}
+          style={checked ? selectedLabelStyle : undefined}
+        >
+          {label}
+        </Text>
+      </Box>
+    </Pressable>
+  );
+};
 
 // Whether the sheet's draft differs from the applied filter. Save is disabled
 // until it does, so a no-op Save (nothing new selected) is impossible.
@@ -165,6 +232,12 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         </Box>
       </Pressable>
 
+      {/* `scrollable={false}`: the sheet title, the section controls, and the
+          Clear/Save action row all stay FIXED. Only the manual-category list
+          (below) owns a ScrollView, so a long category list scrolls while the
+          header and the actions never leave the screen — the whole modal never
+          scrolls as one block (on-device review: the flat, all-scrolling sheet
+          read as almost unreadable). */}
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
@@ -173,113 +246,81 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         testID={`${testID}-sheet`}
         backdropTestID={`${testID}-backdrop`}
       >
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text variant="heading">{t('statistics.trendFilter.title')}</Text>
+        <Text variant="heading">{t('statistics.trendFilter.title')}</Text>
 
-          <Box gap={2}>
-            <Text variant="body" tone="textSecondary">
-              {t('statistics.trendFilter.selection')}
-            </Text>
+        <Box gap={2}>
+          <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 
-            <OptionPills
-              options={MODES}
-              selected={draft.mode}
-              onSelect={setMode}
-              label={(mode) => t(`statistics.trendFilter.${mode}`)}
-              columns={2}
-            />
-          </Box>
+          <OptionPills
+            options={MODES}
+            selected={draft.mode}
+            onSelect={setMode}
+            label={(mode) => t(`statistics.trendFilter.${mode}`)}
+            columns={2}
+          />
+        </Box>
 
-          {draft.mode === 'top' ? (
-            <>
-              <Box gap={2}>
-                <Text variant="body" tone="textSecondary">
-                  {t('statistics.trendFilter.amount')}
-                </Text>
+        {draft.mode === 'top' ? (
+          <>
+            <Box gap={2}>
+              <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
 
-                <OptionPills
-                  options={AMOUNTS}
-                  selected={draft.amount}
-                  onSelect={setAmount}
-                  columns={AMOUNTS.length}
-                />
-              </Box>
+              <OptionPills
+                options={AMOUNTS}
+                selected={draft.amount}
+                onSelect={setAmount}
+                columns={AMOUNTS.length}
+              />
+            </Box>
 
-              <Box gap={2}>
-                <Text variant="body" tone="textSecondary">
-                  {t('statistics.trendFilter.by')}
-                </Text>
+            <Box gap={2}>
+              <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
 
-                <OptionPills
-                  options={MEASURES}
-                  selected={draft.by}
-                  onSelect={setBy}
-                  label={measureLabel}
-                  columns={MEASURES.length}
-                />
-              </Box>
-            </>
-          ) : (
-            <Box gap={1}>
+              <OptionPills
+                options={MEASURES}
+                selected={draft.by}
+                onSelect={setBy}
+                label={measureLabel}
+                columns={MEASURES.length}
+              />
+            </Box>
+          </>
+        ) : (
+          <Box gap={2} style={styles.manualSection}>
+            <SectionHeader>{t('statistics.trendFilter.categories')}</SectionHeader>
+
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
               {manualRows.map((option) => (
-                <Pressable
+                <ManualCategoryRow
                   key={option.value}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: isChecked(option.value) }}
-                  testID={`${testID}-option-${option.value}`}
+                  option={option}
+                  checked={isChecked(option.value)}
+                  label={
+                    option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value)
+                  }
                   onPress={() =>
                     option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
                   }
-                  // A selected row raises a filled surface so a chosen category
-                  // reads as clearly selected at a glance — distinct from an
-                  // unselected transparent row AND from the solid-accent Save
-                  // pill, which a shared accent fill would blend into.
-                  style={
-                    isChecked(option.value) ? [styles.option, styles.optionSelected] : styles.option
-                  }
-                >
-                  <Box direction="row" gap={2} style={styles.optionInner}>
-                    <Box style={styles.check}>
-                      {isChecked(option.value) && (
-                        <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
-                      )}
-                    </Box>
-
-                    <Box style={styles.icon}>
-                      {option.icon != null && (
-                        <SymbolIcon
-                          name={option.icon}
-                          color={option.color}
-                          size={18}
-                          accessibilityLabel={option.label ?? option.value}
-                        />
-                      )}
-                    </Box>
-
-                    <Text
-                      variant="body"
-                      style={isChecked(option.value) ? selectedLabelStyle : undefined}
-                    >
-                      {option.value === FILTER_ALL
-                        ? t('common.all')
-                        : (option.label ?? option.value)}
-                    </Text>
-                  </Box>
-                </Pressable>
+                  testID={`${testID}-option-${option.value}`}
+                />
               ))}
-            </Box>
-          )}
-        </ScrollView>
+            </ScrollView>
+          </Box>
+        )}
 
         <Box direction="row" gap={3} style={styles.actions}>
+          {/* Both actions are disabled while the draft equals the applied
+              filter: Clear would revert to what is already applied, and Save
+              would re-persist it unchanged — neither does anything, so neither is
+              offered until the draft is dirty. */}
           <Button
             variant="secondary"
-            size="compact"
             fullWidth={false}
+            disabled={!dirty}
             onPress={handleClear}
             testID={`${testID}-clear`}
           >

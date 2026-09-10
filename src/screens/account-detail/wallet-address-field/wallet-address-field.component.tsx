@@ -88,8 +88,8 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
-          variant="secondary"
-          size="compact"
+          variant="secondaryTonal"
+          size="small"
           fullWidth={false}
           onPress={handleConnect}
           disabled={status.kind === 'checking' || address.trim() === ''}

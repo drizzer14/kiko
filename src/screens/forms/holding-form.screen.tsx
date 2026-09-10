@@ -581,8 +581,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 {contributions.length > 1 && (
                   <Button
                     variant="destructiveTonal"
-                    size="compact"
+                    size="small"
                     fullWidth={false}
+                    icon="trash"
                     accessibilityLabel={t('forms.holding.removeContribution', {
                       index: index + 1,
                     })}
@@ -594,7 +595,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               </Box>
             ))}
 
-            <Button variant="primary" size="compact" fullWidth={false} onPress={addContribution}>
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              icon="plus"
+              onPress={addContribution}
+            >
               {t('forms.holding.addContribution')}
             </Button>
 

@@ -14,8 +14,13 @@ import HoldingFormScreen from './holding-form.screen';
 // Button component's own tests; this file proves the wiring — that the screen
 // hands the Add/Remove contribution controls the intended variant — by mocking
 // Button to record the `variant` it receives.
-const mockButtonProps: { variant?: string; children: ReactNode; accessibilityLabel?: string }[] =
-  [];
+const mockButtonProps: {
+  variant?: string;
+  size?: string;
+  icon?: string;
+  children: ReactNode;
+  accessibilityLabel?: string;
+}[] = [];
 
 jest.mock('../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -24,12 +29,16 @@ jest.mock('../../design-system/components/button', () => {
     __esModule: true,
     default: (props: {
       variant?: string;
+      size?: string;
+      icon?: string;
       children: ReactNode;
       accessibilityLabel?: string;
       onPress: () => void;
     }) => {
       mockButtonProps.push({
         variant: props.variant,
+        size: props.size,
+        icon: props.icon,
         children: props.children,
         accessibilityLabel: props.accessibilityLabel,
       });
@@ -84,7 +93,7 @@ beforeEach(() => {
 });
 
 describe('HoldingFormScreen contribution button variants', () => {
-  it('hands the Add contribution button the primary (blue accent) variant', async () => {
+  it('hands the Add contribution button the small faint-tint secondaryTonal treatment', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -92,8 +101,13 @@ describe('HoldingFormScreen contribution button variants', () => {
     const addEntries = mockButtonProps.filter((entry) => entry.children === 'Add contribution');
 
     expect(addEntries.length).toBeGreaterThan(0);
+    // The inline Add is a lower-emphasis secondary of the form's Save CTA, so it
+    // takes the faint neutral tint (secondaryTonal) at the shorter `small` size,
+    // with a leading plus glyph — no longer the solid blue `primary` fill.
     for (const entry of addEntries) {
-      expect(entry.variant).toBe('primary');
+      expect(entry.variant).toBe('secondaryTonal');
+      expect(entry.size).toBe('small');
+      expect(entry.icon).toBe('plus');
     }
   });
 
@@ -111,9 +125,13 @@ describe('HoldingFormScreen contribution button variants', () => {
     expect(removeEntries.length).toBeGreaterThan(0);
     // The per-row Remove uses the subtler tinted-destructive variant (a
     // translucent red tint under a red label), not the solid bright
-    // `destructive` fill (on-device review: the solid fill read too bright).
+    // `destructive` fill (on-device review: the solid fill read too bright). It
+    // is the shared small faint-tint treatment with a trash glyph — the SAME
+    // shape the categories Delete reuses (categories.screen.tsx).
     for (const entry of removeEntries) {
       expect(entry.variant).toBe('destructiveTonal');
+      expect(entry.size).toBe('small');
+      expect(entry.icon).toBe('trash');
     }
   });
 });

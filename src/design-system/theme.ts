@@ -100,6 +100,16 @@ export const darkTheme = {
     // rule governs text on a SOLID accent/destructive fill, not on a same-hue
     // tint.
     negativeSubtle: 'rgba(255,69,58,0.18)',
+    // A faint NEUTRAL translucent tint — the iOS `tertiarySystemFill` (dark) —
+    // for the `secondaryTonal` Button variant (a lower-emphasis inline action
+    // that carries a faint tinted background, the neutral counterpart to
+    // `destructiveTonal`'s `negativeSubtle`). This is DISTINCT from the SOLID
+    // `surfaceHigh` (#2C2C2E) a plain `secondary` Button paints: it is
+    // translucent and lighter, so a small inline action (Connect, Sync now, a
+    // per-row Add, the category set-default) reads as a faint tint rather than a
+    // solid raised pill. Over the true-black `background` it stays subtle while
+    // keeping a `textPrimary` (white) label legible on it.
+    neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet). NOT the opaque `background` token: a modal

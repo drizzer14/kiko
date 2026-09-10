@@ -125,12 +125,24 @@ specifically so text on a blue/red fill stays legible even if
 today (both white) but that is not a guarantee to rely on. This
 applies regardless of control
 SIZE (`Button`'s `variantLabelColor` is derived from `variant`, not
-`size`, so a `size="compact"` button gets the same token as
-`size="regular"` for free — see `button.component.tsx`) and applies
+`size`, so any `size` value gets the same token as any other for
+free — read `button.component.tsx`'s current size set rather than
+assuming one example here still exists) and applies
 to a SELECTED icon/pill rendered on an accent fill outside `Button`
 itself, not only to `Button` — `chip-row.component.tsx` and
 `icon-picker-modal.component.tsx`'s selected states both switch to
-`onAccent` for exactly this reason. A new accent-filled control
+`onAccent` for exactly this reason, and so does the Statistics
+trend-filter sheet's selected manual-category row
+(`trend-filter-field.component.tsx`'s `ManualCategoryRow`): its
+selected row paints the same filled `accent` background with
+`onAccent` text/icon/checkmark, REPLACING an earlier `surfaceHigh`
+selected-row treatment — the same filled-accent selection vocabulary
+as `OptionPills`/`ChipRow`, not a one-off. An UNCHECKED trend-filter
+row keeps its own category's identity color instead: `SymbolIcon`
+resolves an explicit `color` prop over its `tone` prop, so the row
+passes `color={checked ? undefined : option.color}` — clearing
+`color` (falling back to the `tone`-driven `onAccent`) only once
+selected. A new accent-filled control
 follows the same rule: read `theme.ts`'s own `onAccent` doc comment,
 then one of these call sites, rather than reinventing the check.
 
@@ -182,17 +194,28 @@ new component can land between reviews of this skill:
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
   `Text` never receives a `Money` object directly.
-- **Button** — the one action button: primary/secondary/destructive/
-  destructiveTonal/ghost variants, an optional leading/trailing SF
-  Symbol icon tinted to a single fixed color regardless of variant.
-  `destructiveTonal` is the iOS "tinted destructive" pattern — a
-  translucent `negativeSubtle` fill under a red `negative` label (a
-  lower-emphasis dangerous action, e.g. the deposit form's per-row
-  Remove), NOT the solid bright `negative` fill of `destructive`. It is
-  the one variant whose label is NOT `onAccent`: a same-hue label on a
-  same-hue tint is the tinted-button convention, so the `onAccent` rule
-  (which governs text on a SOLID accent/destructive fill) does not apply
-  to it. The label has no
+- **Button** — the one action button: primary/secondary/secondaryTonal/
+  destructive/destructiveTonal/ghost variants (read
+  `button.props.d.ts`'s `ButtonVariant` for the exact current set
+  rather than trusting a copy of it here — it grows), an optional
+  leading/trailing SF Symbol icon tinted to a single fixed color
+  regardless of variant. `destructiveTonal` is the iOS "tinted
+  destructive" pattern — a translucent `negativeSubtle` fill under a
+  red `negative` label (a lower-emphasis dangerous action, e.g. the
+  deposit form's per-row Remove and the categories screen's per-card
+  Delete — the two now share the IDENTICAL treatment: `destructiveTonal`
+  + `size="small"` + a leading trash icon, so Delete reads as the same
+  control as Remove everywhere it appears), NOT the solid bright
+  `negative` fill of `destructive`. `secondaryTonal` is its NEUTRAL
+  counterpart — a faint neutral tint from the `neutralSubtle` theme
+  token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
+  `textPrimary` label — the standard treatment for a lower-emphasis
+  inline/standalone secondary action (e.g. the categories screen's
+  "Set as default" star), replacing a plain `secondary` `surfaceHigh`
+  pill for that class of control. Both tonal variants are the exception
+  to the `onAccent` rule below: a same-hue (or neutral) label on a
+  same-hue tint is the tinted-button convention, so the label stays
+  `negative` or `textPrimary`, never `onAccent`. The label has no
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
@@ -207,17 +230,38 @@ new component can land between reviews of this skill:
   convention: `ButtonProps` is a discriminated union (labelled vs icon-only),
   so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
   and a `__DEV__` runtime invariant in the component throws on the same shape
-  for any untyped call path. This is the shared icon-only
-  ghost control — the categories set-default/delete/reorder actions use it
-  (`src/screens/settings/categories.screen.tsx`); build an icon-only control
-  this way, with `variant="ghost"` + `size="compact"` + `fullWidth={false}`,
-  rather than a raw `Pressable` + `SymbolIcon`. (There is no separate
-  `IconButton` primitive; the old one at
+  for any untyped call path. This is the shared icon-only control pattern
+  — the categories screen's move-to-top/move-to-bottom reorder actions
+  (`variant="ghost"` + `size="small"`) and its "Set as default" star
+  (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
+  categories.screen.tsx`) both build an icon-only control this way, plus
+  `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
+  (There is no separate `IconButton` primitive; the old one at
   `src/design-system/components/icon-button/` was deleted when its only
-  consumer went away.) The `regular` size is 50pt tall; the `compact` size
-  holds a 44pt minimum height, the iOS HIG touch-target floor, so a compact
-  or icon-only button is always tappable — never wrap a control in extra hit
-  padding to reach 44pt, use `compact`.
+  consumer went away.)
+
+  **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
+  `ButtonSize` for the exact current set). `regular` is the 50pt tall
+  footer/submit CTA. `compact` is a shorter inline action that still
+  holds a 44pt minimum VISIBLE height — the iOS HIG touch-target floor
+  met by the pill itself, no `hitSlop` needed or applied. `small` is
+  DELIBERATELY SHORTER still: its visible height is `SMALL_MIN_HEIGHT`
+  (34pt, `button.styles.ts`), below the 44pt floor on purpose, so it
+  reads as clearly smaller than `regular`/`compact` — the 44pt HIG tap
+  target is then restored via `hitSlop` (`SMALL_HIT_SLOP`,
+  `button.component.tsx`, applied only when `size === 'small'`), not by
+  the visible pill's own height. **This supersedes any older guidance
+  that a compact/inline button should "never use hitSlop" — `small`
+  exists specifically to pair a short visible pill with a `hitSlop`-
+  restored 44pt tap target, by design, not as a shortcut.** Pick
+  `compact` when the visible pill itself should still read close to
+  full HIG height; pick `small` for the tightest inline/secondary
+  actions, typically paired with `secondaryTonal` or `destructiveTonal`
+  (the categories screen's Delete, "Set as default", and reorder
+  controls above are all `size="small"`). Read `button.styles.ts` and
+  `button.component.tsx` directly for the current height/hitSlop
+  values rather than trusting a copy of the numbers here if they ever
+  drift.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and three neutral/tinted variants of the

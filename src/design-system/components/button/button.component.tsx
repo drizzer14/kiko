@@ -8,6 +8,13 @@ import SymbolIcon from '../symbol';
 import type { ButtonProps } from './button.props';
 import { styles } from './button.styles';
 
+// The small size's visible height (34pt) sits below the 44pt HIG touch-target
+// floor, so this hitSlop restores the tap target above and below the pill:
+// 34 + 5 + 5 = 44. Its width is already >= 44 (see the `small` style's
+// paddingHorizontal), so no horizontal slop is needed — and none is added, so
+// adjacent small icon buttons in a tight row never overlap tap areas.
+const SMALL_HIT_SLOP = { top: 5, bottom: 5 } as const;
+
 const Button: FC<ButtonProps> = ({
   children,
   onPress,
@@ -46,9 +53,17 @@ const Button: FC<ButtonProps> = ({
   const variantLabelColor = match(variant)
     .with('primary', 'destructive', () => theme.colors.onAccent)
     .with('destructiveTonal', () => theme.colors.negative)
-    .with('secondary', 'ghost', () => theme.colors.textPrimary)
+    .with('secondary', 'secondaryTonal', 'ghost', () => theme.colors.textPrimary)
     .exhaustive();
   const labelColor = textColor ?? variantLabelColor;
+
+  // The three sizes: regular (tall CTA/submit), compact (44pt inline), and small
+  // (a shorter inline action whose 44pt tap target is restored via hitSlop).
+  const sizeStyle = match(size)
+    .with('regular', () => styles.regular)
+    .with('compact', () => styles.compact)
+    .with('small', () => styles.small)
+    .exhaustive();
 
   return (
     <Pressable
@@ -57,12 +72,11 @@ const Button: FC<ButtonProps> = ({
       testID={testID}
       onPress={onPress}
       disabled={disabled}
-      style={[
-        styles.button,
-        size === 'compact' ? styles.compact : styles.regular,
-        fullWidth && styles.fullWidth,
-        disabled && styles.disabled,
-      ]}
+      // The small size's visible pill is shorter than 44pt, so it carries a
+      // hitSlop that restores the >= 44pt HIG tap target; regular and compact
+      // already meet 44pt as their visible minHeight, so they take no slop.
+      hitSlop={size === 'small' ? SMALL_HIT_SLOP : undefined}
+      style={[styles.button, sizeStyle, fullWidth && styles.fullWidth, disabled && styles.disabled]}
     >
       {icon !== undefined && (
         <SymbolIcon name={icon} color={labelColor} size={theme.iconSizes.body} />
