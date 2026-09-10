@@ -327,18 +327,30 @@ describe('CategoriesScreen', () => {
     }
   });
 
-  it('hides the delete control on the default category card and shows a filled star marker instead', async () => {
-    const { queryByLabelText, getByLabelText } = await renderScreen();
+  it('renders a disabled Delete on the default category card for layout parity', async () => {
+    const { getByLabelText } = await renderScreen();
 
-    // `other` is the default: no delete, a filled star marker (`star.fill`)
-    // instead — and the default card offers no "Set as default" either.
-    expect(queryByLabelText('Delete Other')).toBeNull();
-    // The marker is now tinted white (`textPrimary` = #FFFFFF, passed straight
-    // through to the native glyph's tintColor), not the old muted gray.
-    expect(getByLabelText('Other is the default category').props.tintColor).toBe('#FFFFFF');
-    // A non-default category still offers delete (now at the card's bottom, as a
-    // labelled "Delete" control).
-    expect(getByLabelText('Delete Groceries')).toBeTruthy();
+    // The default card now ALWAYS renders the Delete control (previously hidden),
+    // but disabled — the default can never be deleted, and the disabled state
+    // keeps the bottom row's layout identical across every card.
+    expect(getByLabelText('Delete Other')).toBeDisabled();
+  });
+
+  it('renders the default-star marker as the same compact ghost Button shape as the set-default star', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    // The default marker is now a compact ghost Button (44pt touch target),
+    // disabled so it reads as a static marker — the SAME control shape and
+    // padding as the set-default star, not a bare icon with no padding.
+    const marker = getByLabelText('Other is the default category');
+    expect(StyleSheet.flatten(marker.props.style).minHeight).toBe(44);
+    expect(marker).toBeDisabled();
+  });
+
+  it('keeps a non-default card Delete enabled', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Delete Groceries')).not.toBeDisabled();
   });
 
   it('tints an uncolored category row icon from the chart set hash', async () => {
@@ -355,11 +367,10 @@ describe('CategoriesScreen', () => {
   it('shows the delete control at the bottom with a visible "Delete" label', async () => {
     const { getAllByText, getByLabelText } = await renderScreen();
 
-    // The delete affordance now carries a visible "Delete" text label — one per
-    // non-default card ('other' is the default and shows no delete), not just an
-    // icon.
-    const nonDefaultCount = SEEDED_CATEGORIES.filter((category) => category.key !== 'other').length;
-    expect(getAllByText('Delete')).toHaveLength(nonDefaultCount);
+    // The delete affordance carries a visible "Delete" text label — one per card
+    // (the default card's is disabled, but still rendered for layout parity), not
+    // just an icon.
+    expect(getAllByText('Delete')).toHaveLength(SEEDED_CATEGORIES.length);
     expect(getByLabelText('Delete Groceries')).toBeTruthy();
   });
 
