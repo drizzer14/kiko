@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { database, write } from '../db/client';
 import { id } from '../db/id';
@@ -332,6 +332,25 @@ export const holdingsRepo = {
       }
       await tx.delete(transactions).where(eq(transactions.holdingId, holdingId));
       await tx.delete(holdings).where(eq(holdings.id, holdingId));
+    }),
+  /**
+   * Close a set of holdings (stamp `closedAt` with the current time) in ONE
+   * transaction, so a bulk close commits all-or-nothing and fires the reactive
+   * `holdings` callback once rather than once per row (kiko-architecture: one
+   * transaction for a bulk write). The Monobank sync's stale-holding
+   * reconciliation calls this for a card/jar the snapshot no longer returns, so
+   * a closed card stops counting toward net worth (kiko-domain). An empty set is
+   * a no-op.
+   */
+  closeMany: (holdingIds: string[]) =>
+    write(async (tx) => {
+      if (holdingIds.length === 0) {
+        return;
+      }
+      await tx
+        .update(holdings)
+        .set({ closedAt: sql`(unixepoch() * 1000)` })
+        .where(inArray(holdings.id, holdingIds));
     }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
     write((tx) =>

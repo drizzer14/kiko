@@ -870,3 +870,26 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     expect(holdingValueAt(edited, ledger, 9_000)).toBe(500_00);
   });
 });
+
+describe('holdingsRepo.closeMany', () => {
+  it('stamps closedAt on the given holdings in one write', async () => {
+    const { captured, tx } = captureSetTx();
+    mockTx = tx;
+
+    await holdingsRepo.closeMany(['h1', 'h2']);
+
+    // The write sets `closedAt` (to the current time via SQL) and scopes with a
+    // where clause, so only the passed ids are closed.
+    expect(Object.keys(captured.set ?? {})).toEqual(['closedAt']);
+    expect(captured.whereCalled).toBe(true);
+  });
+
+  it('writes nothing for an empty id set', async () => {
+    const update = jest.fn();
+    mockTx = { update };
+
+    await holdingsRepo.closeMany([]);
+
+    expect(update).not.toHaveBeenCalled();
+  });
+});
