@@ -55,10 +55,12 @@ const Button: FC<ButtonProps> = ({
         disabled && styles.disabled,
       ]}
     >
-      {icon !== undefined && <SymbolIcon name={icon} color={labelColor} size={18} />}
+      {icon !== undefined && (
+        <SymbolIcon name={icon} color={labelColor} size={theme.iconSizes.body} />
+      )}
       <RNText style={[styles.label, { color: labelColor }]}>{children}</RNText>
       {trailingIcon !== undefined && (
-        <SymbolIcon name={trailingIcon} color={labelColor} size={18} />
+        <SymbolIcon name={trailingIcon} color={labelColor} size={theme.iconSizes.body} />
       )}
     </Pressable>
   );

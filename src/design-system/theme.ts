@@ -28,6 +28,27 @@ const typography = {
   caption: { fontSize: 13, fontWeight: '400' as const },
 } as const;
 
+// Semantic icon sizes, one per type-scale step. An SF Symbol sits beside text
+// almost everywhere it appears, so its size is derived from the paired text
+// token rather than chosen ad hoc: each icon is its type step's `fontSize`
+// times a single fixed ratio, rounded to the nearest point. iOS Human
+// Interface Guidelines (HIG): a symbol should read as a peer of, and sit
+// slightly heavier than, the text beside it, so the glyph stays balanced with
+// the label as Dynamic Type scales the pair together. `body` (20) is the
+// default icon size — it matches the long-standing SymbolIcon default and the
+// account/holding card glyphs; buttons and list rows standardize onto it from
+// their former ad-hoc 18. Keyed by the same names as `typography` so a call
+// site reads `theme.iconSizes.body` next to `theme.typography.body`.
+const ICON_TO_TEXT_RATIO = 1.25;
+const iconSize = (fontSize: number) => Math.round(fontSize * ICON_TO_TEXT_RATIO);
+const iconSizes = {
+  caption: iconSize(typography.caption.fontSize), // 13 -> 16
+  body: iconSize(typography.body.fontSize), // 16 -> 20 (the default)
+  heading: iconSize(typography.heading.fontSize), // 20 -> 25
+  title: iconSize(typography.title.fontSize), // 28 -> 35
+  display: iconSize(typography.display.fontSize), // 44 -> 55
+} as const;
+
 export const darkTheme = {
   colors: {
     background: '#000000', // systemBackground (dark)
@@ -95,4 +116,5 @@ export const darkTheme = {
   spacing,
   radii,
   typography,
+  iconSizes,
 } as const;

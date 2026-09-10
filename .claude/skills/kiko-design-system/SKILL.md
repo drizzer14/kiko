@@ -18,6 +18,27 @@ This project skill carries domain/design knowledge. The plugin's
 is a separate, thin process-wrapper skill for the designer role — the
 two are meant to coexist, read both.
 
+## iOS Human Interface Guidelines (standing reference)
+
+Kiko is a native iOS app, so Apple's iOS Human Interface Guidelines
+(HIG) are the standing reference for every token, size, surface, and
+control. Apply HIG on every design task, on four axes:
+
+- **Touch targets** — every control is at least 44pt x 44pt. A small
+  glyph needs padding or `hitSlop` to reach it.
+- **SF Symbol sizing** — a symbol reads as a peer of the text beside
+  it (see `iconSizes` under "Token categories"); it scales with its
+  paired type step.
+- **Spacing** — from the shared `theme.spacing` scale, never a raw
+  pixel value.
+- **Contrast and materials/glass** — legible contrast on the dark
+  theme (WCAG AA for text), and the `GlassSurface` / `BottomSheet`
+  materials used per "GlassSurface" below.
+
+The ranked, file-grounded audit of the app against these axes lives at
+`docs/design/2026-09-10-ios-hig-audit.md`. Read it before a design task
+to see the open findings; do not restate its findings here.
+
 ## Dark-only theme
 
 Kiko is dark-only: there is no appearance toggle, no light theme, and
@@ -68,7 +89,7 @@ theme:
 
 ## Token categories
 
-Four token categories, defined once in a single theme module:
+Five token categories, defined once in a single theme module:
 
 - **color** — background, surface (per elevation level), primary
   text, secondary text, accent(s), positive-money, negative-money.
@@ -77,9 +98,19 @@ Four token categories, defined once in a single theme module:
 - **typography** — font sizes/weights/line-heights for the type
   scale used across screens.
 - **radii** — the corner-radius scale for surfaces and controls.
+- **iconSizes** — the semantic icon-size scale for SF Symbols
+  (`SymbolIcon`), keyed by the same names as `typography`
+  (`caption`/`body`/`heading`/`title`/`display`). Each size is its
+  paired type step's `fontSize` times one fixed ratio, rounded to the
+  nearest point, so a glyph stays balanced with the label beside it.
+  `body` is the default `SymbolIcon` size — an icon with no explicit
+  size is a body-context glyph. Read `theme.ts` for the ratio and the
+  current values; never restate the numbers here. A call site passes
+  `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
+  checkmark beside caption text), never an inline literal like `18`.
 
-Components read tokens; they never hardcode a raw color, spacing, or
-radius value inline. The same rule extends to layout: prefer a
+Components read tokens; they never hardcode a raw color, spacing,
+radius, or icon-size value inline. The same rule extends to layout: prefer a
 design-system prop over an inline style whenever one exists — `Box`
 has a `direction` prop, so write `<Box direction="row">`, not
 `<Box style={{ flexDirection: 'row' }}>`. An inline style bypasses the

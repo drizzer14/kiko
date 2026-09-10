@@ -11,17 +11,22 @@ import type { SymbolProps } from './symbol.props';
 // e.g. `import SymbolIcon from '.../design-system/components/symbol'`.
 const SymbolIcon: FC<SymbolProps> = ({
   name,
-  size = 20,
+  size,
   tone = 'textSecondary',
   color,
   accessibilityLabel,
 }) => {
   const { theme } = useUnistyles();
+  // The default is the `body` icon-size token (see theme.ts), not a literal:
+  // an icon with no explicit size reads as a body-context glyph. A call site
+  // still passes `theme.iconSizes.caption` / `.heading` / etc. for another
+  // type context.
+  const resolvedSize = size ?? theme.iconSizes.body;
 
   return (
     <SFSymbolView
       name={name}
-      size={size}
+      size={resolvedSize}
       // See symbol.color.ts: SFSymbolView's tintColor only accepts hex,
       // while theme.colors.textSecondary is an rgba() string. Passed
       // through unconverted, the native side fails to parse it and falls

@@ -338,7 +338,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       <Box direction="row" gap={2} style={styles.rowLead}>
                         <SymbolIcon
                           name={category.icon}
-                          size={18}
+                          size={theme.iconSizes.body}
                           tone="textSecondary"
                           color={resolveCategoryColor(
                             category.color,
