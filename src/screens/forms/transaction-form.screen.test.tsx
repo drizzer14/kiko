@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 
@@ -1110,17 +1110,27 @@ describe('TransactionFormScreen — Exchange mode', () => {
   });
 
   it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
-    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
-    await fireEvent.press(getByText('Exchange'));
+    const utils = await renderAddFromHolding('cash-1');
+    await fireEvent.press(utils.getByText('Exchange'));
 
-    // Before a destination is picked the received currency is unknown, so no
-    // suffix shows; the sent (Value Out) leg already shows the source glyph.
-    await fireEvent.press(getByLabelText('To'));
-    await fireEvent.press(getByText('Cash USD'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
 
-    // Value Out reads in hryvnia (source), Value In in dollars (destination).
-    expect(getByText('₴')).toBeTruthy();
-    expect(getByText('$')).toBeTruthy();
+    // Scope each glyph to its own field so neither passes by matching the
+    // other leg's suffix: the sent (Value Out) leg reads in the source currency
+    // (UAH), the received (Value In) leg in the destination currency (USD).
+    const suffixWithin = (label: string): ReturnType<typeof within> => {
+      const field = utils.getByLabelText(label).parent;
+
+      if (field === null) {
+        throw new Error(`${label} field has no container`);
+      }
+
+      return within(field);
+    };
+
+    expect(suffixWithin('Value Out').getByText('₴')).toBeTruthy();
+    expect(suffixWithin('Value In').getByText('$')).toBeTruthy();
   });
 
   it('saves an exchange with correct minor units and holding ids', async () => {

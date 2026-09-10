@@ -150,15 +150,11 @@ const resolveDescriptionPlaceholder = (
     ? defaultTransactionDescription(holding.name, mode === 'expense' ? -1 : 0, t)
     : t('forms.transaction.description');
 
-// Whether a money field holds a strictly positive number — the same
-// empty/NaN/`<= 0` rejection every `save` path applies before it writes. A
-// blank or junk field parses to NaN, and `NaN <= 0` is false, so both are
-// caught by the leading emptiness/NaN checks rather than the magnitude one.
-const isPositiveAmountText = (text: string): boolean => {
-  const magnitude = parseAmount(text);
-
-  return text.trim() !== '' && !Number.isNaN(magnitude) && magnitude > 0;
-};
+// Whether a money field holds a strictly positive number — the same guard every
+// `save` path applies before it writes. `parseAmount` yields NaN for a blank,
+// whitespace, or junk field, and `NaN > 0` is false, so one comparison covers
+// every rejected case (the same idiom as `contribution-form`'s `canSave`).
+const isPositiveAmountText = (text: string): boolean => parseAmount(text) > 0;
 
 // Whether the footer's Save button is disabled, per mode — each branch mirrors
 // exactly what that mode's `save` path validates before it writes:
