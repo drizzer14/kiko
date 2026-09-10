@@ -243,12 +243,15 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it('renders in scroll mode and drives the nav title from the name, with no custom header title', async () => {
+  it('renders a virtualized ledger list and drives the nav title from the name, with no custom header title', async () => {
     seed(cashHolding);
 
     const { getByTestId } = await renderScreen();
 
-    expect(getByTestId('screen-scroll-view')).toBeTruthy();
+    // The transaction ledger is a virtualized FlatList that owns the screen's
+    // scrolling (so a synced card's thousands of rows never all mount at once) —
+    // the screen is no longer a plain scroll view.
+    expect(getByTestId('ledger-list')).toBeTruthy();
     // The name is the plain string `title` — the native large title — with NO
     // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
     // moved beside the Value amount in the body).
