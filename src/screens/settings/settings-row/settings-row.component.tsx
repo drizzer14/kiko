@@ -19,7 +19,9 @@ const SettingsRow: FC<SettingsRowProps> = ({ icon, label, onPress, children, ...
     <Box direction="row" style={styles.header}>
       <Box direction="row" gap={3} style={styles.rowLead}>
         {icon !== undefined && <SymbolIcon name={icon} tone="textSecondary" />}
-        <Text variant="body">{label}</Text>
+        <Box style={styles.label}>
+          <Text variant="body">{label}</Text>
+        </Box>
       </Box>
       {onPress !== undefined && (
         // The chevron is a decorative affordance: the row's own button role

@@ -1,5 +1,12 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
 import { i18n } from '../i18n';
+import {
+  beginProgressSession,
+  commitHolding,
+  commitWork,
+  endProgressSession,
+  registerWork,
+} from '../monobank/sync-status';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '../repositories/holdings.repo';
 
@@ -101,25 +108,48 @@ export const runBalanceSync = async <Deps>(
   overrides: Partial<BalanceSyncDeps> = {},
 ): Promise<BalanceSyncResult> => {
   const deps: BalanceSyncDeps = { ...defaultDeps, ...overrides };
-  const accountId = await resolveTargetAccount(deps, provider.id);
-  const holdings = await deps.listHoldingsByAccount(accountId);
-  const balances = await provider.fetchBalances(providerDeps, { accountId, holdings });
+  // Enter the shared progress session (see `src/monobank/sync-status.ts`) so this
+  // crypto sync feeds the same determinate bar as a concurrent Monobank run. The
+  // `finally` leaves it on EVERY path — a failed fetch never strands the bar.
+  beginProgressSession();
+  try {
+    const accountId = await resolveTargetAccount(deps, provider.id);
+    const holdings = await deps.listHoldingsByAccount(accountId);
+    const balances = await provider.fetchBalances(providerDeps, { accountId, holdings });
 
-  await deps.updateAccount(accountId, { institution: provider.id });
-  const syncedAt = deps.now();
+    await deps.updateAccount(accountId, { institution: provider.id });
+    const syncedAt = deps.now();
 
-  for (const balance of balances) {
-    await deps.upsertHolding({
-      accountId,
-      name: balance.name,
-      type: 'crypto_asset',
-      currency: balance.currency,
-      balanceMinorUnits: balance.balanceMinorUnits,
-      metadata: { syncedAt },
-      metadataField: provider.metadataField,
-      metadataKey: balance.metadataKey,
-    });
+    // Every returned holding does real work: a crypto sync has no balance-diff
+    // skip — it always reads live balances — so each holding is ONE work unit and
+    // one holding on the weighted bar (a light balance fetch, versus a Monobank
+    // card weighted by its statement-window count). Registered BEFORE the first
+    // upsert so the denominator is known up front; a run that returns no balance
+    // registers nothing, so the bar never appears for it (the no-op guard).
+    if (balances.length > 0) {
+      registerWork(balances.length, balances.length);
+    }
+
+    for (const balance of balances) {
+      await deps.upsertHolding({
+        accountId,
+        name: balance.name,
+        type: 'crypto_asset',
+        currency: balance.currency,
+        balanceMinorUnits: balance.balanceMinorUnits,
+        metadata: { syncedAt },
+        metadataField: provider.metadataField,
+        metadataKey: balance.metadataKey,
+        renameFromDefault: balance.renameFromDefault,
+      });
+      // One crypto holding's balance has committed: advance the bar one work unit
+      // and complete the holding for the label.
+      commitWork();
+      commitHolding();
+    }
+
+    return { syncedHoldings: balances.length };
+  } finally {
+    endProgressSession();
   }
-
-  return { syncedHoldings: balances.length };
 };

@@ -7,10 +7,9 @@ description: Invoke when touching theme tokens, react-native-unistyles styles, a
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
-`src/design-system/theme.ts`, which now ships two themes —
-`darkTheme` and `lightTheme` — sharing one shape (spacing, radii,
-typography) but each with its own `colors` and its own per-scheme
-entity/chart palette (`palette.ts`). This skill states the method and
+`src/design-system/theme.ts`, which ships a single `darkTheme` (spacing,
+radii, typography, `colors`) plus its own entity/chart palette
+(`palette.ts`). The app is dark-only. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
 current values rather than trusting a copy of them here.
 
@@ -19,41 +18,33 @@ This project skill carries domain/design knowledge. The plugin's
 is a separate, thin process-wrapper skill for the designer role — the
 two are meant to coexist, read both.
 
-## Dark and light themes
+## Dark-only theme
 
-Kiko ships both a dark theme and a light theme (`darkTheme` /
-`lightTheme` in `theme.ts`), registered with `adaptiveThemes: true`
-so a fresh install follows the OS appearance. The user can instead
-pin `'light'` or `'dark'`, or go back to `'system'`; the choice is
-persisted in `settings.appearance` (`src/db/schema.ts`) and applied
-by the shared `applyAppearance` mapping (`src/appearance/appearance.ts`,
-mapped with ts-pattern's `match().exhaustive()`), which flips
-`UnistylesRuntime.setAdaptiveThemes`/`setTheme` to match AND drives the
-native iOS interface style through React Native 0.87's
-`Appearance.setColorScheme` (`'light'`/`'dark'` to pin, `'auto'` for
-`'system'` to clear the override). The native call is what makes native
-chrome — the bottom tab bar, stack headers/large-title blur, system
-controls, the native date picker — follow the chosen scheme; without it
-those surfaces resolve against the OS style (or, formerly, a hard
-`UIUserInterfaceStyle = Dark` Info.plist pin that is now removed). The
-`'light'`/`'dark'` literal from the exhaustive match is already the
-concrete native scheme, so no `resolveColorScheme` mapping is needed
-inside `applyAppearance` itself. Two callers
-apply it: `useSyncAppearanceWithSettings`
-(`src/appearance/use-sync-appearance-with-settings.ts`), mounted from
-`AppRoot` for a LIVE change from the Settings screen, and
-`MigrationsGate`'s `applyPersistedAppearance`
-(`src/db/migrations.gate.tsx`), which reads the persisted value and
-applies it before `MigrationsGate`/`LockGate` first paint — those
-gates mount before `AppRoot` does, so without this a user who pinned
-`'light'`/`'dark'` would see a cold-launch flash of the OS appearance
-first. Any native
-surface that needs a plain `'light' | 'dark'` scheme rather than a
-Unistyles theme name (a `LiquidGlassView`, a native tab bar) goes
-through `resolveColorScheme` (`src/design-system/color-scheme.ts`),
-not a hand-rolled mapping. Read `theme.ts`, `palette.ts`, and
-`color-scheme.ts` directly for the current values and mapping rather
-than trusting a copy of them here.
+Kiko is dark-only: there is no appearance toggle, no light theme, and
+no runtime scheme switching. `src/design-system/unistyles.ts` registers
+a single `darkTheme` (`{ dark }`) with `initialTheme: 'dark'` — there
+is nothing to pick between, so `adaptiveThemes` is not used either.
+`UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
+is what keeps native chrome (bottom tab bar, stack headers/large-title
+blur, system controls, the native date picker) on the dark appearance
+regardless of the device's own OS setting — there is no
+`Appearance.setColorScheme` call anywhere driving it live. React
+Navigation's own native chrome uses `navigationDarkTheme`
+(`src/navigation/dark-theme.ts`), which now sources its `colors` from
+concrete dark hex values matching the design-system dark tokens
+directly, rather than an OS-trait-resolving `PlatformColor` — with a
+single fixed appearance there is nothing for a semantic color to
+repaint in response to. Read `dark-theme.ts` directly for the exact
+field mapping rather than restating it here.
+
+`settings.appearance` (`src/db/schema.ts`) still exists as a schema
+column — migrations here are additive-only, so a removed feature's
+harmless column is retained rather than dropped — but it has no reader
+or writer anywhere in `src/` any more; it is pinned as a documented
+dead column in `src/db/settings-columns.test.ts`'s
+`DOCUMENTED_READERLESS_COLUMNS` list, the same treatment as
+`settings.lockGraceSeconds` (see `kiko-domain`'s "App lock / security
+settings").
 
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
@@ -94,19 +85,37 @@ has a `direction` prop, so write `<Box direction="row">`, not
 `<Box style={{ flexDirection: 'row' }}>`. An inline style bypasses the
 one place a layout convention is supposed to live.
 
+**The `onAccent` rule.** Any text or icon sitting on a filled
+accent/destructive BACKGROUND must use the always-white `onAccent`
+color token (`theme.colors.onAccent`, `theme.ts`), never
+`textPrimary` — kept as its own token, distinct from `textPrimary`,
+specifically so text on a blue/red fill stays legible even if
+`textPrimary`'s value ever changes; the two happen to share a value
+today (both white) but that is not a guarantee to rely on. This
+applies regardless of control
+SIZE (`Button`'s `variantLabelColor` is derived from `variant`, not
+`size`, so a `size="compact"` button gets the same token as
+`size="regular"` for free — see `button.component.tsx`) and applies
+to a SELECTED icon/pill rendered on an accent fill outside `Button`
+itself, not only to `Button` — `chip-row.component.tsx` and
+`icon-picker-modal.component.tsx`'s selected states both switch to
+`onAccent` for exactly this reason. A new accent-filled control
+follows the same rule: read `theme.ts`'s own `onAccent` doc comment,
+then one of these call sites, rather than reinventing the check.
+
 ## Styling layer: react-native-unistyles v3
 
-`react-native-unistyles` (^3.3.0) is the styling layer. There are two
-themes authored as Unistyles v3 theme objects — the OLED `darkTheme`
-above and a matching `lightTheme` — both registered in
-`src/design-system/unistyles.ts` as `{ dark, light }` (dark first) with
-`adaptiveThemes: true`, so a fresh install follows the OS appearance and
-`UnistylesRuntime.setTheme` can switch by name. Style components against
-the theme's tokens, not literal values, so both themes (and any future
-refinement) resolve from the same token keys — the token keys are the
-contract, the two themes just supply different values per key. The token
-values live in `theme.ts` (`darkTheme`/`lightTheme`) and
-`palette.ts`; read those directly rather than restating them here.
+`react-native-unistyles` (^3.3.0) is the styling layer. A single
+Unistyles v3 theme object — the OLED `darkTheme` above — is registered
+in `src/design-system/unistyles.ts` as `themes = { dark: darkTheme }`,
+with `settings: { initialTheme: 'dark' }`. There is no second theme to
+switch to, so there is no `adaptiveThemes` and no runtime
+`UnistylesRuntime.setTheme` call anywhere. Style components against
+the theme's tokens, not literal values, so the token keys stay the one
+contract every component styles against, even though there is only one
+theme supplying values today. The token values live in `theme.ts`
+(`darkTheme`) and `palette.ts`; read those directly rather than
+restating them here.
 
 ## Component set
 
@@ -133,38 +142,65 @@ new component can land between reviews of this skill:
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
-  color tokens; other text usage composes on top of this.
+  color tokens; other text usage composes on top of this. Its `style`
+  prop intentionally EXCLUDES `color` so the `tone` token stays
+  authoritative — a tappable inline link (the pie legend's "Show all"
+  toggle) uses `tone="accent"` (systemBlue), never an inline color;
+  read `text.props.d.ts`/`text.styles.ts` for the current tone set.
 - **MoneyText** — formats a `Money` value (see `kiko-domain`) and
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
   `Text` never receives a `Money` object directly.
-- **Button** — the one action button: primary/secondary/destructive
-  variants, an optional leading/trailing SF Symbol icon tinted to a
-  single fixed color regardless of variant. The label has no
+- **Button** — the one action button: primary/secondary/destructive/
+  destructiveTonal/ghost variants, an optional leading/trailing SF
+  Symbol icon tinted to a single fixed color regardless of variant.
+  `destructiveTonal` is the iOS "tinted destructive" pattern — a
+  translucent `negativeSubtle` fill under a red `negative` label (a
+  lower-emphasis dangerous action, e.g. the deposit form's per-row
+  Remove), NOT the solid bright `negative` fill of `destructive`. It is
+  the one variant whose label is NOT `onAccent`: a same-hue label on a
+  same-hue tint is the tinted-button convention, so the `onAccent` rule
+  (which governs text on a SOLID accent/destructive fill) does not apply
+  to it. The label has no
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
-- **IconButton** (`src/design-system/components/icon-button/`) — the
-  icon-only action button: a single tappable SF Symbol (`symbol` prop),
-  with `onPress`, `disabled`, `accessibilityLabel`, `testID`, and
-  theme-driven `tint`/`size`. An icon-only control has no visible text,
-  so it must be given an `accessibilityLabel`. `disabled` dims to the
-  shared `DISABLED_OPACITY` token (`src/design-system/disabled-opacity.ts`)
-  — the SAME dimming the `Button` uses; neither primitive hardcodes the
-  value, and a third disabled control must reuse the token too, never a
-  fresh inline `opacity`. Left unset, `tint` falls back to `SymbolIcon`'s
-  own default tone and `size` defaults to the Button icon size (18).
-  Reach for `IconButton` for any control that is JUST an icon (e.g. the
-  Statistics trend Reset); use `Button` when there is a text label.
+  The shared `DISABLED_OPACITY` token
+  (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
+  pressable applies — `Button` reads it, and any new disabled pressable
+  reuses it too, never a fresh inline `opacity`. (There is no `IconButton`
+  primitive: an icon-only action button once lived at
+  `src/design-system/components/icon-button/`, but its only consumer — the
+  Statistics trend Reset — was removed with the trend filter sheet redesign,
+  so the dead primitive was deleted. Build an icon-only control from a
+  `Pressable` + `SymbolIcon` with an `accessibilityLabel`, or reinstate the
+  primitive if several consumers appear.)
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
-  optional `bordered` edge, and an optional flat entity-color tint
-  background — see "Entity color and tint" below.
+  optional `bordered` edge, and three neutral/tinted variants of the
+  backdrop under the glass. A `tint` (an entity card) paints an OPAQUE
+  `surface` backdrop and an entity-color wash — see "Entity color and
+  tint" below. A `transparent` (a neutral frosted see-through PANEL —
+  the settings, system, and category cards, the Statistics screen's
+  chart cards, and the Home net-worth card) paints a TRANSLUCENT
+  `surfaceTranslucent` backdrop and no wash, so the screen behind reads
+  through while the drift/pop-in stays softened; a `tint` always wins
+  over it. The `transparent`-vs-`tint` split is the rule for a new
+  surface: a neutral card (settings, a chart, a summary) reads well as
+  a frosted panel and takes `transparent`; an entity card (account,
+  holding) keeps its opaque `tint`. Neither prop keeps the fully-live see-through material (no
+  backdrop). Read `glass-surface.props.d.ts` for the exact current prop
+  set rather than trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
-  `Modal + backdrop + Box` again. It caps its own height at a fixed
+  `Modal + backdrop + Box` again. The sheet is a GROUPED surface: its
+  base is the `sheetBackground` token (the iOS systemGroupedBackground/
+  dark equivalent), one level BELOW the `surfaceHigh` cards/controls on
+  it, so a control (e.g. an OptionPills selected pill) reads as raised
+  instead of blending into the sheet — it used `surfaceHigh` itself
+  before, the same tone as a selected pill. It caps its own height at a fixed
   66%-of-window ceiling and takes an optional `maxHeight` prop that
   can only tighten that cap further, plus a `scrollable` prop
   (defaults `true`) that wraps `children` in a `ScrollView` so
@@ -185,7 +221,16 @@ new component can land between reviews of this skill:
 - **Switch** — a labeled toggle wrapping RN's `Switch` with theme
   track/thumb colors.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens.
+  theme tokens. Its disabled chrome (border/background/opacity) comes
+  from the shared `disabledFieldStyle(theme)` helper
+  (`src/design-system/disabled-field-style.ts`); `DateField` and
+  `TimeField` (`src/screens/forms/`) consume the SAME helper so a
+  read-only date/time field renders identically to a read-only text
+  field. This is a DIFFERENT token from the pressable `DISABLED_OPACITY`
+  token above (`disabled-opacity.ts`) — a disabled field is a different
+  control class from a disabled pressable (e.g. Button), and the two must
+  not be conflated. A third disabled-field-like control reuses
+  `disabledFieldStyle`, not a fresh inline dim.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **CurrencySwitch** — a segmented base-currency toggle pill; not a
@@ -198,9 +243,9 @@ new component can land between reviews of this skill:
   wrap (`CurrencySwitch`'s 4 options, `LanguageSwitch`'s 2) via an
   optional `columns` prop (default `2`); a consumer with a different,
   known option count that must render as a single equal-width row
-  instead of wrapping — `AppearanceSwitch`'s 3 — passes
-  `columns={appearances.length}`. Do not add a second, parallel way to
-  force a row count; extend/override `columns` instead.
+  instead of wrapping passes an explicit `columns={n}` matching its own
+  option count. Do not add a second, parallel way to force a row count;
+  extend/override `columns` instead.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
@@ -237,35 +282,14 @@ where they can drift. As of this writing the pipeline is:
   `stored ?? typeDefault` — that pattern misses an empty-string stored
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
-  of silently falling back. Takes an optional third `colorScheme`
-  argument (`'light' | 'dark'`, defaults to `'dark'`) that affects both
-  the gray fallback AND a valid stored hex: a stored override is
-  persisted as an absolute `#RRGGBB` of whichever theme was active
-  when the user picked it (`ColorPicker` hands `onSelect` the active
-  theme's raw swatch hex), so an existing row can hold, forever, the
-  OTHER scheme's hex for a swatch — e.g. `white` picked on dark
-  (`#FFFFFF`) with no update after the user switches to light, where
-  `white` should render as `#000000` (see `palette.ts`). Rather than a
-  destructive migration rewriting stored rows, `resolveEntityColor`
-  reverse-maps a stored hex it recognizes as a swatch of the OTHER
-  scheme's palette to the CURRENT scheme's paired counterpart, by
-  swatch NAME (the two palettes are paired 1:1 by key — "only ever
-  GROW a set" per `palette.ts`'s own doc comment, so the pairing never
-  dangles). A hex that already belongs to the current scheme's own
-  palette, or that isn't a recognized swatch of EITHER scheme (a
-  genuine custom/legacy value), passes through unchanged — this is
-  what keeps a value that predates the palette safe. The gray fallback
-  resolves from the matching per-theme palette
-  (`entityColorsByScheme` in `palette.ts`), not a single hardcoded
-  gray.
+  of silently falling back. The gray fallback resolves from the single
+  dark palette (`entityColorsDark` in `palette.ts`).
 - `entityCardBackground` (`entity-tint.ts`) — a card's flat, OPAQUE
   `#RRGGBB` background (never an `rgba(...)` string; it does not go
   through `entityTintBackground`'s alpha compositing): the resolved
-  color darkened (dark theme) or lightened (light theme), fed
-  straight to `GlassSurface`'s `tint` prop. Direction is an optional
-  second `colorScheme` argument (`'light' | 'dark'`, defaults to
-  `'dark'`) — darken keeps white body text legible, lighten keeps
-  black body text legible. Replaced a 45deg two-stop gradient wash
+  color darkened toward black, fed straight to `GlassSurface`'s `tint`
+  prop — darkening keeps white body text legible on the dark theme.
+  Replaced a 45deg two-stop gradient wash
   (design review: a plain darker solid reads calmer than a diagonal
   blend of two near-identical hues), then a translucent flat wash
   (a device bug: darkening a color that is then stamped at low alpha
@@ -323,7 +347,10 @@ as a plain `View` with no glass effect — so the fallback styling lives
 in the `else` branch's `View`, not as a style merged onto
 `LiquidGlassView` "just in case." A new prop that changes the surface's
 appearance (a new tint wash, a new border style) must be applied
-to **both** branches, or it silently only works on iOS 26+.
+to **both** branches, or it silently only works on iOS 26+. The
+`transparent` variant is the canonical case: it paints its translucent
+fill as a backdrop UNDER the glass on the glass path AND as the base
+fill on the fallback path, so both paths read see-through.
 
 ## Wrapping a React Native primitive
 

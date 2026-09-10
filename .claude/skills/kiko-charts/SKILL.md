@@ -32,19 +32,27 @@ their current shape before extending or copying the pattern to a new
 chart; it is the most complete example in the app and includes:
 
 - a Y-axis tick set (`buildTicks`) spread evenly across the y-domain,
-  which `buildScales` and `buildTicks` both anchor SYMMETRICALLY on
-  `startReference` (`[startReference ± halfRange]`, where `halfRange` is
-  the larger distance from the reference to either data extreme) rather
-  than tightly auto-fitting the data's own min/max — so the dashed
-  baseline holds a STABLE centred position and a dip below it renders
-  proportionally instead of the baseline flipping from domain-min to
-  domain-max (teleporting across the plot) the instant net worth crosses
-  the reference; drawn with a narrow, fixed-width label column
+  which `buildScales` and `buildTicks` both take as
+  `[niceFloor(minValue), maxValue]` — the net worth's OWN minimum
+  (floored to a nearby round number via `niceFloor`/`niceStep`) up to its
+  own maximum, where `minValue`/`maxValue` span the plotted amounts AND
+  the `startReference` (so the dashed baseline always stays on-screen and
+  the floor can never sit above it). This REPLACED an earlier symmetric
+  `[startReference ± halfRange]` domain, which pushed the bottom far below
+  the data whenever net worth sat mostly above the range start, so the
+  line hugged the top and the lower half of the plot went to waste. The
+  trade-off: the dashed baseline is no longer pinned to the plot centre —
+  it now sits at its true value position (near the bottom when it is the
+  series minimum, near the top when it is the maximum). The floor step is
+  a nice 1/2/5/10×10^k increment of about `VALUE_PADDING_RATIO` of the
+  span, so the bottom is a clean figure at most one step below the
+  minimum; drawn with a narrow, fixed-width label column
   (`net-worth-line.styles.ts`'s `Y_AXIS_WIDTH_UNITS`) sized for a compact
   money string (`adjustsFontSizeToFit`), not the widest possible label —
   the column is deliberately narrow so it does not steal plot width — plus
-  a FLAT-range collapse case (every amount equal to `startReference`, e.g.
-  a single point or a balance that never moved) that returns just one tick
+  a FLAT-range collapse case (`maxValue === minValue` — every amount and
+  the reference equal, e.g. a single point or a balance that never moved)
+  that returns just one tick
   instead of spreading `TICK_COUNT` ticks across a zero-width range, which
   would otherwise draw every label and every Y gridline on top of each
   other at the same y;
@@ -109,6 +117,38 @@ native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
 
+## Net-worth stroke is sign-colored per segment
+
+The net-worth line's `<Polyline>` STROKE is colored green where the
+line is at or above the dashed `startReference` baseline and red
+where it is below, not a single fixed color — `buildLineSegments`
+(`net-worth-line.component.tsx`) splits the plotted points into
+contiguous same-sign runs, one `<Polyline>` per run. It deliberately
+REUSES `toAreaPath`'s exact crossing-x formula so a segment's split
+lands at the identical x as the fill's own crossing, and the line and
+fill never visually disagree — read both functions together rather
+than assuming the stroke split is independently derived.
+
+The stroke `testID` changed from a single `net-worth-line-polyline`
+to per-segment `net-worth-line-polyline-${segment.key}`. This is
+load-bearing for any test/consumer that queries the stroke: a fixed
+`getByTestId('net-worth-line-polyline')` no longer matches anything
+— query with a prefix match (e.g. `getAllByTestId(/^net-worth-line-polyline-/)`),
+the pattern `statistics.screen.test.tsx` and
+`net-worth-line.component.test.tsx` already use. A non-crossing series
+still renders as exactly one segment, so the prefix query also covers
+the common case.
+
+The red/negative area gradient uses a HIGHER opacity than the
+green/positive one, not the same constant for both: alpha-compositing
+a translucent color over the OLED true-black background
+(`darkTheme.colors.background`, `#000000`) reads faint at an alpha
+that would read fine over a lighter surface, so the negative band
+needs more opacity to stay visibly legible against true black. Read
+the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
+`net-worth-line.component.tsx` for the current values rather than
+restating them here.
+
 ## Legend percent labels sum to 100
 
 `pie-chart.component.tsx`'s legend column never rounds a slice's share
@@ -157,10 +197,20 @@ It needs no new entry in `__mocks__/react-native-svg.tsx` — it only
 uses `Polyline`, `Line`, `G`, `Svg`, and `Text`, all already exported
 by that mock.
 
-Which categories the chart draws (e.g. a top-3-by-expense default) is
-screen state owned by `statistics.screen.tsx`, not this component's
-concern — `CategoryTrendLine` only renders whatever `series` array it
-is given.
+Which categories the chart draws is decided by the saved trend filter
+(`settings.trendFilter`, a `manual | top` union — see `kiko-domain`),
+resolved in `statistics.screen.tsx`, not this component's concern —
+`CategoryTrendLine` only renders whatever `series` array it is given. The
+screen owns a `TrendFilterField`
+(`src/screens/statistics/trend-filter-field/`) — a single "Filters" button
+opening a `BottomSheet` — and feeds the result through the SAME
+`excludedCategories` path the builder already had. Manual mode passes explicit
+keys; Top mode ranks the categories live over the fixed 30-day window with
+`buildCategoryMeasures` + `selectTopCategories`
+(`src/statistics/category-trend.ts`, `src/statistics/trend-filter.ts`) by one
+of three measures — Contribution (total spend), Frequency (kept-row count), or
+Rising (the least-squares slope of daily spend across the 30 window days,
+most-positive first) — then excludes every windowed category NOT in the top N.
 
 ## PieChart donut mode
 
@@ -170,6 +220,20 @@ hole) and a `centerTotal` prop (a `Money` value rendered centered in
 that hole) — the Expenses-by-Category donut is the current caller.
 Read that file directly for the default ratio and exact prop shape
 rather than trusting a restated number here.
+
+It also supports an opt-in `legendMinShare` prop: when set, the LEGEND
+(never the ring) crops to slices whose `share` is at or above that
+fraction, with a `${testID}-legend-toggle` Pressable that flips local
+`useState` to reveal or re-hide the cropped rows ("Show all" /
+"Show less", `components.pieChart.showAll`/`showLess`). The ring always
+draws every arc, and `allocatePercents` still runs over the whole set,
+so a kept row keeps its full-set percent. The toggle renders only when
+cropping actually hides a row — at least one slice below the threshold
+AND at least one at or above it — so an all-below set (nothing to keep)
+and an all-above set (nothing to crop) both show the full legend with no
+toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
+(`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
+account-contribution pie passes nothing, so its legend is uncropped.
 
 ## Reuse the entity-color system for fills
 

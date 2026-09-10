@@ -9,7 +9,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { CategoryRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
@@ -108,10 +107,7 @@ const CategoryListRow: FC<{
   onMoveToBottom: () => void;
 }> = ({ category, isDefault, onMoveToTop, onMoveToBottom }) => {
   const { t } = useTranslation();
-  const { theme, rt } = useUnistyles();
-  // The active color scheme, read once so `resolveCategoryColor` below picks
-  // the matching light/dark chart set (see color-scheme.ts / palette.ts).
-  const colorScheme = resolveColorScheme(rt.themeName);
+  const { theme } = useUnistyles();
   // Local edit state is the RAW stored title, never the translated display —
   // this is the source of truth `commitTitle` diffs against and persists, so
   // the translated string it is shown as (see `displayTitle` below) can never
@@ -130,7 +126,7 @@ const CategoryListRow: FC<{
   // stable per-key palette hash — computed once and shared by the row icon
   // and the color picker's ringed swatch, so both always agree on what "this
   // category's color" means.
-  const color = resolveCategoryColor(category.color, category.key, colorScheme);
+  const color = resolveCategoryColor(category.color, category.key);
 
   const startEditingTitle = (): void => setIsEditing(true);
 
@@ -170,7 +166,7 @@ const CategoryListRow: FC<{
   };
 
   return (
-    <GlassSurface testID="category-card" padding={4} bordered solidBackdrop>
+    <GlassSurface testID="category-card" padding={4} bordered transparent>
       <Box gap={2}>
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>

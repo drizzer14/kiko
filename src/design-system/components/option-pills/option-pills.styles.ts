@@ -12,8 +12,8 @@ export const styles = StyleSheet.create((theme) => ({
   // Each pill's slot padding. Width is NOT set here — the component computes
   // it from the `columns` prop (`${100 / columns}%`, default 2, matching this
   // grid's original always-2-column behavior) and merges it in per-instance,
-  // so a consumer with a different, known option count (AppearanceSwitch's 3)
-  // can force a single equal-width row instead of the 2-column wrap.
+  // so a consumer with a different, known option count (e.g. 3) can force a
+  // single equal-width row instead of the 2-column wrap.
   cell: {
     padding: theme.spacing(1),
   },

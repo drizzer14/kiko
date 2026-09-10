@@ -85,6 +85,9 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('join "holdings"');
     expect(sql).toContain('join "accounts"');
     expect(sql).toContain('order by');
+    // Home reads the holding type to decide whether a row shows its HH:MM time
+    // (a term_deposit/bond row does not), so the type must ride the projection.
+    expect(sql).toContain('"holdings"."type"');
   });
 
   it('records a manual transaction and adjusts the balance atomically', async () => {
@@ -528,6 +531,38 @@ describe('transactionsRepo.addManyDedup upsert', () => {
 
     expect(captured.inserted).toHaveLength(2);
     expect(inserted).toBe(2);
+  });
+});
+
+describe('transactionsRepo.setCategory', () => {
+  it("rewrites ONLY the target row's category inside one transaction, with no source gate", async () => {
+    const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};
+    mockTx = {
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => {
+          captured.table = table;
+          captured.set = values;
+
+          return {
+            where: (arg: unknown) => {
+              captured.whereArg = arg;
+
+              return Promise.resolve();
+            },
+          };
+        },
+      }),
+    };
+
+    await transactionsRepo.setCategory({ transactionId: 'txn-7', category: 'dining' });
+
+    // A direct UPDATE on the transactions table, touching category and nothing
+    // else (no balance write, no other row) — the "just for this one" override.
+    expect(captured.table).toBe(transactions);
+    expect(captured.set).toEqual({ category: 'dining' });
+    // It is scoped to the single row by id (a filter was applied); it never
+    // gates on `source`, so a synced bank row is categorizable too.
+    expect(captured.whereArg).toBeDefined();
   });
 });
 

@@ -1,5 +1,4 @@
 import type { AccountRow, HoldingRow } from '../db/schema';
-import { entityColorsByScheme } from '../design-system/palette';
 import { defaultAccountColor } from '../holdings/entity-colors';
 
 import {
@@ -43,17 +42,40 @@ describe('buildAccountContribution', () => {
       rateTable,
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
-    expect(slices.map((slice) => slice.accountId)).toEqual(['a', 'b', 'c']);
-    expect(slices.map((slice) => slice.amount)).toEqual([100_000, 400_000, 900_000]);
+    // Returned largest-first (see the dedicated ordering test below), so the
+    // input a/b/c comes back c/b/a by amount.
+    expect(slices.map((slice) => slice.accountId)).toEqual(['c', 'b', 'a']);
+    expect(slices.map((slice) => slice.amount)).toEqual([900_000, 400_000, 100_000]);
 
     const total = 1_400_000;
-    expect(slices[0].share).toBeCloseTo(100_000 / total, 6);
+    expect(slices[0].share).toBeCloseTo(900_000 / total, 6);
     expect(slices[1].share).toBeCloseTo(400_000 / total, 6);
-    expect(slices[2].share).toBeCloseTo(900_000 / total, 6);
+    expect(slices[2].share).toBeCloseTo(100_000 / total, 6);
     expect(slices.reduce((sum, slice) => sum + slice.share, 0)).toBeCloseTo(1, 6);
+  });
+
+  it('orders the slices largest-first (descending by amount)', () => {
+    // The accounts arrive smallest-first; the pie must return them largest-first
+    // so the biggest contributor leads the ring and the legend.
+    const accounts = [account('a', 'Small'), account('b', 'Medium'), account('c', 'Large')];
+    const holdings = [
+      holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }),
+      holding({ accountId: 'b', currency: 'UAH', balanceMinorUnits: 400_000 }),
+      holding({ accountId: 'c', currency: 'UAH', balanceMinorUnits: 900_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices.map((slice) => slice.accountId)).toEqual(['c', 'b', 'a']);
+    expect(slices.map((slice) => slice.amount)).toEqual([900_000, 400_000, 100_000]);
   });
 
   it('excludes an account whose only holding cannot convert (no rate)', () => {
@@ -69,7 +91,6 @@ describe('buildAccountContribution', () => {
       rateTable: { 'USD:UAH': 40 },
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
@@ -92,27 +113,10 @@ describe('buildAccountContribution', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
-    expect(slices.find((slice) => slice.accountId === 'a')?.color).toBe(
-      defaultAccountColor('dark').cash,
-    );
+    expect(slices.find((slice) => slice.accountId === 'a')?.color).toBe(defaultAccountColor.cash);
     expect(slices.find((slice) => slice.accountId === 'b')?.color).toBe('#123456');
-  });
-
-  it("resolves a no-override account's color from the LIGHT set when colorScheme is light", () => {
-    const slices = buildAccountContribution({
-      accounts: [account('a', 'Cash', { kind: 'cash', color: null })],
-      holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 })],
-      rateTable: {},
-      baseCurrency: 'UAH',
-      now: NOW,
-      colorScheme: 'light',
-    });
-
-    expect(slices[0].color).toBe(entityColorsByScheme.light.khaki);
-    expect(slices[0].color).toBe(defaultAccountColor('light').cash);
   });
 
   it('resolves a stored empty-string color to a real hex', () => {
@@ -122,7 +126,6 @@ describe('buildAccountContribution', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
     expect(slices[0].color).toMatch(HEX);
@@ -137,7 +140,6 @@ describe('buildAccountContribution', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
     expect(slices[0].color).toMatch(HEX);
@@ -150,7 +152,6 @@ describe('buildAccountContribution', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
     expect(slices[0].color).toBe('#123456');
@@ -169,7 +170,6 @@ describe('buildAccountContribution', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       now: NOW,
-      colorScheme: 'dark',
     });
 
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);

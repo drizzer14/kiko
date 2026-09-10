@@ -33,7 +33,11 @@ Composite scripts:
   typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
-  wired to any hook because it is slow; it is a manual checkpoint.
+  wired to any hook because it is slow; it is a manual checkpoint. By
+  default the mutation step mutates ONLY the source files changed
+  against the merge-base with `${KIKO_MUTATION_BASE:-main}`
+  (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
+  whole-project run. See the `kiko-linter` skill.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
@@ -71,8 +75,14 @@ fingerprint the `.ts/.tsx/.js` source state relative to `HEAD` plus the
 manifests and configs (so a non-source change — an icon asset, an
 `ios/` file, a doc — skips them). `medium.sh` also holds a per-worktree
 single-flight lock so parallel `SubagentStop`/`Stop` runs do not launch
-concurrent `knip`/`deps`/`jscpd`; `mutation.sh` holds the same lock so
-two runs never spawn Stryker at once. The fingerprint state lives
+concurrent `knip`/`deps`/`jscpd`; `mutation.sh` holds a GLOBAL
+(machine-wide) single-flight lock at a fixed path NOT keyed by the
+worktree, so only one Stryker can run at a time across all worktrees —
+if a live run already holds it, a second run fails fast (exit 2) with a
+block naming the holding pid and worktree rather than blocking or
+queueing, and the lock is released on normal exit and on INT/TERM via a
+trap so a killed run never strands it. Stryker's own `concurrency` is
+2. The fingerprint state lives
 outside the repo, keyed by the worktree path, and is shared across
 sessions in that worktree — one session's pass lets another skip. A
 skip is recorded only on a PASS, so a failing check always re-runs.

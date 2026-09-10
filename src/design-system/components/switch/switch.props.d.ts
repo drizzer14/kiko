@@ -5,4 +5,5 @@ export type SwitchProps = {
   // When given, renders a labeled row (label left, toggle right) instead of
   // the bare toggle.
   label?: string;
+  testID?: string;
 };

@@ -4,6 +4,8 @@ import { StyleSheet } from 'react-native';
 import { i18n } from '../../../i18n';
 import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
+import { darkTheme } from '../../theme';
+
 import Button from './button.component';
 
 // The variant-driven fill/label colors live in a react-native-unistyles
@@ -133,6 +135,42 @@ describe('Button', () => {
     // textColor is applied inline (not through the variant block the mock
     // strips), so it survives into the flattened label style.
     expect(flattenRoot(getByText('Cancel')).color).toBe('#FF453A');
+  });
+
+  it('renders the primary label in onAccent (white on both schemes)', async () => {
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="primary">
+        Save
+      </Button>,
+    );
+
+    expect(flattenRoot(getByText('Save')).color).toBe(darkTheme.colors.onAccent);
+  });
+
+  it('renders the secondary label in textPrimary', async () => {
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="secondary">
+        Cancel
+      </Button>,
+    );
+
+    expect(flattenRoot(getByText('Cancel')).color).toBe(darkTheme.colors.textPrimary);
+  });
+
+  it('renders the destructiveTonal label in the red negative tone, not white', async () => {
+    // The tinted-destructive variant paints a translucent red tint and keeps a
+    // red label on it (the iOS pattern), so — unlike solid `destructive` — its
+    // label is `negative`, never `onAccent`. The label color is applied inline
+    // (not through the variant block the mock strips), so it survives into the
+    // flattened label style.
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="destructiveTonal">
+        Remove
+      </Button>,
+    );
+
+    expect(flattenRoot(getByText('Remove')).color).toBe(darkTheme.colors.negative);
+    expect(flattenRoot(getByText('Remove')).color).not.toBe(darkTheme.colors.onAccent);
   });
 
   it('does not force a text transform on the label', async () => {

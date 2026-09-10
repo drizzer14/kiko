@@ -1,8 +1,23 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
-import { G, Line, Polyline, Svg } from 'react-native-svg';
+import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
+
+// react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
+// on its path-based primitives (Path, Line, Polyline) but omits it from
+// LinearGradientProps/StopProps, even though the native gradient/stop elements
+// forward it identically. kiko-charts requires a testID on EVERY SVG primitive
+// so a test can read a gradient stop's resolved color/opacity back; declare the
+// prop the native view genuinely accepts rather than casting it away.
+declare module 'react-native-svg' {
+  interface LinearGradientProps {
+    testID?: string;
+  }
+  interface StopProps {
+    testID?: string;
+  }
+}
 
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
@@ -51,6 +66,17 @@ const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
+// The line-adjacent gradient stop's opacity (the reference-adjacent stop
+// always fades to fully transparent — see the Stop opacity={0} below). The
+// green/positive band uses `AREA_OPACITY`; the red/negative band needs a
+// higher value on the OLED true-black background (`darkTheme.colors.background`,
+// `#000000`): alpha-compositing a translucent color over a background is
+// `fg * alpha + bg * (1 - alpha)`, so a low alpha blends straight down toward
+// near-black (`bg` contributes ~0) and reads barely visible — `0.5` keeps a
+// shallow dip legible. This is opacity only: the fill color itself still comes
+// from the theme token (`theme.colors.negative`).
+const AREA_OPACITY = 0.3;
+const NEGATIVE_AREA_OPACITY = 0.5;
 
 type Scales = {
   x: (t: number) => number;
@@ -59,27 +85,55 @@ type Scales = {
   maxTime: number;
 };
 
+// The 1/2/5/10 × 10^k "nice" step factors, so an axis bottom lands on a
+// human-round figure rather than an arbitrary one.
+const NICE_FACTORS = [1, 2, 5, 10] as const;
+
+// The smallest "nice" (1/2/5/10 × 10^k) increment at or above `rough`. Used to
+// pick the rounding granularity for the Y-axis floor.
+const niceStep = (rough: number): number => {
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / magnitude;
+  const factor = NICE_FACTORS.find((candidate) => normalized <= candidate) ?? 10;
+
+  return factor * magnitude;
+};
+
+// Round the data minimum DOWN to a nearby round number, so the Y-axis bottom is
+// a clean figure that sits just below the lowest plotted value instead of far
+// beneath it. The step is a nice increment of about `VALUE_PADDING_RATIO` of the
+// value span (the same fraction as the plot's own headroom), so the floor is at
+// most one such step below the minimum — close to it, never a wasted drop. A
+// zero (flat) span has no rounding room, so the value is returned unchanged.
+const niceFloor = (value: number, span: number): number => {
+  if (!(span > 0)) {
+    return value;
+  }
+  const step = niceStep(span * VALUE_PADDING_RATIO);
+
+  return Math.floor(value / step) * step;
+};
+
 const buildScales = (points: NetWorthPoint[], startReference: number, height: number): Scales => {
   const times = points.map((point) => point.t);
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
   const timeSpan = maxTime - minTime || 1;
-  // Include the reference so the dashed baseline always falls on-screen.
+  // Include the reference so the dashed baseline always falls on-screen — it is
+  // the net worth at the range start, so it is one of the plotted values, and
+  // keeping it in the set both anchors the baseline and cannot push the floor
+  // above it.
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  // Anchor the domain symmetrically on `startReference`: the half-range is the
-  // larger of the two distances from the reference to the data extremes, so the
-  // dashed baseline holds a STABLE vertical position (centred) and a dip below
-  // it renders proportionally instead of flipping from domain-min to domain-max
-  // (and teleporting the baseline across the plot) the instant net worth crosses
-  // the reference. `buildTicks` mirrors this exact domain for the labels.
-  const halfRange = Math.max(
-    Math.abs(maxValue - startReference),
-    Math.abs(startReference - minValue),
-  );
-  const anchoredMin = startReference - halfRange;
-  const anchoredMax = startReference + halfRange;
+  // The Y domain runs from the net worth's OWN minimum — floored to a nearby
+  // round number — up to its own maximum. Earlier this was anchored symmetrically
+  // on `startReference` (`[startReference ± halfRange]`), which pushed the bottom
+  // far below the data whenever net worth sat mostly above the range start, so the
+  // line hugged the top and wasted the lower half of the plot. `buildTicks`
+  // mirrors this exact domain for the labels.
+  const anchoredMin = niceFloor(minValue, maxValue - minValue);
+  const anchoredMax = maxValue;
   const valuePad = (anchoredMax - anchoredMin || 1) * VALUE_PADDING_RATIO;
   const paddedMin = anchoredMin - valuePad;
   const paddedSpan = anchoredMax - anchoredMin + valuePad * 2 || 1;
@@ -113,29 +167,26 @@ type Tick = { key: string; value: number };
 // values, distinct y positions) stays correct, only the text repeats. That is
 // out of scope here — the reported bug is the geometry collapsing, not the
 // label text.
-const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
+export const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
   const values = [...points.map((point) => point.amount), startReference];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  // Mirror `buildScales`'s symmetric anchoring so the labels line up with the
-  // gridlines: the ticks span the same `[startReference ± halfRange]` domain the
-  // line/reference geometry is drawn in.
-  const halfRange = Math.max(
-    Math.abs(maxValue - startReference),
-    Math.abs(startReference - minValue),
-  );
 
-  // A zero half-range is the flat/degenerate case (every amount equal to
+  // A zero-width range is the flat/degenerate case (every amount equal to
   // `startReference` — a single point, or a balance that never moved): collapse
-  // to ONE centred tick instead of spreading TICK_COUNT ticks across a
-  // zero-width range (which would stack every label and gridline at one y and,
-  // worse, divide by zero when normalising the fraction below).
-  if (halfRange === 0) {
-    return [{ key: '0.0000', value: startReference }];
+  // to ONE tick instead of spreading TICK_COUNT ticks across a zero-width range
+  // (which would stack every label and gridline at one y and, worse, divide by
+  // zero when normalising the fraction below).
+  if (maxValue === minValue) {
+    return [{ key: '0.0000', value: minValue }];
   }
 
-  const anchoredMin = startReference - halfRange;
-  const anchoredMax = startReference + halfRange;
+  // Mirror `buildScales`'s domain so the labels line up with the gridlines: the
+  // ticks span the same `[niceFloor(minValue), maxValue]` domain the
+  // line/reference geometry is drawn in — the data's own floored minimum up to
+  // its own maximum.
+  const anchoredMin = niceFloor(minValue, maxValue - minValue);
+  const anchoredMax = maxValue;
 
   return Array.from({ length: TICK_COUNT }, (_, index) => {
     const fraction = index / (TICK_COUNT - 1);
@@ -179,8 +230,160 @@ const buildXTicks = (scales: Scales): XTick[] => {
   });
 };
 
-const toPolylinePoints = (points: NetWorthPoint[], scales: Scales): string =>
-  points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
+// One filled area between the line and the dashed REFERENCE baseline, CLAMPED
+// to a single side of it — no clip path. `side: 'above'` clamps every vertex's y
+// with `Math.min(y, referenceY)` (y grows downward, so a smaller y is above the
+// reference): where the line is above it keeps the line's y, where the line dips
+// below it rides `referenceY` and contributes no visible area. `side: 'below'`
+// clamps with `Math.max(y, referenceY)` for the mirror. Each path traces the
+// clamped line, drops to `referenceY` under the last point and back under the
+// first, and closes — so the 'above' path fills green and the 'below' path red.
+// This replaces the previous single-path-plus-ClipPath approach, which did not
+// render the clipped path on real iOS react-native-svg (the red region below the
+// reference vanished on device).
+//
+// CROSSING-AWARE: where two adjacent points straddle the reference, a clamp
+// alone snaps y to `referenceY` at the ORIGINAL vertex's x, so the fill's top
+// edge near the crossing had a different slope than the plotted `<Polyline>`
+// (the top edge diverged from the line). This builder instead inserts a vertex
+// at the TRUE crossing x — `x1 + (x2 - x1) * (referenceY - y1) / (y2 - y1)`, in
+// scaled pixel space — so the 'above' path traces the real line where above,
+// meets `referenceY` exactly at each crossing, rides `referenceY` where below,
+// and re-meets the line exactly at each up-crossing; the 'below' path mirrors
+// it. Away from crossings the clamp is a no-op, so the top edge already equals
+// the line. Callers guard against an empty `points` array before invoking this
+// (the loading/empty state short-circuits the render), so `points[0]` is always
+// present here.
+export const toAreaPath = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+  side: 'above' | 'below',
+): string => {
+  const clamp = (y: number): number =>
+    side === 'above' ? Math.min(y, referenceY) : Math.max(y, referenceY);
+
+  const firstX = scales.x(points[0].t);
+  const vertices: string[] = [`${firstX},${clamp(scales.y(points[0].amount))}`];
+
+  for (let i = 1; i < points.length; i += 1) {
+    const x1 = scales.x(points[i - 1].t);
+    const y1 = scales.y(points[i - 1].amount);
+    const x2 = scales.x(points[i].t);
+    const y2 = scales.y(points[i].amount);
+
+    // Strictly-opposite sides of the reference: insert the vertex at the true
+    // crossing x. A point sitting exactly ON the reference is not a crossing
+    // (the product is 0), so this never divides by a zero (y2 - y1) span.
+    if ((y1 - referenceY) * (y2 - referenceY) < 0) {
+      const xCross = x1 + ((x2 - x1) * (referenceY - y1)) / (y2 - y1);
+      vertices.push(`${xCross},${referenceY}`);
+    }
+
+    vertices.push(`${x2},${clamp(y2)}`);
+  }
+
+  const lastX = scales.x(points[points.length - 1].t);
+
+  return `M ${vertices.join(' L ')} L ${lastX},${referenceY} L ${firstX},${referenceY} Z`;
+};
+
+// R5-D (exploratory — the user wants to SEE this, may keep or drop it; kept
+// as one cohesive, self-contained block so it reverts in a single edit).
+// Colors the net-worth STROKE by sign per segment — green where above the
+// dashed start reference, red where below — matching the FILL's own
+// crossing logic exactly rather than re-deriving it. Reuses the SAME
+// crossing-x interpolation `toAreaPath` above uses —
+// `x1 + (x2 - x1) * (referenceY - y1) / (y2 - y1)` — so a stroke segment's
+// split lands at the identical x as the fill's, and the line/fill never
+// visually disagree. `sideOfY` ties a point sitting exactly ON the
+// reference to 'above', the same inclusive convention `bandExtremes`'s
+// `aboveYs` filter uses below (`y <= referenceY`).
+type LineSegment = { key: string; side: 'above' | 'below'; points: string };
+
+const sideOfY = (y: number, referenceY: number): 'above' | 'below' =>
+  y <= referenceY ? 'above' : 'below';
+
+// Splits the plotted line into contiguous same-sign runs. A series that
+// never crosses the reference collapses to exactly ONE segment (the
+// degenerate/no-split case the fill also preserves); an empty `points` array
+// is guarded by the same caller precondition `toAreaPath` documents above.
+export const buildLineSegments = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+): LineSegment[] => {
+  // Never push the same "x,y" pair twice in a row — the crossing-x formula
+  // below degenerates to an EXISTING vertex's own x when that vertex already
+  // sits ON the reference (y1 === referenceY gives xCross = x1; y2 ===
+  // referenceY gives xCross = x2), which would otherwise duplicate it.
+  const pushVertex = (vertices: string[], x: number, y: number): void => {
+    const vertex = `${x},${y}`;
+    if (vertices[vertices.length - 1] !== vertex) {
+      vertices.push(vertex);
+    }
+  };
+
+  const firstX = scales.x(points[0].t);
+  const firstY = scales.y(points[0].amount);
+  let side = sideOfY(firstY, referenceY);
+  let vertices: string[] = [`${firstX},${firstY}`];
+  const segments: LineSegment[] = [];
+  let index = 0;
+
+  const flush = (): void => {
+    segments.push({ key: `${index}`, side, points: vertices.join(' ') });
+    index += 1;
+  };
+
+  for (let i = 1; i < points.length; i += 1) {
+    const x1 = scales.x(points[i - 1].t);
+    const y1 = scales.y(points[i - 1].amount);
+    const x2 = scales.x(points[i].t);
+    const y2 = scales.y(points[i].amount);
+    const nextSide = sideOfY(y2, referenceY);
+
+    if (nextSide !== side) {
+      const xCross = x1 + ((x2 - x1) * (referenceY - y1)) / (y2 - y1);
+      pushVertex(vertices, xCross, referenceY);
+      flush();
+      side = nextSide;
+      vertices = [`${xCross},${referenceY}`];
+    }
+
+    pushVertex(vertices, x2, y2);
+  }
+
+  flush();
+
+  return segments;
+};
+
+// The vertical extremes of the ACTUAL filled bands, so each gradient anchors to
+// the sliver it fills rather than the whole plot half. `greenTopY` is the
+// highest pixel (smallest y) among points at or above the reference; `redBottomY`
+// is the lowest pixel (largest y) among points at or below it. A band with no
+// point strictly on its side collapses its extreme to `referenceY`, which the
+// caller reads as "empty" (its top === referenceY) and does not render — so a
+// degenerate zero-height gradient is never emitted. Anchoring the 0->opaque
+// ramp (AREA_OPACITY, or NEGATIVE_AREA_OPACITY for red — see
+// those constants) into this sliver is what makes a SHALLOW dip (or rise)
+// show readable color, instead of living where the whole-plot ramp's opacity
+// was ~0.
+const bandExtremes = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  referenceY: number,
+): { greenTopY: number; redBottomY: number } => {
+  const ys = points.map((p) => scales.y(p.amount));
+  const aboveYs = ys.filter((y) => y <= referenceY);
+  const belowYs = ys.filter((y) => y >= referenceY);
+
+  return {
+    greenTopY: aboveYs.length > 0 ? Math.min(...aboveYs) : referenceY,
+    redBottomY: belowYs.length > 0 ? Math.max(...belowYs) : referenceY,
+  };
+};
 
 const formatAxisTime = (t: number): string =>
   new Date(t).toLocaleDateString(activeLocale(), { month: 'short', day: 'numeric' });
@@ -223,6 +426,9 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   height = DEFAULT_HEIGHT,
 }) => {
   const { theme } = useUnistyles();
+  // The red/negative fill needs more opacity than the green band on the OLED
+  // true-black background (see NEGATIVE_AREA_OPACITY above).
+  const negativeAreaOpacity = NEGATIVE_AREA_OPACITY;
   // formatAxisTime and formatCompactMoney below both read activeLocale() at
   // render/call time, not via a subscription of their own (formatAxisTime is
   // a module-scope helper). Subscribing here, the same as MoneyText, is what
@@ -254,6 +460,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
   const referenceY = scales.y(startReference);
   const baselineY = height - PADDING_Y;
+  // Anchor each gradient to the sliver it actually fills, not the whole plot
+  // half. A band whose extreme collapses back to referenceY has no point on
+  // that side — render neither its Path nor its gradient (no degenerate
+  // zero-height gradient).
+  const { greenTopY, redBottomY } = bandExtremes(points, scales, referenceY);
+  const hasGreenBand = greenTopY < referenceY;
+  const hasRedBand = redBottomY > referenceY;
 
   return (
     <Box style={styles.container}>
@@ -338,13 +551,100 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
               strokeDasharray={REFERENCE_DASH}
             />
 
-            <Polyline
-              testID="net-worth-line-polyline"
-              points={toPolylinePoints(points, scales)}
-              fill="none"
-              stroke={theme.colors.entityColors.white}
-              strokeWidth={LINE_STROKE_WIDTH}
-            />
+            {/* The area fills BETWEEN the line and the dashed reference
+                baseline, not the chart bottom. TWO separate paths, each the line
+                clamped and CROSSING-AWARE to one side of the reference (no clip
+                path — ClipPath did not render on real iOS react-native-svg):
+                green above (net worth over the start), red below. Each gradient
+                is anchored to the sliver its side actually fills (greenTopY ->
+                referenceY, referenceY -> redBottomY), not the whole plot half,
+                so a shallow dip/rise still shows readable color. A side with no
+                point on it renders neither its gradient nor its Path. */}
+            <Defs>
+              {hasGreenBand ? (
+                <LinearGradient
+                  testID="net-worth-line-gradient-positive"
+                  id="net-worth-line-gradient-positive"
+                  x1="0"
+                  y1={greenTopY}
+                  x2="0"
+                  y2={referenceY}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <Stop
+                    testID="net-worth-line-gradient-positive-stop-line"
+                    offset="0"
+                    stopColor={theme.colors.positive}
+                    stopOpacity={AREA_OPACITY}
+                  />
+                  <Stop
+                    testID="net-worth-line-gradient-positive-stop-reference"
+                    offset="1"
+                    stopColor={theme.colors.positive}
+                    stopOpacity={0}
+                  />
+                </LinearGradient>
+              ) : null}
+
+              {hasRedBand ? (
+                <LinearGradient
+                  testID="net-worth-line-gradient-negative"
+                  id="net-worth-line-gradient-negative"
+                  x1="0"
+                  y1={referenceY}
+                  x2="0"
+                  y2={redBottomY}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <Stop
+                    testID="net-worth-line-gradient-negative-stop-reference"
+                    offset="0"
+                    stopColor={theme.colors.negative}
+                    stopOpacity={0}
+                  />
+                  <Stop
+                    testID="net-worth-line-gradient-negative-stop-line"
+                    offset="1"
+                    stopColor={theme.colors.negative}
+                    stopOpacity={negativeAreaOpacity}
+                  />
+                </LinearGradient>
+              ) : null}
+            </Defs>
+
+            {hasGreenBand ? (
+              <Path
+                testID="net-worth-line-area-positive"
+                d={toAreaPath(points, scales, referenceY, 'above')}
+                fill="url(#net-worth-line-gradient-positive)"
+                stroke="none"
+              />
+            ) : null}
+
+            {hasRedBand ? (
+              <Path
+                testID="net-worth-line-area-negative"
+                d={toAreaPath(points, scales, referenceY, 'below')}
+                fill="url(#net-worth-line-gradient-negative)"
+                stroke="none"
+              />
+            ) : null}
+
+            {/* R5-D (exploratory, cleanly revertible as one block — see
+                buildLineSegments above): the stroke itself now reads sign at
+                a glance, green above / red below the dashed reference, split
+                at the SAME crossing x the fill above uses. A non-crossing
+                series still renders as exactly one segment/color. */}
+            {buildLineSegments(points, scales, referenceY).map((segment) => (
+              <Polyline
+                key={segment.key}
+                testID={`net-worth-line-polyline-${segment.key}`}
+                points={segment.points}
+                fill="none"
+                stroke={segment.side === 'above' ? theme.colors.positive : theme.colors.negative}
+                strokeWidth={LINE_STROKE_WIDTH}
+              />
+            ))}
           </Svg>
         </View>
       </View>

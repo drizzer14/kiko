@@ -216,6 +216,33 @@ export const transactionsRepo = {
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
+  /**
+   * The newest imported time for a holding's rows of one sync `source` (a single
+   * `{ time }` row, or none). The crypto-sync transaction import reads this as an
+   * incremental cursor: the next Binance fetch starts from just before this time
+   * rather than re-walking the full history every sync.
+   */
+  latestSyncedTimeQuery: (holdingId: string, source: TransactionRow['source']) =>
+    database
+      .select({ time: transactions.time })
+      .from(transactions)
+      .where(and(eq(transactions.holdingId, holdingId), eq(transactions.source, source)))
+      .orderBy(desc(transactions.time))
+      .limit(1),
+  /**
+   * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
+   * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
+   * fetches these cards even when their /client-info balance is unchanged,
+   * because a same-amount hold→settled refresh does not move the balance — so
+   * the balance-diff skip would otherwise never re-fetch the settled amount.
+   * `eq(transactions.hold, true)` compiles to `= 1` on the boolean-mode column,
+   * excluding NULL/false rows.
+   */
+  holdingIdsWithHoldQuery: () =>
+    database
+      .selectDistinct({ holdingId: transactions.holdingId })
+      .from(transactions)
+      .where(and(eq(transactions.source, 'monobank'), eq(transactions.hold, true))),
   listAllWithContextQuery: () =>
     database
       .select({
@@ -232,6 +259,9 @@ export const transactionsRepo = {
         accountId: accounts.id,
         accountName: accounts.name,
         holdingName: holdings.name,
+        // Home reads the holding type to drop the HH:MM stamp on a
+        // term_deposit/bond row (those are day-granular events).
+        holdingType: holdings.type,
       })
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
@@ -443,6 +473,26 @@ export const transactionsRepo = {
           .where(eq(holdings.id, row.holdingId));
       }
     }),
+  /**
+   * Override the category of ONE transaction, by id, inside a single op-sqlite
+   * transaction. This is the "just for this one" path: it rewrites only the
+   * target row's `category` and touches nothing else — no balance, no other row.
+   *
+   * It is DELIBERATELY different from
+   * `categoryOverridesRepo.upsertCategoryOverride` (category-overrides.repo.ts),
+   * the "apply to all similar" name rule, which writes a name→category rule that
+   * rewrites every same-name row AND every future import. Here nothing
+   * propagates beyond this single row.
+   *
+   * There is NO `source` gate: a synced (bank-owned) row is still freely
+   * categorizable — the category is the user's, not the bank's. A later re-sync
+   * never clobbers the pick, because `addManyDedup`'s `onConflictDoUpdate` set
+   * names only the bank-owned columns and deliberately excludes `category`.
+   */
+  setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
+    write((tx) =>
+      tx.update(transactions).set({ category }).where(eq(transactions.id, transactionId)),
+    ),
   /**
    * Upsert a batch of imported rows on the `(source, external_id)` unique index
    * and return how many of them were genuinely NEW — the number the sync reports

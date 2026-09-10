@@ -88,7 +88,7 @@ const DateField: FC<DateFieldProps> = ({
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
           <SymbolIcon name="calendar" size={18} tone="textSecondary" />
 
-          <Text variant="body" tone={value === null ? 'textSecondary' : 'textPrimary'}>
+          <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
             {value === null ? (placeholder ?? label) : formatDate(value)}
           </Text>
         </Box>

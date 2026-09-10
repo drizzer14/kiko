@@ -1,9 +1,7 @@
 import { buildCategoryDisplayMap } from '../categories/category-display';
 
 import { type BreakdownTransaction, categoryColor } from './category-breakdown';
-import { buildCategoryTrend, type TrendTransaction } from './category-trend';
-
-const DARK = 'dark' as const;
+import { buildCategoryMeasures, buildCategoryTrend, type TrendTransaction } from './category-trend';
 
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
@@ -45,7 +43,6 @@ const buildTrend = (
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
-    colorScheme: DARK,
     now: NOW,
     ...extra,
   });
@@ -78,15 +75,7 @@ describe('buildCategoryTrend', () => {
     const series = buildTrend([tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00 })]);
 
     expect(series[0].title).toBe('Groceries');
-    expect(series[0].color).toBe(categoryColor('groceries', 'dark'));
-  });
-
-  it('threads the color scheme into the series color (light differs from dark)', () => {
-    const series = buildTrend([tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00 })], {
-      colorScheme: 'light',
-    });
-
-    expect(series[0].color).toBe(categoryColor('groceries', 'light'));
+    expect(series[0].color).toBe(categoryColor('groceries'));
   });
 
   it('ignores income (non-negative amounts) entirely', () => {
@@ -217,5 +206,84 @@ describe('buildCategoryTrend', () => {
 
   it('returns an empty array for empty input', () => {
     expect(buildTrend([])).toEqual([]);
+  });
+});
+
+const buildMeasures = (
+  transactions: TrendTransaction[],
+  extra: Partial<Parameters<typeof buildCategoryMeasures>[0]> = {},
+): ReturnType<typeof buildCategoryMeasures> =>
+  buildCategoryMeasures({
+    transactions,
+    rateTable: {},
+    baseCurrency: 'UAH',
+    defaultCategoryKey: 'other',
+    now: NOW,
+    ...extra,
+  });
+
+describe('buildCategoryMeasures', () => {
+  it('reports the total spend (base minor units) per category over the window', () => {
+    const measures = buildMeasures([
+      tx({ id: 'a', category: 'groceries', amountMinorUnits: -25_00, time: NOW }),
+      tx({ id: 'b', category: 'groceries', amountMinorUnits: -5_00, time: NOW }),
+    ]);
+
+    expect(measures).toHaveLength(1);
+    expect(measures[0]).toMatchObject({ key: 'groceries', total: 30_00 });
+  });
+
+  it('counts the kept transactions per category', () => {
+    const measures = buildMeasures([
+      tx({ id: 'a', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
+      tx({ id: 'b', category: 'groceries', amountMinorUnits: -10_00, time: NOW - dayMs }),
+      tx({ id: 'c', category: 'transport', amountMinorUnits: -10_00, time: NOW }),
+    ]);
+    const groceries = measures.find((measure) => measure.key === 'groceries');
+    const transport = measures.find((measure) => measure.key === 'transport');
+
+    expect(groceries?.count).toBe(2);
+    expect(transport?.count).toBe(1);
+  });
+
+  it('excludes income, out-of-window, and excluded-id rows from the count and total', () => {
+    const measures = buildMeasures(
+      [
+        tx({ id: 'keep', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
+        tx({ id: 'income', category: 'groceries', amountMinorUnits: 50_00, time: NOW }),
+        tx({ id: 'old', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 40 * dayMs }),
+        tx({ id: 'drop', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
+      ],
+      { excludedTransactionIds: new Set(['drop']) },
+    );
+
+    expect(measures[0]).toMatchObject({ key: 'groceries', count: 1, total: 10_00 });
+  });
+
+  it('reports a positive rising slope for spend that climbs across the window', () => {
+    // Spend on the last three days: rising 10, 20, 30 (major units).
+    const measures = buildMeasures([
+      tx({ id: 'a', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 2 * dayMs }),
+      tx({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - dayMs }),
+      tx({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: NOW }),
+    ]);
+
+    expect(measures[0].risingSlope).toBeGreaterThan(0);
+  });
+
+  it('reports a negative rising slope for spend concentrated at the window start', () => {
+    // Spend sits at the earliest window days (low x) and stops, so the daily
+    // regression trends downward across the 30 points.
+    const measures = buildMeasures([
+      tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00, time: NOW - 29 * dayMs }),
+      tx({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - 28 * dayMs }),
+      tx({ id: 'c', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 27 * dayMs }),
+    ]);
+
+    expect(measures[0].risingSlope).toBeLessThan(0);
+  });
+
+  it('returns an empty array for empty input', () => {
+    expect(buildMeasures([])).toEqual([]);
   });
 });

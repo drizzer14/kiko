@@ -12,10 +12,9 @@ import {
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { Money } from '../../currency/money';
-import { formatDateTime } from '../../dates/format';
+import { formatDate, formatDateTime } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import MoneyText from '../../design-system/components/money-text';
@@ -31,6 +30,7 @@ import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holding
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { asBondMeta } from '../../holdings/holding-metadata';
+import { isTimeExemptHoldingType } from '../../holdings/holding-type';
 import {
   bondExpectedProfitMinor,
   type HoldingValueBreakdown,
@@ -57,16 +57,9 @@ type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, '
 // header with an invalid empty color while the card showed the type default.
 // Extracted so the fallbacks don't count against the screen component's
 // cognitive-complexity budget.
-const holdingIdentity = (
-  holding: HoldingRow,
-  colorScheme: 'light' | 'dark',
-): { icon: string; color: string } => ({
+const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
   icon: holding.icon ?? holdingTypeSymbol[holding.type],
-  color: resolveEntityColor(
-    holding.color,
-    defaultHoldingColor(colorScheme)[holding.type],
-    colorScheme,
-  ),
+  color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
 });
 
 const isZero = (minorUnits: number): boolean => minorUnits === 0;
@@ -128,11 +121,7 @@ const breakdownRows = (
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
-  const { theme, rt } = useUnistyles();
-  // The active color scheme, read once and threaded into the header identity
-  // color and each ledger row's category color so both pick the matching
-  // light/dark set (see color-scheme.ts / palette.ts).
-  const colorScheme = resolveColorScheme(rt.themeName);
+  const { theme } = useUnistyles();
   // Disable this screen's native back-swipe while any transaction row is open,
   // so a right-swipe that closes a row does not also pop the screen.
   const onOpenChange = useSwipePopGuard(navigation);
@@ -184,6 +173,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // purchase); every other holding takes a plain transaction. The footer action
   // reads accordingly.
   const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
+  // A term_deposit/bond event is day-granular (a contribution, coupon, or
+  // redemption), so its ledger rows show the date only; every other holding
+  // keeps the full date + HH:MM stamp.
+  const showTime = holding ? !isTimeExemptHoldingType(holding.type) : true;
 
   // The nav title shows the holding NAME only — the native large title, the
   // standard iOS pattern (the identity icon now sits beside the Value amount
@@ -201,7 +194,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
-  const identity = holding ? holdingIdentity(holding, colorScheme) : undefined;
+  const identity = holding ? holdingIdentity(holding) : undefined;
   // The holding's owning account, needed to open its edit form (the form reads
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
@@ -301,12 +294,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                       />
                     </Box>
                   </Box>
-                  <Text variant="caption" tone="textSecondary">
-                    {row.entry.isFuture
-                      ? t('holdingDetail.projected')
-                      : t('holdingDetail.computed')}{' '}
-                    · {formatDateTime(row.entry.time)}
-                  </Text>
+                  <Box style={styles.rowFooter}>
+                    <Text variant="caption" tone="textSecondary">
+                      {row.entry.isFuture
+                        ? t('holdingDetail.projected')
+                        : t('holdingDetail.computed')}{' '}
+                      · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
+                    </Text>
+                  </Box>
                 </Box>
               );
             }
@@ -348,7 +343,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                           color={resolveCategoryColor(
                             category.color,
                             row.transaction.category?.toLowerCase() || defaultCategoryKey,
-                            colorScheme,
                           )}
                           accessibilityLabel={category.title}
                         />
@@ -370,9 +364,13 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                         />
                       </Box>
                     </Box>
-                    <Text variant="caption" tone="textSecondary">
-                      {formatDateTime(row.transaction.time)}
-                    </Text>
+                    <Box style={styles.rowFooter}>
+                      <Text variant="caption" tone="textSecondary">
+                        {showTime
+                          ? formatDateTime(row.transaction.time)
+                          : formatDate(row.transaction.time)}
+                      </Text>
+                    </Box>
                   </Box>
                 </Pressable>
               </SwipeableRow>
@@ -432,6 +430,14 @@ const styles = StyleSheet.create((theme) => ({
   // no matter how long the description grows.
   rowAmount: {
     flexShrink: 0,
+  },
+  // The row's secondary line: the timestamp caption pinned to the right so it
+  // sits BELOW the value column instead of left-aligned under the description —
+  // mirroring the Home row's `rowFooter` (home.styles.ts), where the time is
+  // bottom-right of the row. Here the caption is the only footer content, so a
+  // right-aligned self is enough (no space-between split needed).
+  rowFooter: {
+    alignSelf: 'flex-end',
   },
 }));
 

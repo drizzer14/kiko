@@ -1,6 +1,10 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import '../../../design-system/unistyles';
 import '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
+import { resolveCategoryColor } from '../../../statistics/category-breakdown';
+
 import AddCategoryRow from './add-category-row.component';
 
 const mockCreate = jest.fn();
@@ -11,9 +15,38 @@ jest.mock('../../../repositories/categories.repo', () => ({
   },
 }));
 
+// The Text primitive's `tone -> color` mapping lives inside a
+// react-native-unistyles variant, which the project's Jest mock strips out of
+// the resolved style before a test can inspect it (same limitation MoneyText's
+// test documents). Mock the design-system Text to surface its `tone` prop
+// through a testID so the collapsed label's tone is assertable; children still
+// render as plain text, so every getByText/getByLabelText query is unaffected.
+// Button uses react-native's own Text, so its labels are untouched by this.
+jest.mock('../../../design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone = 'textPrimary', children }: { tone?: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
+
 describe('AddCategoryRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('renders the collapsed "Add category" label as textPrimary so it reads enabled', async () => {
+    const { getByTestId, getByText } = await render(<AddCategoryRow />);
+
+    // The whole collapsed row is a live Pressable with no disabled state, so its
+    // label must match the plus icon's textPrimary tone — textSecondary read as
+    // muted/disabled. Collapsed, this is the only Text in the tree, so the tone
+    // testID is unambiguous.
+    expect(getByText('Add category')).toBeTruthy();
+    expect(getByTestId('text-tone-textPrimary')).toBeTruthy();
   });
 
   it('is a single collapsed row until it is tapped', async () => {
@@ -70,5 +103,65 @@ describe('AddCategoryRow', () => {
 
     expect(getByLabelText('Choose new category icon')).toBeTruthy();
     expect(getByText('Color')).toBeTruthy();
+  });
+
+  // The entity-color swatch name whose hex the color picker rings when the empty
+  // form opens: the per-key palette fallback for the placeholder preview key.
+  // Computed from the same resolver the row uses so this stays correct if the
+  // palette hash changes.
+  const openPreviewHex = resolveCategoryColor(null, 'new-category');
+  const openSwatchName = Object.entries(darkTheme.colors.entityColors).find(
+    ([, hex]) => hex === openPreviewHex,
+  )?.[0];
+
+  it('rings a concrete default color swatch on open, without persisting one', async () => {
+    // The resolved fallback maps onto an actual picker swatch (every chartSeries
+    // hue also exists in the entityColors set), so a real swatch reads selected.
+    expect(openSwatchName).toBeDefined();
+    expect(openPreviewHex).toMatch(/^#[0-9a-f]{6}$/i);
+
+    const { getByLabelText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    // The ring lands on the swatch whose hex === the picker's derived `value`;
+    // an empty `value` would ring nothing. This proves `value` is a concrete hex
+    // on open, mirroring the accounts form's kind-default ring.
+    expect(
+      getByLabelText(`New category color ${openSwatchName}`).props.accessibilityState.selected,
+    ).toBe(true);
+  });
+
+  it('moves the ring to a swatch the user taps', async () => {
+    const { getByLabelText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    // Pick a swatch that is not the open default so the ring is observably moved.
+    const pickedName = openSwatchName === 'red' ? 'blue' : 'red';
+    await fireEvent.press(getByLabelText(`New category color ${pickedName}`));
+
+    expect(
+      getByLabelText(`New category color ${pickedName}`).props.accessibilityState.selected,
+    ).toBe(true);
+    expect(
+      getByLabelText(`New category color ${openSwatchName}`).props.accessibilityState.selected,
+    ).toBe(false);
+  });
+
+  it('persists color:null when the user saves without tapping a swatch', async () => {
+    const { getByLabelText, getByText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    await fireEvent.changeText(getByLabelText('Name'), 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    // The seeded ring is DISPLAY-only: an untouched picker still persists null so
+    // the saved row keeps its per-key palette fallback.
+    expect(mockCreate).toHaveBeenCalledWith({
+      title: 'Groceries',
+      icon: 'square.grid.2x2',
+      color: null,
+    });
   });
 });

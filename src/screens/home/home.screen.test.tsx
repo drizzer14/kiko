@@ -5,7 +5,6 @@ import '../../design-system/unistyles';
 import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import { resolveBottomClearance } from '../../design-system/components/screen';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
@@ -78,12 +77,38 @@ jest.mock('../use-sync-all', () => ({
   useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
 }));
 
+// The global sync-status store is the SINGLE driver of the native
+// RefreshControl spinner: any sync trigger (a pull, or an auto-sync on open)
+// lights it via `runSync`, and Home binds `refreshing` straight to it. Mocked
+// so a test can drive the "a sync is running" flag without a real run.
+const mockUseSyncStatus = jest.fn();
+const mockUseSyncProgress = jest.fn(() => ({ completed: 0, total: 0 }));
+jest.mock('../../monobank/sync-status', () => ({
+  useSyncStatus: () => mockUseSyncStatus(),
+  useSyncProgress: () => mockUseSyncProgress(),
+}));
+
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render has none of; stand it in with a spy so this test
 // can assert the screen hands it the transaction list's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
 jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown) => mockUseScrollToTopOnTabPress(ref),
+}));
+
+// The refresh-control signal hook is the PULL GESTURE indicator, DECOUPLED from
+// the whole sync run. Stand it in with a controllable `refreshing` so this test
+// can assert the RefreshControl binds to the hook's pull flag (NOT the global
+// sync signal) and that a pull calls the caller's `syncAll`. The hook's own
+// synchronous pull flag and fast-phase-clear behavior are covered by
+// `use-refresh-control-signal.test.tsx`.
+const mockRefreshing = jest.fn(() => false);
+const mockUseRefreshControlSignal = jest.fn();
+jest.mock('./use-refresh-control-signal', () => ({
+  useRefreshControlSignal: (onRefresh: () => Promise<void>) => {
+    mockUseRefreshControlSignal(onRefresh);
+    return { refreshing: mockRefreshing(), onRefresh };
+  },
 }));
 
 type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
@@ -107,6 +132,7 @@ type Transaction = {
   accountId: string;
   accountName: string;
   holdingName: string;
+  holdingType: string;
   exchangeCounterpartHoldingId: string | null;
 };
 type Category = { key: string; title: string; icon: string };
@@ -167,6 +193,9 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   accountId: 'a',
   accountName: 'Monobank',
   holdingName: 'Card',
+  // Default to a time-specific holding (a card), so an ordinary row keeps its
+  // HH:MM stamp; a deposit/bond test overrides this to drop the time.
+  holdingType: 'card',
   // The query projects this column for every row; an ordinary transaction is
   // not an exchange leg, so its marker is NULL (what SQLite returns), never
   // undefined.
@@ -212,7 +241,9 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
-    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
   });
 
   it('renders the net worth caption', async () => {
@@ -251,6 +282,17 @@ describe('HomeScreen', () => {
     expect(getByText('09:05')).toBeTruthy();
   });
 
+  it.each(['term_deposit', 'bond'])(
+    'hides the HH:MM time on a %s row (deposits and bonds are not time-specific)',
+    async (holdingType) => {
+      const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      at.setHours(9, 5, 0, 0);
+      seed({ transactions: [transaction({ time: at.getTime(), holdingType })] });
+      const { queryByText } = await renderHome();
+      expect(queryByText('09:05')).toBeNull();
+    },
+  );
+
   it('renders the account-name and the resolved category title for a transaction', async () => {
     seed({ transactions: [transaction({ category: 'groceries' })] });
     const { getByText } = await renderHome();
@@ -288,9 +330,7 @@ describe('HomeScreen', () => {
     });
     const { getByLabelText, getByTestId, getAllByLabelText } = await renderHome();
 
-    expect(getByLabelText('Other').props.tintColor).toBe(
-      resolveCategoryColor(null, 'other', 'dark'),
-    );
+    expect(getByLabelText('Other').props.tintColor).toBe(resolveCategoryColor(null, 'other'));
 
     await act(async () => {
       fireEvent.press(getByTestId('category-filter-menu'));
@@ -299,29 +339,6 @@ describe('HomeScreen', () => {
 
     expect(tints.length).toBeGreaterThan(1);
     expect(new Set(tints).size).toBe(1);
-  });
-
-  it('resolves an uncolored category from the LIGHT set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the per-row category icon color picks
-    // the light chart set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      seed({
-        categories: [{ key: 'other', title: 'Other', icon: 'square.grid.2x2' }],
-        transactions: [transaction({ category: 'NoSuchCategory' })],
-      });
-      const { getByLabelText } = await renderHome();
-
-      expect(getByLabelText('Other').props.tintColor).toBe(
-        resolveCategoryColor(null, 'other', 'light'),
-      );
-      // Sanity: the light hue differs from the dark one.
-      expect(resolveCategoryColor(null, 'other', 'light')).not.toBe(
-        resolveCategoryColor(null, 'other', 'dark'),
-      );
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('renders the signed transaction amount', async () => {
@@ -694,20 +711,22 @@ describe('HomeScreen', () => {
 
     const { getByLabelText, getByTestId, getByText, queryByText } = await renderHome();
 
-    // Narrow away from the 30-day default: pick today alone and apply it, which
-    // excludes both the "Recent" (2 days ago) and "TooOld" rows.
+    // Narrow away from the 30-day default: the picker moves the bound nearer to
+    // the pick, so picking 3 days ago pulls the `to` bound down to it. That
+    // excludes both the "Recent" (2 days ago) and "TooOld" (40 days ago) rows.
     await act(async () => {
       fireEvent.press(getByLabelText('Date range'));
     });
-    const today = new Date();
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
     const calendar = getByTestId('date-range-calendar').props as {
       onDayPress: (day: unknown) => void;
     };
     await act(async () => {
       calendar.onDayPress({
-        year: today.getFullYear(),
-        month: today.getMonth() + 1,
-        day: today.getDate(),
+        year: threeDaysAgo.getFullYear(),
+        month: threeDaysAgo.getMonth() + 1,
+        day: threeDaysAgo.getDate(),
       });
     });
     await act(async () => {
@@ -854,16 +873,49 @@ describe('HomeScreen', () => {
     expect(mockSyncAll).toHaveBeenCalledTimes(1);
   });
 
-  it('reflects the syncing state on the refresh control', async () => {
-    mockUseSyncAll.mockReturnValue({ isSyncing: true, failures: [], syncAll: mockSyncAll });
+  it('binds the native refresh control to the pull flag, not the global sync signal', async () => {
+    // The spinner is the PULL GESTURE indicator alone: it reflects the hook's
+    // pull flag, decoupled from the whole run.
+    mockRefreshing.mockReturnValue(true);
     const { getByTestId } = await renderHome();
 
     expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(true);
   });
 
+  it('leaves the native refresh control idle when no pull is active', async () => {
+    mockRefreshing.mockReturnValue(false);
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it('pins the sync progress bar above the list, not as a scrolling list header', async () => {
+    mockUseSyncStatus.mockReturnValue(true);
+    mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+    const { getByTestId, queryByTestId } = await renderHome();
+
+    // The bar is a pinned sibling ABOVE the SectionList, so it renders while a
+    // sync is in flight...
+    expect(queryByTestId('sync-progress-bar')).not.toBeNull();
+    // ...and it is NOT the list's scrolling header. As the header it would
+    // scroll away with the content and draw behind the cells (the z-index
+    // symptom); pinning it above the list subsumes that by construction.
+    expect(getByTestId('home-transactions').props.ListHeaderComponent).toBeUndefined();
+  });
+
+  it('does not spin the pull control for an auto-sync-on-open (decoupled from isSyncing)', async () => {
+    // An auto-sync-on-open lights the global sync signal but there is NO pull:
+    // the native spinner must stay idle (the progress bar shows the auto-sync),
+    // proving the spinner no longer mirrors `isSyncing`.
+    mockUseSyncStatus.mockReturnValue(true);
+    mockRefreshing.mockReturnValue(false);
+    const { getByTestId } = await renderHome();
+
+    expect(getByTestId('home-transactions').props.refreshControl.props.refreshing).toBe(false);
+  });
+
   it('surfaces a message naming the accounts that failed to sync', async () => {
     mockUseSyncAll.mockReturnValue({
-      isSyncing: false,
       failures: ['Binance', 'Cold storage'],
       syncAll: mockSyncAll,
     });
@@ -878,7 +930,8 @@ describe('HomeScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     seed({ transactions: [transaction()] });
-    mockUseSyncAll.mockReturnValue({ isSyncing: false, failures: [], syncAll: mockSyncAll });
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
   });
 
   afterEach(async () => {

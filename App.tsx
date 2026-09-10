@@ -10,14 +10,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import type { FC } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
 
-import { useSyncAppearanceWithSettings } from './src/appearance/use-sync-appearance-with-settings';
 import LockGate from './src/auth/lock-gate/lock-gate.component';
 import MigrationsGate from './src/db/migrations.gate';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
+import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
-import { selectNavigationTheme } from './src/navigation/select-navigation-theme';
 import { useAutoSync } from './src/screens/use-auto-sync';
 
 /**
@@ -30,14 +28,11 @@ import { useAutoSync } from './src/screens/use-auto-sync';
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
-  useSyncAppearanceWithSettings();
 
   useAutoSync();
 
-  const { rt } = useUnistyles();
-
   return (
-    <NavigationContainer theme={selectNavigationTheme(rt.themeName)}>
+    <NavigationContainer theme={navigationDarkTheme}>
       <RootNavigator />
     </NavigationContainer>
   );

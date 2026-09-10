@@ -5,6 +5,13 @@
 // here.
 import type { AccountRow, HoldingRow } from '../db/schema';
 import { i18n } from '../i18n';
+import {
+  getProgressSnapshot,
+  getSnapshot as isSyncingSnapshot,
+  setSyncing,
+  setSyncProgress,
+  subscribeProgress,
+} from '../monobank/sync-status';
 
 import type { BalanceProvider, ProviderBalance, SyncTarget } from './provider';
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
@@ -101,6 +108,9 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
       closedAt: null,
       createdAt: 0,
       balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+      // The Monobank-only crash-safe statement-import marker; a crypto holding
+      // never carries one (it imports no statements).
+      syncedBalanceMinorUnits: null,
       ...rest,
       metadata: merged,
     });
@@ -127,6 +137,13 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
 };
 
 describe('runBalanceSync', () => {
+  // runBalanceSync now drives the shared progress session (module-level singleton
+  // state); reset it after each test so one test's progress never leaks.
+  afterEach(() => {
+    setSyncProgress({ completed: 0, total: 0, workCompleted: 0, workTotal: 0 });
+    setSyncing(false);
+  });
+
   it('marks the target account with the provider id and upserts one BTC crypto_asset holding stamped syncedAt', async () => {
     const { provider, calls } = makeProvider();
     const { deps, accountsStore, holdingsStore } = makeInMemoryDeps([cryptoAccount()]);
@@ -258,5 +275,116 @@ describe('runBalanceSync', () => {
     ).rejects.toThrow('Block explorer request failed: 400');
     expect(accountsStore[0].institution).toBeNull();
     expect(holdingsStore).toHaveLength(0);
+  });
+
+  // The crypto sync feeds the same determinate progress bar as the Monobank run
+  // (the shared session in `sync-status.ts`). Every returned holding does real
+  // work — a crypto sync has no balance-diff skip, it always reads live balances —
+  // so each holding is ONE work unit and completes as its upsert commits.
+  describe('progress session', () => {
+    // Distinct match keys so three Spot/Funding/Earn balances upsert as three
+    // holdings, not one (the in-memory double keys on metadataKey).
+    const btcBalance = (metadataKey: string, balanceMinorUnits: number): ProviderBalance => ({
+      currency: 'BTC',
+      balanceMinorUnits,
+      metadataKey,
+      name: metadataKey,
+    });
+
+    const zero = { completed: 0, total: 0, workCompleted: 0, workTotal: 0 };
+
+    it('starts its one holding at zero work and rises to full as the balance commits', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      const emissions: Array<{
+        completed: number;
+        total: number;
+        workCompleted: number;
+        workTotal: number;
+      }> = [];
+      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+      await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
+      unsubscribe();
+
+      // One holding, one work unit, no pre-filled baseline: the fill starts at 0
+      // and reaches full only as the balance commits.
+      const nonZero = emissions.filter((sample) => sample.workTotal > 0);
+      expect(nonZero[0]).toEqual({ completed: 0, total: 1, workCompleted: 0, workTotal: 1 });
+      expect(nonZero.at(-1)).toEqual({ completed: 1, total: 1, workCompleted: 1, workTotal: 1 });
+      expect(emissions.at(-1)).toEqual(zero);
+    });
+
+    it('weights three wallet holdings (Spot / Funding / Earn) as three equal work units', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
+      deps.targetAccountId = 'acc-1';
+
+      const emissions: Array<{
+        completed: number;
+        total: number;
+        workCompleted: number;
+        workTotal: number;
+      }> = [];
+      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+      await runBalanceSync(
+        provider,
+        {
+          balances: [btcBalance('BTC', 1), btcBalance('BTC:funding', 2), btcBalance('BTC:earn', 3)],
+        },
+        deps,
+      );
+      unsubscribe();
+
+      const nonZero = emissions.filter((sample) => sample.workTotal > 0);
+      // 3 holdings, 3 work units, no baseline.
+      expect(nonZero.every((sample) => sample.workTotal === 3 && sample.total === 3)).toBe(true);
+      expect(nonZero[0].workCompleted).toBe(0);
+      expect(nonZero.at(-1)).toEqual({ completed: 3, total: 3, workCompleted: 3, workTotal: 3 });
+      expect(emissions.at(-1)).toEqual(zero);
+    });
+
+    it('registers no work — so the bar never appears — when the provider returns no balance', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      const emissions: Array<{ workTotal: number }> = [];
+      const unsubscribe = subscribeProgress(() =>
+        emissions.push({ workTotal: getProgressSnapshot().workTotal }),
+      );
+
+      await runBalanceSync(provider, { balances: [] }, deps);
+      unsubscribe();
+
+      // No balance means no work: the bar's total stays zero throughout (no-op guard).
+      expect(emissions.every((sample) => sample.workTotal === 0)).toBe(true);
+    });
+
+    it('leaves the session clean (isSyncing off, progress cleared) when the provider fetch fails', async () => {
+      const { provider } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      await expect(
+        runBalanceSync(
+          provider,
+          { balances: new Error('Block explorer request failed: 400') },
+          deps,
+        ),
+      ).rejects.toThrow('Block explorer request failed: 400');
+
+      expect(isSyncingSnapshot()).toBe(false);
+      expect(getProgressSnapshot()).toEqual(zero);
+    });
   });
 });

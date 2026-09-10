@@ -1,14 +1,10 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { darkTheme, lightTheme } from './theme';
+import { darkTheme } from './theme';
 
-// Both themes registered, dark first so the Jest mock's
-// `useUnistyles().theme` default stays dark (Object.values(themes).at(0));
-// adaptive selection keys off the theme NAME, not object order.
-// adaptiveThemes lets a fresh install follow the OS appearance (System
-// default); the persisted choice overrides this at app start (see
-// use-sync-appearance-with-settings).
-const themes = { dark: darkTheme, light: lightTheme };
+// The app is dark-only: a single dark theme is registered, so there is no
+// runtime theme switching and no `adaptiveThemes`. `initialTheme` pins it.
+const themes = { dark: darkTheme };
 
 type AppThemes = typeof themes;
 
@@ -18,5 +14,7 @@ declare module 'react-native-unistyles' {
 
 StyleSheet.configure({
   themes,
-  settings: { adaptiveThemes: true },
+  settings: {
+    initialTheme: 'dark',
+  },
 });

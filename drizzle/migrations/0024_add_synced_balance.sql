@@ -1,0 +1,1 @@
+ALTER TABLE `holdings` ADD `synced_balance_minor_units` integer;

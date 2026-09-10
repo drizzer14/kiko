@@ -8,6 +8,7 @@ import GlassSurface from '../../../design-system/components/glass-surface';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { categoriesRepo } from '../../../repositories/categories.repo';
+import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import ColorPicker from '../../forms/color-picker';
 import HoldingIdentityField from '../../forms/holding-identity-field';
 
@@ -43,6 +44,18 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   const trimmedName = name.trim();
   // Save enables the moment a non-empty (non-whitespace) name is entered.
   const canSave = trimmedName !== '';
+
+  // The DISPLAY color the form rings/previews — never what persists. `color`
+  // stays null until a swatch is tapped (and null is what `create` receives).
+  // This is a STABLE DECORATIVE default so a swatch reads as selected from open,
+  // matching the accounts form's always-ringed kind default — NOT a prediction
+  // of the saved category's hue. `create` stores `key: id()` (a random UUID, see
+  // categories.repo.ts / db/id.ts), so the eventual per-key palette fallback
+  // hashes that UUID, unrelated to this name-derived preview. Running it off the
+  // in-progress name (stable placeholder while empty) only keeps the ring lively
+  // as the user types. The picked-color path is faithful: onSelect stores the
+  // tapped entityColors hex, which resolveCategoryColor then rings verbatim.
+  const previewColor = resolveCategoryColor(color, trimmedName || 'new-category');
 
   // Reset the form to its pristine state and collapse it — shared by a
   // successful save and an explicit Cancel.
@@ -80,7 +93,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           <Box direction="row" gap={3} style={styles.addRow}>
             <SymbolIcon name="plus" tone="textPrimary" />
 
-            <Text variant="body" tone="textSecondary">
+            <Text variant="body" tone="textPrimary">
               {t('categories.addCategory')}
             </Text>
           </Box>
@@ -100,9 +113,10 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           captioned={false}
           icon={icon}
           fallbackIcon={icon}
-          // Live preview: once a swatch is picked the icon tints to it (undefined
-          // while unset keeps the field's default), mirroring the account form.
-          iconColor={color ?? undefined}
+          // Live preview: the icon tints to the same resolved color the picker
+          // rings — the decorative default until a swatch is picked, then the
+          // picked hex — so the chip and the ringed swatch always match.
+          iconColor={previewColor}
           iconAccessibilityLabel={t('categories.chooseNewIconLabel')}
           onSelectIcon={setIcon}
           name={name}
@@ -114,13 +128,16 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           autoFocus
         />
 
-        {/* value='' until a swatch is tapped, so no swatch is ringed — the honest
-            "not picked yet" state, matching the row editor and the icon chip. The
-            prefix scopes the swatch a11y labels so they never collide with the
-            per-row pickers above (e.g. "New category color yellow"). */}
+        {/* value is the resolved DISPLAY color (previewColor), so a swatch is
+            ringed from open — a stable decorative default, mirroring the accounts
+            form's kind-default ring, not the saved row's eventual hue (that
+            hashes a random UUID key). `color` (what persists) stays null until a
+            swatch is tapped; onSelect writes the picked hex into it. The prefix
+            scopes the swatch a11y labels so they never collide with the per-row
+            pickers above (e.g. "New category color yellow"). */}
         <ColorPicker
           label={t('categories.colorLabel')}
-          value={color ?? ''}
+          value={previewColor}
           onSelect={setColor}
           accessibilityLabelPrefix={t('categories.newColorPrefix')}
         />

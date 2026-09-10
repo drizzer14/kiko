@@ -36,37 +36,55 @@ type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
  * balance provider. Upserts match on that key so a re-sync updates the balance
  * in place instead of duplicating the holding.
  */
-type SyncedHolding = NewHolding & { metadataField: SyncedMetadataField; metadataKey: string };
+type SyncedHolding = NewHolding & {
+  metadataField: SyncedMetadataField;
+  metadataKey: string;
+  // One-time transition rename: rewrite an EXISTING matched holding's name to
+  // `name` ONLY IF its current name still equals this exact old default (a
+  // user-edited name never matches). See `renameFromDefault` in provider.ts.
+  renameFromDefault?: string;
+};
 
 type MonobankHolding = NewHolding & { monobankId: string };
 
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
+  renameFromDefault?: string;
 };
 
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The JSON path is bound as a parameter (json_extract takes any text
 // expression), so this one helper serves every synced field. The holding's
-// name is written only on insert — a user rename survives a re-sync.
+// name is written on insert and otherwise preserved on update — a user rename
+// survives a re-sync — with ONE exception: the transition rename, applied only
+// when the stored name still equals `renameFromDefault` (see provider.ts).
 const upsertByMetadataKey = async (
   tx: typeof database,
-  { metadataField, metadataKey, metadata, ...rest }: SyncedHolding,
+  { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await tx
-    .select({ id: holdings.id })
+    .select({ id: holdings.id, name: holdings.name })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
   const current = existing.at(0);
 
   if (current) {
+    // Name is preserved on update (a user rename survives a re-sync), EXCEPT the
+    // one-time transition rename: rewrite it only when the stored name still
+    // equals the exact old default `renameFromDefault` names.
+    const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
     await tx
       .update(holdings)
-      .set({ balanceMinorUnits: rest.balanceMinorUnits ?? 0, metadata: merged })
+      .set({
+        balanceMinorUnits: rest.balanceMinorUnits ?? 0,
+        metadata: merged,
+        ...(rename ? { name: rest.name } : {}),
+      })
       .where(eq(holdings.id, current.id));
 
     return;
@@ -320,9 +338,48 @@ export const holdingsRepo = {
       upsertByMetadataKey(tx, { ...rest, metadataField: 'monobankId', metadataKey: monobankId }),
     ),
   /**
+   * Upsert every Monobank card/jar of ONE client-info snapshot in a SINGLE
+   * transaction, so the reactive `holdings` callback fires ONCE for the whole
+   * fast phase instead of once per card. The per-card `upsertMonobank` loop the
+   * sync used before fanned out N+M separate transactions in a tight burst at
+   * sync start, and each reactive fire re-ran the Home screen's O(n) render —
+   * starving the JS thread and stuttering the pull spinner. Atomic is also
+   * strictly better: the balance snapshot lands all-or-nothing.
+   */
+  upsertMonobankMany: (holdings: MonobankHolding[]) =>
+    write(async (tx) => {
+      for (const { monobankId, ...rest } of holdings) {
+        await upsertByMetadataKey(tx, {
+          ...rest,
+          metadataField: 'monobankId',
+          metadataKey: monobankId,
+        });
+      }
+    }),
+  /**
+   * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
+   * see db/schema.ts) for one Monobank card to the balance whose statements the
+   * sync just imported. The sync calls this ONLY after a card's statement
+   * fetch+upsert commits, so an interrupted run leaves the marker behind and the
+   * next run re-imports the card rather than skipping it on an unchanged display
+   * balance. A bare field write — it moves no money and emits no ledger row, so
+   * it stays off `updateWithBalanceDelta`. Distinct from `balanceMinorUnits`,
+   * which `upsertMonobank` writes up front from /client-info every run.
+   */
+  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) =>
+    write((tx) =>
+      tx
+        .update(holdings)
+        .set({ syncedBalanceMinorUnits: balanceMinorUnits })
+        .where(eq(holdings.id, holdingId)),
+    ),
+  /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot
-   * per provider, matched on `walletAddress` / `binanceAsset`. No transaction
-   * import — a wallet or exchange gives a number, not a statement.
+   * per holding, matched on `walletAddress` / `binanceAsset`. A provider may
+   * write MORE than one — Binance splits into a Spot, a Funding and an Earn
+   * holding, each its own `binanceAsset` match key (see `binance.provider.ts`);
+   * a wallet writes one. No transaction import — a wallet or exchange gives a
+   * number, not a statement.
    */
   upsertExchange: (holding: ExchangeHolding) => write((tx) => upsertByMetadataKey(tx, holding)),
   /**

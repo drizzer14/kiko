@@ -40,25 +40,33 @@ const glyphTints = (utils: RenderResult, name: string): (string | undefined)[] =
     (node) => node.props.tintColor,
   );
 
+// Every case renders the same field over the shared OPTIONS and label; they
+// differ only by which key starts selected (and, where a test asserts the
+// callback, the onSelect spy). Extracting the JSX keeps each test to its own
+// arrange/act/assert without cloning the render block.
+const renderCategoryField = (
+  selectedKey: string | null,
+  onSelect: (key: string) => void = jest.fn(),
+): Promise<RenderResult> =>
+  render(
+    <CategoryField
+      label="Category"
+      options={OPTIONS}
+      selectedKey={selectedKey}
+      onSelect={onSelect}
+    />,
+  );
+
 describe('CategoryField', () => {
   it('shows a placeholder in the field while nothing is selected', async () => {
-    const { getByText } = await render(
-      <CategoryField label="Category" options={OPTIONS} selectedKey={null} onSelect={jest.fn()} />,
-    );
+    const { getByText } = await renderCategoryField(null);
 
     expect(getByText('Category')).toBeTruthy();
     expect(getByText('Select category')).toBeTruthy();
   });
 
   it('shows the selected category title in the field', async () => {
-    const { getByText, queryByText } = await render(
-      <CategoryField
-        label="Category"
-        options={OPTIONS}
-        selectedKey="groceries"
-        onSelect={jest.fn()}
-      />,
-    );
+    const { getByText, queryByText } = await renderCategoryField('groceries');
 
     // The field reflects the current selection; the sheet is closed, so the
     // other options are not mounted yet.
@@ -67,9 +75,7 @@ describe('CategoryField', () => {
   });
 
   it('opens a bottom sheet listing every category when the field is tapped', async () => {
-    const { getByLabelText, getByText } = await render(
-      <CategoryField label="Category" options={OPTIONS} selectedKey={null} onSelect={jest.fn()} />,
-    );
+    const { getByLabelText, getByText } = await renderCategoryField(null);
 
     await fireEvent.press(getByLabelText('Category'));
 
@@ -79,9 +85,7 @@ describe('CategoryField', () => {
 
   it('reports the picked category key and closes the sheet', async () => {
     const onSelect = jest.fn();
-    const { getByLabelText, getByText, queryByText } = await render(
-      <CategoryField label="Category" options={OPTIONS} selectedKey={null} onSelect={onSelect} />,
-    );
+    const { getByLabelText, getByText, queryByText } = await renderCategoryField(null, onSelect);
 
     await fireEvent.press(getByLabelText('Category'));
     await fireEvent.press(getByText('Dining'));
@@ -93,14 +97,7 @@ describe('CategoryField', () => {
   });
 
   it('tints the collapsed field glyph with the selected category color', async () => {
-    const utils = await render(
-      <CategoryField
-        label="Category"
-        options={OPTIONS}
-        selectedKey="groceries"
-        onSelect={jest.fn()}
-      />,
-    );
+    const utils = await renderCategoryField('groceries');
 
     // The field's SF Symbol carries the picked category's own color as its
     // native tintColor, not a flat tone.
@@ -108,9 +105,7 @@ describe('CategoryField', () => {
   });
 
   it('tints each option row glyph with that category color', async () => {
-    const utils = await render(
-      <CategoryField label="Category" options={OPTIONS} selectedKey={null} onSelect={jest.fn()} />,
-    );
+    const utils = await renderCategoryField(null);
 
     await fireEvent.press(utils.getByLabelText('Category'));
 
@@ -121,29 +116,20 @@ describe('CategoryField', () => {
   });
 
   it('tints the selected row glyph white so it reads on the accent fill', async () => {
-    const utils = await render(
-      <CategoryField
-        label="Category"
-        options={OPTIONS}
-        selectedKey="groceries"
-        onSelect={jest.fn()}
-      />,
-    );
+    const utils = await renderCategoryField('groceries');
 
     await fireEvent.press(utils.getByLabelText('Category'));
 
     // 'cart' renders twice while the sheet is open: the collapsed field keeps
     // the category color, and the selected row now paints white
-    // (theme.colors.textPrimary) to match its checkmark on the accent fill.
+    // (theme.colors.onAccent) to match its checkmark on the accent fill.
     expect(glyphTints(utils, 'cart')).toContain('#FFFFFF');
     // The unselected 'Dining' row still carries its own category color.
     expect(glyphTint(utils, 'fork.knife')).toBe('#445566');
   });
 
   it('renders the option rows inside a vertical scroll container', async () => {
-    const utils = await render(
-      <CategoryField label="Category" options={OPTIONS} selectedKey={null} onSelect={jest.fn()} />,
-    );
+    const utils = await renderCategoryField(null);
 
     await fireEvent.press(utils.getByLabelText('Category'));
 
@@ -156,14 +142,7 @@ describe('CategoryField', () => {
   });
 
   it('marks the currently selected row as selected for accessibility', async () => {
-    const { getByLabelText, getByRole } = await render(
-      <CategoryField
-        label="Category"
-        options={OPTIONS}
-        selectedKey="groceries"
-        onSelect={jest.fn()}
-      />,
-    );
+    const { getByLabelText, getByRole } = await renderCategoryField('groceries');
 
     await fireEvent.press(getByLabelText('Category'));
 
@@ -210,14 +189,7 @@ describe('CategoryField', () => {
     };
 
     it('stays at the top when nothing is selected', async () => {
-      const utils = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey={null}
-          onSelect={jest.fn()}
-        />,
-      );
+      const utils = await renderCategoryField(null);
 
       await fireEvent.press(utils.getByLabelText('Category'));
       emitContentSizeChange(utils);
@@ -228,14 +200,7 @@ describe('CategoryField', () => {
     });
 
     it('stays at the top when the selected row is already the first row', async () => {
-      const utils = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey="groceries"
-          onSelect={jest.fn()}
-        />,
-      );
+      const utils = await renderCategoryField('groceries');
 
       await fireEvent.press(utils.getByLabelText('Category'));
 
@@ -248,14 +213,7 @@ describe('CategoryField', () => {
     });
 
     it('scrolls to the selected row once its content size is measured', async () => {
-      const utils = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey="dining"
-          onSelect={jest.fn()}
-        />,
-      );
+      const utils = await renderCategoryField('dining');
 
       await fireEvent.press(utils.getByLabelText('Category'));
 
@@ -271,14 +229,7 @@ describe('CategoryField', () => {
     });
 
     it('scrolls exactly once per open even if the content size settles twice', async () => {
-      const utils = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey="dining"
-          onSelect={jest.fn()}
-        />,
-      );
+      const utils = await renderCategoryField('dining');
 
       await fireEvent.press(utils.getByLabelText('Category'));
       // The selected row's onLayout records its offset and performs the single
@@ -298,14 +249,7 @@ describe('CategoryField', () => {
     });
 
     it('re-arms the scroll when the sheet closes and reopens', async () => {
-      const utils = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey="dining"
-          onSelect={jest.fn()}
-        />,
-      );
+      const utils = await renderCategoryField('dining');
 
       // First open: measure and jump to the selected row.
       await fireEvent.press(utils.getByLabelText('Category'));
@@ -344,14 +288,7 @@ describe('CategoryField', () => {
         await i18n.changeLanguage('uk');
       });
 
-      const { getByText, queryByText } = await render(
-        <CategoryField
-          label="Category"
-          options={OPTIONS}
-          selectedKey={null}
-          onSelect={jest.fn()}
-        />,
-      );
+      const { getByText, queryByText } = await renderCategoryField(null);
 
       expect(getByText('Оберіть категорію')).toBeTruthy();
       expect(queryByText('Select category')).toBeNull();

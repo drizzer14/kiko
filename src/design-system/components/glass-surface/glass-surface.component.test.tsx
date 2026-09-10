@@ -5,7 +5,6 @@ import { StyleSheet, Text } from 'react-native';
 // assertion reads the expected value from the same source the style uses.
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../unistyles';
-import * as colorSchemeModule from '../../color-scheme';
 import { darkTheme } from '../../theme';
 
 // Imported through the folder's index (the real path a screen consumes,
@@ -108,6 +107,22 @@ describe('GlassSurface', () => {
     // `surface` token, never a tint rgba.
     const flat = StyleSheet.flatten(getByTestId('plain-surface-base').props.style);
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+  });
+
+  // On the non-glass fallback path a `transparent` surface fills its base with
+  // the TRANSLUCENT token (not the opaque `surface`), so this path reads
+  // see-through too rather than a solid block. There is no separate backdrop on
+  // the fallback path — the base itself carries the fill.
+  it('fills the fallback base with the translucent token when transparent is set', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <GlassSurface testID="transparent-fallback" transparent>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('transparent-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(queryByTestId('transparent-fallback-backdrop')).toBeNull();
   });
 
   // Device-only regression (encoded here as a JS-composition assertion, since
@@ -222,29 +237,43 @@ describe('GlassSurface', () => {
       expect(base.props.animated).toBe(false);
     });
 
-    // `solidBackdrop` opts a tint-LESS surface into the same opaque themed
-    // backdrop a tinted card gets, WITHOUT any color wash — the anti-drift fix
-    // (a constant color for the translucent glass to sample) applied to a card
-    // that must stay visually neutral (the settings categories card). The
-    // backdrop is the neutral themed surface (no tint) and there is still no
-    // wash layer, since `wash` stays gated on `tint`.
-    it('paints the opaque neutral backdrop for a tint-less surface when solidBackdrop is set, with no wash', async () => {
+    // `transparent` opts a tint-LESS surface into a TRANSLUCENT themed backdrop
+    // (not the opaque one a tinted card gets), WITHOUT any color wash — the
+    // frosted see-through panel (the settings and category cards). The backdrop
+    // is the translucent themed surface, so the material samples a
+    // partially-pinned color and the screen behind reads through.
+    it('paints the translucent neutral backdrop for a tint-less surface when transparent is set, with no wash', async () => {
       const { getByTestId, queryByTestId } = await render(
-        <GlassSurface testID="solid-glass" solidBackdrop>
+        <GlassSurface testID="transparent-glass" transparent>
           <Text>content</Text>
         </GlassSurface>,
       );
 
-      const backdrop = getByTestId('solid-glass-backdrop');
+      const backdrop = getByTestId('transparent-glass-backdrop');
       const flat = StyleSheet.flatten(backdrop.props.style);
-      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
 
-      // No color wash: the card stays neutral, and the glass base carries no tint.
-      expect(queryByTestId('solid-glass-wash')).toBeNull();
-      expect(getByTestId('solid-glass-base').props.tintColor).toBeUndefined();
+      // No color wash: the panel stays neutral, and the glass base carries no tint.
+      expect(queryByTestId('transparent-glass-wash')).toBeNull();
+      expect(getByTestId('transparent-glass-base').props.tintColor).toBeUndefined();
     });
 
-    it('renders no backdrop when neither tint nor solidBackdrop is set', async () => {
+    // `transparent` is a NEUTRAL variant, so a `tint` (an entity card, which
+    // must stay opaque) always wins: the backdrop is the OPAQUE surface, and the
+    // material still carries the entity `tintColor`.
+    it('keeps the opaque backdrop and tint when both tint and transparent are set', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="both-glass" tint={tint} transparent>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const flat = StyleSheet.flatten(getByTestId('both-glass-backdrop').props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(getByTestId('both-glass-base').props.tintColor).toBe(tint);
+    });
+
+    it('renders no backdrop when neither tint nor transparent is set', async () => {
       const { queryByTestId } = await render(
         <GlassSurface testID="no-backdrop-glass">
           <Text>content</Text>
@@ -254,38 +283,14 @@ describe('GlassSurface', () => {
       expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
     });
 
-    // The active theme drives the native glass's colorScheme, not a hardcoded
-    // literal — the global mock resolves `rt.themeName === undefined` through
-    // `resolveColorScheme` to 'dark', so the default assertion here is 'dark'.
-    // The light-branch case below spies on `resolveColorScheme` (the seam this
-    // task introduces) rather than fighting the Unistyles mock's frozen runtime.
-    it("passes the active theme's colorScheme to the native glass (dark by default under mock)", async () => {
+    // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.
+    it('passes a fixed dark colorScheme to the native glass', async () => {
       const { getByTestId } = await render(
         <GlassSurface testID="glass-surface" tint="rgba(255,69,58,0.1)">
           <Text>content</Text>
         </GlassSurface>,
       );
       expect(getByTestId('glass-surface-base').props.colorScheme).toBe('dark');
-    });
-  });
-
-  describe('GlassSurface on the light theme', () => {
-    beforeEach(() => {
-      liquidGlass.isLiquidGlassSupported = true;
-      jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    });
-    afterEach(() => {
-      liquidGlass.isLiquidGlassSupported = false;
-      jest.restoreAllMocks();
-    });
-
-    it('passes the resolved light colorScheme to the native glass', async () => {
-      const { getByTestId } = await render(
-        <GlassSurface testID="glass-surface" tint="rgba(255,69,58,0.1)">
-          <Text>content</Text>
-        </GlassSurface>,
-      );
-      expect(getByTestId('glass-surface-base').props.colorScheme).toBe('light');
     });
   });
 });

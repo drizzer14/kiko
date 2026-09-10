@@ -3,10 +3,8 @@ import {
   ENTITY_TINT_OPACITY,
   entityCardBackground,
   entityTintBackground,
-  lightenHex,
   resolveEntityColor,
 } from './entity-tint';
-import { entityColorsLight, entityColorsDark as palette } from './palette';
 import { darkTheme } from './theme';
 
 describe('entityTintBackground', () => {
@@ -148,116 +146,8 @@ describe('resolveEntityColor', () => {
   it('falls back to the safe default swatch when the stored color is an empty string and the type default is unmapped', () => {
     expect(resolveEntityColor('', undefined)).toBe(darkTheme.colors.entityColors.gray);
   });
-});
 
-describe('lightenHex', () => {
-  it('moves every channel toward white by the given percent', () => {
-    // 50% of the way from 0 to 255 is ~128 (0x80); from 255 stays 255.
-    expect(lightenHex('#000000', 50)).toBe('#808080');
-    expect(lightenHex('#FFFFFF', 50)).toBe('#ffffff');
-  });
-
-  it('accepts a lowercase hex the same way as uppercase', () => {
-    expect(lightenHex('#ff453a', 10)).toBe(lightenHex('#FF453A', 10));
-  });
-
-  it('is a no-op at 0%', () => {
-    expect(lightenHex('#FF453A', 0)).toBe('#ff453a');
-  });
-
-  it('throws on a non-hex input, same as darkenHex', () => {
-    expect(() => lightenHex('not-a-hex', 50)).toThrow(
-      'entityTintBackground: expected a #RRGGBB hex, received "not-a-hex"',
-    );
-  });
-});
-
-describe('entityCardBackground direction', () => {
-  it('darkens on the dark theme (default and explicit)', () => {
-    expect(entityCardBackground('#FF453A')).toBe(darkenHex('#FF453A', 90));
-    expect(entityCardBackground('#FF453A', 'dark')).toBe(darkenHex('#FF453A', 90));
-  });
-
-  it('lightens on the light theme, toward a near-white card tone', () => {
-    expect(entityCardBackground('#FF453A', 'light')).toBe(lightenHex('#FF453A', 90));
-  });
-
-  it('reads plainly lighter than the raw hue on every channel for every swatch on light', () => {
-    const channels = (hex: string): [number, number, number] => [
-      Number.parseInt(hex.slice(1, 3), 16),
-      Number.parseInt(hex.slice(3, 5), 16),
-      Number.parseInt(hex.slice(5, 7), 16),
-    ];
-
-    for (const hex of Object.values(palette)) {
-      const [cr, cg, cb] = channels(entityCardBackground(hex, 'light'));
-      const [rr, rg, rb] = channels(hex);
-      expect(cr).toBeGreaterThanOrEqual(rr);
-      expect(cg).toBeGreaterThanOrEqual(rg);
-      expect(cb).toBeGreaterThanOrEqual(rb);
-    }
-  });
-
-  it('produces a distinct light-mode card color for every swatch', () => {
-    const cards = Object.values(palette).map((hex) => entityCardBackground(hex, 'light'));
-    expect(new Set(cards).size).toBe(cards.length);
-  });
-});
-
-describe('resolveEntityColor scheme-aware fallback', () => {
-  it('falls back to the DARK gray by default and for the dark scheme', () => {
-    expect(resolveEntityColor(null, undefined)).toBe(palette.gray);
-    expect(resolveEntityColor(null, undefined, 'dark')).toBe(palette.gray);
-  });
-
-  it('falls back to the LIGHT gray for the light scheme', () => {
-    expect(resolveEntityColor(null, undefined, 'light')).toBe(entityColorsLight.gray);
-  });
-
-  it('still returns a valid typeDefault hex regardless of scheme', () => {
-    expect(resolveEntityColor(null, '#abcdef', 'light')).toBe('#abcdef');
-  });
-});
-
-// A stored override is persisted as an absolute hex of whichever theme was
-// active at pick time (color-picker.component.tsx hands `onSelect` the raw
-// active-theme swatch hex). An existing user's stored row therefore holds
-// exactly one scheme's hex, unchanged, forever — resolveEntityColor is the
-// ONLY place that must reverse-map it to the CURRENT scheme's paired
-// counterpart at render time, with no destructive migration of the stored
-// row itself.
-describe('resolveEntityColor stored-hex scheme portability', () => {
-  it('resolves a PRE-EXISTING stored dark-palette hex to its light counterpart under scheme=light', () => {
-    // `white` picked on dark (#FFFFFF) must render as light `white` (#000000)
-    // on the light scheme — the exact bug this fix addresses.
-    expect(resolveEntityColor(palette.white, undefined, 'light')).toBe(entityColorsLight.white);
-    expect(resolveEntityColor(palette.blue, undefined, 'light')).toBe(entityColorsLight.blue);
-  });
-
-  it('resolves a PRE-EXISTING stored light-palette hex to its dark counterpart under scheme=dark', () => {
-    expect(resolveEntityColor(entityColorsLight.white, undefined, 'dark')).toBe(palette.white);
-    expect(resolveEntityColor(entityColorsLight.blue, undefined, 'dark')).toBe(palette.blue);
-  });
-
-  it('every named swatch round-trips: dark hex -> light -> back to the original dark hex', () => {
-    for (const name of Object.keys(palette) as (keyof typeof palette)[]) {
-      const toLight = resolveEntityColor(palette[name], undefined, 'light');
-      expect(toLight).toBe(entityColorsLight[name]);
-
-      const backToDark = resolveEntityColor(toLight, undefined, 'dark');
-      expect(backToDark).toBe(palette[name]);
-    }
-  });
-
-  it('leaves a stored hex unchanged when it already matches the current scheme', () => {
-    expect(resolveEntityColor(palette.white, undefined, 'dark')).toBe(palette.white);
-    expect(resolveEntityColor(entityColorsLight.white, undefined, 'light')).toBe(
-      entityColorsLight.white,
-    );
-  });
-
-  it('passes an unknown/custom hex through unchanged for either scheme, never breaking a legacy value', () => {
-    expect(resolveEntityColor('#123456', undefined, 'light')).toBe('#123456');
-    expect(resolveEntityColor('#123456', undefined, 'dark')).toBe('#123456');
+  it('passes an unknown/custom stored hex through unchanged, never breaking a legacy value', () => {
+    expect(resolveEntityColor('#123456', undefined)).toBe('#123456');
   });
 });

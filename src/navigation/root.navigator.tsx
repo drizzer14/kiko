@@ -25,18 +25,14 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * the active tint.
  *
  * `tabBarStyle.backgroundColor` pins the bar's *background* (Bug B1). The
- * library rebuilds the UITabBar appearance on every tab's `onAppear`
+ * library rebuilds the UITabBar styling on every tab's `onAppear`
  * (react-native-bottom-tabs `TabAppearModifier` → `configureStandardAppearance`).
  * With no `tabBarStyle` that rebuild calls `configureWithDefaultBackground()`,
- * whose glass material re-resolves against the ambient `userInterfaceStyle` —
- * and because the app pins its color scheme only in JS (the
- * `NavigationContainer` theme, itself now driven by the active Unistyles
- * theme), not natively (no `UIUserInterfaceStyle` in Info.plist), that
- * ambient style is unpinned, so the bar flips light/dark between pages.
- * Setting `tabBarStyle.backgroundColor` forces `appearance.backgroundColor`
- * to the concrete, ACTIVE theme's background token on every rebuild, so the
- * bar holds one consistent scheme that tracks the chosen theme (not a fixed
- * dark constant).
+ * whose glass material re-resolves against the ambient `userInterfaceStyle`.
+ * The app is dark-only and pins `UIUserInterfaceStyle = Dark` in Info.plist,
+ * so that ambient style is always dark; setting `tabBarStyle.backgroundColor`
+ * additionally forces the bar's background to the concrete dark background
+ * token on every rebuild, so the bar holds one consistent dark scheme.
  */
 const RootNavigator: FC = () => {
   const { t } = useTranslation();
@@ -52,12 +48,9 @@ const RootNavigator: FC = () => {
       // spread (TabView.tsx:477), so the native view received `undefined` and
       // `configureWithDefaultBackground()` re-resolved the bar's glass against
       // the ambient userInterfaceStyle on every tab's `onAppear` — the bar
-      // flipped light/dark between pages (bug B1). The Info.plist no longer
-      // pins `UIUserInterfaceStyle` at all; the ambient native style is now
-      // driven at runtime from the chosen appearance via
-      // `RNAppearance.setColorScheme` in `applyAppearance` (src/appearance/
-      // appearance.ts), so the bar's glass re-resolves against the scheme the
-      // user picked. This concrete backgroundColor still pins the exact token.
+      // flipped light/dark between pages (bug B1). The app is dark-only and pins
+      // `UIUserInterfaceStyle = Dark` in Info.plist, so the ambient native style
+      // is always dark. This concrete backgroundColor still pins the exact token.
       tabBarStyle={{ backgroundColor: theme.colors.background }}
       tabBarActiveTintColor={theme.colors.accent}
       tabBarInactiveTintColor={theme.colors.textSecondary}

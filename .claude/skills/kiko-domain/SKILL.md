@@ -58,8 +58,15 @@ absent** — this skill states the shape and non-enum facts only:
   (base, quote, day) for the historical net-worth chart — read
   `schema.ts` directly, this skill does not restate its columns.
 - **Settings** — single row: `baseCurrency`, `lastSyncAt`
-  (nullable). The Monobank token is never stored here — see
-  `kiko-architecture` for the Keychain rule.
+  (nullable), plus feature settings — read `src/db/schema.ts` for the
+  live column set rather than trusting a list here. One is `trendFilter`,
+  the Statistics trend chart's saved filter: a JSON `TrendFilter` union
+  (`{ mode:'manual', keys } | { mode:'top', amount, by } | null`, see
+  `src/statistics/trend-filter.ts`). It SUPERSEDES the retained-dead
+  `trendCategoryKeys` column (migration 0025 copies any saved keys across
+  as a manual filter; the old column is pinned reader-less in
+  `src/db/settings-columns.test.ts`). The Monobank token is never stored
+  here — see `kiko-architecture` for the Keychain rule.
 
 A manual balance adjustment always writes a `manual` Transaction, so
 a holding's balance history stays derivable from its transactions.
@@ -267,9 +274,13 @@ description if the lock design changes again.
 The shipped lock is **cold-launch only**: `useAppLock` decides once and never
 re-locks, so a resident backgrounded process resumes without a prompt. That is
 an accepted, recorded risk — see `docs/security/README.md`. `lockGraceSeconds`
-is pinned as the one allowed reader-less `settings` column by
-`src/db/settings-columns.test.ts`; wiring it up means removing it from that
-test's documented-exception list, which is the deliberate decision gate.
+is one of the documented reader-less `settings` columns pinned by
+`src/db/settings-columns.test.ts`'s `DOCUMENTED_READERLESS_COLUMNS` list —
+the other is `appearance` (the removed light/dark color-scheme feature; the
+app is now dark-only, see `kiko-design-system`'s "Dark-only theme"); wiring
+either back up means removing it from that test's list, which is the
+deliberate decision gate. Read the list itself for the exact current set
+rather than assuming only these two.
 
 ## Dates
 

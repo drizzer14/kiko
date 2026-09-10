@@ -1,6 +1,6 @@
-import type { FC } from 'react';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 
 import type { Currency } from '../../../currency/currency';
@@ -24,6 +24,13 @@ import { styles } from './pie-chart.styles';
  * hole (e.g. the category-spending donut's total); omitted, no center total
  * renders — the account-contribution pie's total already reads elsewhere on
  * screen, so it passes neither.
+ *
+ * `legendMinShare`, when set, crops the LEGEND (never the ring) to the slices
+ * whose share is at or above that fraction, and renders a toggle to reveal the
+ * cropped rows. Omitted, the full legend renders with no toggle — the
+ * account-contribution pie passes nothing, so its legend is unchanged. The
+ * ring always draws every slice, and the percent labels are always allocated
+ * over the whole set, regardless of this prop.
  */
 type PieChartProps = {
   slices: AccountSlice[];
@@ -33,6 +40,7 @@ type PieChartProps = {
   emptyLabel?: string;
   innerRatio?: number;
   centerTotal?: Money;
+  legendMinShare?: number;
 };
 
 const DEFAULT_SIZE = 200;
@@ -177,8 +185,10 @@ const PieChart: FC<PieChartProps> = ({
   emptyLabel,
   innerRatio = DEFAULT_INNER_RATIO,
   centerTotal,
+  legendMinShare,
 }) => {
   const { t } = useTranslation();
+  const [legendExpanded, setLegendExpanded] = useState(false);
 
   if (slices.length === 0) {
     return (
@@ -193,6 +203,19 @@ const PieChart: FC<PieChartProps> = ({
   const center = size / 2;
   const arcs = withAngles(slices);
   const percents = allocatePercents(slices.map((slice) => slice.share));
+
+  // Legend rows carry their full-set percent, so cropping never re-allocates.
+  const legendEntries = slices.map((slice, index) => ({ slice, percent: percents[index] }));
+  const majorEntries =
+    legendMinShare === undefined
+      ? legendEntries
+      : legendEntries.filter((entry) => entry.slice.share >= legendMinShare);
+  // The toggle only earns its place when cropping actually hides a row: at
+  // least one slice is below the threshold AND at least one is at or above it.
+  // Everything-below (nothing to keep) and everything-above (nothing to crop)
+  // both show the full legend with no toggle.
+  const canCollapse = majorEntries.length > 0 && majorEntries.length < legendEntries.length;
+  const visibleEntries = canCollapse && !legendExpanded ? majorEntries : legendEntries;
 
   return (
     <Box style={styles.container}>
@@ -222,24 +245,34 @@ const PieChart: FC<PieChartProps> = ({
               adjustsFontSizeToFit
               minimumFontScale={0.5}
             />
-
-            <Text variant="caption" tone="textSecondary">
-              {t('components.pieChart.total')}
-            </Text>
           </View>
         )}
       </View>
 
       <Box style={styles.legend}>
-        {slices.map((slice, index) => (
+        {visibleEntries.map(({ slice, percent }) => (
           <PieLegendEntry
             key={slice.accountId}
             slice={slice}
             baseCurrency={baseCurrency}
             testID={testID}
-            percent={percents[index]}
+            percent={percent}
           />
         ))}
+
+        {canCollapse && (
+          <Pressable
+            testID={`${testID}-legend-toggle`}
+            onPress={() => setLegendExpanded((expanded) => !expanded)}
+            style={styles.legendToggle}
+          >
+            <Text variant="caption" tone="accent">
+              {legendExpanded
+                ? t('components.pieChart.showLess')
+                : t('components.pieChart.showAll')}
+            </Text>
+          </Pressable>
+        )}
       </Box>
     </Box>
   );

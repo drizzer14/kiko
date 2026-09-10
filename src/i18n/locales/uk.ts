@@ -19,6 +19,7 @@ export const uk: typeof en = {
   common: {
     all: 'Усі',
     save: 'Зберегти',
+    clear: 'Очистити',
     cancel: 'Скасувати',
     delete: 'Видалити',
     deleteNamed: 'Видалити «{{name}}»',
@@ -42,7 +43,6 @@ export const uk: typeof en = {
     },
     baseCurrency: 'Основна валюта',
     categories: 'Категорії',
-    colorScheme: 'Тема',
     language: 'Мова',
     system: 'Системні',
     title: 'Налаштування',
@@ -50,11 +50,6 @@ export const uk: typeof en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
-  },
-  appearance: {
-    system: 'Системна',
-    light: 'Світла',
-    dark: 'Темна',
   },
   calendar: {
     month: {
@@ -155,11 +150,13 @@ export const uk: typeof en = {
       compounding: 'Капіталізація',
       contributionAmount: 'Внесок {{index}}: сума',
       contributionDate: 'Внесок {{index}}: дата',
+      contributions: 'Внески',
       corporate: 'Корпоративна',
       couponFrequency: 'Частота купона',
       couponPct: 'Купон %',
       cryptoAsset: 'Криптоактив',
       deposit: 'Депозит',
+      details: 'Деталі облігації',
       editTitle: 'Редагувати актив',
       faceValue: 'Номінальна вартість',
       government: 'Державна',
@@ -177,6 +174,7 @@ export const uk: typeof en = {
       selectDatePlaceholder: 'Оберіть дату',
       semiannually: 'Раз на півроку',
       termMonths: 'Термін (місяців)',
+      terms: 'Умови',
       type: 'Тип',
     },
     transaction: {
@@ -185,6 +183,7 @@ export const uk: typeof en = {
       applyCategoryMessage:
         'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}»? Це також застосується до майбутніх імпортів.',
       applyCategoryToAll: 'Застосувати категорію до всіх',
+      applyToThisOne: 'Лише для цієї',
       category: 'Категорія',
       convertToExchange: 'Зробити обміном',
       deleteConfirmMessage: 'Цю транзакцію буде остаточно видалено.',
@@ -195,7 +194,7 @@ export const uk: typeof en = {
       expense: 'Витрата',
       from: 'Звідки',
       income: 'Дохід',
-      monobankNotice: 'Цю транзакцію імпортовано з Monobank, і її не можна редагувати.',
+      syncedNotice: 'Цю транзакцію імпортовано з підключеного рахунку, і її не можна редагувати.',
       selectHolding: 'Оберіть актив',
       title: 'Транзакція',
       to: 'Куди',
@@ -310,6 +309,7 @@ export const uk: typeof en = {
     filterCategories: 'Категорії',
     netWorth: 'Капітал',
     syncFailedMessage: 'Не вдалося синхронізувати {{accounts}}.',
+    syncingHoldings: 'Синхронізація активів {{completed}}/{{total}}',
     title: 'Головна',
     today: 'Сьогодні',
     yesterday: 'Вчора',
@@ -322,9 +322,34 @@ export const uk: typeof en = {
     filterCategories: 'Категорії',
     netWorthOverTime: 'Капітал з часом',
     noSpendingToShow: 'Немає витрат для показу',
-    resetTrendCategories: 'Скинути',
     spendingTrendByCategory: 'Тренд витрат за категоріями',
     title: 'Статистика',
+    trendFilter: {
+      title: 'Фільтри',
+      selection: 'Вибір',
+      manual: 'Вручну',
+      top: 'Топ',
+      amount: 'Кількість',
+      by: 'За',
+      // The instrumental-case measure words — shown on the "By" chips AND
+      // interpolated into the `top` button label ("Топ 3 за Внеском").
+      measure: {
+        contribution: 'Внеском',
+        frequency: 'Частотою',
+        rising: 'Зростанням',
+      },
+      // The three Ukrainian plural forms for the manual count, selected by
+      // i18next's uk plural rule: _one (1 Категорія), _few (2-4 Категорії),
+      // _many (0, 5-20 Категорій), _other (fractional, unreachable here).
+      button: {
+        allCategories: 'Всі категорії',
+        manual_one: '{{count}} Категорія',
+        manual_few: '{{count}} Категорії',
+        manual_many: '{{count}} Категорій',
+        manual_other: '{{count}} Категорії',
+        top: 'Топ {{count}} за {{measure}}',
+      },
+    },
   },
   transactions: {
     defaultDescriptionExpense: 'Витрата: {{name}}',
@@ -338,7 +363,8 @@ export const uk: typeof en = {
     },
     pieChart: {
       emptyDefault: 'Немає рахунків для показу',
-      total: 'Усього',
+      showAll: 'Показати всі',
+      showLess: 'Згорнути',
     },
     swipeableRow: {
       confirmMessage: 'Це неможливо скасувати.',

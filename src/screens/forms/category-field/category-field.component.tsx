@@ -12,6 +12,7 @@ import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import FieldTrigger from '../field-trigger';
 
 import type { CategoryFieldProps } from './category-field.props';
 import { styles } from './category-field.styles';
@@ -89,28 +90,14 @@ const CategoryField = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
+      <FieldTrigger
+        label={label}
         onPress={() => setOpen(true)}
-      >
-        <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon
-            name={selected?.icon ?? PLACEHOLDER_ICON}
-            size={18}
-            tone="textSecondary"
-            color={selected?.color}
-          />
-
-          <Text variant="body" tone={selected ? 'textPrimary' : 'textSecondary'}>
-            {selected?.title ?? t('forms.fields.selectCategory')}
-          </Text>
-        </Box>
-      </Pressable>
+        icon={selected?.icon ?? PLACEHOLDER_ICON}
+        iconColor={selected?.color}
+        value={selected?.title ?? t('forms.fields.selectCategory')}
+        valueTone={selected ? 'textPrimary' : 'textSecondary'}
+      />
 
       {/* `scrollable={false}`: this sheet owns its OWN inner ScrollView (via
           `scrollRef`, to jump straight to the already-selected row on open) —
@@ -155,19 +142,23 @@ const CategoryField = ({
                 ]}
               >
                 {isSelected ? (
-                  // The selected row sits on the accent fill, so its glyph reads
-                  // white (tone) to match the checkmark below — SymbolIcon's
-                  // `color` overrides `tone`, so it must be omitted here.
-                  <SymbolIcon name={option.icon} size={18} tone="textPrimary" />
+                  // The selected row sits on the accent fill, so its glyph needs
+                  // the always-white `onAccent` tone to match the checkmark
+                  // below — `textPrimary` flips to black on the light theme and
+                  // would vanish there. SymbolIcon's `color` overrides `tone`,
+                  // so it must be omitted here.
+                  <SymbolIcon name={option.icon} size={18} tone="onAccent" />
                 ) : (
                   <SymbolIcon name={option.icon} size={18} color={option.color} />
                 )}
 
-                <Text variant="body">{option.title}</Text>
+                <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
+                  {option.title}
+                </Text>
 
                 {isSelected && (
                   <Box style={styles.checkmark}>
-                    <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
+                    <SymbolIcon name="checkmark" size={16} tone="onAccent" />
                   </Box>
                 )}
               </Pressable>

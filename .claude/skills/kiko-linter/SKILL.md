@@ -26,7 +26,47 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   DO-NOT block) to stderr, then `exit 2`.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
-  wrapper and every hook relies on.
+  wrapper and every hook relies on. The ONE exception is the deep,
+  manual tier that is NOT hook-wired (`scripts/checks/mutation.sh`):
+  `check:deep` is run by hand, never on `Stop`/`SubagentStop`, so the
+  hook contract does not apply and it STREAMS Stryker's output to stdout
+  live (`"$BIN" run 2>&1 | tee "$tmp"`, exit code via `PIPESTATUS[0]`) so
+  a multi-minute run shows progress. It still prints the structured block
+  and `exit 2` on failure, and still records the content-dedup pass
+  fingerprint on success. Its streaming and exit-code behavior is tested
+  against a stub binary through the `KIKO_MUTATION_BIN` seam
+  (`__tests__/mutation-stream.test.ts`); the seam defaults to the pinned
+  `node_modules` binary, so production and the pinned-version guarantee
+  are unchanged. A fast, hook-wired wrapper must still be silent on
+  success.
+
+  `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
+  `.tsx` source files this branch changed vs the merge-base with
+  `${KIKO_MUTATION_BASE:-main}` (tests and fixtures — `*.test.ts(x)`,
+  `__tests__/`, `rules/fixtures/` — excluded to match the config's mutate
+  excludes), passed to Stryker as an explicit `--mutate` list that
+  overrides the whole-tree glob. An empty changed set exits 0 (nothing to
+  mutate). `KIKO_MUTATION_FULL=1` forces the whole project, and an
+  unresolvable merge-base also falls back to the whole project — the gate
+  never silently mutates nothing. This keeps the manual `check:deep`
+  cheap; the diff logic is tested hermetically (a throwaway git repo, the
+  real script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
+
+  `mutation.sh` also holds a GLOBAL (machine-wide) single-flight lock, so
+  only ONE Stryker runs at a time across ALL worktrees — many parallel
+  worktree sessions each launching Stryker overloads the machine. The
+  lock is a fixed path from `harness_global_lock_dir` (under `TMPDIR`,
+  NOT keyed by the worktree, unlike the per-worktree
+  `harness_state_dir`). Acquire is fail-fast via `harness_try_lock`: a
+  live holder makes it print the structured block (naming the holding pid
+  and worktree from `harness_lock_holder`) and `exit 2`, never block or
+  queue; a stale lock (holder process gone) is reclaimed. Release runs on
+  normal exit AND on INT/TERM via a trap, so a killed run never strands
+  the lock. The lock only widens the SCOPE of the guard to global; the
+  content-dedup fingerprints still use the per-worktree state dir. The
+  global mutual exclusion is verified without a real run by pre-holding
+  the lock with a live pid and asserting the wrapper fails fast
+  (`__tests__/mutation-lock.test.ts`).
 - Fail closed: a missing required tool (semgrep, plutil, tsc) or a
   tool that crashes/exits non-zero-non-one is a **failure block**, not
   a silent pass and not a skip. A scan that never actually ran must

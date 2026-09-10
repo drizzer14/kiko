@@ -104,7 +104,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       <Box gap={3}>
         <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-        <Box gap={2}>
+        {/* gap={3} (not 2) so the "last synced" line ↔ "Sync now" spacing equals
+            the "Sync now" ↔ "Disconnect" spacing (the section root's gap={3}),
+            giving the three stacked elements one even rhythm. */}
+        <Box gap={3} testID="crypto-sync-status-actions">
           <Box direction="row" gap={2} style={styles.statusLine}>
             <SymbolIcon name="clock" tone="textSecondary" />
 

@@ -1,7 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import { Text as RNText } from 'react-native';
+import { Text as RNText, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import GlassSurface from '../../../design-system/components/glass-surface';
+import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
 
@@ -68,5 +69,31 @@ describe('SettingsRow', () => {
     await fireEvent.press(getByText('Second'));
     expect(onPressSecond).toHaveBeenCalledTimes(1);
     expect(onPressFirst).toHaveBeenCalledTimes(1);
+  });
+
+  // A long label ("Follow system setting"-length strings elsewhere in
+  // Settings) previously overflowed past the trailing chevron/control instead
+  // of wrapping, because RN's `flexShrink` defaults to 0. This asserts the
+  // STYLE CONTRACT that enables wrapping (not actual pixel wrapping, which
+  // Jest cannot lay out): the label sits in a `flexShrink: 1` container, and
+  // the header top-aligns to the label's first line rather than vertically
+  // centering the chevron against the label's full (once wrapped,
+  // multi-line) height.
+  it('lets a long label shrink to wrap, and top-aligns the header to it', async () => {
+    const { getByText } = await render(
+      <SettingsRow
+        icon="gearshape"
+        label="A very long setting label that must wrap"
+        onPress={jest.fn()}
+      />,
+    );
+
+    const label = getByText('A very long setting label that must wrap');
+
+    const shrinkable = ancestorWithStyle(label, 'flexShrink');
+    expect(StyleSheet.flatten(shrinkable.props.style).flexShrink).toBe(1);
+
+    const header = ancestorWithStyle(label, 'alignItems');
+    expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
   });
 });

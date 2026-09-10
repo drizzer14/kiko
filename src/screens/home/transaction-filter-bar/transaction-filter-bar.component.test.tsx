@@ -252,32 +252,41 @@ describe('TransactionFilterBar', () => {
       expect(onApplyDates).toHaveBeenCalledWith(SPAN_START, SPAN_END);
     });
 
-    it('applies a range selected across two day taps, ordered from <= to', async () => {
+    it('moves only the bound nearer to a pick, leaving the other unchanged', async () => {
       const onApplyDates = jest.fn();
-      const queries = await renderBar({ onApplyDates });
+      // Seed an active range so the pick has a known [from, to] to act on.
+      const queries = await renderBar({
+        dateFrom: new Date(2026, 0, 10),
+        dateTo: new Date(2026, 0, 20),
+        onApplyDates,
+      });
 
       await act(async () => {
         fireEvent.press(queries.getByLabelText('Date range'));
       });
-      // Tap the later day first, then the earlier day: the field must still
-      // commit the range with from <= to.
-      await pressDay(queries, new Date(2026, 0, 20));
-      await pressDay(queries, new Date(2026, 0, 5));
+      // Jan 12 is nearer the `from` bound (Jan 10) than the `to` bound (Jan 20),
+      // so only `from` moves; `to` stays on Jan 20.
+      await pressDay(queries, new Date(2026, 0, 12));
       await act(async () => {
         fireEvent.press(queries.getByText('Apply'));
       });
 
-      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 5), new Date(2026, 0, 20));
+      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 12), new Date(2026, 0, 20));
     });
 
-    it('commits a single tapped day as a same-day range', async () => {
+    it('applies an open-ended start as a same-day range when Apply is pressed', async () => {
       const onApplyDates = jest.fn();
-      const queries = await renderBar({ onApplyDates });
+      // An open-ended range (only `from` set) commits as a same-day range so a
+      // lone bound still applies without a second tap.
+      const queries = await renderBar({
+        dateFrom: new Date(2026, 0, 7),
+        dateTo: null,
+        onApplyDates,
+      });
 
       await act(async () => {
         fireEvent.press(queries.getByLabelText('Date range'));
       });
-      await pressDay(queries, new Date(2026, 0, 7));
       await act(async () => {
         fireEvent.press(queries.getByText('Apply'));
       });

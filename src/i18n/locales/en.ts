@@ -28,6 +28,7 @@ export const en = {
   common: {
     all: 'All',
     save: 'Save',
+    clear: 'Clear',
     cancel: 'Cancel',
     delete: 'Delete',
     deleteNamed: 'Delete "{{name}}"',
@@ -50,7 +51,6 @@ export const en = {
     },
     baseCurrency: 'Base Currency',
     categories: 'Categories',
-    colorScheme: 'Color Scheme',
     language: 'Language',
     system: 'System',
     title: 'Settings',
@@ -58,11 +58,6 @@ export const en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
-  },
-  appearance: {
-    system: 'System',
-    light: 'Light',
-    dark: 'Dark',
   },
   calendar: {
     month: {
@@ -173,11 +168,13 @@ export const en = {
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} Amount',
       contributionDate: 'Contribution {{index}} Date',
+      contributions: 'Contributions',
       corporate: 'Corporate',
       couponFrequency: 'Coupon frequency',
       couponPct: 'Coupon %',
       cryptoAsset: 'Crypto Asset',
       deposit: 'Deposit',
+      details: 'Details',
       editTitle: 'Edit Holding',
       faceValue: 'Face Value',
       government: 'Government',
@@ -195,6 +192,7 @@ export const en = {
       selectDatePlaceholder: 'Select a date',
       semiannually: 'Semiannually',
       termMonths: 'Term (Months)',
+      terms: 'Terms',
       type: 'Type',
     },
     transaction: {
@@ -203,6 +201,7 @@ export const en = {
       applyCategoryMessage:
         'Apply "{{category}}" to all transactions named "{{name}}"? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
+      applyToThisOne: 'Just for this one',
       category: 'Category',
       convertToExchange: 'Convert to exchange',
       deleteConfirmMessage: 'This transaction will be permanently removed.',
@@ -213,7 +212,7 @@ export const en = {
       expense: 'Expense',
       from: 'From',
       income: 'Income',
-      monobankNotice: 'This transaction was imported from Monobank and cannot be edited.',
+      syncedNotice: 'This transaction was imported from a connected account and cannot be edited.',
       selectHolding: 'Select holding',
       title: 'Transaction',
       to: 'To',
@@ -337,6 +336,11 @@ export const en = {
     // bundle, and reuses THIS key so the two can never drift apart.
     netWorth: 'Net worth',
     syncFailedMessage: "Couldn't sync {{accounts}}.",
+    // The determinate sync progress bar's label — the whole-run indicator on the
+    // transactions list. `completed`/`total` are HOLDINGS counts, not cards: the
+    // count of the holdings the user sees, with `completed` starting at the
+    // holdings that do not require syncing (see useSyncProgress).
+    syncingHoldings: 'Syncing holdings {{completed}}/{{total}}',
     title: 'Home',
     today: 'Today',
     yesterday: 'Yesterday',
@@ -349,9 +353,39 @@ export const en = {
     filterCategories: 'Categories',
     netWorthOverTime: 'Net Worth Over Time',
     noSpendingToShow: 'No Spending To Show',
-    resetTrendCategories: 'Reset',
     spendingTrendByCategory: 'Spending Trend by Category',
     title: 'Statistics',
+    // The spending-trend chart's filter: a single "Filters" button (its label
+    // reflects the applied selection) opening a bottom sheet.
+    trendFilter: {
+      title: 'Filters',
+      selection: 'Selection',
+      manual: 'Manual',
+      top: 'Top',
+      amount: 'Amount',
+      by: 'By',
+      // The three "Top N" ranking measures. Shared by the "By" chips AND the
+      // button's `{{measure}}` interpolation (English has no case inflection).
+      measure: {
+        contribution: 'Contribution',
+        frequency: 'Frequency',
+        rising: 'Rising',
+      },
+      // The applied-filter button label. `manual` uses i18next plurals on
+      // `count` (English selects _one / _other; the _few / _many forms exist
+      // only to mirror Ukrainian's plural set — see uk.ts — so the two
+      // catalogues keep an identical key set and `typeof en` still types uk).
+      // `allCategories` is the empty-manual case. `top` interpolates the
+      // instrumental-case `{{measure}}`.
+      button: {
+        allCategories: 'All Categories',
+        manual_one: '{{count}} Category',
+        manual_few: '{{count}} Categories',
+        manual_many: '{{count}} Categories',
+        manual_other: '{{count}} Categories',
+        top: 'Top {{count}} by {{measure}}',
+      },
+    },
   },
   // The Home and Holding-detail rows both render the same fallback label
   // (src/transactions/default-description.ts) for a transaction with no
@@ -371,7 +405,8 @@ export const en = {
     },
     pieChart: {
       emptyDefault: 'No Accounts To Show',
-      total: 'Total',
+      showAll: 'Show all',
+      showLess: 'Show less',
     },
     swipeableRow: {
       confirmMessage: 'This cannot be undone.',

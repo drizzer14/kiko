@@ -15,6 +15,7 @@ import KikoCalendar from '../../calendar';
 
 import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
+import { boundToMove } from './nearer-bound';
 
 // A single period-marking entry for one calendar day. `color` fills the day;
 // `startingDay`/`endingDay` round the span's two ends. `selected: true` is
@@ -157,9 +158,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
     setOpen(true);
   };
 
-  // First tap (or a tap after a complete range) starts a fresh selection; the
-  // second tap closes the range, ordering the two so from <= to always holds —
-  // a tap before the current start becomes the new start.
+  // A pick moves only the bound nearer to it (by absolute time distance) and
+  // leaves the other bound unchanged, so the range extends or shrinks from the
+  // side closest to the pick rather than resetting the whole selection. The
+  // "which bound moves" decision is the pure `boundToMove` (see nearer-bound.ts);
+  // a valid from <= to range can never invert under it.
   const handleDayPress = (day: DateData): void => {
     const picked = new Date(day.year, day.month - 1, day.day);
 
@@ -169,16 +172,19 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
       return;
     }
 
-    if (draftFrom === null || draftTo !== null) {
+    const bound = boundToMove(
+      draftFrom?.getTime() ?? null,
+      draftTo?.getTime() ?? null,
+      picked.getTime(),
+    );
+
+    if (bound === 'from') {
       setDraftFrom(picked);
-      setDraftTo(null);
 
       return;
     }
 
-    const pickedIsEarlier = picked.getTime() < draftFrom.getTime();
-    setDraftFrom(pickedIsEarlier ? picked : draftFrom);
-    setDraftTo(pickedIsEarlier ? draftFrom : picked);
+    setDraftTo(picked);
   };
 
   // Commit the currently-shown selection directly — a lone start becomes a

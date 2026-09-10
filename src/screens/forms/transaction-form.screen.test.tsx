@@ -2,11 +2,9 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
-import { categoryColor } from '../../statistics/category-breakdown';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import TransactionFormScreen from './transaction-form.screen';
@@ -41,6 +39,7 @@ const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockUpsertCategoryOverride = jest.fn();
+const mockSetCategory = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('../../repositories/transactions.repo', () => ({
@@ -50,6 +49,7 @@ jest.mock('../../repositories/transactions.repo', () => ({
     recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
     remove: (...args: unknown[]) => mockRemove(...args),
+    setCategory: (...args: unknown[]) => mockSetCategory(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
@@ -98,7 +98,7 @@ type Transaction = {
   amountMinorUnits: number;
   time: number;
   description: string;
-  source: 'manual' | 'monobank';
+  source: 'manual' | 'monobank' | 'binance';
   category?: string | null;
 };
 
@@ -198,27 +198,6 @@ describe('TransactionFormScreen — add mode', () => {
   it('sets the header title to "Add Transaction"', async () => {
     await renderAdd();
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Transaction' });
-  });
-
-  it('tints an uncolored category option from the LIGHT chart set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the category options resolve their
-    // fallback hue from the light chart set (see color-scheme.ts / palette.ts).
-    // `groceries` carries no stored color, so its option tint is
-    // `categoryColor('groceries', 'light')`.
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      const utils = await renderAdd();
-      await fireEvent.press(utils.getByLabelText('Category'));
-
-      // The `groceries` option row (labelled by its title) renders its glyph
-      // ('cart') tinted with the resolved category color.
-      const row = utils.getByLabelText('Groceries');
-      const [icon] = row.queryAll((node) => node.props.name === 'cart');
-      expect(icon?.props.tintColor).toBe(categoryColor('groceries', 'light'));
-      expect(categoryColor('groceries', 'light')).not.toBe(categoryColor('groceries', 'dark'));
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('submits a manual transaction', async () => {
@@ -643,11 +622,13 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Transaction' });
   });
 
-  it('disables the inputs and shows the imported-from-Monobank explanation', async () => {
+  it('disables the inputs and shows the source-neutral imported explanation', async () => {
     const { getByLabelText, getByText } = await renderEdit('txn-9');
     expect(getByLabelText('Amount').props.editable).toBe(false);
     expect(getByLabelText('Description').props.editable).toBe(false);
-    expect(getByText(/imported from monobank/i)).toBeTruthy();
+    // The notice is source-neutral: it names no single provider, so it reads
+    // correctly on a Monobank, Binance or wallet row alike.
+    expect(getByText(/imported from a connected account/i)).toBeTruthy();
   });
 
   it('offers no Save action and never writes', async () => {
@@ -660,6 +641,74 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
   it('offers no Delete action for a synced transaction', async () => {
     const { queryByText } = await renderEdit('txn-9');
     expect(queryByText('Delete')).toBeNull();
+  });
+});
+
+describe('TransactionFormScreen — synced (binance) row', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // A Binance-imported row: a real synced source that carries a BLANK
+    // description and a null category. The blank description is why the
+    // category-propagation sheet never opens for it (a name rule refuses a
+    // blank catch-all), so the category must persist through the single-row,
+    // ungated `setCategory` writer instead.
+    setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
+      id: 'txn-b',
+      holdingId: 'h-btc',
+      amountMinorUnits: -50,
+      time: 42,
+      description: '',
+      source: 'binance',
+      category: null,
+    });
+  });
+
+  it('persists the picked category on a blank-description binance row via setCategory', async () => {
+    mockSetCategory.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-b');
+    // A synced row shows no Save until its category actually changes.
+    expect(utils.queryByText('Save')).toBeNull();
+
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The single-row, ungated writer persists the category by id.
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-b',
+        category: 'groceries',
+      }),
+    );
+    // A blank description opens no propagation sheet, writes no name rule, and
+    // never touches a bank-owned field.
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('treats the bank-owned amount, description, date and time fields as read-only', async () => {
+    const { getByLabelText } = await renderEdit('txn-b');
+
+    expect(getByLabelText('Amount').props.editable).toBe(false);
+    expect(getByLabelText('Description').props.editable).toBe(false);
+    expect(getByLabelText('Date').props.accessibilityState.disabled).toBe(true);
+    expect(getByLabelText('Time').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('shows the source-neutral read-only notice, never Monobank-specific wording', async () => {
+    const { getByText, queryByText } = await renderEdit('txn-b');
+    // A Binance row must not claim it came from Monobank.
+    expect(getByText(/imported from a connected account/i)).toBeTruthy();
+    expect(queryByText(/Monobank/i)).toBeNull();
+  });
+
+  it('still shows the editable category control on a read-only binance row', async () => {
+    const { getByLabelText } = await renderEdit('txn-b');
+    // The category picker stays offered even though the bank-owned fields lock.
+    expect(getByLabelText('Category')).toBeTruthy();
   });
 });
 
@@ -697,6 +746,88 @@ describe('TransactionFormScreen — category editing', () => {
       expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
     );
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('persists a MANUAL blank-description row category via setCategory (the name rule skips it)', async () => {
+    // A manual row with a BLANK description whose category the user changes.
+    // The name-rule sheet refuses a blank catch-all, so before the fix the
+    // pick was silently dropped on save. The single-row `setCategory` now
+    // persists it by id, with no propagation sheet.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash' }], {
+      id: 'txn-blank',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: '',
+      source: 'manual',
+      category: 'groceries',
+    });
+    mockSetCategory.mockResolvedValue(undefined);
+    mockUpdate.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-blank');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-blank',
+        category: 'dining',
+      }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('overrides ONLY this row via setCategory when "Just for this one" is pressed, never the name rule', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      category: 'groceries',
+    });
+    mockSetCategory.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The sheet offers the single-row override alongside the all-similar one.
+    await fireEvent.press(utils.getByText('Just for this one'));
+
+    // Only the target row's category is rewritten, by id — the all-similar name
+    // rule is never touched.
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-1',
+        category: 'dining',
+      }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('does NOT offer "Just for this one" on a create flow (no transaction id to target)', async () => {
+    // Create mode: the sheet still rises (a non-blank description + a category
+    // pick), but there is no existing row to target — the just-created row
+    // already carries its category from recordManual — so the single-row
+    // override button must be absent.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'ATB');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The all-similar "Apply" is offered; the single-row override is not.
+    expect(utils.getByText('Apply')).toBeTruthy();
+    expect(utils.queryByText('Just for this one')).toBeNull();
+    expect(mockSetCategory).not.toHaveBeenCalled();
   });
 
   it('propagates one override for a double-tapped Apply', async () => {

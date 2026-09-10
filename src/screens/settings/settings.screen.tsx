@@ -47,7 +47,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* The System sub-page groups system-level preferences (Language, Color
             Scheme, Face ID) away from the finance settings below. It sits at the
             very top as a navigating row that pushes the System screen. */}
-        <GlassSurface testID="settings-card-system" padding={3}>
+        <GlassSurface testID="settings-card-system" padding={3} transparent>
           <SettingsRow
             testID="settings-row-system"
             icon="gearshape"
@@ -56,7 +56,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           />
         </GlassSurface>
 
-        <GlassSurface testID="settings-card-base-currency" padding={3}>
+        <GlassSurface testID="settings-card-base-currency" padding={3} transparent>
           <SettingsRow
             testID="settings-row-base-currency"
             icon="dollarsign.circle"
@@ -66,7 +66,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           </SettingsRow>
         </GlassSurface>
 
-        <GlassSurface testID="settings-card-categories" padding={3}>
+        <GlassSurface testID="settings-card-categories" padding={3} transparent>
           <SettingsRow
             testID="settings-row-categories"
             icon="square.grid.2x2"

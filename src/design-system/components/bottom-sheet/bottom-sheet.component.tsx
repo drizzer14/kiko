@@ -6,7 +6,6 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
-import { resolveColorScheme } from '../../color-scheme';
 import Box from '../box';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
@@ -66,8 +65,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
   backdropAccessibilityLabel,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme, rt } = useUnistyles();
-  const colorScheme = resolveColorScheme(rt.themeName);
+  const { theme } = useUnistyles();
   // `useWindowDimensions` (not a one-shot `Dimensions.get`) so the 66% cap
   // recomputes on rotation, per the design-system requirement.
   const windowHeight = useWindowDimensions().height;
@@ -152,7 +150,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
           {isLiquidGlassSupported ? (
             <LiquidGlassView
               effect="regular"
-              colorScheme={colorScheme}
+              colorScheme="dark"
               tintColor={theme.colors.scrim}
               style={styles.backdropFill}
               pointerEvents="none"

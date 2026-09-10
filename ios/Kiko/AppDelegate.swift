@@ -57,16 +57,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   /// added synchronously here is guaranteed to be in the snapshot.
   ///
   /// The overlay is two layers in one tagged container. The base is an OPAQUE
-  /// view in the app's true-black theme background: it hides the live content
+  /// view in the system background color: it hides the live content
   /// unconditionally, the instant it is inserted. This matters because a live
   /// `UIBlurEffect` is composited asynchronously by the render server, and iOS
   /// sometimes captures the app-switcher snapshot BEFORE the blur rasterizes —
   /// so a blur-only cover is intermittently captured as transparent over the
   /// real balances. The opaque base removes that race: privacy is guaranteed by
-  /// the base regardless of blur render timing. On top of the base sits the
-  /// `.systemChromeMaterialDark` `UIVisualEffectView` purely for aesthetics —
-  /// once the blur pass runs it reads as the intended strong native iOS privacy
-  /// blur, and the dark chrome material sits well against the true-black base.
+  /// the base regardless of blur render timing. On top of the base sits a
+  /// `.systemChromeMaterial` `UIVisualEffectView` purely for aesthetics — once
+  /// the blur pass runs it reads as the intended strong native iOS privacy blur.
+  ///
+  /// Both the base color and the blur material adapt to the ACTIVE color scheme.
+  /// React Native 0.87's `Appearance.setColorScheme` (driven by
+  /// `applyAppearance` in `src/appearance/appearance.ts`) sets
+  /// `window.overrideUserInterfaceStyle` on every window — verified in
+  /// `RCTAppearance.mm`'s `setColorScheme:`, which walks every scene's windows —
+  /// so `window.traitCollection.userInterfaceStyle` reflects the user's PINNED
+  /// scheme ('light'/'dark'), and the OS scheme under 'auto' (which clears the
+  /// override). Resolving `UIColor.systemBackground` and using the un-suffixed
+  /// `.systemChromeMaterial` against that trait collection makes the cover match
+  /// whichever scheme is live, instead of the old hardcoded true-black base /
+  /// dark chrome that stayed dark on the light theme.
+  ///
   /// Both layers live in the single tagged container, so `hidePrivacyOverlay`
   /// removes them together.
   private func showPrivacyOverlay() {
@@ -74,10 +86,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     let container = UIView(frame: window.bounds)
     container.tag = privacyOverlayTag
     container.isOpaque = true
-    container.backgroundColor = .black
+    container.backgroundColor = UIColor.systemBackground.resolvedColor(with: window.traitCollection)
     container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
-    let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
+    let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     blur.frame = container.bounds
     blur.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     container.addSubview(blur)

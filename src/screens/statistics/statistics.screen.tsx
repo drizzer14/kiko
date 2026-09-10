@@ -2,7 +2,6 @@ import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
@@ -10,13 +9,10 @@ import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
 import CategoryTrendLine from '../../design-system/components/category-trend-line';
 import GlassSurface from '../../design-system/components/glass-surface';
-import IconButton from '../../design-system/components/icon-button';
 import NetWorthLine from '../../design-system/components/net-worth-line';
 import PieChart from '../../design-system/components/pie-chart';
 import Screen from '../../design-system/components/screen';
@@ -46,7 +42,11 @@ import {
   buildCategoryBreakdown,
   type CategorySlice,
 } from '../../statistics/category-breakdown';
-import { buildCategoryTrend, type TrendTransaction } from '../../statistics/category-trend';
+import {
+  buildCategoryMeasures,
+  buildCategoryTrend,
+  type TrendTransaction,
+} from '../../statistics/category-trend';
 import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
 import type { SeriesTransaction } from '../../statistics/holding-value-at';
 import { internalTransferTxIds } from '../../statistics/internal-transfers';
@@ -55,11 +55,18 @@ import {
   descriptionExcludedTransferTxIds,
   mccExcludedTransferTxIds,
 } from '../../statistics/transfer-exclusion';
+import {
+  resolveTrendFilter,
+  selectTopCategories,
+  type TrendFilter,
+} from '../../statistics/trend-filter';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
+import { transactionSpan } from '../../transactions/transaction-span';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
 
 import { styles } from './statistics.styles';
+import TrendFilterField from './trend-filter-field';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -97,28 +104,6 @@ const toggleFilter =
     });
   };
 
-// Order-independent set equality: same size and every member of `a` present in
-// `b`. Drives the Save/Reset enable rules, which compare the current trend
-// selection against the preset and the saved set regardless of insertion order.
-const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
-  a.size === b.size && [...a].every((key) => b.has(key));
-
-// Prune a saved trend selection to the category keys that still EXIST, dropping
-// any whose category was later deleted (plan Decision D5). Returns the surviving
-// keys, or null when nothing survives — the caller then falls back to the live
-// top-3-by-expense preset. Never writes to the DB.
-const pruneSavedTrendKeys = (
-  saved: string[] | null,
-  existingKeys: ReadonlySet<string>,
-): string[] | null => {
-  if (saved === null) {
-    return null;
-  }
-  const pruned = saved.filter((key) => existingKeys.has(key));
-
-  return pruned.length > 0 ? pruned : null;
-};
-
 // Group the whole ledger by holding id so the net-worth series can reconstruct
 // each holding's running balance over time. Keyed by holding, not account,
 // because a holding's balance is what the series values at each day.
@@ -144,6 +129,12 @@ const groupByHolding = (
 // so it renders no center total and has no need to thin its ring for one.
 const CATEGORY_DONUT_INNER_RATIO = 0.78;
 
+// The category donut can have a long tail of tiny categories, so its legend
+// crops to categories at 5% share or more by default, with a "Show all" toggle
+// to reveal the rest. The ring still draws every category. The
+// account-contribution pie passes no threshold, so its legend is uncropped.
+const CATEGORY_LEGEND_MIN_SHARE = 0.05;
+
 /**
  * The Statistics tab: four blocks, in order — a converted net-worth line over
  * time (historical rates), a by-type horizontal bar chart of current value, a
@@ -161,13 +152,6 @@ const CATEGORY_DONUT_INNER_RATIO = 0.78;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
-
-  // The active color scheme (light/dark), read ONCE here and threaded into every
-  // palette consumer below (the three chart builders and the account entity
-  // color) so each picks the matching light/dark set (see color-scheme.ts /
-  // palette.ts). Read from the active Unistyles theme name, never `darkTheme`.
-  const { rt } = useUnistyles();
-  const colorScheme = resolveColorScheme(rt.themeName);
 
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
@@ -197,16 +181,6 @@ const StatisticsScreen: FC = () => {
   // that chart alone — the account filter and date range do not touch it, nor
   // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-
-  // The spending-trend chart's OWN category filter, in the SAME "empty means
-  // all" model as the donut's — an empty set draws every category's line; any
-  // stable category KEYS in it narrow the chart to just those. Scoped to that
-  // chart alone (the account filter and date range do not touch it). Unlike the
-  // donut, it defaults to the top 3 categories by total spend, seeded once below.
-  const [selectedTrendCategories, setSelectedTrendCategories] = useState<Set<string>>(new Set());
-  // Guards the one-time top-3 seed so a later user selection is never overwritten
-  // when `allCategorySlices` recomputes. Mirrors `backfillStartedRef`'s style.
-  const trendSeededRef = useRef(false);
 
   // `now` is fixed at mount: the default date-range seed below, the default
   // line window, the backfill's "today", and every memo below key on it, and a
@@ -256,8 +230,21 @@ const StatisticsScreen: FC = () => {
   // The full transaction span drives the date field's default display, the line's
   // default window, and the backfill's earliest day. With no transactions the
   // start falls back to now.
-  const transactionTimes = transactions.map((transaction) => transaction.time);
-  const spanStart = transactionTimes.length > 0 ? Math.min(...transactionTimes) : now;
+  // Earliest transaction time in ONE O(n) pass (see `transactionSpan`);
+  // `Math.min(...times)` spread the whole array and overflowed the stack on a
+  // long history. Memoized on `transactions` alone; the empty-list fallback to
+  // `now` is applied outside so a per-render `now` never invalidates the memo.
+  const earliestTime = useMemo(
+    () =>
+      transactions.length > 0
+        ? transactionSpan(
+            transactions.map((transaction) => transaction.time),
+            0,
+          ).start
+        : null,
+    [transactions],
+  );
+  const spanStart = earliestTime ?? now;
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). Both bounds are TRUE local
@@ -362,9 +349,8 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
-        colorScheme,
       }),
-    [filtered, rateTable, baseCurrency, now, colorScheme],
+    [filtered, rateTable, baseCurrency, now],
   );
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in
@@ -542,7 +528,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         excludedTransactionIds,
       }),
     [
@@ -551,7 +536,6 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       excludedTransactionIds,
     ],
   );
@@ -621,7 +605,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         excludedCategories: excludedCategoryKeys,
         excludedTransactionIds,
       }),
@@ -631,27 +614,64 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       excludedCategoryKeys,
       excludedTransactionIds,
     ],
   );
 
-  // The spending-trend chart's exclusion set, off its OWN selection (mirrors
-  // `excludedCategoryKeys` but keyed on `selectedTrendCategories`): an empty
-  // selection excludes nothing, so every category's line is drawn; otherwise
-  // every category whose KEY is not selected is excluded.
+  // The APPLIED trend filter: the saved config resolved against the categories
+  // that still exist (manual keys pruned per D5; top amount clamped), falling
+  // back to the default (top 3 by contribution) when nothing is saved. Save
+  // persists it and the value flows back through the settings live query — there
+  // is no seed effect any more.
+  const appliedTrendFilter = useMemo(() => {
+    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
+
+    return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
+  }, [settingsRows, categories]);
+
+  // The per-category ranking measures over the fixed 30-day trend window — the
+  // universe both the Top-N ranking and the exclusion set below are computed
+  // from (NOT the range-scoped `allCategorySlices`, whose window differs).
+  const trendMeasures = useMemo(
+    () =>
+      buildCategoryMeasures({
+        transactions: trendTransactions,
+        rateTable,
+        baseCurrency,
+        defaultCategoryKey,
+        now,
+        excludedTransactionIds,
+      }),
+    [trendTransactions, rateTable, baseCurrency, defaultCategoryKey, now, excludedTransactionIds],
+  );
+
+  // The category keys the chart draws: the explicit manual keys, or the live
+  // top-N picked from the measures by the chosen measure.
+  const trendSelectedKeys = useMemo(
+    () =>
+      appliedTrendFilter.mode === 'manual'
+        ? new Set(appliedTrendFilter.keys)
+        : selectTopCategories({
+            measures: trendMeasures,
+            amount: appliedTrendFilter.amount,
+            by: appliedTrendFilter.by,
+          }),
+    [appliedTrendFilter, trendMeasures],
+  );
+
+  // Feed the selection through the EXISTING exclusion path: exclude every
+  // windowed category NOT selected, so `CategoryTrendLine` rendering is
+  // unchanged. An empty selection (manual "all") excludes nothing.
   const excludedTrendCategoryKeys = useMemo(() => {
-    if (selectedTrendCategories.size === 0) {
+    if (trendSelectedKeys.size === 0) {
       return new Set<string>();
     }
 
     return new Set(
-      allCategorySlices
-        .filter((slice) => !selectedTrendCategories.has(slice.key))
-        .map((slice) => slice.key),
+      trendMeasures.map((measure) => measure.key).filter((key) => !trendSelectedKeys.has(key)),
     );
-  }, [allCategorySlices, selectedTrendCategories]);
+  }, [trendMeasures, trendSelectedKeys]);
 
   const trendSeries = useMemo(
     () =>
@@ -661,7 +681,6 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        colorScheme,
         now,
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
@@ -672,70 +691,17 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      colorScheme,
       now,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
     ],
   );
 
-  // The live top-3-by-expense PRESET (`allCategorySlices` is sorted by amount
-  // desc), the baseline the Save/Reset controls compare the current selection
-  // against.
-  const presetTrendKeys = useMemo(
-    () => new Set(allCategorySlices.slice(0, 3).map((slice) => slice.key)),
-    [allCategorySlices],
-  );
-
-  // The SAVED selection, pruned to categories that still exist (D5): a saved key
-  // whose category was deleted is dropped, and a selection that prunes to nothing
-  // reads as null (no saved selection → fall back to the preset).
-  const savedTrendKeys = useMemo(() => {
-    const existingKeys = new Set(categories.map((category) => category.key.toLowerCase()));
-    const saved = pruneSavedTrendKeys(settingsRows.at(0)?.trendCategoryKeys ?? null, existingKeys);
-
-    return saved ? new Set(saved) : null;
-  }, [settingsRows, categories]);
-
-  // Seed the spending-trend filter's default selection exactly once — the first
-  // render on which the category slices are non-empty AND the settings row has
-  // loaded. Waiting on settings is what fixes the cold-start race: when
-  // transactions/categories resolve BEFORE the independent settings live query,
-  // `settingsRows` is momentarily `[]`; seeding then would latch the live top-3
-  // preset and the ref guard would block the user's persisted selection from
-  // ever applying this session. `savedTrendKeys` already prunes a deleted
-  // category (D5) and reads as null when nothing is saved, in which case the
-  // live top-3 `presetTrendKeys` is used. Never writes to the DB; the ref guards
-  // against re-seeding on later recomputes so a user's own later selection is
-  // never clobbered (mirrors `backfillStartedRef`).
-  useEffect(() => {
-    if (trendSeededRef.current || allCategorySlices.length === 0 || settingsRows.length === 0) {
-      return;
-    }
-
-    trendSeededRef.current = true;
-    setSelectedTrendCategories(new Set(savedTrendKeys ?? presetTrendKeys));
-  }, [allCategorySlices, settingsRows, savedTrendKeys, presetTrendKeys]);
-
-  // Save is enabled ONLY when the current selection differs from the preset AND
-  // from the last-saved selection (disabled at the preset, and disabled when
-  // nothing changed since the last Save — see plan Decision D1).
-  const canSaveTrend =
-    !sameKeys(selectedTrendCategories, presetTrendKeys) &&
-    !(savedTrendKeys !== null && sameKeys(selectedTrendCategories, savedTrendKeys));
-
-  // Reset is enabled whenever the current selection differs from the preset.
-  const canResetTrend = !sameKeys(selectedTrendCategories, presetTrendKeys);
-
-  // Save persists the current selection as the saved set. Reset restores the
-  // preset AND clears the saved set to null (so a later mount re-seeds off the
-  // live preset again).
-  const saveTrendSelection = (): void => {
-    settingsRepo.setTrendCategoryKeys([...selectedTrendCategories]);
-  };
-  const resetTrendSelection = (): void => {
-    setSelectedTrendCategories(new Set(presetTrendKeys));
-    settingsRepo.setTrendCategoryKeys(null);
+  // Save applies AND persists the whole filter; the applied config flows back
+  // through the settings live query on the next render, so there is nothing to
+  // hold in local state.
+  const saveTrendFilter = (filter: TrendFilter): void => {
+    settingsRepo.setTrendFilter(filter);
   };
 
   // The donut's own center figure: every VISIBLE slice's spend summed back
@@ -757,11 +723,7 @@ const StatisticsScreen: FC = () => {
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
     value: account.name,
     icon: account.icon ?? undefined,
-    color: resolveEntityColor(
-      account.color,
-      defaultAccountColor(colorScheme)[account.kind],
-      colorScheme,
-    ),
+    color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
   }));
 
   return (
@@ -786,7 +748,7 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-line" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-line" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
@@ -801,7 +763,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-bar" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-bar" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.byType')}
@@ -811,7 +773,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-pie" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-pie" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.accountContribution')}
@@ -821,7 +783,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-category" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-category" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.expensesByCategory')}
@@ -844,44 +806,24 @@ const StatisticsScreen: FC = () => {
               emptyLabel={t('statistics.noSpendingToShow')}
               innerRatio={CATEGORY_DONUT_INNER_RATIO}
               centerTotal={categoryTotal}
+              legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
             />
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-trend" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-trend" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.spendingTrendByCategory')}
             </Text>
 
-            <Box direction="row" style={styles.trendFilterBar}>
-              <Box direction="row" style={styles.trendFilterLeft}>
-                <FilterMenu
-                  label={t('statistics.filterCategories')}
-                  testID="statistics-trend-filter"
-                  options={categoryOptions}
-                  selected={selectedTrendCategories}
-                  onToggle={toggleFilter(setSelectedTrendCategories)}
-                />
-
-                <IconButton
-                  testID="statistics-trend-reset"
-                  symbol="arrow.counterclockwise"
-                  accessibilityLabel={t('statistics.resetTrendCategories')}
-                  disabled={!canResetTrend}
-                  onPress={resetTrendSelection}
-                />
-              </Box>
-
-              <Button
-                testID="statistics-trend-save"
-                size="compact"
-                fullWidth={false}
-                disabled={!canSaveTrend}
-                onPress={saveTrendSelection}
-              >
-                {t('common.save')}
-              </Button>
+            <Box direction="row" style={styles.filterBar}>
+              <TrendFilterField
+                testID="statistics-trend-filter"
+                filter={appliedTrendFilter}
+                categoryOptions={categoryOptions}
+                onSave={saveTrendFilter}
+              />
             </Box>
 
             <CategoryTrendLine

@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+import type { TrendFilter } from '../statistics/trend-filter';
+
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -28,6 +30,24 @@ export const holdings = sqliteTable('holdings', {
   icon: text('icon'),
   color: text('color'),
   balanceMinorUnits: integer('balance_minor_units').notNull().default(0),
+  // The card balance THROUGH WHICH this Monobank card's statements were last
+  // SUCCESSFULLY imported — the crash-safe marker the balance-diff skip compares
+  // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
+  // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
+  // /client-info at the START of every sync, BEFORE the per-card statement loop
+  // runs. Comparing the skip against that display balance was a data-loss bug: a
+  // run that committed a card's new balance up front and was then interrupted
+  // (app background/kill) before importing that card's statements left display
+  // balance == /client-info balance, so every later run skipped the card and its
+  // transactions never imported (until the 24h full fetch). This marker advances
+  // ONLY after a card's statements commit (see the per-card loop in
+  // `runSyncInner`), so an interrupted run leaves it behind and the next run
+  // re-imports the card. NULL for a never-synced-through holding: every
+  // non-Monobank holding, and a Monobank card upgraded before this column
+  // existed — its first post-upgrade sync fetches it once (NULL never matches a
+  // balance, so the skip cannot fire), which also RECOVERS any card the old bug
+  // had stranded, and then sets the marker.
+  syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),
@@ -80,8 +100,11 @@ export const transactions = sqliteTable(
     // a synced debit converted into another currency still counts as spending.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     comment: text('comment'),
-    // 'btc_wallet' / 'binance' are named for enum parity with
-    // `accounts.institution`; a balance sync writes no transaction rows today.
+    // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
+    // BALANCE sync writes no transaction rows, but the Binance crypto sync now
+    // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
+    // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
+    // 'btc_wallet' still writes none.
     source: text('source', { enum: ['manual', 'monobank', 'btc_wallet', 'binance'] }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
@@ -160,18 +183,63 @@ export const settings = sqliteTable('settings', {
   // / 'uk' is an explicit user choice made from Settings. Read by
   // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
   language: text('language', { enum: ['en', 'uk'] }),
-  // The chosen appearance: 'system' follows the OS (adaptiveThemes), 'light'/
-  // 'dark' pin the theme. Defaults to 'system' so a fresh install follows iOS.
-  // Read by useSyncAppearanceWithSettings; written by settingsRepo.setAppearance.
+  // DEAD (retained): the removed light/dark color-scheme feature. The app is now
+  // dark-only, so nothing reads or writes this column. Deliberately NOT dropped —
+  // migrations here are additive-only, so a removed feature's harmless retained
+  // column stays rather than adding a destructive drop migration (same class as
+  // `lockGraceSeconds` above). Enforced reader-less by settings-columns.test.ts.
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
-  // The user's SAVED spending-trend category selection: a JSON array of stable
-  // `categories.key` slugs that overrides the default "top 3 by expense" seed on
-  // the Statistics trend chart. NULL means "no saved selection" — the chart falls
-  // back to the live top-3-by-expense preset. Written by settingsRepo
-  // .setTrendCategoryKeys (Save persists the current set; Reset clears to null).
+  // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
+  // that reached Monobank with at least one card succeeding — including a
+  // PARTIAL failure, where some cards imported but one threw. Decoupled from
+  // `lastSyncAt`, which stays the pure Monobank statement CURSOR (advanced only
+  // on a fully clean run). A partial failure must not advance the cursor — the
+  // failed card's window has to be re-covered — yet the user should still see
+  // that a sync just landed, so the display stamp moves independently. This is
+  // NOT falsely current: the crash-safe marker (`syncedBalanceMinorUnits`) makes
+  // a still-pending card re-fetch next run rather than being silently skipped.
+  // NULLABLE: rows that existed before this column read null, and the display
+  // falls back to `lastSyncAt`.
+  lastSyncDisplayAt: integer('last_sync_display_at'),
+  // The epoch-ms timestamp of the last FULL statement fetch (every card
+  // fetched regardless of balance). The steady-state sync SKIPS a card whose
+  // /client-info balance is unchanged since the last sync (a "balance-diff
+  // skip") to stay under Monobank's 1-req/60s-per-token limit; this timestamp
+  // drives the periodic safety net that forces an all-cards fetch, bounding
+  // the worst-case miss window for a net-zero same-window transaction pair
+  // (a +X and a -X in one sync window that leave the balance untouched, which
+  // the balance-diff skip would otherwise never catch). It is ALSO the
+  // from-cursor of that forced full fetch: the sync re-queries [lastFullSyncAt,
+  // now] so every window skipped since the last full fetch is actually
+  // re-covered — using the recent incremental cursor instead would re-query
+  // only the already-covered recent window and recover nothing. NULL ⇒ never
+  // done a full fetch, which forces one.
+  lastFullSyncAt: integer('last_full_sync_at'),
+  // DEAD (retained): the previous spending-trend selection — a JSON array of
+  // stable `categories.key` slugs. Superseded by `trendFilter` below, into which
+  // migration 0025 copies any non-null value as `{ mode: 'manual', keys }`.
+  // Nothing in `src/` reads or writes it any more; deliberately NOT dropped
+  // (migrations here are additive-only — same class as `appearance` /
+  // `lockGraceSeconds`). Enforced reader-less by settings-columns.test.ts.
   trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
+  // The user's SAVED spending-trend filter (see `TrendFilter`). A discriminated
+  // union stored as JSON: `{ mode: 'manual', keys }` pins explicit categories
+  // (empty = every category); `{ mode: 'top', amount, by }` re-selects the top N
+  // by the chosen measure from live data on each render. NULL means "no saved
+  // filter" — the chart falls back to `DEFAULT_TREND_FILTER` (top 3 by
+  // contribution). Written by settingsRepo.setTrendFilter (Save persists; there
+  // is no clear-to-null path from the UI, but the setter accepts null).
+  trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
+  // The Monobank account ids whose statement fetch FAILED on the last sync run.
+  // The next run force-fetches only these (regardless of balance) so one flaky
+  // card does not strand the whole account in daily full-fetch mode: without
+  // this, a partial failure never graduates `lastFullSyncAt`, so once it ages
+  // past the full-fetch interval EVERY sync becomes a slow N×60s full fetch and
+  // the balance-diff skip never engages again. Pruned to ids still present in
+  // client-info. NULL means the empty set (no card is currently force-retried).
+  failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

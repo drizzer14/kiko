@@ -1,7 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
-import * as colorSchemeModule from '../../design-system/color-scheme';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 import { categoryColor } from '../../statistics/category-breakdown';
@@ -324,24 +323,15 @@ describe('CategoriesScreen', () => {
     expect(getByLabelText('Delete Groceries')).toBeTruthy();
   });
 
-  it('tints an uncolored category row icon from the LIGHT chart set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the row icon's `resolveCategoryColor`
-    // fallback picks the light chart set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      // A single uncolored category, so exactly one row icon renders and its
-      // color comes from the `categoryColor(key)` hash, not a stored hex.
-      mockLiveQueryData = [{ key: 'utilities', title: 'Utilities', icon: 'bolt', color: null }];
-      mockSettingsRows = [{ defaultCategoryKey: 'utilities' }];
+  it('tints an uncolored category row icon from the chart set hash', async () => {
+    // A single uncolored category, so exactly one row icon renders and its
+    // color comes from the `categoryColor(key)` hash, not a stored hex.
+    mockLiveQueryData = [{ key: 'utilities', title: 'Utilities', icon: 'bolt', color: null }];
+    mockSettingsRows = [{ defaultCategoryKey: 'utilities' }];
 
-      const { getByLabelText } = await renderScreen();
+    const { getByLabelText } = await renderScreen();
 
-      expect(getByLabelText('Icon bolt').props.tintColor).toBe(categoryColor('utilities', 'light'));
-      // Sanity: the light hue differs from the dark one.
-      expect(categoryColor('utilities', 'light')).not.toBe(categoryColor('utilities', 'dark'));
-    } finally {
-      jest.restoreAllMocks();
-    }
+    expect(getByLabelText('Icon bolt').props.tintColor).toBe(categoryColor('utilities'));
   });
 
   it('shows the delete control at the bottom with a visible "Delete" label', async () => {

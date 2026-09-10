@@ -8,11 +8,12 @@ import Text from '../text';
 import type { SwitchProps } from './switch.props';
 import { styles } from './switch.styles';
 
-const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label }) => {
+const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label, testID }) => {
   const { theme } = useUnistyles();
 
   const toggle = (
     <RNSwitch
+      testID={testID}
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}
@@ -21,7 +22,7 @@ const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label
       // so a disabled toggle is announced disabled (and testable) on both.
       accessibilityState={{ disabled }}
       trackColor={{ false: theme.colors.surfaceHigh, true: theme.colors.accent }}
-      thumbColor={theme.colors.textPrimary}
+      thumbColor={theme.colors.onAccent}
     />
   );
 
@@ -30,8 +31,12 @@ const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label
   }
 
   return (
-    <Box direction="row" style={styles.row}>
-      <Text variant="body">{label}</Text>
+    // `gap` guarantees a minimum label/toggle gutter even once the label
+    // wraps onto a second line, so wrapped text never touches the toggle.
+    <Box direction="row" gap={3} style={styles.row}>
+      <Box style={styles.label}>
+        <Text variant="body">{label}</Text>
+      </Box>
 
       {toggle}
     </Box>

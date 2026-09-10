@@ -18,6 +18,10 @@ export const styles = StyleSheet.create((theme) => ({
         primary: { backgroundColor: theme.colors.accent },
         secondary: { backgroundColor: theme.colors.surfaceHigh },
         destructive: { backgroundColor: theme.colors.negative },
+        // The iOS "tinted destructive" fill: a translucent dark-red tint, not
+        // the solid bright `negative`. Its red label comes from
+        // `variantLabelColor` in the component (see button.component.tsx).
+        destructiveTonal: { backgroundColor: theme.colors.negativeSubtle },
         // No fill at all — see the `ghost` doc comment on `ButtonVariant`.
         // Explicit `'transparent'` (not simply omitting the key) so switching
         // to `ghost` at runtime (Unistyles' `useVariants`) always clears
@@ -52,14 +56,15 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // A plain `Text as RNText`, not the design-system `Text` primitive: `Text`
   // intentionally excludes `color` from its style prop (see text.props.ts) so
-  // the tone token stays authoritative, but this label needs white on every
-  // fill (accent, gray surface, red) — none of `Text`'s four tones is "always
-  // white regardless of variant". The color still comes from a theme token,
-  // just not through a `Text` tone.
+  // the tone token stays authoritative, but this label's color must vary by
+  // variant (white `onAccent` on a filled accent/red surface, adapting
+  // `textPrimary` on a gray surface or transparent) — none of `Text`'s four
+  // tones is variant-aware like that. So the color is applied by the
+  // component (see button.component.tsx `labelColor`), not here; this block
+  // only owns the shared typography/weight.
   label: {
     ...theme.typography.body,
     fontWeight: '600',
-    color: theme.colors.textPrimary,
     // NOTE: no `textTransform`. It used to force `capitalize` so call sites
     // "need not be edited", which rendered every Ukrainian label in Title Case
     // ("Додати Рахунок") — Ukrainian UI labels are sentence case. Each catalogue

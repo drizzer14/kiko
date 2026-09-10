@@ -112,14 +112,25 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
-  it('setAppearance updates the single settings row with the chosen appearance', async () => {
+  it('setLastSyncDisplayAt writes the display timestamp to the single settings row', async () => {
     const { captured, tx } = captureSetTx();
     mockTx = tx;
 
-    await settingsRepo.setAppearance('light');
+    await settingsRepo.setLastSyncDisplayAt(1_700_000_000_000);
 
-    expect(captured.set).toEqual({ appearance: 'light' });
+    expect(captured.set).toEqual({ lastSyncDisplayAt: 1_700_000_000_000 });
     expect(captured.whereCalled).toBe(true);
+  });
+
+  it('setLastSyncDisplayAt persists after ensure has run', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeSettingsRowTx(store);
+    spyOnSettingsSelect(store);
+
+    await settingsRepo.ensure();
+    await settingsRepo.setLastSyncDisplayAt(1_700_000_000_000);
+
+    expect((await settingsRepo.getQuery())[0].lastSyncDisplayAt).toBe(1_700_000_000_000);
   });
 
   it('ensure inserts the single settings row and is idempotent', async () => {
@@ -147,15 +158,18 @@ describe('settingsRepo', () => {
     expect((await settingsRepo.getQuery())[0].baseCurrency).toBe('USD');
   });
 
-  it('persists a saved trend selection and clears it with null', async () => {
+  it('round-trips a saved trend filter and clears it with null', async () => {
     const store: Record<string, unknown>[] = [{ id: 1 }];
     mockTx = makeSettingsRowTx(store);
     spyOnSettingsSelect(store);
 
-    await settingsRepo.setTrendCategoryKeys(['groceries', 'transport']);
-    expect(store[0].trendCategoryKeys).toEqual(['groceries', 'transport']);
+    await settingsRepo.setTrendFilter({ mode: 'manual', keys: ['groceries', 'transport'] });
+    expect(store[0].trendFilter).toEqual({ mode: 'manual', keys: ['groceries', 'transport'] });
 
-    await settingsRepo.setTrendCategoryKeys(null);
-    expect(store[0].trendCategoryKeys).toBeNull();
+    await settingsRepo.setTrendFilter({ mode: 'top', amount: 4, by: 'rising' });
+    expect(store[0].trendFilter).toEqual({ mode: 'top', amount: 4, by: 'rising' });
+
+    await settingsRepo.setTrendFilter(null);
+    expect(store[0].trendFilter).toBeNull();
   });
 });

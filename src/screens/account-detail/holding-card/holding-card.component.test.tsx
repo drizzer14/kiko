@@ -3,10 +3,9 @@ import { StyleSheet } from 'react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
-import * as colorSchemeModule from '../../../design-system/color-scheme';
 import '../../../design-system/unistyles';
 import { entityCardBackground } from '../../../design-system/entity-tint';
-import { darkTheme, lightTheme } from '../../../design-system/theme';
+import { darkTheme } from '../../../design-system/theme';
 
 import HoldingCard from './holding-card.component';
 
@@ -111,29 +110,6 @@ describe('HoldingCard', () => {
     // A `card` holding with no color reads the card type default (white).
     const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
     expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.white));
-  });
-
-  it('lightens the card tint on the light theme', async () => {
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      const { getByTestId } = await render(
-        <HoldingCard
-          holding={holding({ color: darkTheme.colors.entityColors.violet })}
-          now={NOW}
-          onOpen={jest.fn()}
-        />,
-      );
-
-      const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
-      // The stored color is the DARK violet swatch; on the light scheme it
-      // reverse-maps to its LIGHT counterpart (entity-color scheme adaptation)
-      // BEFORE the card tint lightens it — so the base hue is the light violet.
-      expect(flat.backgroundColor).toBe(
-        entityCardBackground(lightTheme.colors.entityColors.violet, 'light'),
-      );
-    } finally {
-      jest.restoreAllMocks();
-    }
   });
 
   it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {

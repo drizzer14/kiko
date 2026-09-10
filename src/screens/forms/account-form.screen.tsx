@@ -1,14 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -49,11 +47,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const isEdit = editId !== undefined;
 
   const { t } = useTranslation();
-  const { rt } = useUnistyles();
-  // The active color scheme, read once so the ColorPicker's default-swatch
-  // highlight resolves from the matching light/dark set (see color-scheme.ts /
-  // palette.ts).
-  const colorScheme = resolveColorScheme(rt.themeName);
   // Human display text for the account kinds; the chip still reports the
   // underlying value on select. Built from the catalog inside the component
   // (rather than a module-level constant) so it always reflects the active
@@ -80,11 +73,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // stored empty-string color and a since-removed kind (the schema enum is
   // TS-only, no CHECK constraint) both reach here as unusable values the bare
   // pattern would let through as ''/undefined.
-  const effectiveColor = resolveEntityColor(
-    color,
-    defaultAccountColor(colorScheme)[kind],
-    colorScheme,
-  );
+  const effectiveColor = resolveEntityColor(color, defaultAccountColor[kind]);
 
   // In edit mode, load the account being edited so its fields can seed the form.
   // The query always runs (hooks can't be conditional); an empty id in create

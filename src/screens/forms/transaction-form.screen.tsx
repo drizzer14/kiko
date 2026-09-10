@@ -14,7 +14,6 @@ import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
-import { resolveColorScheme } from '../../design-system/color-scheme';
 import BottomSheet from '../../design-system/components/bottom-sheet';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -229,10 +228,7 @@ const buildExchangeOptions = (
   accountNameById: ReadonlyMap<string, string>,
   excludeHoldingId: string | undefined,
   isEligibleType: (type: HoldingRow['type']) => boolean,
-  colorScheme: 'light' | 'dark',
 ): HoldingSelectOption[] => {
-  const holdingDefaults = defaultHoldingColor(colorScheme);
-
   return holdings
     .filter(
       (candidate) =>
@@ -244,7 +240,7 @@ const buildExchangeOptions = (
       id: candidate.id,
       name: candidate.name,
       icon: candidate.icon ?? holdingTypeSymbol[candidate.type],
-      color: resolveEntityColor(candidate.color, holdingDefaults[candidate.type], colorScheme),
+      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
       currency: candidate.currency,
       accountName: accountNameById.get(candidate.accountId) ?? '',
     }));
@@ -290,7 +286,6 @@ const resolveConvertView = (
   accountNameById: ReadonlyMap<string, string>,
   holdingId: string | undefined,
   t: TFunction,
-  colorScheme: 'light' | 'dark',
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — Requirement B's cash-only restriction
@@ -311,7 +306,6 @@ const resolveConvertView = (
     accountNameById,
     holdingId,
     direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
-    colorScheme,
   );
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.
@@ -590,11 +584,7 @@ const resolvePendingCategory = (
 };
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
-  const { theme, rt } = useUnistyles();
-  // The active color scheme, read once and threaded into every palette consumer
-  // below (the holding select options and the category options) so each picks
-  // the matching light/dark set (see color-scheme.ts / palette.ts).
-  const colorScheme = resolveColorScheme(rt.themeName);
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   // The mode row's display labels, resolved from the catalog inside the
   // component (rather than a module-level constant) so they always reflect
@@ -612,7 +602,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
   };
-  const monobankNotice = t('forms.transaction.monobankNotice');
+  const syncedNotice = t('forms.transaction.syncedNotice');
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -645,7 +635,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     key: category.key,
     title: categoryByKey.get(category.key)?.title ?? category.title,
     icon: category.icon,
-    color: resolveCategoryColor(category.color, category.key, colorScheme),
+    color: resolveCategoryColor(category.color, category.key),
   }));
 
   const holdingId =
@@ -659,7 +649,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the current holding's currency.
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
 
-  const isReadOnly = existing?.source === 'monobank';
+  // A synced row of ANY source (monobank, binance, btc_wallet) is bank-owned:
+  // its amount, description and time are set by the import and edits to them
+  // silently no-op in `transactionsRepo.update`, so those fields render
+  // read-only — not monobank alone. The CATEGORY stays editable and is
+  // persisted through the single-row `setCategory` in `save` (a synced row's
+  // description is often blank, so no propagation sheet opens for it).
+  const isReadOnly = existing !== undefined && existing.source !== 'manual';
   // `editingId` is known synchronously from the route params, so the header
   // reads "Edit Transaction" immediately instead of flashing "Add Transaction"
   // until the row loads. Read-only still keys off the loaded `source`.
@@ -671,7 +667,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountNameById,
     holdingId,
     isExchangeCreateDestinationType,
-    colorScheme,
   );
 
   const convertView = resolveConvertView(
@@ -683,7 +678,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountNameById,
     holdingId,
     t,
-    colorScheme,
   );
 
   const [amount, setAmount] = useState('');
@@ -814,6 +808,32 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // while the other's write is in flight.
   const { onPress: onApplyOverride, isSubmitting: isApplyingOverride } =
     useSubmitOnce(applyOverride);
+
+  // The "just for this one" path: persist the picked category on THIS row ONLY,
+  // by id, then return to the list. Unlike `applyOverride` (the all-similar name
+  // rule), nothing propagates to other same-name rows or to future imports —
+  // `transactionsRepo.setCategory` rewrites the single target row's category and
+  // nothing else. Only reachable in EDIT mode: `editingId` targets an existing
+  // row, so the branch is guarded on it and the button is offered only when it
+  // is present. A brand-new unsaved row has no id to target — and already
+  // carries its category from `recordManual` — so this action is not offered
+  // there.
+  const applyOverrideOne = async (): Promise<void> => {
+    if (pendingOverride === null || editingId === null) {
+      return;
+    }
+    await transactionsRepo.setCategory({
+      transactionId: editingId,
+      category: pendingOverride.category,
+    });
+    navigation.goBack();
+  };
+
+  // A third independent `useSubmitOnce` instance, for the same reason
+  // `onApplyOverride` has its own (see above): each sheet action's in-flight
+  // state must stay separate so one never wrongly blocks another.
+  const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
+    useSubmitOnce(applyOverrideOne);
 
   const cancelOverride = (): void => {
     navigation.goBack();
@@ -959,6 +979,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       return;
     }
 
+    // No propagation sheet will open — the normalized name is blank (a synced
+    // Binance/wallet row imports with an empty description), or the row is
+    // synced so `writeManual`'s `update` refused to persist its category. Write
+    // the picked category straight onto THIS row by id via the ungated
+    // `setCategory`, so a category change on an existing row is never dropped.
+    // This is the single-row writer only; the blank-name guard on the name RULE
+    // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+    // intact, so a catch-all rule is still refused. A create (no `editingId`)
+    // already carries its category from `recordManual`, so it is excluded.
+    if (editingId !== null && categoryChanged && selectedCategory !== null) {
+      await transactionsRepo.setCategory({
+        transactionId: editingId,
+        category: selectedCategory,
+      });
+    }
+
     navigation.goBack();
   };
 
@@ -1000,7 +1036,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }
       >
         <Box gap={4}>
-          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, monobankNotice)}
+          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
 
           {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,
@@ -1067,8 +1103,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
       {/* The category-override confirmation, as a themed sheet rather than a
           native Alert (which cannot be styled). "Apply" is the accent-filled
-          primary; "Cancel" is a transparent ghost with a red label. Dismissing
-          the sheet (scrim/back) behaves like Cancel — it returns to the list. */}
+          primary all-similar name rule; "Just for this one" (edit mode only) is
+          the secondary single-row override; "Cancel" is a transparent ghost with
+          a red label. Dismissing the sheet (scrim/back) behaves like Cancel — it
+          returns to the list. */}
       <BottomSheet
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
@@ -1090,6 +1128,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         <Button onPress={onApplyOverride} disabled={isApplyingOverride}>
           {t('forms.transaction.apply')}
         </Button>
+
+        {editingId !== null && (
+          <Button variant="secondary" onPress={onApplyOverrideOne} disabled={isApplyingOverrideOne}>
+            {t('forms.transaction.applyToThisOne')}
+          </Button>
+        )}
 
         <Button variant="ghost" textColor={theme.colors.negative} onPress={cancelOverride}>
           {t('common.cancel')}

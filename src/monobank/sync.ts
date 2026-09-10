@@ -9,6 +9,14 @@ import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
 import { fetchClientInfo, fetchStatement } from './monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
+import {
+  beginProgressSession,
+  commitHolding,
+  commitWork,
+  endProgressSession,
+  registerWork,
+  setFastPhaseDone,
+} from './sync-status';
 import { createRequestGate, type RequestGate } from './throttle';
 import { readToken } from './token';
 
@@ -33,6 +41,16 @@ const RATE_LIMIT_MS = 60 * 1000;
 const MAX_ITEMS_PER_RESPONSE = 500;
 /** First-sync lookback when no previous sync timestamp is stored. */
 const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
+/**
+ * How stale the last FULL statement fetch may get before the next sync forces
+ * another one (24h). The steady-state sync SKIPS a card whose /client-info
+ * balance is unchanged since the last sync — but a net-zero same-window
+ * transaction pair (a +X and a -X landing in one sync window) leaves the
+ * balance untouched, so the skip would never fetch either row. This interval
+ * bounds that worst-case miss window: at least once a day every card is fetched
+ * regardless of balance, so such a pair is recovered within a day.
+ */
+const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The injectable seams of the sync pipeline. Network, clock and delay are
@@ -81,11 +99,72 @@ export interface SyncDeps {
   listAccounts: () => Promise<AccountRow[]>;
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
-  upsertHolding: (holding: MonobankHolding) => Promise<unknown>;
+  /**
+   * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
+   * so the reactive `holdings` callback fires ONCE for the fast phase rather
+   * than once per card (a tight N+M burst that starved the JS thread and
+   * stuttered the pull spinner). See `holdingsRepo.upsertMonobankMany`.
+   */
+  upsertHoldings: (holdings: MonobankHolding[]) => Promise<unknown>;
+  /**
+   * Advance one card's crash-safe statement-import marker
+   * (`holdings.syncedBalanceMinorUnits`) to the balance whose statements were
+   * just imported. Called ONLY after a card's statement fetch+import commits, so
+   * the marker never leads the imported data: an interrupted run leaves it
+   * behind and the next run re-imports the card. The balance-diff skip compares
+   * against THIS marker, not `holdings.balanceMinorUnits` (the display balance
+   * `upsertHolding` overwrites up front every run).
+   */
+  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
   /** Resolves the number of rows actually INSERTED — a refreshed row is not one. */
   addTransactions: (transactions: NewTransaction[]) => Promise<number>;
   getLastSyncAt: () => Promise<number | null>;
   setLastSyncAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * Stamp the DISPLAY "last synced" timestamp — decoupled from the statement
+   * cursor (`setLastSyncAt`). Written on every run that REACHED Monobank with at
+   * least one card succeeding (INCLUDING a partial failure), regardless of
+   * whether any new rows imported, so the user sees a fresh time even when the
+   * cursor deliberately stays put to re-cover a failed card. The crash-safe
+   * marker (`syncedBalanceMinorUnits`) makes a still-pending card re-fetch next
+   * run, so stamping on any success is honest, not falsely current.
+   */
+  setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * Read the epoch-ms timestamp of the last FULL statement fetch (every card
+   * fetched regardless of balance), or `null` if one has never run. Drives the
+   * balance-diff skip's periodic safety net (see `FULL_FETCH_INTERVAL_MS`).
+   */
+  getLastFullSyncAt: () => Promise<number | null>;
+  /**
+   * Stamp the last-full-fetch timestamp (epoch ms). Written only after a fully
+   * clean full-fetch run, so a partial failure re-attempts the full fetch next
+   * run.
+   */
+  setLastFullSyncAt: (timestamp: number) => Promise<unknown>;
+  /**
+   * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
+   * pending authorization). Such a card is fetched even when its balance is
+   * unchanged, because a same-amount hold→settled refresh does not move the
+   * balance.
+   */
+  getHoldingIdsWithHold: () => Promise<string[]>;
+  /**
+   * The Monobank account ids whose statement fetch FAILED on the LAST run
+   * (`settings.failedSyncMonobankIds`, or an empty set when null). The next run
+   * force-fetches exactly these, regardless of balance, so one flaky card does
+   * not strand the whole account in daily full-fetch mode — the fix for a
+   * partial failure that would otherwise never graduate `lastFullSyncAt`.
+   */
+  getFailedSyncIds: () => Promise<string[]>;
+  /**
+   * Persist the force-fetch set for the NEXT run: the ids still present in
+   * client-info that either failed this run or failed a prior run and were not
+   * re-fetched clean. Stored as null when empty (see
+   * `settingsRepo.setFailedSyncMonobankIds`). Written on BOTH the clean and the
+   * partial-failure path, before the partial-failure throw.
+   */
+  setFailedSyncIds: (ids: string[]) => Promise<unknown>;
 }
 
 const defaultDeps: SyncDeps = {
@@ -98,10 +177,19 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  upsertHolding: (holding) => holdingsRepo.upsertMonobank(holding),
+  upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
+  setSyncedBalance: (holdingId, balanceMinorUnits) =>
+    holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
   addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
   getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
   setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
+  setLastSyncDisplayAt: (timestamp) => settingsRepo.setLastSyncDisplayAt(timestamp),
+  getLastFullSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastFullSyncAt ?? null,
+  setLastFullSyncAt: (timestamp) => settingsRepo.setLastFullSyncAt(timestamp),
+  getHoldingIdsWithHold: async () =>
+    (await transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId),
+  getFailedSyncIds: async () => (await settingsRepo.getQuery()).at(0)?.failedSyncMonobankIds ?? [],
+  setFailedSyncIds: (ids) => settingsRepo.setFailedSyncMonobankIds(ids.length > 0 ? ids : null),
 };
 
 export const mapStatementItem = (
@@ -228,24 +316,59 @@ const markMonobankAccount = async (deps: SyncDeps, accountId: string): Promise<v
   }
 };
 
-const upsertHoldings = async (
+const upsertAllHoldings = async (
   deps: SyncDeps,
   accountId: string,
   accounts: MonobankAccount[],
   jars: MonobankJar[] | undefined,
 ): Promise<void> => {
+  // Collect every representable card/jar and upsert them in ONE batched write,
+  // so the reactive `holdings` callback fires ONCE for the whole fast phase. The
+  // per-card write loop this replaced fanned out N+M separate transactions in a
+  // tight burst at sync start, and each reactive fire re-ran the Home screen's
+  // O(n) render — starving the JS thread and stuttering the pull spinner.
+  const holdings: MonobankHolding[] = [];
+
   // A Monobank user with no cards/jars gets those fields omitted from the
   // /personal/client-info payload, so they arrive undefined. Default to an
   // empty list so the sync never crashes iterating an absent collection.
   for (const account of accounts ?? []) {
-    await deps.upsertHolding({
-      ...mapAccountToHolding(account, accountId),
-      monobankId: account.id,
-    });
+    // A card/jar in a currency Kiko cannot represent (anything other than
+    // UAH/USD/EUR) is SILENTLY EXCLUDED from net worth rather than crashing the
+    // whole sync. The mappers below throw `unsupportedCurrencyCode` on such a
+    // currency; calling them here — outside the per-card statement try/catch —
+    // meant one foreign sub-account (a multi-currency card, a FOP account, a
+    // foreign jar) aborted the entire run before any card imported or the
+    // cursor advanced, stranding the user in a permanent "cannot sync". Skipping
+    // the unrepresentable holding is strictly better than a total failure: every
+    // representable card still syncs. Guard BEFORE the mapper so it is never
+    // reached for an unsupported currency (it keeps throwing for every OTHER
+    // caller).
+    if (currencyFromCode(account.currencyCode) === undefined) {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real sync blocker
+      console.warn('[monobank sync] skipping holding: unrepresentable currency', {
+        currencyCode: account.currencyCode,
+        id: account.id,
+      });
+      continue;
+    }
+    holdings.push({ ...mapAccountToHolding(account, accountId), monobankId: account.id });
   }
   for (const jar of jars ?? []) {
-    await deps.upsertHolding({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
+    // Same unrepresentable-currency carve-out as the accounts loop above: a
+    // foreign-currency jar is excluded from net worth, not a fatal error.
+    if (currencyFromCode(jar.currencyCode) === undefined) {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real sync blocker
+      console.warn('[monobank sync] skipping holding: unrepresentable currency', {
+        currencyCode: jar.currencyCode,
+        id: jar.id,
+      });
+      continue;
+    }
+    holdings.push({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
   }
+
+  await deps.upsertHoldings(holdings);
 };
 
 /**
@@ -270,6 +393,7 @@ const fetchAllStatements = async (
   monobankAccountId: string,
   fromSeconds: number,
   toSeconds: number,
+  onPage?: () => void,
 ): Promise<MonobankStatementItem[]> => {
   const collected: MonobankStatementItem[] = [];
   let windowTo = toSeconds;
@@ -287,6 +411,11 @@ const fetchAllStatements = async (
       deps.fetchImpl,
     );
     collected.push(...items);
+    // One statement page has been fetched — advance the determinate progress
+    // bar by one work unit (the honest per-page granularity). The caller caps
+    // this at the card's up-front window estimate so a capped page cannot draw
+    // the fill above the card's share.
+    onPage?.();
     const hitCap = items.length >= MAX_ITEMS_PER_RESPONSE;
 
     if (hitCap) {
@@ -318,6 +447,255 @@ const fetchAllStatements = async (
 const mapFetched = (items: MonobankStatementItem[], holdingId: string): NewTransaction[] =>
   items.map((item) => mapStatementItem(item, holdingId));
 
+/** Index a run's holdings by their Monobank id, skipping any without one. */
+const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
+  const map = new Map<string, HoldingRow>();
+  for (const holding of holdings) {
+    const monobankId = monobankIdOf(holding.metadata);
+    if (monobankId !== undefined) {
+      map.set(monobankId, holding);
+    }
+  }
+  return map;
+};
+
+/**
+ * Whether this run fetches EVERY card regardless of balance: the first sync
+ * ever, a run with no prior full fetch, or one whose last full fetch is older
+ * than `FULL_FETCH_INTERVAL_MS`. `!lastSyncAt` short-circuits before `now()` is
+ * read, so a first sync never depends on the clock.
+ */
+const shouldFullFetch = (
+  now: () => number,
+  lastSyncAt: number | null,
+  lastFullSyncAt: number | null,
+): boolean =>
+  !lastSyncAt || lastFullSyncAt == null || now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS;
+
+/**
+ * The balance-diff skip predicate: skip a card's statement fetch only when this
+ * is NOT a full fetch, the card is NOT in the force-retry set (a card whose
+ * fetch failed on a prior run), its /client-info balance equals the CRASH-SAFE
+ * marker (`holdings.syncedBalanceMinorUnits` — the balance through which its
+ * statements were last SUCCESSFULLY imported, read before this run's upsert),
+ * and it carries no outstanding hold.
+ *
+ * The comparison is against the marker, NOT `holdings.balanceMinorUnits`. That
+ * display balance is overwritten by `upsertHoldings` at the START of every run,
+ * before the statement loop: a run that committed a card's new balance up front
+ * and was then interrupted (app background/kill) before importing its statements
+ * left `balanceMinorUnits` == /client-info, so a display-balance comparison
+ * skipped the card forever and its transactions never imported (until the 24h
+ * full fetch). The marker advances ONLY after a card's statements commit, so an
+ * interrupted card's marker stays behind and this predicate re-fetches it. A
+ * NULL marker (never synced through — a fresh column on upgrade, or a holding
+ * that never completed a statement import) never equals a balance, so the card
+ * is fetched, which also recovers any card the old bug had stranded.
+ *
+ * A held card is always fetched because a same-amount hold→settled refresh does
+ * not move the balance; a force-retry card is always fetched so a transient
+ * failure cannot strand it once its balance settles unchanged.
+ */
+const isBalanceDiffSkip = (
+  account: MonobankAccount,
+  holding: HoldingRow,
+  context: {
+    isFullFetch: boolean;
+    priorHoldingByMonobankId: Map<string, HoldingRow>;
+    holdIds: Set<string>;
+    failedSet: Set<string>;
+  },
+): boolean => {
+  if (context.isFullFetch) {
+    return false;
+  }
+  if (context.failedSet.has(account.id)) {
+    return false;
+  }
+  const priorSynced = context.priorHoldingByMonobankId.get(account.id)?.syncedBalanceMinorUnits;
+  const balanceUnchanged = priorSynced != null && priorSynced === account.balance;
+  return balanceUnchanged && !context.holdIds.has(holding.id);
+};
+
+/**
+ * Order the statement-fetch queue CHANGED-FIRST, so a genuinely-active card
+ * imports in the earliest 60s slot even when it sits LAST in client-info order.
+ * The serial per-token gate fetches one card per ~60s; a run interrupted (app
+ * background/kill) partway through the loop otherwise starves a just-changed
+ * last card — the reported missing-today-transaction bug. Three stable groups:
+ *
+ * 0. the card's /client-info balance differs from its PRIOR STORED balance
+ *    (real recent activity). The signal is the prior STORED balance, NOT the
+ *    crash-safe marker, so it discriminates even on the NULL-marker recovery
+ *    build where every marker is null.
+ * 1. the card holds an outstanding authorization, or is in the force-retry set.
+ * 2. the rest (recovery/unchanged).
+ *
+ * `Array.prototype.sort` is stable, so cards within one group keep their
+ * client-info order. This changes ONLY the fetch order — which cards are fetched
+ * (the balance-diff skip) is decided unchanged inside the loop.
+ */
+type SkipContext = {
+  isFullFetch: boolean;
+  priorHoldingByMonobankId: Map<string, HoldingRow>;
+  holdIds: Set<string>;
+  failedSet: Set<string>;
+};
+
+const orderStatementQueue = (
+  accounts: MonobankAccount[],
+  context: {
+    priorHoldingByMonobankId: Map<string, HoldingRow>;
+    holdingByMonobankId: Map<string, HoldingRow>;
+    holdIds: Set<string>;
+    failedSet: Set<string>;
+  },
+): MonobankAccount[] => {
+  const priority = (account: MonobankAccount): number => {
+    const prior = context.priorHoldingByMonobankId.get(account.id);
+    if (prior != null && prior.balanceMinorUnits !== account.balance) {
+      return 0;
+    }
+    const holding = context.holdingByMonobankId.get(account.id);
+    if ((holding != null && context.holdIds.has(holding.id)) || context.failedSet.has(account.id)) {
+      return 1;
+    }
+    return 2;
+  };
+
+  return [...accounts].sort((a, b) => priority(a) - priority(b));
+};
+
+/**
+ * Partition the (already changed-first ordered) accounts into the cards that
+ * WILL be fetched this run and a skipped count, so the caller knows the
+ * determinate-progress denominator BEFORE the serial fetch loop starts. A
+ * missing holding is nothing to import into (matches `importAccount`'s own
+ * guard); a balance-diff-skipped card is a successful no-op. The `toFetch`
+ * order is preserved, so the changed-first queue still holds.
+ */
+const selectCardsToFetch = (
+  orderedAccounts: MonobankAccount[],
+  holdingByMonobankId: Map<string, HoldingRow>,
+  skipContext: SkipContext,
+): { toFetch: { account: MonobankAccount; holding: HoldingRow }[]; skipped: number } => {
+  const toFetch: { account: MonobankAccount; holding: HoldingRow }[] = [];
+  let skipped = 0;
+  for (const account of orderedAccounts) {
+    const holding = holdingByMonobankId.get(account.id);
+    if (!holding) {
+      continue;
+    }
+    if (isBalanceDiffSkip(account, holding, skipContext)) {
+      skipped += 1;
+      continue;
+    }
+    toFetch.push({ account, holding });
+  }
+
+  return { toFetch, skipped };
+};
+
+/**
+ * The force-fetch set to persist for the NEXT run, pure and total for testing.
+ * Starts from the prior failed set, drops every id that SUCCEEDED this run, adds
+ * every id that FAILED this run, and keeps only ids still present in client-info
+ * (`currentIds`) so a card the user removed is pruned rather than force-fetched
+ * forever. Order of the returned array is not significant.
+ */
+export const nextFailedSet = (
+  prior: string[],
+  succeeded: string[],
+  failed: string[],
+  currentIds: Set<string>,
+): string[] => {
+  const succeededSet = new Set(succeeded);
+  const result = new Set<string>();
+  for (const id of prior) {
+    if (!succeededSet.has(id) && currentIds.has(id)) {
+      result.add(id);
+    }
+  }
+  for (const id of failed) {
+    if (currentIds.has(id)) {
+      result.add(id);
+    }
+  }
+  return [...result];
+};
+
+/** Order-insensitive equality of two id sets, to skip a redundant persist. */
+const sameIdSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+};
+
+/**
+ * The inclusive from-second of this run's statement window. On a full fetch the
+ * cursor is `lastFullSyncAt` (the last time ALL cards were queried); on an
+ * incremental run it is `lastSyncAt` (the statement cursor). See the call site
+ * in `runSyncInner` for why the full fetch must widen back to `lastFullSyncAt`.
+ * A null cursor (the first sync, when both are null) falls back to the default
+ * lookback below the queried ceiling.
+ */
+const fromCursorSeconds = (
+  isFullFetch: boolean,
+  lastSyncAt: number | null,
+  lastFullSyncAt: number | null,
+  toSeconds: number,
+): number => {
+  const cursor = isFullFetch ? lastFullSyncAt : lastSyncAt;
+  return cursor ? Math.floor(cursor / 1000) : toSeconds - DEFAULT_LOOKBACK_SECONDS;
+};
+
+/**
+ * The inclusive from-second of ONE card's statement window. A card whose
+ * crash-safe marker is NULL or BEHIND its /client-info balance — unimported
+ * activity, or the NULL-marker recovery build — widens back to the
+ * `lastFullSyncAt` cursor, re-covering a transaction older than the incremental
+ * `lastSyncAt` (the cursor advances on every clean run, including runs that skip
+ * whole cards, so a stranded older transaction sits behind it). A card on a full
+ * fetch widens the same way. A normally-in-sync card (marker == balance) keeps
+ * the narrow incremental cursor. Shares the null-cursor fallback in
+ * `fromCursorSeconds`.
+ */
+const fromSecondsForCard = (
+  account: MonobankAccount,
+  prior: HoldingRow | undefined,
+  context: {
+    isFullFetch: boolean;
+    lastSyncAt: number | null;
+    lastFullSyncAt: number | null;
+    toSeconds: number;
+  },
+): number => {
+  const priorSynced = prior?.syncedBalanceMinorUnits;
+  const markerBehind = priorSynced == null || priorSynced !== account.balance;
+
+  return fromCursorSeconds(
+    context.isFullFetch || markerBehind,
+    context.lastSyncAt,
+    context.lastFullSyncAt,
+    context.toSeconds,
+  );
+};
+
+/**
+ * The number of 31-day statement windows a card will page over `[fromSeconds,
+ * toSeconds]`, known UP FRONT from the requested span. It is the card's WORK
+ * weight on the determinate progress bar: a card whose from-window widens back to
+ * `lastFullSyncAt` (a behind-marker or full-fetch card) weighs more than a
+ * normally-in-sync card on the narrow incremental cursor. A capped page adds real
+ * fetches beyond this estimate, but the caller caps the per-card commit at this
+ * number so the fill never exceeds the card's share; at least one window always
+ * counts.
+ */
+const estimateWindows = (fromSeconds: number, toSeconds: number): number =>
+  Math.max(1, Math.ceil((toSeconds - fromSeconds) / MAX_WINDOW_SECONDS));
+
 const importAccount = async (
   deps: SyncDeps,
   gate: RequestGate,
@@ -326,6 +704,7 @@ const importAccount = async (
   account: MonobankAccount,
   fromSeconds: number,
   toSeconds: number,
+  onPage?: () => void,
 ): Promise<number> => {
   const holdings = await deps.listHoldingsByAccount(accountId);
   const holding = holdings.find((candidate) => monobankIdOf(candidate.metadata) === account.id);
@@ -334,7 +713,15 @@ const importAccount = async (
     return 0;
   }
 
-  const items = await fetchAllStatements(deps, gate, token, account.id, fromSeconds, toSeconds);
+  const items = await fetchAllStatements(
+    deps,
+    gate,
+    token,
+    account.id,
+    fromSeconds,
+    toSeconds,
+    onPage,
+  );
   const fetched = mapFetched(items, holding.id);
 
   if (fetched.length === 0) {
@@ -345,6 +732,61 @@ const importAccount = async (
   // refreshes an existing row rather than adding one, and the user is told how
   // many transactions were IMPORTED.
   return deps.addTransactions(fetched);
+};
+
+/** One card's fetch plan: its holding, its from-window, and its WORK weight. */
+type CardPlan = {
+  account: MonobankAccount;
+  holding: HoldingRow;
+  fromSeconds: number;
+  windows: number;
+};
+
+/**
+ * Fetch and import one planned card while driving the WEIGHTED progress bar: one
+ * work unit per statement page (capped at the card's up-front window estimate so
+ * a capped page never overshoots the card's share), then a reconcile to that
+ * estimate and one holding completion once the statements commit. Advances the
+ * crash-safe marker only after the import commits. Returns the imported count; the
+ * caller isolates a failure.
+ */
+const fetchCardWithProgress = async (
+  deps: SyncDeps,
+  gate: RequestGate,
+  token: string,
+  accountId: string,
+  toSeconds: number,
+  card: CardPlan,
+): Promise<number> => {
+  let pagesCommitted = 0;
+  const onPage = (): void => {
+    if (pagesCommitted < card.windows) {
+      pagesCommitted += 1;
+      commitWork();
+    }
+  };
+
+  const imported = await importAccount(
+    deps,
+    gate,
+    token,
+    accountId,
+    card.account,
+    card.fromSeconds,
+    toSeconds,
+    onPage,
+  );
+
+  await deps.setSyncedBalance(card.holding.id, card.account.balance);
+  // Reconcile the card's work to its full up-front estimate (a card that paged
+  // fewer windows than estimated still reaches its share), then complete the
+  // holding for the label.
+  if (pagesCommitted < card.windows) {
+    commitWork(card.windows - pagesCommitted);
+  }
+  commitHolding();
+
+  return imported;
 };
 
 type SyncResult = { importedTransactions: number };
@@ -377,12 +819,31 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   if (inFlightSync) {
     return inFlightSync;
   }
+  // Enter the shared progress SESSION the instant this run acquires the lock —
+  // before any network/DB work. The first contributor lights the transient
+  // "syncing" signal (`useSyncStatus`) and resets the determinate progress, so
+  // every reactive indicator shows the run; the session spans the whole fan-out
+  // (this run plus any concurrent crypto `runBalanceSync`), so `isSyncing` and
+  // the bar stay lit until the LAST path settles. A trigger that JOINS an
+  // in-flight run takes the early `return inFlightSync` above and never reaches
+  // here, so it neither re-enters nor prematurely leaves the session.
+  beginProgressSession();
+  // Reset the fast-phase-done signal at the START of the run, so a joined pull
+  // observes THIS run's balance commit, not a stale one from a prior run. It
+  // flips ON in `runSyncInner` once `upsertAllHoldings` commits the balances.
+  setFastPhaseDone(false);
   const run = runSyncInner(overrides);
   inFlightSync = run;
   const release = (): void => {
     if (inFlightSync === run) {
       inFlightSync = null;
     }
+    // Leave the shared progress session when the run settles (success OR
+    // failure). The LAST contributor clears `isSyncing` and the progress bar.
+    endProgressSession();
+    // Clear the fast-phase-done signal when the run settles, so the next run
+    // starts from a clean OFF state.
+    setFastPhaseDone(false);
   };
   // Release on both settle paths; the returned `run` still carries the real
   // result/rejection to the caller (and to every joined trigger).
@@ -392,6 +853,7 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
 
 const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
+  const startedAt = deps.now();
   const token = await deps.readToken();
   if (!token) {
     throw new Error(i18n.t('accountDetail.noMonobankToken'));
@@ -410,27 +872,137 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   await gate.wait();
   const { accounts, jars } = await deps.fetchClientInfo(token, deps.fetchImpl);
   await markMonobankAccount(deps, accountId);
-  await upsertHoldings(deps, accountId, accounts, jars);
+
+  // Capture each card/jar's PRIOR stored holding BEFORE `upsertHoldings`
+  // overwrites `holdings.balanceMinorUnits` from this run's /client-info. That
+  // column already IS "the balance as of the last sync" for a Monobank holding
+  // (the sync rewrites it every run), so the balance-diff skip needs no new
+  // column — but it must be read before the upsert clobbers it.
+  const priorHoldingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
+
+  await upsertAllHoldings(deps, accountId, accounts, jars);
+
+  // The FAST phase is done: client-info is fetched and the balances are
+  // committed. Fire the signal now — the pull-to-refresh spinner ends here,
+  // decoupled from the slow per-card statement loop that follows. The
+  // determinate progress bar carries the rest of the run.
+  setFastPhaseDone(true);
+
+  // The CURRENT holdings, after the upsert: this run's authoritative
+  // monobankId → holding map, giving each card's holding id (needed for the
+  // outstanding-hold carve-out) and confirming the holding exists. `holdIds` is
+  // the set of holding ids that still carry an outstanding Monobank hold.
+  const holdingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
+  const holdIds = new Set(await deps.getHoldingIdsWithHold());
+
+  // The cards force-fetched this run because their statement fetch FAILED last
+  // run — fetched regardless of balance (see `isBalanceDiffSkip`). The raw prior
+  // array is kept for the end-of-run diff that decides whether to re-persist.
+  const priorFailedIds = await deps.getFailedSyncIds();
+  const failedSet = new Set(priorFailedIds);
 
   const toSeconds = Math.floor(deps.now() / 1000);
   const lastSyncAt = await deps.getLastSyncAt();
-  const fromSeconds = lastSyncAt
-    ? Math.floor(lastSyncAt / 1000)
-    : toSeconds - DEFAULT_LOOKBACK_SECONDS;
+
+  // Full-fetch decision: fetch EVERY card regardless of balance on the first
+  // sync ever, when a full fetch has never run, or once the last one is older
+  // than `FULL_FETCH_INTERVAL_MS`. Otherwise the balance-diff skip applies per
+  // card below. Computed BEFORE the window because it widens the from-cursor.
+  const lastFullSyncAt = await deps.getLastFullSyncAt();
+  const isFullFetch = shouldFullFetch(deps.now, lastSyncAt, lastFullSyncAt);
+
+  // Order the queue CHANGED-FIRST so a genuinely-active card imports in the
+  // earliest 60s slot even when it sits last in client-info order — a run
+  // interrupted partway through the serial gated loop would otherwise starve it.
+  // This changes only the ORDER; the balance-diff skip below still decides which
+  // cards are actually fetched. See `orderStatementQueue`.
+  const orderedAccounts = orderStatementQueue(accounts, {
+    priorHoldingByMonobankId,
+    holdingByMonobankId,
+    holdIds,
+    failedSet,
+  });
 
   let importedTransactions = 0;
+  const succeededIds: string[] = [];
+  const failedIds: string[] = [];
   const failures: Error[] = [];
-  for (const account of accounts) {
+
+  // The cards that WILL be fetched this run, changed-first, with the skipped
+  // count — decided BEFORE the serial fetch loop so the progress denominator is
+  // known up front. See `selectCardsToFetch`.
+  const { toFetch, skipped } = selectCardsToFetch(orderedAccounts, holdingByMonobankId, {
+    isFullFetch,
+    priorHoldingByMonobankId,
+    holdIds,
+    failedSet,
+  });
+  const fetched = toFetch.length;
+
+  // A jar has no statements, so it is syncable ONLY when its balance MOVED since
+  // the last stored value (a new jar counts as changed). A changed jar's balance
+  // already landed in the fast-phase upsert, so it completes immediately below;
+  // an unchanged jar stays in the non-syncing baseline. `priorHoldingByMonobankId`
+  // was captured BEFORE the upsert, so it still holds the prior stored balance.
+  // Unrepresentable-currency jars are not upserted at all, so they never count.
+  const changedJars = (jars ?? []).filter((jar) => {
+    if (currencyFromCode(jar.currencyCode) === undefined) {
+      return false;
+    }
+    const prior = priorHoldingByMonobankId.get(jar.id);
+    return prior === undefined || prior.balanceMinorUnits !== jar.balance;
+  }).length;
+
+  // Per-card fetch plan, computed UP FRONT so the weighted progress denominator
+  // is known before the serial loop. Each card's from-window (a behind/NULL-marker
+  // or full-fetch card widens back to `lastFullSyncAt`; a normally-in-sync card
+  // keeps the narrow `lastSyncAt` cursor — see `fromSecondsForCard`) fixes its
+  // statement-window count (`estimateWindows`), which is the card's WORK weight.
+  const toFetchPlan = toFetch.map(({ account, holding }) => {
+    const fromSeconds = fromSecondsForCard(account, priorHoldingByMonobankId.get(account.id), {
+      isFullFetch,
+      lastSyncAt,
+      lastFullSyncAt,
+      toSeconds,
+    });
+    return { account, holding, fromSeconds, windows: estimateWindows(fromSeconds, toSeconds) };
+  });
+
+  // The determinate bar is WEIGHTED BY WORK: `totalWork` sums each fetched card's
+  // window count plus one unit per changed jar, so a card with a large statement
+  // history occupies proportionally more of the bar. `syncingHoldings` counts the
+  // holdings for the "N/M" label. A balance-diff-skipped card and an unchanged jar
+  // do NO work, so nothing is pre-filled. Registered only when there is real work,
+  // so the bar never appears for a no-op sync (the no-op guard). The session
+  // accumulates this into any concurrent crypto run's work, so one fan-out drives
+  // one bar.
+  const cardWork = toFetchPlan.reduce((sum, card) => sum + card.windows, 0);
+  const syncingHoldings = fetched + changedJars;
+  const totalWork = cardWork + changedJars;
+  if (totalWork > 0) {
+    registerWork(syncingHoldings, totalWork);
+    // Changed jars have no statements — their balances landed in the fast-phase
+    // upsert — so mark them (one unit each) complete now, before the loop.
+    if (changedJars > 0) {
+      commitWork(changedJars);
+      commitHolding(changedJars);
+    }
+  }
+
+  for (const card of toFetchPlan) {
     try {
-      importedTransactions += await importAccount(
+      // `fetchCardWithProgress` advances the crash-safe marker ONLY after the
+      // import commits, drives the weighted bar (one unit per page, reconciled to
+      // the card's estimate), and completes the holding for the label.
+      importedTransactions += await fetchCardWithProgress(
         deps,
         gate,
         token,
         accountId,
-        account,
-        fromSeconds,
         toSeconds,
+        card,
       );
+      succeededIds.push(card.account.id);
     } catch (error) {
       // Isolate a per-card failure: a transient 429/timeout on one card must no
       // longer stop every LATER card in the same run from importing (the old
@@ -438,8 +1010,77 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       // cause of the reported inconsistency). The cards that DID import already
       // persisted their rows durably — each `importAccount` -> `addTransactions`
       // runs in its own `db.transaction()` — so their data is safe regardless.
+      // The failed id is force-fetched next run (see the end-of-run sequence).
       failures.push(error instanceof Error ? error : new Error(String(error)));
+      failedIds.push(card.account.id);
     }
+  }
+
+  // Diagnostic reached on BOTH the clean and the partial-failure path (it sits
+  // before the throw below): surfaces each run's fetch/skip/failure counts and
+  // wall-clock cost so a dev can tell whether a card is stuck in daily
+  // full-fetch mode instead of the fast balance-diff path. No __DEV__ guard —
+  // one line per sync is negligible, and it must be visible from a real device
+  // log. The two-arg form with a plain object does NOT log any secret (no token,
+  // no statement contents), so it clears the secret-log rule.
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one-line per-run sync summary (counts only, no secrets) so a dev can see whether the balance-diff skip is engaging on-device
+  console.warn('[monobank sync] done', {
+    isFullFetch,
+    cards: accounts.length,
+    fetched,
+    skipped,
+    failures: failures.length,
+    elapsedMs: deps.now() - startedAt,
+  });
+
+  // Move the DISPLAY "last synced" stamp whenever this run REACHED Monobank
+  // successfully — i.e. at least one card synced without error — regardless of
+  // whether any new rows imported. The label means "Last sync", not "last
+  // import": a clean re-sync that fetched every card but found nothing new is
+  // still a real, successful sync and must refresh the time the user sees.
+  //
+  // Gated on "≥1 card succeeded" (`failures.length < accounts.length`), not on
+  // an unconditional stamp: a TOTAL failure (every card errored) never reached
+  // any statement, so it must NOT announce a fresh "Last sync". A PARTIAL
+  // success (some cards imported, one failed) still stamps — this sits BEFORE
+  // the partial-failure `throw` below. This is decoupled from the statement
+  // cursor (`setLastSyncAt`), which advances only on a fully clean run.
+  //
+  // Stamping on ANY success does NOT re-introduce the false-current bug: the
+  // crash-safe marker (`syncedBalanceMinorUnits`, BUG A fix 1) makes a
+  // still-pending card RE-FETCH next run rather than being skipped, so "Last
+  // sync" tracking the last reached-Monobank run is honest. Stamping only on a
+  // fully clean run would instead FREEZE "Last sync" whenever one card fails
+  // persistently, which is the outcome the user rejected.
+  if (failures.length < accounts.length) {
+    await deps.setLastSyncDisplayAt(deps.now());
+  }
+
+  // Persist the force-fetch set for the NEXT run BEFORE the partial-failure
+  // throw, so a failed card is re-fetched next run even though the cursor stays
+  // put. `nextFailedSet` drops the ids that succeeded this run, adds the ones
+  // that failed, and prunes any no longer in client-info. Written only when it
+  // actually changed, to avoid a redundant transaction on the common (all-clean)
+  // path where both sets are empty.
+  const currentIds = new Set(accounts.map((account) => account.id));
+  const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
+  if (!sameIdSet(priorFailedIds, newFailedIds)) {
+    await deps.setFailedSyncIds(newFailedIds);
+  }
+
+  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
+  // change. This now runs BEFORE the throw below, so a full fetch where one card
+  // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
+  // slow N×60s full fetch every time (which starved the balance-diff skip once
+  // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed
+  // card is force-fetched next run via `failedSyncMonobankIds`, and because the
+  // cursor (`setLastSyncAt` below) stays put on a partial failure, that
+  // force-fetch derives its window from the un-advanced `lastSyncAt` and
+  // re-covers the failed card's window; dedup keeps it idempotent. Stamped with
+  // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
+  // convention, so the next full fetch resumes precisely where this one ended.
+  if (isFullFetch) {
+    await deps.setLastFullSyncAt(toSeconds * 1000);
   }
 
   if (failures.length > 0) {
@@ -449,14 +1090,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     // inserting a duplicate — so nothing already imported is lost or
     // re-imported (`addTransactions` reports 0 new for a re-fetched item).
     // Surface the failure so the caller shows an error and the user retries.
-    //
-    // SCOPED DOWN: a per-CARD cursor would also spare the cards that already
-    // finished from being re-fetched next run, but Kiko stores a single global
-    // `settings.lastSyncAt` and the holdings' JSON metadata is rewritten
-    // wholesale by the client-info upsert, so a correct per-card cursor needs a
-    // schema/metadata change beyond this change's minimal, safe scope. The
-    // dedup layer already guarantees the correctness invariant; only the
-    // network re-fetch cost is left on the table. See the task report.
+    // Everything above (display stamp, failed-set persist, full-fetch
+    // graduation) already ran, so the failed card is force-fetched next run
+    // without stranding the account in permanent full-fetch mode.
     throw failures[0];
   }
 

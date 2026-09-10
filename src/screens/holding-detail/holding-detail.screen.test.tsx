@@ -1,12 +1,11 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
-import * as colorSchemeModule from '../../design-system/color-scheme';
-import { entityColorsByScheme } from '../../design-system/palette';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { transactionsRepo } from '../../repositories/transactions.repo';
+import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -286,25 +285,6 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it('tints the holding identity icon from the LIGHT entity set on the light theme', async () => {
-    // Spy the scheme resolver → 'light' so the header identity color picks the
-    // light entity set (see color-scheme.ts / palette.ts).
-    jest.spyOn(colorSchemeModule, 'resolveColorScheme').mockReturnValue('light');
-    try {
-      seed(cardHolding);
-
-      const { getByLabelText } = await renderScreen();
-
-      // The card type default is `white`, which in the LIGHT set is black.
-      expect(getByLabelText('Icon creditcard').props.tintColor).toBe(
-        entityColorsByScheme.light.white,
-      );
-      expect(entityColorsByScheme.light.white).not.toBe(entityColorsByScheme.dark.white);
-    } finally {
-      jest.restoreAllMocks();
-    }
-  });
-
   it('resolves the identity icon color the same way the card does — an empty-string stored color falls back to the type default', async () => {
     // A stored color of '' (neither null nor undefined) slips past a bare
     // `color ?? default`, leaving the header tinted with an invalid empty color
@@ -362,6 +342,61 @@ describe('HoldingDetailScreen', () => {
 
     expect(getByText('Everyday card expense')).toBeTruthy();
     expect(getByText('Everyday card income')).toBeTruthy();
+  });
+
+  it('stamps a time-specific holding row with the full date and HH:MM time', async () => {
+    // A card is time-specific: its row shows "DD.MM.YYYY HH:MM".
+    const at = new Date(2024, 0, 15, 9, 5).getTime();
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('15.01.2024 09:05')).toBeTruthy();
+  });
+
+  it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
+    const at = new Date(2024, 0, 15, 9, 5).getTime();
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    // The timestamp caption is wrapped in a right-aligned footer container
+    // (alignSelf 'flex-end') so it lands under the amount column rather than
+    // left-aligned under the description — mirroring the Home row layout.
+    const footer = ancestorWithStyle(getByText('15.01.2024 09:05'), 'alignSelf');
+    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+  });
+
+  it('right-aligns the derived lifecycle row caption so it sits below the value', async () => {
+    seed(depositHolding);
+
+    const { getAllByText } = await renderScreen();
+
+    // The derived "Computed · date" caption uses the same right-aligned footer
+    // container, so it too sits under the amount column.
+    const footer = ancestorWithStyle(getAllByText(/^Computed ·/)[0], 'alignSelf');
+    expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
+  });
+
+  it.each([
+    ['a term_deposit', depositHolding],
+    ['a bond', bondHolding],
+  ])('drops the HH:MM time on %s row, showing the date only', async (_label, holding) => {
+    // A deposit/bond event is day-granular, so its row shows the date with no
+    // trailing time.
+    const at = new Date(2024, 5, 20, 9, 5).getTime();
+    seed(holding, [
+      { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Top-up', source: 'manual' },
+    ]);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('20.06.2024')).toBeTruthy();
+    expect(queryByText('20.06.2024 09:05')).toBeNull();
   });
 
   it('labels an unlabelled exchange leg from its counterpart holding, not as an expense', async () => {

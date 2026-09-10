@@ -1,14 +1,27 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 
-const mockRunSync = jest.fn();
 const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 const mockSettingsGetQuery = jest.fn();
 const mockConnectedQuery = jest.fn();
 const mockReadToken = jest.fn();
 
-jest.mock('../monobank/sync', () => ({
-  runSync: (...args: unknown[]) => mockRunSync(...args),
+// Controllable per-institution job runs, so a test can assert which accounts the
+// app-open fan-out actually synced without exercising the real sync pipelines
+// (those are covered by their own suites).
+const mockMonobankRun = jest.fn();
+const mockCryptoRun = jest.fn();
+
+jest.mock('./sync-jobs', () => ({
+  syncJobsFor: (account: { name: string; institution: string | null }) => {
+    if (account.institution === 'monobank') {
+      return [{ name: account.name, run: mockMonobankRun }];
+    }
+    if (account.institution === 'binance' || account.institution === 'btc_wallet') {
+      return [{ name: account.name, run: mockCryptoRun }];
+    }
+    return [];
+  },
 }));
 jest.mock('../monobank/token', () => ({
   readToken: (...args: unknown[]) => mockReadToken(...args),
@@ -32,86 +45,51 @@ jest.mock('../repositories/accounts.repo', () => ({
   },
 }));
 
-import { AUTO_SYNC_INTERVAL_MS, shouldAutoSync, useAutoSync } from './use-auto-sync';
+import { AUTO_SYNC_INTERVAL_MS, throttleElapsed, useAutoSync } from './use-auto-sync';
 
-describe('shouldAutoSync', () => {
+const monobank = { id: 'acc-mono', name: 'Monobank', institution: 'monobank' };
+const binance = { id: 'acc-binance', name: 'Binance', institution: 'binance' };
+
+describe('throttleElapsed', () => {
   const now = 1_700_000_000_000;
 
   it.each([
-    [
-      'not connected, no prior sync',
-      { connected: false, hasToken: true, lastSyncAt: null, now },
-      false,
-    ],
-    ['connected, never synced', { connected: true, hasToken: true, lastSyncAt: null, now }, true],
-    [
-      'connected, synced recently (within throttle window)',
-      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS + 1, now },
-      false,
-    ],
-    [
-      'connected, synced exactly at the throttle boundary',
-      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS, now },
-      true,
-    ],
-    [
-      'connected, synced long ago (outside throttle window)',
-      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS - 1, now },
-      true,
-    ],
-    [
-      'not connected, synced long ago',
-      { connected: false, hasToken: true, lastSyncAt: 0, now },
-      false,
-    ],
-    [
-      'connected, no token, never synced',
-      { connected: true, hasToken: false, lastSyncAt: null, now },
-      false,
-    ],
-    [
-      'connected, token present, due',
-      { connected: true, hasToken: true, lastSyncAt: now - AUTO_SYNC_INTERVAL_MS - 1, now },
-      true,
-    ],
-  ] as const)('%s', (_description, input, expected) => {
-    expect(shouldAutoSync(input)).toBe(expected);
+    ['never synced', null, true],
+    ['synced within the window', now - AUTO_SYNC_INTERVAL_MS + 1, false],
+    ['synced exactly at the boundary', now - AUTO_SYNC_INTERVAL_MS, true],
+    ['synced long ago', now - AUTO_SYNC_INTERVAL_MS - 1, true],
+  ] as const)('%s', (_description, lastSyncAt, expected) => {
+    expect(throttleElapsed(lastSyncAt, now)).toBe(expected);
   });
 });
 
 describe('useAutoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockRunSync.mockResolvedValue(undefined);
+    mockMonobankRun.mockResolvedValue(undefined);
+    mockCryptoRun.mockResolvedValue(undefined);
     mockRefreshRates.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(null);
-    mockSettingsGetQuery.mockResolvedValue([]);
+    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockConnectedQuery.mockResolvedValue([]);
     mockReadToken.mockResolvedValue('a-token');
   });
 
   it('does nothing when no account is connected', async () => {
     mockConnectedQuery.mockResolvedValue([]);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
 
     await renderHook(() => useAutoSync());
 
-    // Both gating reads are always awaited (via Promise.all) on every path,
-    // including this bail path, so waiting on either deterministically
-    // flushes the whole one-shot read regardless of the hook's internal
-    // await depth — `waitFor` yields via a macrotask (`setImmediate`) after
-    // its check passes, which drains every pending microtask, so the "not
-    // called" assertions below are not coupled to how many `await` hops
-    // `useAutoSync` takes internally.
     await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
     await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
 
-    expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    expect(mockCryptoRun).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
   it('does nothing when the last sync is within the throttle window', async () => {
-    mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
+    mockConnectedQuery.mockResolvedValue([monobank]);
     mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
 
     await renderHook(() => useAutoSync());
@@ -119,53 +97,86 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
     await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
 
-    expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    expect(mockCryptoRun).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
-  it('does nothing when connected and due but no token is stored', async () => {
-    mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
+  it('syncs the Monobank account then refreshes rates when tokened and past the throttle window', async () => {
+    mockConnectedQuery.mockResolvedValue([monobank]);
+    mockLatestFetchedAt.mockResolvedValue(42);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 }));
+  });
+
+  it('skips the Monobank account but still syncs crypto when no token is stored', async () => {
+    // A Monobank job needs a token; a crypto account needs none. A tokenless user
+    // with both connected still gets its crypto balances + Binance history synced.
+    mockConnectedQuery.mockResolvedValue([monobank, binance]);
+    mockReadToken.mockResolvedValue(undefined);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
+  });
+
+  it('does nothing when the only connected account is a tokenless Monobank one', async () => {
+    mockConnectedQuery.mockResolvedValue([monobank]);
     mockReadToken.mockResolvedValue(undefined);
 
     await renderHook(() => useAutoSync());
 
     await waitFor(() => expect(mockReadToken).toHaveBeenCalled());
 
-    expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    expect(mockCryptoRun).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
-  it('runs sync with no target (reuses the already-connected account) then refreshes rates when connected, tokened, and past the throttle window', async () => {
-    mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
-    mockLatestFetchedAt.mockResolvedValue(42);
+  it('syncs a connected crypto account on open even with no Monobank account', async () => {
+    // The reported gap: an app-open sync used to be Monobank-only, so a crypto
+    // user who only OPENED the app never triggered the Binance import.
+    mockConnectedQuery.mockResolvedValue([binance]);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith());
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 42 }));
+    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
   });
 
-  it('swallows an error thrown by runSync without throwing out of the effect', async () => {
-    mockConnectedQuery.mockResolvedValue([{ id: 'acc-1' }]);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
-    mockRunSync.mockRejectedValue(new Error('sync boom'));
+  it('fans out to BOTH the Monobank and the crypto account when both are connected', async () => {
+    mockConnectedQuery.mockResolvedValue([monobank, binance]);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
+    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
+  });
+
+  it('isolates a failing job (partial success) and still refreshes rates', async () => {
+    mockConnectedQuery.mockResolvedValue([monobank, binance]);
+    mockMonobankRun.mockRejectedValue(new Error('sync boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
-    await waitFor(() => expect(mockRunSync).toHaveBeenCalledWith());
-
-    expect(mockRefreshRates).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
   });
 
-  it('swallows an error thrown while reading the connected account', async () => {
+  it('swallows an error thrown while reading the connected accounts', async () => {
     mockConnectedQuery.mockRejectedValue(new Error('read boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
     await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
 
-    expect(mockRunSync).not.toHaveBeenCalled();
+    expect(mockMonobankRun).not.toHaveBeenCalled();
+    expect(mockCryptoRun).not.toHaveBeenCalled();
   });
 });
