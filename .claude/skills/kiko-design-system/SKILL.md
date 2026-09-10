@@ -151,9 +151,17 @@ new component can land between reviews of this skill:
   applies the positive/negative/neutral money color token from its
   sign. This is the only primitive that knows about `Money` — plain
   `Text` never receives a `Money` object directly.
-- **Button** — the one action button: primary/secondary/destructive
-  variants, an optional leading/trailing SF Symbol icon tinted to a
-  single fixed color regardless of variant. The label has no
+- **Button** — the one action button: primary/secondary/destructive/
+  destructiveTonal/ghost variants, an optional leading/trailing SF
+  Symbol icon tinted to a single fixed color regardless of variant.
+  `destructiveTonal` is the iOS "tinted destructive" pattern — a
+  translucent `negativeSubtle` fill under a red `negative` label (a
+  lower-emphasis dangerous action, e.g. the deposit form's per-row
+  Remove), NOT the solid bright `negative` fill of `destructive`. It is
+  the one variant whose label is NOT `onAccent`: a same-hue label on a
+  same-hue tint is the tinted-button convention, so the `onAccent` rule
+  (which governs text on a SOLID accent/destructive fill) does not apply
+  to it. The label has no
   `textTransform`: each catalogue supplies its own casing (English
   Button copy is sentence case; Ukrainian already is) — there is no
   style-layer transform and no per-language gate.
@@ -173,17 +181,26 @@ new component can land between reviews of this skill:
   backdrop under the glass. A `tint` (an entity card) paints an OPAQUE
   `surface` backdrop and an entity-color wash — see "Entity color and
   tint" below. A `transparent` (a neutral frosted see-through PANEL —
-  the settings and category cards) paints a TRANSLUCENT
+  the settings, system, and category cards, the Statistics screen's
+  chart cards, and the Home net-worth card) paints a TRANSLUCENT
   `surfaceTranslucent` backdrop and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
-  over it. Neither prop keeps the fully-live see-through material (no
+  over it. The `transparent`-vs-`tint` split is the rule for a new
+  surface: a neutral card (settings, a chart, a summary) reads well as
+  a frosted panel and takes `transparent`; an entity card (account,
+  holding) keeps its opaque `tint`. Neither prop keeps the fully-live see-through material (no
   backdrop). Read `glass-surface.props.d.ts` for the exact current prop
   set rather than trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
-  `Modal + backdrop + Box` again. It caps its own height at a fixed
+  `Modal + backdrop + Box` again. The sheet is a GROUPED surface: its
+  base is the `sheetBackground` token (the iOS systemGroupedBackground/
+  dark equivalent), one level BELOW the `surfaceHigh` cards/controls on
+  it, so a control (e.g. an OptionPills selected pill) reads as raised
+  instead of blending into the sheet — it used `surfaceHigh` itself
+  before, the same tone as a selected pill. It caps its own height at a fixed
   66%-of-window ceiling and takes an optional `maxHeight` prop that
   can only tighten that cap further, plus a `scrollable` prop
   (defaults `true`) that wraps `children` in a `ScrollView` so
