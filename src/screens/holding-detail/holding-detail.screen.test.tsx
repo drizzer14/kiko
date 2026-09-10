@@ -96,6 +96,11 @@ jest.mock('../../repositories/transactions.repo', () => ({
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+jest.mock('../../repositories/accounts.repo', () => ({
+  accountsRepo: {
+    byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
+  },
+}));
 jest.mock('../../repositories/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -176,6 +181,9 @@ const seed = (
   // no second line and the existing tests stay unaffected.
   rates: unknown[] = [],
   settings: unknown[] = [{ baseCurrency: 'UAH' }],
+  // The holding's owning account, so the footer's sync gate can read its
+  // `institution`. Default to none, so a manual holding keeps its add action.
+  account: unknown = undefined,
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
     if (keys[0] === 'holdings') {
@@ -192,6 +200,10 @@ const seed = (
 
     if (keys[0] === 'settings') {
       return { data: settings };
+    }
+
+    if (keys[0] === 'accounts') {
+      return { data: account === undefined ? [] : [account] };
     }
 
     // SQLite returns NULL, never undefined, for a column a row does not set, so
@@ -701,27 +713,65 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
   });
 
-  it('labels the bond footer action as a generic transaction, not a contribution', async () => {
+  it('hides the footer add action for a bond', async () => {
     seed(bondHolding);
 
-    const { getByText, queryByText } = await renderScreen();
+    const { queryByTestId, queryByText } = await renderScreen();
 
-    // A bond takes no contributions (only a term_deposit does), so its footer
-    // reads the generic add-transaction label, not "Add contribution".
-    expect(getByText('Add transaction')).toBeTruthy();
+    // A bond carries no manual ledger — its value derives from metadata — so it
+    // offers no add action at all: neither the generic "Add transaction" nor a
+    // deposit "Add contribution". The Screen renders no footer slot.
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
     expect(queryByText('Add contribution')).toBeNull();
   });
 
-  it('routes the bond footer action to the shared transaction form', async () => {
-    seed(bondHolding);
+  it('hides the footer add action for a synced Monobank holding', async () => {
+    // A synced holding's ledger is owned by the Monobank sync, so the detail
+    // screen offers no manual add action. The gate needs BOTH the connected
+    // `monobank` account AND the `monobankId` sync key in metadata.
+    seed(
+      {
+        ...cardHolding,
+        accountId: 'acc-1',
+        metadata: { monobankId: 'mono-1' },
+      },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      { id: 'acc-1', institution: 'monobank' },
+    );
 
-    const { getByText } = await renderScreen();
+    const { queryByTestId, queryByText } = await renderScreen();
 
-    // A bond opens the shared transaction form, not the deposit contribution
-    // form.
-    await fireEvent.press(getByText('Add transaction'));
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
+  });
 
-    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { holdingId: 'h-1' });
+  it('keeps the footer add action for a disconnected former-Monobank holding', async () => {
+    // `isSyncedHolding` requires a CONNECTED account: disconnect keeps the
+    // `monobankId` key on the holding, but the account's `institution` is null,
+    // so the holding counts as manual again and keeps its add action.
+    seed(
+      {
+        ...cardHolding,
+        accountId: 'acc-1',
+        metadata: { monobankId: 'mono-1' },
+      },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      { id: 'acc-1', institution: null },
+    );
+
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add transaction')).toBeTruthy();
   });
 });
 

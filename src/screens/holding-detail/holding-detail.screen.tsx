@@ -4,6 +4,7 @@ import { type FC, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { match } from 'ts-pattern';
 
 import {
   buildCategoryDisplayMap,
@@ -14,7 +15,7 @@ import type { Currency } from '../../currency/currency';
 import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
 import { formatDate, formatDateTime } from '../../dates/format';
-import type { HoldingRow } from '../../db/schema';
+import type { AccountRow, HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -27,7 +28,7 @@ import { useSwipePopGuard } from '../../design-system/components/swipeable-row/u
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
-import { isSyncedTransaction } from '../../holdings/deletable';
+import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
@@ -42,6 +43,7 @@ import { activeLocale } from '../../i18n/active-locale';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { convert, type RateTable } from '../../rates/conversion';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
+import { accountsRepo } from '../../repositories/accounts.repo';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { ratesRepo } from '../../repositories/rates.repo';
@@ -149,6 +151,36 @@ const convertedBaseValue = (
   return convert(breakdown.net, baseCurrency, rateTable);
 };
 
+// Which add action the screen's footer offers.
+type FooterAction = 'contribution' | 'transaction' | 'none';
+
+// A term_deposit takes contributions (its own deposit lifecycle); a plain
+// holding takes a manual transaction. A bond carries no manual ledger — its
+// value derives from metadata (kiko-domain) — and a synced (Monobank) holding's
+// ledger is owned by the sync, so neither offers an add action. `isSyncedHolding`
+// requires BOTH a connected synced institution AND the sync key in metadata, so
+// a disconnected former-Monobank holding counts as manual again and keeps its
+// add action. Extracted to module scope so the branch chain does not count
+// against the screen component's cognitive-complexity budget.
+const footerActionFor = (
+  holding: HoldingRow | undefined,
+  account: AccountRow | undefined,
+): FooterAction => {
+  if (holding === undefined) {
+    return 'none';
+  }
+
+  if (holding.type === 'term_deposit') {
+    return 'contribution';
+  }
+
+  if (holding.type === 'bond' || isSyncedHolding(holding, account)) {
+    return 'none';
+  }
+
+  return 'transaction';
+};
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
@@ -181,6 +213,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
   const breakdown = holding ? holdingValueBreakdown(holding, now) : null;
+  // The owning account, so the footer's sync gate can read its `institution`.
+  // `isSyncedHolding` requires BOTH a connected synced institution AND a sync
+  // key in metadata, so a disconnected former-Monobank holding counts as manual
+  // again and keeps its add action.
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(holding?.accountId ?? ''), [
+    'accounts',
+  ]);
+  const account = accounts.at(0);
   // Bonds show a whole-life expected profit line (net coupons + nominal - price).
   const bondMeta = holding?.type === 'bond' ? asBondMeta(holding.metadata) : null;
   const expectedProfit = bondMeta
@@ -212,11 +252,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
   ].sort((first, second) => second.time - first.time);
   const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
-  // Only a term_deposit takes "contributions" (a top-up recorded on its
-  // contributions list). A bond carries no contributions data, so it is NOT a
-  // contribution here — it takes a plain transaction like every other holding.
-  // The footer action reads accordingly.
-  const isDeposit = holding?.type === 'term_deposit';
+  // Which add action the footer offers — or none, for a bond or a synced
+  // holding (see `footerActionFor`).
+  const footerAction = footerActionFor(holding, account);
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -262,19 +300,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     <Screen
       scroll
       footer={
-        // A large, full-width primary action. A term_deposit opens the
-        // dedicated Contribution form to record a top-up and reads "Add
-        // contribution"; a bond and every other holding open the shared
-        // Transaction form and read the generic "Add transaction".
-        <Button
-          onPress={() =>
-            isDeposit
-              ? navigation.navigate('ContributionForm', { holdingId })
-              : navigation.navigate('TransactionForm', { holdingId })
-          }
-        >
-          {isDeposit ? t('forms.holding.addContribution') : t('holdingDetail.addTransaction')}
-        </Button>
+        // A large, full-width primary action, shown for the holdings that take
+        // one. A term_deposit opens the dedicated Contribution form ("Add
+        // contribution"); a plain holding opens the shared Transaction form
+        // ("Add transaction"). A bond and a synced holding take no manual add
+        // action, so they render no footer at all.
+        match(footerAction)
+          .with('contribution', () => (
+            <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
+              {t('forms.holding.addContribution')}
+            </Button>
+          ))
+          .with('transaction', () => (
+            <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
+              {t('holdingDetail.addTransaction')}
+            </Button>
+          ))
+          .with('none', () => undefined)
+          .exhaustive()
       }
     >
       <Box gap={4}>
