@@ -183,6 +183,13 @@
       "when": 1788985733644,
       "tag": "0025_add_trend_filter",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1789081159946,
+      "tag": "0026_add_transaction_indexes",
+      "breakpoints": true
     }
   ]
 }

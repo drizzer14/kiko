@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import type { TrendFilter } from '../statistics/trend-filter';
 
@@ -111,6 +111,12 @@ export const transactions = sqliteTable(
   },
   (table) => ({
     externalUnique: uniqueIndex('transactions_source_external').on(table.source, table.externalId),
+    // Every `where(eq(transactions.holdingId, …))` (holding detail, per-card
+    // sync cursor) hit a full table scan without this.
+    holdingIdIndex: index('transactions_holding_id').on(table.holdingId),
+    // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
+    // sort without this.
+    timeIndex: index('transactions_time').on(table.time),
   }),
 );
 
