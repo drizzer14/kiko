@@ -404,38 +404,47 @@ Do NOT collapse them — each drives a different affordance:
    lands at the END of `runSyncInner`. `setSyncing` remains the low-level
    primitive the session drives; `runSync` no longer calls it directly.
 2. `progress` (`useSyncProgress`/`getProgressSnapshot`/`setSyncProgress`,
-   `{ completed, total }`) — the determinate progress, counted in
-   HOLDINGS, NOT cards/statements, and DERIVED by a reference-counted
-   progress SESSION that spans the whole fan-out. `total` is the number
-   of holdings the user sees (active holdings across EVERY account — see
-   the shared `countActiveHoldings`, `src/holdings/count-active-holdings.ts`,
-   used by both the Monobank and crypto default deps). `completed` STARTS
-   at the NON-syncing baseline (`total` minus this run's syncable set) and
-   rises by one as each syncable holding's balance/statements commit,
-   ending at `total`. So 3 holdings with 1 syncable holding render "2 / 3"
-   while it syncs, then "3 / 3" when it finishes. Each sync path brackets
-   its work with `beginProgressSession()` / `endProgressSession()` (first
-   begin resets, last end clears), calls `registerSyncableHoldings(total,
-   syncable)` once, then `commitSyncableHoldings(n)` as its holdings
-   commit — see `src/monobank/sync-status.ts`. A path that registers
-   NOTHING syncable publishes nothing, so the bar never flashes a full
-   "N / N" for a run that refreshes nothing (the no-op guard, now spanning
-   the fan-out).
+   `{ completed, total, workCompleted, workTotal }`) — the determinate
+   progress, WEIGHTED BY REAL WORK and DERIVED by a reference-counted
+   progress SESSION that spans the whole fan-out. There is NO pre-filled
+   baseline (the earlier "start at 2/3" model was REVERSED on device
+   feedback: a multi-holding run filled to ~80% instantly). Two quantities:
+   - `workCompleted` / `workTotal` drive the bar FILL. `workTotal` is the SUM
+     of every syncing holding's work units; `workCompleted` STARTS at 0 and
+     rises as work is DONE. Work UNITS: a Monobank CARD in `toFetch` weighs its
+     up-front statement-window count (`estimateWindows` = `ceil(span / 31d)`,
+     the honest per-page granularity — the 1-req/60s statement fetch dominates
+     the run), committed one unit per page then reconciled to the estimate on
+     card completion; a CHANGED Monobank jar and each crypto/exchange balance
+     fetch weigh ONE unit. A balance-diff-skipped card, an unchanged jar, and
+     every manual holding weigh NOTHING.
+   - `completed` / `total` count HOLDINGS for the "N/M" label only (holdings
+     doing work this run / holdings finished), DECOUPLED from the fill (the
+     file-copy pattern: "1 / 2 holdings" can sit at a small fill while a heavy
+     card still fetches).
+   Each sync path brackets its work with `beginProgressSession()` /
+   `endProgressSession()` (first begin resets, last end clears), calls
+   `registerWork(holdings, work)` up front, then `commitWork(units)` as it
+   fetches and `commitHolding(count)` as each holding finishes — see
+   `src/monobank/sync-status.ts`. A path that registers ZERO work publishes
+   nothing, so the bar never appears for a run that fetches nothing (the no-op
+   guard, spanning the fan-out). There is NO whole-app `countActiveHoldings`
+   denominator any more — `total` is the syncing holdings only.
 
-   The SYNCABLE predicate ("anything syncable counts", the user's decision;
-   confirm on device):
-   - a Monobank CARD in `toFetch` — a connected card NOT balance-diff-skipped
-     (`selectCardsToFetch`), completing when its statements commit;
+   The WORK sources ("weight by real work", the user's decision; confirm on
+   device):
+   - a Monobank CARD in `toFetch` (NOT balance-diff-skipped, `selectCardsToFetch`)
+     — weight = its statement-window count, committed per page in
+     `fetchCardWithProgress` / `fetchAllStatements`'s `onPage` callback;
    - a Monobank JAR whose /client-info balance MOVED since its prior stored
-     balance, or a new jar (jars have no statements, so a changed jar
-     completes at the fast phase; an UNCHANGED jar stays baseline — the jar
-     has no crash-safe marker, so a moved balance is its only "changed"
-     signal, `runSyncInner`);
+     balance, or a new jar — weight 1, committed at the fast phase (jars have
+     no statements; an UNCHANGED jar has no crash-safe marker, so a moved
+     balance is its only "changed" signal, `runSyncInner`);
    - every crypto/exchange holding a `runBalanceSync` upserts (Binance
-     Spot/Funding/Earn, or a wallet) — a crypto sync has NO balance-diff
-     skip, it always reads live balances, so each returned holding counts.
-   NON-syncable baseline = every MANUAL holding, every balance-diff-skipped
-   card, and every unchanged jar.
+     Spot/Funding/Earn, or a wallet) — a crypto sync has NO balance-diff skip,
+     it always reads live balances, so each returned holding is one work unit.
+   ZERO work = every MANUAL holding, every balance-diff-skipped card, and every
+   unchanged jar.
 3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
    — a one-shot "balances have landed" signal. `runSyncInner` fires
    `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the
@@ -453,9 +462,10 @@ distinct Monobank-sync affordances on Home, DECOUPLED from each other:
 1. The native `RefreshControl` spinner — the PULL GESTURE indicator ALONE.
 2. A determinate `SyncProgressBar`
    (`src/screens/home/sync-progress-bar/`) — the WHOLE-RUN indicator,
-   with a label ("Syncing holdings N/M", i18n key `home.syncingHoldings`)
-   above a `completed / total` fill; the fraction counts HOLDINGS (see
-   the `progress` store above).
+   with a label ("Syncing holdings N/M", i18n key `home.syncingHoldings`,
+   counting HOLDINGS) above a WORK-weighted fill (`workCompleted /
+   workTotal`); the label and the fill are decoupled — see the `progress`
+   store above.
 
 **The spinner is decoupled from the whole run (do NOT re-bind it).**
 Binding `RefreshControl.refreshing` to the whole-run `isSyncing` flag
