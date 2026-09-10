@@ -82,9 +82,46 @@ describe('Button', () => {
       </Button>,
     );
     const style = flattenRoot(getByRole('button'));
-    expect(style.minHeight).toBeUndefined();
+    // Compact hugs its content (shorter than regular's 50) but still holds the
+    // 44pt HIG touch-target floor — see the dedicated touch-target test above.
+    expect(style.minHeight).toBe(44);
     expect(style.alignSelf).toBe('flex-start');
     expect(style.paddingVertical).toBe(8);
+  });
+
+  it('gives the compact size a 44pt minimum touch target (iOS HIG)', async () => {
+    const { getByRole } = await render(
+      <Button onPress={() => {}} size="compact" fullWidth={false}>
+        Remove
+      </Button>,
+    );
+    // A compact button must still meet the 44pt minimum, so an icon-only ghost
+    // control built from it (categories, delete) is tappable.
+    expect(flattenRoot(getByRole('button')).minHeight).toBe(44);
+  });
+
+  it('renders an icon-only button (icon, no label) that stays pressable', async () => {
+    const onPress = jest.fn();
+    const { getByRole, getByText, getAllByText } = await render(
+      <Button
+        onPress={onPress}
+        variant="ghost"
+        size="compact"
+        fullWidth={false}
+        icon="star"
+        accessibilityLabel="Set as default"
+      />,
+    );
+
+    // The icon renders and the button carries its accessibility label.
+    expect(getByText('icon:star')).toBeTruthy();
+    expect(getByRole('button').props.accessibilityLabel).toBe('Set as default');
+    // With no children there is no label text node beside the icon — only the
+    // icon's own text is present.
+    expect(getAllByText(/.+/)).toHaveLength(1);
+
+    await fireEvent.press(getByRole('button'));
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('renders a leading icon when an icon name is given', async () => {

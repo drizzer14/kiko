@@ -1,9 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
+import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -601,6 +602,17 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     await Promise.resolve();
     expect(navigation.goBack).toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  it('renders the delete action as a red ghost with a trash icon', async () => {
+    const { getByText, toJSON } = await renderEdit('txn-1');
+
+    // Red-ghost treatment: the label is the negative (red) tone, not the white
+    // onAccent a solid `destructive` fill would give it (item 5 / Task 2.1).
+    const deleteLabel = getByText('Delete');
+    expect(StyleSheet.flatten(deleteLabel.props.style).color).toBe(darkTheme.colors.negative);
+    // A leading `trash` SF Symbol is present on the button (item 6 / Task 2.2).
+    expect(JSON.stringify(toJSON())).toContain('trash');
   });
 });
 

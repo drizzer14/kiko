@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
 import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
@@ -306,6 +307,23 @@ describe('CategoriesScreen', () => {
       'receipt',
     ]) {
       expect(getByLabelText(`Choose icon ${icon}`)).toBeTruthy();
+    }
+  });
+
+  it('gives each card control a >=44pt touch target via the shared ghost Button (iOS HIG)', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    // The set-default, delete, and both reorder controls are the shared compact
+    // ghost Button, which holds the 44pt minimum touch target (H1 in the HIG
+    // audit). A bare Pressable with only icon padding fell short.
+    for (const label of [
+      'Set Groceries as default',
+      'Delete Groceries',
+      'Move Transport to top',
+      'Move Transport to bottom',
+    ]) {
+      const control = getByLabelText(label);
+      expect(StyleSheet.flatten(control.props.style).minHeight).toBe(44);
     }
   });
 

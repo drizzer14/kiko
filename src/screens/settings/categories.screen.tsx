@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, type ScrollViewInstance } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -10,10 +10,10 @@ import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import type { CategoryRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
-import Text from '../../design-system/components/text';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
@@ -27,7 +27,7 @@ import AddCategoryRow from './add-category-row';
 
 type CategoriesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Categories'>;
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create(() => ({
   // The card's top row: the identity field (icon + rename) stretches, and the
   // trailing slot (the "set as default" star, or the default-category filled
   // star on the default card) sits at its right edge, vertically centered
@@ -40,30 +40,10 @@ const styles = StyleSheet.create((theme) => ({
   identity: {
     flex: 1,
   },
-  // The delete affordance, now at the card's bottom: a labelled destructive
-  // row (trash icon + "Delete" text). It hugs the leading edge
-  // (`alignSelf: 'flex-start'`) rather than stretching the full card width, so
-  // its tap target stays sized to its content, and carries the same hit padding
-  // as the other micro-affordances.
-  deleteButton: {
-    alignSelf: 'flex-start',
-    padding: theme.spacing(1),
-  },
-  // The delete row's inner layout: the trash icon and its "Delete" label,
-  // vertically centered against each other (icon on the left, per the app's
-  // icon-leading convention).
-  deleteRow: {
-    alignItems: 'center',
-  },
-  // The "set as default" affordance, now in the header's trailing slot: a bare
-  // outline-star icon, given a little hit padding. It sits in the header row
-  // (which centers its items), so it needs no `alignSelf` of its own.
-  setDefaultButton: {
-    padding: theme.spacing(1),
-  },
   // The card's bottom row: the labelled Delete (left, non-default only) and the
   // reorder cluster (right), split by `space-between` and centered against each
-  // other.
+  // other. The controls themselves are the shared compact ghost Button, which
+  // owns its own 44pt touch target, so this row sets only the layout.
   bottomRow: {
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -74,11 +54,6 @@ const styles = StyleSheet.create((theme) => ({
   // `space-between` alone would otherwise leave the cluster at the left.
   reorderButtons: {
     marginLeft: 'auto',
-  },
-  // Each reorder micro-button: a bare icon with the same hit padding the
-  // delete/set-default affordances use.
-  reorderButton: {
-    padding: theme.spacing(1),
   },
 }));
 
@@ -208,14 +183,15 @@ const CategoryListRow: FC<{
               accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
             />
           ) : (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="compact"
+              fullWidth={false}
+              icon="star"
+              textColor={theme.colors.textSecondary}
               accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}
               onPress={setAsDefault}
-              style={styles.setDefaultButton}
-            >
-              <SymbolIcon name="star" color={theme.colors.textSecondary} size={20} />
-            </Pressable>
+            />
           )}
         </Box>
 
@@ -241,17 +217,17 @@ const CategoryListRow: FC<{
             edge rather than the left. */}
         <Box direction="row" style={styles.bottomRow}>
           {!isDefault && (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="compact"
+              fullWidth={false}
+              icon="trash"
+              textColor={theme.colors.negative}
               accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
               onPress={confirmDelete}
-              style={styles.deleteButton}
             >
-              <Box direction="row" gap={2} style={styles.deleteRow}>
-                <SymbolIcon name="trash" color={theme.colors.negative} size={20} />
-                <Text tone="negative">{t('common.delete')}</Text>
-              </Box>
-            </Pressable>
+              {t('common.delete')}
+            </Button>
           )}
 
           {/* Move-to-top / move-to-bottom: bare icon buttons at the row's right
@@ -265,23 +241,25 @@ const CategoryListRow: FC<{
               the same muted `textSecondary` as the star marker so they read as
               neutral controls. */}
           <Box direction="row" gap={1} style={styles.reorderButtons}>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="compact"
+              fullWidth={false}
+              icon="arrow.up.to.line"
+              textColor={theme.colors.textSecondary}
               accessibilityLabel={t('categories.moveToTopLabel', { title: category.title })}
               onPress={onMoveToTop}
-              style={styles.reorderButton}
-            >
-              <SymbolIcon name="arrow.up.to.line" color={theme.colors.textSecondary} size={20} />
-            </Pressable>
+            />
 
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="compact"
+              fullWidth={false}
+              icon="arrow.down.to.line"
+              textColor={theme.colors.textSecondary}
               accessibilityLabel={t('categories.moveToBottomLabel', { title: category.title })}
               onPress={onMoveToBottom}
-              style={styles.reorderButton}
-            >
-              <SymbolIcon name="arrow.down.to.line" color={theme.colors.textSecondary} size={20} />
-            </Pressable>
+            />
           </Box>
         </Box>
       </Box>

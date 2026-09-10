@@ -58,7 +58,9 @@ const Button: FC<ButtonProps> = ({
       {icon !== undefined && (
         <SymbolIcon name={icon} color={labelColor} size={theme.iconSizes.body} />
       )}
-      <RNText style={[styles.label, { color: labelColor }]}>{children}</RNText>
+      {children !== undefined && (
+        <RNText style={[styles.label, { color: labelColor }]}>{children}</RNText>
+      )}
       {trailingIcon !== undefined && (
         <SymbolIcon name={trailingIcon} color={labelColor} size={theme.iconSizes.body} />
       )}

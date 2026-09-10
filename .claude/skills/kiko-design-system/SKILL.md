@@ -199,13 +199,21 @@ new component can land between reviews of this skill:
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
-  reuses it too, never a fresh inline `opacity`. (There is no `IconButton`
-  primitive: an icon-only action button once lived at
-  `src/design-system/components/icon-button/`, but its only consumer — the
-  Statistics trend Reset — was removed with the trend filter sheet redesign,
-  so the dead primitive was deleted. Build an icon-only control from a
-  `Pressable` + `SymbolIcon` with an `accessibilityLabel`, or reinstate the
-  primitive if several consumers appear.)
+  reuses it too, never a fresh inline `opacity`. `children` is OPTIONAL:
+  an `icon` (or `trailingIcon`) with no `children` renders an ICON-ONLY
+  button (the label text node is omitted so the icon is not pushed off-center
+  by the label gap). An icon-only button MUST pass an `accessibilityLabel`,
+  since it has no visible text for VoiceOver. This is the shared icon-only
+  ghost control — the categories set-default/delete/reorder actions use it
+  (`src/screens/settings/categories.screen.tsx`); build an icon-only control
+  this way, with `variant="ghost"` + `size="compact"` + `fullWidth={false}`,
+  rather than a raw `Pressable` + `SymbolIcon`. (There is no separate
+  `IconButton` primitive; the old one at
+  `src/design-system/components/icon-button/` was deleted when its only
+  consumer went away.) The `regular` size is 50pt tall; the `compact` size
+  holds a 44pt minimum height, the iOS HIG touch-target floor, so a compact
+  or icon-only button is always tappable — never wrap a control in extra hit
+  padding to reach 44pt, use `compact`.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and three neutral/tinted variants of the

@@ -21,7 +21,11 @@ type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'destructiveTonal
 type ButtonSize = 'regular' | 'compact';
 
 export type ButtonProps = {
-  children: ReactNode;
+  // The button label. Optional so the button can render icon-only — an `icon`
+  // (or `trailingIcon`) with no `children` is a label-less control (e.g. the
+  // categories set-default/reorder ghost buttons). An icon-only button MUST
+  // carry an `accessibilityLabel`, since it has no visible text for VoiceOver.
+  children?: ReactNode;
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
