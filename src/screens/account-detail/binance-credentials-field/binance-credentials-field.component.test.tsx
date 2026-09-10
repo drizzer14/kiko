@@ -50,6 +50,25 @@ describe('BinanceCredentialsField', () => {
     expect(getByText('Connect Binance')).toBeTruthy();
   });
 
+  it('disables Connect until both the API key and secret are entered', async () => {
+    const { getByPlaceholderText, getByRole } = await render(
+      <BinanceCredentialsField onConnect={onConnect} />,
+    );
+    const connect = (): ReturnType<typeof getByRole> =>
+      getByRole('button', { name: 'Connect Binance' });
+
+    // Neither field entered.
+    expect(connect()).toBeDisabled();
+
+    // Only the API key entered.
+    await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
+    expect(connect()).toBeDisabled();
+
+    // Both fields entered enables the action.
+    await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
+    expect(connect()).not.toBeDisabled();
+  });
+
   it('opens the Binance API management page from the link', async () => {
     const { getByText } = await render(<BinanceCredentialsField onConnect={onConnect} />);
 

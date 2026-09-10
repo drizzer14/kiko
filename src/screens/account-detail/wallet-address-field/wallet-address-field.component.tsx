@@ -92,7 +92,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           size="compact"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking'}
+          disabled={status.kind === 'checking' || address.trim() === ''}
           icon="link"
         >
           {t('accountDetail.connectWallet')}

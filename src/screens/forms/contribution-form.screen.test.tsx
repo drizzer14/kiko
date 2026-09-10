@@ -195,6 +195,23 @@ describe('ContributionFormScreen', () => {
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
   });
 
+  it('disables Save until a positive amount is entered', async () => {
+    const utils = await renderScreen();
+    const isSaveDisabled = (): boolean | undefined =>
+      utils.getByText('Save contribution').parent?.props.accessibilityState.disabled;
+
+    // A blank amount cannot be saved.
+    expect(isSaveDisabled()).toBe(true);
+
+    // A zero amount is still not a valid contribution.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '0');
+    expect(isSaveDisabled()).toBe(true);
+
+    // A positive amount enables Save.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
+    expect(isSaveDisabled()).toBe(false);
+  });
+
   it('surfaces an alert and does not navigate when the append fails', async () => {
     (holdingsRepo.appendDepositContribution as jest.Mock).mockRejectedValueOnce(new Error('boom'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);

@@ -142,7 +142,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
           size="compact"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking'}
+          disabled={status.kind === 'checking' || apiKey.trim() === '' || secret.trim() === ''}
           icon="link"
         >
           {t('accountDetail.connectBinance')}

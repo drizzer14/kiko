@@ -96,6 +96,19 @@ describe('WalletAddressField', () => {
     expect(queryByText('Wallet connected')).toBeNull();
   });
 
+  it('disables Connect until an address is entered', async () => {
+    const { getByPlaceholderText, getByRole } = await render(
+      <WalletAddressField onConnect={onConnect} />,
+    );
+
+    // A blank address cannot be connected.
+    expect(getByRole('button', { name: 'Connect wallet' })).toBeDisabled();
+
+    // Any non-empty address enables the action (format is checked on press).
+    await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
+    expect(getByRole('button', { name: 'Connect wallet' })).not.toBeDisabled();
+  });
+
   it('shows Checking… and disables the action while onConnect is in flight', async () => {
     const pending = deferred<boolean>();
     onConnect.mockReturnValue(pending.promise);

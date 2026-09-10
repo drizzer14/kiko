@@ -157,7 +157,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
           size="compact"
           fullWidth={false}
           onPress={handleSaveToken}
-          disabled={tokenStatus.kind === 'checking'}
+          disabled={tokenStatus.kind === 'checking' || token.trim() === ''}
           icon="checkmark.circle"
         >
           {t('common.save')}

@@ -51,6 +51,18 @@ describe('MonobankTokenField', () => {
     mockSaveToken.mockResolvedValue(undefined);
   });
 
+  it('disables Save until a token is entered', async () => {
+    const { getByPlaceholderText, getByRole } = await renderField();
+    const save = (): ReturnType<typeof getByRole> => getByRole('button', { name: 'Save' });
+
+    // A blank token field cannot be saved.
+    expect(save()).toBeDisabled();
+
+    // A non-empty token enables Save (validity is checked on press).
+    await fireEvent.changeText(getByPlaceholderText('Monobank token'), 'a-real-token');
+    expect(save()).not.toBeDisabled();
+  });
+
   it('never prefills the input from the Keychain', async () => {
     mockHasToken.mockResolvedValue(true);
     const { getByPlaceholderText } = await renderField();
