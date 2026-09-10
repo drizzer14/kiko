@@ -45,6 +45,30 @@ const draftToFilter = (draft: Draft): TrendFilter =>
     ? { mode: 'manual', keys: [...draft.manualKeys] }
     : { mode: 'top', amount: draft.amount, by: draft.by };
 
+// The selected manual row's label weight — semibold, so a chosen category reads
+// through weight on top of the raised row fill. A module-level constant (not an
+// inline object) so it stays one stable style reference (mirrors OptionPills).
+const selectedLabelStyle = { fontWeight: '600' } as const;
+
+// Whether the sheet's draft differs from the applied filter. Save is disabled
+// until it does, so a no-op Save (nothing new selected) is impossible.
+const isDraftDirty = (draft: Draft, filter: TrendFilter): boolean => {
+  const applied = seedDraft(filter);
+
+  if (draft.mode !== applied.mode) {
+    return true;
+  }
+
+  if (draft.mode === 'manual') {
+    return (
+      draft.manualKeys.size !== applied.manualKeys.size ||
+      [...draft.manualKeys].some((key) => !applied.manualKeys.has(key))
+    );
+  }
+
+  return draft.amount !== applied.amount || draft.by !== applied.by;
+};
+
 // Toggle one category key in an immutable copy of the selection.
 const toggleKey = (keys: Set<string>, key: string): Set<string> => {
   const next = new Set(keys);
@@ -120,6 +144,9 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
   const isChecked = (key: string): boolean =>
     key === FILTER_ALL ? draft.manualKeys.size === 0 : draft.manualKeys.has(key);
   const manualRows: FilterOption[] = [{ value: FILTER_ALL }, ...categoryOptions];
+  // Save stays disabled until the draft differs from the applied filter, so
+  // pressing it can never re-persist the already-applied selection unchanged.
+  const dirty = isDraftDirty(draft, filter);
 
   return (
     <Box gap={1}>
@@ -207,8 +234,15 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
                   onPress={() =>
                     option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
                   }
+                  // A selected row raises a filled surface so a chosen category
+                  // reads as clearly selected at a glance — distinct from an
+                  // unselected transparent row AND from the solid-accent Save
+                  // pill, which a shared accent fill would blend into.
+                  style={
+                    isChecked(option.value) ? [styles.option, styles.optionSelected] : styles.option
+                  }
                 >
-                  <Box direction="row" gap={2} style={styles.option}>
+                  <Box direction="row" gap={2} style={styles.optionInner}>
                     <Box style={styles.check}>
                       {isChecked(option.value) && (
                         <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
@@ -226,7 +260,10 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
                       )}
                     </Box>
 
-                    <Text variant="body">
+                    <Text
+                      variant="body"
+                      style={isChecked(option.value) ? selectedLabelStyle : undefined}
+                    >
                       {option.value === FILTER_ALL
                         ? t('common.all')
                         : (option.label ?? option.value)}
@@ -248,7 +285,12 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             {t('common.clear')}
           </Button>
 
-          <Button fullWidth={false} onPress={handleSave} testID={`${testID}-save`}>
+          <Button
+            fullWidth={false}
+            disabled={!dirty}
+            onPress={handleSave}
+            testID={`${testID}-save`}
+          >
             {t('common.save')}
           </Button>
         </Box>

@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
@@ -128,10 +129,8 @@ describe('TrendFilterField sheet', () => {
   });
 
   it('reverts the draft to the saved filter on Clear without closing', async () => {
-    const onSave = jest.fn();
     const { getByTestId, getByRole, queryByText } = await renderField({
       filter: { mode: 'top', amount: 3, by: 'contribution' },
-      onSave,
     });
     await press(getByTestId(TEST_ID));
 
@@ -139,11 +138,12 @@ describe('TrendFilterField sheet', () => {
     await press(getByRole('button', { name: '5' }));
     await press(getByTestId(`${TEST_ID}-clear`));
 
-    // The sheet stays open, and Save now persists the reverted (saved) value.
+    // The sheet stays open, the draft is reverted to the saved amount (3), and
+    // Save is disabled again because the draft now matches the applied filter.
     expect(queryByText('Filters')).toBeTruthy();
-    await press(getByTestId(`${TEST_ID}-save`));
-
-    expect(onSave).toHaveBeenCalledWith({ mode: 'top', amount: 3, by: 'contribution' });
+    expect(getByRole('button', { name: '3' }).props.accessibilityState.selected).toBe(true);
+    expect(getByRole('button', { name: '5' }).props.accessibilityState.selected).toBe(false);
+    expect(getByTestId(`${TEST_ID}-save`)).toBeDisabled();
   });
 
   it('persists the edited filter and closes on Save', async () => {
@@ -180,5 +180,67 @@ describe('TrendFilterField sheet', () => {
     await press(getByTestId(TEST_ID));
     expect(getByRole('button', { name: '3' }).props.accessibilityState.selected).toBe(true);
     expect(getByRole('button', { name: '5' }).props.accessibilityState.selected).toBe(false);
+  });
+});
+
+describe('TrendFilterField Save disabling', () => {
+  it('disables Save while the draft still matches the applied filter', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    expect(getByTestId(`${TEST_ID}-save`)).toBeDisabled();
+  });
+
+  it('enables Save once the top amount is changed', async () => {
+    const { getByTestId, getByRole } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    await press(getByRole('button', { name: '5' }));
+
+    expect(getByTestId(`${TEST_ID}-save`)).not.toBeDisabled();
+  });
+
+  it('disables Save again once the change is reverted', async () => {
+    const { getByTestId, getByRole } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    await press(getByRole('button', { name: '5' }));
+    await press(getByRole('button', { name: '3' }));
+
+    expect(getByTestId(`${TEST_ID}-save`)).toBeDisabled();
+  });
+
+  it('enables Save once a manual category is toggled', async () => {
+    const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
+    await press(getByTestId(TEST_ID));
+
+    expect(getByTestId(`${TEST_ID}-save`)).toBeDisabled();
+
+    await press(getByTestId(`${TEST_ID}-option-groceries`));
+
+    expect(getByTestId(`${TEST_ID}-save`)).not.toBeDisabled();
+  });
+});
+
+describe('TrendFilterField selected manual row', () => {
+  it('raises a filled background on the selected row and keeps an unselected row transparent', async () => {
+    const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: ['groceries'] } });
+    await press(getByTestId(TEST_ID));
+
+    const selected = getByTestId(`${TEST_ID}-option-groceries`);
+    const unselected = getByTestId(`${TEST_ID}-option-transport`);
+
+    // The selected row carries a filled surface background; the unselected row
+    // paints none, so the two read as distinct levels at a glance.
+    expect(selected.props.accessibilityState.checked).toBe(true);
+    expect(unselected.props.accessibilityState.checked).toBe(false);
+    expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBeTruthy();
+    expect(StyleSheet.flatten(unselected.props.style).backgroundColor).toBeUndefined();
   });
 });

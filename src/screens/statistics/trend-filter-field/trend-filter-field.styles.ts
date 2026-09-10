@@ -23,11 +23,24 @@ export const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     gap: theme.spacing(4),
   },
-  // One category multi-select row: a fixed-width check slot, an icon slot, then
-  // the label. Mirrors the filter-menu row so the two pickers read identically.
+  // One category multi-select row's tap area: rounded and inset so the selected
+  // fill below reads as a contained row rather than an edge-to-edge band. The
+  // row's own layout (check slot, icon slot, label) lives on `optionInner`.
   option: {
-    alignItems: 'center',
     paddingVertical: theme.spacing(1),
+    paddingHorizontal: theme.spacing(2),
+    borderRadius: theme.radii.sm,
+  },
+  // The selected row's fill: a raised surface one level above the sheet's
+  // grouped base, so a chosen category reads as clearly selected — distinct from
+  // an unselected transparent row AND from the solid-accent Save pill.
+  optionSelected: {
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  // The row's inner layout: a fixed-width check slot, an icon slot, then the
+  // label. Mirrors the filter-menu row so the two pickers read identically.
+  optionInner: {
+    alignItems: 'center',
   },
   check: {
     width: theme.spacing(5),
