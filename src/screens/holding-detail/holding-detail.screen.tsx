@@ -11,6 +11,7 @@ import {
   resolveCategoryDisplay,
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
+import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
 import { formatDate, formatDateTime } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
@@ -37,9 +38,13 @@ import {
   type HoldingValueBreakdown,
   holdingValueBreakdown,
 } from '../../holdings/holding-value';
+import { activeLocale } from '../../i18n/active-locale';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { convert, type RateTable } from '../../rates/conversion';
+import { buildRateTable, canConvert } from '../../rates/net-worth-view';
 import { categoriesRepo } from '../../repositories/categories.repo';
 import { holdingsRepo } from '../../repositories/holdings.repo';
+import { ratesRepo } from '../../repositories/rates.repo';
 import { settingsRepo } from '../../repositories/settings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
@@ -119,6 +124,31 @@ const breakdownRows = (
     : []),
 ];
 
+// The holding's Value converted into the user's main (base) currency, for the
+// smaller caption beneath the amount — the same second line the holding card
+// shows. Returns null when there is nothing to show: a holding already in the
+// base currency, or one whose currency has no cached rate yet (a BTC holding
+// before the first sync). The `canConvert` guard is load-bearing — `convert`
+// throws on a missing rate pair. Extracted so the guard chain does not count
+// against the screen component's cognitive-complexity budget.
+const convertedBaseValue = (
+  holding: HoldingRow | undefined,
+  breakdown: HoldingValueBreakdown | null,
+  baseCurrency: Currency,
+  rateTable: RateTable,
+): Money | null => {
+  if (
+    holding === undefined ||
+    breakdown === null ||
+    holding.currency === baseCurrency ||
+    !canConvert(holding.currency, baseCurrency, rateTable)
+  ) {
+    return null;
+  }
+
+  return convert(breakdown.net, baseCurrency, rateTable);
+};
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
@@ -135,6 +165,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   ]);
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  // The cached conversion rates, so the Value amount can carry a smaller
+  // converted base-currency caption beneath it — the same second line the
+  // holding card shows for a holding in a non-base currency.
+  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
@@ -152,6 +186,15 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const expectedProfit = bondMeta
     ? Money.of(currency, bondExpectedProfitMinor(bondMeta, currency))
     : null;
+
+  // The user's main currency, and the rate table that converts into it. A
+  // holding in a different currency shows a smaller converted base-currency
+  // caption beneath its Value — the same second line the holding card renders.
+  // `convert` throws on a missing rate pair, so the `canConvert` guard is
+  // load-bearing: a BTC holding before the first rate sync shows no second line.
+  const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  const rateTable = buildRateTable(rates);
+  const convertedToBase = convertedBaseValue(holding, breakdown, baseCurrency, rateTable);
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
@@ -255,6 +298,14 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     <MoneyText money={detail.money} tone={detail.tone} />
                   </Box>
                 ))}
+              </Box>
+            )}
+
+            {convertedToBase && (
+              <Box testID="holding-detail-converted">
+                <Text variant="caption" tone="textSecondary">
+                  {formatMoney(convertedToBase, activeLocale())}
+                </Text>
               </Box>
             )}
           </Box>

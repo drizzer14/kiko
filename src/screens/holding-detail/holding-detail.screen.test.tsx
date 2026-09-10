@@ -96,6 +96,12 @@ jest.mock('../../repositories/transactions.repo', () => ({
 jest.mock('../../repositories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+jest.mock('../../repositories/rates.repo', () => ({
+  ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+jest.mock('../../repositories/settings.repo', () => ({
+  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingDetailProps['route']>('HoldingDetail', {
@@ -165,6 +171,11 @@ const seed = (
   // device, so a row referencing ANOTHER holding (an exchange leg's counterpart)
   // can resolve its name from it.
   otherHoldings: unknown[] = [],
+  // The currency rates and settings the value-header's converted-value line
+  // reads. Default to no rates and a UAH base, so a base-currency holding shows
+  // no second line and the existing tests stay unaffected.
+  rates: unknown[] = [],
+  settings: unknown[] = [{ baseCurrency: 'UAH' }],
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
     if (keys[0] === 'holdings') {
@@ -173,6 +184,14 @@ const seed = (
 
     if (keys[0] === 'categories') {
       return { data: categories };
+    }
+
+    if (keys[0] === 'currency_rates') {
+      return { data: rates };
+    }
+
+    if (keys[0] === 'settings') {
+      return { data: settings };
     }
 
     // SQLite returns NULL, never undefined, for a column a row does not set, so
@@ -446,6 +465,43 @@ describe('HoldingDetailScreen', () => {
     // on a short page rather than floating beneath the (possibly empty) ledger.
     const footer = getByTestId('screen-footer');
     expect(within(footer).getByText('Add transaction')).toBeTruthy();
+  });
+
+  it('shows the main-currency converted value under the amount for a foreign-currency holding', async () => {
+    // A USD holding against a UAH base, with a USD:UAH rate cached, shows a
+    // smaller converted base-currency line beneath its own-currency Value — the
+    // same converted caption the holding card already renders.
+    seed(
+      { ...cardHolding, currency: 'USD', balanceMinorUnits: 10_000 },
+      [],
+      [],
+      [],
+      [{ base: 'USD', quote: 'UAH', rate: '41' }],
+      [{ baseCurrency: 'UAH' }],
+    );
+
+    const { getByTestId } = await renderScreen();
+
+    // 100.00 USD * 41 = 4,100.00 UAH — a UAH (₴) amount rendered as the caption.
+    const converted = getByTestId('holding-detail-converted');
+    expect(within(converted).getByText(/₴/)).toBeTruthy();
+  });
+
+  it('shows no converted value line for a holding already in the base currency', async () => {
+    // A UAH holding against a UAH base needs no second figure — the guard
+    // (`holding.currency !== baseCurrency`) omits the caption entirely.
+    seed(
+      { ...cardHolding, currency: 'UAH', balanceMinorUnits: 10_000 },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+    );
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('holding-detail-converted')).toBeNull();
   });
 
   it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
