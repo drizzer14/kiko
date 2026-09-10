@@ -12,6 +12,7 @@ import {
 const base = { currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
 const START = Date.UTC(2026, 0, 1);
 const day = 86_400_000;
+const HOUR = 3_600_000;
 const AFTER_1Y = START + 365 * day;
 
 // Local-midnight instant, matching the local Date arithmetic the coupon-date
@@ -182,6 +183,24 @@ describe('holdingValue', () => {
     expect(b.principalOrCost.minorUnits).toBe(1_000_000);
     expect(b.gross.minorUnits).toBeLessThan(1_010_000);
     expect(b.gross.minorUnits).toBeGreaterThanOrEqual(1_000_000);
+  });
+
+  it('values a bond across its whole local purchase day, even from a mid-day purchaseDate', () => {
+    // The holding form defaults `purchaseDate` to `Date.now()`, a mid-day
+    // timestamp. A same-day card->bond move must be net-worth-neutral, so the
+    // bond carries its nominal for EVERY instant on the purchase day — from
+    // local midnight — not only from the exact clock time the row was created.
+    const holding = screenshotBond({
+      purchaseDate: local(2026, 0, 2) + 15 * HOUR, // 15:00 on day D
+      maturityDate: local(2027, 0, 1),
+    });
+    const startOfDayD = local(2026, 0, 2); // 00:00 local D, BEFORE the 15:00 clock time
+    const endOfDayD = local(2026, 0, 3) - 1; // 23:59:59.999 local D
+    const dayBefore = local(2026, 0, 1) + 15 * HOUR; // an instant on D-1
+
+    expect(holdingValue(holding, startOfDayD).minorUnits).toBe(10_000_000);
+    expect(holdingValue(holding, endOfDayD).minorUnits).toBe(10_000_000);
+    expect(holdingValue(holding, dayBefore).minorUnits).toBe(0);
   });
 
   it('reports no value for a bond purchased in the future (guard)', () => {
