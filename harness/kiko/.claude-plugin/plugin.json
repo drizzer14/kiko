@@ -1,7 +1,7 @@
 {
   "name": "kiko",
   "version": "0.1.0",
-  "description": "Kiko agent harness: ten role agents, isolated ponytail review, and tiered quality hooks.",
+  "description": "Kiko agent harness: twelve role agents, isolated ponytail review, and tiered quality hooks.",
   "author": { "name": "Kiko" },
   "keywords": ["agents", "harness", "react-native", "quality"]
 }

@@ -390,7 +390,7 @@ ESM-compatible or patched line.
 
 The Kiko agent harness is a local Claude Code plugin at
 `harness/kiko/` (`kiko` in the local
-`harness/.claude-plugin/marketplace.json`). It ships eleven role agents,
+`harness/.claude-plugin/marketplace.json`). It ships twelve role agents,
 four project skills that thin-wrap superpowers, one vendored review
 command, and the tier hooks documented above.
 
@@ -406,7 +406,7 @@ app files inline. Complex or parallel work is split into separate
 Orca worktrees. If no agent fits a task, the coordinator reports the
 gap — it does not do the task itself.
 
-### The eleven agents
+### The twelve agents
 
 | Agent | Role | model | effort | Spawn command |
 |---|---|---|---|---|
@@ -421,6 +421,7 @@ gap — it does not do the task itself.
 | scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
 | ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
 | pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | medium | `claude --agent pm --effort medium` |
+| auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | opus | high | `claude --agent auditor --effort high` |
 
 Agent frontmatter sets only `model` (there is no per-agent effort
 field); the coordinator applies the recorded effort with `--effort`
