@@ -9,15 +9,6 @@ import { entityColorsDark } from './palette';
 // fully OPAQUE derivation, and its doc comment for why a translucent tint is
 // the wrong shape for a card background.
 
-// The default tint opacity, in the middle of a deliberately narrow 8-14%
-// band: low enough that a light entity color (`white`, `khaki`) still reads
-// as a whisper of tint rather than a wash that fights the card surface,
-// high enough that a saturated color (`red`, `violet`) stays perceptible
-// against `theme.colors.surface`.
-//
-// This `0.1` was calibrated by eye on the dark surface.
-export const ENTITY_TINT_OPACITY = 0.1;
-
 const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 
 // Parses a `#RRGGBB` hex into its 0-255 RGB triple. Every deriver of an entity
@@ -42,17 +33,6 @@ const parseHex = (hex: string): [red: number, green: number, blue: number] => {
     Number.parseInt(digits.slice(2, 4), 16),
     Number.parseInt(digits.slice(4, 6), 16),
   ];
-};
-
-// Given an entity color hex, returns that color as a translucent
-// `rgba(...)` background: set as a card's own `backgroundColor` (layered
-// over `theme.colors.surface` beneath it), the surface shows through at
-// `1 - ENTITY_TINT_OPACITY` and the entity hue tints it at
-// `ENTITY_TINT_OPACITY`.
-export const entityTintBackground = (colorHex: string): string => {
-  const [red, green, blue] = parseHex(colorHex);
-
-  return `rgba(${red}, ${green}, ${blue}, ${ENTITY_TINT_OPACITY})`;
 };
 
 const isValidHex = (value: string | null | undefined): value is string =>
