@@ -252,6 +252,59 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(bucketDayD)).toBe(107.87);
   });
 
+  it('stays flat across a card->bond move sampled at LOCAL MIDNIGHT buckets (premium, at cost)', () => {
+    // Production samples daily buckets at LOCAL MIDNIGHT (tests run in UTC, so
+    // startOfLocalDay == UTC midnight). A mid-day card debit and a same-local-day
+    // bond purchase must land in the SAME bucket: the running balance has to apply
+    // the debit by LOCAL DAY, matching the bond valuation which turns on by local
+    // day at the purchase-day midnight bucket. Applying the debit by RAW INSTANT
+    // instead defers it to the next day's bucket while the bond's cost turns on at
+    // the purchase-day midnight bucket, so the day-D midnight bucket spikes to
+    // 215.74 (both assets counted) instead of staying at the neutral 107.87.
+    const dayD = D1; // a UTC/local-midnight day boundary
+    const debitTime = dayD + 15 * HOUR; // 15:00 on day D (a mid-day timestamp)
+
+    // Card started with $107.87 and was debited $107.87, so its current balance is 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = holding({
+      id: 'bond',
+      currency: 'USD',
+      type: 'bond',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1,
+        faceValueMinorUnits: 10_000, // nominal $100.00
+        couponPct: 0,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate: dayD, // UTC/local midnight of day D
+        purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
+        maturityDate: Date.UTC(2027, 0, 1),
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [card, bond],
+      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 + 2 * DAY }, // buckets at D0, D1 (=dayD), D2 — all midnight
+    });
+
+    const amountAt = (t: number): number => {
+      const point = series.points.find((candidate) => candidate.t === t);
+      if (point === undefined) {
+        throw new Error(`no bucket at ${t}`);
+      }
+      return point.amount;
+    };
+
+    // Day-D midnight bucket (bond bought at cost, card debited the same price) must
+    // equal the day-(D-1) midnight bucket (card still full): $107.87.
+    expect(amountAt(dayD)).toBe(amountAt(D0));
+    expect(amountAt(dayD)).toBe(107.87);
+  });
+
   it('returns an empty series when no history has been backfilled yet', () => {
     const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
 
