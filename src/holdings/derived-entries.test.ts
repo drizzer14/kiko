@@ -120,8 +120,11 @@ describe('derivedEntries', () => {
     expect(entries.map((e) => e.kind)).toEqual(['contribution', 'interest', 'tax']);
     const interest = entries.find((e) => e.kind === 'interest');
     const tax = entries.find((e) => e.kind === 'tax');
-    expect(interest?.amountMinorUnits).toBe(100_000); // 1000.00 cumulative interest
-    expect(tax?.amountMinorUnits).toBe(-23_000); // round(18%) + round(5%) of 1000.00
+    // BUG2 day-after convention: accrues from the day AFTER the contribution, so
+    // the 365-day span earns 364 days: 10,000 * 10% * 364/365 = 997.26 (99726
+    // minor); tax = round(99726*18%) + round(99726*5%) = 17,951 + 4,986 = 22,937.
+    expect(interest?.amountMinorUnits).toBe(99_726);
+    expect(tax?.amountMinorUnits).toBe(-22_937);
   });
 
   it('returns [] for a term deposit with unparseable metadata', () => {

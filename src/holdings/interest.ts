@@ -335,10 +335,16 @@ export const depositLedger = (
 
 // Recap-off deposits pay interest out each period rather than compounding it.
 // We surface the CUMULATIVE simple interest earned to date: each contribution
-// accrues actual/365 from its own date to `end` (now, capped at the single
-// maturity anchored to the earliest contribution). Future-dated contributions
-// are excluded. No per-period reset — a matured or multi-contribution deposit
-// no longer collapses to zero.
+// accrues actual/365 from the day AFTER it lands to `end` (now, capped at the
+// single maturity anchored to the earliest contribution). Future-dated
+// contributions are excluded. No per-period reset — a matured or
+// multi-contribution deposit no longer collapses to zero.
+//
+// The day-after start (`dayAfter(c.date)`, not `c.date`) matches the
+// statement-validated recap-ON engine (`depositLedger`), where every capital
+// tranche earns from `dayAfter` its landing: a deposit opened on the 11th earns
+// from the 12th. Accruing from the contribution date itself counted one extra
+// day, so recap-OFF and recap-ON disagreed on the first-period accrual.
 export const depositAccruedMajor = (
   contributions: ContributionMajor[],
   annualRatePct: number,
@@ -352,7 +358,8 @@ export const depositAccruedMajor = (
   const maturity = depositMaturity(active, termMonths);
   const end = Math.min(now, maturity);
   return active.reduce(
-    (sum, c) => sum + accruedMajor(c.amountMajor, annualRatePct, daysBetween(c.date, end)),
+    (sum, c) =>
+      sum + accruedMajor(c.amountMajor, annualRatePct, daysBetween(dayAfter(c.date), end)),
     0,
   );
 };

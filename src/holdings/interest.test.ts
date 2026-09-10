@@ -290,18 +290,54 @@ describe('depositLedger — step-by-step engine, verified against the real state
 });
 
 describe('depositAccruedMajor — recap-off cumulative interest', () => {
-  it('accrues cumulative simple interest from the contribution date to now', () => {
-    // 10,000 at 10% over a full 365-day year => 1000.00 cumulative.
+  it('accrues cumulative simple interest from the day AFTER the contribution to now', () => {
+    // BUG2: interest accrues from the day AFTER the contribution lands (the
+    // day-after convention shared with the statement-validated recap-ON engine
+    // `depositLedger`), NOT from the contribution date itself. So a 10,000
+    // deposit at 10% over a 365-day span earns 364 days, not 365:
+    //   10,000 * 10% * 364/365 = 997.2602...
     const accrued = depositAccruedMajor([{ amountMajor: 10000, date: START }], 10, 120, AFTER_1Y);
-    expect(accrued).toBeCloseTo(1000, 6);
+    expect(accrued).toBeCloseTo((10000 * 0.1 * 364) / 365, 6);
   });
 
-  it('sums cumulative accrual across contributions, each from its own date', () => {
+  // BUG2 regression: recap-OFF used to accrue from the contribution DATE itself,
+  // one day more than the statement-validated recap-ON engine (`depositLedger`
+  // earns each tranche from `dayAfter` it lands). Pin that the two conventions
+  // now AGREE on the first-period accrual: a single 10,000 deposit at 10% over
+  // the first full year (now = maturity), annual compounding. Compared against
+  // recap-ON's pre-tax gross for that period. Before the fix recap-OFF counted
+  // 366 days (leap year) vs recap-ON's 365, diverging by a day's interest.
+  it("agrees with the recap-ON engine's first-period accrual (day-after convention)", () => {
+    const rate = 10;
+    const contributionMajor = 10000;
+    const maturity = addMonths(START, 12);
+
+    const recapOff = depositAccruedMajor(
+      [{ amountMajor: contributionMajor, date: START }],
+      rate,
+      12,
+      maturity,
+    );
+    const { accruals } = depositLedger(
+      [{ amountMinor: contributionMajor * 100, date: START }],
+      rate,
+      'annually',
+      12,
+      maturity,
+    );
+    const recapOnFirstPeriodMajor = accruals[0].grossMinor / 100;
+
+    expect(recapOff).toBeCloseTo(recapOnFirstPeriodMajor, 2);
+  });
+
+  it('sums cumulative accrual across contributions, each from the day after its own date', () => {
     const now = START + 200 * DAY;
     const c1 = { amountMajor: 10000, date: now - 180 * DAY };
     const c2 = { amountMajor: 5000, date: now - 60 * DAY };
     const accrued = depositAccruedMajor([c1, c2], 10, 120, now);
-    const expected = accruedMajor(10000, 10, 180) + accruedMajor(5000, 10, 60);
+    // BUG2 day-after convention: each contribution earns from the day AFTER it
+    // lands, so a 180-day-old tranche accrues 179 days and a 60-day-old one 59.
+    const expected = accruedMajor(10000, 10, 179) + accruedMajor(5000, 10, 59);
     expect(accrued).toBeCloseTo(expected, 6);
   });
 
