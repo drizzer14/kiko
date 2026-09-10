@@ -329,11 +329,11 @@ describe('DateRangeField localization', () => {
 });
 
 describe('DateRangeField calendar initial month', () => {
-  it('opens the calendar on the active range start', async () => {
+  it('opens the calendar on the active range end so the most recent month shows first', async () => {
     const { getByText, getByTestId } = await render(
       <DateRangeField
         dateFrom={new Date(2026, 2, 10)}
-        dateTo={new Date(2026, 2, 20)}
+        dateTo={new Date(2026, 5, 20)}
         minDate={new Date(2025, 0, 1)}
         maxDate={new Date(2026, 8, 7)}
         onApply={jest.fn()}
@@ -345,7 +345,9 @@ describe('DateRangeField calendar initial month', () => {
       fireEvent.press(getByText(/10\.03\.2026/));
     });
 
-    expect(getByTestId('date-range-calendar').props.initialDate).toBe('2026-03-10');
+    // The end bound is a later month than the start, so opening on the end
+    // (June) rather than the start (March) is what shows the recent month first.
+    expect(getByTestId('date-range-calendar').props.initialDate).toBe('2026-06-20');
   });
 
   it('falls back to a defined month when no range is set', async () => {

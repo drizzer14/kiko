@@ -237,11 +237,13 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
             testID="date-range-calendar"
             markingType="period"
             markedDates={marks}
-            // Open on the ACTIVE range's start (or its draft, mid-edit) rather
-            // than letting react-native-calendars default to the current
-            // month: reopening the picker after applying a March range showed
-            // September with none of its own marks on screen.
-            initialDate={toCalendarKey(draftFrom ?? selectableFloor)}
+            // Open on the ACTIVE range's END bound (its draft `to`, mid-edit)
+            // so the most recent month shows first, falling back to the start
+            // and then the selectable ceiling — rather than letting
+            // react-native-calendars default to the current month: reopening
+            // the picker after applying a March–June range showed September
+            // with none of its own marks on screen.
+            initialDate={toCalendarKey(draftTo ?? draftFrom ?? selectableCeiling)}
             minDate={toCalendarKey(selectableFloor)}
             maxDate={toCalendarKey(selectableCeiling)}
             onDayPress={handleDayPress}
