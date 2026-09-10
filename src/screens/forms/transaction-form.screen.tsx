@@ -649,7 +649,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the current holding's currency.
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
 
-  const isReadOnly = existing?.source === 'monobank';
+  // A synced row of ANY source (monobank, binance, btc_wallet) is bank-owned:
+  // its amount, description and time are set by the import and edits to them
+  // silently no-op in `transactionsRepo.update`, so those fields render
+  // read-only — not monobank alone. The CATEGORY stays editable and is
+  // persisted through the single-row `setCategory` in `save` (a synced row's
+  // description is often blank, so no propagation sheet opens for it).
+  const isReadOnly = existing !== undefined && existing.source !== 'manual';
   // `editingId` is known synchronously from the route params, so the header
   // reads "Edit Transaction" immediately instead of flashing "Add Transaction"
   // until the row loads. Read-only still keys off the loaded `source`.

@@ -642,6 +642,67 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
   });
 });
 
+describe('TransactionFormScreen — synced (binance) row', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // A Binance-imported row: a real synced source that carries a BLANK
+    // description and a null category. The blank description is why the
+    // category-propagation sheet never opens for it (a name rule refuses a
+    // blank catch-all), so the category must persist through the single-row,
+    // ungated `setCategory` writer instead.
+    setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
+      id: 'txn-b',
+      holdingId: 'h-btc',
+      amountMinorUnits: -50,
+      time: 42,
+      description: '',
+      source: 'binance',
+      category: null,
+    });
+  });
+
+  it('persists the picked category on a blank-description binance row via setCategory', async () => {
+    mockSetCategory.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-b');
+    // A synced row shows no Save until its category actually changes.
+    expect(utils.queryByText('Save')).toBeNull();
+
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The single-row, ungated writer persists the category by id.
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-b',
+        category: 'groceries',
+      }),
+    );
+    // A blank description opens no propagation sheet, writes no name rule, and
+    // never touches a bank-owned field.
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('treats the bank-owned amount, description, date and time fields as read-only', async () => {
+    const { getByLabelText } = await renderEdit('txn-b');
+
+    expect(getByLabelText('Amount').props.editable).toBe(false);
+    expect(getByLabelText('Description').props.editable).toBe(false);
+    expect(getByLabelText('Date').props.accessibilityState.disabled).toBe(true);
+    expect(getByLabelText('Time').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('still shows the editable category control on a read-only binance row', async () => {
+    const { getByLabelText } = await renderEdit('txn-b');
+    // The category picker stays offered even though the bank-owned fields lock.
+    expect(getByLabelText('Category')).toBeTruthy();
+  });
+});
+
 describe('TransactionFormScreen — category editing', () => {
   beforeEach(() => {
     jest.clearAllMocks();
