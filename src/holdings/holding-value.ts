@@ -106,8 +106,6 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
     return flat(holding.currency, holding.balanceMinorUnits);
   }
   const { currency } = holding;
-  const nominalMinor = meta.quantity * meta.faceValueMinorUnits;
-  const nominalMoney = Money.of(currency, nominalMinor);
   const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);
   const zero = Money.of(currency, 0);
   // Value the bond by LOCAL DAY, not by raw instant. `purchaseDate` is often a
@@ -129,18 +127,24 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   if (valuationDay >= startOfLocalDay(meta.maturityDate)) {
     return { gross: zero, principalOrCost: costMoney, interest: zero, tax: zero, net: zero };
   }
-  // A live bond is worth its NOMINAL (quantity * faceValue), flat, until
-  // maturity. The bank pays each coupon out to a cash account on its discrete
-  // coupon date (see the ledger entries); it does NOT accrue a continuous
-  // dirty price into the held value between coupons, so there is no per-day
-  // accrual and no unwind on a coupon date. Interest/tax on the coupon stream
-  // are ledger events, not part of the held value.
+  // A live bond is worth its COST (the price paid), flat, until maturity — NOT
+  // its nominal. A card->bond move debits the card the price PAID and credits
+  // the bond the SAME price, so net worth is unchanged on the purchase day.
+  // Valuing a premium bond at nominal instead left a permanent (price - nominal)
+  // dip from the purchase day onward (the R4 bug). The premium/discount is
+  // realized only AT maturity, through the redemption ledger entry that returns
+  // the nominal (see `bondEntries` in `derived-entries.ts`); the maturity guard
+  // above hands the bond off to that entry. The bank pays each coupon out to a
+  // cash account on its discrete coupon date (see the ledger entries); it does
+  // NOT accrue a continuous dirty price into the held value between coupons, so
+  // there is no per-day accrual and no unwind on a coupon date. Interest/tax on
+  // the coupon stream are ledger events, not part of the held value.
   return {
-    gross: nominalMoney,
+    gross: costMoney,
     principalOrCost: costMoney,
     interest: zero,
     tax: zero,
-    net: nominalMoney,
+    net: costMoney,
   };
 };
 

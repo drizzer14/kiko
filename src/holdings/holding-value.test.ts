@@ -140,19 +140,34 @@ describe('holdingValue', () => {
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
 
-  it('values a live bond at its nominal, flat (no continuous dirty-price accrual)', () => {
-    // A live bond is worth its 100,000.00 nominal, flat, between coupon dates —
-    // the bank pays each coupon out on its discrete date rather than accruing a
-    // dirty price. Valued 9 days into the first coupon period it is still nominal.
-    const value = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * day);
-    expect(value.equals(Money.of('UAH', 10_000_000))).toBe(true);
+  it('values a live bond flat between coupon dates (no continuous dirty-price accrual)', () => {
+    // A live bond is worth a flat amount between coupon dates — the bank pays each
+    // coupon out on its discrete date rather than accruing a dirty price. Its
+    // value is identical 9 days and 100 days into the holding period (both still
+    // live, spanning the 15 Oct 2025 coupon date).
+    const at9 = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * day);
+    const at100 = holdingValue(screenshotBond(), local(2025, 8, 18) + 100 * day);
+    expect(at100.equals(at9)).toBe(true);
   });
 
-  it('stays at nominal on a coupon date (the coupon is a separate ledger entry)', () => {
-    // The value does not spike then unwind around a coupon: it is nominal before,
+  it('values a live premium bond at its cost (purchase price), not its nominal', () => {
+    // The screenshot bond is a PREMIUM bond: 107,868.00 paid for a 100,000.00
+    // nominal. A live (held, pre-maturity) bond is valued at COST so a same-day
+    // card(-price)->bond(+price) move is net-worth-neutral; the premium is
+    // realized only at maturity, through the redemption ledger entry.
+    const b = holdingValueBreakdown(screenshotBond(), local(2025, 8, 18) + 9 * day);
+    expect(b.gross.minorUnits).toBe(10_786_800);
+    expect(b.principalOrCost.minorUnits).toBe(10_786_800);
+    expect(b.net.minorUnits).toBe(10_786_800);
+    expect(b.interest.minorUnits).toBe(0);
+    expect(b.tax.minorUnits).toBe(0);
+  });
+
+  it('stays at cost on a coupon date (the coupon is a separate ledger entry)', () => {
+    // The value does not spike then unwind around a coupon: it is at cost before,
     // on, and after the 15 Oct 2025 coupon date.
     const value = holdingValue(screenshotBond(), local(2025, 9, 15));
-    expect(value.equals(Money.of('UAH', 10_000_000))).toBe(true);
+    expect(value.equals(Money.of('UAH', 10_786_800))).toBe(true);
   });
 
   it('reports zero once the bond has matured (nominal redeemed as a transaction)', () => {
@@ -188,7 +203,7 @@ describe('holdingValue', () => {
   it('values a bond across its whole local purchase day, even from a mid-day purchaseDate', () => {
     // The holding form defaults `purchaseDate` to `Date.now()`, a mid-day
     // timestamp. A same-day card->bond move must be net-worth-neutral, so the
-    // bond carries its nominal for EVERY instant on the purchase day — from
+    // bond carries its cost for EVERY instant on the purchase day — from
     // local midnight — not only from the exact clock time the row was created.
     const holding = screenshotBond({
       purchaseDate: local(2026, 0, 2) + 15 * HOUR, // 15:00 on day D
@@ -198,8 +213,8 @@ describe('holdingValue', () => {
     const endOfDayD = local(2026, 0, 3) - 1; // 23:59:59.999 local D
     const dayBefore = local(2026, 0, 1) + 15 * HOUR; // an instant on D-1
 
-    expect(holdingValue(holding, startOfDayD).minorUnits).toBe(10_000_000);
-    expect(holdingValue(holding, endOfDayD).minorUnits).toBe(10_000_000);
+    expect(holdingValue(holding, startOfDayD).minorUnits).toBe(10_786_800);
+    expect(holdingValue(holding, endOfDayD).minorUnits).toBe(10_786_800);
     expect(holdingValue(holding, dayBefore).minorUnits).toBe(0);
   });
 
