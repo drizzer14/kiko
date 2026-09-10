@@ -1,5 +1,6 @@
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
+import { createRequestGate, type RequestGate } from '../../monobank/throttle';
 import { holdingsRepo } from '../../repositories/holdings.repo';
 import { transactionsRepo } from '../../repositories/transactions.repo';
 
@@ -59,6 +60,16 @@ const MAX_WINDOWS = 80;
 const MAX_PAGES_PER_WINDOW = 50;
 
 /**
+ * The inter-request pacing interval for the transaction-history walk. A first
+ * sync fans out many 89-day windows × two endpoints; fired back-to-back they can
+ * trip a Binance weight-429. One gate per invocation (built from `now`/`sleep`,
+ * mirroring Monobank's per-token gate) spaces every request this far apart, which
+ * keeps even a wide first sync well under the weight limit. Small — a background
+ * import, not the 60s Monobank statement limit.
+ */
+export const BINANCE_REQUEST_INTERVAL_MS = 350;
+
+/**
  * The imported-transaction shape the sync hands to `transactionsRepo.addManyDedup`.
  * `source: 'binance'` + `externalId` is the `(source, external_id)` unique key
  * the upsert dedupes on, so a re-sync refreshes rather than duplicates.
@@ -79,6 +90,8 @@ export type BinanceTransactionRow = {
  */
 export type BinanceTxSyncDeps = {
   now: () => number;
+  /** Delay primitive for the per-invocation request gate; injected so tests pace instantly. */
+  sleep: (milliseconds: number) => Promise<void>;
   fetchImpl: typeof fetch;
   readCredentials: () => Promise<BinanceCredentials | undefined>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
@@ -100,6 +113,7 @@ export type BinanceTxSyncDeps = {
 
 const defaultBinanceTxDeps: BinanceTxSyncDeps = {
   now: () => Date.now(),
+  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   fetchImpl: fetch,
   readCredentials,
   listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
@@ -226,8 +240,13 @@ const buildWindows = (startTime: number, endTime: number): { start: number; end:
   return windows;
 };
 
-/** Offset-page one window of one endpoint until a page shorter than the limit. */
+/**
+ * Offset-page one window of one endpoint until a page shorter than the limit.
+ * Every request first passes the shared `gate`, so a wide walk's requests are
+ * spaced (see `BINANCE_REQUEST_INTERVAL_MS`) rather than fired back-to-back.
+ */
 const fetchAllInWindow = async <Row>(
+  gate: RequestGate,
   fetchPage: (window: HistoryWindow) => Promise<Row[]>,
   start: number,
   end: number,
@@ -235,6 +254,7 @@ const fetchAllInWindow = async <Row>(
   const rows: Row[] = [];
 
   for (let page = 0; page < MAX_PAGES_PER_WINDOW; page += 1) {
+    await gate.wait();
     const pageRows = await fetchPage({
       startTime: start,
       endTime: end,
@@ -252,6 +272,7 @@ const fetchAllInWindow = async <Row>(
 
 type WindowContext = {
   deps: BinanceTxSyncDeps;
+  gate: RequestGate;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
@@ -263,13 +284,15 @@ const windowRows = async (
   context: WindowContext,
   window: { start: number; end: number },
 ): Promise<BinanceTransactionRow[]> => {
-  const { deps, apiKey, secret, options, spotId } = context;
+  const { deps, gate, apiKey, secret, options, spotId } = context;
   const deposits = await fetchAllInWindow(
+    gate,
     (page) => deps.fetchDepositHistory(apiKey, secret, page, options),
     window.start,
     window.end,
   );
   const withdrawals = await fetchAllInWindow(
+    gate,
     (page) => deps.fetchWithdrawHistory(apiKey, secret, page, options),
     window.start,
     window.end,
@@ -305,7 +328,15 @@ const runSync = async (
   const endTime = deps.now();
   const latest = await deps.latestTransactionTime(spot.id);
   const windows = buildWindows(resolveStartTime(latest, endTime), endTime);
-  const context: WindowContext = { deps, apiKey, secret, options, spotId: spot.id };
+  // ONE gate per invocation, threaded through every deposit/withdraw request so
+  // the whole run stays under the Binance weight limit — mirrors the per-token
+  // gate `runSync` builds in `src/monobank/sync.ts`.
+  const gate = createRequestGate({
+    intervalMs: BINANCE_REQUEST_INTERVAL_MS,
+    now: deps.now,
+    sleep: deps.sleep,
+  });
+  const context: WindowContext = { deps, gate, apiKey, secret, options, spotId: spot.id };
   const rows: BinanceTransactionRow[] = [];
 
   for (const window of windows) {

@@ -705,6 +705,15 @@ than restated here:
   (`HISTORY_PAGE_LIMIT`). The sync walks contiguous 89-day windows and
   offset-pages each window until a short page. `MAX_WINDOWS` /
   `MAX_PAGES_PER_WINDOW` are the loop backstops.
+- **Per-invocation pacing gate.** A first sync fans out many 89-day
+  windows × two endpoints; fired back-to-back they trip a Binance
+  weight-429. `runSync` builds ONE `createRequestGate` (the same helper
+  Monobank uses, `src/monobank/throttle.ts`) from the injected
+  `now`/`sleep` and threads it through EVERY deposit/withdraw page
+  request, spacing them by `BINANCE_REQUEST_INTERVAL_MS` (small — a
+  background import, not Monobank's 60s). `sleep` is a `BinanceTxSyncDeps`
+  seam so a test paces instantly; there is no `gate` seam (same rationale
+  as Monobank — the gate is built from `now`/`sleep`).
 - **Incremental cursor, no schema column.** The window start is derived
   from the newest already-imported Binance transaction time
   (`transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')`), minus

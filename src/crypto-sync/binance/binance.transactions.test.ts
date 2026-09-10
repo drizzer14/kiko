@@ -3,6 +3,7 @@ import type { HoldingRow } from '../../db/schema';
 import type { BinanceDeposit, BinanceWithdrawal, HistoryWindow } from './binance.client';
 import { HISTORY_PAGE_LIMIT } from './binance.client';
 import {
+  BINANCE_REQUEST_INTERVAL_MS,
   type BinanceTransactionRow,
   type BinanceTxSyncDeps,
   HISTORY_FLOOR_MS,
@@ -50,6 +51,7 @@ const emptyDepositFetch = () =>
 
 const makeDeps = (over: Partial<BinanceTxSyncDeps> = {}): BinanceTxSyncDeps => ({
   now: () => NOW,
+  sleep: async () => undefined,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
   listHoldings: async () => [spotHolding],
@@ -103,6 +105,39 @@ describe('syncBinanceTransactions', () => {
         description: '',
       },
     ]);
+  });
+
+  it('paces the two endpoint requests in a window through a shared gate', async () => {
+    const sleep = jest.fn(async (_ms: number) => undefined);
+    // A recent cursor keeps the walk to ONE 89-day window: a deposit request then
+    // a withdraw request, two requests total.
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY, sleep });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    // The first request fires immediately; the second waits the pacing interval,
+    // so the two are not fired back-to-back.
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledWith(BINANCE_REQUEST_INTERVAL_MS);
+  });
+
+  it('paces EVERY request across a wide first-sync window walk so it stays under the weight limit', async () => {
+    const sleep = jest.fn(async (_ms: number) => undefined);
+    // A first sync (no cursor) walks from the 2017 floor to now: many 89-day
+    // windows, two requests each — the case that otherwise fires ~dozens of
+    // requests back-to-back and hits a Binance weight-429.
+    const deps = makeDeps({ latestTransactionTime: async () => undefined, sleep });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    const requests =
+      (deps.fetchDepositHistory as jest.Mock).mock.calls.length +
+      (deps.fetchWithdrawHistory as jest.Mock).mock.calls.length;
+    // A real wide walk (more than the single-window case above).
+    expect(requests).toBeGreaterThan(2);
+    // One gate wait before every request except the very first.
+    expect(sleep).toHaveBeenCalledTimes(requests - 1);
+    expect(sleep).toHaveBeenCalledWith(BINANCE_REQUEST_INTERVAL_MS);
   });
 
   it('excludes a non-settled deposit (status !== 1) and withdrawal (status !== 6)', async () => {
