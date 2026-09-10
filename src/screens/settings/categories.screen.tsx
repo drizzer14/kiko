@@ -13,7 +13,6 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { categoriesRepo } from '../../repositories/categories.repo';
@@ -40,18 +39,19 @@ const styles = StyleSheet.create(() => ({
   identity: {
     flex: 1,
   },
-  // The card's bottom row: the labelled Delete (left, non-default only) and the
-  // reorder cluster (right), split by `space-between` and centered against each
-  // other. The controls themselves are the shared compact ghost Button, which
-  // owns its own 44pt touch target, so this row sets only the layout.
+  // The card's bottom row: the labelled Delete (left, disabled on the default
+  // card) and the reorder cluster (right), split by `space-between` and centered
+  // against each other. The controls themselves are the shared compact ghost
+  // Button, which owns its own 44pt touch target, so this row sets only the
+  // layout.
   bottomRow: {
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   // The move-to-top / move-to-bottom reorder cluster, sharing the bottom row
   // with the Delete control. `marginLeft: 'auto'` pins it to the row's right
-  // edge even on a default card, where the Delete on the left is absent and
-  // `space-between` alone would otherwise leave the cluster at the left.
+  // edge; the Delete now renders on every card (disabled on the default), so the
+  // row's layout is identical across all cards.
   reorderButtons: {
     marginLeft: 'auto',
   },
@@ -64,17 +64,19 @@ const styles = StyleSheet.create(() => ({
 // the leading icon (which doubles as the picker toggle) with an inline
 // title-rename field, in its caption-free (dense list) mode. The default
 // category's card shows a filled star marker in the header's trailing slot
-// (SF Symbol `star.fill`, tinted white via `textPrimary` — a long-standing
-// symbol, available since iOS 13, so it renders on every supported device)
-// INSTEAD OF the "Set as default" control (it is the catch-all — it is already
-// the default), and carries NO delete (it can never be deleted). Every other
-// card puts an icon-only "Set as default" affordance in that same header slot
-// (a bare OUTLINE `star`, so a non-default card previews what picking it will
-// fill in), and a labelled destructive delete at the card's bottom (a trash
-// icon beside a "Delete" label, confirmed via the native action sheet since it
-// moves this category's transactions to the default). Local title state is
-// seeded from the row so keystrokes show immediately, while the persisted
-// value flows back through the live query.
+// (SF Symbol `star.fill`, tinted white via `textPrimary`) as a DISABLED compact
+// ghost Button — the SAME control shape and 44pt padding as the "Set as default"
+// star it replaces (it is the catch-all — it is already the default), so the two
+// stars line up. Every other card puts an icon-only "Set as default" affordance
+// in that same header slot (a bare OUTLINE `star`, so a non-default card
+// previews what picking it will fill in). The labelled destructive delete at the
+// card's bottom (a trash icon beside a "Delete" label, confirmed via the native
+// action sheet since it moves this category's transactions to the default)
+// renders on EVERY card, but is DISABLED on the default card — the default can
+// never be deleted, and the disabled control keeps the bottom row's layout
+// identical across all cards. Local title state is seeded from the row so
+// keystrokes show immediately, while the persisted value flows back through the
+// live query.
 const CategoryListRow: FC<{
   category: CategoryRow;
   isDefault: boolean;
@@ -176,11 +178,22 @@ const CategoryListRow: FC<{
           </Box>
 
           {isDefault ? (
-            <SymbolIcon
-              name="star.fill"
-              color={theme.colors.textPrimary}
-              size={20}
+            // The default marker is the SAME compact ghost Button shape as the
+            // set-default star below, but filled (`star.fill`) and disabled so it
+            // reads as a static "this is the default" marker while keeping the
+            // identical 44pt geometry and padding — unifying the two stars that
+            // previously differed (a bare padding-less icon vs. this control).
+            <Button
+              variant="ghost"
+              size="compact"
+              fullWidth={false}
+              disabled
+              icon="star.fill"
+              textColor={theme.colors.textPrimary}
               accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
+              // A permanently-disabled static marker: the press never fires, so
+              // it carries an inert no-op rather than the dead `setAsDefault`.
+              onPress={() => {}}
             />
           ) : (
             <Button
@@ -210,25 +223,24 @@ const CategoryListRow: FC<{
         />
 
         {/* The card's bottom row: the labelled destructive Delete on the left
-            (only on a non-default card — the default is never deletable) and the
-            move-to-top / move-to-bottom reorder cluster on the right, split by
-            `space-between`. On a default card the Delete is absent, so the
-            reorder cluster's own `marginLeft: 'auto'` still pins it to the right
-            edge rather than the left. */}
+            and the move-to-top / move-to-bottom reorder cluster on the right,
+            split by `space-between`. The Delete renders on EVERY card, but is
+            disabled on the default card — the default can never be deleted, and
+            the disabled control keeps the bottom row's layout identical across
+            all cards rather than shifting when the Delete is absent. */}
         <Box direction="row" style={styles.bottomRow}>
-          {!isDefault && (
-            <Button
-              variant="ghost"
-              size="compact"
-              fullWidth={false}
-              icon="trash"
-              textColor={theme.colors.negative}
-              accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
-              onPress={confirmDelete}
-            >
-              {t('common.delete')}
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="compact"
+            fullWidth={false}
+            disabled={isDefault}
+            icon="trash"
+            textColor={theme.colors.negative}
+            accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
+            onPress={confirmDelete}
+          >
+            {t('common.delete')}
+          </Button>
 
           {/* Move-to-top / move-to-bottom: bare icon buttons at the row's right
               edge. Each immediately rewrites the whole list order (the parent
