@@ -64,10 +64,13 @@ const styles = StyleSheet.create(() => ({
 // the leading icon (which doubles as the picker toggle) with an inline
 // title-rename field, in its caption-free (dense list) mode. The default
 // category's card shows a filled star marker in the header's trailing slot
-// (SF Symbol `star.fill`, tinted white via `textPrimary`) as a DISABLED compact
-// ghost Button — the SAME control shape and 44pt padding as the "Set as default"
-// star it replaces (it is the catch-all — it is already the default), so the two
-// stars line up. Every other card puts an icon-only "Set as default" affordance
+// (SF Symbol `star.fill`, tinted white via `textPrimary`) as a DISABLED
+// secondaryTonal Button at the `compact` size — the SAME control shape as the
+// "Set as default" star it replaces (it is the catch-all — it is already the
+// default), so the two stars line up. Both stars use `compact` (44pt visible
+// height) so they align with the fixed 44pt name input beside them
+// (HoldingIdentityField's nameField), rather than the shorter 34pt `small`.
+// Every other card puts an icon-only "Set as default" affordance
 // in that same header slot (a bare OUTLINE `star`, so a non-default card
 // previews what picking it will fill in). The labelled destructive delete at the
 // card's bottom (a trash icon beside a "Delete" label, confirmed via the native
@@ -178,15 +181,15 @@ const CategoryListRow: FC<{
           </Box>
 
           {isDefault ? (
-            // The default marker is the SAME faint-tint small Button shape as the
-            // set-default star below, but filled (`star.fill`) and disabled so it
-            // reads as a static "this is the default" marker while keeping the
+            // The default marker is the SAME faint-tint compact Button shape as
+            // the set-default star below, but filled (`star.fill`) and disabled so
+            // it reads as a static "this is the default" marker while keeping the
             // identical geometry — unifying the two stars into one faint-tinted
-            // control (a shorter visible pill; the small size restores the 44pt
-            // tap target via hitSlop).
+            // control. The `compact` size gives it a 44pt visible height that
+            // lines up with the fixed 44pt name input beside it.
             <Button
               variant="secondaryTonal"
-              size="small"
+              size="compact"
               fullWidth={false}
               disabled
               icon="star.fill"
@@ -198,7 +201,7 @@ const CategoryListRow: FC<{
           ) : (
             <Button
               variant="secondaryTonal"
-              size="small"
+              size="compact"
               fullWidth={false}
               icon="star"
               accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}

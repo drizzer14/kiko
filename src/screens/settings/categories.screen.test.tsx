@@ -313,10 +313,12 @@ describe('CategoriesScreen', () => {
   it('gives each card control a >=44pt tap target via the shared Button (iOS HIG)', async () => {
     const { getByLabelText } = await renderScreen();
 
-    // The set-default, delete, and both reorder controls are the shared Button
-    // at the `small` size — a shorter visible pill whose >= 44pt tap target (H1
-    // in the HIG audit) is restored by hitSlop. So the tap target is the visible
-    // minHeight PLUS the hitSlop above and below it, and that must reach 44.
+    // The set-default star is the shared Button at the `compact` size (44pt
+    // visible, aligning with the name input); the delete and both reorder
+    // controls are at the shorter `small` size, whose >= 44pt tap target (H1 in
+    // the HIG audit) is restored by hitSlop. Either way the tap target is the
+    // visible minHeight PLUS any hitSlop above and below it, and that must
+    // reach 44.
     for (const label of [
       'Set Groceries as default',
       'Delete Groceries',
@@ -342,13 +344,13 @@ describe('CategoriesScreen', () => {
     expect(getByLabelText('Delete Other')).toBeDisabled();
   });
 
-  it('renders the default-star marker as the same faint-tint small Button shape as the set-default star', async () => {
+  it('renders the default-star marker as the same faint-tint compact Button shape as the set-default star', async () => {
     const { getByLabelText } = await renderScreen();
 
-    // The default marker is the same faint-tint `small` Button as the set-default
-    // star, disabled so it reads as a static marker — the SAME control shape and
-    // padding, not a bare icon. Its >= 44pt tap target is restored via hitSlop on
-    // the shorter visible pill.
+    // The default marker is the same faint-tint `compact` Button as the
+    // set-default star, disabled so it reads as a static marker — the SAME
+    // control shape and padding, not a bare icon. At compact it holds a 44pt
+    // visible tap target outright.
     const marker = getByLabelText('Other is the default category');
     const visibleHeight = StyleSheet.flatten(marker.props.style).minHeight as number;
     const slop = (marker.props.hitSlop ?? { top: 0, bottom: 0 }) as {
@@ -357,6 +359,19 @@ describe('CategoriesScreen', () => {
     };
     expect(visibleHeight + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(44);
     expect(marker).toBeDisabled();
+  });
+
+  it('sizes both favorite star buttons to compact (44pt) to match the name input height', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    // The star sits beside the fixed 44pt name input (HoldingIdentityField's
+    // nameField), so its VISIBLE height must be 44pt (compact), not the shorter
+    // 34pt `small` — otherwise it reads as misaligned against the input. Both the
+    // set-default star and the default-marker star take the compact height.
+    const setDefaultStar = getByLabelText('Set Groceries as default');
+    const defaultMarker = getByLabelText('Other is the default category');
+    expect(StyleSheet.flatten(setDefaultStar.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(defaultMarker.props.style).minHeight).toBe(44);
   });
 
   it('keeps a non-default card Delete enabled', async () => {
