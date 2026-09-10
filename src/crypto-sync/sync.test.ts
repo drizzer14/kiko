@@ -46,10 +46,10 @@ type FakeDeps = { balances: ProviderBalance[] | Error };
  * every `fetchBalances` call so a test can assert how often and with which
  * target it ran. Throws when `balances` is an Error, to model a failed fetch.
  */
-const makeProvider = () => {
+const makeProvider = (id: BalanceProvider<FakeDeps>['id'] = 'btc_wallet') => {
   const calls: SyncTarget[] = [];
   const provider: BalanceProvider<FakeDeps> = {
-    id: 'btc_wallet',
+    id,
     kind: 'wallet',
     metadataField: 'walletAddress',
     fetchBalances: async (deps, target) => {
@@ -385,6 +385,92 @@ describe('runBalanceSync', () => {
 
       expect(isSyncingSnapshot()).toBe(false);
       expect(getProgressSnapshot()).toEqual(zero);
+    });
+  });
+
+  // BUG1: auto-sync (`useAutoSync`) and pull-to-refresh (`useSyncAll`) can each
+  // fan out over the SAME connected crypto account. Without a single-flight
+  // join, each starts its own `runBalanceSync` — doubling the provider (Binance)
+  // request weight and double-registering the account's holdings into the
+  // shared, reference-counted progress session. Mirrors `inFlightSync` in
+  // `src/monobank/sync.ts`, keyed per account.
+  describe('single-flight join (BUG1)', () => {
+    it('shares one balance sync across overlapping triggers for the same account (provider fetched once)', async () => {
+      const { provider, calls } = makeProvider();
+      const { deps, holdingsStore } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      // Fire two overlapping runs BEFORE the first settles: they must JOIN one
+      // in-flight run, not each start their own.
+      const [a, b] = await Promise.all([
+        runBalanceSync(provider, { balances: [walletBalance(1)] }, deps),
+        runBalanceSync(provider, { balances: [walletBalance(1)] }, deps),
+      ]);
+
+      expect(a).toEqual(b);
+      // The provider fetched ONCE and the holding registered ONCE.
+      expect(calls).toHaveLength(1);
+      expect(holdingsStore).toHaveLength(1);
+    });
+
+    it('releases the lock after a successful run so a later, non-overlapping sync runs fresh', async () => {
+      const { provider, calls } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
+      await runBalanceSync(provider, { balances: [walletBalance(2)] }, deps);
+
+      expect(calls).toHaveLength(2);
+    });
+
+    it('releases the lock after a FAILED run so a later sync still runs', async () => {
+      const { provider, calls } = makeProvider();
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+      ]);
+      deps.targetAccountId = 'acc-1';
+
+      await expect(
+        runBalanceSync(
+          provider,
+          { balances: new Error('Block explorer request failed: 400') },
+          deps,
+        ),
+      ).rejects.toThrow('Block explorer request failed: 400');
+      await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
+
+      expect(calls).toHaveLength(2);
+    });
+
+    it('keys per account: a wallet and a Binance sync for different accounts run concurrently', async () => {
+      const { provider: wallet, calls: walletCalls } = makeProvider('btc_wallet');
+      const { provider: binance, calls: binanceCalls } = makeProvider('binance');
+      const { deps } = makeInMemoryDeps([
+        cryptoAccount({ id: 'acc-wallet', institution: 'btc_wallet' }),
+        cryptoAccount({ id: 'acc-binance', institution: 'binance' }),
+      ]);
+
+      await Promise.all([
+        runBalanceSync(
+          wallet,
+          { balances: [walletBalance(1)] },
+          { ...deps, targetAccountId: 'acc-wallet' },
+        ),
+        runBalanceSync(
+          binance,
+          { balances: [walletBalance(2)] },
+          { ...deps, targetAccountId: 'acc-binance' },
+        ),
+      ]);
+
+      // Distinct keys → neither joined the other; both ran.
+      expect(walletCalls).toHaveLength(1);
+      expect(binanceCalls).toHaveLength(1);
     });
   });
 });

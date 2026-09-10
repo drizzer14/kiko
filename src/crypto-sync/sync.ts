@@ -102,7 +102,56 @@ const resolveTargetAccount = async (
  * metadata field and stamped `syncedAt`. No `transactions` rows are written —
  * a wallet or exchange gives a live number, not a ledger.
  */
-export const runBalanceSync = async <Deps>(
+/**
+ * Per-account single-flight join, mirroring `inFlightSync` in
+ * `src/monobank/sync.ts` but keyed per account. Auto-sync (`useAutoSync`, app
+ * open) and pull-to-refresh (`useSyncAll`) can each fan out over the SAME
+ * connected crypto account; without this lock each fires its own
+ * `runBalanceSync`, doubling the provider (Binance) request weight AND
+ * double-registering the account's holdings into the shared, reference-counted
+ * progress session (`src/monobank/sync-status.ts`) — whose accumulators reset
+ * only when the session depth returns to 0 — so the "N / M holdings" total grew
+ * by the crypto holding count on every overlap. While a run is in flight for an
+ * account, every new trigger for that SAME account JOINS it and observes its
+ * result instead of starting a second run; the lock releases the instant the run
+ * settles — success OR failure — so a later, non-overlapping sync starts fresh.
+ *
+ * The key is the caller's `targetAccountId` when set (always the case for the
+ * fan-out — see `syncJobsFor`/`resyncRequest`), and the provider institution
+ * otherwise: there is one connection per provider id (see
+ * `resolveTargetAccount`), so a no-target re-sync resolves to that one account
+ * and shares its key. Keying per account (not one global lock like the Monobank
+ * side, which drives a single token) lets a wallet sync and a Binance sync run
+ * concurrently — they are distinct accounts and hit distinct provider endpoints.
+ * The check and set are SYNCHRONOUS (no `await` before the map is written), so
+ * two overlapping triggers cannot both slip past into their own run.
+ */
+const inFlightBalanceSyncs = new Map<string, Promise<BalanceSyncResult>>();
+
+export const runBalanceSync = <Deps>(
+  provider: BalanceProvider<Deps>,
+  providerDeps: Deps,
+  overrides: Partial<BalanceSyncDeps> = {},
+): Promise<BalanceSyncResult> => {
+  const key = overrides.targetAccountId ?? `institution:${provider.id}`;
+  const joined = inFlightBalanceSyncs.get(key);
+  if (joined) {
+    return joined;
+  }
+  const run = runBalanceSyncInner(provider, providerDeps, overrides);
+  inFlightBalanceSyncs.set(key, run);
+  const release = (): void => {
+    if (inFlightBalanceSyncs.get(key) === run) {
+      inFlightBalanceSyncs.delete(key);
+    }
+  };
+  // Release on both settle paths; `run` still carries the real result/rejection
+  // to the caller and to every joined trigger.
+  run.then(release, release);
+  return run;
+};
+
+const runBalanceSyncInner = async <Deps>(
   provider: BalanceProvider<Deps>,
   providerDeps: Deps,
   overrides: Partial<BalanceSyncDeps> = {},
