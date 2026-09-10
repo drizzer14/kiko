@@ -90,6 +90,22 @@ describe('BottomSheet', () => {
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
   });
 
+  // The sheet is a grouped surface: its base is `sheetBackground` (one level
+  // below the `surfaceHigh` cards/controls on it), never `surfaceHigh` itself —
+  // that shared-tone blend is the on-device review the darker base fixes.
+  it('paints the sheet in the grouped sheetBackground, not the surfaceHigh card tone', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+    expect(sheetStyle.backgroundColor).toBe(darkTheme.colors.sheetBackground);
+    expect(sheetStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
+  });
+
   it('labels the scrim as a dismiss button when a backdrop label is given', async () => {
     const { getByLabelText } = await render(
       <BottomSheet visible onDismiss={jest.fn()} backdropAccessibilityLabel="Dismiss picker">

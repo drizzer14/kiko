@@ -87,7 +87,15 @@ export const styles = StyleSheet.create((theme) => ({
     maxHeight,
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
-    backgroundColor: theme.colors.surfaceHigh,
+    // The sheet is a grouped surface: its base (`sheetBackground`) sits one
+    // level below the cards/controls on it, so a selected pill (`surfaceHigh`)
+    // reads as raised rather than blending into the sheet. It used `surfaceHigh`
+    // itself before — the SAME tone as a selected pill — which the trend filter
+    // sheet blended into (on-device review). This owner covers every sheet: no
+    // in-sheet element uses the `surface`/`sheetBackground` tone (their chrome
+    // is `surfaceHigh`, `accent`, or transparent), so none blends, and every
+    // sheet gains the correct grouped elevation.
+    backgroundColor: theme.colors.sheetBackground,
     paddingTop: theme.spacing(SHEET_PADDING_STEP),
     paddingHorizontal: theme.spacing(SHEET_PADDING_STEP),
     paddingBottom: theme.spacing(SHEET_PADDING_STEP) + bottomInset,

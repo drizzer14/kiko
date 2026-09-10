@@ -43,6 +43,19 @@ export const darkTheme = {
     // modal dim) — same alpha convention, different role.
     surfaceTranslucent: 'rgba(28,28,30,0.60)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
+    // The base fill for a presented bottom sheet — the iOS
+    // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
+    // grouped surface: its base sits one level BELOW the cards/controls on it,
+    // so a control on the sheet (an OptionPills selected pill, at `surfaceHigh`)
+    // reads as raised instead of blending into the sheet. Before this, the sheet
+    // used `surfaceHigh` itself, the SAME tone as a selected pill, so the two
+    // blended (on-device review). This is `#1C1C1E` — the same value as
+    // `surface` today, but kept a DISTINCT semantic token (like `onAccent` vs
+    // `textPrimary`) because its role is the sheet's grouped base, not a card
+    // surface, and the two may diverge. It is deliberately NOT the true-black
+    // `background`: a pure-black sheet would vanish against the black screen
+    // behind it instead of reading as an elevated card.
+    sheetBackground: '#1C1C1E',
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)
