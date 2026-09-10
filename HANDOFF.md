@@ -1,106 +1,101 @@
-# HANDOFF — 2026-09-07 audit fix runs (coordinator session pff-ios-9f)
+# HANDOFF — Phase B2 complete + deployed, awaiting on-device review (2026-09-10)
 
-Read this first. Nothing is committed anywhere. The user holds commits for
-review. Three Orca worktrees under `/Users/drizzer14/orca/workspaces/pff-ios/`,
-all branched from local `main` at `e36213c`.
+**Read first:** `BOARD.md` (the live board, owned + kept current by the PM
+session, the single writer). Then ask the PM for a fresh ground-truth snapshot.
+Do not trust this file over the PM + git + orca.
 
-## 1. security-pass-fixes — DONE, in user review
+## Current state
 
-Branch `drizzer14/security-pass-fixes`. 21 tasks of
-`docs/superpowers/plans/2026-09-06-security-pass-fixes.md` (audit S1-S10,
-rules H1-H7; S11 deferred to the App Store plan). Gate PASS (mutation 73.2%,
-osv = the 3 accepted advisories), whole-branch review clean after one fix wave.
-Ledger with every ruling: `.superpowers/sdd/2026-09-06-security-pass-fixes/progress.md`.
+- `main` @ `e447a80` — **local only, NOT pushed.**
+- **Deployed build = `75225f0`.** The `e447a80` commit is docs-only (it preserves
+  the Phase B2 plan + diagnosis docs); it added no source, so the deployed source
+  is `75225f0`.
+- Everything is merged to `main`: Phase A (6 features + round-2 + the binance
+  category/read-only fix), Phase B (the 13-item feedback round), and Phase B2
+  (the on-device feedback round below).
+- `check:all` is green on `main`. The end-of-round `check:deep` gate is GREEN
+  (mutation 71.92% >= 60; osv shows only the 3 accepted advisories).
+- Phase B2 is **built, gated, deployed, and live on the iPhone.**
+- Only one worktree exists (`main`). All Phase A/B/B2 feature worktrees are
+  pruned and their branches deleted. Other local branch:
+  `harness/orca-terminal-script-rule` (unrelated).
 
-OPEN user decision: the lock-aware clear blanks the widget for every App-Lock
-user, so the `---` locked-screen rendering shows only for non-lock users.
-Default if unanswered: keep the clear, record the trade-off. Recommended:
-keep writing the snapshot with App Lock on (`---` + privacySensitive cover the
-Lock Screen) and record "home-screen widget bypasses App Lock on an unlocked
-phone" as accepted risk. Implementation if chosen: drop the `lockEnabled`
-branch in `src/widget/use-net-worth-widget.ts` and update
-`docs/security/README.md`'s widget entry.
+## Phase B2 — the closed round
 
-## 2. harness-skills — DONE, in user review
+13 shipped items (1-6, 8-14; item 7 dropped as transient stale data). Delivered
+in two waves of parallel tracks off `main` @ `e33b181`, each integrated rolling
+(`check:all` + prune), then one `check:deep` gate before the deploy:
 
-Branch `drizzer14/harness-skills`. New `.claude/skills/kiko-translator`,
-`.claude/skills/kiko-linter`; `harness/kiko/agents/qa.md` testing rules;
-`kiko-widget` and `kiko-domain` updates. Verified by the retrospect agent.
-`package-lock.json` there carries the same one-line normalization as main.
+- Wave 1: domain (`3a1e155`) -> design (`cffa23e`) -> bugfix (`0d5ed8c`) ->
+  forms (`bba1ac7`).
+- Wave 2: app-wide compact-button audit -> `75225f0`.
+- Docs preserved: `e447a80`.
 
-## 3. bug-hunt-fixes — IN PROGRESS
+Plan: `docs/superpowers/plans/2026-09-10-phase-b2-fix-round.md`.
+Diagnosis: `docs/debug/2026-09-10-phase-b2-diagnosis.md`.
 
-Branch `drizzer14/bug-hunt-fixes`. Plan
-`docs/superpowers/plans/2026-09-06-bug-hunt-fixes.md` (40 tasks). Ledger:
-`.superpowers/sdd/2026-09-06-bug-hunt-fixes/progress.md` (rulings, deferred
-minors, tree snapshots per task). Briefs `task-N-brief.md`, reports
-`task-N-report.md`, review packages `task-N-review.md` in the same dir.
+## In flight
 
-State at handoff:
-- Tasks 1-38 complete and reviewed (Task 24 / T-29 SKIPPED by ruling: no
-  recap-OFF statement).
-- Task 39 (T-43): implementer DONE after handoff (report at `task-39-report.md`,
-  review package `task-39-review.md` against BASE tree
-  `6b69d9b3ed467a2c6266dba47878edf9b3735b68`). NEXT STEP: dispatch the task
-  reviewer on that package. Points to judge: a `biome-ignore ... OVERRIDE(
-  language-dependent resolver)` was added for useExhaustiveDependencies
-  (precedent statistics.screen.tsx:329) — confirm the override is justified
-  and narrow; an RNTL-14 async-rerender fix in the test file; the mechanism
-  is the dependency-array addition (`language` on its own line), which is the
-  known one-line conflict with the security branch.
-- Task 40 (verification): `npm run check:all`, `npx jest`, `npx tsc --noEmit`
-  (0), `npm run check:deep` (mutation >= 60, report the score), an ops
-  simulator build, and the manual simulator checks the plan lists (MANUAL-1..9:
-  tab bar in Light mode, interface style, drag delay on the category rename
-  field, Home clearance, Statistics double-tap at the top, widget title in
-  uk, etc.). Only Task 40 runs check:deep — no developer may.
-- Then: whole-branch review (opus reviewer, package = full working-tree diff
-  vs `git rev-parse HEAD^{tree}`; include the ledger's `minor (deferred)`
-  and `Ruling:` lines), ONE fix wave, one scoped re-review, then report to the
-  user with every `Ruling:` line collected.
+The user is reviewing the Phase B2 build on the device now. See the
+**device-confirm list** in `BOARD.md` (items 9a/10/11 plus the earlier Phase B
+density/glass items). Nothing is blocked; the coordinator awaits the LGTM.
 
-## 4. Process (do not drift)
+## Next steps, in order
 
-- Subagent-driven development per task: fresh `kiko:developer` per task with
-  the brief path; `kiko:reviewer` after each task; fix rounds resume the same
-  agent; model per complexity (sonnet default, opus for multi-file/schema).
-- Per-task diffs WITHOUT commits: `bin/snap.sh <worktree>` prints a tree id
-  (temp index + write-tree; real index untouched); `bin/pkg.sh <worktree>
-  <treeA> <treeB> <out>` writes the review package. Both copied into
-  `.superpowers/sdd/2026-09-06-bug-hunt-fixes/bin/`. Record BASE tree before
-  each dispatch in the ledger.
-- Every dispatch: NO COMMITS; never git commit/add/stash/checkout/restore/
-  clean (a developer ran `git checkout --` on three screens on 2026-09-07 and
-  discarded 36 tasks of uncommitted edits; recovered and verified against the
-  snapshot); TDD with RED/GREEN evidence; never loosen a test; skill upkeep
-  in the same task (grep `.claude/skills/*/SKILL.md` for what the task
-  touches; the reviewer checks it); fix every instance of a reported pattern;
-  single editor per worktree; developers never run check:deep.
-- Migrations on this branch: 0014 lowercase categories, 0015 exchange marker,
-  0016 transaction hold, 0017 seed category colors (numbered in execution
-  order; `migrations.js` hand-restored to repo style after drizzle-kit).
+1. User on-device review returns. Fix any reported items; otherwise proceed.
+2. **Final Hardening phase** (fresh branches off `main`, parallel where
+   independent, then consolidate findings -> one fix wave -> final deploy ->
+   App Store):
+   - Bug-hunt review (whole-app).
+   - Security analysis.
+   - Phase C — performance + bundle-size audit (C1 bundle-size, C2 app/native
+     size, C3 runtime perf, C4 fix pass, C5 verify + final deploy).
+   - Screenshot / visual-regression tests — Maestro `takeScreenshot` + pixel-diff
+     (odiff/pixelmatch) + CI on a macOS runner (user has macOS). Recommendation
+     doc: `docs/research/2026-09-10-simulator-screenshot-tests.md`.
+   - Full-repo ponytail (over-engineering) review + codestyle pass, INCLUDING a
+     new `kiko-code-style` rule applied repo-wide: "group non-component files
+     into feature-based folders (a repo file with its test, related modules),
+     not only component folders." This apply is a STRUCTURAL REFACTOR and needs
+     its own plan at the hardening phase.
 
-## 5. After both branches are reviewed by the user
+## Topology + sessions
 
-Merge order: security-pass-fixes first, then rebase bug-hunt-fixes on it,
-then harness-skills. Known conflicts: `src/widget/net-worth-snapshot.ts`,
-`src/widget/use-net-worth-widget.ts` and their tests (security removed
-`trend` and added the clear branch; bug added `labels`, `guardedBreakdown`,
-and the language dependency — take security's deletions, keep bug's
-additions; the plan's Task 38/39 CONFLICT WARNING blocks say exactly how),
-`ios/Kiko/Info.plist` (disjoint keys — take both; run `npm run check:plist`
-right after the rebase), `scripts/checks/medium.sh`, `CLAUDE.md`,
-`.claude/skills/kiko-domain/SKILL.md` and `kiko-widget/SKILL.md` (all three
-branches).
+- Worktree: `main` only.
+- The PM session is the live-state anchor and SINGLE WRITER of `BOARD.md`. If it
+  is cleared, re-boot it: "You are the kiko:pm; read BOARD.md; verify against
+  git + orca; resume as single writer; do not echo board changes."
+- `pff-ios-a5` — ops session in the main worktree; reuse it for integrations,
+  the gate, and device builds (do not respawn per task).
+- The coordinator (`pff-ios-d3`) delegates all work to role sessions in
+  worktrees and never edits app files inline.
 
-Device checks owed to the user after merge: Lock Screen widget shows
-`---` per amount with codes visible; Binance sync with the new pin; Face ID
-unlock; Statistics double-tap at the top; category rename hold places the
-cursor; Home list clearance 96pt.
+## Conventions in force this session (see the memory dir)
 
-Backlog surfaced (not done): stale-rates UI signal; correction-row marker;
-`migrateLegacyToken` existence check via getGenericPassword; `check:rules`
-yml-id cross-check + fixture backfill; account-detail `sumByCurrency`
-parity; "Disconnect Wallet" casing; override-sheet Cancel-during-Apply race;
-`hold` has no UI reader; an already-disconnected holding duplicates once on
-reconnect.
+- Delegate to Claude sessions / Orca worktrees, never the in-process Agent tool;
+  spawn plain `claude` (auto mode) and instruct into a role.
+- PM owns `BOARD.md`; never echo its board changes back to the user (they view it
+  in a split terminal). `TodoWrite` is not in this harness — `BOARD.md` is the
+  task list.
+- Close stale sessions and prune integrated worktrees autonomously (no asking).
+- Multi-track round integration: rolling — integrate each approved track to
+  `main` with `check:all`, prune its worktree, and run ONE `check:deep` gate on
+  `main` after all tracks land (base = pre-round `main`). Partition shared files
+  by line range per track so merges auto-resolve; the PM diffs touched ranges
+  before each integration.
+- Reliable long-run await = launch as a harness background task
+  (`run_in_background`), never a `while pgrep stryker` loop (its own command line
+  contains "stryker" -> self-match deadlock; match `@stryker-mutator` instead).
+- Deploy after a green round without asking; device builds/deploys go to ops.
+  Prove freshness with the bundle marker, not the container UUID (the UUID is the
+  persistent data container and does not change per build).
+- Design review is live-on-device (no screenshots for design; screenshots are
+  regression-only).
+
+## Key docs
+
+- Phase B plan: `docs/superpowers/plans/2026-09-10-phase-b-feedback-round.md`
+- Phase B2 plan: `docs/superpowers/plans/2026-09-10-phase-b2-fix-round.md`
+- Phase B2 diagnosis: `docs/debug/2026-09-10-phase-b2-diagnosis.md`
+- iOS HIG audit: `docs/design/2026-09-10-ios-hig-audit.md`
+- Screenshot-test research: `docs/research/2026-09-10-simulator-screenshot-tests.md`
