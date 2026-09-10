@@ -78,6 +78,45 @@ describe('scripts/checks/mutation.sh streaming', () => {
     expect(result.stdout).toContain('STRYKER-STREAM-LINE-2');
   });
 
+  it('prints the tail -f watch command and writes the streamed output to that progress log', () => {
+    const tmp = freshTmp();
+    const callLog = join(tmp, 'calls');
+    const bin = makeStub(tmp, stubBody(0));
+
+    const result = run(bin, tmp, callLog);
+
+    expect(result.code).toBe(0);
+    // The wrapper prints the exact command a human runs to watch the run live.
+    expect(result.stdout).toContain('Watch live progress:  tail -f ');
+    const match = result.stdout.match(/Watch live progress: {2}tail -f (\S+)/);
+    expect(match).not.toBeNull();
+    const logPath = (match as RegExpMatchArray)[1];
+    // It is a stable, tailable file (under the mutation state dir), and the
+    // streamed Stryker output was tee'd into it — so `tail -f` shows the run.
+    expect(logPath).toContain('/mutation/progress.log');
+    expect(existsSync(logPath)).toBe(true);
+    expect(readFileSync(logPath, 'utf8')).toContain('STRYKER-STREAM-LINE-1');
+  });
+
+  it('prints the no-history estimate on the first run and records that completed run', () => {
+    const tmp = freshTmp();
+    const callLog = join(tmp, 'calls');
+    const bin = makeStub(tmp, stubBody(0));
+
+    const result = run(bin, tmp, callLog);
+
+    expect(result.code).toBe(0);
+    // With no prior runs the wrapper says so plainly rather than inventing an ETA.
+    expect(result.stdout).toContain('No mutation history yet');
+    // A completed run is appended to the history TSV so the NEXT run can estimate.
+    const match = result.stdout.match(/Watch live progress: {2}tail -f (\S+)/);
+    expect(match).not.toBeNull();
+    const historyFile = (match as RegExpMatchArray)[1].replace('progress.log', 'history.tsv');
+    expect(existsSync(historyFile)).toBe(true);
+    // Record shape: iso<TAB>duration<TAB>count<TAB>score — a numeric duration field.
+    expect(readFileSync(historyFile, 'utf8').split('\t')[1]).toMatch(/^\d+$/);
+  });
+
   it('streams the output, prints the failure block, and exits 2 on a FAILING run', () => {
     const tmp = freshTmp();
     const callLog = join(tmp, 'calls');
