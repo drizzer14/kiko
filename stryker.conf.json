@@ -13,7 +13,7 @@
     "!**/i18n/locales/**",
     "!**/*.d.ts"
   ],
-  "ignorePatterns": ["ios", "android"],
+  "ignorePatterns": ["ios", "android", "vendor", "coverage", "docs", ".superpowers"],
   "incremental": true,
   "concurrency": 2,
   "reporters": ["clear-text", "progress"],
