@@ -97,7 +97,7 @@ describe('HoldingFormScreen contribution button variants', () => {
     }
   });
 
-  it('hands each Remove contribution button the destructive (red) variant', async () => {
+  it('hands each Remove contribution button the tinted destructiveTonal variant', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -109,8 +109,11 @@ describe('HoldingFormScreen contribution button variants', () => {
     );
 
     expect(removeEntries.length).toBeGreaterThan(0);
+    // The per-row Remove uses the subtler tinted-destructive variant (a
+    // translucent red tint under a red label), not the solid bright
+    // `destructive` fill (on-device review: the solid fill read too bright).
     for (const entry of removeEntries) {
-      expect(entry.variant).toBe('destructive');
+      expect(entry.variant).toBe('destructiveTonal');
     }
   });
 });
