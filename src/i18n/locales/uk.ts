@@ -242,7 +242,7 @@ export const uk: typeof en = {
     },
     holdingsHeading: 'Активи',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
-    invalidBtcAddress: 'Недійсна BTC-адреса',
+    invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
     monobankAlreadyConnected: 'Рахунок Monobank вже підключено',

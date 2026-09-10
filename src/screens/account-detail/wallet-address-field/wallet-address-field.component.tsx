@@ -47,7 +47,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
     const trimmed = address.trim();
 
     if (!isValidBitcoinAddress(trimmed)) {
-      setStatus({ kind: 'invalid', message: t('accountDetail.invalidBtcAddress') });
+      setStatus({ kind: 'invalid', message: t('accountDetail.invalidBTCAddress') });
 
       return;
     }
