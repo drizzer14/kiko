@@ -1,20 +1,15 @@
-import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, Text as RNText } from 'react-native';
 
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import TextField from '../../../design-system/components/text-field';
 import { fetchClientInfo } from '../../../monobank/monobank.client';
 import { hasToken, saveToken } from '../../../monobank/token';
 import { styles } from '../account-detail.styles';
+import MonobankTokenInput from '../monobank-token-input';
 import type { SyncStatus } from '../sync-status-line';
 import SyncStatusLine from '../sync-status-line';
-
-const MONOBANK_API_URL = 'https://api.monobank.ua/';
 
 type MonobankTokenFieldProps = {
   // True once the account is connected/synced to Monobank. The token-entry
@@ -24,10 +19,13 @@ type MonobankTokenFieldProps = {
 
 // The Monobank token belongs with the bank account, not global Settings:
 // entry, the Open/Paste helpers, a validated Save, and the result status all
-// live here. Persists through the same Keychain path (`saveToken`), so only
-// the token's location in the UI moved. Once the account is connected, the
-// token-entry controls (link, input, Save) disappear — the Connect/Sync/
-// Disconnect actions live on the parent account-detail screen instead.
+// live here. The link + token input + paste icon come from the shared
+// `MonobankTokenInput` (also used by the add-account create form so the two
+// entry surfaces stay identical); this component adds the edit-surface-only
+// Save + result status around it. Persists through the same Keychain path
+// (`saveToken`). Once the account is connected, the token-entry controls (link,
+// input, Save) disappear — the Connect/Sync/Disconnect actions live on the
+// parent account-detail screen instead.
 const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
@@ -59,17 +57,6 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
   const handleChangeToken = (value: string): void => {
     setToken(value);
     setTokenStatus({ kind: 'idle' });
-  };
-
-  const handleOpenMonobank = (): void => {
-    Linking.openURL(MONOBANK_API_URL);
-  };
-
-  const handlePasteToken = (): void => {
-    Clipboard.getString().then((value) => {
-      setToken(value.trim());
-      setTokenStatus({ kind: 'idle' });
-    });
   };
 
   const handleSaveToken = (): void => {
@@ -114,42 +101,13 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={t('accountDetail.openMonobankLink')}
-        onPress={handleOpenMonobank}
-        style={styles.linkPressable}
-      >
-        <RNText style={styles.link}>{t('accountDetail.openMonobankLink')}</RNText>
-      </Pressable>
-
       {isTokenSaved ? (
         <Text variant="caption" tone="textSecondary">
           {t('accountDetail.tokenSaved')}
         </Text>
       ) : null}
 
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.tokenLabel')}
-            value={token}
-            onChangeText={handleChangeToken}
-            placeholder={t('accountDetail.monobankTokenPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteToken}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
-        </Pressable>
-      </Box>
+      <MonobankTokenInput value={token} onChangeText={handleChangeToken} />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button

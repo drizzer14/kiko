@@ -22,6 +22,7 @@ import { fetchClientInfo } from '../../monobank/monobank.client';
 import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
+import MonobankTokenInput from '../account-detail/monobank-token-input';
 import { useCryptoSync } from '../use-crypto-sync';
 import { useSync } from '../use-sync';
 
@@ -301,15 +302,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-            <TextField
-              label={t('accountDetail.tokenLabel')}
-              value={monobankToken}
-              onChangeText={setMonobankToken}
-              placeholder={t('accountDetail.monobankTokenPlaceholder')}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <MonobankTokenInput value={monobankToken} onChangeText={setMonobankToken} />
           </Box>
         )}
 
