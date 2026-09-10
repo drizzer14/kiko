@@ -251,6 +251,25 @@ verified usage, not dead weight:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.
+- **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
+  negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
+  two NON-LOGIC categories are excluded from the set of files Stryker
+  mutates, in both run modes (the whole-project fallback array and the
+  diff-scoped changed-file filter). (1) **i18n locale catalogs
+  (`src/i18n/locales/**`)** — pure nested string-data objects with no
+  logic a surviving mutant could meaningfully expose (~598 mutants); the
+  locale test assertions (e.g. `en.button-casing.test.ts`) still run
+  under Jest, so string/casing coverage is unaffected — only the mutation
+  report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
+  erased at compile time, so Stryker generates no runtime mutants from
+  them; excluding them only trims the mutate-list. Nothing else is
+  excluded: `src/design-system/palette.ts`, `theme.ts`, `entity-tint.ts`,
+  every `*.styles.ts`, `src/i18n/index.ts`, the mixed const+function
+  modules, and the barrels all stay IN scope. `drizzle/migrations/**` is
+  already outside the `.ts/.tsx` mutate scope and needs no pattern. See
+  the `mutate` array in `stryker.conf.json` and the changed-file `grep
+  -Ev` filter in `scripts/checks/mutation.sh` for the exact patterns
+  (not restated here so they cannot drift).
 - **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

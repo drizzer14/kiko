@@ -3,7 +3,16 @@
   "packageManager": "npm",
   "testRunner": "jest",
   "jest": { "projectType": "custom", "configFile": "jest.config.js" },
-  "mutate": ["**/*.ts", "**/*.tsx", "!**/*.test.ts", "!**/*.test.tsx", "!__tests__/**", "!ios/**"],
+  "mutate": [
+    "**/*.ts",
+    "**/*.tsx",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!__tests__/**",
+    "!ios/**",
+    "!**/i18n/locales/**",
+    "!**/*.d.ts"
+  ],
   "ignorePatterns": ["ios", "android"],
   "incremental": true,
   "concurrency": 2,

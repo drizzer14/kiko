@@ -220,6 +220,10 @@ const buildRepo = (): { root: string; script: string } => {
   writeFile(root, 'src/changed.ts', 'export const b = 2;\n');
   writeFile(root, 'src/changed.test.ts', 'test("x", () => {});\n');
   writeFile(root, 'rules/fixtures/bad.ts', 'export const c = 3;\n');
+  // Non-logic categories excluded from the mutate-set: i18n locale catalogs
+  // (pure string-data) and type-only declarations (erased at compile).
+  writeFile(root, 'src/i18n/locales/en.ts', 'export const en = { a: "A" };\n');
+  writeFile(root, 'src/foo.d.ts', 'export type Foo = number;\n');
   gitq(root, 'add', '-A');
   gitq(root, 'commit', '-qm', 'feature change');
 
@@ -261,10 +265,11 @@ const runInRepo = (script: string, env: Record<string, string>): DiffRun => {
 };
 
 describe('scripts/checks/mutation.sh diff scoping', () => {
-  it('mutates only the source files changed vs the base, excluding tests and fixtures', () => {
+  it('mutates only the source files changed vs the base, excluding tests, fixtures, locales, and .d.ts', () => {
     const { script } = buildRepo();
     // On `feature`, changed vs `main`: src/changed.ts, src/changed.test.ts,
-    // rules/fixtures/bad.ts. Only src/changed.ts is a mutable source file.
+    // rules/fixtures/bad.ts, src/i18n/locales/en.ts, src/foo.d.ts. Only
+    // src/changed.ts is a mutable, in-scope source file.
     const result = runInRepo(script, { KIKO_MUTATION_BASE: 'main' });
 
     expect(result.code).toBe(0);
@@ -275,6 +280,38 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
     expect(mutate).not.toContain('src/changed.test.ts');
     expect(mutate).not.toContain('rules/fixtures/bad.ts');
     expect(mutate).not.toContain('src/keep.ts');
+    // The two non-logic categories are filtered out of the changed set.
+    expect(mutate).not.toContain('src/i18n/locales/en.ts');
+    expect(mutate).not.toContain('src/foo.d.ts');
+  });
+
+  it('passes cleanly without Stryker when the only changed mutable files are locales/.d.ts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
+    gitq(root, 'init', '-q', '-b', 'main');
+    gitq(root, 'config', 'user.email', 'test@example.com');
+    gitq(root, 'config', 'user.name', 'Test');
+    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
+    copyFileSync(
+      join(__dirname, '../scripts/checks/_lib.sh'),
+      mkAndReturn(root, 'scripts/checks/_lib.sh'),
+    );
+    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'base');
+    gitq(root, 'checkout', '-q', '-b', 'feature');
+    // ONLY excluded categories change — the filter empties the set, so the
+    // "nothing to mutate, pass" early exit must still fire (stub never runs).
+    writeFile(root, 'src/i18n/locales/en.ts', 'export const en = { a: "A" };\n');
+    writeFile(root, 'src/foo.d.ts', 'export type Foo = number;\n');
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'locales and d.ts only');
+
+    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
+      KIKO_MUTATION_BASE: 'main',
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.args).toBeNull();
   });
 
   it('passes cleanly (exit 0) without invoking Stryker when nothing changed vs the base', () => {

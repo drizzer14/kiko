@@ -82,7 +82,7 @@ if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
   merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)"
   if [ -n "$merge_base" ]; then
     changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
-      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/)' || true)"
+      | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
     if [ -z "$changed" ]; then
       # This branch changed no mutable source file — nothing to mutate, pass.
       exit 0
