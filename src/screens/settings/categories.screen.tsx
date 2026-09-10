@@ -191,7 +191,9 @@ const CategoryListRow: FC<{
               icon="star.fill"
               textColor={theme.colors.textPrimary}
               accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
-              onPress={setAsDefault}
+              // A permanently-disabled static marker: the press never fires, so
+              // it carries an inert no-op rather than the dead `setAsDefault`.
+              onPress={() => {}}
             />
           ) : (
             <Button
