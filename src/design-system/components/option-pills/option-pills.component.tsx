@@ -54,7 +54,9 @@ const OptionPills = <T extends string | number>({
               {icon !== undefined && (
                 <SymbolIcon
                   name={icon(option)}
-                  size={18}
+                  // The pill label is body text, so its icon is the body icon-size
+                  // token (never an inline literal).
+                  size={theme.iconSizes.body}
                   // On the accent fill the glyph takes the always-white onAccent
                   // tone (the onAccent rule for a selected icon on an accent fill).
                   tone={isSelected ? 'onAccent' : 'textSecondary'}

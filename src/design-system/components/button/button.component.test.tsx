@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { i18n } from '../../../i18n';
@@ -122,6 +123,22 @@ describe('Button', () => {
 
     await fireEvent.press(getByRole('button'));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws for an icon-only button with no accessibilityLabel', async () => {
+    // The props union forbids this at compile time (no children => an
+    // accessibilityLabel is required); cast past the types to exercise the
+    // __DEV__ runtime backstop an untyped call path would hit. An unlabelled
+    // icon-only button has no accessible name for VoiceOver.
+    const unlabelled = {
+      onPress: () => {},
+      variant: 'ghost',
+      icon: 'star',
+    } as unknown as ComponentProps<typeof Button>;
+
+    await expect(async () => {
+      await render(<Button {...unlabelled} />);
+    }).rejects.toThrow(/accessibilityLabel/);
   });
 
   it('renders a leading icon when an icon name is given', async () => {

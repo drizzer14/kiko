@@ -203,7 +203,11 @@ new component can land between reviews of this skill:
   an `icon` (or `trailingIcon`) with no `children` renders an ICON-ONLY
   button (the label text node is omitted so the icon is not pushed off-center
   by the label gap). An icon-only button MUST pass an `accessibilityLabel`,
-  since it has no visible text for VoiceOver. This is the shared icon-only
+  since it has no visible text for VoiceOver — this is ENFORCED, not just a
+  convention: `ButtonProps` is a discriminated union (labelled vs icon-only),
+  so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
+  and a `__DEV__` runtime invariant in the component throws on the same shape
+  for any untyped call path. This is the shared icon-only
   ghost control — the categories set-default/delete/reorder actions use it
   (`src/screens/settings/categories.screen.tsx`); build an icon-only control
   this way, with `variant="ghost"` + `size="compact"` + `fullWidth={false}`,

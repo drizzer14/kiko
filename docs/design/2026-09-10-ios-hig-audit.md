@@ -105,35 +105,48 @@ a selected control to read as unambiguously active.
 - Maps to: **Task 3.3** (strengthen the selected/unselected hierarchy;
   the designer sets weight, fill, or tone).
 
-### M4 — The red-ghost delete label needs a contrast check (Medium)
+### M4 — The red-ghost delete label contrast (Medium) — RESOLVED, measured
 
-Task 2.1 moves the delete button from a solid `destructive` fill to a
-red ghost (`negative` label on a transparent surface). On the true-black
-background `negative` (#FF453A) reaches about 6:1, which passes. On a
-translucent glass surface the effective background is lighter, so the
-ratio drops. Confirm the red label stays >= 4.5:1 wherever the ghost
-delete sits.
+Task 2.1 and Task 2.3 move the delete button from a solid `destructive`
+fill to a red ghost (`negative` #FF453A label on a transparent surface).
+Measured WCAG contrast of `negative` (#FF453A) against each real
+background, two delete sites:
 
-- Evidence: the existing red-ghost pattern at
-  `src/screens/forms/transaction-form.screen.tsx:1138`
-  (`variant="ghost" textColor={theme.colors.negative}`); target delete
-  button at `:540`.
-- Maps to: **Task 2.1** (confirm the red-ghost treatment per HIG).
+- Transaction-form delete (`transaction-form.screen.tsx:~540`): sits on
+  the true-black `Screen` (#000000) — **6.16:1**. Passes AA.
+- Category-card delete (`categories.screen.tsx`): sits on the
+  `transparent` category-card glass. The card's `surfaceTranslucent`
+  fill (`rgba(28,28,30,0.60)`) composited over the true-black screen is
+  ~`rgb(17,17,18)` — **5.54:1**. Even at the lightest realistic bound
+  (the glass material pinned to the full `#1C1C1E` hue) it is **4.99:1**.
+  Both pass AA (>= 4.5:1).
+
+Result: both delete labels clear AA on their real surfaces, so no color
+or backing change was needed. The ratio only dips below 4.5:1 on a
+`surfaceHigh` (#2C2C2E) fill (4.09:1), which neither delete sits on —
+the translucent card never reaches that lightness.
+
+- Evidence: the delete Buttons at
+  `src/screens/forms/transaction-form.screen.tsx` (form delete) and
+  `src/screens/settings/categories.screen.tsx` (category-card delete),
+  both `variant="ghost" textColor={theme.colors.negative}`; the
+  translucent fill is `surfaceTranslucent` in `theme.ts`.
+- Maps to: **Task 2.1 / 2.3** (done; contrast verified).
 
 ### L1 — Icon sizes are still inline literals outside the migrated set (Low)
 
 Task 0.1 added the icon-size token scale and moved the main call sites
 (buttons, the two list rows, and the card default) onto it. Many
 call sites still use inline `16` / `18` / `22`: the form fields, the
-filter menu, the calendar header, the option pill icon, the chip row,
-and the pending-category glyph. They should converge onto
-`theme.iconSizes` as their owning tasks touch them.
+filter menu, the calendar header, the chip row, and the
+pending-category glyph. They should converge onto `theme.iconSizes` as
+their owning tasks touch them. (The option-pill icon was migrated to
+`theme.iconSizes.body` in the Phase B fix wave.)
 
 - Evidence: inline sizes at
   `src/screens/forms/field-trigger/field-trigger.component.tsx:36`,
   `src/screens/home/filter-menu/filter-menu.component.tsx:59,84`,
   `src/screens/calendar/calendar-header/calendar-header.component.tsx:52,61,76,85`,
-  `src/design-system/components/option-pills/option-pills.component.tsx:49`,
   `src/screens/forms/chip-row/chip-row.component.tsx:63`,
   `src/screens/forms/transaction-form.screen.tsx:1118` (size 22).
 - Maps to: **Task 2.2 / 2.3 / 3.3** for the sites they already touch;

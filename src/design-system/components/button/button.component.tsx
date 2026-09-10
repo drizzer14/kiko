@@ -24,6 +24,15 @@ const Button: FC<ButtonProps> = ({
   const { theme } = useUnistyles();
   styles.useVariants({ variant });
 
+  // The props union already makes an unlabelled icon-only button a compile
+  // error; this is the runtime backstop for an untyped (e.g. cast or JS) call
+  // path. An icon-only button (no children) with no accessibilityLabel has no
+  // accessible name for VoiceOver, so it throws in development rather than
+  // shipping a silently unlabelled control.
+  if (__DEV__ && children === undefined && accessibilityLabel === undefined) {
+    throw new Error('Button: an icon-only button (no children) requires an accessibilityLabel.');
+  }
+
   // primary/destructive sit on a filled accent/red surface, so their label +
   // icon need the always-white `onAccent` token — `textPrimary` flips to
   // black on light and would vanish. secondary/ghost sit on `surfaceHigh` /
