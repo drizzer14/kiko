@@ -331,6 +331,8 @@ export const uk: typeof en = {
       top: 'Топ',
       amount: 'Кількість',
       by: 'За',
+      // The section header above the manual-mode category list.
+      categories: 'Категорії',
       // The instrumental-case measure words — shown on the "By" chips AND
       // interpolated into the `top` button label ("Топ 3 за Внеском").
       measure: {

@@ -14,28 +14,37 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
   },
-  // The sheet's scrollable region (title + controls), sized to shrink to the
-  // sheet's 66% cap — the Clear/Save row stays a sibling below it (see
-  // date-range-field for the same pattern and why).
+  // The manual-mode section (its "Categories" header + the scrollable list),
+  // sized to SHRINK inside the sheet's 66% cap so only this list scrolls while
+  // the sheet title above and the Clear/Save row below stay fixed.
+  manualSection: {
+    flexShrink: 1,
+  },
+  // The manual category list's own scroll region, shrinking to the space the
+  // fixed header + action row leave (see date-range-field for the same pattern).
   scroll: {
     flexShrink: 1,
   },
   scrollContent: {
-    gap: theme.spacing(4),
+    gap: theme.spacing(1),
   },
   // One category multi-select row's tap area: rounded and inset so the selected
-  // fill below reads as a contained row rather than an edge-to-edge band. The
-  // row's own layout (check slot, icon slot, label) lives on `optionInner`.
+  // fill reads as a contained row rather than an edge-to-edge band, holding the
+  // 44pt HIG minimum height so each row is a comfortable tap target. The row's
+  // own layout (check slot, icon slot, label) lives on `optionInner`.
   option: {
-    paddingVertical: theme.spacing(1),
-    paddingHorizontal: theme.spacing(2),
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: theme.spacing(2),
+    paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,
   },
-  // The selected row's fill: a raised surface one level above the sheet's
-  // grouped base, so a chosen category reads as clearly selected — distinct from
-  // an unselected transparent row AND from the solid-accent Save pill.
+  // The selected row's fill: the FILLED accent surface — the app's standard
+  // selection vocabulary (the OptionPills / ChipRow selected pill) — so a chosen
+  // category reads unambiguously against the low-contrast sheet background, with
+  // the row's onAccent label/icon/checkmark carrying the contrast on top of it.
   optionSelected: {
-    backgroundColor: theme.colors.surfaceHigh,
+    backgroundColor: theme.colors.accent,
   },
   // The row's inner layout: a fixed-width check slot, an icon slot, then the
   // label. Mirrors the filter-menu row so the two pickers read identically.

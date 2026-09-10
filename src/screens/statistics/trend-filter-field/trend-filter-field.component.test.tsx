@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
+import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 
@@ -251,19 +252,44 @@ describe('TrendFilterField Save disabling', () => {
   });
 });
 
+describe('TrendFilterField Clear disabling', () => {
+  it('disables Clear too while the draft still matches the applied filter', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    // Clear reverts to the applied filter, so with nothing changed it is a no-op
+    // and is disabled — the same rule as Save (both off until the draft is dirty).
+    expect(getByTestId(`${TEST_ID}-clear`)).toBeDisabled();
+  });
+
+  it('enables Clear once the draft is changed', async () => {
+    const { getByTestId, getByRole } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    await press(getByRole('button', { name: '5' }));
+
+    expect(getByTestId(`${TEST_ID}-clear`)).not.toBeDisabled();
+  });
+});
+
 describe('TrendFilterField selected manual row', () => {
-  it('raises a filled background on the selected row and keeps an unselected row transparent', async () => {
+  it('fills the selected row with the accent surface and keeps an unselected row transparent', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: ['groceries'] } });
     await press(getByTestId(TEST_ID));
 
     const selected = getByTestId(`${TEST_ID}-option-groceries`);
     const unselected = getByTestId(`${TEST_ID}-option-transport`);
 
-    // The selected row carries a filled surface background; the unselected row
-    // paints none, so the two read as distinct levels at a glance.
+    // The selected row paints the FILLED accent surface (the app's standard
+    // selection vocabulary — the OptionPills / ChipRow selected pill), so it
+    // reads unambiguously as chosen; the unselected row paints none.
     expect(selected.props.accessibilityState.checked).toBe(true);
     expect(unselected.props.accessibilityState.checked).toBe(false);
-    expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBeTruthy();
+    expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBe(darkTheme.colors.accent);
     expect(StyleSheet.flatten(unselected.props.style).backgroundColor).toBeUndefined();
   });
 });
