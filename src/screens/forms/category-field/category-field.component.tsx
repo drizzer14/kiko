@@ -35,6 +35,7 @@ const CategoryField = ({
   options,
   selectedKey,
   onSelect,
+  required,
 }: CategoryFieldProps): ReactElement => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -92,6 +93,7 @@ const CategoryField = ({
     <Box gap={1}>
       <FieldTrigger
         label={label}
+        required={required}
         onPress={() => setOpen(true)}
         icon={selected?.icon ?? PLACEHOLDER_ICON}
         iconColor={selected?.color}

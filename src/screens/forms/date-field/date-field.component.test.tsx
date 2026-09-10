@@ -123,4 +123,12 @@ describe('DateField', () => {
     // Day becomes 20 June 2026; the 14:37:09 time-of-day carries over.
     expect(onChange).toHaveBeenCalledWith(new Date(2026, 5, 20, 14, 37, 9).getTime());
   });
+
+  it('marks the label with a required asterisk when required', async () => {
+    const { getByText } = await render(
+      <DateField label="Start Date" value={null} onChange={jest.fn()} required />,
+    );
+
+    expect(getByText('*')).toBeTruthy();
+  });
 });

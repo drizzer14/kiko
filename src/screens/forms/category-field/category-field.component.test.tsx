@@ -65,6 +65,20 @@ describe('CategoryField', () => {
     expect(getByText('Select category')).toBeTruthy();
   });
 
+  it('marks the label with a required asterisk when required', async () => {
+    const { getByText } = await render(
+      <CategoryField
+        label="Category"
+        options={OPTIONS}
+        selectedKey={null}
+        onSelect={jest.fn()}
+        required
+      />,
+    );
+
+    expect(getByText('*')).toBeTruthy();
+  });
+
   it('shows the selected category title in the field', async () => {
     const { getByText, queryByText } = await renderCategoryField('groceries');
 

@@ -4,7 +4,7 @@ import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
+import FieldLabel from '../../../design-system/components/field-label';
 import IconEditor from '../../icon-editor';
 
 import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
@@ -34,6 +34,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   namePlaceholder,
   autoFocus = false,
   captioned = true,
+  required,
 }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -52,11 +53,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
       />
 
       <Box gap={1} style={styles.nameBlock}>
-        {captioned && (
-          <Text variant="caption" tone="textSecondary">
-            {nameLabel}
-          </Text>
-        )}
+        {captioned && <FieldLabel label={nameLabel} required={required} />}
 
         <TextInput
           accessibilityLabel={nameAccessibilityLabel ?? nameLabel}

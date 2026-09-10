@@ -183,6 +183,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
           namePlaceholder={t('forms.fields.name')}
+          required
         />
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />

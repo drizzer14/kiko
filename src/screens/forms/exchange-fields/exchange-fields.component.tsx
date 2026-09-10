@@ -42,6 +42,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         keyboardType="decimal-pad"
         placeholder="0.00"
         suffix={valueOutSuffix}
+        required
       />
 
       <HoldingSelectField
@@ -50,6 +51,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         options={destinationOptions}
         selectedId={destinationHoldingId}
         onSelect={onSelectDestination}
+        required
       />
 
       <TextField
@@ -59,6 +61,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         keyboardType="decimal-pad"
         placeholder="0.00"
         suffix={valueInSuffix}
+        required
       />
 
       <DateField label={t('forms.fields.date')} value={time} onChange={onChangeTime} />

@@ -56,4 +56,12 @@ describe('TextField', () => {
     // no-suffix field — no stray trailing node.
     expect(queryByText('')).toBeNull();
   });
+
+  it('marks the label with a required asterisk when required', async () => {
+    const { getByText } = await render(
+      <TextField label="Amount" value="" onChangeText={jest.fn()} required />,
+    );
+
+    expect(getByText('*')).toBeTruthy();
+  });
 });

@@ -14,6 +14,9 @@ export type TextFieldProps = Pick<
   label: string;
   value: string;
   onChangeText: (text: string) => void;
+  // When true, the label shows a red asterisk marking the field as required.
+  // Defaults to false. See the shared FieldLabel for the marker treatment.
+  required?: boolean;
   // Defaults to `true`. Set `false` to render the field read-only — see
   // text-field.styles.ts for the disabled visual treatment.
   editable?: boolean;

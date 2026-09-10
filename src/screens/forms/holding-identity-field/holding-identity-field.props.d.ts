@@ -51,4 +51,7 @@ export type HoldingIdentityFieldProps = {
   // passes `false` for a bare, caption-free icon+name pair, vertically centered
   // rather than bottom-aligned.
   captioned?: boolean;
+  // When true (and `captioned`), the Name caption shows a red asterisk marking
+  // the name as required. Defaults to false. See the shared FieldLabel.
+  required?: boolean;
 };

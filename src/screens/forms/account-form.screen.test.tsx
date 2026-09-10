@@ -89,6 +89,15 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
+  it('marks only the required Name field with an asterisk', async () => {
+    const { getByText, getAllByText } = await renderForm();
+
+    // Name gates save (canSave = trimmed name), so it shows the marker; Kind and
+    // Color are optional (they carry defaults), so no other asterisk renders.
+    expect(getByText('Name')).toBeTruthy();
+    expect(getAllByText('*')).toHaveLength(1);
+  });
+
   it('offers the three account kinds with humanized labels', async () => {
     const { getByText, queryByText } = await renderForm();
 

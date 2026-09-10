@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
+import FieldLabel from '../../../design-system/components/field-label';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 
@@ -23,16 +24,13 @@ const ChipRow = <Option extends string>({
   labels,
   icons,
   disabled = false,
+  required,
 }: ChipRowProps<Option>): ReactElement => {
   const { theme } = useUnistyles();
 
   return (
     <Box gap={1}>
-      {label !== undefined && (
-        <Text variant="caption" tone="textSecondary">
-          {label}
-        </Text>
-      )}
+      {label !== undefined && <FieldLabel label={label} required={required} />}
 
       <Box style={[styles.chipRow, disabled && styles.disabled]} gap={2}>
         {options.map((option) => {

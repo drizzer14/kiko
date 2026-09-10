@@ -52,6 +52,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         options={counterpartOptions}
         selectedId={counterpartHoldingId}
         onSelect={onSelectCounterpart}
+        required
       />
 
       <TextField
@@ -61,6 +62,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         keyboardType="decimal-pad"
         placeholder="0.00"
         suffix={counterpartSuffix}
+        required
       />
 
       <DateField label={t('forms.fields.date')} value={time} onChange={onChangeTime} />

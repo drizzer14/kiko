@@ -6,6 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { formatDate } from '../../../dates/format';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
+import FieldLabel from '../../../design-system/components/field-label';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import KikoCalendar from '../../calendar';
@@ -34,6 +35,7 @@ const DateField: FC<DateFieldProps> = ({
   onChange,
   placeholder,
   disabled = false,
+  required,
 }) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
@@ -74,9 +76,7 @@ const DateField: FC<DateFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
+      <FieldLabel label={label} required={required} />
 
       <Pressable
         accessibilityRole="button"

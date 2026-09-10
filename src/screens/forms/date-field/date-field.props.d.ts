@@ -8,6 +8,9 @@ export type DateFieldProps = {
   onChange: (timestamp: number) => void;
   // Shown in the field when `value` is null.
   placeholder?: string;
+  // When true, the label shows a red asterisk marking the field as required.
+  // Defaults to false. See the shared FieldLabel.
+  required?: boolean;
   // When true, the field is read-only: a press is inert (the calendar never
   // opens) and the field is dimmed to read as locked — matching the disabled
   // TextField / ChipRow treatment. A synced (Monobank) transaction's date uses

@@ -94,6 +94,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           keyboardType="decimal-pad"
           placeholder="0.00"
           suffix={currencySymbol[currency]}
+          required
         />
 
         <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />

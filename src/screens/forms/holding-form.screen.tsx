@@ -511,6 +511,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
           namePlaceholder={t('forms.fields.name')}
+          required
         />
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
@@ -566,6 +567,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   keyboardType="decimal-pad"
                   placeholder="0.00"
                   suffix={currencySymbol[currency]}
+                  required
                 />
 
                 <DateField
@@ -573,6 +575,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   value={contribution.date}
                   onChange={(next) => updateContributionDate(index, next)}
                   placeholder={t('forms.holding.selectDatePlaceholder')}
+                  required
                 />
 
                 {contributions.length > 1 && (
@@ -603,6 +606,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onChangeText={setAnnualRate}
               keyboardType="decimal-pad"
               placeholder="0"
+              required
             />
 
             <TextField
@@ -611,6 +615,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onChangeText={setTermMonths}
               keyboardType="number-pad"
               placeholder="0"
+              required
             />
 
             <Switch
@@ -639,6 +644,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onChangeText={(text) => setQuantity(groupAmount(text))}
               keyboardType="number-pad"
               placeholder="0"
+              required
             />
 
             <TextField
@@ -648,6 +654,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               keyboardType="decimal-pad"
               placeholder="0.00"
               suffix={currencySymbol[currency]}
+              required
             />
 
             <TextField
@@ -656,6 +663,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onChangeText={setCouponPct}
               keyboardType="decimal-pad"
               placeholder="0"
+              required
             />
 
             <TextField
@@ -672,6 +680,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={purchaseDate}
               onChange={setPurchaseDate}
               placeholder={t('forms.holding.selectDatePlaceholder')}
+              required
             />
 
             <DateField
@@ -679,6 +688,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={maturityDate}
               onChange={setMaturityDate}
               placeholder={t('forms.holding.selectDatePlaceholder')}
+              required
             />
 
             <ChipRow

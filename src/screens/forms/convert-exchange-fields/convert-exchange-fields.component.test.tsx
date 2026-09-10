@@ -76,4 +76,12 @@ describe('ConvertExchangeFields', () => {
 
     expect(onChangeCounterpartAmount).toHaveBeenCalledWith('42');
   });
+
+  it('marks only the two save-gating counterpart fields as required', async () => {
+    const { getAllByText } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    // The counterpart holding picker and its amount gate save, so each shows
+    // the required asterisk; the read-only fixed leg, Date, and Time do not.
+    expect(getAllByText('*')).toHaveLength(2);
+  });
 });
