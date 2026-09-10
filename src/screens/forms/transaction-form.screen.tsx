@@ -973,6 +973,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       return;
     }
 
+    // No propagation sheet will open — the normalized name is blank (a synced
+    // Binance/wallet row imports with an empty description), or the row is
+    // synced so `writeManual`'s `update` refused to persist its category. Write
+    // the picked category straight onto THIS row by id via the ungated
+    // `setCategory`, so a category change on an existing row is never dropped.
+    // This is the single-row writer only; the blank-name guard on the name RULE
+    // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+    // intact, so a catch-all rule is still refused. A create (no `editingId`)
+    // already carries its category from `recordManual`, so it is excluded.
+    if (editingId !== null && categoryChanged && selectedCategory !== null) {
+      await transactionsRepo.setCategory({
+        transactionId: editingId,
+        category: selectedCategory,
+      });
+    }
+
     navigation.goBack();
   };
 

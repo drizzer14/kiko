@@ -98,7 +98,7 @@ type Transaction = {
   amountMinorUnits: number;
   time: number;
   description: string;
-  source: 'manual' | 'monobank';
+  source: 'manual' | 'monobank' | 'binance';
   category?: string | null;
 };
 
@@ -675,6 +675,38 @@ describe('TransactionFormScreen — category editing', () => {
     await waitFor(() =>
       expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
     );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('persists a MANUAL blank-description row category via setCategory (the name rule skips it)', async () => {
+    // A manual row with a BLANK description whose category the user changes.
+    // The name-rule sheet refuses a blank catch-all, so before the fix the
+    // pick was silently dropped on save. The single-row `setCategory` now
+    // persists it by id, with no propagation sheet.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash' }], {
+      id: 'txn-blank',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: '',
+      source: 'manual',
+      category: 'groceries',
+    });
+    mockSetCategory.mockResolvedValue(undefined);
+    mockUpdate.mockResolvedValue(undefined);
+
+    const utils = await renderEdit('txn-blank');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    await waitFor(() =>
+      expect(mockSetCategory).toHaveBeenCalledWith({
+        transactionId: 'txn-blank',
+        category: 'dining',
+      }),
+    );
+    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
