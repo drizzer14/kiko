@@ -53,6 +53,19 @@ export const darkTheme = {
     onAccent: '#FFFFFF',
     positive: '#30D158', // systemGreen (dark)
     negative: '#FF453A', // systemRed (dark)
+    // The systemRed hue (#FF453A) at 0.18 alpha — the translucent fill for the
+    // `destructiveTonal` Button variant (the iOS "tinted destructive" pattern:
+    // a low-opacity red BACKGROUND under red `negative` TEXT, not a solid bright
+    // fill). Over the true-black `background` it composites to a dark red
+    // (~rgb(46,12,10)), so the bright `negative` label stays high-contrast and
+    // legible on it. This is a distinct token from the solid `negative` fill:
+    // `negative` is the bright surface a solid `destructive` Button paints,
+    // `negativeSubtle` is the muted tint the tonal variant paints. Because the
+    // text ON this tint is the SAME red hue (the tinted-button convention), the
+    // tonal variant is the deliberate exception to the `onAccent` rule — that
+    // rule governs text on a SOLID accent/destructive fill, not on a same-hue
+    // tint.
+    negativeSubtle: 'rgba(255,69,58,0.18)',
     border: '#38383A', // separator (dark)
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet). NOT the opaque `background` token: a modal

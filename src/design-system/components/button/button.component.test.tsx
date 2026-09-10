@@ -157,6 +157,22 @@ describe('Button', () => {
     expect(flattenRoot(getByText('Cancel')).color).toBe(darkTheme.colors.textPrimary);
   });
 
+  it('renders the destructiveTonal label in the red negative tone, not white', async () => {
+    // The tinted-destructive variant paints a translucent red tint and keeps a
+    // red label on it (the iOS pattern), so — unlike solid `destructive` — its
+    // label is `negative`, never `onAccent`. The label color is applied inline
+    // (not through the variant block the mock strips), so it survives into the
+    // flattened label style.
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="destructiveTonal">
+        Remove
+      </Button>,
+    );
+
+    expect(flattenRoot(getByText('Remove')).color).toBe(darkTheme.colors.negative);
+    expect(flattenRoot(getByText('Remove')).color).not.toBe(darkTheme.colors.onAccent);
+  });
+
   it('does not force a text transform on the label', async () => {
     const { getByText } = await render(<Button onPress={jest.fn()}>Add account</Button>);
 

@@ -18,6 +18,10 @@ export const styles = StyleSheet.create((theme) => ({
         primary: { backgroundColor: theme.colors.accent },
         secondary: { backgroundColor: theme.colors.surfaceHigh },
         destructive: { backgroundColor: theme.colors.negative },
+        // The iOS "tinted destructive" fill: a translucent dark-red tint, not
+        // the solid bright `negative`. Its red label comes from
+        // `variantLabelColor` in the component (see button.component.tsx).
+        destructiveTonal: { backgroundColor: theme.colors.negativeSubtle },
         // No fill at all — see the `ghost` doc comment on `ButtonVariant`.
         // Explicit `'transparent'` (not simply omitting the key) so switching
         // to `ghost` at runtime (Unistyles' `useVariants`) always clears

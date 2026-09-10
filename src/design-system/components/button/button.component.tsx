@@ -27,11 +27,16 @@ const Button: FC<ButtonProps> = ({
   // primary/destructive sit on a filled accent/red surface, so their label +
   // icon need the always-white `onAccent` token — `textPrimary` flips to
   // black on light and would vanish. secondary/ghost sit on `surfaceHigh` /
-  // transparent, which need the adapting `textPrimary`. A caller may override
-  // either with `textColor` (e.g. a red ghost "Cancel"); the button owns a
-  // single tint shared by the label and both icons, so they can never desync.
+  // transparent, which need the adapting `textPrimary`. destructiveTonal sits
+  // on the translucent `negativeSubtle` tint and takes the red `negative` label
+  // (the iOS tinted-destructive treatment: a same-hue label on a muted tint),
+  // the deliberate exception to the `onAccent` rule that governs solid fills. A
+  // caller may override any of these with `textColor` (e.g. a red ghost
+  // "Cancel"); the button owns a single tint shared by the label and both
+  // icons, so they can never desync.
   const variantLabelColor = match(variant)
     .with('primary', 'destructive', () => theme.colors.onAccent)
+    .with('destructiveTonal', () => theme.colors.negative)
     .with('secondary', 'ghost', () => theme.colors.textPrimary)
     .exhaustive();
   const labelColor = textColor ?? variantLabelColor;

@@ -4,10 +4,16 @@ import type { ReactNode } from 'react';
 // secondary — raised surface fill, white label: a lower-emphasis action that
 // still needs a visible pill (e.g. an inline Connect/Disconnect action).
 // destructive — red fill, white label: a dangerous action (e.g. Delete).
+// destructiveTonal — the iOS "tinted destructive" pattern: a translucent
+// dark-red fill (`negativeSubtle`) under a red `negative` label, NOT a solid
+// bright fill. A lower-emphasis destructive action (e.g. a per-row Remove) that
+// must still read as dangerous without shouting like the solid `destructive`
+// pill. The label stays the red hue on a same-hue tint, so — unlike the solid
+// variants — it does not follow the `onAccent` rule.
 // ghost — no fill at all, label-only: a borderless nav-bar/header action (e.g.
 // the detail screens' Edit button) that must read as plain text-with-icon,
 // the standard iOS header-button treatment, never a filled pill.
-type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'destructiveTonal' | 'ghost';
 
 // regular — a tall (50pt), rounded footer/submit button, the common case.
 // compact — a shorter, tighter, self-hugging inline action (e.g. an add/remove

@@ -577,7 +577,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
                 {contributions.length > 1 && (
                   <Button
-                    variant="destructive"
+                    variant="destructiveTonal"
                     size="compact"
                     fullWidth={false}
                     accessibilityLabel={t('forms.holding.removeContribution', {
