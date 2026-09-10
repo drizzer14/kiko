@@ -228,13 +228,18 @@ const CategoryListRow: FC<{
             the disabled control keeps the bottom row's layout identical across
             all cards rather than shifting when the Delete is absent. */}
         <Box direction="row" style={styles.bottomRow}>
+          {/* The category Delete REUSES the contributions "Remove" treatment
+              (holding-form.screen.tsx): the same tinted-destructive variant, the
+              same small size, and the same trash glyph. The destructiveTonal
+              variant supplies the red `negative` label itself, so no textColor
+              override is needed. Disabled on the default card (it can never be
+              deleted) for layout parity across cards. */}
           <Button
-            variant="ghost"
-            size="compact"
+            variant="destructiveTonal"
+            size="small"
             fullWidth={false}
             disabled={isDefault}
             icon="trash"
-            textColor={theme.colors.negative}
             accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
             onPress={confirmDelete}
           >

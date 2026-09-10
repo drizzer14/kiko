@@ -125,9 +125,13 @@ describe('HoldingFormScreen contribution button variants', () => {
     expect(removeEntries.length).toBeGreaterThan(0);
     // The per-row Remove uses the subtler tinted-destructive variant (a
     // translucent red tint under a red label), not the solid bright
-    // `destructive` fill (on-device review: the solid fill read too bright).
+    // `destructive` fill (on-device review: the solid fill read too bright). It
+    // is the shared small faint-tint treatment with a trash glyph — the SAME
+    // shape the categories Delete reuses (categories.screen.tsx).
     for (const entry of removeEntries) {
       expect(entry.variant).toBe('destructiveTonal');
+      expect(entry.size).toBe('small');
+      expect(entry.icon).toBe('trash');
     }
   });
 });
