@@ -3,6 +3,7 @@ import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
+import FieldLabel from '../field-label';
 import Text from '../text';
 
 import type { TextFieldProps } from './text-field.props';
@@ -21,6 +22,7 @@ const TextField: FC<TextFieldProps> = ({
   multiline,
   secureTextEntry,
   suffix,
+  required,
 }) => {
   const { theme } = useUnistyles();
   // An empty string (a currency not yet known) is treated the same as no
@@ -53,9 +55,7 @@ const TextField: FC<TextFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
+      <FieldLabel label={label} required={required} />
 
       {hasSuffix ? (
         <Box style={styles.suffixContainer}>

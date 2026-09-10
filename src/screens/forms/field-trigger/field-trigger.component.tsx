@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { Pressable } from 'react-native';
 
 import Box from '../../../design-system/components/box';
+import FieldLabel from '../../../design-system/components/field-label';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 
@@ -24,11 +25,10 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   value,
   valueTone,
   trailing,
+  required,
 }) => (
   <Box gap={1}>
-    <Text variant="caption" tone="textSecondary">
-      {label}
-    </Text>
+    <FieldLabel label={label} required={required} />
 
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}>
       <Box direction="row" gap={2} style={styles.field}>

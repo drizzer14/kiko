@@ -480,6 +480,9 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         keyboardType="decimal-pad"
         placeholder="0.00"
         suffix={props.amountSuffix}
+        // A read-only (synced) row's amount never gates save, so it carries no
+        // required marker; a manual add/edit always needs a positive amount.
+        required={!props.isReadOnly}
       />
 
       <TextField
@@ -578,6 +581,9 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
           options={props.categoryOptions}
           selectedKey={props.selectedCategory}
           onSelect={props.onSelectCategory}
+          // A category is required only on a fresh add (isSaveDisabled gates a
+          // create on it); an edit leaves the category optional.
+          required={!props.isEditing}
         />
       )}
 

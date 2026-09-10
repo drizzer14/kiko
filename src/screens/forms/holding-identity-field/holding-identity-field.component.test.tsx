@@ -143,6 +143,12 @@ describe('HoldingIdentityField', () => {
     expect(queryByText('Remove')).toBeNull();
   });
 
+  it('marks the name caption with a required asterisk when required', async () => {
+    const { getByText } = await setup({ required: true });
+
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {

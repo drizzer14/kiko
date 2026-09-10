@@ -49,6 +49,14 @@ describe('ExchangeFields', () => {
     expect(getByText('Select holding')).toBeTruthy();
   });
 
+  it('marks the three save-gating fields (Value Out, To, Value In) as required', async () => {
+    const { getAllByText } = await setup();
+
+    // The Value Out, destination (To), and Value In fields all gate save, so
+    // each shows the required asterisk; Date and Time do not.
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(3);
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {

@@ -25,6 +25,7 @@ const HoldingSelectField = ({
   options,
   selectedId,
   onSelect,
+  required,
 }: HoldingSelectFieldProps): ReactElement => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
@@ -40,6 +41,7 @@ const HoldingSelectField = ({
     <Box gap={1}>
       <FieldTrigger
         label={label}
+        required={required}
         onPress={() => setOpen(true)}
         icon={selected?.icon}
         iconColor={selected?.color}

@@ -203,6 +203,15 @@ describe('TransactionFormScreen — add mode', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Transaction' });
   });
 
+  it('marks Amount and Category required on a fresh add', async () => {
+    const { getAllByText } = await renderAdd();
+
+    // A create gates save on a positive amount AND a picked category, so both
+    // show the required asterisk; description, date, and time do not. The marker
+    // is hidden from accessibility, so the query includes hidden elements.
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
   it('submits a manual transaction', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
@@ -668,6 +677,16 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
   it('offers no Delete action for a synced transaction', async () => {
     const { queryByText } = await renderEdit('txn-9');
     expect(queryByText('Delete')).toBeNull();
+  });
+
+  it('marks no field required on a read-only synced row', async () => {
+    const { queryAllByText } = await renderEdit('txn-9');
+
+    // Nothing gates save on a read-only row (Save only appears once the
+    // category changes, and only the category is writable), so no field shows
+    // the required asterisk — hidden elements included, so a hidden marker would
+    // still be caught.
+    expect(queryAllByText('*', { includeHiddenElements: true })).toHaveLength(0);
   });
 });
 

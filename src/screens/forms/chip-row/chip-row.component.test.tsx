@@ -119,4 +119,12 @@ describe('ChipRow', () => {
     const row = getByText('bank').parent?.parent;
     expect(StyleSheet.flatten(row?.props.style).opacity).toBeUndefined();
   });
+
+  it('marks the label with a required asterisk when required', async () => {
+    const { getByText } = await render(
+      <ChipRow options={options} selected="bank" onSelect={jest.fn()} label="Kind" required />,
+    );
+
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
 });

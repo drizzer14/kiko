@@ -2,6 +2,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { fetchAccount } from '../../crypto-sync/binance/binance.client';
+import { saveCredentials } from '../../crypto-sync/binance/binance.credentials';
 import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
@@ -10,12 +12,17 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { fetchClientInfo } from '../../monobank/monobank.client';
+import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { accountsRepo } from '../../repositories/accounts.repo';
+import { useCryptoSync } from '../use-crypto-sync';
+import { useSync } from '../use-sync';
 
 import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';
@@ -62,6 +69,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
   const [icon, setIcon] = useState<string | null>(null);
+  // Optional sync credentials entered at CREATE time (never seeded in edit
+  // mode). A secret is write-only: it goes straight to the Keychain on save and
+  // is never read back into state — see the save flow below.
+  const [monobankToken, setMonobankToken] = useState('');
+  const [binanceApiKey, setBinanceApiKey] = useState('');
+  const [binanceSecret, setBinanceSecret] = useState('');
   // Mirrors the icon's dirty pattern: null until the user taps a swatch. While
   // null, the effective color follows the selected kind's default
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
@@ -74,6 +87,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // TS-only, no CHECK constraint) both reach here as unusable values the bare
   // pattern would let through as ''/undefined.
   const effectiveColor = resolveEntityColor(color, defaultAccountColor[kind]);
+
+  // The same Connect actions the account-detail screen uses. On a create with a
+  // credential entered, the account is created FIRST, then the credential is
+  // saved and the connect runs — a bad credential leaves a created-but-
+  // unconnected account the user repairs from its detail screen (Option A).
+  const { sync: syncMonobank } = useSync();
+  const { sync: syncBinance } = useCryptoSync();
 
   // In edit mode, load the account being edited so its fields can seed the form.
   // The query always runs (hooks can't be conditional); an empty id in create
@@ -107,6 +127,37 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
+
+  // If the user entered sync credentials on this create, VALIDATE them, then
+  // save to the Keychain and kick off the connect. Validation-before-write is
+  // load-bearing: there is ONE global Keychain slot per institution
+  // (kiko.monobank.token / kiko.binance.credentials), so writing an unvalidated
+  // credential would clobber a previously-stored VALID one and silently break
+  // an existing connection — the detail-screen fields validate first for the
+  // same reason. On a rejected validation the write is SKIPPED and the Keychain
+  // is left untouched; the account is still created (Option A). This function
+  // MAY throw (validation or the Keychain write); the caller swallows it so the
+  // create never fails after the row exists. The connect is fire-and-forget
+  // (useSync / useCryptoSync fold their own errors). The secret goes ONLY to the
+  // Keychain, never to the database, holding metadata, or a log.
+  const connectEnteredCredentials = async (newAccountId: string): Promise<void> => {
+    if (kind === 'bank' && monobankToken.trim() !== '') {
+      const token = monobankToken.trim();
+      await fetchClientInfo(token);
+      await saveToken(token);
+      syncMonobank(newAccountId);
+
+      return;
+    }
+
+    if (kind === 'crypto' && binanceApiKey.trim() !== '' && binanceSecret.trim() !== '') {
+      const apiKey = binanceApiKey.trim();
+      const secret = binanceSecret.trim();
+      await fetchAccount(apiKey, secret);
+      await saveCredentials({ apiKey, secret });
+      syncBinance({ providerId: 'binance', targetAccountId: newAccountId });
+    }
+  };
 
   const save = async (): Promise<void> => {
     // Block submit on an empty (or whitespace-only) name; the button is also
@@ -154,6 +205,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       await accountsRepo.setIcon(newAccountId, icon);
     }
 
+    // The connect/write step must NEVER fail the create once the row exists: a
+    // rejected validation, Keychain write, or connect would otherwise skip
+    // goBack, leaving useSubmitOnce armed so a second Save press creates a
+    // DUPLICATE account. Swallow it — the account is created; the user repairs
+    // the connection from its detail screen (Option A).
+    try {
+      await connectEnteredCredentials(newAccountId);
+    } catch {
+      // Intentionally ignored — see the comment above.
+    }
+
     navigation.goBack();
   };
 
@@ -183,6 +245,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
           namePlaceholder={t('forms.fields.name')}
+          required
         />
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
@@ -223,6 +286,52 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               suffix={currencySymbol[currency]}
             />
           </>
+        )}
+
+        {/* Optional sync credentials, offered only on a bank/crypto CREATE. The
+            fields are NOT required (no asterisk): an account still creates with
+            no credentials. A secret is masked and write-only — on save it goes
+            straight to the Keychain, never into a stored row or a log. */}
+        {!isEdit && kind === 'bank' && (
+          <Box gap={4}>
+            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
+
+            <TextField
+              label={t('accountDetail.tokenLabel')}
+              value={monobankToken}
+              onChangeText={setMonobankToken}
+              placeholder={t('accountDetail.monobankTokenPlaceholder')}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Box>
+        )}
+
+        {!isEdit && kind === 'crypto' && (
+          <Box gap={4}>
+            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
+
+            <TextField
+              label={t('accountDetail.apiKeyLabel')}
+              value={binanceApiKey}
+              onChangeText={setBinanceApiKey}
+              placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <TextField
+              label={t('accountDetail.apiSecretLabel')}
+              value={binanceSecret}
+              onChangeText={setBinanceSecret}
+              placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Box>
         )}
       </Box>
     </Screen>

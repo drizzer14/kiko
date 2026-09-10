@@ -11,6 +11,9 @@ export type FieldTriggerProps = {
   // label, mirroring every other labeled form field.
   label: string;
   onPress: () => void;
+  // When true, the label shows a red asterisk marking the field as required.
+  // Defaults to false. See the shared FieldLabel.
+  required?: boolean;
   // The leading SF Symbol; omitted renders no icon slot at all (used when a
   // caller only shows an icon once something is actually selected).
   icon?: string;

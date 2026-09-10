@@ -5,6 +5,9 @@ export type ChipRowProps<Option extends string> = {
   // Optional caption rendered above the chips, so a chip row reads as a labeled
   // field alongside the TextField/Switch fields it sits with in a form.
   label?: string;
+  // When true (and a label is set), the label shows a red asterisk marking the
+  // field as required. Defaults to false. See the shared FieldLabel.
+  required?: boolean;
   // Optional value -> display-text map. A chip whose value is an id-like enum
   // (`term_deposit`, `crypto_asset`) shows human text while `onSelect` still
   // reports the underlying value. A value absent from the map renders verbatim.

@@ -95,6 +95,21 @@ describe('HoldingSelectField', () => {
     expect(onSelect).toHaveBeenCalledWith('h1');
   });
 
+  it('marks the label with a required asterisk when required', async () => {
+    const { getByText } = await render(
+      <HoldingSelectField
+        label="To"
+        placeholder="Select holding"
+        options={options}
+        selectedId={null}
+        onSelect={jest.fn()}
+        required
+      />,
+    );
+
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
   it("shows each option's parent account name in the sheet", async () => {
     const { getByLabelText, getByText } = await render(
       <HoldingSelectField
