@@ -27,4 +27,10 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars|@noble)/)',
   ],
+  // `@kiko/*` path aliases map to `src/*` (mirrors tsconfig `paths` and the
+  // babel `module-resolver` alias) so tests resolve the same specifiers the
+  // app does.
+  moduleNameMapper: {
+    '^@kiko/(.*)$': '<rootDir>/src/$1',
+  },
 };

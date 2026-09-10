@@ -9,6 +9,7 @@
     "@types/node",
     "@typescript/native-preview",
     "babel-plugin-inline-import",
+    "babel-plugin-module-resolver",
     "depcheck",
     "jscpd",
     "knip",
@@ -16,6 +17,7 @@
     "react-native-dotenv",
     "react-native-nitro-modules",
     "react-native-screens",
-    "typescript"
+    "typescript",
+    "@kiko/*"
   ]
 }
