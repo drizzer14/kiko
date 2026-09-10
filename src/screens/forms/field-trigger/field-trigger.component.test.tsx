@@ -28,6 +28,6 @@ describe('FieldTrigger', () => {
       />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 });

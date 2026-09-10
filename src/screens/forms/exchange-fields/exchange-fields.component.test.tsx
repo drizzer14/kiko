@@ -54,7 +54,7 @@ describe('ExchangeFields', () => {
 
     // The Value Out, destination (To), and Value In fields all gate save, so
     // each shows the required asterisk; Date and Time do not.
-    expect(getAllByText('*')).toHaveLength(3);
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(3);
   });
 
   describe('localization', () => {

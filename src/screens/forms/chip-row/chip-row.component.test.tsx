@@ -125,6 +125,6 @@ describe('ChipRow', () => {
       <ChipRow options={options} selected="bank" onSelect={jest.fn()} label="Kind" required />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 });

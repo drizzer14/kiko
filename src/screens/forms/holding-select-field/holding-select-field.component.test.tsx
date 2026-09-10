@@ -107,7 +107,7 @@ describe('HoldingSelectField', () => {
       />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it("shows each option's parent account name in the sheet", async () => {

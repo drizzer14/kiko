@@ -62,6 +62,6 @@ describe('TextField', () => {
       <TextField label="Amount" value="" onChangeText={jest.fn()} required />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 });

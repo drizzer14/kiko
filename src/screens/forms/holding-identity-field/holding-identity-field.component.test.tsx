@@ -146,7 +146,7 @@ describe('HoldingIdentityField', () => {
   it('marks the name caption with a required asterisk when required', async () => {
     const { getByText } = await setup({ required: true });
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 
   describe('localization', () => {

@@ -82,6 +82,6 @@ describe('ConvertExchangeFields', () => {
 
     // The counterpart holding picker and its amount gate save, so each shows
     // the required asterisk; the read-only fixed leg, Date, and Time do not.
-    expect(getAllByText('*')).toHaveLength(2);
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
   });
 });

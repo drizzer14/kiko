@@ -18,9 +18,15 @@ const FieldLabel: FC<FieldLabelProps> = ({ label, required = false }) => {
       </Text>
 
       {required && (
-        <Text variant="caption" tone="negative">
-          *
-        </Text>
+        // Decorative: the field's own control owns its accessibilityLabel, so
+        // the marker is hidden from the accessibility tree (importantForAccessibility
+        // for Android, accessibilityElementsHidden for iOS) — otherwise VoiceOver
+        // reads a lone "star" after the label.
+        <Box importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <Text variant="caption" tone="negative">
+            *
+          </Text>
+        </Box>
       )}
     </Box>
   );

@@ -41,6 +41,8 @@ const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
+const mockFetchClientInfo = jest.fn();
+const mockFetchAccount = jest.fn();
 
 // The account the edit-mode form loads through useLiveQuery. `mock`-prefixed so
 // the hoisted factory may close over it; create-mode tests leave it empty.
@@ -63,6 +65,12 @@ jest.mock('../../monobank/token', () => ({
 }));
 jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
+}));
+jest.mock('../../monobank/monobank.client', () => ({
+  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
+jest.mock('../../crypto-sync/binance/binance.client', () => ({
+  fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('../use-sync', () => ({
   useSync: () => ({
@@ -125,7 +133,7 @@ describe('AccountFormScreen', () => {
     // Name gates save (canSave = trimmed name), so it shows the marker; Kind and
     // Color are optional (they carry defaults), so no other asterisk renders.
     expect(getByText('Name')).toBeTruthy();
-    expect(getAllByText('*')).toHaveLength(1);
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
   });
 
   it('offers the three account kinds with humanized labels', async () => {
@@ -493,6 +501,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockSaveCredentials.mockResolvedValue(undefined);
     mockMonobankSync.mockResolvedValue(true);
     mockCryptoSync.mockResolvedValue(true);
+    // Validation resolves by default (a valid credential); a test that needs an
+    // invalid one rejects these explicitly.
+    mockFetchClientInfo.mockResolvedValue({ name: 'Test' });
+    mockFetchAccount.mockResolvedValue({});
   });
 
   it('saves the Monobank token and connects when a bank create enters one', async () => {
@@ -550,5 +562,56 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
+  });
+
+  it('still leaves without a duplicate account when the Keychain write rejects', async () => {
+    // Validation passes but the Keychain write fails after the row already
+    // exists: save() must not reject (which would skip goBack and let a second
+    // Save press create a DUPLICATE) — it swallows and leaves.
+    mockSaveToken.mockRejectedValue(new Error('keychain failure'));
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(getByText('Bank'));
+    await fireEvent.changeText(getByLabelText('Token'), 'tok_123');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    // The account was created exactly once; the rejected write did not re-arm
+    // Save into a second create.
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('never writes an invalid Monobank token to the Keychain, but still creates the account', async () => {
+    // Validation rejects (a bad token). The write is SKIPPED so a previously
+    // stored valid token in the single global Keychain slot is not clobbered.
+    mockFetchClientInfo.mockRejectedValue(new Error('invalid token'));
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(getByText('Bank'));
+    await fireEvent.changeText(getByLabelText('Token'), 'bad_token');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('never writes invalid Binance credentials to the Keychain, but still creates the account', async () => {
+    mockFetchAccount.mockRejectedValue(new Error('invalid key'));
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.changeText(getByLabelText('API key'), 'key_1');
+    await fireEvent.changeText(getByLabelText('API secret'), 'secret_1');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockCryptoSync).not.toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });

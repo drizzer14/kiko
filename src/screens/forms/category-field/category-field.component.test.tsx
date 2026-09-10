@@ -76,7 +76,7 @@ describe('CategoryField', () => {
       />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it('shows the selected category title in the field', async () => {

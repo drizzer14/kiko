@@ -207,8 +207,9 @@ describe('TransactionFormScreen — add mode', () => {
     const { getAllByText } = await renderAdd();
 
     // A create gates save on a positive amount AND a picked category, so both
-    // show the required asterisk; description, date, and time do not.
-    expect(getAllByText('*')).toHaveLength(2);
+    // show the required asterisk; description, date, and time do not. The marker
+    // is hidden from accessibility, so the query includes hidden elements.
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
   });
 
   it('submits a manual transaction', async () => {
@@ -683,8 +684,9 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
 
     // Nothing gates save on a read-only row (Save only appears once the
     // category changes, and only the category is writable), so no field shows
-    // the required asterisk.
-    expect(queryAllByText('*')).toHaveLength(0);
+    // the required asterisk — hidden elements included, so a hidden marker would
+    // still be caught.
+    expect(queryAllByText('*', { includeHiddenElements: true })).toHaveLength(0);
   });
 });
 

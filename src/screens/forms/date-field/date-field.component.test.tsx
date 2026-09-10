@@ -129,6 +129,6 @@ describe('DateField', () => {
       <DateField label="Start Date" value={null} onChange={jest.fn()} required />,
     );
 
-    expect(getByText('*')).toBeTruthy();
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 });
