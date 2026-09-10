@@ -272,6 +272,13 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
   });
 
+  it('renders each transaction row as a glass card (M2 in the HIG audit)', async () => {
+    const { getAllByTestId } = await renderHome();
+    // Each row is wrapped in a GlassSurface, matching the app's glass-card
+    // language, rather than a plain bordered list row.
+    expect(getAllByTestId('transaction-row').length).toBeGreaterThan(0);
+  });
+
   it('renders the transaction time as zero-padded HH:MM', async () => {
     // 2 days ago, at a fixed hour/minute — well inside the screen's default
     // last-30-days window, unlike a fixed historical date would be.

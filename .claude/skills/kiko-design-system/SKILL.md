@@ -221,13 +221,20 @@ new component can land between reviews of this skill:
   `surface` backdrop and an entity-color wash — see "Entity color and
   tint" below. A `transparent` (a neutral frosted see-through PANEL —
   the settings, system, and category cards, the Statistics screen's
-  chart cards, and the Home net-worth card) paints a TRANSLUCENT
+  chart cards, the Home net-worth card, and the transaction/ledger list
+  rows on Home and holding-detail) paints a TRANSLUCENT
   `surfaceTranslucent` backdrop and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. The `transparent`-vs-`tint` split is the rule for a new
-  surface: a neutral card (settings, a chart, a summary) reads well as
-  a frosted panel and takes `transparent`; an entity card (account,
-  holding) keeps its opaque `tint`. Neither prop keeps the fully-live see-through material (no
+  surface: a neutral card (settings, a chart, a summary, a list row)
+  reads well as a frosted panel and takes `transparent`; an entity card
+  (account, holding) keeps its opaque `tint`. A list row that is also a
+  `SwipeableRow` child (the holding-detail ledger) takes `transparent`
+  too — `SwipeableRow` is built for a translucent card (it ramps the
+  delete action in off the live `translateX`, so nothing bleeds through
+  a closed glass row); pass the card's radius to `SwipeableRow`'s
+  `radius` prop so the reveal clips to the same corners (GlassSurface
+  defaults to `md`). Neither prop keeps the fully-live see-through material (no
   backdrop). Read `glass-surface.props.d.ts` for the exact current prop
   set rather than trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
@@ -284,7 +291,13 @@ new component can land between reviews of this skill:
   known option count that must render as a single equal-width row
   instead of wrapping passes an explicit `columns={n}` matching its own
   option count. Do not add a second, parallel way to force a row count;
-  extend/override `columns` instead.
+  extend/override `columns` instead. The SELECTED pill reads as a
+  FILLED accent control: an `accent` background with an `onAccent`
+  label+icon and a semibold label, mirroring `ChipRow`'s selected chip
+  — not a low-contrast raised surface, so the selection stays clear on
+  the low-contrast sheet background. Unselected pills stay transparent
+  with a `textSecondary` label. The pill content is centered and the
+  pill holds the 44pt HIG minimum touch target.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any

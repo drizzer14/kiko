@@ -25,7 +25,7 @@ const calendarTheme = {
   todayTextColor: darkTheme.colors.accent,
   selectedDayTextColor: darkTheme.colors.onAccent,
   selectedDayBackgroundColor: darkTheme.colors.accent,
-  calendarBackground: darkTheme.colors.surfaceHigh,
+  calendarBackground: 'transparent',
 };
 
 const textColorOf = (node: RenderedElement): unknown =>
@@ -49,6 +49,18 @@ const dayTextColor = async (
 
   return textColorOf(getByText('4'));
 };
+
+describe('buildCalendarTheme — transparent over the glass sheet', () => {
+  // The calendar sits inside a glass BottomSheet. An opaque background would
+  // paint a flat card over the glass; a transparent background lets the sheet's
+  // material show through (M1 in the iOS HIG audit).
+  it('paints no opaque background, so the glass sheet shows through', () => {
+    const built = buildCalendarTheme(darkTheme);
+
+    expect(built.calendarBackground).toBe('transparent');
+    expect(built['stylesheet.calendar.main'].monthView.backgroundColor).toBe('transparent');
+  });
+});
 
 describe('buildCalendarTheme — disabled-day legibility', () => {
   // react-native-calendars' own default `textDisabledColor` (#d9e1e8) is ≈ the

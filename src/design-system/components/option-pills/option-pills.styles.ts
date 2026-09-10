@@ -23,8 +23,13 @@ export const styles = StyleSheet.create((theme) => ({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    // Centered, not leading: the label/icon sit centered in the pill, the iOS
+    // segmented-control convention.
+    justifyContent: 'center',
     gap: theme.spacing(2),
+    // The iOS HIG 44pt minimum touch target (H2 in the HIG audit); the padding
+    // below still sets the visual height when the content is shorter.
+    minHeight: 44,
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,

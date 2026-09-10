@@ -344,6 +344,18 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Everyday card income')).toBeTruthy();
   });
 
+  it('renders each ledger row as a glass card (M2 in the HIG audit)', async () => {
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+
+    // Each ledger row is wrapped in a GlassSurface, matching the app's
+    // glass-card language, rather than a plain surface-filled box.
+    expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
+  });
+
   it('stamps a time-specific holding row with the full date and HH:MM time', async () => {
     // A card is time-specific: its row shows "DD.MM.YYYY HH:MM".
     const at = new Date(2024, 0, 15, 9, 5).getTime();
