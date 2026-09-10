@@ -278,6 +278,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         <Box direction="row" gap={3} style={styles.actions}>
           <Button
             variant="secondary"
+            size="compact"
             fullWidth={false}
             onPress={handleClear}
             testID={`${testID}-clear`}

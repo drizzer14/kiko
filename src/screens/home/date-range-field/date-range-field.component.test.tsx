@@ -398,3 +398,43 @@ describe('DateRangeField calendar bounds', () => {
     expect(calendar.props.maxDate).toBe(iso(today));
   });
 });
+
+describe('DateRangeField action sizes', () => {
+  const open = async (): Promise<ReturnType<typeof render>> => {
+    const utils = await render(
+      <DateRangeField
+        dateFrom={null}
+        dateTo={null}
+        minDate={new Date(2000, 0, 1)}
+        maxDate={new Date(2000, 5, 15)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(utils.getByLabelText('Date range'));
+    });
+
+    return utils;
+  };
+
+  it('renders the secondary Clear action as a compact, self-hugging button', async () => {
+    const { getByRole } = await open();
+
+    // Clear is a lower-emphasis secondary action, so it takes the compact 44pt
+    // size and hugs its content rather than the tall full-width primary size.
+    const clear = getByRole('button', { name: 'Clear' });
+
+    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(clear.props.style).width).toBeUndefined();
+  });
+
+  it('keeps the primary Apply action at the tall regular size', async () => {
+    const { getByRole } = await open();
+
+    const apply = getByRole('button', { name: 'Apply' });
+
+    expect(StyleSheet.flatten(apply.props.style).minHeight).toBe(50);
+  });
+});

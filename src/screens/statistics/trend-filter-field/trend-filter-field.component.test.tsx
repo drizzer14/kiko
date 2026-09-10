@@ -97,6 +97,29 @@ describe('TrendFilterField button label', () => {
   });
 });
 
+describe('TrendFilterField action sizes', () => {
+  it('renders the secondary Clear action as a compact button', async () => {
+    const { getByTestId } = await renderField();
+    await press(getByTestId(TEST_ID));
+
+    // Clear is the lower-emphasis secondary action in the sheet action row, so
+    // it takes the compact 44pt size rather than the tall regular Save size.
+    const clear = getByTestId(`${TEST_ID}-clear`);
+
+    expect(StyleSheet.flatten(clear.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(clear.props.style).width).toBeUndefined();
+  });
+
+  it('keeps the primary Save action at the regular size', async () => {
+    const { getByTestId } = await renderField();
+    await press(getByTestId(TEST_ID));
+
+    const save = getByTestId(`${TEST_ID}-save`);
+
+    expect(StyleSheet.flatten(save.props.style).minHeight).toBe(50);
+  });
+});
+
 describe('TrendFilterField sheet', () => {
   it('opens the sheet on the button press', async () => {
     const { getByTestId, queryByText } = await renderField();

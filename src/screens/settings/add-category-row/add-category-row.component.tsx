@@ -144,7 +144,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
 
         <Box direction="row" gap={3}>
           <Box style={styles.action}>
-            <Button variant="secondary" onPress={collapse}>
+            <Button variant="secondary" size="compact" fullWidth={false} onPress={collapse}>
               {t('common.cancel')}
             </Button>
           </Box>

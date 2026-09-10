@@ -251,7 +251,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         </ScrollView>
 
         <Box direction="row" gap={3} style={styles.actions}>
-          <Button variant="secondary" fullWidth={false} onPress={handleClear}>
+          <Button variant="secondary" size="compact" fullWidth={false} onPress={handleClear}>
             {t('home.dateRangeField.clear')}
           </Button>
 

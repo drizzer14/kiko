@@ -857,6 +857,36 @@ describe('TransactionFormScreen — category editing', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it('sizes the confirm-sheet actions by emphasis: primary Apply regular, secondaries compact', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      category: 'groceries',
+    });
+
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // The all-similar "Apply" is the sheet's single primary CTA, so it keeps the
+    // tall regular size; "Just for this one" and "Cancel" are lower-emphasis
+    // secondary actions, so each takes the compact 44pt self-hugging size.
+    const apply = utils.getByRole('button', { name: 'Apply' });
+    expect(StyleSheet.flatten(apply.props.style).minHeight).toBe(50);
+
+    const one = utils.getByRole('button', { name: 'Just for this one' });
+    expect(StyleSheet.flatten(one.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(one.props.style).width).toBeUndefined();
+
+    const cancel = utils.getByRole('button', { name: 'Cancel' });
+    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(cancel.props.style).width).toBeUndefined();
+  });
+
   it('does NOT offer "Just for this one" on a create flow (no transaction id to target)', async () => {
     // Create mode: the sheet still rises (a non-blank description + a category
     // pick), but there is no existing row to target — the just-created row
