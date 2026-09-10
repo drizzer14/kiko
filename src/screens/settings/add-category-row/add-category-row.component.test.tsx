@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
@@ -147,6 +148,33 @@ describe('AddCategoryRow', () => {
     expect(
       getByLabelText(`New category color ${openSwatchName}`).props.accessibilityState.selected,
     ).toBe(false);
+  });
+
+  it('renders the secondary Cancel action as a compact, self-hugging button', async () => {
+    const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    // Cancel is the lower-emphasis secondary of the inline two-button row, so it
+    // takes the compact 44pt size and hugs its content, unlike the primary Save.
+    const cancel = getByRole('button', { name: 'Cancel' });
+
+    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(44);
+    expect(StyleSheet.flatten(cancel.props.style).width).toBeUndefined();
+  });
+
+  it('keeps the primary Save at the regular size but hugs content beside Cancel', async () => {
+    const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+
+    // Save stays the tall regular primary, but both buttons now hug their
+    // content in one trailing row (no flex:1 half each), so neither stretches
+    // full width — this is what removes the old left-pinned gap beside Cancel.
+    const save = getByRole('button', { name: 'Save' });
+
+    expect(StyleSheet.flatten(save.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(save.props.style).width).toBeUndefined();
   });
 
   it('persists color:null when the user saves without tapping a swatch', async () => {
