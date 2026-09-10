@@ -257,7 +257,8 @@ verified usage, not dead weight:
   mutates, in both run modes (the whole-project fallback array and the
   diff-scoped changed-file filter). (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
-  logic a surviving mutant could meaningfully expose (~598 mutants); the
+  logic a surviving mutant could meaningfully expose (hundreds of
+  low-value string mutants); the
   locale test assertions (e.g. `en.button-casing.test.ts`) still run
   under Jest, so string/casing coverage is unaffected — only the mutation
   report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
