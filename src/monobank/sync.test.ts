@@ -406,7 +406,7 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
-  // `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message
+  // `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message
   // verbatim as the account-detail screen's error text, so it genuinely needs
   // to resolve in the active language, unlike a swallowed/discarded error.
   it('throws the no-account-connected message in Ukrainian once the active language switches', async () => {

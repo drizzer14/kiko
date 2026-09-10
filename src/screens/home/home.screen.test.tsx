@@ -74,7 +74,7 @@ jest.mock('@kiko/categories/categories.repo', () => ({
 
 const mockSyncAll = jest.fn();
 const mockUseSyncAll = jest.fn();
-jest.mock('../use-sync-all', () => ({
+jest.mock('@kiko/sync/use-sync-all', () => ({
   useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
 }));
 

@@ -4,6 +4,7 @@ import { categoriesRepo } from '@kiko/categories/categories.repo';
 import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import { ratesRepo } from '@kiko/rates/rates.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
+import { useSyncAll } from '@kiko/sync/use-sync-all';
 import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -45,7 +46,6 @@ import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/n
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../transactions/row-description';
 import { transactionSpan } from '../../transactions/transaction-span';
-import { useSyncAll } from '../use-sync-all';
 
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';

@@ -274,7 +274,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * connect an account first, so we surface a clear error rather than silently
  * minting a stray 'Monobank' account.
  */
-// `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message's
+// `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message's
 // `.message` verbatim as the account-detail screen's error `<Text>` (see
 // account-detail.screen.tsx), so it genuinely needs to be localized, not left
 // as a diagnostic-only string. This module has no React context of its own,

@@ -16,7 +16,7 @@ import MigrationsGate from './src/db/migrations.gate';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
-import { useAutoSync } from './src/screens/use-auto-sync';
+import { useAutoSync } from './src/sync/use-auto-sync';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the

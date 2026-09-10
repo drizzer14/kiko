@@ -67,7 +67,7 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../use-sync', () => ({
+jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
 jest.mock('../../monobank/disconnect', () => ({

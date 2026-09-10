@@ -72,14 +72,14 @@ jest.mock('../../monobank/monobank.client', () => ({
 jest.mock('../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../use-sync', () => ({
+jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,
     error: undefined,
     sync: (...args: unknown[]) => mockMonobankSync(...args),
   }),
 }));
-jest.mock('../use-crypto-sync', () => ({
+jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => ({
     isSyncing: false,
     error: undefined,

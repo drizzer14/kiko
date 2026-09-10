@@ -366,12 +366,12 @@ The per-invocation gate above paces requests **within** one run. It is
 NOT enough on its own: the rate limit is per token, and all three sync
 entry points drive the same connected token —
 
-- `useAutoSync` (`src/screens/use-auto-sync.ts`) on app open,
-- `useSyncAll` (`src/screens/use-sync-all.ts`) on pull-to-refresh,
-- `useSync` (`src/screens/use-sync.ts`) on the manual button —
+- `useAutoSync` (`src/sync/use-auto-sync.ts`) on app open,
+- `useSyncAll` (`src/sync/use-sync-all.ts`) on pull-to-refresh,
+- `useSync` (`src/sync/use-sync.ts`) on the manual button —
 
 `useAutoSync` and `useSyncAll` share ONE fan-out job builder
-(`syncJobsFor`, `src/screens/sync-jobs.ts`), so the app-open sync drives
+(`syncJobsFor`, `src/sync/sync-jobs.ts`), so the app-open sync drives
 EXACTLY the pull-to-refresh set — the connected Monobank account (only
 when a token is stored) PLUS every connected crypto account — under
 `Promise.allSettled`. So a crypto balance + Binance transaction import
@@ -501,7 +501,7 @@ re-drive:
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable
-  account — see `src/screens/use-sync-all.ts`), which fires no
+  account — see `src/sync/use-sync-all.ts`), which fires no
   `fastPhaseDone`, so the spinner can never hang. A pull that JOINS a run
   whose fast phase already committed clears immediately.
 - The `fastPhaseDone` signal is read only inside the pull handler, so an
