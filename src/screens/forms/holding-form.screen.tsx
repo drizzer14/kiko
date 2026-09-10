@@ -601,7 +601,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             ))}
 
             <Button
-              variant="secondaryTonal"
+              variant="primary"
               size="small"
               fullWidth={false}
               icon="plus"
