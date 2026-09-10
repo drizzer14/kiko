@@ -592,8 +592,8 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         Not gated by `!isReadOnly` for that reason. */}
       {props.convertEligible && (
         <Button
-          variant="secondary"
-          size="compact"
+          variant="secondaryTonal"
+          size="small"
           fullWidth={false}
           icon="arrow.left.arrow.right"
           onPress={props.onPressConvert}
