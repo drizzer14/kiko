@@ -33,7 +33,10 @@ const CALENDAR_GRID_HEIGHT = 6 * (PERIOD_DAY_CELL_HEIGHT + WEEK_VERTICAL_MARGIN 
 // plain object (not the library's `Theme`) keeps that extra key from tripping
 // an excess-property error at the `theme` prop site.
 export const buildCalendarTheme = (theme: AppTheme) => ({
-  calendarBackground: theme.colors.surfaceHigh,
+  // Transparent, not an opaque surface: the calendar is presented inside a
+  // glass BottomSheet, so it must let the sheet's material show through rather
+  // than paint a flat card over it (iOS HIG materials; M1 in the HIG audit).
+  calendarBackground: 'transparent',
   monthTextColor: theme.colors.textPrimary,
   dayTextColor: theme.colors.textPrimary,
   textSectionTitleColor: theme.colors.textSecondary,
@@ -49,7 +52,7 @@ export const buildCalendarTheme = (theme: AppTheme) => ({
   textDisabledColor: theme.colors.textSecondary,
   'stylesheet.calendar.main': {
     monthView: {
-      backgroundColor: theme.colors.surfaceHigh,
+      backgroundColor: 'transparent',
       height: CALENDAR_GRID_HEIGHT,
       overflow: 'hidden',
     },

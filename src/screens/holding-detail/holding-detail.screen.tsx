@@ -17,6 +17,7 @@ import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import Screen from '../../design-system/components/screen';
@@ -274,35 +275,35 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               // "Projected". The amount reads in its kind-derived tone (tax red,
               // interest/coupon green, principal movements neutral/by-sign).
               return (
-                <Box
+                <GlassSurface
                   key={row.entry.id}
-                  gap={1}
-                  style={[
-                    styles.row,
-                    { backgroundColor: theme.colors.surface },
-                    row.entry.isFuture && styles.futureRow,
-                  ]}
+                  transparent
+                  padding={3}
+                  testID="ledger-row"
+                  style={row.entry.isFuture ? styles.futureRow : undefined}
                 >
-                  <Box direction="row" style={styles.rowMain}>
-                    <Box style={styles.rowDescription}>
-                      <Text variant="body">{row.entry.label}</Text>
+                  <Box gap={1}>
+                    <Box direction="row" style={styles.rowMain}>
+                      <Box style={styles.rowDescription}>
+                        <Text variant="body">{row.entry.label}</Text>
+                      </Box>
+                      <Box style={styles.rowAmount}>
+                        <MoneyText
+                          money={Money.of(currency, row.entry.amountMinorUnits)}
+                          tone={ledgerTone(row.entry.tone, row.entry.amountMinorUnits)}
+                        />
+                      </Box>
                     </Box>
-                    <Box style={styles.rowAmount}>
-                      <MoneyText
-                        money={Money.of(currency, row.entry.amountMinorUnits)}
-                        tone={ledgerTone(row.entry.tone, row.entry.amountMinorUnits)}
-                      />
+                    <Box style={styles.rowFooter}>
+                      <Text variant="caption" tone="textSecondary">
+                        {row.entry.isFuture
+                          ? t('holdingDetail.projected')
+                          : t('holdingDetail.computed')}{' '}
+                        · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
+                      </Text>
                     </Box>
                   </Box>
-                  <Box style={styles.rowFooter}>
-                    <Text variant="caption" tone="textSecondary">
-                      {row.entry.isFuture
-                        ? t('holdingDetail.projected')
-                        : t('holdingDetail.computed')}{' '}
-                      · {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
-                    </Text>
-                  </Box>
-                </Box>
+                </GlassSurface>
               );
             }
 
@@ -326,6 +327,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                 disabled={isSyncedTransaction(row.transaction)}
                 onDelete={() => transactionsRepo.remove(row.transaction.id)}
                 onOpenChange={onOpenChange}
+                // Match the wrapped glass card's radius (GlassSurface defaults
+                // to `md`) so the swipe reveal clips to the same corners.
+                radius={theme.radii.md}
               >
                 <Pressable
                   accessibilityRole="button"
@@ -333,45 +337,47 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                     navigation.navigate('TransactionForm', { transactionId: row.transaction.id })
                   }
                 >
-                  <Box gap={1} style={[styles.row, { backgroundColor: theme.colors.surface }]}>
-                    <Box direction="row" style={styles.rowMain}>
-                      <Box direction="row" gap={2} style={styles.rowLead}>
-                        <SymbolIcon
-                          name={category.icon}
-                          size={18}
-                          tone="textSecondary"
-                          color={resolveCategoryColor(
-                            category.color,
-                            row.transaction.category?.toLowerCase() || defaultCategoryKey,
-                          )}
-                          accessibilityLabel={category.title}
-                        />
-                        <Box style={styles.rowDescription}>
-                          <Text variant="body">
-                            {transactionRowDescription({
-                              transaction: row.transaction,
-                              holdingName: holdingName ?? '',
-                              holdingNameById,
-                              t,
-                            })}
-                          </Text>
+                  <GlassSurface transparent padding={3} testID="ledger-row">
+                    <Box gap={1}>
+                      <Box direction="row" style={styles.rowMain}>
+                        <Box direction="row" gap={2} style={styles.rowLead}>
+                          <SymbolIcon
+                            name={category.icon}
+                            size={theme.iconSizes.body}
+                            tone="textSecondary"
+                            color={resolveCategoryColor(
+                              category.color,
+                              row.transaction.category?.toLowerCase() || defaultCategoryKey,
+                            )}
+                            accessibilityLabel={category.title}
+                          />
+                          <Box style={styles.rowDescription}>
+                            <Text variant="body">
+                              {transactionRowDescription({
+                                transaction: row.transaction,
+                                holdingName: holdingName ?? '',
+                                holdingNameById,
+                                t,
+                              })}
+                            </Text>
+                          </Box>
+                        </Box>
+                        <Box style={styles.rowAmount}>
+                          <MoneyText
+                            money={Money.of(currency, row.transaction.amountMinorUnits)}
+                            context="transaction"
+                          />
                         </Box>
                       </Box>
-                      <Box style={styles.rowAmount}>
-                        <MoneyText
-                          money={Money.of(currency, row.transaction.amountMinorUnits)}
-                          context="transaction"
-                        />
+                      <Box style={styles.rowFooter}>
+                        <Text variant="caption" tone="textSecondary">
+                          {showTime
+                            ? formatDateTime(row.transaction.time)
+                            : formatDate(row.transaction.time)}
+                        </Text>
                       </Box>
                     </Box>
-                    <Box style={styles.rowFooter}>
-                      <Text variant="caption" tone="textSecondary">
-                        {showTime
-                          ? formatDateTime(row.transaction.time)
-                          : formatDate(row.transaction.time)}
-                      </Text>
-                    </Box>
-                  </Box>
+                  </GlassSurface>
                 </Pressable>
               </SwipeableRow>
             );
@@ -401,10 +407,6 @@ const styles = StyleSheet.create((theme) => ({
     height: StyleSheet.hairlineWidth,
     marginVertical: theme.spacing(2),
     backgroundColor: theme.colors.border,
-  },
-  row: {
-    padding: theme.spacing(3),
-    borderRadius: theme.radii.sm,
   },
   // The primary line of a transaction row: description on the left, amount on
   // the right, split by space-between.

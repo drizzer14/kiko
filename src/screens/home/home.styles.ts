@@ -48,11 +48,11 @@ export const styles = StyleSheet.create((theme) => ({
     ...theme.typography.display,
     textAlign: 'center',
   },
-  // A single transaction row: description + amount on one line, context below.
-  row: {
-    paddingVertical: theme.spacing(3),
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
+  // A single transaction row, now a glass card (M2): the GlassSurface owns the
+  // padding and radius; this only sets the gap BELOW each card so the list
+  // reads as a stack of cards rather than hairline-separated rows.
+  rowCard: {
+    marginBottom: theme.spacing(2),
   },
   // The primary line of a row: description on the left, amount on the right.
   // Top-aligned so the icon and amount stay anchored to the top of the row and

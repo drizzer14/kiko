@@ -540,6 +540,9 @@ type ModeAndActionsProps = {
   onPressConvert: () => void;
   isEditing: boolean;
   onPressDelete: () => void;
+  // The red-ghost delete label/icon color (`theme.colors.negative`), threaded
+  // in because this is a module-level helper with no Unistyles hook of its own.
+  negativeColor: string;
   t: TFunction;
 };
 
@@ -595,9 +598,11 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
 
       {props.isEditing && !props.isReadOnly && (
         <Button
-          variant="destructive"
+          variant="ghost"
+          textColor={props.negativeColor}
           size="compact"
           fullWidth={false}
+          icon="trash"
           onPress={props.onPressDelete}
         >
           {props.t('common.delete')}
@@ -1172,6 +1177,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             onPressConvert: () => setConverting(true),
             isEditing,
             onPressDelete: confirmDelete,
+            negativeColor: theme.colors.negative,
             t,
           })}
         </Box>

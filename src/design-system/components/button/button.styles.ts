@@ -4,6 +4,11 @@ import { DISABLED_OPACITY } from '../../disabled-opacity';
 
 // The shared regular Button's rendered height.
 const BUTTON_MIN_HEIGHT = 50;
+// The compact Button's minimum height — the iOS HIG 44pt minimum touch target,
+// so a compact or icon-only ghost button (the categories controls, the delete
+// action) is still tappable. Regular is taller (50); compact never goes below
+// this floor.
+const COMPACT_MIN_HEIGHT = 44;
 
 export const styles = StyleSheet.create((theme) => ({
   button: {
@@ -40,6 +45,7 @@ export const styles = StyleSheet.create((theme) => ({
   // A tight inline action: shorter, tighter radius, and hugging its own content
   // at the leading edge rather than stretching down a column.
   compact: {
+    minHeight: COMPACT_MIN_HEIGHT,
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,

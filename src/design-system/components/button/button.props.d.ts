@@ -20,8 +20,9 @@ type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'destructiveTonal
 // row control or an icon-adorned Connect/Sync/Save action beside status text).
 type ButtonSize = 'regular' | 'compact';
 
-export type ButtonProps = {
-  children: ReactNode;
+// Everything a Button takes EXCEPT the label/accessibility pair, which the
+// two branches below constrain against each other.
+type ButtonBaseProps = {
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -38,9 +39,6 @@ export type ButtonProps = {
   // row — e.g. the header Edit button's pencil glyph. Tinted the same way as
   // `icon`, for the same desync-proofing reason.
   trailingIcon?: string;
-  // An explicit accessibility label, used where several buttons share the same
-  // visible text and need disambiguating (e.g. "Remove contribution 2").
-  accessibilityLabel?: string;
   // An optional test identifier, forwarded onto the underlying pressable so a
   // test (or an analytics selector) can target this specific button.
   testID?: string;
@@ -50,3 +48,22 @@ export type ButtonProps = {
   // `theme.colors.negative`); left unset, every variant keeps its white label.
   textColor?: string;
 };
+
+// A labelled button: the visible text IS the accessible name, so
+// `accessibilityLabel` is optional (pass it only to disambiguate buttons that
+// share the same visible text, e.g. "Remove contribution 2").
+type LabelledButtonProps = ButtonBaseProps & {
+  children: ReactNode;
+  accessibilityLabel?: string;
+};
+
+// An icon-only button: no `children`, so there is no visible text for
+// VoiceOver — `accessibilityLabel` is therefore REQUIRED. The discriminated
+// union makes `<Button icon="star" onPress={...} />` with no label a COMPILE
+// error (the categories set-default/reorder ghost buttons are this shape).
+type IconOnlyButtonProps = ButtonBaseProps & {
+  children?: undefined;
+  accessibilityLabel: string;
+};
+
+export type ButtonProps = LabelledButtonProps | IconOnlyButtonProps;

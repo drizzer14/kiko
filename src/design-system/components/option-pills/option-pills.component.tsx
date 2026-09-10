@@ -9,6 +9,11 @@ import Text from '../text';
 import type { OptionPillsProps } from './option-pills.props';
 import { styles } from './option-pills.styles';
 
+// The selected pill's label weight — semibold, so the selected state reads
+// through weight on top of the accent fill and onAccent tone. A module-level
+// constant (not an inline object) so it is one stable style reference.
+const selectedLabelStyle = { fontWeight: '600' } as const;
+
 // A wrapping grid of selectable pills for a small closed set of options (base
 // currency, lock grace period). Only the selected pill paints a raised surface;
 // the rest stay transparent so the glass card behind shows through. Generic over
@@ -36,22 +41,35 @@ const OptionPills = <T extends string | number>({
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               onPress={() => onSelect(option)}
-              // Only the selected option paints a (raised) surface; the others
-              // stay transparent so the glass card behind them shows through.
+              // The selected option paints a FILLED accent surface (the iOS
+              // selected-segment / filter-chip treatment, mirroring ChipRow), so
+              // it reads as clearly chosen even on the low-contrast sheet
+              // background; the others stay transparent so the glass card behind
+              // them shows through.
               style={[
                 styles.pill,
-                { backgroundColor: isSelected ? theme.colors.surfaceHigh : 'transparent' },
+                { backgroundColor: isSelected ? theme.colors.accent : 'transparent' },
               ]}
             >
               {icon !== undefined && (
                 <SymbolIcon
                   name={icon(option)}
-                  size={18}
-                  tone={isSelected ? 'textPrimary' : 'textSecondary'}
+                  // The pill label is body text, so its icon is the body icon-size
+                  // token (never an inline literal).
+                  size={theme.iconSizes.body}
+                  // On the accent fill the glyph takes the always-white onAccent
+                  // tone (the onAccent rule for a selected icon on an accent fill).
+                  tone={isSelected ? 'onAccent' : 'textSecondary'}
                 />
               )}
 
-              <Text variant="body" tone={isSelected ? 'textPrimary' : 'textSecondary'}>
+              <Text
+                variant="body"
+                tone={isSelected ? 'onAccent' : 'textSecondary'}
+                // The selected label is semibold, so the selected/unselected
+                // hierarchy reads through weight as well as fill and tone.
+                style={isSelected ? selectedLabelStyle : undefined}
+              >
                 {label(option)}
               </Text>
             </Pressable>

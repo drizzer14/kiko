@@ -18,6 +18,27 @@ This project skill carries domain/design knowledge. The plugin's
 is a separate, thin process-wrapper skill for the designer role — the
 two are meant to coexist, read both.
 
+## iOS Human Interface Guidelines (standing reference)
+
+Kiko is a native iOS app, so Apple's iOS Human Interface Guidelines
+(HIG) are the standing reference for every token, size, surface, and
+control. Apply HIG on every design task, on four axes:
+
+- **Touch targets** — every control is at least 44pt x 44pt. A small
+  glyph needs padding or `hitSlop` to reach it.
+- **SF Symbol sizing** — a symbol reads as a peer of the text beside
+  it (see `iconSizes` under "Token categories"); it scales with its
+  paired type step.
+- **Spacing** — from the shared `theme.spacing` scale, never a raw
+  pixel value.
+- **Contrast and materials/glass** — legible contrast on the dark
+  theme (WCAG AA for text), and the `GlassSurface` / `BottomSheet`
+  materials used per "GlassSurface" below.
+
+The ranked, file-grounded audit of the app against these axes lives at
+`docs/design/2026-09-10-ios-hig-audit.md`. Read it before a design task
+to see the open findings; do not restate its findings here.
+
 ## Dark-only theme
 
 Kiko is dark-only: there is no appearance toggle, no light theme, and
@@ -68,7 +89,7 @@ theme:
 
 ## Token categories
 
-Four token categories, defined once in a single theme module:
+Five token categories, defined once in a single theme module:
 
 - **color** — background, surface (per elevation level), primary
   text, secondary text, accent(s), positive-money, negative-money.
@@ -77,9 +98,19 @@ Four token categories, defined once in a single theme module:
 - **typography** — font sizes/weights/line-heights for the type
   scale used across screens.
 - **radii** — the corner-radius scale for surfaces and controls.
+- **iconSizes** — the semantic icon-size scale for SF Symbols
+  (`SymbolIcon`), keyed by the same names as `typography`
+  (`caption`/`body`/`heading`/`title`/`display`). Each size is its
+  paired type step's `fontSize` times one fixed ratio, rounded to the
+  nearest point, so a glyph stays balanced with the label beside it.
+  `body` is the default `SymbolIcon` size — an icon with no explicit
+  size is a body-context glyph. Read `theme.ts` for the ratio and the
+  current values; never restate the numbers here. A call site passes
+  `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
+  checkmark beside caption text), never an inline literal like `18`.
 
-Components read tokens; they never hardcode a raw color, spacing, or
-radius value inline. The same rule extends to layout: prefer a
+Components read tokens; they never hardcode a raw color, spacing,
+radius, or icon-size value inline. The same rule extends to layout: prefer a
 design-system prop over an inline style whenever one exists — `Box`
 has a `direction` prop, so write `<Box direction="row">`, not
 `<Box style={{ flexDirection: 'row' }}>`. An inline style bypasses the
@@ -168,13 +199,25 @@ new component can land between reviews of this skill:
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
-  reuses it too, never a fresh inline `opacity`. (There is no `IconButton`
-  primitive: an icon-only action button once lived at
-  `src/design-system/components/icon-button/`, but its only consumer — the
-  Statistics trend Reset — was removed with the trend filter sheet redesign,
-  so the dead primitive was deleted. Build an icon-only control from a
-  `Pressable` + `SymbolIcon` with an `accessibilityLabel`, or reinstate the
-  primitive if several consumers appear.)
+  reuses it too, never a fresh inline `opacity`. `children` is OPTIONAL:
+  an `icon` (or `trailingIcon`) with no `children` renders an ICON-ONLY
+  button (the label text node is omitted so the icon is not pushed off-center
+  by the label gap). An icon-only button MUST pass an `accessibilityLabel`,
+  since it has no visible text for VoiceOver — this is ENFORCED, not just a
+  convention: `ButtonProps` is a discriminated union (labelled vs icon-only),
+  so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
+  and a `__DEV__` runtime invariant in the component throws on the same shape
+  for any untyped call path. This is the shared icon-only
+  ghost control — the categories set-default/delete/reorder actions use it
+  (`src/screens/settings/categories.screen.tsx`); build an icon-only control
+  this way, with `variant="ghost"` + `size="compact"` + `fullWidth={false}`,
+  rather than a raw `Pressable` + `SymbolIcon`. (There is no separate
+  `IconButton` primitive; the old one at
+  `src/design-system/components/icon-button/` was deleted when its only
+  consumer went away.) The `regular` size is 50pt tall; the `compact` size
+  holds a 44pt minimum height, the iOS HIG touch-target floor, so a compact
+  or icon-only button is always tappable — never wrap a control in extra hit
+  padding to reach 44pt, use `compact`.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and three neutral/tinted variants of the
@@ -182,13 +225,20 @@ new component can land between reviews of this skill:
   `surface` backdrop and an entity-color wash — see "Entity color and
   tint" below. A `transparent` (a neutral frosted see-through PANEL —
   the settings, system, and category cards, the Statistics screen's
-  chart cards, and the Home net-worth card) paints a TRANSLUCENT
+  chart cards, the Home net-worth card, and the transaction/ledger list
+  rows on Home and holding-detail) paints a TRANSLUCENT
   `surfaceTranslucent` backdrop and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. The `transparent`-vs-`tint` split is the rule for a new
-  surface: a neutral card (settings, a chart, a summary) reads well as
-  a frosted panel and takes `transparent`; an entity card (account,
-  holding) keeps its opaque `tint`. Neither prop keeps the fully-live see-through material (no
+  surface: a neutral card (settings, a chart, a summary, a list row)
+  reads well as a frosted panel and takes `transparent`; an entity card
+  (account, holding) keeps its opaque `tint`. A list row that is also a
+  `SwipeableRow` child (the holding-detail ledger) takes `transparent`
+  too — `SwipeableRow` is built for a translucent card (it ramps the
+  delete action in off the live `translateX`, so nothing bleeds through
+  a closed glass row); pass the card's radius to `SwipeableRow`'s
+  `radius` prop so the reveal clips to the same corners (GlassSurface
+  defaults to `md`). Neither prop keeps the fully-live see-through material (no
   backdrop). Read `glass-surface.props.d.ts` for the exact current prop
   set rather than trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
@@ -245,7 +295,13 @@ new component can land between reviews of this skill:
   known option count that must render as a single equal-width row
   instead of wrapping passes an explicit `columns={n}` matching its own
   option count. Do not add a second, parallel way to force a row count;
-  extend/override `columns` instead.
+  extend/override `columns` instead. The SELECTED pill reads as a
+  FILLED accent control: an `accent` background with an `onAccent`
+  label+icon and a semibold label, mirroring `ChipRow`'s selected chip
+  — not a low-contrast raised surface, so the selection stays clear on
+  the low-contrast sheet background. Unselected pills stay transparent
+  with a `textSecondary` label. The pill content is centered and the
+  pill holds the 44pt HIG minimum touch target.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any

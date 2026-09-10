@@ -19,6 +19,47 @@ describe('darkTheme iOS dark palette', () => {
   });
 });
 
+describe('icon-size token scale', () => {
+  // Every icon size is 1.25x its paired type-scale step, rounded to the nearest
+  // point (iOS HIG: a symbol reads as a peer of, and slightly heavier than, the
+  // text beside it). `body` is the default icon size. See theme.ts.
+  const RATIO = 1.25;
+
+  it('exposes one icon size per type-scale step', () => {
+    expect(Object.keys(darkTheme.iconSizes).sort()).toEqual([
+      'body',
+      'caption',
+      'display',
+      'heading',
+      'title',
+    ]);
+  });
+
+  it('ties each icon size to its paired type token at the 1.25x ratio', () => {
+    expect(darkTheme.iconSizes.caption).toBe(
+      Math.round(darkTheme.typography.caption.fontSize * RATIO),
+    );
+    expect(darkTheme.iconSizes.body).toBe(Math.round(darkTheme.typography.body.fontSize * RATIO));
+    expect(darkTheme.iconSizes.heading).toBe(
+      Math.round(darkTheme.typography.heading.fontSize * RATIO),
+    );
+    expect(darkTheme.iconSizes.title).toBe(Math.round(darkTheme.typography.title.fontSize * RATIO));
+    expect(darkTheme.iconSizes.display).toBe(
+      Math.round(darkTheme.typography.display.fontSize * RATIO),
+    );
+  });
+
+  it('pins the intended point values so a ratio change is a conscious edit', () => {
+    expect(darkTheme.iconSizes).toEqual({
+      caption: 16,
+      body: 20,
+      heading: 25,
+      title: 35,
+      display: 55,
+    });
+  });
+});
+
 describe('theme references its palette sets', () => {
   it('references the dark entityColors/chartSeries sets', () => {
     expect(darkTheme.colors.entityColors).toBe(entityColorsDark);

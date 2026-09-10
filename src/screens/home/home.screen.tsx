@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles } from 'react-native-unistyles';
 
 import {
   buildCategoryDisplayMap,
@@ -128,6 +129,7 @@ const groupByDay = <Row extends { time: number }>(
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
+  const { theme } = useUnistyles();
 
   // The floating native glass tab bar sits over this screen's bottom edge, so
   // this SectionList — which owns the true bottom edge, since Home passes
@@ -409,45 +411,47 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         accessibilityRole="button"
         onPress={() => navigation.navigate('TransactionForm', { transactionId: item.id })}
       >
-        <Box gap={2} style={styles.row}>
-          <Box direction="row" style={styles.rowMain}>
-            <Box direction="row" gap={2} style={styles.rowLead}>
-              <SymbolIcon
-                name={category.icon}
-                size={18}
-                tone="textSecondary"
-                // The row icon and this category's filter chip must hash on the
-                // SAME resolved key (`categoryKeyForRow`, above): hashing here
-                // on the raw lowercased slug renders one category in two hues
-                // whenever that slug is absent from the categories table, since
-                // the chip has already folded it onto the default key.
-                color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
-                accessibilityLabel={category.title}
-              />
-              <Box style={styles.rowDescription}>
-                <Text variant="body">{description}</Text>
+        <GlassSurface transparent padding={3} testID="transaction-row" style={styles.rowCard}>
+          <Box gap={2}>
+            <Box direction="row" style={styles.rowMain}>
+              <Box direction="row" gap={2} style={styles.rowLead}>
+                <SymbolIcon
+                  name={category.icon}
+                  size={theme.iconSizes.body}
+                  tone="textSecondary"
+                  // The row icon and this category's filter chip must hash on the
+                  // SAME resolved key (`categoryKeyForRow`, above): hashing here
+                  // on the raw lowercased slug renders one category in two hues
+                  // whenever that slug is absent from the categories table, since
+                  // the chip has already folded it onto the default key.
+                  color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
+                  accessibilityLabel={category.title}
+                />
+                <Box style={styles.rowDescription}>
+                  <Text variant="body">{description}</Text>
+                </Box>
+              </Box>
+              <Box style={styles.rowAmount}>
+                <MoneyText
+                  money={Money.of(item.currency, item.amountMinorUnits)}
+                  context="transaction"
+                />
               </Box>
             </Box>
-            <Box style={styles.rowAmount}>
-              <MoneyText
-                money={Money.of(item.currency, item.amountMinorUnits)}
-                context="transaction"
-              />
+            <Box direction="row" gap={2} style={styles.rowFooter}>
+              <Box style={styles.rowFooterMeta}>
+                <Text variant="caption" tone="textSecondary">
+                  {`${item.accountName} · ${category.title}`}
+                </Text>
+              </Box>
+              {!isTimeExemptHoldingType(item.holdingType) && (
+                <Text variant="caption" tone="textSecondary">
+                  {formatTime(item.time)}
+                </Text>
+              )}
             </Box>
           </Box>
-          <Box direction="row" gap={2} style={styles.rowFooter}>
-            <Box style={styles.rowFooterMeta}>
-              <Text variant="caption" tone="textSecondary">
-                {`${item.accountName} · ${category.title}`}
-              </Text>
-            </Box>
-            {!isTimeExemptHoldingType(item.holdingType) && (
-              <Text variant="caption" tone="textSecondary">
-                {formatTime(item.time)}
-              </Text>
-            )}
-          </Box>
-        </Box>
+        </GlassSurface>
       </Pressable>
     );
   };

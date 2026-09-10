@@ -1,9 +1,40 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../unistyles';
+
+import { darkTheme } from '../../theme';
 
 import OptionPills from './option-pills.component';
 
+type TextNode = ReturnType<Awaited<ReturnType<typeof render>>['getByText']>;
+
+// The pill is the label text node's parent Pressable; flatten its style array
+// (`[styles.pill, { backgroundColor }]`) to read a merged value back out.
+const pillStyleOf = (label: TextNode): Record<string, unknown> =>
+  StyleSheet.flatten((label.parent?.props.style ?? {}) as never) as Record<string, unknown>;
+
 describe('OptionPills', () => {
+  it('centers the pill content and holds a 44pt touch target (iOS HIG)', async () => {
+    const { getByText } = await render(
+      <OptionPills options={[0, 30]} selected={30} onSelect={jest.fn()} />,
+    );
+    const style = pillStyleOf(getByText('30'));
+
+    expect(style.justifyContent).toBe('center');
+    expect(style.minHeight).toBe(44);
+  });
+
+  it('fills the selected pill with the accent color and leaves the rest transparent', async () => {
+    const { getByText } = await render(
+      <OptionPills options={[0, 30]} selected={30} onSelect={jest.fn()} />,
+    );
+
+    // A strong selected state (M3): an accent fill, not a near-invisible raised
+    // surface, mirroring the ChipRow selected chip.
+    expect(pillStyleOf(getByText('30')).backgroundColor).toBe(darkTheme.colors.accent);
+    expect(pillStyleOf(getByText('0')).backgroundColor).toBe('transparent');
+  });
+
   it('renders one pressable pill per option, labelled by String() by default', async () => {
     const { getAllByRole, getByText } = await render(
       <OptionPills options={[0, 30, 60]} selected={30} onSelect={jest.fn()} />,

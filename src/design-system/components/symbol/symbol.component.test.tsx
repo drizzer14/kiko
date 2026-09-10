@@ -1,5 +1,8 @@
 import { render } from '@testing-library/react-native';
 import '../../unistyles';
+
+import { darkTheme } from '../../theme';
+
 // Aliased to SymbolIcon, not Symbol: importing the default export as
 // `Symbol` shadows the global `Symbol` constructor
 // (lint/suspicious/noShadowRestrictedNames) at every call site, not just
@@ -15,6 +18,14 @@ describe('Symbol', () => {
     const { toJSON } = await render(<SymbolIcon name="heart.fill" accessibilityLabel="Favorite" />);
 
     expect(toJSON()).toBeTruthy();
+  });
+
+  it('defaults the glyph size to the body icon-size token', async () => {
+    const { getByLabelText } = await render(
+      <SymbolIcon name="heart.fill" accessibilityLabel="Favorite" />,
+    );
+
+    expect(getByLabelText('Favorite').props.size).toBe(darkTheme.iconSizes.body);
   });
 
   it('tints the glyph with an explicit color, overriding the tone token', async () => {
