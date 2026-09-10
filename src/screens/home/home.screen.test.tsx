@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 
 import { defaultDateRange } from '../../dates/default-range';
@@ -793,6 +794,31 @@ describe('HomeScreen', () => {
       (node) => node.props.children,
     );
     expect(rendered).toEqual(['Today', 'TodayTxn', 'Yesterday', 'YesterdayTxn']);
+  });
+
+  it('keeps the gap above the first day-group header equal to the section gap (no doubled top pad)', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    seed({
+      transactions: [
+        transaction({ id: 't1', time: now, description: 'TodayTxn' }),
+        transaction({ id: 't2', time: now - day, description: 'YesterdayTxn' }),
+      ],
+    });
+    const { getAllByTestId, getByTestId } = await renderHome();
+
+    // The content column already sits `contentGap` below the pinned filter/sync
+    // band via its own `gap`, so the FIRST day header must add NO top pad of its
+    // own — otherwise the gap above the list reads larger than the equal gaps
+    // between the filters row, the sync-progress bar, and the list.
+    const contentGap = StyleSheet.flatten(getByTestId('home-content').props.style).gap;
+    const headers = getAllByTestId('home-day-header');
+    const first = StyleSheet.flatten(headers[0].props.style);
+    const later = StyleSheet.flatten(headers[1].props.style);
+
+    expect(first.paddingTop).toBe(0);
+    // A later day header keeps its day-separator top pad, larger than the section gap.
+    expect(later.paddingTop).toBeGreaterThan(contentGap);
   });
 
   it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
