@@ -163,14 +163,18 @@ describe('AddCategoryRow', () => {
     expect(StyleSheet.flatten(cancel.props.style).width).toBeUndefined();
   });
 
-  it('keeps the primary Save action at the tall regular size', async () => {
+  it('keeps the primary Save at the regular size but hugs content beside Cancel', async () => {
     const { getByLabelText, getByRole } = await render(<AddCategoryRow />);
 
     await fireEvent.press(getByLabelText('Add category'));
 
+    // Save stays the tall regular primary, but both buttons now hug their
+    // content in one trailing row (no flex:1 half each), so neither stretches
+    // full width — this is what removes the old left-pinned gap beside Cancel.
     const save = getByRole('button', { name: 'Save' });
 
     expect(StyleSheet.flatten(save.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(save.props.style).width).toBeUndefined();
   });
 
   it('persists color:null when the user saves without tapping a swatch', async () => {

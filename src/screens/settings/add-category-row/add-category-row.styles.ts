@@ -8,8 +8,13 @@ export const styles = StyleSheet.create(() => ({
   addRow: {
     alignItems: 'center',
   },
-  // Each of the Cancel / Save actions takes an equal half of the action row.
-  action: {
-    flex: 1,
+  // The Cancel / Save action row: both buttons hug their own content at the
+  // trailing edge (matching the date-range and trend-filter sheet rows), with
+  // the compact Cancel and the regular Save vertically centered against each
+  // other. This replaces the old equal-halves layout, which left the compact
+  // Cancel pinned to the left of its half with a gap to its right.
+  actions: {
+    justifyContent: 'flex-end',
+    alignItems: 'center',
   },
 }));
