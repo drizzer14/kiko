@@ -632,6 +632,29 @@ describe('HoldingDetailScreen', () => {
 
     expect(navigation.navigate).toHaveBeenCalledWith('ContributionForm', { holdingId: 'h-1' });
   });
+
+  it('labels the bond footer action as a generic transaction, not a contribution', async () => {
+    seed(bondHolding);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    // A bond takes no contributions (only a term_deposit does), so its footer
+    // reads the generic add-transaction label, not "Add contribution".
+    expect(getByText('Add transaction')).toBeTruthy();
+    expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('routes the bond footer action to the shared transaction form', async () => {
+    seed(bondHolding);
+
+    const { getByText } = await renderScreen();
+
+    // A bond opens the shared transaction form, not the deposit contribution
+    // form.
+    await fireEvent.press(getByText('Add transaction'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { holdingId: 'h-1' });
+  });
 });
 
 describe('HoldingDetailScreen — localization', () => {

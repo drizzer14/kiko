@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
@@ -39,6 +40,22 @@ const holding = (overrides: Partial<HoldingRow> = {}): HoldingRow =>
 
 const NOW = Date.UTC(2024, 0, 1);
 
+// Render the card with sensible defaults — a UAH holding on a UAH base with no
+// rates — so each test overrides only what it exercises. The base-currency
+// caption below the value appears only for a holding in a DIFFERENT currency,
+// so these defaults never render it.
+const renderCard = (overrides: Partial<ComponentProps<typeof HoldingCard>> = {}) =>
+  render(
+    <HoldingCard
+      holding={holding()}
+      now={NOW}
+      baseCurrency="UAH"
+      rateTable={{}}
+      onOpen={jest.fn()}
+      {...overrides}
+    />,
+  );
+
 describe('HoldingCard', () => {
   beforeEach(() => {
     // Reset to the inert noop-unsubscribe default before each test; the settle
@@ -48,30 +65,22 @@ describe('HoldingCard', () => {
   });
 
   it('renders the holding name and its computed value', async () => {
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-    );
+    const { getByText } = await renderCard();
     expect(getByText('Black card')).toBeTruthy();
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
   it('opens the holding detail on a plain tap', async () => {
     const onOpen = jest.fn();
-    const { getByText } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={onOpen} />,
-    );
+    const { getByText } = await renderCard({ onOpen });
     await fireEvent.press(getByText('Black card'));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it('tints the icon with the holding stored color', async () => {
-    const { getByLabelText } = await render(
-      <HoldingCard
-        holding={holding({ color: darkTheme.colors.entityColors.violet })}
-        now={NOW}
-        onOpen={jest.fn()}
-      />,
-    );
+    const { getByLabelText } = await renderCard({
+      holding: holding({ color: darkTheme.colors.entityColors.violet }),
+    });
 
     expect(getByLabelText('Black card icon').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
@@ -79,9 +88,7 @@ describe('HoldingCard', () => {
   });
 
   it('falls back to the type default color when the holding has no stored color', async () => {
-    const { getByLabelText } = await render(
-      <HoldingCard holding={holding({ color: null })} now={NOW} onOpen={jest.fn()} />,
-    );
+    const { getByLabelText } = await renderCard({ holding: holding({ color: null }) });
 
     // A `card` holding with no color reads the card type default (white).
     expect(getByLabelText('Black card icon').props.tintColor).toBe(
@@ -90,22 +97,16 @@ describe('HoldingCard', () => {
   });
 
   it('washes the card with a flat darkened background of its stored color on first render', async () => {
-    const { getByTestId } = await render(
-      <HoldingCard
-        holding={holding({ color: darkTheme.colors.entityColors.violet })}
-        now={NOW}
-        onOpen={jest.fn()}
-      />,
-    );
+    const { getByTestId } = await renderCard({
+      holding: holding({ color: darkTheme.colors.entityColors.violet }),
+    });
 
     const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
     expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.violet));
   });
 
   it('washes the card with a flat darkened background of the type default color when it has no stored color', async () => {
-    const { getByTestId } = await render(
-      <HoldingCard holding={holding({ color: null })} now={NOW} onOpen={jest.fn()} />,
-    );
+    const { getByTestId } = await renderCard({ holding: holding({ color: null }) });
 
     // A `card` holding with no color reads the card type default (white).
     const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
@@ -113,9 +114,7 @@ describe('HoldingCard', () => {
   });
 
   it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {
-    const { getByTestId } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-    );
+    const { getByTestId } = await renderCard();
 
     const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
     expect(cardStyle.borderWidth).toBe(UnistylesStyleSheet.hairlineWidth);
@@ -123,13 +122,51 @@ describe('HoldingCard', () => {
   });
 
   it('renders as a wide row card (no square aspectRatio), mirroring the accounts card', async () => {
-    const { getByTestId } = await render(
-      <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-    );
+    const { getByTestId } = await renderCard();
     // The holding is now a full-width row (icon + name left, value right) in a
     // 1-column list, not a square tile — so the card carries no aspectRatio.
     const cardStyle = StyleSheet.flatten(getByTestId('holding-card').props.style);
     expect(cardStyle.aspectRatio).toBeUndefined();
+  });
+
+  // The value's own currency is primary; a holding in a currency other than the
+  // base (main) currency shows a smaller converted base-currency value below it,
+  // so the user reads both the native figure and its main-currency worth.
+  describe('the base-currency caption', () => {
+    it('shows the converted main-currency value below a foreign-currency value', async () => {
+      const { getByText, getByTestId } = await renderCard({
+        holding: holding({ currency: 'USD', balanceMinorUnits: 10000 }),
+        baseCurrency: 'UAH',
+        rateTable: { 'USD:UAH': 40 },
+      });
+
+      // The primary value stays in the holding's own currency.
+      expect(getByText('$100.00')).toBeTruthy();
+      // The converted caption shows the base-currency worth ($100 × 40), inside
+      // its own container.
+      expect(getByTestId('holding-card-converted')).toBeTruthy();
+      expect(getByText(/4,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it('omits the caption when the holding is already in the base currency', async () => {
+      const { queryByTestId } = await renderCard({
+        holding: holding({ currency: 'UAH' }),
+        baseCurrency: 'UAH',
+        rateTable: { 'USD:UAH': 40 },
+      });
+
+      expect(queryByTestId('holding-card-converted')).toBeNull();
+    });
+
+    it('omits the caption when no rate to the base currency is cached', async () => {
+      const { queryByTestId } = await renderCard({
+        holding: holding({ currency: 'USD', balanceMinorUnits: 10000 }),
+        baseCurrency: 'UAH',
+        rateTable: {},
+      });
+
+      expect(queryByTestId('holding-card-converted')).toBeNull();
+    });
   });
 
   // The vendor LiquidGlassView applies its native UIGlassEffect exactly once,
@@ -157,14 +194,12 @@ describe('HoldingCard', () => {
     });
 
     it('subscribes to the native-stack transitionEnd event on mount', async () => {
-      await render(<HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />);
+      await renderCard();
       expect(mockAddListener).toHaveBeenCalledWith('transitionEnd', expect.any(Function));
     });
 
     it('remounts the GlassSurface (key flips) once the push transition settles', async () => {
-      const { getByTestId } = await render(
-        <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-      );
+      const { getByTestId } = await renderCard();
 
       // Before settling, the glass base is mounted against the (mid-slide)
       // initial key.
@@ -184,9 +219,7 @@ describe('HoldingCard', () => {
     });
 
     it('ignores a closing transitionEnd (the pop-away), leaving the glass untouched', async () => {
-      const { getByTestId } = await render(
-        <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-      );
+      const { getByTestId } = await renderCard();
       const initialBase = getByTestId('holding-card-base');
 
       await act(async () => {
@@ -199,9 +232,7 @@ describe('HoldingCard', () => {
     });
 
     it('unsubscribes from the transitionEnd listener on unmount', async () => {
-      const { unmount } = await render(
-        <HoldingCard holding={holding()} now={NOW} onOpen={jest.fn()} />,
-      );
+      const { unmount } = await renderCard();
       // Unmount inside act so React flushes the effect-cleanup (the unsubscribe)
       // before the assertion reads the call count.
       await act(async () => {

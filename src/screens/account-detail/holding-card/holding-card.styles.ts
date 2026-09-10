@@ -16,4 +16,10 @@ export const styles = StyleSheet.create(() => ({
   rowLead: {
     alignItems: 'center',
   },
+  // The trailing value cluster: the holding's own-currency value with, below
+  // it, the smaller base-currency caption. Right-aligned so both lines hug the
+  // card's right edge, matching the single-value layout they replace.
+  valueColumn: {
+    alignItems: 'flex-end',
+  },
 }));
