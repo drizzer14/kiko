@@ -370,6 +370,16 @@ entry points drive the same connected token —
 - `useSyncAll` (`src/screens/use-sync-all.ts`) on pull-to-refresh,
 - `useSync` (`src/screens/use-sync.ts`) on the manual button —
 
+`useAutoSync` and `useSyncAll` share ONE fan-out job builder
+(`syncJobsFor`, `src/screens/sync-jobs.ts`), so the app-open sync drives
+EXACTLY the pull-to-refresh set — the connected Monobank account (only
+when a token is stored) PLUS every connected crypto account — under
+`Promise.allSettled`. So a crypto balance + Binance transaction import
+now happens on app open, not only on pull. `useAutoSync` is throttled by
+`throttleElapsed(settings.lastSyncAt)` and never touches the pull spinner
+signal (it reads no `fastPhaseDone`), so an app-open sync drives only the
+determinate progress bar.
+
 so two of them firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
 sync). `runSync` therefore holds a **module-level single-flight lock**
