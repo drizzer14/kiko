@@ -1,3 +1,5 @@
+import { darkTheme } from '@kiko/design-system/theme';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 // Deep import, deliberately bypassing the app-wide `jest.mock('react-native-calendars', ...)`
@@ -11,9 +13,6 @@ import BasicDay from 'react-native-calendars/src/calendar/day/basic';
 import type { MarkingProps } from 'react-native-calendars/src/calendar/day/marking';
 import PeriodDay from 'react-native-calendars/src/calendar/day/period';
 import type { DayState } from 'react-native-calendars/src/types';
-
-import { darkTheme } from '../../../design-system/theme';
-import type { RenderedElement } from '../../../test-support/rendered-element';
 
 import { buildCalendarTheme } from './kiko-calendar.theme';
 

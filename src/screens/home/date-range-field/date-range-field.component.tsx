@@ -1,3 +1,4 @@
+import KikoCalendar from '@kiko/calendar';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +12,6 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import KikoCalendar from '../../calendar';
 
 import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';

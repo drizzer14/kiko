@@ -1,10 +1,9 @@
+import Box from '@kiko/design-system/components/box';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import Text from '@kiko/design-system/components/text';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
-
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 
 import type { CalendarHeaderProps } from './calendar-header.props';
 import { styles } from './calendar-header.styles';

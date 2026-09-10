@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import KikoCalendar from './kiko-calendar.component';
 
 // The react-native-calendars mock (jest/setup.js) renders Calendar as a plain

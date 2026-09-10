@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n';
 
 import CalendarHeader from './calendar-header.component';
 
