@@ -86,3 +86,7 @@ yarn-error.log
 # Claude Code worktrees and SDD scratch
 .claude/worktrees/
 .superpowers/
+
+# Live coordinator status board — a local, constantly-churning view watched in a split terminal.
+# Intentionally untracked so its frequent updates never dirty the tree or block an integration.
+BOARD.md
