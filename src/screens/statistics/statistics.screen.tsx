@@ -748,7 +748,7 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-line" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-line" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
@@ -763,7 +763,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-bar" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-bar" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.byType')}
@@ -773,7 +773,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-pie" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-pie" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.accountContribution')}
@@ -783,7 +783,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-category" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-category" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.expensesByCategory')}
@@ -811,7 +811,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-trend" padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-trend" transparent padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.spendingTrendByCategory')}
