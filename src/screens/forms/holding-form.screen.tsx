@@ -11,6 +11,7 @@ import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import Divider from '../../design-system/components/divider';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
 import Text from '../../design-system/components/text';
@@ -516,6 +517,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
+        <Divider testID="form-divider" />
+
         {/* A holding's type shapes its metadata and value math, and its currency
             fixes the unit of every stored balance/transaction; no repo path
             re-shapes either, so both are read-only in edit mode — shown, but not
@@ -556,6 +559,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type === 'term_deposit' && (
           <Box gap={4}>
+            <Divider testID="form-divider" />
+
             <Text variant="heading">{t('forms.holding.contributions')}</Text>
 
             {contributions.map((contribution, index) => (
@@ -605,6 +610,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               {t('forms.holding.addContribution')}
             </Button>
 
+            <Divider testID="form-divider" />
+
             <Text variant="heading">{t('forms.holding.terms')}</Text>
 
             <TextField
@@ -643,6 +650,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         {type === 'bond' && (
           <Box gap={4}>
+            <Divider testID="form-divider" />
+
             <Text variant="heading">{t('forms.holding.details')}</Text>
 
             <TextField

@@ -11,6 +11,7 @@ import { parseAmount } from '../../currency/parse';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import Divider from '../../design-system/components/divider';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import TextField from '../../design-system/components/text-field';
@@ -250,6 +251,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
+        <Divider testID="form-divider" />
+
         {/* Kind fixes an account's structure (a cash account owns an initial
             cash holding; a bank/crypto does not), and no repo path re-shapes it,
             so it is read-only in edit mode — shown, but not switchable. */}
@@ -294,6 +297,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             straight to the Keychain, never into a stored row or a log. */}
         {!isEdit && kind === 'bank' && (
           <Box gap={4}>
+            <Divider testID="form-divider" />
+
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
             <TextField
@@ -310,6 +315,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
         {!isEdit && kind === 'crypto' && (
           <Box gap={4}>
+            <Divider testID="form-divider" />
+
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
             <TextField
