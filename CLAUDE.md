@@ -37,7 +37,10 @@ Composite scripts:
   default the mutation step mutates ONLY the source files changed
   against the merge-base with `${KIKO_MUTATION_BASE:-main}`
   (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. See the `kiko-linter` skill.
+  whole-project run. The mutation step tees its output to a stable,
+  tailable progress log and prints a Jenkins-style ETA from run history
+  for a human to watch directly; agents still must not poll it — the
+  exit code remains the only signal. See the `kiko-linter` skill.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
@@ -248,6 +251,59 @@ verified usage, not dead weight:
   `npm run check:rules` (`scripts/checks/semgrep-rules.sh`) is the check that
   DOES scan the directory, and it fails if any rule stops matching its positive
   fixture or starts matching its negative one.
+- **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
+  negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
+  two NON-LOGIC categories are excluded from the set of files Stryker
+  mutates, in both run modes (the whole-project fallback array and the
+  diff-scoped changed-file filter). (1) **i18n locale catalogs
+  (`src/i18n/locales/**`)** — pure nested string-data objects with no
+  logic a surviving mutant could meaningfully expose (hundreds of
+  low-value string mutants); the
+  locale test assertions (e.g. `en.button-casing.test.ts`) still run
+  under Jest, so string/casing coverage is unaffected — only the mutation
+  report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
+  erased at compile time, so Stryker generates no runtime mutants from
+  them; excluding them only trims the mutate-list. Nothing else is
+  excluded: `src/design-system/palette.ts`, `theme.ts`, `entity-tint.ts`,
+  every `*.styles.ts`, `src/i18n/index.ts`, the mixed const+function
+  modules, and the barrels all stay IN scope. `drizzle/migrations/**` is
+  already outside the `.ts/.tsx` mutate scope and needs no pattern. See
+  the `mutate` array in `stryker.conf.json` and the changed-file `grep
+  -Ev` filter in `scripts/checks/mutation.sh` for the exact patterns
+  (not restated here so they cannot drift).
+- **Stryker sandbox exclusions (`stryker.conf.json` `ignorePatterns`)**:
+  Stryker copies every non-ignored project file into a temp sandbox before
+  each run (verified in `@stryker-mutator/core` 8.7.1
+  `fs/project-reader.js` + `sandbox/sandbox.js`; its own always-ignored set
+  is `node_modules`, `.git`, `*.tsbuildinfo`, `/stryker.log`, `.next`,
+  `.nuxt`, `.svelte-kit`, plus the temp dir and the incremental/html/json
+  report files — `node_modules` is symlinked, not copied). `ignorePatterns`
+  keeps large NON-SOURCE, NON-TEST-READ dirs out of that copy: `ios` and
+  `android` (native projects; pre-existing), plus `vendor` (the vendored
+  CocoaPods Ruby bundle under `vendor/bundle/ruby/...`), `coverage`
+  (generated jest coverage), `docs` (Markdown, never imported), and
+  `.superpowers` (gitignored SDD scratch). Each was verified to have ZERO
+  filesystem reads from any test or source module (grep of every
+  `*.test.ts(x)` / `__tests__/**` / jest setup for `readFileSync`,
+  `existsSync`, `__dirname`, `require` of a non-module path). **KEEP-LIST**
+  — external paths tests DO read, which must stay in the sandbox and are
+  therefore NOT ignored: `drizzle/migrations/**` (read by
+  `src/db/schema.*.test.ts`, `src/repositories/categories.repo.test.ts`,
+  and `src/db/__fixtures__/seed-category-colors.ts` via `__dirname`
+  +`node:fs`) and `scripts/checks/*.sh` (read by the `__tests__/mutation-*`
+  wrapper tests). `reports/` is deliberately kept: Stryker's incremental
+  report (`incremental: true`) is read from the PROJECT ROOT and is already
+  in the always-ignored set, so keeping the dir is harmless and safer than
+  excluding it. `ios` stays ignored even though `__tests__/info-plist.test.ts`
+  reads `ios/Kiko/Info.plist`: the Stryker jest-runner defaults
+  `enableFindRelatedTests: true`, so only tests transitively importing a
+  mutated source file run, and that test imports no app source — it never
+  runs under Stryker, so the missing `ios/` in the sandbox never breaks it.
+  Final confirmation of any missing-file mistake comes from the FIRST real
+  mutation run after integration: Stryker runs the covering test suite once
+  before mutating, so a wrongly-excluded read fails FAST with a clear
+  ENOENT rather than silently corrupting the score — that fail-fast is the
+  accepted safety net.
 - **`.npmrc` `min-release-age-exclude`**: `Kiko`, the first-party
   package name, is exempt from the dependency min-age rule below.
   `react-native` is exempt for the same category of reason: it is an

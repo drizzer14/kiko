@@ -152,6 +152,108 @@ harness_lock_holder() {
   fi
 }
 
+# --- Mutation progress log + Jenkins-style ETA history -----------------------
+# check:deep's mutation step (scripts/checks/mutation.sh) is manual, not
+# hook-wired, and takes minutes. These helpers give a HUMAN a live, tailable
+# progress log and a Jenkins-style ETA computed from past runs, so nobody has to
+# poll the run — its exit code is still the only signal an agent waits on. All of
+# this is best-effort and MUST NOT change the gate's pass/fail: every write is
+# guarded, and a missing/corrupt history just means "no estimate". State lives in
+# a `mutation/` subdir of the per-worktree out-of-repo state dir (harness_state_dir),
+# keyed like the content-dedup fingerprints, so it never trips a filesystem scanner.
+
+# harness_mutation_progress_log <root> : the stable, tailable log file Stryker's
+# combined output is tee'd to. mkdir -p its dir so a `tail -f` works immediately.
+harness_mutation_progress_log() {
+  local state
+  state="$(harness_state_dir "$1")"
+  mkdir -p "$state/mutation" 2>/dev/null || true
+  printf '%s/mutation/progress.log' "$state"
+}
+
+# harness_mutation_history_file <root> : the append-only TSV of COMPLETED runs,
+# one record per line: iso-timestamp<TAB>durationSeconds<TAB>mutantCount<TAB>score.
+# mutantCount/score are best-effort and may be empty.
+harness_mutation_history_file() {
+  local state
+  state="$(harness_state_dir "$1")"
+  mkdir -p "$state/mutation" 2>/dev/null || true
+  printf '%s/mutation/history.tsv' "$state"
+}
+
+# harness_mutation_history_append <root> <iso> <duration> <count> <score> :
+# append one completed-run record. Guarded — a write failure never aborts.
+harness_mutation_history_append() {
+  local file
+  file="$(harness_mutation_history_file "$1")"
+  printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" >> "$file" 2>/dev/null || true
+}
+
+# harness_fmt_duration <seconds> : pure formatter. "45s", "1m", "1m 30s". A
+# missing or non-numeric argument is treated as zero, never a crash.
+harness_fmt_duration() {
+  local s="${1:-0}" m
+  case "$s" in '' | *[!0-9]*) s=0 ;; esac
+  if [ "$s" -lt 60 ]; then
+    printf '%ds' "$s"
+  else
+    m=$((s / 60))
+    s=$((s % 60))
+    if [ "$s" -eq 0 ]; then printf '%dm' "$m"; else printf '%dm %ds' "$m" "$s"; fi
+  fi
+}
+
+# harness_mutation_history_stats <historyfile> : pure. Print one TSV line
+# "avgSeconds<TAB>lastDuration<TAB>lastCount<TAB>lastDate" computed from the valid
+# records (a record is valid only when its duration field is a positive integer),
+# or NOTHING when there are no valid records (missing/empty/corrupt file). The
+# average is over the last up-to-3 runs (Jenkins-style); the last run's own
+# fields feed the parenthetical detail. Portable awk (bash 3.2, no jq).
+harness_mutation_history_stats() {
+  [ -f "$1" ] || return 0
+  awk -F'\t' '
+    # A record is valid only when its duration is a strictly-positive integer.
+    # A 0s duration (a mid-run backward clock jump) is filtered so it can never
+    # drag the rolling average toward zero — the wrapper also refuses to append
+    # one, this is defense-in-depth for a pre-existing/hand-edited history file.
+    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 {
+      v++; dur[v]=$2; cnt[v]=$3;
+      d=$1; sub(/T.*/, "", d); dt[v]=d;
+    }
+    END {
+      if (v == 0) exit 0;
+      start = v - 2; if (start < 1) start = 1;
+      sum = 0; k = 0;
+      for (i = start; i <= v; i++) { sum += dur[i]; k++ }
+      avg = int(sum / k + 0.5);
+      printf "%d\t%d\t%s\t%s\n", avg, dur[v], cnt[v], dt[v];
+    }
+  ' "$1" 2>/dev/null || true
+}
+
+# harness_mutation_estimate_line <historyfile> : print the human ETA line for a
+# run that is ABOUT to start. With history: an "Estimated ~<avg> (last run: ...)"
+# line; without any valid history: the plain no-estimate line. Never crashes.
+harness_mutation_estimate_line() {
+  local stats avg lastdur lastcnt lastdate
+  stats="$(harness_mutation_history_stats "$1")"
+  if [ -z "$stats" ]; then
+    printf 'No mutation history yet — no estimate available.\n'
+    return 0
+  fi
+  avg="$(printf '%s' "$stats" | cut -f1)"
+  lastdur="$(printf '%s' "$stats" | cut -f2)"
+  lastcnt="$(printf '%s' "$stats" | cut -f3)"
+  lastdate="$(printf '%s' "$stats" | cut -f4)"
+  if [ -n "$lastcnt" ]; then
+    printf 'Estimated ~%s (last run: %s over %s mutants on %s)\n' \
+      "$(harness_fmt_duration "$avg")" "$(harness_fmt_duration "$lastdur")" "$lastcnt" "$lastdate"
+  else
+    printf 'Estimated ~%s (last run: %s on %s)\n' \
+      "$(harness_fmt_duration "$avg")" "$(harness_fmt_duration "$lastdur")" "$lastdate"
+  fi
+}
+
 # harness_code_fingerprint <root> : a hash of only the inputs that change a
 # code check's result — the .ts/.tsx/.js source state relative to HEAD plus
 # the manifest and config files. A change that touches none of these (an

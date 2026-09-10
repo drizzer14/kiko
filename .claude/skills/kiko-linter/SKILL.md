@@ -52,6 +52,28 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   cheap; the diff logic is tested hermetically (a throwaway git repo, the
   real script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 
+  `mutation.sh` also gives a watching HUMAN a live progress display and a
+  Jenkins-style ETA, so nobody polls the run — its exit code stays the only
+  signal an agent waits on (the ops agent's no-poll rule is unchanged). It tees
+  Stryker's combined output to a stable, tailable progress log and prints the
+  exact `tail -f <path>` command to watch it; it prints an ETA from the history
+  of past completed runs BEFORE Stryker starts (or a plain "no history" line on
+  a first run), and best-effort prints the run's mutant count. Each completed
+  run (a pass OR a break-threshold failure — Stryker exit 0 or 1, not a crash)
+  is appended to an out-of-repo history TSV that feeds the next run's ETA. All
+  of this lives in the `harness_mutation_*` helpers in
+  `scripts/checks/_lib.sh` (progress-log path, history file/append, the pure
+  `harness_fmt_duration` / `harness_mutation_history_stats` /
+  `harness_mutation_estimate_line`) — read those for the exact paths, TSV
+  fields, and formats rather than duplicating them here, since they drift. The
+  contract that matters: it is all GUARDED and MUST NOT change the gate's
+  pass/fail — a missing/corrupt history just means "no estimate", and the
+  progress/ETA lines print only after the dedup/no-change early exits, i.e. only
+  when Stryker will actually run. The pure ETA/history helpers are unit-tested
+  in `__tests__/mutation-eta.test.ts`; the watch-command + progress-log +
+  history-record behavior is tested against the stub binary in
+  `__tests__/mutation-stream.test.ts`.
+
   `mutation.sh` also holds a GLOBAL (machine-wide) single-flight lock, so
   only ONE Stryker runs at a time across ALL worktrees — many parallel
   worktree sessions each launching Stryker overloads the machine. The
