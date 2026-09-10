@@ -18,7 +18,7 @@ export type SyncableAccount = Pick<AccountRow, 'id' | 'name' | 'institution'>;
  * (wallet address / Keychain credentials) via `resyncRequest`. A non-syncable
  * (manual) account contributes no job.
  */
-type SyncJob = { name: string; run: () => Promise<unknown> };
+export type SyncJob = { name: string; run: () => Promise<unknown> };
 
 /**
  * Build the sync jobs for one account. Shared by the pull-to-refresh fan-out and
