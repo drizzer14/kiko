@@ -60,11 +60,17 @@ export const isMccExcludedTransfer = (
  *     third-party payee named "ФОП <name>" (e.g. a landlord) is a real
  *     merchant/counterparty, not an internal transfer, and must stay as
  *     spending.
+ *   - 'облігац'       → "Купівля облігацій" (a bond purchase). Buying a bond
+ *     moves money from cash into the user's OWN bond holding — an asset
+ *     acquisition, not consumption — the same class as a deposit top-up above.
+ *     The stem 'облігац' catches every case/inflection ("облігацій",
+ *     "облігації") and is distinctive enough not to hit an ordinary merchant.
  */
 const INTERNAL_TRANSFER_DESCRIPTION_PATTERNS: readonly string[] = [
   'депозит',
   'чорну картку',
   'рахунок фоп',
+  'облігац',
 ];
 
 /**
