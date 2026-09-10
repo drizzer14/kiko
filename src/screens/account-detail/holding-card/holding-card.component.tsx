@@ -3,6 +3,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type FC, useEffect, useState } from 'react';
 import { Pressable } from 'react-native';
 
+import type { Currency } from '../../../currency/currency';
+import { formatMoney } from '../../../currency/format';
 import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import GlassSurface from '../../../design-system/components/glass-surface';
@@ -13,7 +15,10 @@ import { entityCardBackground, resolveEntityColor } from '../../../design-system
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { holdingValue } from '../../../holdings/holding-value';
+import { activeLocale } from '../../../i18n/active-locale';
 import type { AccountsStackParamList } from '../../../navigation/types';
+import { convert, type RateTable } from '../../../rates/conversion';
+import { canConvert } from '../../../rates/net-worth-view';
 
 import { styles } from './holding-card.styles';
 
@@ -25,13 +30,26 @@ import { styles } from './holding-card.styles';
 // intentionally carries no long-press handler of its own. The value is the
 // holding's COMPUTED worth as of `now` (deposits/bonds accrue over time and carry
 // a stored balance of 0), matching the account headline and the holding-detail
-// page.
+// page. A holding in a currency OTHER than the base (main) currency shows a
+// smaller converted base-currency value beneath its own-currency value, so the
+// user reads both figures; the account card already shows the base currency.
 const HoldingCard: FC<{
   holding: HoldingRow;
   now: number;
+  baseCurrency: Currency;
+  rateTable: RateTable;
   onOpen: () => void;
-}> = ({ holding, now, onOpen }) => {
+}> = ({ holding, now, baseCurrency, rateTable, onOpen }) => {
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
+  const value = holdingValue(holding, now);
+  // The smaller base-currency figure below the value, shown ONLY for a holding
+  // in a different currency that also has a cached rate to the base. `convert`
+  // throws on a missing rate pair, so `canConvert` guards it — a currency with
+  // no rate yet (e.g. BTC before the first sync) simply shows no second line.
+  const convertedToBase =
+    holding.currency !== baseCurrency && canConvert(holding.currency, baseCurrency, rateTable)
+      ? convert(value, baseCurrency, rateTable)
+      : null;
 
   // WHY: HoldingCard mounts on the AccountDetail *pushed* route, so its glass
   // first lays out mid-slide at PARTIAL width. The vendor LiquidGlassView
@@ -82,7 +100,17 @@ const HoldingCard: FC<{
           <Text variant="body">{holding.name}</Text>
         </Box>
 
-        <MoneyText money={holdingValue(holding, now)} context="balance" />
+        <Box style={styles.valueColumn}>
+          <MoneyText money={value} context="balance" />
+
+          {convertedToBase && (
+            <Box testID="holding-card-converted">
+              <Text variant="caption" tone="textSecondary">
+                {formatMoney(convertedToBase, activeLocale())}
+              </Text>
+            </Box>
+          )}
+        </Box>
       </Pressable>
     </GlassSurface>
   );

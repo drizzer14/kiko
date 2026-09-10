@@ -358,6 +358,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     <HoldingCard
                       holding={item}
                       now={now}
+                      baseCurrency={baseCurrency}
+                      rateTable={rateTable}
                       onOpen={() =>
                         navigation.navigate('HoldingDetail', {
                           holdingId: item.id,

@@ -168,11 +168,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
   ].sort((first, second) => second.time - first.time);
   const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
+  // Only a term_deposit takes "contributions" (a top-up recorded on its
+  // contributions list). A bond carries no contributions data, so it is NOT a
+  // contribution here — it takes a plain transaction like every other holding.
+  // The footer action reads accordingly.
   const isDeposit = holding?.type === 'term_deposit';
-  // Deposits and bonds take "contributions" (a deposit top-up or a bond
-  // purchase); every other holding takes a plain transaction. The footer action
-  // reads accordingly.
-  const isContribution = holding?.type === 'term_deposit' || holding?.type === 'bond';
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -218,10 +218,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     <Screen
       scroll
       footer={
-        // A large, full-width primary action. A deposit opens the dedicated
-        // Contribution form to record a top-up; a bond (also a "contribution")
-        // and every other holding open the shared Transaction form to record
-        // the movement.
+        // A large, full-width primary action. A term_deposit opens the
+        // dedicated Contribution form to record a top-up and reads "Add
+        // contribution"; a bond and every other holding open the shared
+        // Transaction form and read the generic "Add transaction".
         <Button
           onPress={() =>
             isDeposit
@@ -229,7 +229,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
               : navigation.navigate('TransactionForm', { holdingId })
           }
         >
-          {isContribution ? t('forms.holding.addContribution') : t('holdingDetail.addTransaction')}
+          {isDeposit ? t('forms.holding.addContribution') : t('holdingDetail.addTransaction')}
         </Button>
       }
     >

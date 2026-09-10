@@ -58,6 +58,10 @@ describe('isDescriptionExcludedTransfer', () => {
     );
   });
 
+  it('excludes a bond purchase ("Купівля облігацій") — an asset move, not spending', () => {
+    expect(isDescriptionExcludedTransfer('Купівля облігацій')).toBe(true);
+  });
+
   it('keeps a normal merchant description as spending', () => {
     expect(isDescriptionExcludedTransfer('Сільпо')).toBe(false);
     expect(isDescriptionExcludedTransfer('ATB')).toBe(false);
@@ -71,6 +75,7 @@ describe('isDescriptionExcludedTransfer', () => {
     expect(isDescriptionExcludedTransfer('ПОПОВНЕННЯ ДЕПОЗИТУ')).toBe(true);
     expect(isDescriptionExcludedTransfer('на чорну картку')).toBe(true);
     expect(isDescriptionExcludedTransfer('рахунок фоп')).toBe(true);
+    expect(isDescriptionExcludedTransfer('КУПІВЛЯ ОБЛІГАЦІЙ')).toBe(true);
   });
 
   it('never excludes a null/empty description', () => {
