@@ -94,7 +94,10 @@ describe('syncBinanceTransactions', () => {
         time: NOW - DAY,
         source: 'binance',
         externalId: 'deposit:1',
-        description: '',
+        // A stable, non-localized asset ticker so the row's normalized name is
+        // non-blank and the category-apply sheet appears (parity with a Monobank
+        // merchant row). See the item-12 fix.
+        description: 'BTC',
       },
       {
         holdingId: 'h-spot',
@@ -102,7 +105,7 @@ describe('syncBinanceTransactions', () => {
         time: Date.UTC(2024, 0, 3, 0, 0, 0),
         source: 'binance',
         externalId: 'withdraw:9',
-        description: '',
+        description: 'BTC',
       },
     ]);
   });

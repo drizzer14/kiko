@@ -100,6 +100,14 @@ export interface SyncDeps {
   updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
   listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
   /**
+   * Close a set of holdings (stamp `closedAt`) in ONE transaction. Called ONLY on
+   * a COMPLETE, clean full-fetch run to reconcile away a holding Monobank no
+   * longer returns (a closed card, a deleted jar), so it stops counting toward
+   * net worth. Never called on a partial/failed/empty response — see the guarded
+   * close block in `runSyncInner`. Wired to `holdingsRepo.closeMany`.
+   */
+  closeHoldings: (holdingIds: string[]) => Promise<unknown>;
+  /**
    * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
    * so the reactive `holdings` callback fires ONCE for the fast phase rather
    * than once per card (a tight N+M burst that starved the JS thread and
@@ -177,6 +185,7 @@ const defaultDeps: SyncDeps = {
   listAccounts: async () => accountsRepo.listQuery(),
   updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
   listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
+  closeHoldings: (holdingIds) => holdingsRepo.closeMany(holdingIds),
   upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
   setSyncedBalance: (holdingId, balanceMinorUnits) =>
     holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
@@ -789,6 +798,61 @@ const fetchCardWithProgress = async (
   return imported;
 };
 
+/**
+ * On a COMPLETE, clean full fetch, close every Monobank holding under `accountId`
+ * that the snapshot no longer returns (a closed card, a deleted jar). Such a
+ * holding is only UPSERTED while present, so without this reconciliation it
+ * lingers with `closedAt = null` and its last balance, over-counting net worth
+ * until some later event removes it.
+ *
+ * GUARDED so a partial, failed, or successful-but-empty response can NEVER close
+ * a live holding — three conditions must ALL hold:
+ *   1. `isFullFetch` — only the periodic complete reconciliation path;
+ *   2. `failuresCount === 0` — no per-card statement failure this run (the caller
+ *      already threw on a partial failure before reaching here, but the guard is
+ *      kept explicit and defensive);
+ *   3. the snapshot is non-empty — at least one account or jar came back, so a
+ *      successful-but-empty body never wipes every holding. A network failure
+ *      cannot reach here: `fetchClientInfo` throwing aborts the run earlier.
+ *
+ * The present set is the RAW snapshot — every account/jar id, INCLUDING an
+ * unrepresentable-currency one that `upsertAllHoldings` skipped but is still
+ * present, so a skipped card is never mistaken for a removed one. A holding with
+ * no `monobankId` (a manual holding under a mixed account) is never closed.
+ */
+const reconcileClosedHoldings = async (
+  deps: SyncDeps,
+  accountId: string,
+  accounts: MonobankAccount[],
+  jars: MonobankJar[] | undefined,
+  isFullFetch: boolean,
+  failuresCount: number,
+): Promise<void> => {
+  if (!(isFullFetch && failuresCount === 0 && accounts.length + (jars?.length ?? 0) > 0)) {
+    return;
+  }
+
+  const present = new Set<string>([
+    ...accounts.map((account) => account.id),
+    ...(jars ?? []).map((jar) => jar.id),
+  ]);
+  const current = await deps.listHoldingsByAccount(accountId);
+  const staleIds = current
+    .filter((holding) => {
+      const holdingMonobankId = monobankIdOf(holding.metadata);
+      return (
+        holdingMonobankId !== undefined &&
+        !present.has(holdingMonobankId) &&
+        holding.closedAt == null
+      );
+    })
+    .map((holding) => holding.id);
+
+  if (staleIds.length > 0) {
+    await deps.closeHoldings(staleIds);
+  }
+};
+
 type SyncResult = { importedTransactions: number };
 
 /**
@@ -1095,6 +1159,11 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     // without stranding the account in permanent full-fetch mode.
     throw failures[0];
   }
+
+  // Reconcile away holdings the snapshot no longer returns (a closed card, a
+  // deleted jar), but ONLY on a complete, clean full fetch — see
+  // `reconcileClosedHoldings` for the load-bearing guard.
+  await reconcileClosedHoldings(deps, accountId, accounts, jars, isFullFetch, failures.length);
 
   // The cursor is the ceiling this run actually QUERIED, not the clock at loop
   // end. `deps.now()` here left every transaction between `toSeconds` and the

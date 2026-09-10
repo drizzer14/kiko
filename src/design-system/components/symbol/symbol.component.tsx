@@ -39,7 +39,7 @@ const SymbolIcon: FC<SymbolProps> = ({
       // frame Yoga lays it out at 0x0 and the glyph never paints. `size` is
       // a runtime prop, so this stays a plain inline object rather than a
       // static StyleSheet.create entry (see other primitives' *.styles.ts).
-      style={{ width: size, height: size }}
+      style={{ width: resolvedSize, height: resolvedSize }}
     />
   );
 };

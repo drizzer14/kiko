@@ -298,6 +298,17 @@ const makeInMemoryDeps = (
       holdingsStore
         .filter((holding) => holding.accountId === accountId)
         .map((holding) => ({ ...holding })),
+    // Stale-holding reconciliation seam (mirrors `holdingsRepo.closeMany`): stamp
+    // `closedAt` on each id. A jest.fn so a test can assert exactly which ids the
+    // sync closed, or that it closed none.
+    closeHoldings: jest.fn(async (holdingIds: string[]): Promise<void> => {
+      for (const holdingId of holdingIds) {
+        const target = holdingsStore.find((holding) => holding.id === holdingId);
+        if (target) {
+          target.closedAt = 1704326400000;
+        }
+      }
+    }),
     upsertHoldings,
     // The crash-safe marker write: advances a card's `syncedBalanceMinorUnits`
     // once its statements have committed, mirroring `holdingsRepo.setSyncedBalance`.
@@ -1875,5 +1886,100 @@ describe('runSync', () => {
       expect(order[0]).toBe(idB);
       expect(transactionsStore.some((row) => row.externalId === 'b-today')).toBe(true);
     });
+  });
+});
+
+describe('runSync stale-holding reconciliation', () => {
+  const noStatements = (): MonobankStatementItem[] => [];
+
+  // A previously-synced Monobank holding whose card/jar the current snapshot no
+  // longer returns. Its `monobankId` is set (so it is a sync-owned row) and it is
+  // still open (`closedAt: null`).
+  const staleHolding = (over: Partial<HoldingRow> = {}): HoldingRow => ({
+    id: 'stale-1',
+    accountId: 'acc-mono',
+    name: 'Closed card',
+    type: 'card',
+    currency: 'UAH',
+    balanceMinorUnits: 5_000,
+    metadata: { monobankId: 'gone-card' },
+    icon: null,
+    color: null,
+    sortOrder: 0,
+    closedAt: null,
+    createdAt: 0,
+    syncedBalanceMinorUnits: null,
+    ...over,
+  });
+
+  it('closes a previously-synced holding a complete full-sync snapshot no longer returns', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore } = makeInMemoryDeps(noStatements, [connected]);
+    holdingsStore.push(staleHolding({ id: 'stale-1', accountId: 'acc-mono' }));
+
+    await runSync(deps);
+
+    // The gone card is absent from the snapshot, so it is closed; the snapshot's
+    // own cards/jar stay open.
+    expect(deps.closeHoldings).toHaveBeenCalledWith(['stale-1']);
+    expect(holdingsStore.find((holding) => holding.id === 'stale-1')?.closedAt).not.toBeNull();
+  });
+
+  it('does not close on a successful-but-empty snapshot (guard: non-empty)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore } = makeInMemoryDeps(noStatements, [connected]);
+    deps.fetchClientInfo = async () => ({ accounts: [], jars: [] });
+    holdingsStore.push(staleHolding({ id: 'stale-1', accountId: 'acc-mono' }));
+
+    await runSync(deps);
+
+    expect(deps.closeHoldings).not.toHaveBeenCalled();
+    expect(holdingsStore.find((holding) => holding.id === 'stale-1')?.closedAt).toBeNull();
+  });
+
+  it('does not close on a partial-failure full sync (guard: no per-card failure)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore } = makeInMemoryDeps(
+      () => statement as MonobankStatementItem[],
+      [connected],
+    );
+    // Every card's statement fetch fails, so the run throws AFTER the per-card
+    // loop and never reaches the close step.
+    deps.fetchStatement = async () => {
+      throw new Error('429');
+    };
+    holdingsStore.push(staleHolding({ id: 'stale-1', accountId: 'acc-mono' }));
+
+    await expect(runSync(deps)).rejects.toThrow('429');
+
+    expect(deps.closeHoldings).not.toHaveBeenCalled();
+    expect(holdingsStore.find((holding) => holding.id === 'stale-1')?.closedAt).toBeNull();
+  });
+
+  it('does not close a holding whose card is present but unrepresentable-currency (skipped from upsert)', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps, holdingsStore } = makeInMemoryDeps(noStatements, [connected]);
+    // A card in the snapshot whose currency cannot be mapped: it is skipped from
+    // upsert but is STILL present, so its holding must not be closed.
+    const unrepresentable = {
+      ...(clientInfo.accounts[0] as MonobankAccount),
+      id: 'weird-cur',
+      currencyCode: 999,
+    };
+    deps.fetchClientInfo = async () => ({
+      accounts: [...(clientInfo.accounts as MonobankAccount[]), unrepresentable],
+      jars: clientInfo.jars as MonobankJar[],
+    });
+    holdingsStore.push(
+      staleHolding({
+        id: 'weird-holding',
+        accountId: 'acc-mono',
+        metadata: { monobankId: 'weird-cur' },
+      }),
+    );
+
+    await runSync(deps);
+
+    expect(deps.closeHoldings).not.toHaveBeenCalled();
   });
 });

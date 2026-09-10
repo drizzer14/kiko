@@ -28,6 +28,27 @@ describe('Symbol', () => {
     expect(getByLabelText('Favorite').props.size).toBe(darkTheme.iconSizes.body);
   });
 
+  it('frames the default-size glyph at the body icon-size token so it paints', async () => {
+    const { getByLabelText } = await render(
+      <SymbolIcon name="heart.fill" accessibilityLabel="Favorite" />,
+    );
+
+    // Fabric gives SFSymbolView no intrinsic size, so a 0x0 frame never paints.
+    // With no explicit `size`, the frame must fall back to the resolved body token.
+    expect(getByLabelText('Favorite').props.style).toEqual({
+      width: darkTheme.iconSizes.body,
+      height: darkTheme.iconSizes.body,
+    });
+  });
+
+  it('frames the glyph at the explicit size when one is passed', async () => {
+    const { getByLabelText } = await render(
+      <SymbolIcon name="heart.fill" size={40} accessibilityLabel="Favorite" />,
+    );
+
+    expect(getByLabelText('Favorite').props.style).toEqual({ width: 40, height: 40 });
+  });
+
   it('tints the glyph with an explicit color, overriding the tone token', async () => {
     const { getByLabelText } = await render(
       <SymbolIcon name="heart.fill" color="#FFD60A" accessibilityLabel="Favorite" />,

@@ -150,6 +150,57 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
+  it('stays flat across a same-day card->bond move (the bond turns on for the whole day)', () => {
+    // A card->bond move is asset-neutral: the card debit and the bond purchase
+    // are two facts co-dated on the same day D. The bond value must turn on for
+    // the WHOLE local day D so the offsetting asset is credited on the same day
+    // the card drops, keeping the net-worth line flat. `purchaseDate` is a
+    // mid-day timestamp (the holding-form default `purchaseDate ?? Date.now()`).
+    const dayD = D1;
+    const debitTime = dayD + 6 * HOUR; // 06:00 on day D
+    const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)
+    const bucketDayD = dayD + 12 * HOUR; // the day-D bucket sits at noon, between them
+
+    // Card started with $100 and was debited $100, so its current balance is 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = holding({
+      id: 'bond',
+      currency: 'USD',
+      type: 'bond',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1,
+        faceValueMinorUnits: 10_000, // nominal $100.00
+        couponPct: 0,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate,
+        purchasePriceMinorUnits: 10_000,
+        maturityDate: Date.UTC(2027, 0, 1),
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [card, bond],
+      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+    });
+
+    const amountAt = (t: number): number => {
+      const point = series.points.find((candidate) => candidate.t === t);
+      if (point === undefined) {
+        throw new Error(`no bucket at ${t}`);
+      }
+      return point.amount;
+    };
+
+    // Day D (bond bought, card debited) must equal day D-1 (card still full): $100.
+    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
+    expect(amountAt(bucketDayD)).toBe(100);
+  });
+
   it('returns an empty series when no history has been backfilled yet', () => {
     const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
 

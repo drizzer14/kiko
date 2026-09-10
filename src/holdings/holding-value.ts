@@ -1,4 +1,5 @@
 import { Money, toMajor } from '../currency/money';
+import { startOfLocalDay } from '../dates/local-day';
 import type { HoldingRow } from '../db/schema';
 
 import { asBondMeta, asTermDepositMeta, type BondMeta } from './holding-metadata';
@@ -109,14 +110,23 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   const nominalMoney = Money.of(currency, nominalMinor);
   const costMoney = Money.of(currency, meta.purchasePriceMinorUnits);
   const zero = Money.of(currency, 0);
-  // A bond whose purchase date is in the future has not been bought yet, so it
+  // Value the bond by LOCAL DAY, not by raw instant. `purchaseDate` is often a
+  // mid-day timestamp (the holding-form default `purchaseDate ?? Date.now()`),
+  // while the card debit that funds a same-day card->bond move lands at its own
+  // clock time and each net-worth bucket is a day key. Comparing raw ms turns
+  // the bond on at a different instant than the debit lands, so a same-day move
+  // shows a one-bucket dip. The bond instead carries value for any instant whose
+  // local day is at or after the purchase day (local-day is the unit —
+  // kiko-domain "Dates").
+  const valuationDay = startOfLocalDay(now);
+  // A bond whose purchase day is in the future has not been bought yet, so it
   // reports no value — not its nominal.
-  if (meta.purchaseDate > now) {
+  if (valuationDay < startOfLocalDay(meta.purchaseDate)) {
     return { gross: zero, principalOrCost: zero, interest: zero, tax: zero, net: zero };
   }
-  // At/after maturity the nominal is redeemed (returned as the redemption ledger
-  // entry), so the bond holding itself no longer carries value.
-  if (now >= meta.maturityDate) {
+  // On or after the maturity day the nominal is redeemed (returned as the
+  // redemption ledger entry), so the bond holding itself no longer carries value.
+  if (valuationDay >= startOfLocalDay(meta.maturityDate)) {
     return { gross: zero, principalOrCost: costMoney, interest: zero, tax: zero, net: zero };
   }
   // A live bond is worth its NOMINAL (quantity * faceValue), flat, until
