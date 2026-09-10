@@ -49,7 +49,7 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 // account's Monobank token field + Connect/Sync/Disconnect row. Before a
 // connection: a Wallet/Binance source picker and the matching entry field
 // (each field's Connect runs the first sync, which marks the account). Once
-// connected: Sync now with the last-sync stamp, and a confirmed Disconnect.
+// connected: Sync with the last-sync stamp, and a confirmed Disconnect.
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
@@ -104,9 +104,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       <Box gap={3}>
         <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-        {/* gap={3} (not 2) so the "last synced" line ↔ "Sync now" spacing equals
-            the "Sync now" ↔ "Disconnect" spacing (the section root's gap={3}),
-            giving the three stacked elements one even rhythm. */}
+        {/* gap={3} (not 2) so the "last synced" line ↔ actions-row spacing equals
+            the section root's gap={3}, keeping one even vertical rhythm. The Sync
+            and Disconnect buttons themselves sit SIDE BY SIDE in the single
+            actions row below, not stacked. */}
         <Box gap={3} testID="crypto-sync-status-actions">
           <Box direction="row" gap={2} style={styles.statusLine}>
             <SymbolIcon name="clock" tone="textSecondary" />
@@ -118,31 +119,34 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           </Box>
 
-          <Button
-            variant="secondaryTonal"
-            size="small"
-            fullWidth={false}
-            onPress={() => {
-              sync(resyncRequest(connectedProvider, account.id));
-            }}
-            disabled={isSyncing}
-            icon="arrow.triangle.2.circlepath"
-          >
-            {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-          </Button>
-        </Box>
+          {/* Sync and Disconnect share a single row. Sync is the affirmative blue
+              `primary` re-import action; Disconnect stays a neutral tonal action
+              beside it — never blue. */}
+          <Box direction="row" gap={2} testID="crypto-sync-actions-row">
+            <Button
+              variant="primary"
+              size="small"
+              fullWidth={false}
+              onPress={() => {
+                sync(resyncRequest(connectedProvider, account.id));
+              }}
+              disabled={isSyncing}
+              icon="arrow.triangle.2.circlepath"
+            >
+              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
+            </Button>
 
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={() => confirmDisconnect(connectedProvider)}
-          icon="link.badge.plus"
-        >
-          {t('accountDetail.disconnectProvider', {
-            provider: providerDisplayName(connectedProvider, t),
-          })}
-        </Button>
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              onPress={() => confirmDisconnect(connectedProvider)}
+              icon="link.badge.plus"
+            >
+              {t('accountDetail.disconnectAction')}
+            </Button>
+          </Box>
+        </Box>
 
         {error !== undefined && (
           <Text variant="body" tone="negative">

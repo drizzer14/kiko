@@ -263,7 +263,7 @@ export const uk: typeof en = {
     sourceLabel: 'Джерело',
     synchronization: 'Синхронізація',
     syncing: 'Синхронізуємо…',
-    syncNow: 'Синхронізувати зараз',
+    syncNow: 'Синхронізувати',
     tokenLabel: 'Токен',
     tokenSaved: 'Токен збережено',
     tryAgainMessage: 'Спробуйте ще раз.',

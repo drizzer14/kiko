@@ -281,7 +281,7 @@ export const en = {
     sourceLabel: 'Source',
     synchronization: 'Synchronization',
     syncing: 'Syncing…',
-    syncNow: 'Sync now',
+    syncNow: 'Sync',
     tokenLabel: 'Token',
     tokenSaved: 'Token saved',
     tryAgainMessage: 'Please try again.',
