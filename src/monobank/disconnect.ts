@@ -1,4 +1,4 @@
-import { accountsRepo } from '../repositories/accounts.repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
 import { clearToken } from './token';
 

@@ -14,16 +14,16 @@ jest.mock('../db/client', () => {
   };
 });
 
+// CANONICAL_SEED is the canonical seed the migration must insert: one stable
+// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
+// MCC -> display-key mapping must produce these exact keys. Shared with the
+// screen tests via one fixture so the canonical list lives in a single place.
+import { SEEDED_CATEGORIES as CANONICAL_SEED } from '@kiko/db/__fixtures__/seeded-categories';
 import type { SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
 import { categories, categoryOverrides, transactions } from '../db/schema';
 
-// CANONICAL_SEED is the canonical seed the migration must insert: one stable
-// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. Task 14's
-// MCC -> display-key mapping must produce these exact keys. Shared with the
-// screen tests via one fixture so the canonical list lives in a single place.
-import { SEEDED_CATEGORIES as CANONICAL_SEED } from './__fixtures__/seeded-categories';
 import { categoriesRepo } from './categories.repo';
 
 describe('categoriesRepo', () => {

@@ -1,9 +1,10 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+
 import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
-import { accountsRepo } from '../repositories/accounts.repo';
-import { holdingsRepo } from '../repositories/holdings.repo';
-import { settingsRepo } from '../repositories/settings.repo';
-import { transactionsRepo } from '../repositories/transactions.repo';
 
 import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';

@@ -1,3 +1,4 @@
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +13,6 @@ import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
-import { settingsRepo } from '../../repositories/settings.repo';
 
 import SettingsRow from './settings-row';
 

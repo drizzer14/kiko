@@ -32,7 +32,7 @@ jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
 
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),

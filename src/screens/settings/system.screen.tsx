@@ -1,3 +1,4 @@
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +11,6 @@ import LanguageSwitch from '../../design-system/components/language-switch';
 import Screen from '../../design-system/components/screen';
 import { type AppLanguage, deviceLanguage } from '../../i18n';
 import type { SettingsStackParamList } from '../../navigation/types';
-import { settingsRepo } from '../../repositories/settings.repo';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 import SettingsRow from './settings-row';

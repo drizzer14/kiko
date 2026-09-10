@@ -1,3 +1,4 @@
+import type { Repository } from '@kiko/db/repository';
 import { asc, eq, sql } from 'drizzle-orm';
 
 import type { Currency } from '../currency/currency';
@@ -6,8 +7,6 @@ import { id } from '../db/id';
 import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
-
-import type { Repository } from './repository';
 
 // The next free grid slot for a new account: one past the current highest
 // `sortOrder` (or 0 when there are no accounts yet), so a freshly created

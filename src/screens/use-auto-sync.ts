@@ -1,11 +1,11 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { ratesRepo } from '@kiko/rates/rates.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
 import { readToken } from '../monobank/token';
 import { refreshRates } from '../rates/rates-refresh';
-import { accountsRepo } from '../repositories/accounts.repo';
-import { ratesRepo } from '../repositories/rates.repo';
-import { settingsRepo } from '../repositories/settings.repo';
 
 import { syncJobsFor } from './sync-jobs';
 

@@ -17,11 +17,12 @@ jest.mock('../db/client', () => {
   };
 });
 
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { captureSetTx } from '@kiko/db/capture-set-tx';
+
 import { accounts, holdings } from '../db/schema';
 import { holdingValueAt } from '../statistics/holding-value-at';
 
-import { accountsRepo } from './accounts.repo';
-import { captureSetTx } from './capture-set-tx';
 import { holdingsRepo } from './holdings.repo';
 
 // The NAME of the schema table an operation targeted. The name, not the drizzle

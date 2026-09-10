@@ -2,8 +2,9 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+
 import { i18n } from '../../i18n';
-import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 import { categoryColor } from '../../statistics/category-breakdown';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -41,7 +42,7 @@ let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?:
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 
-jest.mock('../../repositories/categories.repo', () => ({
+jest.mock('@kiko/categories/categories.repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),
@@ -52,7 +53,7 @@ jest.mock('../../repositories/categories.repo', () => ({
     reorder: (...args: unknown[]) => mockReorder(...args),
   },
 }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),

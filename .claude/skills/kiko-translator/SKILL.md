@@ -17,7 +17,7 @@ current state of the files below before assuming a fix has landed.
 A transaction/holding row stores data, never a rendered label. The
 exchange-leg bug (T-6) is the cautionary case:
 `recordExchange`/`recordExchangeCounterpart` in
-`src/repositories/transactions.repo.ts` write a literal English
+`src/transactions/transactions.repo.ts` write a literal English
 `description` (`` `Exchange to ${name}` ``) straight into the row — a
 later language switch can never fix a row already written that way.
 The correct pattern already exists in the codebase for this exact

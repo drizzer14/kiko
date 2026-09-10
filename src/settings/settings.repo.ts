@@ -1,3 +1,4 @@
+import type { Repository } from '@kiko/db/repository';
 import { eq } from 'drizzle-orm';
 
 import type { Currency } from '../currency/currency';
@@ -5,8 +6,6 @@ import { database, write } from '../db/client';
 import { settings } from '../db/schema';
 import type { AppLanguage } from '../i18n';
 import type { TrendFilter } from '../statistics/trend-filter';
-
-import type { Repository } from './repository';
 
 /** Settings is a single row, keyed at id = 1. */
 const SETTINGS_ID = 1;

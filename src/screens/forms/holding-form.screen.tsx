@@ -1,3 +1,5 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -34,8 +36,6 @@ import {
   holdingTypesForAccountKind,
 } from '../../holdings/holding-type';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { accountsRepo } from '../../repositories/accounts.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 
 import { groupAmount, majorAmountText } from './amount-format';
 import ChipRow from './chip-row';

@@ -81,7 +81,7 @@ jest.mock('../../monobank/token', () => ({
 jest.mock('../../monobank/monobank.client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) => ({
       __kind: 'byId',
@@ -95,7 +95,7 @@ jest.mock('../../repositories/accounts.repo', () => ({
     update: (...args: unknown[]) => mockAccountUpdate(...args),
   },
 }));
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: {
     listByAccountQuery: (accountId: string) => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
@@ -104,10 +104,10 @@ jest.mock('../../repositories/holdings.repo', () => ({
     reorder: (...args: unknown[]) => mockReorder(...args),
   },
 }));
-jest.mock('../../repositories/rates.repo', () => ({
+jest.mock('@kiko/rates/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

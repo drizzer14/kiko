@@ -22,7 +22,7 @@ jest.mock('../../use-crypto-sync', () => ({
 jest.mock('../../../crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),
 }));
-jest.mock('../../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     connectedQuery: (institution: string) => ({
       __institution: institution,

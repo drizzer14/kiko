@@ -165,7 +165,7 @@ type SyncedTransactionInput = Parameters<SyncDeps['addTransactions']>[0][number]
  * user's own value, and the real `addManyDedup` upsert leaves them alone too.
  *
  * This list MIRRORS that upsert's `onConflictDoUpdate` set in
- * `repositories/transactions.repo.ts` and must change with it, or the double
+ * `transactions/transactions.repo.ts` and must change with it, or the double
  * stops standing for the repository it doubles.
  */
 const bankOwnedColumns = (input: SyncedTransactionInput) => ({

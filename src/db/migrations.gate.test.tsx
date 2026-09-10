@@ -2,9 +2,10 @@ import { act, render } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 
 import '../design-system/unistyles';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+
 import { darkTheme } from '../design-system/theme';
 import { i18n } from '../i18n';
-import { settingsRepo } from '../repositories/settings.repo';
 
 import MigrationsGate from './migrations.gate';
 
@@ -20,7 +21,7 @@ const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
 jest.mock('./client', () => ({ initDatabase: () => mockInitDatabase() }));
 jest.mock('./run-migrations', () => ({ runMigrations: () => mockRunMigrations() }));
 jest.mock('../monobank/token', () => ({ migrateLegacyToken: () => mockMigrateLegacyToken() }));
-jest.mock('../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { ensure: jest.fn(() => Promise.resolve()), getQuery: () => mockGetSettings() },
 }));
 

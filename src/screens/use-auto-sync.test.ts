@@ -29,17 +29,17 @@ jest.mock('../monobank/token', () => ({
 jest.mock('../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
-jest.mock('../repositories/rates.repo', () => ({
+jest.mock('@kiko/rates/rates.repo', () => ({
   ratesRepo: {
     latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
   },
 }));
-jest.mock('../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: (...args: unknown[]) => mockSettingsGetQuery(...args),
   },
 }));
-jest.mock('../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     connectedQuery: (...args: unknown[]) => mockConnectedQuery(...args),
   },

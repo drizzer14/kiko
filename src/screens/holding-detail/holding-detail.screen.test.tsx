@@ -2,9 +2,10 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
-import { transactionsRepo } from '../../repositories/transactions.repo';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -76,7 +77,7 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     appendDepositContribution: jest.fn(),
@@ -85,7 +86,7 @@ jest.mock('../../repositories/holdings.repo', () => ({
     setColor: jest.fn(),
   },
 }));
-jest.mock('../../repositories/transactions.repo', () => ({
+jest.mock('@kiko/transactions/transactions.repo', () => ({
   transactionsRepo: {
     listByHoldingQuery: (holdingId: string) => ({
       toSQL: () => ({ sql: '', params: [holdingId] }),
@@ -93,18 +94,18 @@ jest.mock('../../repositories/transactions.repo', () => ({
     remove: jest.fn(),
   },
 }));
-jest.mock('../../repositories/categories.repo', () => ({
+jest.mock('@kiko/categories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
   },
 }));
-jest.mock('../../repositories/rates.repo', () => ({
+jest.mock('@kiko/rates/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

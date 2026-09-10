@@ -51,7 +51,7 @@ let mockAccounts: unknown[] = [];
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),

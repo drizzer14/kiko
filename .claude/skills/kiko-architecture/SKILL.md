@@ -125,7 +125,7 @@ The sync pipeline is deliberately functional, not OOP — see
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
    import each item as a Transaction, UPSERTED on
    `(source, externalId)` — the Monobank statement id — by
-   `addManyDedup` (`src/repositories/transactions.repo.ts`). Two
+   `addManyDedup` (`src/transactions/transactions.repo.ts`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
    - Re-syncing an existing external id **refreshes** the row's
@@ -217,7 +217,7 @@ a restated list:
 - A card carrying an outstanding `hold: true` transaction is ALWAYS
   fetched (a same-amount hold->settled refresh doesn't move the
   balance) — the set comes from `holdingIdsWithHoldQuery`
-  (`src/repositories/transactions.repo.ts`).
+  (`src/transactions/transactions.repo.ts`).
 - The first-ever sync fetches every card (`shouldFullFetch`).
 
 Safety net: a new `settings.lastFullSyncAt` column (migration
@@ -602,7 +602,7 @@ here:
   keyed on the structural marker column
   `transactions.exchangeCounterpartHoldingId` (see `src/db/schema.ts`
   and `recordExchange` / `recordExchangeCounterpart` in
-  `src/repositories/transactions.repo.ts`, which write it on both legs).
+  `src/transactions/transactions.repo.ts`, which write it on both legs).
   It catches what the other two structurally cannot: a cross-currency
   pair, and the single debit leg of an exchange into a term deposit.
   The legs persist no description — the label is resolved at render time

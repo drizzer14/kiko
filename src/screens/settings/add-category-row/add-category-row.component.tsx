@@ -1,3 +1,4 @@
+import { categoriesRepo } from '@kiko/categories/categories.repo';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
@@ -7,7 +8,6 @@ import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import { categoriesRepo } from '../../../repositories/categories.repo';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import ColorPicker from '../../forms/color-picker';
 import HoldingIdentityField from '../../forms/holding-identity-field';

@@ -19,7 +19,7 @@ Rules:
   through a fake transaction handle: mock `write` (and `select` when a
   read path is under test) in the repo's `../db/client` import, back it
   with a plain-array store, and let the REAL repository function run
-  against that fake. See `src/repositories/holdings.repo.test.ts` for
+  against that fake. See `src/holdings/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the
   fake across two repos in one store when a test exercises both (e.g. a
   disconnect-then-reconnect sequence).

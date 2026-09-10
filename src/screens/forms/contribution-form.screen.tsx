@@ -1,3 +1,4 @@
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +13,6 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import TextField from '../../design-system/components/text-field';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 
 import { groupAmount } from './amount-format';
 import DateField from './date-field';

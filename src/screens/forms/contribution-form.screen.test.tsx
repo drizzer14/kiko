@@ -2,8 +2,9 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 import '../../design-system/unistyles';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+
 import { i18n } from '../../i18n';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
@@ -15,7 +16,7 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     appendDepositContribution: jest.fn(),

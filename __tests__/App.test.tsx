@@ -25,7 +25,7 @@ jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
 // does. `ensure` runs from inside MigrationsGate now (stubbed to a
 // passthrough above, so it is never reached from here) — that call is
 // asserted in migrations.gate.test.tsx instead, not here.
-jest.mock('../src/repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     // Two consumers read this: the Home screen (initial route), via
     // useLiveQuery (mocked below to ignore its query argument, so the
@@ -45,8 +45,8 @@ jest.mock('../src/repositories/settings.repo', () => ({
 // passing by accident through an internally swallowed error. `listQuery` is
 // left as the real implementation since the Home screen calls it directly
 // through the mocked `useLiveQuery` (which ignores its query argument).
-jest.mock('../src/repositories/accounts.repo', () => {
-  const actual = jest.requireActual('../src/repositories/accounts.repo');
+jest.mock('@kiko/accounts/accounts.repo', () => {
+  const actual = jest.requireActual('@kiko/accounts/accounts.repo');
   return {
     accountsRepo: {
       ...actual.accountsRepo,

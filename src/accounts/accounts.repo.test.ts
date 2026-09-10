@@ -11,11 +11,12 @@ jest.mock('../db/client', () => {
   };
 });
 
+import { captureSetTx } from '@kiko/db/capture-set-tx';
+
 import { accounts, holdings, transactions } from '../db/schema';
 import { isSyncedAccount, isSyncedHolding } from '../holdings/deletable';
 
 import { accountsRepo } from './accounts.repo';
-import { captureSetTx } from './capture-set-tx';
 
 // A fake write-transaction handle for the create paths. Both `create` and
 // `createCashAccount` first read the current max `sort_order` via

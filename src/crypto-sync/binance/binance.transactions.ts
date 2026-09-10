@@ -1,8 +1,9 @@
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';
 import { createRequestGate, type RequestGate } from '../../monobank/throttle';
-import { holdingsRepo } from '../../repositories/holdings.repo';
-import { transactionsRepo } from '../../repositories/transactions.repo';
 
 import {
   type BinanceDeposit,

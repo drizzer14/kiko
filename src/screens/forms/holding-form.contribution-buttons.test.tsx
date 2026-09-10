@@ -52,7 +52,7 @@ jest.mock('../../design-system/components/button', () => {
   };
 });
 
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
     setIcon: jest.fn(),
@@ -71,7 +71,7 @@ jest.mock('../../db/use-live-query', () => ({
       : { data: [{ id: 'acc-1', kind: 'bank', institution: null }] },
 }));
 
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

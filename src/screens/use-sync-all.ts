@@ -1,8 +1,8 @@
+import { ratesRepo } from '@kiko/rates/rates.repo';
 import either from 'fnts/either';
 import { useState } from 'react';
 
 import { refreshRates } from '../rates/rates-refresh';
-import { ratesRepo } from '../repositories/rates.repo';
 
 import { type SyncableAccount, type SyncJob, syncJobsFor } from './sync-jobs';
 

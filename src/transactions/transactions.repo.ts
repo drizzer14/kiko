@@ -1,3 +1,5 @@
+import type { Repository } from '@kiko/db/repository';
+import { appendDepositContributionTx } from '@kiko/holdings/holdings.repo';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
@@ -15,10 +17,8 @@ import { isSyncedTransaction } from '../holdings/deletable';
 import type { ExchangeConvertDirection } from '../holdings/exchange-convert';
 import { exchangeReceivePath } from '../holdings/exchange-destination';
 import type { DepositContribution } from '../holdings/holding-metadata';
-import { normalizeTransactionName } from '../transactions/normalize-name';
 
-import { appendDepositContributionTx } from './holdings.repo';
-import type { Repository } from './repository';
+import { normalizeTransactionName } from './normalize-name';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<

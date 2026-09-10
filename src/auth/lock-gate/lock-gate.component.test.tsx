@@ -36,7 +36,7 @@ const mockGetSettings = jest.fn<Promise<SettingsRow[]>, []>();
 jest.mock('../../db/client', () => ({ initDatabase: () => Promise.resolve() }));
 jest.mock('../../db/run-migrations', () => ({ runMigrations: () => Promise.resolve() }));
 jest.mock('../../monobank/token', () => ({ migrateLegacyToken: () => Promise.resolve() }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { ensure: () => Promise.resolve(), getQuery: () => mockGetSettings() },
 }));
 

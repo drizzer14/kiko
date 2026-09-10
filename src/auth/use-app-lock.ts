@@ -1,9 +1,9 @@
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { APP_LOCK_ENABLED } from '../db/db-config';
 import { useLiveQuery } from '../db/use-live-query';
-import { settingsRepo } from '../repositories/settings.repo';
 
 import { type AuthResult, authenticate } from './biometrics';
 
