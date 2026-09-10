@@ -72,11 +72,16 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  // Save stays disabled until the amount is a strictly positive number, the
+  // same guard `save` enforces before it writes. `parseAmount` yields NaN for a
+  // blank or junk field, and `NaN > 0` is false, so both cases keep Save off.
+  const canSave = parseAmount(amount) > 0;
+
   return (
     <Screen
       scroll
       footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
+        <Button onPress={onSave} disabled={!canSave || isSubmitting}>
           {t('forms.contribution.save')}
         </Button>
       }

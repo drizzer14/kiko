@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
 
@@ -89,6 +89,8 @@ type Holding = {
   icon?: string | null;
   color?: string | null;
   accountId?: string;
+  sortOrder?: number;
+  createdAt?: number;
 };
 type Account = { id: string; name: string };
 type Category = { key: string; title: string; icon: string };
@@ -516,6 +518,19 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
       }),
     );
     expect(mockRecordManual).not.toHaveBeenCalled();
+  });
+
+  it('disables Save when the amount is cleared on an edit', async () => {
+    const utils = await renderEdit('txn-1');
+    const isSaveDisabled = (): boolean | undefined =>
+      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+
+    // The pre-filled amount is valid, so Save starts enabled.
+    expect(isSaveDisabled()).toBe(false);
+
+    // Clearing the amount blocks Save, matching the write guard in `save`.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '');
+    expect(isSaveDisabled()).toBe(true);
   });
 
   it('persists the existing time unchanged when the date is not edited', async () => {
@@ -1071,6 +1086,53 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(mockRecordExchange).not.toHaveBeenCalled();
   });
 
+  it('disables Save until a destination and both positive amounts are set', async () => {
+    const utils = await renderAddFromHolding('cash-1');
+    const isSaveDisabled = (): boolean | undefined =>
+      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    // Nothing filled yet.
+    expect(isSaveDisabled()).toBe(true);
+
+    // A sent amount alone, with no destination and no received amount.
+    await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
+    expect(isSaveDisabled()).toBe(true);
+
+    // A destination picked, but still no received amount.
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    expect(isSaveDisabled()).toBe(true);
+
+    // Both legs positive and a destination picked: Save enables.
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    expect(isSaveDisabled()).toBe(false);
+  });
+
+  it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
+    const utils = await renderAddFromHolding('cash-1');
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+
+    // Scope each glyph to its own field so neither passes by matching the
+    // other leg's suffix: the sent (Value Out) leg reads in the source currency
+    // (UAH), the received (Value In) leg in the destination currency (USD).
+    const suffixWithin = (label: string): ReturnType<typeof within> => {
+      const field = utils.getByLabelText(label).parent;
+
+      if (field === null) {
+        throw new Error(`${label} field has no container`);
+      }
+
+      return within(field);
+    };
+
+    expect(suffixWithin('Value Out').getByText('₴')).toBeTruthy();
+    expect(suffixWithin('Value In').getByText('$')).toBeTruthy();
+  });
+
   it('saves an exchange with correct minor units and holding ids', async () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByText('Exchange'));
@@ -1203,6 +1265,73 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
         }),
       ),
     );
+  });
+});
+
+// Fixtures for the picker-order rule (F2): two accounts whose display order
+// (the sortOrder-driven `accountsRepo.listQuery` order) is Bravo before Alpha,
+// each holding one eligible cash destination. The raw `holdings.allQuery`
+// array below is deliberately NOT grouped by account, so a picker that
+// preserves that order would list Alpha's holding first. The Accounts screen
+// groups holdings under their account, so the picker must too.
+const PICKER_ORDER_HOLDINGS: Holding[] = [
+  {
+    id: 'src',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Source',
+    accountId: 'acc-alpha',
+    sortOrder: 0,
+    createdAt: 1,
+  },
+  {
+    id: 'dest-alpha',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Dest Alpha',
+    accountId: 'acc-alpha',
+    sortOrder: 1,
+    createdAt: 2,
+  },
+  {
+    id: 'dest-bravo',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Dest Bravo',
+    accountId: 'acc-bravo',
+    sortOrder: 0,
+    createdAt: 3,
+  },
+];
+
+// listQuery order (account sortOrder): Bravo ranks before Alpha.
+const PICKER_ORDER_ACCOUNTS: Account[] = [
+  { id: 'acc-bravo', name: 'Bravo' },
+  { id: 'acc-alpha', name: 'Alpha' },
+];
+
+describe('TransactionFormScreen — From/To picker order', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData(PICKER_ORDER_HOLDINGS, undefined, CATEGORIES, PICKER_ORDER_ACCOUNTS);
+  });
+
+  it('orders the destination picker by the Accounts screen order (account, then holding)', async () => {
+    const utils = await renderAddFromHolding('src');
+    await fireEvent.press(utils.getByText('Exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+
+    const rendered = collectRenderedText(utils.toJSON());
+    const bravoIndex = rendered.indexOf('Dest Bravo');
+    const alphaIndex = rendered.indexOf('Dest Alpha');
+
+    expect(bravoIndex).toBeGreaterThan(-1);
+    expect(alphaIndex).toBeGreaterThan(-1);
+    // Bravo's account ranks first, so its holding lists before Alpha's.
+    expect(bravoIndex).toBeLessThan(alphaIndex);
   });
 });
 
@@ -1414,6 +1543,26 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
+  });
+
+  it('disables Save until a counterpart holding and a positive amount are set', async () => {
+    const utils = await renderEdit('expense-manual');
+    const isSaveDisabled = (): boolean | undefined =>
+      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+
+    await fireEvent.press(utils.getByText('Convert to exchange'));
+
+    // No counterpart and no amount yet.
+    expect(isSaveDisabled()).toBe(true);
+
+    // A counterpart picked, but the amount is still blank.
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    expect(isSaveDisabled()).toBe(true);
+
+    // A positive counterpart amount enables Save.
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    expect(isSaveDisabled()).toBe(false);
   });
 
   it('never calls update/remove on the existing row when converting', async () => {

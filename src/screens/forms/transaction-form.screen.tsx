@@ -150,31 +150,59 @@ const resolveDescriptionPlaceholder = (
     ? defaultTransactionDescription(holding.name, mode === 'expense' ? -1 : 0, t)
     : t('forms.transaction.description');
 
-// Whether the footer's Save button is disabled: a fresh income/expense add is
-// saveable only once it has BOTH a positive amount and a category. An edit,
-// an Exchange, and a convert are never disabled here — each validates its own
-// inputs inside `save` — so ONLY a create still missing its amount, category,
-// or typing a non-positive amount blocks the button. The button now reflects
-// the same `<= 0` rejection `tryWriteManual` applies, instead of leaving a
-// zero-amount tap to silently do nothing. Kept module-level and pure so its
-// boolean chain stays out of the screen component's cognitive-complexity
+// Whether a money field holds a strictly positive number — the same guard every
+// `save` path applies before it writes. `parseAmount` yields NaN for a blank,
+// whitespace, or junk field, and `NaN > 0` is false, so one comparison covers
+// every rejected case (the same idiom as `contribution-form`'s `canSave`).
+const isPositiveAmountText = (text: string): boolean => parseAmount(text) > 0;
+
+// Whether the footer's Save button is disabled, per mode — each branch mirrors
+// exactly what that mode's `save` path validates before it writes:
+// - convert: a counterpart holding picked AND a positive counterpart amount.
+// - exchange: a destination picked AND a positive Value Out AND Value In.
+// - read-only (synced) row: never disabled here — Save only appears once the
+//   category changed (`showsSaveButton`), and its write touches only the
+//   category, never the bank-owned amount.
+// - edit (manual): a positive amount; the category is optional on an edit.
+// - fresh add: a positive amount AND a category.
+// Kept module-level and pure (a params object, not a long positional list) so
+// its branch count stays out of the screen component's cognitive-complexity
 // budget.
-const isSaveDisabled = (
-  isEditing: boolean,
-  isExchange: boolean,
-  converting: boolean,
-  amount: string,
-  selectedCategory: string | null,
-): boolean => {
-  if (isEditing || isExchange || converting) {
+type SaveDisabledParams = {
+  converting: boolean;
+  isExchange: boolean;
+  isReadOnly: boolean;
+  isEditing: boolean;
+  amount: string;
+  valueIn: string;
+  counterpartAmount: string;
+  destinationHoldingId: string | null;
+  counterpartHoldingId: string | null;
+  selectedCategory: string | null;
+};
+
+const isSaveDisabled = (params: SaveDisabledParams): boolean => {
+  if (params.converting) {
+    return params.counterpartHoldingId === null || !isPositiveAmountText(params.counterpartAmount);
+  }
+
+  if (params.isExchange) {
+    return (
+      params.destinationHoldingId === null ||
+      !isPositiveAmountText(params.amount) ||
+      !isPositiveAmountText(params.valueIn)
+    );
+  }
+
+  if (params.isReadOnly) {
     return false;
   }
 
-  const magnitude = parseAmount(amount);
+  if (params.isEditing) {
+    return !isPositiveAmountText(params.amount);
+  }
 
-  return (
-    amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0 || selectedCategory === null
-  );
+  return !isPositiveAmountText(params.amount) || params.selectedCategory === null;
 };
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
@@ -214,18 +242,45 @@ const resolveModeOptions = (
   return canExchange ? ['income', 'expense', 'exchange'] : ['income', 'expense'];
 };
 
+// Order two holdings the way the Accounts screen shows them (F2): primary by
+// the parent account's display rank (its 0-based index in the sortOrder-ordered
+// `accountsRepo.listQuery` list), then by the holding's own `sortOrder`, then
+// `createdAt`. A holding whose account is not in the rank map sorts last, so a
+// missing rank never reorders known accounts. Kept module-level and pure so
+// `buildExchangeOptions` stays a plain filter/sort/map chain.
+const compareByAccountThenHolding = (
+  first: HoldingRow,
+  second: HoldingRow,
+  accountOrderById: ReadonlyMap<string, number>,
+): number => {
+  const firstRank = accountOrderById.get(first.accountId) ?? Number.MAX_SAFE_INTEGER;
+  const secondRank = accountOrderById.get(second.accountId) ?? Number.MAX_SAFE_INTEGER;
+
+  if (firstRank !== secondRank) {
+    return firstRank - secondRank;
+  }
+
+  if (first.sortOrder !== second.sortOrder) {
+    return first.sortOrder - second.sortOrder;
+  }
+
+  return first.createdAt - second.createdAt;
+};
+
 // Every OPEN, non-excluded holding except `excludeHoldingId`, projected to a
-// picker option carrying its parent account name (Requirement C). The eligible
-// TYPE test is injected by the caller so one builder serves create-mode
+// picker option carrying its parent account name (Requirement C), ordered to
+// match the Accounts screen (F2 — see `compareByAccountThenHolding`). The
+// eligible TYPE test is injected by the caller so one builder serves create-mode
 // (cash-only) and both convert-mode directions (the wider rules) without
 // duplicating the projection. A closed holding is excluded so an exchange can
 // never fund a holding the user has already closed out. Kept module-level (a
-// pure projection of `holdings` + the account map) so the component body's
+// pure projection of `holdings` + the account maps) so the component body's
 // cognitive-complexity budget is spent on the render branching, not this list
 // construction.
 const buildExchangeOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
   excludeHoldingId: string | undefined,
   isEligibleType: (type: HoldingRow['type']) => boolean,
 ): HoldingSelectOption[] => {
@@ -236,6 +291,7 @@ const buildExchangeOptions = (
         candidate.closedAt == null &&
         isEligibleType(candidate.type),
     )
+    .sort((first, second) => compareByAccountThenHolding(first, second, accountOrderById))
     .map((candidate) => ({
       id: candidate.id,
       name: candidate.name,
@@ -284,6 +340,7 @@ const resolveConvertView = (
   currency: Currency,
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
   holdingId: string | undefined,
   t: TFunction,
 ): ConvertView => {
@@ -304,6 +361,7 @@ const resolveConvertView = (
   const options = buildExchangeOptions(
     holdings,
     accountNameById,
+    accountOrderById,
     holdingId,
     direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
   );
@@ -615,6 +673,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // query.
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const accountNameById = new Map(accounts.map((account) => [account.id, account.name]));
+  // The account display rank (F2): `accountsRepo.listQuery` is already ordered
+  // by the drag-and-drop `sortOrder`, so each account's index IS its rank on
+  // the Accounts screen. The picker groups its holdings under their account in
+  // this same order (see `compareByAccountThenHolding`).
+  const accountOrderById = new Map(accounts.map((account, index) => [account.id, index]));
 
   // Two entry points: `holdingId` = add a new manual row; `transactionId` = open
   // an existing one. In add mode the by-id query runs against an empty id and
@@ -665,6 +728,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const destinationOptions = buildExchangeOptions(
     holdings,
     accountNameById,
+    accountOrderById,
     holdingId,
     isExchangeCreateDestinationType,
   );
@@ -676,6 +740,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     holdings,
     accountNameById,
+    accountOrderById,
     holdingId,
     t,
   );
@@ -738,7 +803,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `isSaveDisabled`). Both are module-level pure helpers so their branches
   // stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder(holding, mode, t);
-  const disableSave = isSaveDisabled(isEditing, isExchange, converting, amount, selectedCategory);
+  const disableSave = isSaveDisabled({
+    converting,
+    isExchange,
+    isReadOnly,
+    isEditing,
+    amount,
+    valueIn,
+    counterpartAmount,
+    destinationHoldingId,
+    counterpartHoldingId,
+    selectedCategory,
+  });
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
   useLayoutEffect(() => {
