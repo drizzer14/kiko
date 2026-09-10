@@ -622,11 +622,13 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Transaction' });
   });
 
-  it('disables the inputs and shows the imported-from-Monobank explanation', async () => {
+  it('disables the inputs and shows the source-neutral imported explanation', async () => {
     const { getByLabelText, getByText } = await renderEdit('txn-9');
     expect(getByLabelText('Amount').props.editable).toBe(false);
     expect(getByLabelText('Description').props.editable).toBe(false);
-    expect(getByText(/imported from monobank/i)).toBeTruthy();
+    // The notice is source-neutral: it names no single provider, so it reads
+    // correctly on a Monobank, Binance or wallet row alike.
+    expect(getByText(/imported from a connected account/i)).toBeTruthy();
   });
 
   it('offers no Save action and never writes', async () => {
@@ -694,6 +696,13 @@ describe('TransactionFormScreen — synced (binance) row', () => {
     expect(getByLabelText('Description').props.editable).toBe(false);
     expect(getByLabelText('Date').props.accessibilityState.disabled).toBe(true);
     expect(getByLabelText('Time').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('shows the source-neutral read-only notice, never Monobank-specific wording', async () => {
+    const { getByText, queryByText } = await renderEdit('txn-b');
+    // A Binance row must not claim it came from Monobank.
+    expect(getByText(/imported from a connected account/i)).toBeTruthy();
+    expect(queryByText(/Monobank/i)).toBeNull();
   });
 
   it('still shows the editable category control on a read-only binance row', async () => {

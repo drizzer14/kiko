@@ -194,7 +194,7 @@ export const uk: typeof en = {
       expense: 'Витрата',
       from: 'Звідки',
       income: 'Дохід',
-      monobankNotice: 'Цю транзакцію імпортовано з Monobank, і її не можна редагувати.',
+      syncedNotice: 'Цю транзакцію імпортовано з підключеного рахунку, і її не можна редагувати.',
       selectHolding: 'Оберіть актив',
       title: 'Транзакція',
       to: 'Куди',

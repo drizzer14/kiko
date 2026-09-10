@@ -602,7 +602,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
   };
-  const monobankNotice = t('forms.transaction.monobankNotice');
+  const syncedNotice = t('forms.transaction.syncedNotice');
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -1036,7 +1036,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }
       >
         <Box gap={4}>
-          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, monobankNotice)}
+          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
 
           {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,

@@ -212,7 +212,7 @@ export const en = {
       expense: 'Expense',
       from: 'From',
       income: 'Income',
-      monobankNotice: 'This transaction was imported from Monobank and cannot be edited.',
+      syncedNotice: 'This transaction was imported from a connected account and cannot be edited.',
       selectHolding: 'Select holding',
       title: 'Transaction',
       to: 'To',
