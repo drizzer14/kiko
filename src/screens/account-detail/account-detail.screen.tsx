@@ -276,8 +276,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               </Box>
             )}
             <Button
-              variant="primary"
-              size="compact"
+              variant="secondaryTonal"
+              size="small"
               fullWidth={false}
               onPress={() => {
                 handlePress();
@@ -292,8 +292,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {isConnectedToMonobank && (
           <Button
-            variant="secondary"
-            size="compact"
+            variant="secondaryTonal"
+            size="small"
             fullWidth={false}
             onPress={confirmDisconnect}
             icon="link.badge.plus"

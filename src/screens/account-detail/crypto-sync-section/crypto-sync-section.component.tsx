@@ -119,8 +119,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
           </Box>
 
           <Button
-            variant="primary"
-            size="compact"
+            variant="secondaryTonal"
+            size="small"
             fullWidth={false}
             onPress={() => {
               sync(resyncRequest(connectedProvider, account.id));
@@ -133,8 +133,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         </Box>
 
         <Button
-          variant="secondary"
-          size="compact"
+          variant="secondaryTonal"
+          size="small"
           fullWidth={false}
           onPress={() => confirmDisconnect(connectedProvider)}
           icon="link.badge.plus"

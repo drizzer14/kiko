@@ -101,6 +101,62 @@ describe('Button', () => {
     expect(flattenRoot(getByRole('button')).minHeight).toBe(44);
   });
 
+  it('renders a small button visibly shorter than 44pt and self-hugging', async () => {
+    const { getByRole } = await render(
+      <Button onPress={() => {}} size="small" fullWidth={false}>
+        Remove
+      </Button>,
+    );
+    const style = flattenRoot(getByRole('button'));
+    // The small size is a deliberately SHORTER inline control (clearly smaller
+    // than the 50pt primary and the 44pt compact), hugging its own content.
+    expect(style.minHeight).toBe(34);
+    expect(style.minHeight).toBeLessThan(44);
+    expect(style.alignSelf).toBe('flex-start');
+  });
+
+  it('restores the 44pt HIG tap target on the small size via hitSlop', async () => {
+    const { getByRole } = await render(
+      <Button onPress={() => {}} size="small" fullWidth={false}>
+        Remove
+      </Button>,
+    );
+    const button = getByRole('button');
+    const slop = button.props.hitSlop as { top: number; bottom: number };
+    const visibleHeight = flattenRoot(button).minHeight as number;
+    // The visible control is shorter than 44pt, but the hitSlop above and below
+    // it brings the actual tap target back to at least the 44pt HIG floor, so
+    // the tap area is never shrunk below 44pt.
+    expect(slop).toBeDefined();
+    expect(visibleHeight + slop.top + slop.bottom).toBeGreaterThanOrEqual(44);
+  });
+
+  it('carries no hitSlop on the regular or compact sizes', async () => {
+    const regular = await render(<Button onPress={() => {}}>Save</Button>);
+    expect(regular.getByRole('button').props.hitSlop).toBeUndefined();
+
+    const compact = await render(
+      <Button onPress={() => {}} size="compact" fullWidth={false}>
+        Save
+      </Button>,
+    );
+    // Compact already holds 44pt as its visible minHeight, so it needs no slop.
+    expect(compact.getByRole('button').props.hitSlop).toBeUndefined();
+  });
+
+  it('renders the secondaryTonal label in textPrimary on the faint neutral tint', async () => {
+    // secondaryTonal is the neutral counterpart to destructiveTonal: a faint
+    // neutral tint fill under an ordinary textPrimary label (the fill is applied
+    // through the variant block the mock strips, so only the label is asserted).
+    const { getByText } = await render(
+      <Button onPress={() => {}} variant="secondaryTonal">
+        Connect
+      </Button>,
+    );
+
+    expect(flattenRoot(getByText('Connect')).color).toBe(darkTheme.colors.textPrimary);
+  });
+
   it('renders an icon-only button (icon, no label) that stays pressable', async () => {
     const onPress = jest.fn();
     const { getByRole, getByText, getAllByText } = await render(

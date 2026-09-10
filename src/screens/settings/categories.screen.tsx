@@ -178,18 +178,18 @@ const CategoryListRow: FC<{
           </Box>
 
           {isDefault ? (
-            // The default marker is the SAME compact ghost Button shape as the
+            // The default marker is the SAME faint-tint small Button shape as the
             // set-default star below, but filled (`star.fill`) and disabled so it
             // reads as a static "this is the default" marker while keeping the
-            // identical 44pt geometry and padding — unifying the two stars that
-            // previously differed (a bare padding-less icon vs. this control).
+            // identical geometry — unifying the two stars into one faint-tinted
+            // control (a shorter visible pill; the small size restores the 44pt
+            // tap target via hitSlop).
             <Button
-              variant="ghost"
-              size="compact"
+              variant="secondaryTonal"
+              size="small"
               fullWidth={false}
               disabled
               icon="star.fill"
-              textColor={theme.colors.textPrimary}
               accessibilityLabel={t('categories.isDefaultLabel', { title: category.title })}
               // A permanently-disabled static marker: the press never fires, so
               // it carries an inert no-op rather than the dead `setAsDefault`.
@@ -197,11 +197,10 @@ const CategoryListRow: FC<{
             />
           ) : (
             <Button
-              variant="ghost"
-              size="compact"
+              variant="secondaryTonal"
+              size="small"
               fullWidth={false}
               icon="star"
-              textColor={theme.colors.textSecondary}
               accessibilityLabel={t('categories.setAsDefaultLabel', { title: category.title })}
               onPress={setAsDefault}
             />
@@ -242,20 +241,22 @@ const CategoryListRow: FC<{
             {t('common.delete')}
           </Button>
 
-          {/* Move-to-top / move-to-bottom: bare icon buttons at the row's right
-              edge. Each immediately rewrites the whole list order (the parent
+          {/* Move-to-top / move-to-bottom: bare (transparent ghost) icon buttons
+              at the row's right edge, kept muted `textSecondary` so they read as
+              minor utilities beside the tinted Delete rather than competing with
+              it. Each immediately rewrites the whole list order (the parent
               computes the new key array and persists it via
               categoriesRepo.reorder); because the list is a live query, the write
               re-renders it with this card at its new position. These are a
               keyboard-free alternative to the drag-to-reorder gesture the
               enclosing Sortable.Grid provides. `arrow.up.to.line` /
-              `arrow.down.to.line` are long-standing SF Symbols (iOS 13+), tinted
-              the same muted `textSecondary` as the star marker so they read as
-              neutral controls. */}
+              `arrow.down.to.line` are long-standing SF Symbols (iOS 13+). The
+              small size makes them the same height as the small Delete beside
+              them; the 44pt tap target is restored via hitSlop. */}
           <Box direction="row" gap={1} style={styles.reorderButtons}>
             <Button
               variant="ghost"
-              size="compact"
+              size="small"
               fullWidth={false}
               icon="arrow.up.to.line"
               textColor={theme.colors.textSecondary}
@@ -265,7 +266,7 @@ const CategoryListRow: FC<{
 
             <Button
               variant="ghost"
-              size="compact"
+              size="small"
               fullWidth={false}
               icon="arrow.down.to.line"
               textColor={theme.colors.textSecondary}

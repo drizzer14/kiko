@@ -10,15 +10,32 @@ import type { ReactNode } from 'react';
 // must still read as dangerous without shouting like the solid `destructive`
 // pill. The label stays the red hue on a same-hue tint, so — unlike the solid
 // variants — it does not follow the `onAccent` rule.
+// secondaryTonal — the NEUTRAL counterpart to destructiveTonal: a faint neutral
+// tint (`neutralSubtle`) under an ordinary `textPrimary` label. The standard
+// treatment for a lower-emphasis INLINE/standalone secondary action (Connect,
+// Sync now, a per-row Add, the category set-default) that must carry a faint
+// tinted background rather than a solid `secondary` surfaceHigh pill.
 // ghost — no fill at all, label-only: a borderless nav-bar/header action (e.g.
 // the detail screens' Edit button) that must read as plain text-with-icon,
 // the standard iOS header-button treatment, never a filled pill.
-type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'destructiveTonal' | 'ghost';
+type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'secondaryTonal'
+  | 'destructive'
+  | 'destructiveTonal'
+  | 'ghost';
 
 // regular — a tall (50pt), rounded footer/submit button, the common case.
-// compact — a shorter, tighter, self-hugging inline action (e.g. an add/remove
-// row control or an icon-adorned Connect/Sync/Save action beside status text).
-type ButtonSize = 'regular' | 'compact';
+// compact — a shorter, self-hugging inline action that still holds a 44pt
+// visible minimum height (e.g. an icon-only ghost control in a sheet action
+// row).
+// small — a deliberately SHORTER inline action: its VISIBLE height is below the
+// 44pt HIG floor (clearly smaller than the 50pt primary and the 44pt compact),
+// but the Button restores a >= 44pt TAP target via `hitSlop`, so the tap area is
+// never shrunk below 44pt. The standard size for a faint-tint inline secondary
+// (paired with `secondaryTonal` or `destructiveTonal`).
+type ButtonSize = 'regular' | 'compact' | 'small';
 
 // Everything a Button takes EXCEPT the label/accessibility pair, which the
 // two branches below constrain against each other.

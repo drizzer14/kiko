@@ -9,6 +9,11 @@ const BUTTON_MIN_HEIGHT = 50;
 // action) is still tappable. Regular is taller (50); compact never goes below
 // this floor.
 const COMPACT_MIN_HEIGHT = 44;
+// The small Button's VISIBLE minimum height — deliberately below the 44pt floor,
+// so a small inline action reads as clearly shorter than the 50pt primary and
+// the 44pt compact. The Button restores the 44pt TAP target with `hitSlop` (see
+// SMALL_HIT_SLOP in button.component.tsx); the visible pill stays this short.
+const SMALL_MIN_HEIGHT = 34;
 
 export const styles = StyleSheet.create((theme) => ({
   button: {
@@ -27,6 +32,10 @@ export const styles = StyleSheet.create((theme) => ({
         // the solid bright `negative`. Its red label comes from
         // `variantLabelColor` in the component (see button.component.tsx).
         destructiveTonal: { backgroundColor: theme.colors.negativeSubtle },
+        // The neutral counterpart to destructiveTonal: a faint neutral tint, not
+        // the solid `surfaceHigh` a plain `secondary` paints. Its `textPrimary`
+        // label comes from `variantLabelColor` in the component.
+        secondaryTonal: { backgroundColor: theme.colors.neutralSubtle },
         // No fill at all — see the `ghost` doc comment on `ButtonVariant`.
         // Explicit `'transparent'` (not simply omitting the key) so switching
         // to `ghost` at runtime (Unistyles' `useVariants`) always clears
@@ -47,6 +56,19 @@ export const styles = StyleSheet.create((theme) => ({
   compact: {
     minHeight: COMPACT_MIN_HEIGHT,
     paddingVertical: theme.spacing(2),
+    paddingHorizontal: theme.spacing(3),
+    borderRadius: theme.radii.sm,
+    alignSelf: 'flex-start',
+  },
+  // A deliberately SHORTER inline action: its visible height is below the 44pt
+  // floor, so it reads as clearly smaller than the regular (50) and compact (44)
+  // sizes. The paddingHorizontal keeps an icon-only small button 44pt WIDE (12*2
+  // + a 20pt body glyph); the missing height is recovered as a >= 44pt TAP target
+  // via `hitSlop` in the component (SMALL_HIT_SLOP), never by shrinking the tap
+  // area. Hugs its content at the leading edge, like compact.
+  small: {
+    minHeight: SMALL_MIN_HEIGHT,
+    paddingVertical: theme.spacing(1),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,
     alignSelf: 'flex-start',

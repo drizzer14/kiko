@@ -594,7 +594,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               </Box>
             ))}
 
-            <Button variant="primary" size="compact" fullWidth={false} onPress={addContribution}>
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              icon="plus"
+              onPress={addContribution}
+            >
               {t('forms.holding.addContribution')}
             </Button>
 
