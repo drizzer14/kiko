@@ -7,17 +7,21 @@ import { resolveBottomClearance } from './bottom-clearance';
 import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
 
-// A large-title navigator header owns the top inset itself, so scroll mode
-// drops the SafeAreaView's top edge here — keeping it would double-offset
-// content beneath the header (see the redesign feedback round-1 brief,
-// task 3, for the root cause).
-const SCROLL_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
+// A large-title navigator header owns the top inset itself, so any branch whose
+// content sits under one drops the SafeAreaView's top edge — keeping it would
+// double-offset content beneath the header (see the redesign feedback round-1
+// brief, task 3, for the root cause). Used by the always-scrolling `scroll`
+// branch AND by the plain branch's `bleedTop` opt-in (a large-title screen
+// whose child is itself the scrollable surface, e.g. HoldingDetail's ledger
+// FlatList — feedback round-2, item 2).
+const LARGE_TITLE_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
 
 const Screen: FC<ScreenProps> = ({
   children,
   scroll = false,
   footer,
   bleedBottom = false,
+  bleedTop = false,
   scrollableRef,
 }) => {
   // The native glass tab bar floats over the screen's bottom edge, so any
@@ -56,7 +60,7 @@ const Screen: FC<ScreenProps> = ({
 
   if (scroll) {
     return (
-      <SafeAreaView edges={SCROLL_SAFE_AREA_EDGES} style={styles.safeArea}>
+      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
@@ -85,7 +89,7 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scrollContent(footer !== undefined)}
         >
           {children}
         </ScrollView>
@@ -104,8 +108,19 @@ const Screen: FC<ScreenProps> = ({
   // exactly like the scroll branch's footer, rather than floating directly
   // beneath a short page's content.
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
+    <SafeAreaView
+      // A `bleedTop` screen's child is itself the scrollable surface under a
+      // large-title header, so — like the scroll branch above — the top edge is
+      // dropped here and the child (via its own automatic content-inset
+      // adjustment) owns the top inset. Every other plain (headerless) screen
+      // keeps the default all-edges reservation.
+      edges={bleedTop ? LARGE_TITLE_SAFE_AREA_EDGES : undefined}
+      style={styles.safeArea}
+    >
+      <View
+        testID="screen-content"
+        style={styles.content(contentOwnsClearance, bottomClearance, bleedTop)}
+      >
         {children}
       </View>
       {footer ? (

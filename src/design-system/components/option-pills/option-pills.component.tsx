@@ -26,6 +26,7 @@ const OptionPills = <T extends string | number>({
   label = String,
   icon,
   columns = 2,
+  labelVariant = 'body',
 }: OptionPillsProps<T>): ReactElement => {
   const { theme } = useUnistyles();
   const cellWidth = { width: `${100 / columns}%` } as const;
@@ -54,9 +55,11 @@ const OptionPills = <T extends string | number>({
               {icon !== undefined && (
                 <SymbolIcon
                   name={icon(option)}
-                  // The pill label is body text, so its icon is the body icon-size
-                  // token (never an inline literal).
-                  size={theme.iconSizes.body}
+                  // The icon size pairs with the label's own type step (never
+                  // an inline literal) — `theme.iconSizes` is keyed by the
+                  // same step names as `theme.typography`, so a smaller
+                  // `labelVariant` shrinks the glyph with it.
+                  size={theme.iconSizes[labelVariant]}
                   // On the accent fill the glyph takes the always-white onAccent
                   // tone (the onAccent rule for a selected icon on an accent fill).
                   tone={isSelected ? 'onAccent' : 'textSecondary'}
@@ -64,7 +67,7 @@ const OptionPills = <T extends string | number>({
               )}
 
               <Text
-                variant="body"
+                variant={labelVariant}
                 tone={isSelected ? 'onAccent' : 'textSecondary'}
                 // The selected label is semibold, so the selected/unselected
                 // hierarchy reads through weight as well as fill and tone.

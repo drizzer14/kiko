@@ -265,6 +265,20 @@ describe('HoldingDetailScreen', () => {
     }
   });
 
+  it('adjusts the ledger list content inset automatically so the native large title does not overlap it at scroll-top', async () => {
+    seed(cashHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // This screen sits under `AccountsStack`'s `headerLargeTitle: true`, and the
+    // FlatList — not `Screen`'s ScrollView — owns the scrolling. Without this
+    // prop the native large title has no scroll view to attach its content
+    // inset to and overlaps the list header at scroll-top (feedback round-2,
+    // item 2). `Screen bleedBottom`/`bleedTop` drop the double top inset; this
+    // matches the working `account-detail` scroll ScrollView's own setting.
+    expect(getByTestId('ledger-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+  });
+
   it('renders a view-only header with no inline name, icon, or color editors', async () => {
     seed(cardHolding);
 
@@ -501,6 +515,40 @@ describe('HoldingDetailScreen', () => {
     // 100.00 USD * 41 = 4,100.00 UAH — a UAH (₴) amount rendered as the caption.
     const converted = getByTestId('holding-detail-converted');
     expect(within(converted).getByText(/₴/)).toBeTruthy();
+    // The caption sits INSIDE the shared value header (`holding-value-header`),
+    // tucked directly under the amount — not as a detached line at the bottom of
+    // the summary block (feedback round-2, item 3). Scoping the query to the
+    // header node is what proves the grouping.
+    expect(
+      within(getByTestId('holding-value-header')).getByTestId('holding-detail-converted'),
+    ).toBe(converted);
+  });
+
+  it('shows the converted value grouped with the amount, above the breakdown, on a foreign-currency deposit', async () => {
+    // The deposit/bond presentation ALSO renders the base-currency line, and it
+    // renders it in the SAME place as every other type — inside the value header,
+    // directly under the amount and ABOVE the calculation breakdown — so the two
+    // presentations read consistently. A USD term_deposit against a UAH base with
+    // a cached rate is the case that carries both a breakdown AND a converted line.
+    seed(
+      { ...depositHolding, currency: 'USD' },
+      [],
+      [],
+      [],
+      [{ base: 'USD', quote: 'UAH', rate: '41' }],
+      [{ baseCurrency: 'UAH' }],
+    );
+
+    const { getByTestId } = await renderScreen();
+
+    const header = getByTestId('holding-value-header');
+    // The converted caption is inside the header grouping...
+    expect(within(header).getByTestId('holding-detail-converted')).toBeTruthy();
+    // ...while the breakdown ("Principal") is NOT — it is a separate block below
+    // the header, so the converted line hugs the value rather than floating under
+    // the breakdown.
+    expect(within(header).queryByText('Principal')).toBeNull();
+    expect(getByTestId('holding-detail-converted')).toBeTruthy();
   });
 
   it('shows no converted value line for a holding already in the base currency', async () => {

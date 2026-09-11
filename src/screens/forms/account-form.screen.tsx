@@ -41,6 +41,11 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 const kinds = ['bank', 'cash', 'crypto'] as const;
 type Kind = (typeof kinds)[number];
 
+// The kind a fresh create form starts on. Its default icon (accountKindSymbol)
+// seeds the icon field so the form opens on a sensible glyph rather than the
+// neutral fallback below.
+const INITIAL_KIND: Kind = 'bank';
+
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one. The persisted default (a kind-derived icon) is applied by the
 // account list rows when the stored icon is null; here the account has no kind
@@ -67,10 +72,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<Kind>('bank');
+  const [kind, setKind] = useState<Kind>(INITIAL_KIND);
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
-  const [icon, setIcon] = useState<string | null>(null);
+  // A create form seeds the icon with the initially-selected kind's default
+  // glyph so it opens on a sensible symbol; the user can still override it in
+  // the picker below. Edit mode starts null and is hydrated from the stored
+  // row (below), so the seed never clobbers a saved icon.
+  const [icon, setIcon] = useState<string | null>(isEdit ? null : accountKindSymbol[INITIAL_KIND]);
   // Optional sync credentials entered at CREATE time (never seeded in edit
   // mode). A secret is write-only: it goes straight to the Keychain on save and
   // is never read back into state — see the save flow below.
@@ -223,6 +232,15 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  // Selecting an account type re-seeds the icon field with that type's default
+  // glyph; the user can still override it in the picker afterward, and picking
+  // a different type resets the icon to the new type's default. Only reachable
+  // in create mode — the kind chip is disabled in edit mode below.
+  const handleSelectKind = (nextKind: Kind): void => {
+    setKind(nextKind);
+    setIcon(accountKindSymbol[nextKind]);
+  };
+
   return (
     <Screen
       scroll
@@ -261,7 +279,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           label={t('forms.account.kind')}
           options={kinds}
           selected={kind}
-          onSelect={setKind}
+          onSelect={handleSelectKind}
           labels={kindLabels}
           icons={accountKindSymbol}
           disabled={isEdit}

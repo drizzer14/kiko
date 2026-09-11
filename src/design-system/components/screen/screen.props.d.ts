@@ -39,4 +39,17 @@ export type ScreenProps = {
   // (which already claims the bottom edge on its own); ignored in `scroll`
   // mode.
   bleedBottom?: boolean;
+  // The plain-branch counterpart of `scroll` for a large-title screen whose
+  // child is ITSELF the scrollable surface (a virtualized FlatList/SectionList
+  // that must own the scrolling, so it cannot nest inside `scroll` mode's
+  // ScrollView). It drops the SafeAreaView's top edge — the native large-title
+  // header owns the top inset, so reserving it here too double-offsets content
+  // beneath the header — and zeroes the content wrapper's top padding so the
+  // child scrollable reaches the top edge and iOS applies the large-title
+  // content inset to it. The child must set
+  // `contentInsetAdjustmentBehavior="automatic"` and supply its own top content
+  // padding (e.g. HoldingDetail's ledger FlatList). Only meaningful in the
+  // plain (non-scroll) branch; ignored in `scroll` mode (which already drops
+  // the top edge for its own ScrollView).
+  bleedTop?: boolean;
 };

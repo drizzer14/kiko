@@ -83,26 +83,60 @@ export const styles = StyleSheet.create((theme) => ({
   // (the resolved 66%-of-window cap, or a call site's own stricter override —
   // see `BottomSheet`'s own comment), never left unset, so a tall sheet always
   // scrolls its own content instead of growing past the viewport.
+  //
+  // `overflow: 'hidden'` clips the card to this exact top-rounded/bottom-flush
+  // shape — needed now that `glassFill` below (the translucent glass
+  // background, a `GlassSurface`) deliberately extends past this View's own
+  // bottom edge: without the clip, that extension would render past the
+  // sheet's intended silhouette.
+  //
+  // The sheet is a grouped surface: its base sits one level below the
+  // cards/controls on it, so a selected pill (`surfaceHigh`) reads as raised
+  // rather than blending into the sheet. It used `surfaceHigh` itself before —
+  // the SAME tone as a selected pill — which the trend filter sheet blended
+  // into (on-device review). The base fill itself now lives on `glassFill`'s
+  // `GlassSurface` (its `transparent` variant's `surfaceTranslucent` token,
+  // composited over true-black to ~rgb(17,17,18) — darker than `surfaceHigh`
+  // #2C2C2E, so the elevation split still holds), not a `backgroundColor`
+  // here. No in-sheet element uses the `surface`/`surfaceTranslucent` tone for
+  // its own chrome (it is `surfaceHigh`, `accent`, or transparent — the
+  // icon-picker-modal's unselected tiles were moved from `surface` to
+  // `surfaceHigh` for exactly this reason), so none blends, and every sheet
+  // gains the correct grouped elevation. A new in-sheet control must sit at
+  // `surfaceHigh` (or above), never `surface`, or it blends into this base.
   sheet: (bottomInset: number, maxHeight: number) => ({
     maxHeight,
+    overflow: 'hidden',
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
-    // The sheet is a grouped surface: its base (`sheetBackground`) sits one
-    // level below the cards/controls on it, so a selected pill (`surfaceHigh`)
-    // reads as raised rather than blending into the sheet. It used `surfaceHigh`
-    // itself before — the SAME tone as a selected pill — which the trend filter
-    // sheet blended into (on-device review). This owner covers every sheet: no
-    // in-sheet element uses the `surface`/`sheetBackground` tone (their chrome
-    // is `surfaceHigh`, `accent`, or transparent — the icon-picker-modal's
-    // unselected tiles were moved from `surface` to `surfaceHigh` for exactly
-    // this reason), so none blends, and every sheet gains the correct grouped
-    // elevation. A new in-sheet control must sit at `surfaceHigh` (or above),
-    // never `surface`, or it blends into this base.
-    backgroundColor: theme.colors.sheetBackground,
     paddingTop: theme.spacing(SHEET_PADDING_STEP),
     paddingHorizontal: theme.spacing(SHEET_PADDING_STEP),
     paddingBottom: theme.spacing(SHEET_PADDING_STEP) + bottomInset,
   }),
+  // The translucent glass background, painted BEHIND the grabber + body (it
+  // renders first in `BottomSheet`; a later sibling always paints over an
+  // earlier one, the same back-to-front convention `GlassSurface` itself uses
+  // for its own backdrop/base/wash/children layers — see
+  // `glass-surface.component.tsx`). Absolutely fills the sheet card's own
+  // width, pinned to its top, but its `bottom` is pulled `theme.radii.lg`
+  // PAST the card's own bottom edge on purpose: `GlassSurface` exposes only a
+  // single ALL-corner `radius` (there is no top-only variant), so sizing it to
+  // match the card exactly would round its bottom-left/bottom-right corners
+  // too, leaking the dismiss scrim through a small gap right at the bottom of
+  // the screen. Extending it by exactly the radius pushes the point where
+  // `GlassSurface`'s own rounded-rect shape starts curving inward to precisely
+  // the sheet card's bottom edge — `sheet`'s own `overflow: 'hidden'` above
+  // then clips everything below that edge, so what's left is a flat straight
+  // bottom and correct top-rounded corners (which align exactly with `sheet`'s
+  // `borderTopLeftRadius`/`borderTopRightRadius`, since both read the same
+  // `theme.radii.lg`).
+  glassFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: -theme.radii.lg,
+  },
   // DEVICE BUG (F5) fix: the 66% cap (`sheet.maxHeight` above) is forced on
   // every sheet, but until now the sheet card rendered no scroll container of
   // its own, so a plain-Box sheet whose content ran taller than the cap

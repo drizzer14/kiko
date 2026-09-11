@@ -289,23 +289,46 @@ new component can land between reviews of this skill:
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
-  `Modal + backdrop + Box` again. The sheet is a GROUPED surface: its
-  base is the `sheetBackground` token (the iOS systemGroupedBackground/
-  dark equivalent), one level BELOW the `surfaceHigh` cards/controls on
-  it, so a control (e.g. an OptionPills selected pill) reads as raised
-  instead of blending into the sheet — it used `surfaceHigh` itself
-  before, the same tone as a selected pill. It caps its own height at a fixed
-  66%-of-window ceiling and takes an optional `maxHeight` prop that
-  can only tighten that cap further, plus a `scrollable` prop
-  (defaults `true`) that wraps `children` in a `ScrollView` so
-  overflow scrolls instead of clipping — a sheet that needs its own
-  pinned header/footer or a scroll-to-selection ref (date-range-field,
-  category-field, icon-picker-modal) passes `scrollable={false}` and
-  renders its own inner `ScrollView` instead. Its drag-to-close
-  grabber's pure math (`clampSheetTranslate`, `shouldDismissSheet`)
-  lives in `bottom-sheet.gesture.ts` — see `kiko-gestures`. Read
-  `bottom-sheet.props.d.ts` for the exact current prop set rather than
-  trusting this summary if it drifts.
+  `Modal + backdrop + Box` again. The sheet card's own BACKGROUND is a
+  translucent glass panel, reusing `GlassSurface`'s `transparent`
+  variant (`surfaceTranslucent`; real Liquid Glass on iOS 26+, the same
+  themed flat translucent fallback elsewhere) rather than forking its
+  layering — real glass/fallback branching, backdrop, and base all stay
+  owned by `GlassSurface` itself. It is rendered as an
+  absolutely-positioned first child of the sheet card
+  (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
+  and body that follow it in JSX. Since this is the ONE shared
+  primitive, every sheet in the app gets the glass background from this
+  single change point. `GlassSurface` only exposes a single ALL-corner
+  `radius` (there is no top-only variant); the sheet still needs to read
+  as top-rounded / bottom-flush (anchored to the screen's bottom edge),
+  so `glassFill` deliberately sizes the `GlassSurface` `theme.radii.lg`
+  taller than the card, past its own bottom edge — the card's own
+  `overflow: 'hidden'` (added for exactly this) then clips away the
+  region where `GlassSurface`'s bottom corners would otherwise curve,
+  leaving a flat bottom edge and correctly-rounded top corners rather
+  than a small gap leaking the dismiss scrim through the bottom
+  corners. `GlassSurface`'s own `padding` prop is passed `0` on this
+  layer — the card's EXISTING padding (`styles.sheet`'s
+  `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
+  second one. The sheet is still a GROUPED surface: this translucent
+  base (composited to ~rgb(17,17,18) over true-black — darker than
+  `surfaceHigh` #2C2C2E) sits one level BELOW the `surfaceHigh`
+  cards/controls on it, so a control (e.g. an OptionPills selected
+  pill) reads as raised instead of blending into the sheet — it used
+  `surfaceHigh` itself before, the same tone as a selected pill, then a
+  flat opaque `sheetBackground` token before this glass pass. It caps
+  its own height at a fixed 66%-of-window ceiling and takes an optional
+  `maxHeight` prop that can only tighten that cap further, plus a
+  `scrollable` prop (defaults `true`) that wraps `children` in a
+  `ScrollView` so overflow scrolls instead of clipping — a sheet that
+  needs its own pinned header/footer or a scroll-to-selection ref
+  (date-range-field, category-field, icon-picker-modal) passes
+  `scrollable={false}` and renders its own inner `ScrollView` instead.
+  Its drag-to-close grabber's pure math (`clampSheetTranslate`,
+  `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
+  `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
+  prop set rather than trusting this summary if it drifts.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
@@ -345,7 +368,29 @@ new component can land between reviews of this skill:
   — not a low-contrast raised surface, so the selection stays clear on
   the low-contrast sheet background. Unselected pills stay transparent
   with a `textSecondary` label. The pill content is centered and the
-  pill holds the 44pt HIG minimum touch target.
+  pill holds the 44pt HIG minimum touch target. The pill label's `Text`
+  variant defaults to `body` (the original hardcoded size — every
+  existing consumer that omits the prop, `CurrencySwitch` and
+  `LanguageSwitch`, is unaffected) and takes an optional `labelVariant`
+  override for a caller whose value sits under its own larger section
+  label and must read as visually subordinate to it — the Statistics
+  trend-filter sheet (`trend-filter-field.component.tsx`) passes
+  `labelVariant="caption"` for exactly this reason: its section labels
+  were raised from `caption` to `body` to fix an inverted
+  label-smaller-than-value hierarchy, so the values had to drop a step
+  to stay under them. The optional leading icon's size is derived from
+  the same prop (`theme.iconSizes[labelVariant]`, never a hardcoded
+  `theme.iconSizes.body`), per the "SF Symbol sizing" HIG rule — the
+  glyph stays paired with its label's type step rather than only ever
+  matching the default. The trend-filter sheet also dropped the frosted
+  `GlassSurface transparent bordered` card that used to sit behind each
+  value group — the values now sit directly on the sheet under their
+  labels (the iOS grouped-form look, no inner gray fill) — except the
+  manual-mode category list, which still needs a clipped, shrinkable
+  scroll region: that one case keeps a plain `Box` with `overflow:
+  'hidden'`, the shared radius token, and a hairline `border` (no fill),
+  reproducing only the corner-clip and shrink-to-scroll behavior
+  `GlassSurface` used to provide.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any

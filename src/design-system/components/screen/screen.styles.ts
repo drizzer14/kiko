@@ -34,20 +34,37 @@ export const styles = StyleSheet.create((theme) => ({
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
   // and top padding stay at the base spacing step regardless.
-  content: (ownsClearance: boolean, bottomClearance: number) => ({
+  content: (ownsClearance: boolean, bottomClearance: number, bleedTop: boolean) => ({
     flex: 1,
-    paddingTop: theme.spacing(4),
+    // A `bleedTop` screen's child is itself the scrollable surface under a
+    // large-title header (it sets `contentInsetAdjustmentBehavior="automatic"`
+    // and supplies its own top content padding). This wrapper adds no top
+    // padding in that case — the child scrollable must reach the top edge for
+    // iOS to apply the large-title content inset to it; a wrapper offset would
+    // push it below the header and defeat the automatic adjustment. Every other
+    // (headerless or non-scrolling) plain screen keeps the base top padding.
+    paddingTop: bleedTop ? 0 : theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
     paddingBottom: ownsClearance
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
   }),
   // The scroll-mode content container: no `flex: 1` (a ScrollView's content
-  // container sizes to its content, not the viewport), same padding as the
-  // non-scroll `content` above.
-  scrollContent: {
+  // container sizes to its content, not the viewport), same base padding as
+  // the non-scroll `content` above. When a `footer` sits below it (outside
+  // the ScrollView, as a sibling — see `screen.component.tsx`), this
+  // container drops its own bottom padding so the footer's own
+  // `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the ONE gap above
+  // the footer button, instead of both adding `theme.spacing(FOOTER_GAP_STEP)`
+  // back to back — the doubled, disproportionate gap feedback flagged on a
+  // short unscrolled form (e.g. deposit-edit), since the two views are
+  // adjacent siblings with no shared box to collapse the stacked padding.
+  // With no `footer`, this container legitimately owns the scroll content's
+  // own trailing edge, so it keeps the base bottom padding.
+  scrollContent: (hasFooter: boolean) => ({
     padding: theme.spacing(4),
-  },
+    paddingBottom: hasFooter ? 0 : theme.spacing(4),
+  }),
   // The pinned footer slot: sits outside the scrollable surface (a
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see
   // `screen.component.tsx`), inside the bottom safe-area edge, in both

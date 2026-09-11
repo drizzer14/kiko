@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { i18n } from '../../i18n';
 import {
   asNavigationProp,
@@ -291,10 +292,58 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('does not set an icon when none is picked', async () => {
+  it('opens the create form on the initial kind default icon (bank)', async () => {
+    // A fresh create form starts on the bank kind, so its icon field must show
+    // the bank default glyph rather than the neutral fallback.
+    const { getByLabelText } = await renderForm();
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.bank}`)).toBeTruthy();
+  });
+
+  it('sets the icon to each account type default when its chip is selected', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.press(getByText('Cash'));
+    expect(getByLabelText(`Icon ${accountKindSymbol.cash}`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Crypto'));
+    expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Bank'));
+    expect(getByLabelText(`Icon ${accountKindSymbol.bank}`)).toBeTruthy();
+  });
+
+  it('resets a hand-picked icon back to the new type default when the type changes', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    // The user overrides the default with a custom icon...
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon airplane'));
+    expect(getByLabelText('Icon airplane')).toBeTruthy();
+
+    // ...then switches type, which re-seeds the icon to the new type's default.
+    await fireEvent.press(getByText('Crypto'));
+    expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+  });
+
+  it('persists the initial kind default icon when the user does not change it', async () => {
     const { getByLabelText, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
+    expect(mockSetIcon).toHaveBeenCalledWith('new-account-id', accountKindSymbol.bank);
+  });
+
+  it('does not set an icon when the user removes the default before saving', async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    // Removing clears the seeded default back to null, so the create path skips
+    // setIcon and the row follows its kind default at display time.
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByText('Remove'));
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
@@ -337,8 +386,9 @@ describe('AccountFormScreen', () => {
     expect(mockCreateCashAccount).toHaveBeenCalledWith({
       name: 'Wallet',
       currency: 'EUR',
-      // No icon was picked, so the create passes an explicit null.
-      icon: null,
+      // Selecting the Cash kind seeds the icon field with the cash default,
+      // which the atomic create persists (the user did not override it).
+      icon: accountKindSymbol.cash,
       // No color was picked either, so the create passes an explicit null and the
       // row follows its cash kind default at display time.
       color: null,
