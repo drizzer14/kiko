@@ -432,6 +432,125 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(dayD2)).toBe(100);
   });
 
+  it('turns a bond on at its typed purchaseDate when no funding debit matches (fallback, no regression)', () => {
+    // A genuinely manual bond (cash bought outside the app, or funded before
+    // transactions were tracked) has no recorded funding outflow at all. The
+    // fix must not require a match to turn the bond on: `effectiveBondPurchaseDay`
+    // falls back to the typed `purchaseDate`, so net worth should still STEP UP
+    // there — proving the fix doesn't flatten a legitimately unfunded bond into
+    // never showing its cost.
+    const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day D1
+
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
+    const bond = holding({
+      id: 'bond',
+      currency: 'USD',
+      type: 'bond',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1,
+        faceValueMinorUnits: 10_000,
+        couponPct: 0,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate,
+        purchasePriceMinorUnits: 10_000, // paid $100.00
+        maturityDate: Date.UTC(2027, 0, 1),
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [cash, bond],
+      txByHolding: new Map(), // no transaction anywhere funds the bond's cost
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    const amountAt = (t: number): number => {
+      const point = series.points.find((candidate) => candidate.t === t);
+      if (point === undefined) {
+        throw new Error(`no bucket at ${t}`);
+      }
+      return point.amount;
+    };
+
+    // D0 (before purchaseDate's local day): the bond has not turned on yet.
+    expect(amountAt(D0)).toBe(200);
+    // D1 (purchaseDate's local day) and D2 (after): the bond turns ON at its
+    // typed day and STEPS net worth up, since there is no offsetting debit to
+    // net it against — the manual-bond path is unchanged by the fix.
+    expect(amountAt(D1)).toBe(300);
+    expect(amountAt(D2)).toBe(300);
+  });
+
+  describe('under an explicit non-host timezone (Kiritimati, UTC+14)', () => {
+    // Every cross-day fixture above relies on the IMPLICIT host process
+    // timezone (this repo's dev machine runs Europe/Kyiv, UTC+2/+3) via
+    // `addLocalDays`/`startOfLocalDay`, which read `new Date(...)` in whatever
+    // zone the process happens to be in. Pin an explicit, extreme, DST-free,
+    // non-Kyiv, non-UTC offset so the same funding-day recognition is proven
+    // independent of which machine runs the suite — not merely passing by
+    // coincidence of the dev box's zone (a CI runner defaulting to UTC would
+    // never have exercised the local-day arithmetic at all).
+    const originalTz = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = 'Pacific/Kiritimati';
+    });
+
+    afterAll(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it('still recognizes the funding-debit day across a one-day gap', () => {
+      const purchaseDay = startOfLocalDay(Date.UTC(2026, 0, 10, 12));
+      const debitDay = addLocalDays(purchaseDay, -1); // funded one calendar day earlier
+      const debitTime = debitDay + 6 * HOUR;
+      const purchaseDate = purchaseDay + 18 * HOUR;
+
+      const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
+      const bond = holding({
+        id: 'bond',
+        currency: 'USD',
+        type: 'bond',
+        balanceMinorUnits: 0,
+        metadata: {
+          quantity: 1,
+          faceValueMinorUnits: 10_000,
+          couponPct: 0,
+          couponFrequency: 'annually',
+          bondKind: 'government',
+          purchaseDate,
+          purchasePriceMinorUnits: 10_000,
+          maturityDate: Date.UTC(2027, 0, 1),
+        },
+      });
+
+      const series = buildNetWorthSeries({
+        holdings: [cash, bond],
+        txByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+        historyRows: [uahUsd(D0, '0.025')],
+        baseCurrency: 'USD',
+        range: { from: debitDay, to: purchaseDay },
+      });
+
+      const at = (t: number): number => {
+        const point = series.points.find((candidate) => candidate.t === t);
+        if (point === undefined) {
+          throw new Error(`no bucket at ${t}`);
+        }
+        return point.amount;
+      };
+
+      // The money left on the debit day, so the bond's cost is recognized from
+      // there and net worth is $100 flat on both the debit day and the typed
+      // purchase day — no dip, even under this far-flung timezone.
+      expect(at(debitDay)).toBe(100);
+      expect(at(purchaseDay)).toBe(100);
+    });
+  });
+
   it('returns an empty series when no history has been backfilled yet', () => {
     const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
 
