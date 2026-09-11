@@ -10,7 +10,6 @@ type NativeMigrationBridge = {
   fileExists: (atPath: string) => Promise<boolean>;
   deleteFile: (atPath: string) => Promise<void>;
   readTextFile: (atPath: string) => Promise<string | null>;
-  writeTextFile: (text: string, toPath: string) => Promise<void>;
 };
 
 const native = (NativeModules as { WidgetBridge?: NativeMigrationBridge }).WidgetBridge;
@@ -34,6 +33,4 @@ export const migrationBridge = {
     Boolean(await require_().fileExists(atPath)),
   deleteFile: (atPath: string): Promise<void> => require_().deleteFile(atPath),
   readTextFile: (atPath: string): Promise<string | null> => require_().readTextFile(atPath),
-  writeTextFile: (text: string, toPath: string): Promise<void> =>
-    require_().writeTextFile(text, toPath),
 };
