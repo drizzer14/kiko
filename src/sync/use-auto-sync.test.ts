@@ -138,6 +138,24 @@ describe('useAutoSync', () => {
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
+  it('drops ONLY the tokenless Monobank account and keeps the tokened one plus crypto', async () => {
+    const monobankA = { id: 'acc-mono-a', name: 'Mono A', institution: 'monobank' };
+    const monobankB = { id: 'acc-mono-b', name: 'Mono B', institution: 'monobank' };
+    mockConnectedQuery.mockResolvedValue([monobankA, monobankB, binance]);
+    // The token gate is now PER ACCOUNT: only account A has an item stored.
+    mockHasToken.mockImplementation(async (id: string) => id === 'acc-mono-a');
+
+    await renderHook(() => useAutoSync());
+
+    // Both Monobank accounts are probed for their OWN token independently.
+    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono-a'));
+    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono-b'));
+    // Only the tokened Monobank account yields a job; the tokenless one is dropped.
+    await waitFor(() => expect(mockMonobankRun).toHaveBeenCalledTimes(1));
+    // Crypto is unaffected by the Monobank token gate.
+    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
+  });
+
   it('syncs a connected crypto account on open even with no Monobank account', async () => {
     // The reported gap: an app-open sync used to be Monobank-only, so a crypto
     // user who only OPENED the app never triggered the Binance import.

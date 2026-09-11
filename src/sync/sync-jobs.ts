@@ -13,21 +13,23 @@ export type SyncableAccount = Pick<AccountRow, 'id' | 'name' | 'institution'>;
 
 /**
  * One account's sync job: its display name (for failure reporting) and the
- * promise-returning run. A connected Monobank account runs with default deps
- * (`runSync({})`); a connected crypto account re-syncs from its stored key
- * (wallet address / Keychain credentials) via `resyncRequest`. A non-syncable
- * (manual) account contributes no job.
+ * promise-returning run. A connected Monobank account runs TARGETED at its own
+ * id (`runSync({ targetAccountId })`), so its per-account token, `sync_state`
+ * cursor, and single-flight all key off that id and never collide with another
+ * connection's; a connected crypto account re-syncs from its stored key (wallet
+ * address / Keychain credentials) via `resyncRequest`. A non-syncable (manual)
+ * account contributes no job.
  */
 export type SyncJob = { name: string; run: () => Promise<unknown> };
 
 /**
  * Build the sync jobs for one account. Shared by the pull-to-refresh fan-out and
- * the app-open auto-sync so both drive EXACTLY the same set — the connected
+ * the app-open auto-sync so both drive EXACTLY the same set — every connected
  * Monobank account plus each connected crypto account — from one place.
  */
 export const syncJobsFor = (account: SyncableAccount): SyncJob[] => {
   if (account.institution === 'monobank') {
-    return [{ name: account.name, run: () => runSync({}) }];
+    return [{ name: account.name, run: () => runSync({ targetAccountId: account.id }) }];
   }
 
   // Capture the narrowed institution in a const so it survives into the closure

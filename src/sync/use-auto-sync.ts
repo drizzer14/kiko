@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { hasToken } from '../monobank/token';
 import { refreshRates } from '../rates/rates-refresh';
 
+import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from './settle-limited';
 import { syncJobsFor } from './sync-jobs';
 
 /**
@@ -34,8 +35,10 @@ export const throttleElapsed = (lastSyncAt: number | null, now: number): boolean
  * connected account — the Monobank account (when a token is stored) PLUS each
  * connected crypto account — exactly the set the pull-to-refresh fan-out
  * (`useSyncAll`) drives, so a crypto balance + Binance transaction import happens
- * on open, not only on pull. The jobs run under `Promise.allSettled`, so one
- * account's failure never blocks the others; rates refresh once for the batch.
+ * on open, not only on pull. The jobs run settled under a bounded worker pool
+ * (`settleAllLimited`, cap `SYNC_CONCURRENCY_LIMIT`), so one account's failure
+ * never blocks the others and a many-connection fan-out never fires every
+ * provider request at once; rates refresh once for the batch.
  *
  * A one-shot read (not `useLiveQuery`) drives the throttle decision, mirroring
  * how `sync.ts` reads settings directly, so this never re-fires as data changes
@@ -70,21 +73,34 @@ export const useAutoSync = (): void => {
         return;
       }
 
-      // The token is now PER ACCOUNT, so the Monobank gate probes THIS account's
-      // own item (`hasToken(accountId)`), not a shared global one. A tokenless
-      // Monobank job would only throw, so it is dropped; crypto accounts need no
-      // token. `syncJobsFor` is the same builder pull-to-refresh uses.
-      const monobankHasToken =
-        monobankAccountId !== undefined && (await hasToken(monobankAccountId));
-      const jobs = connectedAccounts.flatMap((account) =>
-        account.institution === 'monobank' && !monobankHasToken ? [] : syncJobsFor(account),
+      // The token is now PER ACCOUNT, so the Monobank gate probes EACH connected
+      // Monobank account's OWN item (`hasToken(account.id)`) independently — not a
+      // shared global one. A tokenless Monobank job would only throw, so that
+      // account is dropped while every OTHER tokened Monobank account still syncs;
+      // crypto accounts need no token. The probe is per account, so the gate is
+      // async — `Promise.all` over the connected set. `syncJobsFor` is the same
+      // builder pull-to-refresh uses.
+      const jobLists = await Promise.all(
+        connectedAccounts.map(async (account) => {
+          if (account.institution === 'monobank' && !(await hasToken(account.id))) {
+            return [];
+          }
+
+          return syncJobsFor(account);
+        }),
       );
+      const jobs = jobLists.flat();
 
       if (jobs.length === 0) {
         return;
       }
 
-      await Promise.allSettled(jobs.map((job) => job.run()));
+      // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
+      // requests at once (device load / provider rate limits) — see `settleAllLimited`.
+      await settleAllLimited(
+        jobs.map((job) => job.run),
+        SYNC_CONCURRENCY_LIMIT,
+      );
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
     });
