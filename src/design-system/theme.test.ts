@@ -42,7 +42,7 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
   // 0.20-alpha backdrop delta while staying below the modal `scrim`'s 0.4 —
   // a near-opaque dim is not the goal.
   it('pins surfaceWashStrong at a plain-black, translucent alpha between the backdrop delta and the modal scrim', () => {
-    expect(darkTheme.colors.surfaceWashStrong).toBe('rgba(0,0,0,0.30)');
+    expect(darkTheme.colors.surfaceWashStrong).toBe('rgba(0,0,0,0.38)');
 
     const match = darkTheme.colors.surfaceWashStrong.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
     if (!match) throw new Error('surfaceWashStrong is not an rgba() string');

@@ -82,14 +82,16 @@ export const darkTheme = {
     // is the reliable lever for "visibly darker, still see-through." Plain
     // black (not the `#1C1C1E` surface hue) because a wash over live glass
     // needs no hue of its own, only a darkening step, and pure black composites
-    // predictably regardless of what the glass is sampling. 0.30 sits below
+    // predictably regardless of what the glass is sampling. 0.38 stays below
     // `scrim`'s 0.4 (a near-opaque modal dim is not the goal here) and well
-    // above the failed 0.20-alpha backdrop-only delta, chosen to read as a
-    // clear, deliberate step down in lightness from `transparent` on device
+    // above the failed 0.20-alpha backdrop-only delta. On-device review of the
+    // initial 0.30 asked for "a bit darker" — a small step, not a big jump —
+    // so this is a modest +0.08 bump from that value, still chosen to read as
+    // a clear, deliberate step down in lightness from `transparent` on device
     // while keeping the card glassy and see-through. See `GlassSurface`'s
     // `translucentStrong` prop doc and its component-level block comment for
     // the exact layer this feeds.
-    surfaceWashStrong: 'rgba(0,0,0,0.30)',
+    surfaceWashStrong: 'rgba(0,0,0,0.38)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
