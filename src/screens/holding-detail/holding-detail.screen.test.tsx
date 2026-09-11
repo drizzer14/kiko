@@ -265,6 +265,20 @@ describe('HoldingDetailScreen', () => {
     }
   });
 
+  it('adjusts the ledger list content inset automatically so the native large title does not overlap it at scroll-top', async () => {
+    seed(cashHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // This screen sits under `AccountsStack`'s `headerLargeTitle: true`, and the
+    // FlatList — not `Screen`'s ScrollView — owns the scrolling. Without this
+    // prop the native large title has no scroll view to attach its content
+    // inset to and overlaps the list header at scroll-top (feedback round-2,
+    // item 2). `Screen bleedBottom`/`bleedTop` drop the double top inset; this
+    // matches the working `account-detail` scroll ScrollView's own setting.
+    expect(getByTestId('ledger-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+  });
+
   it('renders a view-only header with no inline name, icon, or color editors', async () => {
     seed(cardHolding);
 

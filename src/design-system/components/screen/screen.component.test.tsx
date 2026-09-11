@@ -1,4 +1,5 @@
 import { render, within } from '@testing-library/react-native';
+import type { ComponentProps } from 'react';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
@@ -46,7 +47,6 @@ const MOCK_BOTTOM_INSET = 34;
 jest.mock('react-native-safe-area-context', () => {
   const { View } = require('react-native');
   const mockSafeAreaView = ({
-    edges,
     style,
     ...props
   }: {
@@ -54,6 +54,11 @@ jest.mock('react-native-safe-area-context', () => {
     style?: unknown;
     [key: string]: unknown;
   }) => {
+    // `edges` is forwarded onto the rendered element (not destructured away) so
+    // a test can read which edges `Screen` asked the SafeAreaView to reserve —
+    // e.g. that the plain branch DROPS `'top'` under `bleedTop` so a large-title
+    // header owns the top inset (see the `bleedTop` tests below).
+    const edges = props.edges as readonly string[] | undefined;
     const reservesBottomInset = edges === undefined || edges.includes('bottom');
     return (
       <View
@@ -111,35 +116,41 @@ const bottomPaddingOf = (style: StyleProp<ViewStyle>): number => {
 const totalBottomOffset = (edgeElement: RenderedElement): number =>
   bottomPaddingOf(edgeElement.props.style) + bottomPaddingOf(edgeElement.parent?.props.style);
 
+// Every case below renders the same `<Screen>` wrapping a single `content`
+// child (plus a `footer content` child when the case passes a `footer` prop),
+// varying only the Screen props under test — so the render itself is the ONE
+// duplicated block across the suite. Extracted here so each `it` differs only
+// in the props it exercises and the assertion it makes, not in boilerplate.
+const renderScreen = (props: ComponentProps<typeof Screen> = {}) =>
+  render(
+    <Screen {...props}>
+      <Text>content</Text>
+    </Screen>,
+  );
+
+// The footer node the footer-slot cases pass — a plain labelled child so the
+// assertions can locate it by text inside the footer view. Named `footerNode`
+// so it does not collide with the local `footer` element several cases resolve
+// from `getByTestId(FOOTER_TEST_ID)`.
+const footerNode = <Text>footer content</Text>;
+
 describe('Screen', () => {
   it('renders children in a plain (non-scrolling) View by default', async () => {
-    const { getByText, queryByTestId } = await render(
-      <Screen>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByText, queryByTestId } = await renderScreen();
 
     expect(getByText('content')).toBeTruthy();
     expect(queryByTestId(SCROLL_VIEW_TEST_ID)).toBeNull();
   });
 
   it('renders children inside a ScrollView with automatic inset adjustment when scroll is set', async () => {
-    const { getByText, getByTestId } = await render(
-      <Screen scroll>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByText, getByTestId } = await renderScreen({ scroll: true });
 
     expect(getByText('content')).toBeTruthy();
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
   it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true });
 
     // Fabric clamps a negative programmatic `scrollTo` y to 0 while
     // `contentInsetAdjustmentBehavior="automatic"` keeps the large-title band
@@ -150,11 +161,7 @@ describe('Screen', () => {
   });
 
   it('keeps the keyboard up so a tap on a child focuses on the first tap, not the second', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true });
 
     // Default keyboardShouldPersistTaps is "never", which consumes the first
     // tap to dismiss the keyboard so a focused-input-to-another-input tap needs
@@ -164,11 +171,7 @@ describe('Screen', () => {
   });
 
   it('renders a footer outside the ScrollView when scroll and footer are set', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
     const scrollView = getByTestId(SCROLL_VIEW_TEST_ID);
     const footer = getByTestId(FOOTER_TEST_ID);
@@ -179,11 +182,7 @@ describe('Screen', () => {
   });
 
   it('pads the footer clear of the floating tab bar by its own share of the clearance', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
     const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
@@ -195,11 +194,7 @@ describe('Screen', () => {
   });
 
   it('does not double-count the bottom safe-area inset the enclosing SafeAreaView already reserves', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
     const footer = getByTestId(FOOTER_TEST_ID);
 
@@ -220,11 +215,7 @@ describe('Screen', () => {
   });
 
   it('pads the plain (non-scrolling) content clear of the floating tab bar too', async () => {
-    const { getByTestId } = await render(
-      <Screen>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen();
 
     const content = getByTestId(CONTENT_TEST_ID);
     const contentStyle = StyleSheet.flatten(content.props.style);
@@ -237,12 +228,47 @@ describe('Screen', () => {
     expect(totalBottomOffset(content)).toBe(FOOTER_GAP + MOCK_TAB_BAR_HEIGHT);
   });
 
-  it('omits the tab-bar clearance from plain content when bleedBottom is set (the child owns it)', async () => {
-    const { getByTestId } = await render(
-      <Screen bleedBottom>
-        <Text>content</Text>
-      </Screen>,
+  it('reserves every safe-area edge in the plain branch by default (a headerless screen owns its top inset)', async () => {
+    const { getByTestId } = await renderScreen();
+
+    // No explicit `edges` prop: the SafeAreaView reserves every edge, including
+    // top — correct for a plain (headerless) screen like Home.
+    expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toBeUndefined();
+  });
+
+  it('drops the top safe-area edge in the plain branch when bleedTop is set (a large-title header owns the top inset)', async () => {
+    const { getByTestId } = await renderScreen({ bleedTop: true });
+
+    // The child scrollable applies the large-title inset itself (via
+    // `contentInsetAdjustmentBehavior="automatic"`), so reserving the top edge
+    // here too would double-offset content beneath the header — same rationale
+    // the always-scrolling branch already follows.
+    const edges = getByTestId(CONTENT_TEST_ID).parent?.props.edges as readonly string[] | undefined;
+    expect(edges).toEqual(expect.arrayContaining(['left', 'right', 'bottom']));
+    expect(edges).not.toContain('top');
+  });
+
+  it('removes the plain content top padding when bleedTop is set so the child scrollable reaches the large-title inset', async () => {
+    const { getByTestId } = await renderScreen({ bleedTop: true });
+
+    // A wrapper top padding would push the child scrollable below the header,
+    // defeating iOS's automatic large-title content inset — so it drops to 0
+    // and the child supplies its own top spacing inside its content container.
+    expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingTop).toBe(0);
+  });
+
+  it('keeps the base top padding in the plain branch by default (no bleedTop)', async () => {
+    const { getByTestId } = await renderScreen();
+
+    // The default plain branch keeps its own top padding (the base spacing
+    // step) — only `bleedTop` drops it.
+    expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingTop).toBe(
+      CONTENT_BASE_PADDING,
     );
+  });
+
+  it('omits the tab-bar clearance from plain content when bleedBottom is set (the child owns it)', async () => {
+    const { getByTestId } = await renderScreen({ bleedBottom: true });
 
     const contentStyle = StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style);
 
@@ -252,11 +278,7 @@ describe('Screen', () => {
   });
 
   it('renders no hairline divider above the footer', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
     const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
@@ -264,11 +286,7 @@ describe('Screen', () => {
   });
 
   it('pins a footer to the bottom in the plain (non-scrolling) branch too, not just scroll mode', async () => {
-    const { getByTestId } = await render(
-      <Screen footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ footer: footerNode });
 
     // `content` still renders (this isn't scroll mode) and `footer` sits
     // pinned below it, outside `content`'s own testID — a short page's
@@ -282,11 +300,7 @@ describe('Screen', () => {
   });
 
   it('pads a plain-branch footer clear of the floating tab bar exactly like a scroll-branch footer', async () => {
-    const { getByTestId } = await render(
-      <Screen footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ footer: footerNode });
 
     const footer = getByTestId(FOOTER_TEST_ID);
     const footerStyle = StyleSheet.flatten(footer.props.style);
@@ -296,11 +310,7 @@ describe('Screen', () => {
   });
 
   it('drops the plain content clearance to the base padding when a footer owns the bottom edge instead', async () => {
-    const { getByTestId } = await render(
-      <Screen footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ footer: footerNode });
 
     const contentStyle = StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style);
 
@@ -311,11 +321,7 @@ describe('Screen', () => {
   });
 
   it('sets the footer gap above the tab bar equal to the footer button top margin', async () => {
-    const { getByTestId } = await render(
-      <Screen scroll footer={<Text>footer content</Text>}>
-        <Text>content</Text>
-      </Screen>,
-    );
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
     const footer = getByTestId(FOOTER_TEST_ID);
     const footerStyle = StyleSheet.flatten(footer.props.style);

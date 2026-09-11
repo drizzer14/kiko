@@ -511,6 +511,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   return (
     <Screen
+      // The FlatList below OWNS this screen's scrolling under the accounts
+      // stack's native large title (`headerLargeTitle: true`). `bleedTop` drops
+      // Screen's top safe-area edge and its content top padding so the list
+      // reaches the top edge and iOS applies the large-title content inset to
+      // it (via the FlatList's own `contentInsetAdjustmentBehavior="automatic"`
+      // below) — without it the large title floats above / overlaps the summary
+      // header at scroll-top (feedback round-2, item 2). This mirrors the
+      // working `account-detail` scroll ScrollView, which Screen's `scroll`
+      // branch configures the same way; this screen cannot use `scroll` because
+      // a virtualized FlatList must not nest inside that branch's ScrollView.
+      bleedTop
       footer={
         // A large, full-width primary action, shown for the holdings that take
         // one. A term_deposit opens the dedicated Contribution form ("Add
@@ -546,6 +557,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         keyExtractor={ledgerKey}
         renderItem={({ item }) => <LedgerRowItem row={item} context={rowContext} />}
         ListHeaderComponent={listHeader}
+        // The list owns the scrolling under the native large title, so it — not
+        // Screen's ScrollView — must carry the automatic content-inset
+        // adjustment that seats content below the expanded large title (Screen
+        // passes `bleedTop` above to drop the matching double top inset). Same
+        // setting the shared `Screen` scroll branch applies to its ScrollView.
+        contentInsetAdjustmentBehavior="automatic"
         style={styles.list}
         contentContainerStyle={styles.listContent}
       />
@@ -561,8 +578,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   // The scroll content: `spacing(2)` between every child — the header block and
   // the first row, and each row and the next — reproducing the old
-  // `<Box gap={2}>` that wrapped the Transactions heading and its rows.
+  // `<Box gap={2}>` that wrapped the Transactions heading and its rows. The
+  // `spacing(4)` top padding lives HERE (inside the scroll content) rather than
+  // on Screen's content wrapper, because Screen drops that wrapper's top
+  // padding under `bleedTop` so the list can reach the large-title inset — this
+  // keeps the same top gap the wrapper used to provide, below the collapsed
+  // large title, matching account-detail's scroll content padding.
   listContent: {
+    paddingTop: theme.spacing(4),
     gap: theme.spacing(2),
   },
   // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
