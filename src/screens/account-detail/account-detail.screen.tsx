@@ -3,6 +3,7 @@ import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import { ratesRepo } from '@kiko/rates/rates.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useSync } from '@kiko/sync/use-sync';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
 import type { FC } from 'react';
@@ -94,6 +95,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: connectedAccounts } = useLiveQuery(accountsRepo.connectedQuery(), ['accounts']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  // The Monobank "last sync" line reads this account's OWN cursor from the
+  // per-connection `sync_state` table (de-globalized from `settings` — see the
+  // `syncState` table comment in `db/schema.ts`), so a second connection never
+  // shows another's time.
+  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(accountId), ['sync_state']);
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -270,8 +276,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     // statement cursor for installs that predate the display
                     // column (it reads null there).
                     time: formatLastSyncAt(
-                      settingsRows.at(0)?.lastSyncDisplayAt ??
-                        settingsRows.at(0)?.lastSyncAt ??
+                      syncStateRows.at(0)?.lastSyncDisplayAt ??
+                        syncStateRows.at(0)?.lastSyncAt ??
                         null,
                       t,
                     ),

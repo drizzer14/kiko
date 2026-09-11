@@ -1,6 +1,6 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { ratesRepo } from '@kiko/rates/rates.repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
@@ -19,9 +19,12 @@ export const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * The time throttle for the on-open sync: sync only when nothing has synced
- * within the window (or never has). `settings.lastSyncAt` is the shared cursor;
- * a crypto-only user has none, so the throttle lets every launch sync once (the
- * per-mount `hasRun` ref still fires it at most once per app open).
+ * within the window (or never has). The cursor now lives PER CONNECTION in
+ * `sync_state` (de-globalized from `settings` — see the `syncState` table
+ * comment in `db/schema.ts`), so the throttle reads the connected Monobank
+ * account's own cursor; a crypto-only user (no Monobank account) has none, so
+ * the throttle lets every launch sync once (the per-mount `hasRun` ref still
+ * fires it at most once per app open).
  */
 export const throttleElapsed = (lastSyncAt: number | null, now: number): boolean =>
   lastSyncAt === null || now - lastSyncAt >= AUTO_SYNC_INTERVAL_MS;
@@ -52,12 +55,19 @@ export const useAutoSync = (): void => {
     hasRun.current = true;
 
     either<unknown, void>(async () => {
-      const [connectedAccounts, settingsRows, token] = await Promise.all([
+      const [connectedAccounts, token] = await Promise.all([
         accountsRepo.connectedQuery(),
-        settingsRepo.getQuery(),
         readToken(),
       ]);
-      const lastSyncAt = settingsRows.at(0)?.lastSyncAt ?? null;
+      // The throttle reads the connected Monobank account's OWN cursor from
+      // `sync_state`; a crypto-only user has no Monobank account, so `null` lets
+      // the launch sync once.
+      const monobankAccountId = connectedAccounts.find(
+        (account) => account.institution === 'monobank',
+      )?.id;
+      const syncStateRows =
+        monobankAccountId === undefined ? [] : await syncStateRepo.getQuery(monobankAccountId);
+      const lastSyncAt = syncStateRows.at(0)?.lastSyncAt ?? null;
 
       if (!throttleElapsed(lastSyncAt, Date.now())) {
         return;

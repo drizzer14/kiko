@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react-native';
 
 const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
-const mockSettingsGetQuery = jest.fn();
+const mockSyncStateGetQuery = jest.fn();
 const mockConnectedQuery = jest.fn();
 const mockReadToken = jest.fn();
 
@@ -34,9 +34,9 @@ jest.mock('@kiko/rates/rates.repo', () => ({
     latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
   },
 }));
-jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: {
-    getQuery: (...args: unknown[]) => mockSettingsGetQuery(...args),
+jest.mock('@kiko/sync-state/sync-state.repo', () => ({
+  syncStateRepo: {
+    getQuery: (...args: unknown[]) => mockSyncStateGetQuery(...args),
   },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -70,7 +70,7 @@ describe('useAutoSync', () => {
     mockCryptoRun.mockResolvedValue(undefined);
     mockRefreshRates.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(null);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
+    mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockConnectedQuery.mockResolvedValue([]);
     mockReadToken.mockResolvedValue('a-token');
   });
@@ -81,21 +81,20 @@ describe('useAutoSync', () => {
     await renderHook(() => useAutoSync());
 
     await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
-    await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
     expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
-  it('does nothing when the last sync is within the throttle window', async () => {
+  it('does nothing when the connected Monobank account synced within the throttle window', async () => {
     mockConnectedQuery.mockResolvedValue([monobank]);
-    mockSettingsGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
+    mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
 
     await renderHook(() => useAutoSync());
 
     await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
-    await waitFor(() => expect(mockSettingsGetQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockSyncStateGetQuery).toHaveBeenCalledWith('acc-mono'));
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
