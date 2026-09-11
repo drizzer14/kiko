@@ -3,11 +3,13 @@ import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history.repo';
 import type { Currency } from '../currency/currency';
 import { Money, toMajor } from '../currency/money';
 import type { CurrencyRateHistoryRow } from '../db/schema';
+import { asBondMeta } from '../holdings/holding-metadata';
 import { convert, type RateTable } from '../rates/conversion';
 import { toUtcMidnight } from '../rates/history-entry';
 import { canConvert } from '../rates/net-worth-view';
 
 import { bucketTimes } from './buckets';
+import { effectiveBondPurchaseDay } from './effective-bond-purchase-day';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from './holding-value-at';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
@@ -72,6 +74,27 @@ export const buildNetWorthSeries = (input: {
     return { points: [], startReference: 0 };
   }
 
+  // Align each bond's held-cost recognition to the day its funding money actually
+  // left (the exact debit of the price paid), NOT to the typed `purchaseDate`, so
+  // a card->bond move nets to zero across a cross-day gap instead of dipping (or
+  // bumping). This is a pure valuation shift: it rewrites ONLY `purchaseDate` in
+  // the bond's metadata — the sole field `bondBreakdown` reads for its cost-on
+  // threshold — leaving cost, maturity, and the coupon/redemption ledger (keyed
+  // off the real `purchaseDate` elsewhere) untouched. The pairing needs
+  // cross-holding transactions, which only this builder holds, so it happens once
+  // here before the bucket loop rather than inside `bondBreakdown`.
+  const valuationHoldings: SeriesHolding[] = holdings.map((holding) => {
+    if (holding.type !== 'bond') {
+      return holding;
+    }
+    const meta = asBondMeta(holding.metadata);
+    if (meta === null) {
+      return holding;
+    }
+    const recognitionDay = effectiveBondPurchaseDay(meta, holding.currency, holdings, txByHolding);
+    return { ...holding, metadata: { ...meta, purchaseDate: recognitionDay } };
+  });
+
   const earliest = earliestRateTable(historyRows);
   const todayKey = toUtcMidnight(today ?? Date.now());
 
@@ -86,7 +109,7 @@ export const buildNetWorthSeries = (input: {
 
   const points = bucketTimes(range.from, range.to, bucketDays).map((t) => {
     const table = tableAt(t);
-    const total = holdings
+    const total = valuationHoldings
       .filter((holding) => canConvert(holding.currency, baseCurrency, table))
       .reduce(
         (sum, holding) => {
