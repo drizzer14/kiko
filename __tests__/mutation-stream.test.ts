@@ -20,8 +20,37 @@ import { dirname, join } from 'node:path';
 // STUB binary via the KIKO_MUTATION_BIN seam, and point TMPDIR at a fresh dir so
 // the content-dedup skip and the single-flight lock start clean.
 const SCRIPT = join(__dirname, '../scripts/checks/mutation.sh');
+const LIB = join(__dirname, '../scripts/checks/_lib.sh');
+// The wrapper computes ROOT as scripts/checks/../.. — i.e. the real worktree
+// root — and keys its history file under TMPDIR by a hash of that ROOT. To
+// pre-seed history for the LIVE ETA test we must use the SAME ROOT and TMPDIR.
+const ROOT = join(__dirname, '..');
 
 type Run = { code: number | null; stdout: string; stderr: string };
+
+// Append history records for ROOT under the given isolated TMPDIR by sourcing
+// _lib.sh, so a subsequent wrapper run in that TMPDIR reads them. Each record is
+// "<iso> <dur> <count> <score>". This does NOT rely on a prior wrapper run
+// (content-dedup would skip an identical second run).
+const seedHistory = (tmp: string, records: string[]): void => {
+  const script = [
+    `source "${LIB}"`,
+    ...records.map((r) => `harness_mutation_history_append "${ROOT}" ${r}`),
+  ].join('\n');
+  spawnSync('bash', ['-c', script], { env: { ...process.env, TMPDIR: tmp }, encoding: 'utf8' });
+};
+
+// Overwrite the history file for ROOT under the given TMPDIR with corrupt content
+// (no numeric fields), so harness_mutation_rate yields nothing and the wrapper
+// must still gate correctly.
+const seedCorruptHistory = (tmp: string): void => {
+  const script = [
+    `source "${LIB}"`,
+    `f="$(harness_mutation_history_file "${ROOT}")"`,
+    'printf "garbage\\nno numeric fields here\\n" > "$f"',
+  ].join('\n');
+  spawnSync('bash', ['-c', script], { env: { ...process.env, TMPDIR: tmp }, encoding: 'utf8' });
+};
 
 const makeStub = (tmp: string, body: string): string => {
   const bin = join(tmp, 'stryker-stub');
@@ -129,6 +158,68 @@ describe('scripts/checks/mutation.sh streaming', () => {
     // Record shape: iso<TAB>duration<TAB>count<TAB>score — a strictly-positive duration.
     const duration = Number(readFileSync(historyFile, 'utf8').split('\t')[1]);
     expect(duration).toBeGreaterThan(0);
+  });
+
+  it('prints the LIVE per-mutant ETA once Stryker reports the mutant count (not in the log)', () => {
+    const tmp = freshTmp();
+    const callLog = join(tmp, 'calls');
+    // Seed two valid history records: rates 600/300=2 and 900/300=3 -> the
+    // wrapper's per-mutant rate is their median (avg of two = 2.5 s/mutant).
+    seedHistory(tmp, ['2026-09-10T10:00:00Z 600 300 70', '2026-09-10T11:00:00Z 900 300 72']);
+    // The stub reports an "N/M tested" counter (500 mutants) and sleeps ~1s so
+    // the run has a positive duration. The filter must print the ETA line the
+    // moment that counter appears.
+    const bin = makeStub(
+      tmp,
+      [
+        '#!/usr/bin/env bash',
+        'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
+        'echo "10/500 tested"',
+        'sleep 1',
+        'exit 0',
+      ].join('\n'),
+    );
+
+    const result = run(bin, tmp, callLog);
+
+    expect(result.code).toBe(0);
+    // The full ETA prints live, scaled by the run's ACTUAL mutant count (500).
+    expect(result.stdout).toContain('Estimated ~');
+    expect(result.stdout).toContain('for 500 mutants');
+    // The ETA line is a stdout-only downstream stage — it must NOT pollute the
+    // progress log, which stays pure Stryker output (tee'd before the filter).
+    const match = result.stdout.match(/Watch live progress: {2}tail -f (\S+)/);
+    expect(match).not.toBeNull();
+    const logPath = (match as RegExpMatchArray)[1];
+    expect(readFileSync(logPath, 'utf8')).not.toContain('Estimated ~');
+    expect(readFileSync(logPath, 'utf8')).toContain('10/500 tested');
+  });
+
+  it('gates correctly on a CORRUPT history: no crash, no estimate, exit code unchanged (pass)', () => {
+    const tmp = freshTmp();
+    const callLog = join(tmp, 'calls');
+    seedCorruptHistory(tmp);
+    const bin = makeStub(tmp, stubBody(0));
+
+    const result = run(bin, tmp, callLog);
+
+    // A malformed history never crashes the gate: a passing run still exits 0...
+    expect(result.code).toBe(0);
+    // ...and, with no usable rate, the wrapper says so plainly.
+    expect(result.stdout).toContain('No mutation history yet');
+  });
+
+  it('gates correctly on a CORRUPT history: exit code unchanged (fail -> 2)', () => {
+    const tmp = freshTmp();
+    const callLog = join(tmp, 'calls');
+    seedCorruptHistory(tmp);
+    const bin = makeStub(tmp, stubBody(1));
+
+    const result = run(bin, tmp, callLog);
+
+    // A malformed history never masks a real failure: a failing run still exits 2.
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain('No mutation history yet');
   });
 
   it('streams the output, prints the failure block, and exits 2 on a FAILING run', () => {
