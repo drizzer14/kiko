@@ -9,8 +9,8 @@ import { toUtcMidnight } from '../rates/history-entry';
 import { canConvert } from '../rates/net-worth-view';
 
 import { bucketTimes } from './buckets';
-import { effectiveBondPurchaseDay } from './effective-bond-purchase-day';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from './holding-value-at';
+import { reconcileBondFunding } from './reconcile-bond-funding';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
@@ -74,13 +74,22 @@ export const buildNetWorthSeries = (input: {
     return { points: [], startReference: 0 };
   }
 
-  // Align each bond's held-cost recognition to the day its funding money actually
-  // left (the exact debit of the price paid), NOT to the typed `purchaseDate`, so
-  // a card->bond move nets to zero across a cross-day gap instead of dipping (or
-  // bumping). This is a pure valuation shift: it rewrites ONLY `purchaseDate` in
-  // the bond's metadata — the sole field `bondBreakdown` reads for its cost-on
-  // threshold — leaving cost, maturity, and the coupon/redemption ledger (keyed
-  // off the real `purchaseDate` elsewhere) untouched. The pairing needs
+  // Align each bond's held-cost recognition to the funding money that actually
+  // left — on BOTH axes: the DAY the debit landed and the AMOUNT it debited (Q) —
+  // NOT to the typed `purchaseDate`/price (P), so a card->bond move nets to zero
+  // instead of dipping (or bumping). A cross-day gap dips on the DAY axis; a
+  // synced debit that differs from the typed price (a fee, НКД, a rounded
+  // "roughly the price") dips permanently on the AMOUNT axis by (Q − P). See
+  // `reconcileBondFunding` for the currency + debit + near-price match.
+  //
+  // This is a pure valuation shift on a THROWAWAY copy: it rewrites `purchaseDate`
+  // (the cost-on threshold `bondBreakdown` reads) AND `purchasePriceMinorUnits`
+  // (the flat cost `bondBreakdown` values the live bond at — verified: between the
+  // purchase and maturity guards `bondBreakdown` returns `costMoney` built from
+  // that field, and it computes NO coupon/accrual, so overwriting it here shifts
+  // only the SERIES held value). Coupons, maturity, and the redemption ledger read
+  // the REAL holding's untouched `purchasePriceMinorUnits`/`purchaseDate`
+  // elsewhere — the series never derives them from this copy. The pairing needs
   // cross-holding transactions, which only this builder holds, so it happens once
   // here before the bucket loop rather than inside `bondBreakdown`.
   const valuationHoldings: SeriesHolding[] = holdings.map((holding) => {
@@ -91,8 +100,21 @@ export const buildNetWorthSeries = (input: {
     if (meta === null) {
       return holding;
     }
-    const recognitionDay = effectiveBondPurchaseDay(meta, holding.currency, holdings, txByHolding);
-    return { ...holding, metadata: { ...meta, purchaseDate: recognitionDay } };
+    const { recognitionDay, recognitionCostMinorUnits } = reconcileBondFunding(
+      meta,
+      holding.currency,
+      holdings,
+      txByHolding,
+    );
+
+    return {
+      ...holding,
+      metadata: {
+        ...meta,
+        purchaseDate: recognitionDay,
+        purchasePriceMinorUnits: recognitionCostMinorUnits,
+      },
+    };
   });
 
   const earliest = earliestRateTable(historyRows);

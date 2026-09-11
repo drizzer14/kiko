@@ -264,6 +264,116 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(bucketDayD)).toBe(107.87);
   });
 
+  it('stays flat across a same-day card->bond move when the synced debit ≠ the typed price', () => {
+    // The real synced case. The card is debited the ACTUAL amount that left (Q =
+    // $1100.00 — a fee / accrued-coupon (НКД) / rounded "roughly the price"),
+    // while the user typed a slightly different price (P = $1078.68). Recognizing
+    // the bond at the TYPED price leaves a permanent (Q − P) = $21.32 dip from the
+    // purchase day on, because the two legs are drawn from unrelated paths and
+    // never cancel. Reconciling the bond's held cost to the matched debit's amount
+    // (Q) makes the move net-worth-neutral: the card's −Q and the bond's +Q cancel.
+    const dayD = D1;
+    const debitTime = dayD + 6 * HOUR; // 06:00 on day D
+    const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)
+    const bucketDayD = dayD + 12 * HOUR; // the day-D bucket sits at noon, between them
+
+    // Card started with $1100.00 and was debited $1100.00, so its current balance is 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = holding({
+      id: 'bond',
+      currency: 'USD',
+      type: 'bond',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1,
+        faceValueMinorUnits: 100_000, // nominal $1000.00
+        couponPct: 0,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate,
+        purchasePriceMinorUnits: 107_868, // user typed $1078.68 (roughly the price)
+        maturityDate: Date.UTC(2027, 0, 1),
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [card, bond],
+      // The synced debit is $1100.00 — NOT equal to the typed $1078.68 price.
+      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+    });
+
+    const amountAt = (t: number): number => {
+      const point = series.points.find((candidate) => candidate.t === t);
+      if (point === undefined) {
+        throw new Error(`no bucket at ${t}`);
+      }
+
+      return point.amount;
+    };
+
+    // Day D (bond bought, card debited Q) must equal day D-1 (card still full): the
+    // bond is recognized at the matched debit's amount Q = $1100.00, so no dip.
+    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
+    expect(amountAt(bucketDayD)).toBe(1100);
+  });
+
+  it('does not treat an unrelated same-currency debit far from the price as the funding outflow', () => {
+    // A guard: a debit whose amount is NOWHERE near the bond's price (here 4× the
+    // price) is not the bond's funding outflow. It must NOT be reconciled onto the
+    // bond — neither its day nor its amount — so the bond falls back to the typed
+    // purchase day and typed price and STEPS net worth up there, and the day-D0
+    // bucket (where the unrelated debit lands) is NOT inflated by a bond value.
+    const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day D1
+
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
+    // Card started with $400 and was debited $400 on D0 (unrelated spend), balance 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = holding({
+      id: 'bond',
+      currency: 'USD',
+      type: 'bond',
+      balanceMinorUnits: 0,
+      metadata: {
+        quantity: 1,
+        faceValueMinorUnits: 10_000,
+        couponPct: 0,
+        couponFrequency: 'annually',
+        bondKind: 'government',
+        purchaseDate,
+        purchasePriceMinorUnits: 10_000, // $100.00 — the $400 debit is 4× this, outside tolerance
+        maturityDate: Date.UTC(2027, 0, 1),
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [cash, card, bond],
+      txByHolding: new Map([['card', [{ time: D0 + 6 * HOUR, amountMinorUnits: -40_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    const amountAt = (t: number): number => {
+      const point = series.points.find((candidate) => candidate.t === t);
+      if (point === undefined) {
+        throw new Error(`no bucket at ${t}`);
+      }
+
+      return point.amount;
+    };
+
+    // D0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
+    // debit's day/amount (that would inflate this bucket to $600).
+    expect(amountAt(D0)).toBe(200);
+    // D1 (typed purchase day) and D2: the bond turns on at its typed price and
+    // STEPS net worth up by $100, unaffected by the unrelated debit — $300.
+    expect(amountAt(D1)).toBe(300);
+    expect(amountAt(D2)).toBe(300);
+  });
+
   it('stays flat across a card->bond move sampled at LOCAL MIDNIGHT buckets (premium, at cost)', () => {
     // Production samples daily buckets at LOCAL MIDNIGHT (tests run in UTC, so
     // startOfLocalDay == UTC midnight). A mid-day card debit and a same-local-day
@@ -435,7 +545,7 @@ describe('buildNetWorthSeries', () => {
   it('turns a bond on at its typed purchaseDate when no funding debit matches (fallback, no regression)', () => {
     // A genuinely manual bond (cash bought outside the app, or funded before
     // transactions were tracked) has no recorded funding outflow at all. The
-    // fix must not require a match to turn the bond on: `effectiveBondPurchaseDay`
+    // fix must not require a match to turn the bond on: `reconcileBondFunding`
     // falls back to the typed `purchaseDate`, so net worth should still STEP UP
     // there — proving the fix doesn't flatten a legitimately unfunded bond into
     // never showing its cost.
