@@ -158,19 +158,30 @@ export const styles = StyleSheet.create((theme) => ({
   scrollBody: {
     flexShrink: 1,
   },
-  // The top drag region: the grabber pill centered in a hit area the vertical
-  // Pan is attached to (and ONLY here, never the scrollable body, so the drag
-  // never fights the sheet's own ScrollView). Its bottom pad separates the pill
-  // from the first content row; the sheet card's own `paddingTop` sits above it.
+  // The top drag region: the grabber pill (and, when a call site passes one, an
+  // optional header node under it) in a hit area the vertical Pan is attached to
+  // (and ONLY here, never the scrollable body, so the drag never fights the
+  // sheet's own ScrollView). Extending the header into this same region is what
+  // makes a drag ANYWHERE across the header — not only on the small pill — drive
+  // the dismiss. Its bottom pad separates the region from the first content row;
+  // the sheet card's own `paddingTop` sits above it. `gap` only takes effect
+  // when a header is present (a lone grabber is a single child, so there is
+  // nothing to space) — so a headerless sheet keeps its exact prior layout. The
+  // grabber centers itself via its own `alignSelf` below rather than this
+  // region's `alignItems`, so the header stays full-width/left-aligned (the
+  // region's default `stretch`) instead of being centered with the pill.
   grabberRegion: {
-    alignItems: 'center',
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(3),
+    gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle, in the
   // muted separator gray so it reads as a subtle affordance on the sheet
-  // surface rather than a hard line.
+  // surface rather than a hard line. `alignSelf: 'center'` keeps it centered
+  // now that its region no longer sets `alignItems: 'center'` (so an optional
+  // header sibling can stay left-aligned).
   grabber: {
+    alignSelf: 'center',
     width: 36,
     height: 5,
     borderRadius: 2.5,

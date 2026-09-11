@@ -78,6 +78,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
   visible,
   onDismiss,
   children,
+  header,
   gap = 3,
   animationType = 'fade',
   maxHeight,
@@ -117,8 +118,9 @@ const BottomSheet: FC<BottomSheetProps> = ({
     }
   }, [visible, translateY]);
 
-  // The Pan is attached to the grabber region ONLY (never the scrollable body),
-  // so it never competes with the sheet's own ScrollView. `.runOnJS(true)`
+  // The Pan is attached to the grabber region ONLY (the grabber pill plus an
+  // optional `header` node, never the scrollable body), so it never competes
+  // with the sheet's own ScrollView. `.runOnJS(true)`
   // keeps its handlers on the JS thread, per the "runOnJS for non-worklet
   // callbacks" rule — `onEnd` reaches `onDismiss`, a plain prop, not a worklet.
   const dragToDismiss = Gesture.Pan()
@@ -197,9 +199,15 @@ const BottomSheet: FC<BottomSheetProps> = ({
             testID={testID && `${testID}-glass`}
           />
 
+          {/* The grabber pill AND an optional `header` node share this one
+              draggable region, so a drag anywhere across the header — not just
+              the small pill — drives the Pan. `{body}` stays OUTSIDE it, so a
+              scrollable body still owns its own touch and scrolls freely. */}
           <GestureDetector gesture={dragToDismiss}>
             <View style={styles.grabberRegion} testID={testID && `${testID}-grabber`}>
               <View style={styles.grabber} />
+
+              {header}
             </View>
           </GestureDetector>
 

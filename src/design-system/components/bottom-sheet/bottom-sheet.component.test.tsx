@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { Dimensions, StyleSheet, Text } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -427,6 +427,66 @@ describe('BottomSheet', () => {
       ]);
 
       expect(onDismiss).not.toHaveBeenCalled();
+    });
+  });
+
+  // The optional `header` slot: a header node renders INSIDE the same draggable
+  // grabber region as the pill, so a drag anywhere across the header — not just
+  // the small handle — drives the dismiss, while the body's own ScrollView stays
+  // a separate sibling and keeps scrolling freely. A sheet that passes no
+  // `header` (every case above) keeps its exact grabber-only region unchanged.
+  describe('header slot', () => {
+    const HEADER_SHEET_ID = 'header-sheet';
+    // 25% of this height is the distance threshold the drag must pass (= 100).
+    const SHEET_HEIGHT = 400;
+
+    it('renders the header inside the draggable grabber region, above the body', async () => {
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={HEADER_SHEET_ID}
+          header={<Text>sheet header</Text>}
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      // The header sits under the SAME `-grabber` region the Pan is attached to
+      // (the grabber pill on top, then the header), so a drag across it dismisses.
+      const grabberRegion = getByTestId(`${HEADER_SHEET_ID}-grabber`);
+      expect(within(grabberRegion).getByText('sheet header')).toBeTruthy();
+
+      // The body's ScrollView is a SEPARATE sibling of that region, not nested
+      // inside it — so the Pan never competes with the body's own scroll.
+      const scrollView = getByTestId(`${HEADER_SHEET_ID}-scroll`);
+      expect(within(grabberRegion).queryByTestId(`${HEADER_SHEET_ID}-scroll`)).toBeNull();
+      expect(within(scrollView).getByText('sheet body')).toBeTruthy();
+    });
+
+    it('still dismisses on a drag past the threshold when a header is present', async () => {
+      const onDismiss = jest.fn();
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={onDismiss}
+          testID={HEADER_SHEET_ID}
+          header={<Text>sheet header</Text>}
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      fireEvent(getByTestId(HEADER_SHEET_ID), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 320, height: SHEET_HEIGHT } },
+      });
+      fireGestureHandler(getByGestureTestId(SHEET_DRAG_GESTURE_TEST_ID), [
+        { state: State.BEGAN, translationY: 0, velocityY: 0 },
+        { state: State.ACTIVE, translationY: 150, velocityY: 0 },
+        { state: State.END, translationY: 150, velocityY: 0 },
+      ]);
+
+      expect(onDismiss).toHaveBeenCalledTimes(1);
     });
   });
 });
