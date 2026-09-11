@@ -37,14 +37,14 @@ export const styles = StyleSheet.create((theme) => ({
   // Fills the modal window and pins the sheet to the bottom edge. The scrim and
   // the sheet are siblings inside it (not parent/child), so a tap on the sheet
   // never reaches the scrim's dismiss handler and no responder trickery is
-  // needed — the scrim simply sits behind the opaque sheet.
+  // needed — the scrim simply sits behind the sheet, in paint order.
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   // The full-bleed dismiss scrim behind the sheet: a tap anywhere on the
   // exposed area above the sheet dismisses. It fills the whole overlay and
-  // the opaque sheet renders on top of it, so only the area above the sheet
+  // the sheet renders on top of it, so only the area above the sheet
   // takes a tap. Position/size only — no color here. The scrim's own
   // translucent-black/blur fill is `backdropGlass`/`backdropFallback`
   // below, a child of this Pressable, per `kiko-design-system`'s
@@ -95,10 +95,12 @@ export const styles = StyleSheet.create((theme) => ({
   // rather than blending into the sheet. It used `surfaceHigh` itself before —
   // the SAME tone as a selected pill — which the trend filter sheet blended
   // into (on-device review). The base fill itself now lives on `glassFill`'s
-  // `GlassSurface` (its `transparent` variant's `surfaceTranslucent` token,
-  // composited over true-black to ~rgb(17,17,18) — darker than `surfaceHigh`
-  // #2C2C2E, so the elevation split still holds), not a `backgroundColor`
-  // here. No in-sheet element uses the `surface`/`surfaceTranslucent` tone for
+  // `GlassSurface` (its `material` variant — a real live-blur on iOS 26+ that
+  // reads the true content behind the sheet, or the same `surfaceTranslucent`
+  // token on the non-glass fallback, composited over true-black to
+  // ~rgb(17,17,18) there — darker than `surfaceHigh` #2C2C2E, so the elevation
+  // split still holds), not a `backgroundColor` here. No in-sheet element uses
+  // the `surface`/`surfaceTranslucent` tone for
   // its own chrome (it is `surfaceHigh`, `accent`, or transparent — the
   // icon-picker-modal's unselected tiles were moved from `surface` to
   // `surfaceHigh` for exactly this reason), so none blends, and every sheet
@@ -113,7 +115,8 @@ export const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing(SHEET_PADDING_STEP),
     paddingBottom: theme.spacing(SHEET_PADDING_STEP) + bottomInset,
   }),
-  // The translucent glass background, painted BEHIND the grabber + body (it
+  // The translucent glass MATERIAL background, painted BEHIND the grabber +
+  // body (it
   // renders first in `BottomSheet`; a later sibling always paints over an
   // earlier one, the same back-to-front convention `GlassSurface` itself uses
   // for its own backdrop/base/wash/children layers — see
@@ -155,19 +158,30 @@ export const styles = StyleSheet.create((theme) => ({
   scrollBody: {
     flexShrink: 1,
   },
-  // The top drag region: the grabber pill centered in a hit area the vertical
-  // Pan is attached to (and ONLY here, never the scrollable body, so the drag
-  // never fights the sheet's own ScrollView). Its bottom pad separates the pill
-  // from the first content row; the sheet card's own `paddingTop` sits above it.
+  // The top drag region: the grabber pill (and, when a call site passes one, an
+  // optional header node under it) in a hit area the vertical Pan is attached to
+  // (and ONLY here, never the scrollable body, so the drag never fights the
+  // sheet's own ScrollView). Extending the header into this same region is what
+  // makes a drag ANYWHERE across the header — not only on the small pill — drive
+  // the dismiss. Its bottom pad separates the region from the first content row;
+  // the sheet card's own `paddingTop` sits above it. `gap` only takes effect
+  // when a header is present (a lone grabber is a single child, so there is
+  // nothing to space) — so a headerless sheet keeps its exact prior layout. The
+  // grabber centers itself via its own `alignSelf` below rather than this
+  // region's `alignItems`, so the header stays full-width/left-aligned (the
+  // region's default `stretch`) instead of being centered with the pill.
   grabberRegion: {
-    alignItems: 'center',
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(3),
+    gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle, in the
   // muted separator gray so it reads as a subtle affordance on the sheet
-  // surface rather than a hard line.
+  // surface rather than a hard line. `alignSelf: 'center'` keeps it centered
+  // now that its region no longer sets `alignItems: 'center'` (so an optional
+  // header sibling can stay left-aligned).
   grabber: {
+    alignSelf: 'center',
     width: 36,
     height: 5,
     borderRadius: 2.5,

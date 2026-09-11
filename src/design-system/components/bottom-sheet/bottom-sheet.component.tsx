@@ -39,8 +39,8 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * (or, as with the filter menu, go missing) per sheet again.
  *
  * The scrim and the sheet are siblings inside the overlay, not parent/child, so
- * a tap on the sheet never reaches the scrim's dismiss handler — the opaque
- * sheet simply sits on top of the scrim, and the sheet's ScrollView (shared or
+ * a tap on the sheet never reaches the scrim's dismiss handler — the sheet
+ * simply sits on top of the scrim in paint order, and the sheet's ScrollView (shared or
  * a call site's own — see `scrollable`) scrolls freely (no
  * `onStartShouldSetResponder` guard is needed).
  *
@@ -53,12 +53,21 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
  * a11y, not the pressable target itself.
  *
- * The sheet card's own background is a translucent glass panel too, reusing
- * `GlassSurface`'s `transparent` variant rather than a fork of its layering —
- * real Liquid Glass on iOS 26+, the same themed flat translucent fallback
- * elsewhere. It is rendered as an absolutely-positioned first child
- * (`styles.glassFill`), painted BEHIND the grabber and the body content that
- * follow it in JSX, so every sheet in the app picks this up from this one
+ * The sheet card's own background is a REAL translucent blur MATERIAL, reusing
+ * `GlassSurface`'s `material` variant rather than a fork of its layering — the
+ * live see-through Liquid Glass on iOS 26+ (no backdrop under it, so it
+ * samples the actual content behind the sheet for a true blur, not a
+ * color-pinned near-opaque panel), the same themed flat TRANSLUCENT fallback
+ * elsewhere. A modal sheet's backdrop is static while it is open, so the
+ * lightness-drift concern that motivates `transparent`'s partial-pin backdrop
+ * for a scrolling CARD does not apply here — `material` is `transparent`'s
+ * sibling variant for exactly this static-backdrop case (see
+ * `glass-surface.props.d.ts`'s `material` doc for the full distinction; this
+ * was `transparent` before, which painted a translucent `surfaceTranslucent`
+ * backdrop UNDER the glass and muted the live sample into a near-solid dark
+ * panel — device feedback). It is rendered as an absolutely-positioned first
+ * child (`styles.glassFill`), painted BEHIND the grabber and the body content
+ * that follow it in JSX, so every sheet in the app picks this up from this one
  * change point. `padding={0}` keeps the card's own existing padding
  * (`styles.sheet`) as the single inset — `GlassSurface`'s own `padding` prop
  * is deliberately unused here, so the two never stack. See `styles.glassFill`
@@ -69,6 +78,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
   visible,
   onDismiss,
   children,
+  header,
   gap = 3,
   animationType = 'fade',
   maxHeight,
@@ -108,8 +118,9 @@ const BottomSheet: FC<BottomSheetProps> = ({
     }
   }, [visible, translateY]);
 
-  // The Pan is attached to the grabber region ONLY (never the scrollable body),
-  // so it never competes with the sheet's own ScrollView. `.runOnJS(true)`
+  // The Pan is attached to the grabber region ONLY (the grabber pill plus an
+  // optional `header` node, never the scrollable body), so it never competes
+  // with the sheet's own ScrollView. `.runOnJS(true)`
   // keeps its handlers on the JS thread, per the "runOnJS for non-worklet
   // callbacks" rule — `onEnd` reaches `onDismiss`, a plain prop, not a worklet.
   const dragToDismiss = Gesture.Pan()
@@ -181,16 +192,22 @@ const BottomSheet: FC<BottomSheetProps> = ({
           testID={testID}
         >
           <GlassSurface
-            transparent
+            material
             radius="lg"
             padding={0}
             style={styles.glassFill}
             testID={testID && `${testID}-glass`}
           />
 
+          {/* The grabber pill AND an optional `header` node share this one
+              draggable region, so a drag anywhere across the header — not just
+              the small pill — drives the Pan. `{body}` stays OUTSIDE it, so a
+              scrollable body still owns its own touch and scrolls freely. */}
           <GestureDetector gesture={dragToDismiss}>
             <View style={styles.grabberRegion} testID={testID && `${testID}-grabber`}>
               <View style={styles.grabber} />
+
+              {header}
             </View>
           </GestureDetector>
 

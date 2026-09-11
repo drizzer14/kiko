@@ -24,6 +24,34 @@ describe('OptionPills', () => {
     expect(style.minHeight).toBe(44);
   });
 
+  it('compacts the caption-variant pill while still reaching a 44pt tap target via hitSlop', async () => {
+    const { getByText } = await render(
+      <OptionPills options={[0, 30]} selected={30} onSelect={jest.fn()} labelVariant="caption" />,
+    );
+    const pill = getByText('30').parent;
+    const style = pillStyleOf(getByText('30'));
+
+    // Visual height shrinks below the default 44pt floor (item 4: the pill was
+    // sized for `body` text around a smaller `caption` label).
+    expect(style.minHeight).toBe(34);
+    expect(style.paddingVertical).toBe(4);
+    // The iOS HIG 44pt tap-target floor is restored via hitSlop, the same
+    // pattern Button's `small` size uses: (44 - 34) / 2 = 5pt per edge.
+    expect(pill?.props.hitSlop).toEqual({ top: 5, bottom: 5 });
+  });
+
+  it('keeps the default body-variant pill at its original 44pt visible height with no hitSlop', async () => {
+    const { getByText } = await render(
+      <OptionPills options={[0, 30]} selected={30} onSelect={jest.fn()} />,
+    );
+    const pill = getByText('30').parent;
+    const style = pillStyleOf(getByText('30'));
+
+    expect(style.minHeight).toBe(44);
+    expect(style.paddingVertical).toBe(8);
+    expect(pill?.props.hitSlop).toBeUndefined();
+  });
+
   it('fills the selected pill with the accent color and leaves the rest transparent', async () => {
     const { getByText } = await render(
       <OptionPills options={[0, 30]} selected={30} onSelect={jest.fn()} />,

@@ -213,11 +213,10 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         onDismiss={() => setOpen(false)}
         gap={4}
         scrollable={false}
+        header={<Text variant="heading">{t('statistics.trendFilter.title')}</Text>}
         testID={`${testID}-sheet`}
         backdropTestID={`${testID}-backdrop`}
       >
-        <Text variant="heading">{t('statistics.trendFilter.title')}</Text>
-
         {/* Each section is a white `body`-step sub-heading directly ABOVE its
             value control — no frosted `GlassSurface` card behind the values
             any more (design review: the gray-filled card read as a

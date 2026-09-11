@@ -11,6 +11,18 @@ export type BottomSheetProps = {
   /** The sheet's content, laid out in a bottom-anchored column. */
   children: ReactNode;
   /**
+   * An optional header node rendered INSIDE the same draggable region as the
+   * grabber handle (the grabber pill on top, then this node), so a drag
+   * anywhere across the header — not only on the small pill — drives the
+   * sheet's drag-to-dismiss. `children` stay OUTSIDE that region, so a
+   * scrollable body still scrolls freely without the Pan competing for its
+   * touch. Defaults to `undefined`: a sheet that passes no `header` keeps the
+   * exact grabber-only drag region it had before. Use it for a sheet whose
+   * title/heading should double as drag surface (the Statistics trend-filter
+   * sheet passes its `<Text variant="heading">` title here).
+   */
+  header?: ReactNode;
+  /**
    * The inner column gap between the sheet's content rows, in `theme.spacing`
    * steps. This is content spacing, legitimately per-sheet (a dense checklist
    * wants less than a calendar-plus-actions sheet), so it stays a prop rather

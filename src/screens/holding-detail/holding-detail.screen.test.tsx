@@ -279,6 +279,38 @@ describe('HoldingDetailScreen', () => {
     expect(getByTestId('ledger-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
+  it('renders the ledger list with no intermediate Screen content wrapper, so the native large title can collapse', async () => {
+    seed(cashHolding);
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // iOS collapses the native large title only when the scroll view it tracks
+    // is reachable as a DIRECT child of the SafeAreaView, walking the first-child
+    // chain — an intermediate padded wrapper `View` between them stops the
+    // collapse (the title stays stuck expanded — feedback round-3, item 1). So
+    // `Screen bleedTop` renders this FlatList directly, with NO `screen-content`
+    // wrapper (the wrapper the plain/`bleedBottom` branches still use). Its
+    // absence is the structural contract that keeps the large title collapsing.
+    expect(getByTestId('ledger-list')).toBeTruthy();
+    expect(queryByTestId('screen-content')).toBeNull();
+  });
+
+  it('gives the ledger list its own horizontal and top content padding, since it owns the screen edges directly', async () => {
+    seed(cashHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    // With no Screen `content` wrapper around it, the FlatList owns the screen's
+    // side gutter and top gap itself, in its own content container (the wrapper
+    // used to supply these). Both are the base `spacing(4)` = 16 step, so the
+    // rows sit inset from the edges exactly as before the collapse fix.
+    const listContentStyle = StyleSheet.flatten(
+      getByTestId('ledger-list').props.contentContainerStyle,
+    );
+    expect(listContentStyle.paddingHorizontal).toBe(16);
+    expect(listContentStyle.paddingTop).toBe(16);
+  });
+
   it('renders a view-only header with no inline name, icon, or color editors', async () => {
     seed(cardHolding);
 

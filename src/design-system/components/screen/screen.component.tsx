@@ -102,25 +102,48 @@ const Screen: FC<ScreenProps> = ({
     );
   }
 
+  // The `bleedTop` branch: the child is ITSELF the scrollable surface under a
+  // native large-title header (a virtualized FlatList/SectionList that must own
+  // the scrolling, so it cannot nest inside the `scroll` branch's ScrollView).
+  // iOS drives the large-title COLLAPSE from the first scroll view it finds
+  // walking the screen's first-child chain (react-native-screens'
+  // `RNSScrollViewFinder.findScrollViewInFirstDescendantChainFrom` walks
+  // `subviews[0]`, and its own comment notes "the OS does something similar when
+  // looking for scrollview for large header"). An intermediate padded `content`
+  // View between the SafeAreaView and that scroll view stops the collapse — the
+  // large title stays stuck expanded (feedback round-3, item 1). So `bleedTop`
+  // renders the child as a DIRECT child of the SafeAreaView, exactly like the
+  // working `account-detail` scroll branch's ScrollView (its proven structure:
+  // collapses AND does not float). There is no `content` wrapper, so the child
+  // owns ALL of its own padding — top (via `contentInsetAdjustmentBehavior`
+  // "automatic" + its own content-container top padding), horizontal, AND the
+  // floating tab-bar bottom clearance (the same `bleedBottom` contract Home's
+  // list follows, via `resolveBottomClearance`). The top safe-area edge is
+  // dropped here for the same reason the scroll branch drops it: the large-title
+  // header owns the top inset. A `footer` still sits pinned below the child as a
+  // sibling, with its own clearance, exactly as in the other two branches.
+  if (bleedTop) {
+    return (
+      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
+        {children}
+        {footer ? (
+          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+            {footer}
+          </View>
+        ) : null}
+      </SafeAreaView>
+    );
+  }
+
   // The plain (non-scrolling) branch: `content` and `footer` (when present)
   // are siblings in the same flex column, `content` taking `flex: 1` — so a
   // short page's footer still lands pinned to the screen's true bottom edge,
   // exactly like the scroll branch's footer, rather than floating directly
-  // beneath a short page's content.
+  // beneath a short page's content. `bleedTop` returns above, so this branch is
+  // always a headerless screen that keeps the default all-edges reservation.
   return (
-    <SafeAreaView
-      // A `bleedTop` screen's child is itself the scrollable surface under a
-      // large-title header, so — like the scroll branch above — the top edge is
-      // dropped here and the child (via its own automatic content-inset
-      // adjustment) owns the top inset. Every other plain (headerless) screen
-      // keeps the default all-edges reservation.
-      edges={bleedTop ? LARGE_TITLE_SAFE_AREA_EDGES : undefined}
-      style={styles.safeArea}
-    >
-      <View
-        testID="screen-content"
-        style={styles.content(contentOwnsClearance, bottomClearance, bleedTop)}
-      >
+    <SafeAreaView style={styles.safeArea}>
+      <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
         {children}
       </View>
       {footer ? (
