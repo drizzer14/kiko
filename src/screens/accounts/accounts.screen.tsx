@@ -3,7 +3,7 @@ import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import { ratesRepo } from '@kiko/rates/rates.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { FC } from 'react';
+import { type FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -42,12 +42,40 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
-  const rateTable = buildRateTable(rates);
+  const rateTable = useMemo(() => buildRateTable(rates), [rates]);
   const now = Date.now();
 
   // The grid renders in the query's `sortOrder` order (the drag-and-drop order),
   // filtered to the non-archived accounts.
-  const activeAccounts = accounts.filter((account) => account.archivedAt == null);
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => account.archivedAt == null),
+    [accounts],
+  );
+
+  // Group every open holding by its account id in ONE O(H) pass, so each card
+  // indexes into this map instead of re-filtering all holdings per card — the
+  // per-card `holdings.filter` was O(A×H) on every render and re-ran on every
+  // reactive fire during a sync. A closed holding is excluded here exactly as
+  // the per-card filter did, and each account's holdings keep the query's order.
+  const holdingsByAccount = useMemo(() => {
+    const byAccount = new Map<string, typeof holdings>();
+
+    for (const holding of holdings) {
+      if (holding.closedAt != null) {
+        continue;
+      }
+
+      const existing = byAccount.get(holding.accountId);
+
+      if (existing) {
+        existing.push(holding);
+      } else {
+        byAccount.set(holding.accountId, [holding]);
+      }
+    }
+
+    return byAccount;
+  }, [holdings]);
 
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
@@ -107,9 +135,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               autoScrollActivationOffset={75}
               keyExtractor={(account) => account.id}
               renderItem={({ item }) => {
-                const accountHoldings = holdings.filter((holding) => {
-                  return holding.accountId === item.id && holding.closedAt == null;
-                });
+                const accountHoldings = holdingsByAccount.get(item.id) ?? [];
                 const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
                 const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
 
