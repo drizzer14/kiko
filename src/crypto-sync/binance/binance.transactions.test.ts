@@ -93,7 +93,11 @@ describe('syncBinanceTransactions', () => {
         amountMinorUnits: 50_000_000, // +0.5 BTC in satoshis
         time: NOW - DAY,
         source: 'binance',
-        externalId: 'deposit:1',
+        // Phase 6: the synced external id is namespaced by the target account id
+        // (`${accountId}:deposit:<id>`), so two Binance connections cannot collide
+        // on the GLOBAL (source, external_id) index — Binance record ids are only
+        // per-account unique.
+        externalId: 'acc-1:deposit:1',
         // A stable, non-localized asset ticker so the row's normalized name is
         // non-blank and the category-apply sheet appears (parity with a Monobank
         // merchant row). See the item-12 fix.
@@ -104,10 +108,19 @@ describe('syncBinanceTransactions', () => {
         amountMinorUnits: -25_000_000, // -0.25 BTC, fee excluded
         time: Date.UTC(2024, 0, 3, 0, 0, 0),
         source: 'binance',
-        externalId: 'withdraw:9',
+        externalId: 'acc-1:withdraw:9',
         description: 'BTC',
       },
     ]);
+  });
+
+  it('reads the credentials for the TARGET account id (per-account isolation)', async () => {
+    const readCredentials = jest.fn(async () => ({ apiKey: 'api-key', secret: 'secret' }));
+    const deps = makeDeps({ readCredentials });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    expect(readCredentials).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
   it('paces the two endpoint requests in a window through a shared gate', async () => {
@@ -159,7 +172,7 @@ describe('syncBinanceTransactions', () => {
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
     const rows = (deps.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
-    expect(rows.map((row) => row.externalId)).toEqual(['deposit:3', 'withdraw:7']);
+    expect(rows.map((row) => row.externalId)).toEqual(['acc-1:deposit:3', 'acc-1:withdraw:7']);
   });
 
   it('offset-pages within a window until a short page, collecting every row', async () => {
@@ -289,7 +302,32 @@ describe('syncBinanceTransactions', () => {
       .calls[0][0] as BinanceTransactionRow[];
     const secondRun = (deps.addTransactions as jest.Mock).mock
       .calls[1][0] as BinanceTransactionRow[];
-    expect(firstRun[0].externalId).toBe('deposit:42');
-    expect(secondRun[0].externalId).toBe('deposit:42');
+    expect(firstRun[0].externalId).toBe('acc-1:deposit:42');
+    expect(secondRun[0].externalId).toBe('acc-1:deposit:42');
+  });
+
+  // Phase 6 / Risk R-1: Binance deposit/withdrawal record ids are only
+  // per-account unique, so two connections can each emit `deposit:<id>` with the
+  // SAME raw id. Namespacing by the target account id keeps their external ids
+  // distinct, so the global (source, external_id) upsert cannot refresh the wrong
+  // connection's row.
+  it('namespaces the external id per account so two connections cannot collide on one raw id', async () => {
+    const depsA = makeDeps({
+      latestTransactionTime: async () => NOW - 10 * DAY,
+      fetchDepositHistory: jest.fn(async () => [deposit({ id: '7' })]),
+    });
+    const depsB = makeDeps({
+      latestTransactionTime: async () => NOW - 10 * DAY,
+      fetchDepositHistory: jest.fn(async () => [deposit({ id: '7' })]),
+    });
+
+    await syncBinanceTransactions({ targetAccountId: 'acc-a' }, depsA);
+    await syncBinanceTransactions({ targetAccountId: 'acc-b' }, depsB);
+
+    const rowA = (depsA.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
+    const rowB = (depsB.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
+    expect(rowA[0].externalId).toBe('acc-a:deposit:7');
+    expect(rowB[0].externalId).toBe('acc-b:deposit:7');
+    expect(rowA[0].externalId).not.toBe(rowB[0].externalId);
   });
 });

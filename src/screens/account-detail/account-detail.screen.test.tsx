@@ -112,8 +112,8 @@ jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../monobank/token', () => ({
-  readToken: () => mockReadToken(),
-  hasToken: () => mockHasToken(),
+  readToken: (...args: unknown[]) => mockReadToken(...args),
+  hasToken: (...args: unknown[]) => mockHasToken(...args),
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
 jest.mock('../../monobank/monobank.client', () => ({
@@ -124,10 +124,6 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     byIdQuery: (accountId: string) => ({
       __kind: 'byId',
       toSQL: () => ({ sql: '', params: [accountId] }),
-    }),
-    connectedQuery: () => ({
-      __kind: 'connected',
-      toSQL: () => ({ sql: '', params: ['monobank'] }),
     }),
     setIcon: (...args: unknown[]) => mockAccountSetIcon(...args),
     update: (...args: unknown[]) => mockAccountUpdate(...args),
@@ -147,6 +143,11 @@ jest.mock('@kiko/rates/rates.repo', () => ({
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
+jest.mock('@kiko/sync-state/sync-state.repo', () => ({
+  syncStateRepo: {
+    getQuery: () => ({ __kind: 'sync_state', toSQL: () => ({ sql: '', params: [] }) }),
+  },
 }));
 
 // The crypto section is tested on its own; here it collapses to a marker view
@@ -180,28 +181,25 @@ type Holding = {
   metadata?: Record<string, unknown> | null;
 };
 type Rate = { base: string; quote: string; rate: string };
-type Settings = { baseCurrency: string; lastSyncAt?: number | null };
+type Settings = { baseCurrency: string };
+type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
 
 /**
- * Drive the five `useLiveQuery` calls, keying on the query's `__kind` (the
- * account-by-id and connected queries both subscribe to `['accounts']`, so the
- * table name alone can't tell them apart) and otherwise on the subscribed
- * table. `connected` defaults to the accounts currently marked
- * `institution: 'monobank'`; `settings` defaults to a UAH base.
+ * Drive the `useLiveQuery` calls, keying on the query's `__kind` (the
+ * account-by-id query subscribes to `['accounts']`, so the table name alone
+ * can't tell it apart from a future account query) and otherwise on the
+ * subscribed table. `settings` defaults to a UAH base. The Monobank "last sync"
+ * line now reads the PER-CONNECTION `sync_state` cursor, seeded via `syncState`.
  */
 const setLiveData = (data: {
   accounts?: Account[];
   holdings?: Holding[];
-  connected?: Account[];
   rates?: Rate[];
   settings?: Settings[];
+  syncState?: SyncState[];
 }): void => {
   const accounts = data.accounts ?? [];
-  const connected = data.connected ?? accounts.filter((a) => a.institution === 'monobank');
-  mockUseLiveQuery.mockImplementation((query: { __kind?: string }, tables: string[]) => {
-    if (query.__kind === 'connected') {
-      return { data: connected };
-    }
+  mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
     if (tables[0] === 'holdings') {
       // A real holding row always carries a `type`; default it here so a fixture
       // that only cares about name/currency/balance still yields a valid type
@@ -214,6 +212,9 @@ const setLiveData = (data: {
     }
     if (tables[0] === 'settings') {
       return { data: data.settings ?? [{ baseCurrency: 'UAH' }] };
+    }
+    if (tables[0] === 'sync_state') {
+      return { data: data.syncState ?? [] };
     }
     return { data: accounts };
   });
@@ -578,16 +579,17 @@ describe('AccountDetailScreen', () => {
     },
   );
 
-  it('hides Connect and shows a hint when another account is already connected', async () => {
+  it('lets a bank account connect independently, with no single-connection gate or hint', async () => {
+    // The single-connection gate is gone: a bank account shows Connect on its
+    // own — the screen no longer queries whether another account already holds a
+    // Monobank connection — and no "connected elsewhere" hint is ever rendered.
     setLiveData({
       accounts: [account({ id: 'a', kind: 'bank', institution: null })],
       holdings: [],
-      connected: [account({ id: 'other', kind: 'bank', institution: 'monobank' })],
     });
     const { getByText, queryByText } = await renderScreen();
-    expect(queryByText('Connect Monobank')).toBeNull();
-    expect(queryByText('Sync')).toBeNull();
-    expect(getByText('Monobank is connected to another account')).toBeTruthy();
+    expect(getByText('Connect Monobank')).toBeTruthy();
+    expect(queryByText('Monobank is connected to another account')).toBeNull();
   });
 
   it('syncs the account when a Monobank token exists (Connect action)', async () => {
@@ -610,6 +612,8 @@ describe('AccountDetailScreen', () => {
     const { getByText, findByText, queryByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Connect Monobank'));
     expect(await findByText(/Add your Monobank token above/)).toBeTruthy();
+    // The token existence guard probes THIS account's own per-account item.
+    expect(mockReadToken).toHaveBeenCalledWith('a');
     // The pointer no longer sends the user to global Settings.
     expect(queryByText(/in Settings/)).toBeNull();
     expect(mockSync).not.toHaveBeenCalled();
@@ -626,14 +630,16 @@ describe('AccountDetailScreen', () => {
       await fireEvent.press(getByText('Save'));
     });
     expect(mockFetchClientInfo).toHaveBeenCalledWith('entered-here');
-    expect(mockSaveToken).toHaveBeenCalledWith('entered-here');
+    // The token binds to THIS account's id (per-account Keychain item), not a
+    // shared global slot.
+    expect(mockSaveToken).toHaveBeenCalledWith('a', 'entered-here');
   });
 
   it('shows the last sync time on a connected bank account, formatted as DD.MM.YYYY HH:mm', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: 'monobank' })],
       holdings: [],
-      settings: [{ baseCurrency: 'UAH', lastSyncAt: 1_700_000_000_000 }],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
     });
     const { getByText } = await renderScreen();
     // The shared formatDateTime helper (European DD.MM.YYYY, 24h) replaces the

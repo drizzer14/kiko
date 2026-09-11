@@ -124,7 +124,11 @@ The sync pipeline is deliberately functional, not OOP — see
    sync can run.
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
    import each item as a Transaction, UPSERTED on
-   `(source, externalId)` — the Monobank statement id — by
+   `(source, externalId)` — where `externalId` is NAMESPACED per
+   connection as `` `${accountId}:${statementId}` `` (`mapStatementItem`,
+   `src/monobank/sync.ts`), because the `(source, external_id)` unique
+   index is GLOBAL and now shared across MULTIPLE connections per
+   provider (see "Namespaced synced externalId" below) — by
    `addManyDedup` (`src/transactions/transactions.repo.ts`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
@@ -730,16 +734,43 @@ than restated here:
   attaches to the SPOT holding (match key `'BTC'`); Funding/Earn get no
   transaction rows.
 - **Idempotent via `(source, external_id)`.** Each row is
-  `source: 'binance'` with `externalId` `deposit:<id>` / `withdraw:<id>`
-  (Binance's own record id, falling back to the on-chain `txId`), imported
-  through `transactionsRepo.addManyDedup`. A re-sync refreshes rather than
-  duplicates. The withdrawal `applyTime` is a UTC datetime STRING, NOT
+  `source: 'binance'` with `externalId`
+  `` `${accountId}:deposit:<id>` `` / `` `${accountId}:withdraw:<id>` ``
+  (the target account id, then Binance's own record id, falling back to the
+  on-chain `txId`), imported through `transactionsRepo.addManyDedup`. The
+  account-id prefix is REQUIRED, not cosmetic: Binance record ids are only
+  PER-ACCOUNT unique, so on the GLOBAL `(source, external_id)` index a bare
+  `deposit:<id>` would let a second Binance connection's upsert refresh the
+  first's row (see "Namespaced synced externalId" below). A re-sync refreshes
+  rather than duplicates. The withdrawal `applyTime` is a UTC datetime STRING, NOT
   epoch ms — `parseWithdrawTime` pins it to UTC (a bare `Date.parse` would
   shift it by the device's local offset). Amounts convert through
   `Money.fromMajor('BTC', …)`; the withdrawal network fee is excluded from
   the ledger line. The rows carry an EMPTY description, so the holding
   detail + Home lists render the shared income/expense default label; a
   bespoke "Deposit"/"Withdrawal" label is a deferred follow-up.
+
+### Namespaced synced externalId (multi-account correctness)
+
+The `(source, external_id)` unique index (`transactions_source_external`,
+`src/db/schema.ts`) is GLOBAL — one keyspace shared across EVERY connection of
+every provider. The multi-account plan lets a user connect more than one
+Monobank and more than one Binance account, so a SYNCED row's `externalId` is
+namespaced by its holding's account id: `` `${accountId}:${sourceId}` `` —
+`` `${accountId}:${statementId}` `` for Monobank (`mapStatementItem`,
+`src/monobank/sync.ts`) and `` `${accountId}:deposit:<id>` `` /
+`` `${accountId}:withdraw:<id>` `` for Binance
+(`src/crypto-sync/binance/binance.transactions.ts`). Without the prefix, two
+Binance connections — whose deposit/withdrawal record ids are only PER-ACCOUNT
+sequences, NOT globally unique — could each emit the same `deposit:<id>`, and
+the upsert would refresh the WRONG connection's row. Monobank statement ids are
+globally unique, so its rows never collided, but they carry the same prefix for
+one consistent shape. The write-time key and migration `0029`'s backfill produce
+the IDENTICAL string (`account_id || ':' || external_id`, joining
+`transactions.holding_id -> holdings.account_id`, idempotent behind a
+`NOT LIKE account_id || ':%'` guard), so a re-sync of a pre-migration,
+then-backfilled row matches in place — no duplicate insert. A `manual` row has a
+null `externalId` and is never namespaced.
 
 ## Price data
 

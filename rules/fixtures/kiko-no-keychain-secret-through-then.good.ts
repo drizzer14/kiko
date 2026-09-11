@@ -9,7 +9,7 @@ import { hasToken } from '../../src/monobank/token';
 export const FixtureGoodExistenceProbe = () => {
   const [isTokenSaved, setIsTokenSaved] = useState(false);
 
-  hasToken().then((exists) => {
+  hasToken('acc-1').then((exists) => {
     setIsTokenSaved(exists);
   });
 

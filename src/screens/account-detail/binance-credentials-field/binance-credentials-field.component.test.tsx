@@ -41,7 +41,7 @@ describe('BinanceCredentialsField', () => {
 
   it('renders two secure inputs, a Binance link and a Connect Binance action', async () => {
     const { getByPlaceholderText, getByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     expect(getByPlaceholderText('Binance API key').props.secureTextEntry).toBe(true);
@@ -52,7 +52,7 @@ describe('BinanceCredentialsField', () => {
 
   it('disables Connect until both the API key and secret are entered', async () => {
     const { getByPlaceholderText, getByRole } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
     const connect = (): ReturnType<typeof getByRole> =>
       getByRole('button', { name: 'Connect Binance' });
@@ -70,7 +70,9 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('opens the Binance API management page from the link', async () => {
-    const { getByText } = await render(<BinanceCredentialsField onConnect={onConnect} />);
+    const { getByText } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
 
     await fireEvent.press(getByText('Open Binance API Management'));
 
@@ -81,7 +83,7 @@ describe('BinanceCredentialsField', () => {
 
   it('pastes into the key and the secret fields separately, trimmed', async () => {
     const { getByLabelText, getByPlaceholderText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     mockGetString.mockResolvedValue(' api-key-fixture ');
@@ -99,7 +101,7 @@ describe('BinanceCredentialsField', () => {
 
   it('verifies the pair with one fetchAccount call, saves it, connects, and shows success', async () => {
     const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     await fillBoth(getByPlaceholderText);
@@ -109,7 +111,7 @@ describe('BinanceCredentialsField', () => {
 
     expect(mockFetchAccount).toHaveBeenCalledTimes(1);
     expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
-    expect(mockSaveCredentials).toHaveBeenCalledWith({
+    expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', {
       apiKey: 'api-key-fixture',
       secret: 'secret-fixture',
     });
@@ -122,7 +124,7 @@ describe('BinanceCredentialsField', () => {
       new Error('Binance request failed: 401: Invalid API-key, IP, or permissions for action.'),
     );
     const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     await fillBoth(getByPlaceholderText);
@@ -138,7 +140,7 @@ describe('BinanceCredentialsField', () => {
   it('shows a distinct save error and does not connect when the Keychain write fails', async () => {
     mockSaveCredentials.mockRejectedValue(new Error('Keychain write failed'));
     const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     await fillBoth(getByPlaceholderText);
@@ -154,7 +156,7 @@ describe('BinanceCredentialsField', () => {
   it('shows a connect error when the pair saved but the sync failed', async () => {
     onConnect.mockResolvedValue(false);
     const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     await fillBoth(getByPlaceholderText);
@@ -168,7 +170,7 @@ describe('BinanceCredentialsField', () => {
   it('clears a stale status when either field is edited afterward', async () => {
     mockFetchAccount.mockRejectedValue(new Error('Binance request failed: 401'));
     const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     await fillBoth(getByPlaceholderText);
@@ -197,7 +199,7 @@ describe('BinanceCredentialsField — localization', () => {
     });
 
     const { getByPlaceholderText, getByText, queryByText } = await render(
-      <BinanceCredentialsField onConnect={onConnect} />,
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
     );
 
     expect(getByPlaceholderText('API ключ Binance')).toBeTruthy();

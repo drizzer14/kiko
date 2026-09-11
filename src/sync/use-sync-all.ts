@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { refreshRates } from '../rates/rates-refresh';
 
+import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from './settle-limited';
 import { type SyncableAccount, type SyncJob, syncJobsFor } from './sync-jobs';
 
 type UseSyncAll = {
@@ -17,7 +18,14 @@ type UseSyncAll = {
  * accounts whose job rejected (empty on full success).
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
-  const results = await Promise.allSettled(jobs.map((job) => job.run()));
+  // Cap CONCURRENT syncs so a many-connection pull never fires N provider
+  // requests at once (device load / provider rate limits). Results come back in
+  // job order, so `results[index]` still aligns to `jobs[index]` for naming the
+  // failed accounts — see `settleAllLimited`.
+  const results = await settleAllLimited(
+    jobs.map((job) => job.run),
+    SYNC_CONCURRENCY_LIMIT,
+  );
   const failed = jobs
     .filter((_, index) => results[index].status === 'rejected')
     .map((job) => job.name);
@@ -65,8 +73,9 @@ const runSyncAllOnce = (jobs: SyncJob[]): Promise<string[]> => {
 /**
  * The Home pull-to-refresh fan-out: sync EVERY syncable account at once — the
  * connected Monobank account plus each connected crypto account — then refresh
- * rates ONCE for the whole batch. The jobs run under `Promise.allSettled`, so
- * one account's failure never blocks the others (PARTIAL success); the failed
+ * rates ONCE for the whole batch. The jobs run settled under a bounded worker
+ * pool (`settleAllLimited`, cap `SYNC_CONCURRENCY_LIMIT`), so one account's
+ * failure never blocks the others (PARTIAL success); the failed
  * accounts' names are collected into `failures` for the UI to surface. A pull
  * always forces a fresh sync, bypassing the auto-sync throttle.
  */

@@ -12,6 +12,10 @@ import type { SyncStatus } from '../sync-status-line';
 import SyncStatusLine from '../sync-status-line';
 
 type MonobankTokenFieldProps = {
+  // The account this field's token belongs to. The token is a PER-ACCOUNT
+  // Keychain item, so both the "already saved" probe and the Save write are keyed
+  // by this id — a second Monobank account stores and reads its own token.
+  accountId: string;
   // True once the account is connected/synced to Monobank. The token-entry
   // controls only make sense before that, so they hide once it flips true.
   isConnected: boolean;
@@ -26,7 +30,7 @@ type MonobankTokenFieldProps = {
 // (`saveToken`). Once the account is connected, the token-entry controls (link,
 // input, Save) disappear — the Connect/Sync/Disconnect actions live on the
 // parent account-detail screen instead.
-const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
+const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ accountId, isConnected }) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
   const [isTokenSaved, setIsTokenSaved] = useState(false);
@@ -43,7 +47,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
     }
 
     let alive = true;
-    hasToken().then((exists) => {
+    hasToken(accountId).then((exists) => {
       if (alive) {
         setIsTokenSaved(exists);
       }
@@ -52,7 +56,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
     return () => {
       alive = false;
     };
-  }, [isConnected]);
+  }, [accountId, isConnected]);
 
   const handleChangeToken = (value: string): void => {
     setToken(value);
@@ -73,7 +77,7 @@ const MonobankTokenField: FC<MonobankTokenFieldProps> = ({ isConnected }) => {
       }
 
       try {
-        await saveToken(token);
+        await saveToken(accountId, token);
         setToken('');
         setIsTokenSaved(true);
         setTokenStatus({

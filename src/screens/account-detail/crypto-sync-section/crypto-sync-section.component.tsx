@@ -1,4 +1,3 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
@@ -15,7 +14,6 @@ import {
 } from '../../../crypto-sync/provider';
 import { resyncRequest } from '../../../crypto-sync/resync-request';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
-import { useLiveQuery } from '../../../db/use-live-query';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
@@ -54,19 +52,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
   const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
-  // One connection per institution: another account holding the picked source
-  // blocks connecting it here (the same rule `runBalanceSync` enforces).
-  const { data: walletAccounts } = useLiveQuery(accountsRepo.connectedQuery('btc_wallet'), [
-    'accounts',
-  ]);
-  const { data: binanceAccounts } = useLiveQuery(accountsRepo.connectedQuery('binance'), [
-    'accounts',
-  ]);
+  // Multi-connection (Task 5.2): each crypto account connects independently, so
+  // there is no "connected elsewhere" gate — another account holding this source
+  // no longer blocks connecting it here.
   const connectedProvider = isBalanceProviderId(account.institution)
     ? account.institution
     : undefined;
-  const sourceAccounts = source === 'btc_wallet' ? walletAccounts : binanceAccounts;
-  const sourceConnectedElsewhere = sourceAccounts.some((connected) => connected.id !== account.id);
 
   const connectWallet = (address: string): Promise<boolean> =>
     sync({ providerId: 'btc_wallet', targetAccountId: account.id, address });
@@ -169,18 +160,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         labels={sourceLabels(t)}
       />
 
-      {sourceConnectedElsewhere && (
-        <Text variant="caption" tone="textSecondary">
-          {t('accountDetail.sourceConnectedElsewhere', { source: providerDisplayName(source, t) })}
-        </Text>
-      )}
+      {source === 'btc_wallet' && <WalletAddressField onConnect={connectWallet} />}
 
-      {!sourceConnectedElsewhere && source === 'btc_wallet' && (
-        <WalletAddressField onConnect={connectWallet} />
-      )}
-
-      {!sourceConnectedElsewhere && source === 'binance' && (
-        <BinanceCredentialsField onConnect={connectBinance} />
+      {source === 'binance' && (
+        <BinanceCredentialsField accountId={account.id} onConnect={connectBinance} />
       )}
 
       {error !== undefined && (

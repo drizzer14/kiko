@@ -37,12 +37,14 @@ jest.mock('./migration-bridge', () => ({
   },
 }));
 
-const mockSaveToken = jest.fn(async (_t: string) => undefined);
-jest.mock('@kiko/monobank/token', () => ({ saveToken: (t: string) => mockSaveToken(t) }));
+const mockSaveGlobalToken = jest.fn(async (_t: string) => undefined);
+jest.mock('@kiko/monobank/token', () => ({
+  saveGlobalToken: (t: string) => mockSaveGlobalToken(t),
+}));
 
-const mockSaveCredentials = jest.fn(async (_c: unknown) => undefined);
+const mockSaveGlobalCredentials = jest.fn(async (_c: unknown) => undefined);
 jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
-  saveCredentials: (c: unknown) => mockSaveCredentials(c),
+  saveGlobalCredentials: (c: unknown) => mockSaveGlobalCredentials(c),
 }));
 
 import { finalizeImportBridge, importFromOldApp } from './import-from-old-app';
@@ -87,8 +89,8 @@ describe('importFromOldApp', () => {
     await expect(importFromOldApp()).resolves.toBe(false);
     expect(mockResetDbKey).not.toHaveBeenCalled();
     expect(mockBridge.copyFile).not.toHaveBeenCalled();
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalCredentials).not.toHaveBeenCalled();
   });
 
   it('copies the export onto the resolved live kiko.db path and cleans the probe file', async () => {
@@ -103,8 +105,8 @@ describe('importFromOldApp', () => {
   it('restores both secrets from the JSON into the new Keychain', async () => {
     await importFromOldApp();
 
-    expect(mockSaveToken).toHaveBeenCalledWith('mono-tok');
-    expect(mockSaveCredentials).toHaveBeenCalledWith({ apiKey: 'AK', secret: 'SK' });
+    expect(mockSaveGlobalToken).toHaveBeenCalledWith('mono-tok');
+    expect(mockSaveGlobalCredentials).toHaveBeenCalledWith({ apiKey: 'AK', secret: 'SK' });
   });
 
   it('skips a missing secret without throwing', async () => {
@@ -113,8 +115,8 @@ describe('importFromOldApp', () => {
     );
 
     await expect(importFromOldApp()).resolves.toBe(true);
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalCredentials).not.toHaveBeenCalled();
   });
 
   it('degrades a corrupt/truncated secrets file to the same no-op as a missing one', async () => {
@@ -126,8 +128,8 @@ describe('importFromOldApp', () => {
 
     await expect(importFromOldApp()).resolves.toBe(true);
     expect(mockBridge.copyFile).toHaveBeenCalledWith(EXPORT_PATH, LIVE_PATH);
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalCredentials).not.toHaveBeenCalled();
   });
 });
 

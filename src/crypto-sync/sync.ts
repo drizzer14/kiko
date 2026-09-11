@@ -46,12 +46,13 @@ const defaultDeps: BalanceSyncDeps = {
 
 /**
  * Resolve the account this sync writes into, mirroring
- * `resolveMonobankAccountId` (`src/monobank/sync.ts`) but scoped per
- * institution: one connection per provider id, so a wallet and
- * a Binance connection coexist as two accounts while two wallet connections
- * cannot silently double-count. Re-connecting the SAME account is an
- * idempotent re-sync. This only reads — marking happens after a successful
- * fetch, so a failed fetch never leaves a half-connected account behind.
+ * `resolveMonobankAccountId` (`src/monobank/sync.ts`). A `targetAccountId` sync
+ * validates only that the target exists — MULTIPLE `binance` and multiple
+ * `btc_wallet` connections are allowed (Task 5.2), each an independent account
+ * with its own per-account secret/address and its own single-flight key.
+ * Re-connecting the SAME account is an idempotent re-sync. This only reads —
+ * marking happens after a successful fetch, so a failed fetch never leaves a
+ * half-connected account behind.
  */
 // Unlike the Monobank/disconnect error paths (which the screen swallows behind
 // a bare `catch` and a generic translated fallback — see
@@ -76,14 +77,12 @@ const resolveTargetAccount = async (
       throw new Error(i18n.t('accountDetail.noConnectionFound', { name }));
     }
 
-    const otherConnected = accounts.find((account) => {
-      return account.institution === providerId && account.id !== deps.targetAccountId;
-    });
-
-    if (otherConnected) {
-      throw new Error(i18n.t('accountDetail.sourceConnectedElsewhere', { source: name }));
-    }
-
+    // Multi-connection (Task 5.2): a second `binance` or `btc_wallet` account may
+    // connect while another already holds that provider. Each account keys its own
+    // secret (Binance credentials) / public address (wallet, per-holding), and the
+    // per-account `inFlightBalanceSyncs` join keys by `targetAccountId`, so distinct
+    // accounts sync safely and independently. Only the target's existence is
+    // validated here.
     return deps.targetAccountId;
   }
 

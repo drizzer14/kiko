@@ -168,6 +168,14 @@ export const settings = sqliteTable('settings', {
   baseCurrency: text('base_currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] })
     .notNull()
     .default('UAH'),
+  // SUPERSEDED (retained): the global Monobank statement CURSOR. De-globalized
+  // to the per-connection `syncState` table (2026-09-11 multi-account plan);
+  // migration 0028 backfills the connected account's row from it. The sync no
+  // longer writes it and no `settings` setter remains. Deliberately NOT dropped
+  // (migrations here are additive-only — same class as `appearance` /
+  // `lockGraceSeconds`). NOTE: `settings-columns.test.ts` cannot flag it as
+  // reader-less because `syncState` reuses the identical `lastSyncAt` identifier
+  // app-wide; its live semantics now live on `syncState.lastSyncAt`.
   lastSyncAt: integer('last_sync_at'),
   // The category a null/empty transaction category folds into (the single
   // catch-all), and the category deleted rows reassign to. Seeded to `'other'`
@@ -197,6 +205,11 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
+  // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Moved to
+  // per-connection `syncState.lastSyncDisplayAt` (2026-09-11 multi-account plan);
+  // migration 0028 backfills it. The sync no longer writes it and account-detail
+  // now reads `syncState`. Retained (additive-only migrations). The description
+  // below still documents the live semantics, which now hold on `syncState`.
   // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
   // that reached Monobank with at least one card succeeding — including a
   // PARTIAL failure, where some cards imported but one threw. Decoupled from
@@ -209,6 +222,11 @@ export const settings = sqliteTable('settings', {
   // NULLABLE: rows that existed before this column read null, and the display
   // falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
+  // SUPERSEDED (retained): the global last-FULL-fetch marker. Moved to
+  // per-connection `syncState.lastFullSyncAt` (2026-09-11 multi-account plan);
+  // migration 0028 backfills it. The sync no longer writes it. Retained
+  // (additive-only migrations). The description below documents the live
+  // semantics, which now hold on `syncState`.
   // The epoch-ms timestamp of the last FULL statement fetch (every card
   // fetched regardless of balance). The steady-state sync SKIPS a card whose
   // /client-info balance is unchanged since the last sync (a "balance-diff
@@ -238,6 +256,11 @@ export const settings = sqliteTable('settings', {
   // contribution). Written by settingsRepo.setTrendFilter (Save persists; there
   // is no clear-to-null path from the UI, but the setter accepts null).
   trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
+  // SUPERSEDED (retained): the global force-retry set. Moved to per-connection
+  // `syncState.failedSyncMonobankIds` (2026-09-11 multi-account plan); migration
+  // 0028 backfills it. The sync no longer writes it. Retained (additive-only
+  // migrations). The description below documents the live semantics, which now
+  // hold on `syncState`.
   // The Monobank account ids whose statement fetch FAILED on the last sync run.
   // The next run force-fetches only these (regardless of balance) so one flaky
   // card does not strand the whole account in daily full-fetch mode: without
@@ -249,6 +272,31 @@ export const settings = sqliteTable('settings', {
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
+
+/**
+ * Per-connection Monobank sync cursor. This DE-GLOBALIZES the former single-row
+ * `settings` cursor (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
+ * `failed_sync_monobank_ids`): those columns modelled ONE Monobank connection, so
+ * a second connected Monobank account would have shared and corrupted the one
+ * cursor. Each connected Monobank account now owns its own row here, keyed by its
+ * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
+ * reader-less in `src/db/settings-columns.test.ts` per the 2026-09-11
+ * multi-account plan (Task 1.3), same additive-only class as `appearance` /
+ * `lockGraceSeconds`. Each column mirrors the identically-named `settings` one;
+ * read the comments on those columns above for the load-bearing semantics
+ * (balance-diff skip, robust `lastFullSyncAt` graduation, the display stamp).
+ */
+export const syncState = sqliteTable('sync_state', {
+  accountId: text('account_id')
+    .primaryKey()
+    .references(() => accounts.id),
+  lastSyncAt: integer('last_sync_at'),
+  lastFullSyncAt: integer('last_full_sync_at'),
+  lastSyncDisplayAt: integer('last_sync_display_at'),
+  failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+});
+
+export type SyncStateRow = typeof syncState.$inferSelect;
 
 /**
  * Categories are keyed by a STABLE slug (`key`), so renaming a category or

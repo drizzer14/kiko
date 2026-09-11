@@ -3,6 +3,7 @@ import { holdingsRepo } from '@kiko/holdings/holdings.repo';
 import { ratesRepo } from '@kiko/rates/rates.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useSync } from '@kiko/sync/use-sync';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
 import type { FC } from 'react';
@@ -91,9 +92,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { t } = useTranslation();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
-  const { data: connectedAccounts } = useLiveQuery(accountsRepo.connectedQuery(), ['accounts']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  // The Monobank "last sync" line reads this account's OWN cursor from the
+  // per-connection `sync_state` table (de-globalized from `settings` — see the
+  // `syncState` table comment in `db/schema.ts`), so a second connection never
+  // shows another's time.
+  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(accountId), ['sync_state']);
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -141,14 +146,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const isBankAccount = account?.kind === 'bank';
   const isCryptoAccount = account?.kind === 'crypto';
   const isConnectedToMonobank = account?.institution === 'monobank';
-  // The single-connection invariant: another account already holds the one
-  // Monobank connection, so this one may not connect a second.
-  const otherAccountConnected = connectedAccounts.some((connected) => connected.id !== accountId);
 
   const { isSyncing, error, sync } = useSync();
   const [tokenMessage, setTokenMessage] = useState<string | undefined>();
   // Guards a fast double-tap: the button is disabled only on `isSyncing`, which
-  // is still false during the `readToken()` await below, so a second press
+  // is still false during the `readToken(accountId)` await below, so a second press
   // could fire `sync` again before the first resolves.
   const inFlight = useRef(false);
 
@@ -163,7 +165,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     inFlight.current = true;
     try {
       setTokenMessage(undefined);
-      if ((await readToken()) === undefined) {
+      if ((await readToken(accountId)) === undefined) {
         setTokenMessage(t('accountDetail.noTokenMessage'));
         return;
       }
@@ -209,12 +211,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     variant: actionVariant,
   } = actionPresentation(isConnectedToMonobank, isSyncing, t);
 
-  // Show the action button for the connected account (Sync) or for an
-  // unconnected bank account only while no OTHER account holds the connection.
-  const showActionButton = isBankAccount && (isConnectedToMonobank || !otherAccountConnected);
-  // A different account already owns the single Monobank connection.
-  const showConnectedElsewhereHint =
-    isBankAccount && !isConnectedToMonobank && otherAccountConnected;
+  // Every bank account shows the connect/sync affordance independently — there
+  // is no single-connection gate, so a second Monobank account can connect
+  // alongside the first (each binds its own per-account token and cursor).
+  const showActionButton = isBankAccount;
 
   return (
     <Screen
@@ -252,7 +252,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {showActionButton && <Box style={styles.divider} />}
 
-        {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
+        {showActionButton && (
+          <MonobankTokenField accountId={accountId} isConnected={isConnectedToMonobank} />
+        )}
 
         {showActionButton && (
           // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing equals
@@ -270,8 +272,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     // statement cursor for installs that predate the display
                     // column (it reads null there).
                     time: formatLastSyncAt(
-                      settingsRows.at(0)?.lastSyncDisplayAt ??
-                        settingsRows.at(0)?.lastSyncAt ??
+                      syncStateRows.at(0)?.lastSyncDisplayAt ??
+                        syncStateRows.at(0)?.lastSyncAt ??
                         null,
                       t,
                     ),
@@ -309,12 +311,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               )}
             </Box>
           </Box>
-        )}
-
-        {showConnectedElsewhereHint && (
-          <Text variant="caption" tone="textSecondary">
-            {t('accountDetail.connectedElsewhere')}
-          </Text>
         )}
 
         {tokenMessage !== undefined && (

@@ -64,7 +64,7 @@ describe('useSyncAll', () => {
     });
 
     expect(mockRunSync).toHaveBeenCalledTimes(1);
-    expect(mockRunSync).toHaveBeenCalledWith({});
+    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'mono' });
     expect(mockRunCryptoSync).toHaveBeenCalledWith({
       providerId: 'btc_wallet',
       targetAccountId: 'w',
@@ -76,6 +76,27 @@ describe('useSyncAll', () => {
     expect(mockRefreshRates).toHaveBeenCalledTimes(1);
     expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
     expect(result.current.failures).toEqual([]);
+  });
+
+  it('fans out over EVERY connected Monobank account, each with its own targeted run', async () => {
+    const monoA = account({ id: 'mono-a', name: 'Mono A', kind: 'bank', institution: 'monobank' });
+    const monoB = account({ id: 'mono-b', name: 'Mono B', kind: 'bank', institution: 'monobank' });
+
+    const { result } = await renderHook(() => useSyncAll([monoA, monoB, BINANCE]));
+
+    await act(async () => {
+      await result.current.syncAll();
+    });
+
+    // Multi-connection: each connected Monobank account gets its OWN targeted run
+    // (its own token + cursor + single-flight), alongside the crypto account.
+    expect(mockRunSync).toHaveBeenCalledTimes(2);
+    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'mono-a' });
+    expect(mockRunSync).toHaveBeenCalledWith({ targetAccountId: 'mono-b' });
+    expect(mockRunCryptoSync).toHaveBeenCalledWith({
+      providerId: 'binance',
+      targetAccountId: 'bin',
+    });
   });
 
   it('reports a failed account by name while the others still complete (partial success)', async () => {

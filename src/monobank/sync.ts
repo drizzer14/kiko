@@ -1,9 +1,9 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 
-import type { AccountRow, HoldingRow, SettingsRow, TransactionRow } from '../db/schema';
+import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
 
 import { currencyFromCode } from './currency-code';
@@ -101,18 +101,21 @@ interface SyncTransactionsRepo {
   holdingIdsWithHoldQuery: () => PromiseLike<{ holdingId: string }[]>;
 }
 
-/** The settings columns the sync reads out of `settingsRepo.getQuery`. */
-type SyncSettingsSnapshot = Pick<
-  SettingsRow,
+/** The sync_state columns the sync reads out of `syncStateRepo.getQuery`. */
+type SyncStateSnapshot = Pick<
+  SyncStateRow,
   'lastSyncAt' | 'lastFullSyncAt' | 'failedSyncMonobankIds'
 >;
 
 /**
- * The `settingsRepo` methods the sync calls directly. The sync reads the single
- * settings row through `getQuery` (guaranteed to exist by the app-boot migrations
- * gate) and derives its three cursors from it — `lastSyncAt` (the statement
- * cursor), `lastFullSyncAt` (the periodic full-fetch marker) and
- * `failedSyncMonobankIds` (the force-retry set). The setters:
+ * The `syncStateRepo` methods the sync calls directly. The Monobank cursor is now
+ * PER CONNECTION: every read and write is keyed by the resolved account id, so a
+ * second Monobank connection can never share or corrupt another's cursor (see the
+ * `syncState` table comment in `db/schema.ts`). The sync reads that account's row
+ * through `getQuery(accountId)` and derives its three cursors from it —
+ * `lastSyncAt` (the statement cursor), `lastFullSyncAt` (the periodic full-fetch
+ * marker) and `failedSyncMonobankIds` (the force-retry set). `ensure(accountId)`
+ * creates the row if absent so a setter always has a row to update. The setters:
  *
  * - `setLastSyncAt` advances the statement cursor, ONLY on a fully clean run.
  * - `setLastSyncDisplayAt` stamps the DISPLAY "last synced" time — decoupled from
@@ -126,12 +129,13 @@ type SyncSettingsSnapshot = Pick<
  *   stored as null when empty. Written on BOTH the clean and the partial-failure
  *   path, before the partial-failure throw.
  */
-interface SyncSettingsRepo {
-  getQuery: () => PromiseLike<SyncSettingsSnapshot[]>;
-  setLastSyncAt: (timestamp: number) => Promise<unknown>;
-  setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
-  setLastFullSyncAt: (timestamp: number) => Promise<unknown>;
-  setFailedSyncMonobankIds: (ids: string[] | null) => Promise<unknown>;
+interface SyncSyncStateRepo {
+  getQuery: (accountId: string) => PromiseLike<SyncStateSnapshot[]>;
+  ensure: (accountId: string) => Promise<unknown>;
+  setLastSyncAt: (accountId: string, timestamp: number) => Promise<unknown>;
+  setLastSyncDisplayAt: (accountId: string, timestamp: number) => Promise<unknown>;
+  setLastFullSyncAt: (accountId: string, timestamp: number) => Promise<unknown>;
+  setFailedSyncMonobankIds: (accountId: string, ids: string[] | null) => Promise<unknown>;
 }
 
 /**
@@ -149,16 +153,25 @@ interface SyncSettingsRepo {
  * scoping the gate exists to get right (see `./throttle`).
  *
  * There is deliberately no settings-row-creation seam here either: the
- * single settings row (id = 1) that `settingsRepo.getQuery` reads and the
- * settings setters write is guaranteed to exist by the app-boot migrations
+ * single settings row (id = 1) is guaranteed to exist by the app-boot migrations
  * gate (`src/migration/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
- * before any screen — and so before any sync — can run.
+ * before any screen — and so before any sync — can run. The PER-CONNECTION
+ * `sync_state` cursor row is NOT guaranteed by boot the same way (a fresh Connect
+ * creates the account only then), so `runSyncInner` calls
+ * `syncStateRepo.ensure(accountId)` itself right after resolving the target, so a
+ * cursor row always exists before any read or setter.
  */
 export interface SyncDeps {
   fetchImpl: typeof fetch;
   now: () => number;
   sleep: (milliseconds: number) => Promise<void>;
-  readToken: () => Promise<string | undefined>;
+  /**
+   * Read the token for the RESOLVED target account. The Monobank token is now
+   * PER CONNECTION (`serviceFor(accountId)` in `./token`), so `runSyncInner`
+   * resolves the target account id FIRST, then reads its own token — one
+   * connection's token can never gate or corrupt another's.
+   */
+  readToken: (accountId: string) => Promise<string | undefined>;
   fetchClientInfo: (
     token: string,
     fetchImpl?: typeof fetch,
@@ -183,7 +196,7 @@ export interface SyncDeps {
   accountsRepo: SyncAccountsRepo;
   holdingsRepo: SyncHoldingsRepo;
   transactionsRepo: SyncTransactionsRepo;
-  settingsRepo: SyncSettingsRepo;
+  syncStateRepo: SyncSyncStateRepo;
 }
 
 const defaultDeps: SyncDeps = {
@@ -196,32 +209,33 @@ const defaultDeps: SyncDeps = {
   accountsRepo,
   holdingsRepo,
   transactionsRepo,
-  settingsRepo,
+  syncStateRepo,
 };
 
-// The single settings row is guaranteed to exist by the app-boot migrations gate,
-// so `.at(0)` is the row; each reader defaults a null column the way the sync
-// expects. Kept as module helpers (not inlined into `runSyncInner`) so the
-// optional-chaining/`??` reads do not inflate that function's cognitive
-// complexity.
-const readLastSyncAt = async (deps: SyncDeps): Promise<number | null> =>
-  (await deps.settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null;
+// The per-connection `sync_state` row is ensured to exist by `runSyncInner`
+// before any read, so `.at(0)` is that account's row; each reader defaults a null
+// column the way the sync expects. Kept as module helpers (not inlined into
+// `runSyncInner`) so the optional-chaining/`??` reads do not inflate that
+// function's cognitive complexity.
+const readLastSyncAt = async (deps: SyncDeps, accountId: string): Promise<number | null> =>
+  (await deps.syncStateRepo.getQuery(accountId)).at(0)?.lastSyncAt ?? null;
 
-const readLastFullSyncAt = async (deps: SyncDeps): Promise<number | null> =>
-  (await deps.settingsRepo.getQuery()).at(0)?.lastFullSyncAt ?? null;
+const readLastFullSyncAt = async (deps: SyncDeps, accountId: string): Promise<number | null> =>
+  (await deps.syncStateRepo.getQuery(accountId)).at(0)?.lastFullSyncAt ?? null;
 
-const readFailedSyncIds = async (deps: SyncDeps): Promise<string[]> =>
-  (await deps.settingsRepo.getQuery()).at(0)?.failedSyncMonobankIds ?? [];
+const readFailedSyncIds = async (deps: SyncDeps, accountId: string): Promise<string[]> =>
+  (await deps.syncStateRepo.getQuery(accountId)).at(0)?.failedSyncMonobankIds ?? [];
 
 const readHoldingIdsWithHold = async (deps: SyncDeps): Promise<string[]> =>
   (await deps.transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId);
 
-/** The force-fetch set is persisted as null when empty (see `settingsRepo`). */
+/** The force-fetch set is persisted as null when empty (see `syncStateRepo`). */
 const failedIdsToPersist = (ids: string[]): string[] | null => (ids.length > 0 ? ids : null);
 
 export const mapStatementItem = (
   item: MonobankStatementItem,
   holdingId: string,
+  accountId: string,
 ): NewTransaction => ({
   holdingId,
   amountMinorUnits: item.amount,
@@ -236,7 +250,15 @@ export const mapStatementItem = (
   category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
-  externalId: item.id,
+  // NAMESPACED per connection (Phase 6): `${accountId}:${statementId}`. Monobank
+  // statement ids are globally unique, but the GLOBAL `(source, external_id)`
+  // unique index (schema.ts) is shared with Binance, whose deposit/withdrawal
+  // ids are only PER-ACCOUNT unique — so once more than one connection per
+  // provider is allowed, a bare id would let one connection's upsert refresh
+  // another's row. Prefixing by the holding's account id keeps every
+  // connection's keyspace disjoint. Migration 0029 backfills existing rows to
+  // this exact form, so a re-sync of a pre-migration row matches in place.
+  externalId: `${accountId}:${item.id}`,
 });
 
 export const mapAccountToHolding = (
@@ -282,12 +304,18 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 
 /**
  * Resolve the account this sync targets, WITHOUT writing anything. With a
- * `targetAccountId` (the Connect action), validate the one-connection-per-
- * institution invariant and return it — the caller marks it `institution:
- * 'monobank'` only once `fetchClientInfo` has actually succeeded (see
- * `markMonobankAccount`). Without a `targetAccountId`, reuse the
- * already-connected Monobank account. If neither is available there is
- * nothing to sync into — the new model requires the user to create and
+ * `targetAccountId` (the Connect action), validate the target exists and return
+ * it — the caller marks it `institution: 'monobank'` only once `fetchClientInfo`
+ * has actually succeeded (see `markMonobankAccount`). Multiple Monobank
+ * connections are now allowed: each has its OWN per-account token and its OWN
+ * `sync_state` cursor, and its holdings match per account (`upsertByMetadataKey`
+ * scopes by `accountId`), so a second connection can never import another's
+ * cards or corrupt its cursor — the one-connection-per-institution invariant is
+ * therefore retired here (multi-account plan, Phase 3). Without a
+ * `targetAccountId` (the legacy no-target path), reuse the FIRST connected
+ * Monobank account; the fan-out always passes a target now, so this path only
+ * serves an already-single-connection legacy caller. If neither is available
+ * there is nothing to sync into — the new model requires the user to create and
  * connect an account first, so we surface a clear error rather than silently
  * minting a stray 'Monobank' account.
  */
@@ -306,17 +334,7 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
     if (!target) {
       throw new Error(i18n.t('accountDetail.noMonobankConnection'));
     }
-    // The personal Monobank API is a single connection: at most one account may
-    // be institution=monobank at a time. Re-connecting the SAME account is an
-    // idempotent re-sync and stays allowed; a DIFFERENT already-connected
-    // account is rejected so its cards/jars are never imported twice (which
-    // would double-count net worth).
-    const otherConnected = accounts.find((account) => {
-      return account.institution === 'monobank' && account.id !== deps.targetAccountId;
-    });
-    if (otherConnected) {
-      throw new Error(i18n.t('accountDetail.monobankAlreadyConnected'));
-    }
+
     return deps.targetAccountId;
   }
   const existing = accounts.find((account) => account.institution === 'monobank');
@@ -471,8 +489,11 @@ const fetchAllStatements = async (
 // filter: it dropped a re-fetched item BEFORE the database saw it, so a held
 // item's provisional amount could never be refreshed to its settled value.
 // Doing it in SQL is also what makes the refresh atomic.
-const mapFetched = (items: MonobankStatementItem[], holdingId: string): NewTransaction[] =>
-  items.map((item) => mapStatementItem(item, holdingId));
+const mapFetched = (
+  items: MonobankStatementItem[],
+  holdingId: string,
+  accountId: string,
+): NewTransaction[] => items.map((item) => mapStatementItem(item, holdingId, accountId));
 
 /** Index a run's holdings by their Monobank id, skipping any without one. */
 const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
@@ -749,7 +770,7 @@ const importAccount = async (
     toSeconds,
     onPage,
   );
-  const fetched = mapFetched(items, holding.id);
+  const fetched = mapFetched(items, holding.id, accountId);
 
   if (fetched.length === 0) {
     return 0;
@@ -874,32 +895,48 @@ const reconcileClosedHoldings = async (
 type SyncResult = { importedTransactions: number };
 
 /**
- * Module-level single-flight lock. Monobank's rate limit is per TOKEN, and all
- * three sync entry points — `useAutoSync` (app open), `useSyncAll`
- * (pull-to-refresh) and `useSync` (the manual button) — drive the one connected
- * token, so two overlapping runs collide into 429s (the reported "inconsistent"
- * symptom). While a run is in flight, every new trigger JOINS (awaits) it and
- * observes its result instead of starting a second concurrent run; the lock
- * releases the instant the run settles — success OR failure — so the next
- * trigger starts a fresh run.
+ * Module-level PER-ACCOUNT single-flight lock — a `Map` keyed by the resolved
+ * target account id, mirroring `inFlightBalanceSyncs` in `src/crypto-sync/sync.ts`.
+ * Monobank's rate limit is per TOKEN, and all three sync entry points —
+ * `useAutoSync` (app open), `useSyncAll` (pull-to-refresh) and `useSync` (the
+ * manual button) — drive an account's token, so two overlapping runs for the
+ * SAME account collide into 429s (the reported "inconsistent" symptom). While a
+ * run is in flight for an account, every new trigger for that SAME account JOINS
+ * (awaits) it and observes its result instead of starting a second concurrent
+ * run; the lock releases the instant that run settles — success OR failure — so
+ * the next trigger starts a fresh run.
+ *
+ * Keying PER ACCOUNT (not one global lock) is what lets the multi-connection
+ * fan-out drive N Monobank accounts at once: two DIFFERENT accounts have
+ * distinct tokens and distinct per-token rate-limit buckets, so they run
+ * concurrently and safely (see `syncJobsFor`, which now passes a `targetAccountId`
+ * per account). The key must be known SYNCHRONOUSLY — before any `await` — so two
+ * overlapping triggers for one account cannot both slip past into their own run;
+ * `runSync` therefore reads it from `overrides.targetAccountId` directly. A
+ * no-target legacy call is the single connected account and shares one fixed
+ * `institution:monobank` key, so its behavior is unchanged when exactly one
+ * connection exists.
  *
  * This guards CONCURRENCY only and is complementary to, NOT a replacement for,
  * the per-invocation 60s request gate in `./throttle`: that gate paces requests
  * WITHIN a single run to respect the per-token interval; this lock stops two
- * runs existing at once. Both invariants are load-bearing — see kiko-architecture.
+ * runs for one account existing at once. Both invariants are load-bearing — see
+ * kiko-architecture.
  *
- * Join (not queue) semantics are safe because the three triggers are equivalent
- * syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
+ * Join (not queue) semantics are safe because the triggers are equivalent syncs
+ * of the same account's token: `useAutoSync`/`useSyncAll` only fire for an
  * ALREADY-connected account, so there is no competing run when the first-time
- * Connect (a `targetAccountId` sync) executes, and a re-sync joining an
- * in-flight run of the same connected token yields exactly the result it would
- * have computed itself.
+ * Connect (a `targetAccountId` sync) executes, and a re-sync joining an in-flight
+ * run of the same account's token yields exactly the result it would have
+ * computed itself.
  */
-let inFlightSync: Promise<SyncResult> | null = null;
+const inFlightSyncs = new Map<string, Promise<SyncResult>>();
 
 export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
-  if (inFlightSync) {
-    return inFlightSync;
+  const key = overrides.targetAccountId ?? 'institution:monobank';
+  const joined = inFlightSyncs.get(key);
+  if (joined) {
+    return joined;
   }
   // Enter the shared progress SESSION the instant this run acquires the lock —
   // before any network/DB work. The first contributor lights the transient
@@ -907,18 +944,18 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // every reactive indicator shows the run; the session spans the whole fan-out
   // (this run plus any concurrent crypto `runBalanceSync`), so `isSyncing` and
   // the bar stay lit until the LAST path settles. A trigger that JOINS an
-  // in-flight run takes the early `return inFlightSync` above and never reaches
-  // here, so it neither re-enters nor prematurely leaves the session.
+  // in-flight run takes the early `return joined` above and never reaches here,
+  // so it neither re-enters nor prematurely leaves the session.
   beginProgressSession();
   // Reset the fast-phase-done signal at the START of the run, so a joined pull
   // observes THIS run's balance commit, not a stale one from a prior run. It
   // flips ON in `runSyncInner` once `upsertAllHoldings` commits the balances.
   setFastPhaseDone(false);
   const run = runSyncInner(overrides);
-  inFlightSync = run;
+  inFlightSyncs.set(key, run);
   const release = (): void => {
-    if (inFlightSync === run) {
-      inFlightSync = null;
+    if (inFlightSyncs.get(key) === run) {
+      inFlightSyncs.delete(key);
     }
     // Leave the shared progress session when the run settles (success OR
     // failure). The LAST contributor clears `isSyncing` and the progress bar.
@@ -936,12 +973,22 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
 const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
   const startedAt = deps.now();
-  const token = await deps.readToken();
+
+  // Resolve the target account FIRST — the token is now keyed by that account id
+  // (`readToken(accountId)`), so the account must be known before its token can
+  // be read. `resolveMonobankAccountId` writes nothing; it only validates the
+  // target (or the already-connected account).
+  const accountId = await resolveMonobankAccountId(deps);
+  // Ensure this connection's `sync_state` cursor row exists before any read or
+  // setter below. Idempotent (`onConflictDoNothing`): an already-connected
+  // account (row created by the Phase 1 backfill migration, or a prior run) is
+  // left untouched, so its cursor is preserved.
+  await deps.syncStateRepo.ensure(accountId);
+
+  const token = await deps.readToken(accountId);
   if (!token) {
     throw new Error(i18n.t('accountDetail.noMonobankToken'));
   }
-
-  const accountId = await resolveMonobankAccountId(deps);
 
   // ONE gate for this whole invocation: Monobank's 1-req/60s limit is per
   // TOKEN, so client-info and every card's statement pages share it.
@@ -984,17 +1031,17 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // The cards force-fetched this run because their statement fetch FAILED last
   // run — fetched regardless of balance (see `isBalanceDiffSkip`). The raw prior
   // array is kept for the end-of-run diff that decides whether to re-persist.
-  const priorFailedIds = await readFailedSyncIds(deps);
+  const priorFailedIds = await readFailedSyncIds(deps, accountId);
   const failedSet = new Set(priorFailedIds);
 
   const toSeconds = Math.floor(deps.now() / 1000);
-  const lastSyncAt = await readLastSyncAt(deps);
+  const lastSyncAt = await readLastSyncAt(deps, accountId);
 
   // Full-fetch decision: fetch EVERY card regardless of balance on the first
   // sync ever, when a full fetch has never run, or once the last one is older
   // than `FULL_FETCH_INTERVAL_MS`. Otherwise the balance-diff skip applies per
   // card below. Computed BEFORE the window because it widens the from-cursor.
-  const lastFullSyncAt = await readLastFullSyncAt(deps);
+  const lastFullSyncAt = await readLastFullSyncAt(deps, accountId);
   const isFullFetch = shouldFullFetch(deps.now, lastSyncAt, lastFullSyncAt);
 
   // Order the queue CHANGED-FIRST so a genuinely-active card imports in the
@@ -1139,7 +1186,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // fully clean run would instead FREEZE "Last sync" whenever one card fails
   // persistently, which is the outcome the user rejected.
   if (failures.length < accounts.length) {
-    await deps.settingsRepo.setLastSyncDisplayAt(deps.now());
+    await deps.syncStateRepo.setLastSyncDisplayAt(accountId, deps.now());
   }
 
   // Persist the force-fetch set for the NEXT run BEFORE the partial-failure
@@ -1151,7 +1198,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const currentIds = new Set(accounts.map((account) => account.id));
   const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
   if (!sameIdSet(priorFailedIds, newFailedIds)) {
-    await deps.settingsRepo.setFailedSyncMonobankIds(failedIdsToPersist(newFailedIds));
+    await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
   // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
@@ -1166,7 +1213,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
   // convention, so the next full fetch resumes precisely where this one ended.
   if (isFullFetch) {
-    await deps.settingsRepo.setLastFullSyncAt(toSeconds * 1000);
+    await deps.syncStateRepo.setLastFullSyncAt(accountId, toSeconds * 1000);
   }
 
   if (failures.length > 0) {
@@ -1193,6 +1240,6 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // card, each a silent hole in imported history (the balance still came out
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
-  await deps.settingsRepo.setLastSyncAt(toSeconds * 1000);
+  await deps.syncStateRepo.setLastSyncAt(accountId, toSeconds * 1000);
   return { importedTransactions };
 };

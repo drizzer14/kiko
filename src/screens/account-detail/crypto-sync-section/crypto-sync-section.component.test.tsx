@@ -191,14 +191,27 @@ describe('CryptoSyncSection', () => {
     );
   });
 
-  it('hides the wallet field and hints when another account already holds the wallet connection', async () => {
+  it('still shows the wallet field (no "connected elsewhere" hint) when another account holds a wallet', async () => {
+    // Multi-connection (Task 5.2): each crypto account connects independently, so
+    // another account already holding a wallet no longer blocks this one's field.
     setConnected({ btc_wallet: [account({ id: 'other', institution: 'btc_wallet' })] });
-    const { getByText, queryByLabelText } = await render(
+    const { getByLabelText, queryByText } = await render(
       <CryptoSyncSection account={account()} holdings={[]} />,
     );
 
-    expect(queryByLabelText('wallet-field')).toBeNull();
-    expect(getByText('Wallet is already connected to another account')).toBeTruthy();
+    expect(getByLabelText('wallet-field')).toBeTruthy();
+    expect(queryByText('Wallet is already connected to another account')).toBeNull();
+  });
+
+  it('still shows the Binance field when another account already holds Binance', async () => {
+    setConnected({ binance: [account({ id: 'other', institution: 'binance' })] });
+    const { getByText, getByLabelText } = await render(
+      <CryptoSyncSection account={account()} holdings={[]} />,
+    );
+
+    await fireEvent.press(getByText('Binance'));
+
+    expect(getByLabelText('binance-field')).toBeTruthy();
   });
 
   it('once connected to a wallet, shows Sync + last sync and Disconnect, no picker or fields', async () => {

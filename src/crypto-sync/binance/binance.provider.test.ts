@@ -97,7 +97,10 @@ describe('binanceProvider', () => {
 
     await binanceProvider.fetchBalances(deps, emptyTarget);
 
+    // The credentials are read PER ACCOUNT — the target's account id is threaded
+    // in, so a read for one Binance connection can never return another's pair.
     expect(deps.readCredentials).toHaveBeenCalledTimes(1);
+    expect(deps.readCredentials).toHaveBeenCalledWith(emptyTarget.accountId);
     expect(deps.fetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture', {
       fetchImpl: deps.fetchImpl,
       now: deps.now,

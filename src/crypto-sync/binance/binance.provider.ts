@@ -25,7 +25,7 @@ type WalletFetch<Body> = (
 export type BinanceDeps = {
   fetchImpl: typeof fetch;
   now: () => number;
-  readCredentials: () => Promise<BinanceCredentials | undefined>;
+  readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
   fetchAccount: WalletFetch<BinanceAccount>;
   fetchFundingAsset: WalletFetch<BinanceFundingAsset[]>;
   fetchFlexiblePosition: WalletFetch<BinanceFlexiblePosition>;
@@ -256,7 +256,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
   kind: 'exchange',
   metadataField: 'binanceAsset',
   fetchBalances: async (deps, target) => {
-    const credentials = await deps.readCredentials();
+    const credentials = await deps.readCredentials(target.accountId);
 
     if (credentials === undefined) {
       throw new Error('No Binance credentials stored; connect Binance before syncing');

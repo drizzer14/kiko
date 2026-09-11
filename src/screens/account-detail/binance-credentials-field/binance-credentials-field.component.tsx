@@ -15,6 +15,10 @@ import type { SyncStatus } from '../sync-status-line';
 import SyncStatusLine from '../sync-status-line';
 
 type BinanceCredentialsFieldProps = {
+  // The account this field's credentials belong to. The pair is a PER-ACCOUNT
+  // Keychain item, so the Save write is keyed by this id — a second Binance
+  // account stores and reads its own credentials.
+  accountId: string;
   /** Runs the Binance Connect sync once the pair is verified and stored; resolves whether it succeeded. */
   onConnect: () => Promise<boolean>;
 };
@@ -25,7 +29,7 @@ type Field = 'apiKey' | 'secret';
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
 // first sync. The pair never leaves this component except into `saveCredentials`.
-const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }) => {
+const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, onConnect }) => {
   const { t } = useTranslation();
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
@@ -63,7 +67,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ onConnect }
       }
 
       try {
-        await saveCredentials({ apiKey, secret });
+        await saveCredentials(accountId, { apiKey, secret });
       } catch {
         setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') });
 
