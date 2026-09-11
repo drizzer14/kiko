@@ -27,6 +27,17 @@ import { styles } from './entity-amount-header.styles';
 // node (each detail screen passes an `EntityHeaderIcon`), never resolves the
 // entity's own icon/color, so wiring that in is a single prop change at the
 // call site, not a change here.
+//
+// `secondary` is an OPTIONAL caption slot rendered DIRECTLY BENEATH the amount,
+// inside the same tight `gap={1}` column — the place a converted
+// (main/base-currency) restatement of the headline figure belongs, hugging the
+// value it converts exactly the way the holding card's `valueColumn` stacks its
+// smaller base-currency line under the own-currency value. Holding-detail passes
+// its converted-to-base line here so the main-currency value sits under the
+// holding-currency value CONSISTENTLY for every holding type — instead of
+// floating as a disconnected line at the bottom of the whole summary block.
+// Like `icon`, it takes an already-built node (the caller owns the caption's
+// testID, formatting, and tone); this component only positions the slot.
 type EntityAmountHeaderProps = {
   // "Balance" (account-detail) or "Value" (holding-detail).
   label: string;
@@ -38,7 +49,11 @@ type EntityAmountHeaderProps = {
   // Absent by default — a screen renders this header exactly as it does
   // today until a caller starts passing one.
   icon?: ReactNode;
+  // Absent by default — the caption line beneath the amount (see the doc above).
+  secondary?: ReactNode;
   style?: StyleProp<ViewStyle>;
+  // Forwarded to the root so a screen can scope queries to the header grouping.
+  testID?: string;
 };
 
 const EntityAmountHeader: FC<EntityAmountHeaderProps> = ({
@@ -46,16 +61,20 @@ const EntityAmountHeader: FC<EntityAmountHeaderProps> = ({
   money,
   context,
   icon,
+  secondary,
   style,
+  testID,
 }) => {
   return (
-    <Box gap={1} style={style}>
+    <Box gap={1} style={style} testID={testID}>
       <Box direction="row" style={styles.labelRow}>
         <Text variant="heading">{label}</Text>
         {icon !== undefined && <Box style={styles.iconSlot}>{icon}</Box>}
       </Box>
 
       <MoneyText money={money} context={context} style={styles.amount} />
+
+      {secondary}
     </Box>
   );
 };

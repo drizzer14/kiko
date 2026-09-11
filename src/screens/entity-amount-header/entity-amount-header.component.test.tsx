@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import { Text as RNText } from 'react-native';
 import '../../design-system/unistyles';
 import { Money } from '../../currency/money';
@@ -48,5 +48,34 @@ describe('EntityAmountHeader', () => {
     );
 
     expect(getByText('icon-slot-content')).toBeTruthy();
+  });
+
+  it('renders no secondary caption when none is given', async () => {
+    const { queryByText } = await render(
+      <EntityAmountHeader label="Value" money={Money.of('UAH', 1_00)} />,
+    );
+
+    expect(queryByText('secondary-slot-content')).toBeNull();
+  });
+
+  // The secondary slot takes an already-built caption node — holding-detail
+  // hands in its converted (main-currency) line so it stacks directly beneath
+  // the amount, inside the header's own tight column, rather than floating at
+  // the bottom of the summary block.
+  it('renders a given secondary node beneath the amount, inside the header', async () => {
+    const { getByText, getByTestId } = await render(
+      <EntityAmountHeader
+        testID="amount-header"
+        label="Value"
+        money={Money.of('UAH', 1_00)}
+        secondary={<RNText>secondary-slot-content</RNText>}
+      />,
+    );
+
+    const header = getByTestId('amount-header');
+    // The caption lives inside the header grouping (the same node that carries
+    // the label + amount), not as a detached sibling elsewhere on the screen.
+    expect(within(header).getByText('secondary-slot-content')).toBeTruthy();
+    expect(getByText('Value')).toBeTruthy();
   });
 });

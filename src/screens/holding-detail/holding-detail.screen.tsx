@@ -434,8 +434,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const holdingAccountId = holding?.accountId;
 
   // The header/summary block that scrolls above the ledger: the Value amount +
-  // identity icon, the optional breakdown and converted-value lines, the
-  // hairline divider, and the Transactions heading. It sits in the FlatList's
+  // identity icon, the optional converted (main-currency) caption tucked
+  // directly under that amount, the optional breakdown lines, the hairline
+  // divider, and the Transactions heading. It sits in the FlatList's
   // `ListHeaderComponent` so the list owns the scrolling (an eager list nested
   // in a ScrollView breaks virtualization).
   const listHeader = (
@@ -443,9 +444,27 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       {holding && breakdown && (
         <Box gap={1}>
           <EntityAmountHeader
+            testID="holding-value-header"
             label={t('holdingDetail.valueLabel')}
             money={breakdown.net}
             icon={<EntityHeaderIcon identity={identity} />}
+            // The main (base) currency restatement of the Value sits directly
+            // UNDER the holding-currency amount, inside the shared header's tight
+            // column — the same grouping the holding card uses (converted line
+            // hugging the value) and consistent across every holding type. It
+            // used to render as a disconnected caption at the BOTTOM of the whole
+            // summary block, which on a deposit/bond floated below the whole
+            // breakdown, detached from the value it converts (feedback round-2,
+            // item 3).
+            secondary={
+              convertedToBase ? (
+                <Box testID="holding-detail-converted">
+                  <Text variant="caption" tone="textSecondary">
+                    {formatMoney(convertedToBase, activeLocale())}
+                  </Text>
+                </Box>
+              ) : undefined
+            }
           />
           {showBreakdown && (
             <Box gap={1} style={styles.breakdown}>
@@ -460,14 +479,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
                   <MoneyText money={detail.money} tone={detail.tone} />
                 </Box>
               ))}
-            </Box>
-          )}
-
-          {convertedToBase && (
-            <Box testID="holding-detail-converted">
-              <Text variant="caption" tone="textSecondary">
-                {formatMoney(convertedToBase, activeLocale())}
-              </Text>
             </Box>
           )}
         </Box>
