@@ -39,6 +39,9 @@ jest.mock('../../monobank/token', () => ({ migrateLegacyToken: () => Promise.res
 jest.mock('@kiko/monobank/migrate-credential', () => ({
   migrateSingleTokenToPerAccount: () => Promise.resolve(),
 }));
+jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
+  migrateBinanceCredentialToPerAccount: () => Promise.resolve(),
+}));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: () => Promise.resolve([]) },
 }));

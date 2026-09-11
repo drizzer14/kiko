@@ -1,6 +1,6 @@
 import {
   type BinanceCredentials,
-  saveCredentials,
+  saveGlobalCredentials,
 } from '@kiko/crypto-sync/binance/binance.credentials';
 import { LIVE_PLAINTEXT_DATABASE_NAME } from '@kiko/db/encrypted-database';
 import { resetDbKey } from '@kiko/db/keys/db-key';
@@ -90,7 +90,11 @@ const restoreSecrets = async (raw: string | null): Promise<void> => {
   }
 
   if (isCredentials(parsed.binanceCredentials)) {
-    await saveCredentials(parsed.binanceCredentials);
+    // Restore the retired app's single pair to the TRANSITIONAL GLOBAL item — no
+    // account row exists yet at import time, so it cannot be keyed per account
+    // here. The boot migration (`migrateBinanceCredentialToPerAccount`) binds it
+    // to the connected account once the imported DB is live, mirroring the token.
+    await saveGlobalCredentials(parsed.binanceCredentials);
   }
 };
 

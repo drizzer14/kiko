@@ -180,7 +180,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       )}
 
       {!sourceConnectedElsewhere && source === 'binance' && (
-        <BinanceCredentialsField onConnect={connectBinance} />
+        <BinanceCredentialsField accountId={account.id} onConnect={connectBinance} />
       )}
 
       {error !== undefined && (

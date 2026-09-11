@@ -639,7 +639,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockSaveCredentials).toHaveBeenCalledWith({ apiKey: 'key_1', secret: 'secret_1' });
+    expect(mockSaveCredentials).toHaveBeenCalledWith('new-account-id', {
+      apiKey: 'key_1',
+      secret: 'secret_1',
+    });
     expect(mockCryptoSync).toHaveBeenCalledWith({
       providerId: 'binance',
       targetAccountId: 'new-account-id',

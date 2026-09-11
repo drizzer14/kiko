@@ -141,11 +141,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   // If the user entered sync credentials on this create, VALIDATE them, then
   // save to the Keychain and kick off the connect. Validation-before-write is
-  // load-bearing: the Monobank token is now a PER-ACCOUNT Keychain item
-  // (`saveToken(accountId, …)`), so it cannot clobber another account's token —
-  // but the Binance credential is still ONE global slot (kiko.binance.credentials,
-  // a later phase), where an unvalidated write would overwrite a previously-stored
-  // VALID one and silently break an existing connection. The detail-screen fields
+  // load-bearing: both the Monobank token and the Binance credential are now
+  // PER-ACCOUNT Keychain items (`saveToken(accountId, …)` /
+  // `saveCredentials(accountId, …)`), so neither can clobber another account's
+  // secret — but an unvalidated write would still store a bad pair against this
+  // new account and silently mis-report the connection. The detail-screen fields
   // validate first for the same reason. On a rejected validation the write is
   // SKIPPED and the Keychain is left untouched; the account is still created
   // (Option A). This function
@@ -169,7 +169,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       const apiKey = binanceApiKey.trim();
       const secret = binanceSecret.trim();
       await fetchAccount(apiKey, secret);
-      await saveCredentials({ apiKey, secret });
+      // The pair binds to the freshly-created account's id (the per-account
+      // Keychain item), so a second Binance connection stores its own credentials.
+      await saveCredentials(newAccountId, { apiKey, secret });
       syncBinance({ providerId: 'binance', targetAccountId: newAccountId });
     }
   };

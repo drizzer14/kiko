@@ -14,6 +14,7 @@ const mockInitDatabase = jest.fn<Promise<void>, []>();
 const mockRunMigrations = jest.fn<Promise<void>, []>();
 const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
 const mockMigratePerAccountToken = jest.fn<Promise<void>, [string | undefined]>();
+const mockMigratePerAccountBinance = jest.fn<Promise<void>, [string | undefined]>();
 const mockConnectedQuery = jest.fn<Promise<{ id: string }[]>, [string?]>();
 // Backs `settingsRepo.getQuery()` for `applyPersistedLanguage`. A test sets
 // `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
@@ -24,6 +25,10 @@ jest.mock('@kiko/db/run-migrations', () => ({ runMigrations: () => mockRunMigrat
 jest.mock('@kiko/monobank/token', () => ({ migrateLegacyToken: () => mockMigrateLegacyToken() }));
 jest.mock('@kiko/monobank/migrate-credential', () => ({
   migrateSingleTokenToPerAccount: (id: string | undefined) => mockMigratePerAccountToken(id),
+}));
+jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
+  migrateBinanceCredentialToPerAccount: (id: string | undefined) =>
+    mockMigratePerAccountBinance(id),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: (institution?: string) => mockConnectedQuery(institution) },
@@ -53,6 +58,7 @@ describe('MigrationsGate', () => {
     mockRunMigrations.mockResolvedValue(undefined);
     mockMigrateLegacyToken.mockResolvedValue(undefined);
     mockMigratePerAccountToken.mockResolvedValue(undefined);
+    mockMigratePerAccountBinance.mockResolvedValue(undefined);
     mockConnectedQuery.mockResolvedValue([]);
     (settingsRepo.ensure as jest.Mock).mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue([]);
@@ -92,6 +98,22 @@ describe('MigrationsGate', () => {
     expect(mockMigratePerAccountToken).toHaveBeenCalledWith('acc-mono');
     // The per-account bind runs AFTER the legacy (pre-`kiko` -> global) move.
     expect(order).toEqual(['legacy', 'per-account']);
+  });
+
+  it('binds the Binance credentials to the connected Binance account id', async () => {
+    mockConnectedQuery.mockImplementation(async (institution?: string) =>
+      institution === 'binance' ? [{ id: 'acc-binance' }] : [],
+    );
+
+    const { findByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(await findByText('ready')).toBeTruthy();
+    expect(mockConnectedQuery).toHaveBeenCalledWith('binance');
+    expect(mockMigratePerAccountBinance).toHaveBeenCalledWith('acc-binance');
   });
 
   it('passes undefined to the per-account migration when no Monobank account is connected', async () => {

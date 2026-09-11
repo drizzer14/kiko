@@ -1,11 +1,11 @@
 const mockDisconnectAccount = jest.fn(async (_id: string) => {});
-const mockClearCredentials = jest.fn(async () => {});
+const mockClearCredentials = jest.fn(async (_id: string) => {});
 
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { disconnect: (id: string) => mockDisconnectAccount(id) },
 }));
 jest.mock('./binance/binance.credentials', () => ({
-  clearCredentials: () => mockClearCredentials(),
+  clearCredentials: (id: string) => mockClearCredentials(id),
 }));
 
 import { disconnectCryptoAccount } from './disconnect';
@@ -28,6 +28,9 @@ describe('disconnectCryptoAccount', () => {
     await disconnectCryptoAccount('acc-1', 'binance');
 
     expect(mockDisconnectAccount).toHaveBeenCalledWith('acc-1');
+    // The per-account Keychain item is cleared by the account id, so one Binance
+    // connection's disconnect never touches another's credentials.
+    expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
     expect(order).toEqual(['db', 'keychain']);
   });
 

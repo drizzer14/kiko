@@ -94,7 +94,7 @@ export type BinanceTxSyncDeps = {
   /** Delay primitive for the per-invocation request gate; injected so tests pace instantly. */
   sleep: (milliseconds: number) => Promise<void>;
   fetchImpl: typeof fetch;
-  readCredentials: () => Promise<BinanceCredentials | undefined>;
+  readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
@@ -326,7 +326,7 @@ const runSync = async (
 ): Promise<{ imported: number }> => {
   const holdings = await deps.listHoldings(accountId);
   const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
-  const credentials = await deps.readCredentials();
+  const credentials = await deps.readCredentials(accountId);
 
   if (spot === undefined || credentials === undefined) {
     return { imported: 0 };

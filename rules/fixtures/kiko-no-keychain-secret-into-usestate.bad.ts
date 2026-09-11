@@ -15,7 +15,7 @@ export const FixtureBadAwaitForm = () => {
   const [credentials, setCredentials] = useState<unknown>(undefined);
 
   const load = async (): Promise<void> => {
-    const stored = await readCredentials();
+    const stored = await readCredentials('acc-1');
     setCredentials(stored);
   };
 

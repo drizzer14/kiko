@@ -1,4 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
 import { initDatabase } from '@kiko/db/client';
 import { runMigrations } from '@kiko/db/run-migrations';
 import Box from '@kiko/design-system/components/box';
@@ -68,6 +69,22 @@ const migratePerAccountMonobankToken = async (): Promise<void> => {
   await migrateSingleTokenToPerAccount(connected.at(0)?.id);
 };
 
+/**
+ * Move the single global Binance credentials to a per-account Keychain item, bound
+ * to the currently-connected Binance account (multi-account plan, 2026-09-11). The
+ * exact counterpart of `migratePerAccountMonobankToken` above: it runs in the boot
+ * chain AFTER that Monobank migration and BEFORE any per-account credential read.
+ * There is at most one connected Binance account today (the one-connection
+ * invariant relaxes in Task 5.2), so the first row's id is the binding target;
+ * when none is connected the migration is a no-op that leaves the global item for a
+ * later Connect to adopt — see `migrateBinanceCredentialToPerAccount`.
+ */
+const migratePerAccountBinanceCredential = async (): Promise<void> => {
+  const connected = await accountsRepo.connectedQuery('binance');
+
+  await migrateBinanceCredentialToPerAccount(connected.at(0)?.id);
+};
+
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
@@ -87,13 +104,15 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // user-visible. The Keychain-token migrations run last, before any token
     // read (the auto-sync hook mounts only on success): first the legacy
     // (pre-`kiko`) -> global move, then the global -> per-account move that binds
-    // the token to its connected account.
+    // the Monobank token to its connected account, then the equivalent global ->
+    // per-account move for the Binance credentials.
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
       .then(applyPersistedLanguage)
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
+      .then(migratePerAccountBinanceCredential)
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

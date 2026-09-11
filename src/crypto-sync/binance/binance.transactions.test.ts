@@ -110,6 +110,15 @@ describe('syncBinanceTransactions', () => {
     ]);
   });
 
+  it('reads the credentials for the TARGET account id (per-account isolation)', async () => {
+    const readCredentials = jest.fn(async () => ({ apiKey: 'api-key', secret: 'secret' }));
+    const deps = makeDeps({ readCredentials });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    expect(readCredentials).toHaveBeenCalledWith(ACCOUNT_ID);
+  });
+
   it('paces the two endpoint requests in a window through a shared gate', async () => {
     const sleep = jest.fn(async (_ms: number) => undefined);
     // A recent cursor keeps the walk to ONE 89-day window: a deposit request then
