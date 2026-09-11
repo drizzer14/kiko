@@ -1,10 +1,10 @@
 import { ratesRepo } from '@kiko/rates/rates.repo';
 
-import type { Currency } from '../currency/currency';
+import type { Currency } from '../../currency/currency';
 
-import { fetchBTCPrice } from './coingecko';
-import type { RateEntry } from './conversion';
-import { fetchFiatRates } from './monobank-rates';
+import { fetchBTCPrice } from '../coingecko';
+import type { RateEntry } from '../conversion';
+import { fetchFiatRates } from '../monobank-rates';
 
 // Monobank's `/bank/currency` is cached upstream ~5 minutes, so refreshing more
 // often than that only re-fetches identical data.

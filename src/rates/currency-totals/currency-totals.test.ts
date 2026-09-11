@@ -1,5 +1,5 @@
-import { Money } from '../currency/money';
-import { holdingValue, type ValuableHolding } from '../holdings/holding-value';
+import { Money } from '../../currency/money';
+import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 
 import { sumByCurrency } from './currency-totals';
 

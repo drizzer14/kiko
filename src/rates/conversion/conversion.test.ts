@@ -1,4 +1,4 @@
-import { Money } from '../currency/money';
+import { Money } from '../../currency/money';
 
 import { convert, netWorth } from './conversion';
 

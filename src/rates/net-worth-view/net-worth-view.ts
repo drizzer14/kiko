@@ -1,9 +1,9 @@
-import type { Currency } from '../currency/currency';
-import type { Money } from '../currency/money';
-import type { CurrencyRateRow, HoldingRow } from '../db/schema';
+import type { Currency } from '../../currency/currency';
+import type { Money } from '../../currency/money';
+import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 
-import { netWorth, type RateTable } from './conversion';
-import { sumByCurrency } from './currency-totals';
+import { netWorth, type RateTable } from '../conversion';
+import { sumByCurrency } from '../currency-totals';
 
 type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
 

@@ -1,8 +1,8 @@
 import type { Repository } from '@kiko/db/repository';
 import { max, sql } from 'drizzle-orm';
 
-import { database, write } from '../db/client';
-import { type CurrencyRateRow, currencyRates } from '../db/schema';
+import { database, write } from '../../db/client';
+import { type CurrencyRateRow, currencyRates } from '../../db/schema';
 
 type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fetchedAt'>;
 

@@ -1,6 +1,6 @@
-import type { Currency } from '../currency/currency';
-import { Money } from '../currency/money';
-import { holdingValue, type ValuableHolding } from '../holdings/holding-value';
+import type { Currency } from '../../currency/currency';
+import { Money } from '../../currency/money';
+import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 
 /**
  * Sums a list of holdings into one {@link Money} per distinct currency, valuing

@@ -1,6 +1,6 @@
-import { type Currency, currencyScale } from '../currency/currency';
-import { Money } from '../currency/money';
-import { holdingValue, type ValuableHolding } from '../holdings/holding-value';
+import { type Currency, currencyScale } from '../../currency/currency';
+import { Money } from '../../currency/money';
+import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 
 /** A rate table keyed `${base}:${quote}` mapping to a major-unit rate. */
 export type RateTable = Record<string, number>;

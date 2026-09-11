@@ -24,7 +24,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 // key is async), so the executing reads below need a live connection. Mock the
 // encrypted-open to hand back the same op-sqlite fake this file already models,
 // then `initDatabase()` once so `rawDatabase` forwards `executeRaw` to the mock.
-jest.mock('../db/encrypted-database', () => ({
+jest.mock('../../db/encrypted-database', () => ({
   openEncryptedDatabase: async () => ({
     execute: async () => ({ rows: [], rowsAffected: 0 }),
     executeRaw: (...args: unknown[]) => mockExecuteRaw(...args),
@@ -41,7 +41,7 @@ jest.mock('@kiko/migration/import-from-old-app', () => ({
   finalizeImportBridge: async () => undefined,
 }));
 
-import { initDatabase } from '../db/client';
+import { initDatabase } from '../../db/client';
 
 import { ratesRepo } from './rates.repo';
 

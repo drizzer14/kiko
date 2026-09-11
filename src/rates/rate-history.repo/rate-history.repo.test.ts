@@ -4,15 +4,15 @@
 // (base, quote, day) conflict target replaces an existing row in place rather
 // than inserting a duplicate.
 let mockTx: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockTx),
   };
 });
 
-import type { CurrencyRateHistoryRow } from '../db/schema';
+import type { CurrencyRateHistoryRow } from '../../db/schema';
 
 import { earliestRateTable, rateHistoryRepo, rateTableAt } from './rate-history.repo';
 

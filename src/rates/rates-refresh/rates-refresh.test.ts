@@ -1,4 +1,4 @@
-import type { RateEntry } from './conversion';
+import type { RateEntry } from '../conversion';
 import { type RefreshDeps, refreshRates } from './rates-refresh';
 
 type StoredRate = { base: string; quote: string; rate: string; source: string; fetchedAt: number };

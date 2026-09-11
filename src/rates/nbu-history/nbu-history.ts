@@ -1,8 +1,8 @@
 import { guard } from 'fnts';
 
-import type { Currency } from '../currency/currency';
+import type { Currency } from '../../currency/currency';
 
-import { type HistoryRateEntry, toUtcMidnight } from './history-entry';
+import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**
  * NBU's date-RANGE endpoint: one call returns the daily official rate for a

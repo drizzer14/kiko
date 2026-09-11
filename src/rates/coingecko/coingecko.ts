@@ -1,7 +1,7 @@
 import { PRICE_ENDPOINT } from '@env';
 import { guard } from 'fnts';
 
-import type { RateEntry } from './conversion';
+import type { RateEntry } from '../conversion';
 
 /** The `/simple/price` payload shape for a single id/vs-currency pair. */
 type CoinGeckoPrice = { bitcoin: { usd: number } };

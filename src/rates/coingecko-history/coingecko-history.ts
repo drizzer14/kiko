@@ -1,6 +1,6 @@
 import { guard } from 'fnts';
 
-import { type HistoryRateEntry, toUtcMidnight } from './history-entry';
+import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**
  * CoinGecko's `market_chart` returns a full daily price series in ONE call, so

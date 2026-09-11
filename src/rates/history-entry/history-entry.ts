@@ -1,4 +1,4 @@
-import type { Currency } from '../currency/currency';
+import type { Currency } from '../../currency/currency';
 
 /**
  * One normalized historical rate point from a provider, before it is composed

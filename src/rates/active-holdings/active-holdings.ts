@@ -1,4 +1,4 @@
-import type { AccountRow, HoldingRow } from '../db/schema';
+import type { AccountRow, HoldingRow } from '../../db/schema';
 
 type ArchivableAccount = Pick<AccountRow, 'id' | 'archivedAt'>;
 type ClosableHolding = Pick<HoldingRow, 'accountId' | 'closedAt'>;

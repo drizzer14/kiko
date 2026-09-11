@@ -1,7 +1,7 @@
-import type { Currency } from '../currency/currency';
-import { currencyFromCode } from '../monobank/currency-code';
+import type { Currency } from '../../currency/currency';
+import { currencyFromCode } from '../../monobank/currency-code';
 
-import type { RateEntry } from './conversion';
+import type { RateEntry } from '../conversion';
 
 const CURRENCY_ENDPOINT = 'https://api.monobank.ua/bank/currency';
 
