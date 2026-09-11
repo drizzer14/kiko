@@ -1,5 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

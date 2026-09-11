@@ -1,4 +1,4 @@
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { ratesRepo } from '@kiko/rates/repo';
 
 import type { Currency } from '../../currency/currency';
 import { fetchBTCPrice } from '../coingecko';

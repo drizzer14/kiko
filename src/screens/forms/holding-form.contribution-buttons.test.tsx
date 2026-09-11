@@ -53,7 +53,7 @@ jest.mock('../../design-system/components/button', () => {
   };
 });
 
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
     setIcon: jest.fn(),

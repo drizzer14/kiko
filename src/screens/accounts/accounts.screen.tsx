@@ -1,6 +1,6 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useMemo } from 'react';

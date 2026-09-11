@@ -12,7 +12,7 @@
 // state updates here on literals.
 import { useState } from 'react';
 
-import { fetchClientInfo } from '../../src/monobank/monobank.client';
+import { fetchClientInfo } from '../../src/monobank/client';
 import { hasToken, readToken } from '../../src/monobank/token';
 
 export const FixtureGoodExistenceProbe = () => {

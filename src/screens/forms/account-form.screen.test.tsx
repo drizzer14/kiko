@@ -67,7 +67,7 @@ jest.mock('../../monobank/token', () => ({
 jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
 }));
-jest.mock('../../monobank/monobank.client', () => ({
+jest.mock('../../monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('../../crypto-sync/binance/binance.client', () => ({

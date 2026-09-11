@@ -1,4 +1,4 @@
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { ratesRepo } from '@kiko/rates/repo';
 import either from 'fnts/either';
 import { useState } from 'react';
 

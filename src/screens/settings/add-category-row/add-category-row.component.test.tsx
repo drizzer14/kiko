@@ -10,7 +10,7 @@ import AddCategoryRow from './add-category-row.component';
 
 const mockCreate = jest.fn();
 
-jest.mock('@kiko/categories/categories.repo', () => ({
+jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     create: (...args: unknown[]) => mockCreate(...args),
   },

@@ -1,11 +1,11 @@
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/categories.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useSyncAll } from '@kiko/sync/use-sync-all';
-import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';

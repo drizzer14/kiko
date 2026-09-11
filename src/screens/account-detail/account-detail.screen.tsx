@@ -1,6 +1,6 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useSync } from '@kiko/sync/use-sync';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';

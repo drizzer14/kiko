@@ -1,5 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { ratesRepo } from '@kiko/rates/rates.repo';
+import { ratesRepo } from '@kiko/rates/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import either from 'fnts/either';
 import { useEffect, useRef } from 'react';

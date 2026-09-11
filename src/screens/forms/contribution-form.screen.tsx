@@ -1,4 +1,4 @@
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';

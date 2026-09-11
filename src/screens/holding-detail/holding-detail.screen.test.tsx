@@ -2,7 +2,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
-import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
@@ -77,7 +77,7 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     appendDepositContribution: jest.fn(),
@@ -86,7 +86,7 @@ jest.mock('@kiko/holdings/holdings.repo', () => ({
     setColor: jest.fn(),
   },
 }));
-jest.mock('@kiko/transactions/transactions.repo', () => ({
+jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     listByHoldingQuery: (holdingId: string) => ({
       toSQL: () => ({ sql: '', params: [holdingId] }),
@@ -94,7 +94,7 @@ jest.mock('@kiko/transactions/transactions.repo', () => ({
     remove: jest.fn(),
   },
 }));
-jest.mock('@kiko/categories/categories.repo', () => ({
+jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -102,7 +102,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
   },
 }));
-jest.mock('@kiko/rates/rates.repo', () => ({
+jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({

@@ -1,5 +1,5 @@
 import type { Repository } from '@kiko/db/repository';
-import { appendDepositContributionTx } from '@kiko/holdings/holdings.repo';
+import { appendDepositContributionTx } from '@kiko/holdings/repo';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 

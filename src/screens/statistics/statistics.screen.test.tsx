@@ -36,10 +36,10 @@ jest.mock('../../db/use-live-query', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/rates/rates.repo', () => ({
+jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 const mockSetTrendFilter = jest.fn();
@@ -49,10 +49,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setTrendFilter: (...args: unknown[]) => mockSetTrendFilter(...args),
   },
 }));
-jest.mock('@kiko/transactions/transactions.repo', () => ({
+jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/categories/categories.repo', () => ({
+jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

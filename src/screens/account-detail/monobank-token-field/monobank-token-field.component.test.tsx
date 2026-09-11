@@ -16,7 +16,7 @@ jest.mock('../../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
   hasToken: (accountId: string) => mockHasToken(accountId),
 }));
-jest.mock('../../../monobank/monobank.client', () => ({
+jest.mock('../../../monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('react-native/Libraries/Linking/Linking', () => ({

@@ -21,7 +21,7 @@ import TextField from '../../design-system/components/text-field';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
-import { fetchClientInfo } from '../../monobank/monobank.client';
+import { fetchClientInfo } from '../../monobank/client';
 import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import MonobankTokenInput from '../account-detail/monobank-token-input';

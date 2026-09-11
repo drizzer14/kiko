@@ -1,5 +1,5 @@
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { Money } from '../../currency/money';
 import type { HoldingRow } from '../../db/schema';

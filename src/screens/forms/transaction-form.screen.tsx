@@ -1,8 +1,8 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/categories.repo';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
-import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import type { TFunction } from 'i18next';
 import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';

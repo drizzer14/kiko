@@ -43,7 +43,7 @@ const mockUpsertCategoryOverride = jest.fn();
 const mockSetCategory = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
-jest.mock('@kiko/transactions/transactions.repo', () => ({
+jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
     recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
@@ -56,7 +56,7 @@ jest.mock('@kiko/transactions/transactions.repo', () => ({
     }),
   },
 }));
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
@@ -66,7 +66,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('@kiko/categories/categories.repo', () => ({
+jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },

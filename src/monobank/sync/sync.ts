@@ -1,13 +1,13 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
-import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
 import { i18n } from '../../i18n';
+import { fetchClientInfo, fetchStatement } from '../client';
 import { currencyFromCode } from '../currency-code';
 import { categoryForMcc } from '../mcc-category';
-import { fetchClientInfo, fetchStatement } from '../monobank.client';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 import {
   beginProgressSession,

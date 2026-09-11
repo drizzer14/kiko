@@ -1,4 +1,4 @@
-import { categoriesRepo } from '@kiko/categories/categories.repo';
+import { categoriesRepo } from '@kiko/categories/repo';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';

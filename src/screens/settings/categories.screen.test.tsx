@@ -42,7 +42,7 @@ let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?:
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 
-jest.mock('@kiko/categories/categories.repo', () => ({
+jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),

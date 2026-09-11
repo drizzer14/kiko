@@ -10,7 +10,7 @@ jest.mock('../../crypto-sync/run-crypto-sync', () => ({
 jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
-jest.mock('@kiko/rates/rates.repo', () => ({
+jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: {
     latestFetchedAt: (...args: unknown[]) => mockLatestFetchedAt(...args),
   },

@@ -59,10 +59,10 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     reorder: (...args: unknown[]) => mockAccountReorder(...args),
   },
 }));
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/rates/rates.repo', () => ({
+jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({

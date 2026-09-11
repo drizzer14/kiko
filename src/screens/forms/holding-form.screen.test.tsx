@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
-import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
@@ -33,7 +33,7 @@ const selectedSwatchHex = (
   return undefined;
 };
 
-jest.mock('@kiko/holdings/holdings.repo', () => ({
+jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
     setIcon: jest.fn(),

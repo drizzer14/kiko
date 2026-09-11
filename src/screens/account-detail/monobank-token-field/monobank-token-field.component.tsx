@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import Text from '../../../design-system/components/text';
-import { fetchClientInfo } from '../../../monobank/monobank.client';
+import { fetchClientInfo } from '../../../monobank/client';
 import { hasToken, saveToken } from '../../../monobank/token';
 import { styles } from '../account-detail.styles';
 import MonobankTokenInput from '../monobank-token-input';

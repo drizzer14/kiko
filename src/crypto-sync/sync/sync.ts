@@ -1,5 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import type { AccountRow, HoldingRow } from '../../db/schema';
 import { i18n } from '../../i18n';
