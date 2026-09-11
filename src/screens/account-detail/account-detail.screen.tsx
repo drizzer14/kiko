@@ -154,7 +154,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { isSyncing, error, sync } = useSync();
   const [tokenMessage, setTokenMessage] = useState<string | undefined>();
   // Guards a fast double-tap: the button is disabled only on `isSyncing`, which
-  // is still false during the `readToken()` await below, so a second press
+  // is still false during the `readToken(accountId)` await below, so a second press
   // could fire `sync` again before the first resolves.
   const inFlight = useRef(false);
 
@@ -169,7 +169,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     inFlight.current = true;
     try {
       setTokenMessage(undefined);
-      if ((await readToken()) === undefined) {
+      if ((await readToken(accountId)) === undefined) {
         setTokenMessage(t('accountDetail.noTokenMessage'));
         return;
       }
@@ -258,7 +258,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
         {showActionButton && <Box style={styles.divider} />}
 
-        {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
+        {showActionButton && (
+          <MonobankTokenField accountId={accountId} isConnected={isConnectedToMonobank} />
+        )}
 
         {showActionButton && (
           // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing equals

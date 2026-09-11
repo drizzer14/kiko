@@ -112,8 +112,8 @@ jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../monobank/token', () => ({
-  readToken: () => mockReadToken(),
-  hasToken: () => mockHasToken(),
+  readToken: (...args: unknown[]) => mockReadToken(...args),
+  hasToken: (...args: unknown[]) => mockHasToken(...args),
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
 jest.mock('../../monobank/monobank.client', () => ({
@@ -622,6 +622,8 @@ describe('AccountDetailScreen', () => {
     const { getByText, findByText, queryByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Connect Monobank'));
     expect(await findByText(/Add your Monobank token above/)).toBeTruthy();
+    // The token existence guard probes THIS account's own per-account item.
+    expect(mockReadToken).toHaveBeenCalledWith('a');
     // The pointer no longer sends the user to global Settings.
     expect(queryByText(/in Settings/)).toBeNull();
     expect(mockSync).not.toHaveBeenCalled();
@@ -638,7 +640,9 @@ describe('AccountDetailScreen', () => {
       await fireEvent.press(getByText('Save'));
     });
     expect(mockFetchClientInfo).toHaveBeenCalledWith('entered-here');
-    expect(mockSaveToken).toHaveBeenCalledWith('entered-here');
+    // The token binds to THIS account's id (per-account Keychain item), not a
+    // shared global slot.
+    expect(mockSaveToken).toHaveBeenCalledWith('a', 'entered-here');
   });
 
   it('shows the last sync time on a connected bank account, formatted as DD.MM.YYYY HH:mm', async () => {

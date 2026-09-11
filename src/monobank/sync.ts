@@ -165,7 +165,13 @@ export interface SyncDeps {
   fetchImpl: typeof fetch;
   now: () => number;
   sleep: (milliseconds: number) => Promise<void>;
-  readToken: () => Promise<string | undefined>;
+  /**
+   * Read the token for the RESOLVED target account. The Monobank token is now
+   * PER CONNECTION (`serviceFor(accountId)` in `./token`), so `runSyncInner`
+   * resolves the target account id FIRST, then reads its own token — one
+   * connection's token can never gate or corrupt another's.
+   */
+  readToken: (accountId: string) => Promise<string | undefined>;
   fetchClientInfo: (
     token: string,
     fetchImpl?: typeof fetch,
@@ -943,17 +949,22 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
 const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const deps: SyncDeps = { ...defaultDeps, ...overrides };
   const startedAt = deps.now();
-  const token = await deps.readToken();
-  if (!token) {
-    throw new Error(i18n.t('accountDetail.noMonobankToken'));
-  }
 
+  // Resolve the target account FIRST — the token is now keyed by that account id
+  // (`readToken(accountId)`), so the account must be known before its token can
+  // be read. `resolveMonobankAccountId` writes nothing; it only validates the
+  // target (or the already-connected account).
   const accountId = await resolveMonobankAccountId(deps);
   // Ensure this connection's `sync_state` cursor row exists before any read or
   // setter below. Idempotent (`onConflictDoNothing`): an already-connected
   // account (row created by the Phase 1 backfill migration, or a prior run) is
   // left untouched, so its cursor is preserved.
   await deps.syncStateRepo.ensure(accountId);
+
+  const token = await deps.readToken(accountId);
+  if (!token) {
+    throw new Error(i18n.t('accountDetail.noMonobankToken'));
+  }
 
   // ONE gate for this whole invocation: Monobank's 1-req/60s limit is per
   // TOKEN, so client-info and every card's statement pages share it.

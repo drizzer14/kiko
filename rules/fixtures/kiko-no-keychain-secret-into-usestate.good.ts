@@ -18,7 +18,7 @@ import { hasToken, readToken } from '../../src/monobank/token';
 export const FixtureGoodExistenceProbe = () => {
   const [isTokenSaved, setIsTokenSaved] = useState(false);
 
-  hasToken().then((exists) => {
+  hasToken('acc-1').then((exists) => {
     setIsTokenSaved(exists);
   });
 
@@ -29,7 +29,7 @@ export const FixtureGoodTransientUse = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   const refresh = async (): Promise<void> => {
-    const token = await readToken();
+    const token = await readToken('acc-1');
 
     if (token === undefined) {
       setIsConnected(false);

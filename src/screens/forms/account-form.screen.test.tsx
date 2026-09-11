@@ -611,7 +611,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockSaveToken).toHaveBeenCalledWith('tok_123');
+    // The token binds to the freshly-created account's id (per-account item).
+    expect(mockSaveToken).toHaveBeenCalledWith('new-account-id', 'tok_123');
     expect(mockMonobankSync).toHaveBeenCalledWith('new-account-id');
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });

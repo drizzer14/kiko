@@ -12,7 +12,7 @@ export const FixtureBadThenForm = () => {
   const [token, setToken] = useState('');
 
   // EXPECT-FINDING
-  readToken().then((existing) => {
+  readToken('acc-1').then((existing) => {
     if (existing !== undefined) {
       setToken(existing);
     }

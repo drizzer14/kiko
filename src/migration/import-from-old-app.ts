@@ -4,7 +4,7 @@ import {
 } from '@kiko/crypto-sync/binance/binance.credentials';
 import { LIVE_PLAINTEXT_DATABASE_NAME } from '@kiko/db/encrypted-database';
 import { resetDbKey } from '@kiko/db/keys/db-key';
-import { saveToken } from '@kiko/monobank/token';
+import { saveGlobalToken } from '@kiko/monobank/token';
 import { open } from '@op-engineering/op-sqlite';
 
 import { migrationBridge } from './migration-bridge';
@@ -81,7 +81,12 @@ const restoreSecrets = async (raw: string | null): Promise<void> => {
   }
 
   if (typeof parsed.monobankToken === 'string') {
-    await saveToken(parsed.monobankToken);
+    // Restore the retired app's single token to the TRANSITIONAL GLOBAL item —
+    // no account row exists yet at import time (the DB copy has not been opened),
+    // so it cannot be keyed per account here. The boot migration
+    // (`migrateSingleTokenToPerAccount`) binds it to the connected account once
+    // the imported DB is live.
+    await saveGlobalToken(parsed.monobankToken);
   }
 
   if (isCredentials(parsed.binanceCredentials)) {

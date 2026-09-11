@@ -4,7 +4,7 @@ const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
 const mockConnectedQuery = jest.fn();
-const mockReadToken = jest.fn();
+const mockHasToken = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
@@ -24,7 +24,7 @@ jest.mock('./sync-jobs', () => ({
   },
 }));
 jest.mock('../monobank/token', () => ({
-  readToken: (...args: unknown[]) => mockReadToken(...args),
+  hasToken: (...args: unknown[]) => mockHasToken(...args),
 }));
 jest.mock('../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
@@ -72,7 +72,7 @@ describe('useAutoSync', () => {
     mockLatestFetchedAt.mockResolvedValue(null);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockConnectedQuery.mockResolvedValue([]);
-    mockReadToken.mockResolvedValue('a-token');
+    mockHasToken.mockResolvedValue(true);
   });
 
   it('does nothing when no account is connected', async () => {
@@ -115,7 +115,7 @@ describe('useAutoSync', () => {
     // A Monobank job needs a token; a crypto account needs none. A tokenless user
     // with both connected still gets its crypto balances + Binance history synced.
     mockConnectedQuery.mockResolvedValue([monobank, binance]);
-    mockReadToken.mockResolvedValue(undefined);
+    mockHasToken.mockResolvedValue(false);
 
     await renderHook(() => useAutoSync());
 
@@ -126,11 +126,12 @@ describe('useAutoSync', () => {
 
   it('does nothing when the only connected account is a tokenless Monobank one', async () => {
     mockConnectedQuery.mockResolvedValue([monobank]);
-    mockReadToken.mockResolvedValue(undefined);
+    mockHasToken.mockResolvedValue(false);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockReadToken).toHaveBeenCalled());
+    // The token gate probes the connected Monobank account's OWN per-account item.
+    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono'));
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();

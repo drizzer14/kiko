@@ -43,32 +43,53 @@ export const hardenedFor = (service: string): Keychain.SetOptions => ({
 
 const HARDENED: Keychain.SetOptions = hardenedFor(MONOBANK_TOKEN_SERVICE);
 
-export const saveToken = async (token: string): Promise<void> => {
-  await Keychain.setGenericPassword('monobank', token, HARDENED);
-};
-
-export const readToken = async (): Promise<string | undefined> => {
-  const credentials = await Keychain.getGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
-  return credentials ? credentials.password : undefined;
-};
-
-export const clearToken = async (): Promise<void> => {
-  await Keychain.resetGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
+/**
+ * Persist a Monobank token to the PER-ACCOUNT Keychain item for `accountId`.
+ * Each connected account owns its own item, so saving account A's token never
+ * touches account B's. The token goes ONLY to the Keychain — never to SQLite,
+ * `sync_state`, `settings`, `holdings.metadata`, or a log.
+ */
+export const saveToken = async (accountId: string, token: string): Promise<void> => {
+  await Keychain.setGenericPassword('monobank', token, hardenedFor(serviceFor(accountId)));
 };
 
 /**
- * Whether a token is stored, WITHOUT handing the value back. The account-detail
- * field uses this to show a "token saved" state: a stored secret must never be
- * prefilled into an editable input or parked in React state, where a jailbroken
- * device or an attached debugger can read the JS heap. Changing the token means
- * re-entering it.
+ * Read the token for ONE account. The per-account service string is derived from
+ * the account id on every call, so a read for account A can never return account
+ * B's secret.
+ */
+export const readToken = async (accountId: string): Promise<string | undefined> => {
+  const credentials = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
+  return credentials ? credentials.password : undefined;
+};
+
+export const clearToken = async (accountId: string): Promise<void> => {
+  await Keychain.resetGenericPassword({ service: serviceFor(accountId) });
+};
+
+/**
+ * Write the TRANSITIONAL GLOBAL token item. Used ONLY by the old-app import,
+ * which restores the retired app's single token before any account row exists to
+ * key it by; the boot migration (`migrateSingleTokenToPerAccount`) then binds it
+ * to the connected account. Ordinary in-app saves use the per-account `saveToken`.
+ */
+export const saveGlobalToken = async (token: string): Promise<void> => {
+  await Keychain.setGenericPassword('monobank', token, HARDENED);
+};
+
+/**
+ * Whether a token is stored FOR `accountId`, WITHOUT handing the value back. The
+ * account-detail field uses this to show a "token saved" state: a stored secret
+ * must never be prefilled into an editable input or parked in React state, where a
+ * jailbroken device or an attached debugger can read the JS heap. Changing the
+ * token means re-entering it.
  *
  * `hasGenericPassword` queries the item's attributes only; `getGenericPassword`
  * would decrypt the token into the JS heap just to compare it against `false`,
  * which is exactly what this function exists to avoid.
  */
-export const hasToken = async (): Promise<boolean> => {
-  return Keychain.hasGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
+export const hasToken = async (accountId: string): Promise<boolean> => {
+  return Keychain.hasGenericPassword({ service: serviceFor(accountId) });
 };
 
 /**

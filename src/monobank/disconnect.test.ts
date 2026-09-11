@@ -1,10 +1,10 @@
 const mockDisconnectAccount = jest.fn(async (_id: string) => {});
-const mockClearToken = jest.fn(async () => {});
+const mockClearToken = jest.fn(async (_id: string) => {});
 
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { disconnect: (id: string) => mockDisconnectAccount(id) },
 }));
-jest.mock('./token', () => ({ clearToken: () => mockClearToken() }));
+jest.mock('./token', () => ({ clearToken: (id: string) => mockClearToken(id) }));
 
 import { disconnectMonobank } from './disconnect';
 
@@ -26,6 +26,8 @@ describe('disconnectMonobank', () => {
     await disconnectMonobank('acc-1');
 
     expect(mockDisconnectAccount).toHaveBeenCalledWith('acc-1');
+    // The Keychain clear targets THIS account's own per-account token item.
+    expect(mockClearToken).toHaveBeenCalledWith('acc-1');
     expect(mockClearToken).toHaveBeenCalledTimes(1);
     // The DB transaction must commit before the (non-transactional) Keychain clear.
     expect(order).toEqual(['db', 'keychain']);

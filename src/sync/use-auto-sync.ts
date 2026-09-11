@@ -4,7 +4,7 @@ import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
-import { readToken } from '../monobank/token';
+import { hasToken } from '../monobank/token';
 import { refreshRates } from '../rates/rates-refresh';
 
 import { syncJobsFor } from './sync-jobs';
@@ -55,10 +55,7 @@ export const useAutoSync = (): void => {
     hasRun.current = true;
 
     either<unknown, void>(async () => {
-      const [connectedAccounts, token] = await Promise.all([
-        accountsRepo.connectedQuery(),
-        readToken(),
-      ]);
+      const connectedAccounts = await accountsRepo.connectedQuery();
       // The throttle reads the connected Monobank account's OWN cursor from
       // `sync_state`; a crypto-only user has no Monobank account, so `null` lets
       // the launch sync once.
@@ -73,12 +70,14 @@ export const useAutoSync = (): void => {
         return;
       }
 
-      const hasToken = token !== undefined;
-      // Build the fan-out: every connected crypto account, plus the Monobank
-      // account when a token is stored (a tokenless Monobank job would only
-      // throw). `syncJobsFor` is the same builder pull-to-refresh uses.
+      // The token is now PER ACCOUNT, so the Monobank gate probes THIS account's
+      // own item (`hasToken(accountId)`), not a shared global one. A tokenless
+      // Monobank job would only throw, so it is dropped; crypto accounts need no
+      // token. `syncJobsFor` is the same builder pull-to-refresh uses.
+      const monobankHasToken =
+        monobankAccountId !== undefined && (await hasToken(monobankAccountId));
       const jobs = connectedAccounts.flatMap((account) =>
-        account.institution === 'monobank' && !hasToken ? [] : syncJobsFor(account),
+        account.institution === 'monobank' && !monobankHasToken ? [] : syncJobsFor(account),
       );
 
       if (jobs.length === 0) {

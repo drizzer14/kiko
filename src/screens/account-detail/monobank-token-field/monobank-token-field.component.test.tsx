@@ -5,14 +5,16 @@ import { i18n } from '../../../i18n';
 import MonobankTokenField from './monobank-token-field.component';
 
 const mockSaveToken = jest.fn();
-const mockHasToken = jest.fn<Promise<boolean>, []>();
+const mockHasToken = jest.fn<Promise<boolean>, [string]>();
 const mockFetchClientInfo = jest.fn();
 const mockOpenURL = jest.fn();
 const mockGetString = jest.fn<Promise<string>, []>();
 
+const ACCOUNT_ID = 'acc-1';
+
 jest.mock('../../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
-  hasToken: () => mockHasToken(),
+  hasToken: (accountId: string) => mockHasToken(accountId),
 }));
 jest.mock('../../../monobank/monobank.client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
@@ -41,7 +43,7 @@ const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } =>
  * the queries it needs.
  */
 const renderField = (isConnected = false) => {
-  return render(<MonobankTokenField isConnected={isConnected} />);
+  return render(<MonobankTokenField accountId={ACCOUNT_ID} isConnected={isConnected} />);
 };
 
 describe('MonobankTokenField', () => {
@@ -75,6 +77,8 @@ describe('MonobankTokenField', () => {
     const { findByText } = await renderField();
 
     expect(await findByText('Token saved')).toBeTruthy();
+    // The existence probe is keyed by THIS account id, never a shared global one.
+    expect(mockHasToken).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
   it('does not touch the Keychain at all when the account is connected', async () => {
@@ -134,7 +138,7 @@ describe('MonobankTokenField', () => {
       await fireEvent.press(getByText('Save'));
     });
     expect(mockFetchClientInfo).toHaveBeenCalledWith('new-token');
-    expect(mockSaveToken).toHaveBeenCalledWith('new-token');
+    expect(mockSaveToken).toHaveBeenCalledWith(ACCOUNT_ID, 'new-token');
     expect(await findByText(/Connected as Jane Doe/)).toBeTruthy();
   });
 
@@ -159,7 +163,7 @@ describe('MonobankTokenField', () => {
       await fireEvent.press(getByText('Save'));
     });
     expect(mockFetchClientInfo).toHaveBeenCalledWith('valid-token');
-    expect(mockSaveToken).toHaveBeenCalledWith('valid-token');
+    expect(mockSaveToken).toHaveBeenCalledWith(ACCOUNT_ID, 'valid-token');
     expect(await findByText('Could not save token')).toBeTruthy();
     expect(queryByText('Invalid token')).toBeNull();
     expect(queryByText(/Connected as/)).toBeNull();

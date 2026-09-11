@@ -625,6 +625,29 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  it('reads the token keyed by the resolved connected account id', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+    deps.readToken = jest.fn(async () => 'secret-token');
+
+    await runSync(deps);
+
+    // The token is per-connection: the sync resolves the target account FIRST,
+    // then reads THAT account's own token — never a shared global one.
+    expect(deps.readToken).toHaveBeenCalledWith('acc-mono');
+  });
+
+  it('reads the token keyed by the targetAccountId on a first-time connect', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [target]);
+    deps.targetAccountId = 'acc-1';
+    deps.readToken = jest.fn(async () => 'secret-token');
+
+    await runSync(deps);
+
+    expect(deps.readToken).toHaveBeenCalledWith('acc-1');
+  });
+
   it('does not throw and still imports cards when client-info omits jars (jars: undefined)', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [

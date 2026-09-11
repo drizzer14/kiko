@@ -37,8 +37,10 @@ jest.mock('./migration-bridge', () => ({
   },
 }));
 
-const mockSaveToken = jest.fn(async (_t: string) => undefined);
-jest.mock('@kiko/monobank/token', () => ({ saveToken: (t: string) => mockSaveToken(t) }));
+const mockSaveGlobalToken = jest.fn(async (_t: string) => undefined);
+jest.mock('@kiko/monobank/token', () => ({
+  saveGlobalToken: (t: string) => mockSaveGlobalToken(t),
+}));
 
 const mockSaveCredentials = jest.fn(async (_c: unknown) => undefined);
 jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
@@ -87,7 +89,7 @@ describe('importFromOldApp', () => {
     await expect(importFromOldApp()).resolves.toBe(false);
     expect(mockResetDbKey).not.toHaveBeenCalled();
     expect(mockBridge.copyFile).not.toHaveBeenCalled();
-    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 
@@ -103,7 +105,7 @@ describe('importFromOldApp', () => {
   it('restores both secrets from the JSON into the new Keychain', async () => {
     await importFromOldApp();
 
-    expect(mockSaveToken).toHaveBeenCalledWith('mono-tok');
+    expect(mockSaveGlobalToken).toHaveBeenCalledWith('mono-tok');
     expect(mockSaveCredentials).toHaveBeenCalledWith({ apiKey: 'AK', secret: 'SK' });
   });
 
@@ -113,7 +115,7 @@ describe('importFromOldApp', () => {
     );
 
     await expect(importFromOldApp()).resolves.toBe(true);
-    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 
@@ -126,7 +128,7 @@ describe('importFromOldApp', () => {
 
     await expect(importFromOldApp()).resolves.toBe(true);
     expect(mockBridge.copyFile).toHaveBeenCalledWith(EXPORT_PATH, LIVE_PATH);
-    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSaveGlobalToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 });
