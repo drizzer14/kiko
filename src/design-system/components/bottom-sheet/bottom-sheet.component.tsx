@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
+import GlassSurface from '../glass-surface';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 import type { BottomSheetProps } from './bottom-sheet.props';
@@ -51,6 +52,18 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `LiquidGlassView` never blocks the dismiss tap: it is a non-interactive
  * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
  * a11y, not the pressable target itself.
+ *
+ * The sheet card's own background is a translucent glass panel too, reusing
+ * `GlassSurface`'s `transparent` variant rather than a fork of its layering —
+ * real Liquid Glass on iOS 26+, the same themed flat translucent fallback
+ * elsewhere. It is rendered as an absolutely-positioned first child
+ * (`styles.glassFill`), painted BEHIND the grabber and the body content that
+ * follow it in JSX, so every sheet in the app picks this up from this one
+ * change point. `padding={0}` keeps the card's own existing padding
+ * (`styles.sheet`) as the single inset — `GlassSurface`'s own `padding` prop
+ * is deliberately unused here, so the two never stack. See `styles.glassFill`
+ * for why it is sized slightly larger than the card rather than an exact
+ * `absoluteFill`.
  */
 const BottomSheet: FC<BottomSheetProps> = ({
   visible,
@@ -167,6 +180,14 @@ const BottomSheet: FC<BottomSheetProps> = ({
           }}
           testID={testID}
         >
+          <GlassSurface
+            transparent
+            radius="lg"
+            padding={0}
+            style={styles.glassFill}
+            testID={testID && `${testID}-glass`}
+          />
+
           <GestureDetector gesture={dragToDismiss}>
             <View style={styles.grabberRegion} testID={testID && `${testID}-grabber`}>
               <View style={styles.grabber} />

@@ -289,23 +289,46 @@ new component can land between reviews of this skill:
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
-  `Modal + backdrop + Box` again. The sheet is a GROUPED surface: its
-  base is the `sheetBackground` token (the iOS systemGroupedBackground/
-  dark equivalent), one level BELOW the `surfaceHigh` cards/controls on
-  it, so a control (e.g. an OptionPills selected pill) reads as raised
-  instead of blending into the sheet — it used `surfaceHigh` itself
-  before, the same tone as a selected pill. It caps its own height at a fixed
-  66%-of-window ceiling and takes an optional `maxHeight` prop that
-  can only tighten that cap further, plus a `scrollable` prop
-  (defaults `true`) that wraps `children` in a `ScrollView` so
-  overflow scrolls instead of clipping — a sheet that needs its own
-  pinned header/footer or a scroll-to-selection ref (date-range-field,
-  category-field, icon-picker-modal) passes `scrollable={false}` and
-  renders its own inner `ScrollView` instead. Its drag-to-close
-  grabber's pure math (`clampSheetTranslate`, `shouldDismissSheet`)
-  lives in `bottom-sheet.gesture.ts` — see `kiko-gestures`. Read
-  `bottom-sheet.props.d.ts` for the exact current prop set rather than
-  trusting this summary if it drifts.
+  `Modal + backdrop + Box` again. The sheet card's own BACKGROUND is a
+  translucent glass panel, reusing `GlassSurface`'s `transparent`
+  variant (`surfaceTranslucent`; real Liquid Glass on iOS 26+, the same
+  themed flat translucent fallback elsewhere) rather than forking its
+  layering — real glass/fallback branching, backdrop, and base all stay
+  owned by `GlassSurface` itself. It is rendered as an
+  absolutely-positioned first child of the sheet card
+  (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
+  and body that follow it in JSX. Since this is the ONE shared
+  primitive, every sheet in the app gets the glass background from this
+  single change point. `GlassSurface` only exposes a single ALL-corner
+  `radius` (there is no top-only variant); the sheet still needs to read
+  as top-rounded / bottom-flush (anchored to the screen's bottom edge),
+  so `glassFill` deliberately sizes the `GlassSurface` `theme.radii.lg`
+  taller than the card, past its own bottom edge — the card's own
+  `overflow: 'hidden'` (added for exactly this) then clips away the
+  region where `GlassSurface`'s bottom corners would otherwise curve,
+  leaving a flat bottom edge and correctly-rounded top corners rather
+  than a small gap leaking the dismiss scrim through the bottom
+  corners. `GlassSurface`'s own `padding` prop is passed `0` on this
+  layer — the card's EXISTING padding (`styles.sheet`'s
+  `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
+  second one. The sheet is still a GROUPED surface: this translucent
+  base (composited to ~rgb(17,17,18) over true-black — darker than
+  `surfaceHigh` #2C2C2E) sits one level BELOW the `surfaceHigh`
+  cards/controls on it, so a control (e.g. an OptionPills selected
+  pill) reads as raised instead of blending into the sheet — it used
+  `surfaceHigh` itself before, the same tone as a selected pill, then a
+  flat opaque `sheetBackground` token before this glass pass. It caps
+  its own height at a fixed 66%-of-window ceiling and takes an optional
+  `maxHeight` prop that can only tighten that cap further, plus a
+  `scrollable` prop (defaults `true`) that wraps `children` in a
+  `ScrollView` so overflow scrolls instead of clipping — a sheet that
+  needs its own pinned header/footer or a scroll-to-selection ref
+  (date-range-field, category-field, icon-picker-modal) passes
+  `scrollable={false}` and renders its own inner `ScrollView` instead.
+  Its drag-to-close grabber's pure math (`clampSheetTranslate`,
+  `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
+  `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
+  prop set rather than trusting this summary if it drifts.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.

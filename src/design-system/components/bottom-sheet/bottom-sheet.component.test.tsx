@@ -90,20 +90,71 @@ describe('BottomSheet', () => {
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
   });
 
-  // The sheet is a grouped surface: its base is `sheetBackground` (one level
-  // below the `surfaceHigh` cards/controls on it), never `surfaceHigh` itself —
-  // that shared-tone blend is the on-device review the darker base fixes.
-  it('paints the sheet in the grouped sheetBackground, not the surfaceHigh card tone', async () => {
-    const { getByTestId } = await render(
+  // The sheet card's own background is a translucent glass panel, reusing
+  // `GlassSurface`'s `transparent` variant rather than a flat `backgroundColor`
+  // on the card itself — see `bottom-sheet.component.tsx`'s doc comment and
+  // `styles.glassFill`. Jest always exercises the non-liquid-glass fallback
+  // branch (`@callstack/liquid-glass` is globally mocked with
+  // `isLiquidGlassSupported: false` — see `jest/setup.js`), so `GlassSurface`'s
+  // own `-base` sublayer is the flat `View` that paints the `transparent`
+  // variant's translucent fill; on iOS 26+ the same `transparent` prop drives
+  // the real glass material instead (`glass-surface.component.tsx`'s
+  // `isLiquidGlassSupported` branch), which this asserts is the one passed.
+  it('renders the sheet card background through GlassSurface, in its transparent variant', async () => {
+    const { getByTestId, queryByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
         <Text>sheet body</Text>
       </BottomSheet>,
     );
 
-    const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+    const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
+    // `padding={0}` is the ONE inset for this layer — the card's own existing
+    // padding (`styles.sheet`) stays the single source, never stacked with a
+    // second one from `GlassSurface` itself. `GlassSurface` only writes a
+    // `padding` style member when its own `padding` prop is defined, so
+    // finding it present (and zero) on the rendered node confirms `0`, not
+    // `undefined`, was actually passed through.
+    const glassStyle = StyleSheet.flatten(glass.props.style);
+    expect(glassStyle.padding).toBe(0);
 
-    expect(sheetStyle.backgroundColor).toBe(darkTheme.colors.sheetBackground);
-    expect(sheetStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
+    const glassBaseStyle = StyleSheet.flatten(
+      getByTestId(`${SHEET_TEST_ID}-glass-base`).props.style,
+    );
+    expect(glassBaseStyle.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(glassBaseStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
+
+    // A tinted entity-card background never applies to a sheet, and the
+    // panel carries no color wash — it stays a neutral frosted panel.
+    expect(queryByTestId(`${SHEET_TEST_ID}-glass-wash`)).toBeNull();
+  });
+
+  // The scrim, grabber, and children all still render once the card routes
+  // its background through `GlassSurface` — the glass layer is an added
+  // background sibling, not a replacement for any of the sheet's existing
+  // structure.
+  it('still renders the scrim, the grabber, and the children alongside the glass background', async () => {
+    const onDismiss = jest.fn();
+    const { getByTestId, getByText } = await render(
+      <BottomSheet
+        visible
+        onDismiss={onDismiss}
+        testID={SHEET_TEST_ID}
+        backdropTestID="sheet-backdrop"
+      >
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByTestId('sheet-backdrop')).toBeTruthy();
+    expect(getByTestId(`${SHEET_TEST_ID}-grabber`)).toBeTruthy();
+    expect(getByText('sheet body')).toBeTruthy();
+
+    // The glass background paints BEHIND the grabber and body — it is the
+    // first child of the sheet card, in render order.
+    const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
+    const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
+    const scrollView = getByTestId(`${SHEET_TEST_ID}-scroll`);
+    expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
   });
 
   it('labels the scrim as a dismiss button when a backdrop label is given', async () => {
@@ -207,11 +258,13 @@ describe('BottomSheet', () => {
       const flat = StyleSheet.flatten(scrollView.props.style);
 
       expect(flat.flexShrink).toBe(1);
-      // The sheet card lays out exactly two children in order: the top grabber
-      // handle, then the ScrollView body. The sheet itself still never lays the
-      // call site's children out directly — they live inside that ScrollView.
+      // The sheet card lays out exactly three children in order: the glass
+      // background, the top grabber handle, then the ScrollView body. The
+      // sheet itself still never lays the call site's children out directly —
+      // they live inside that ScrollView.
+      const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
       const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
-      expect(getByTestId(SHEET_TEST_ID).children).toEqual([grabber, scrollView]);
+      expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
     });
 
     it('applies the call-site gap to the ScrollView content container, not the sheet card', async () => {
