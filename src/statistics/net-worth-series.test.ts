@@ -387,7 +387,7 @@ describe('buildNetWorthSeries', () => {
 
     // The REAL mapping function under test: production calls this exact
     // function (`mapFetched` -> `mapStatementItem`) for every synced item.
-    const debitTransaction = mapStatementItem(bondPurchaseItem, 'card');
+    const debitTransaction = mapStatementItem(bondPurchaseItem, 'card', 'acc-1');
     // Prove the mapping actually did the sign/scale/unit conversion this test
     // depends on, rather than trusting the fixture literal: the mapped
     // transaction's amount is the wire item's `amount` verbatim (no float
