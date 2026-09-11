@@ -89,7 +89,7 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scrollContent(footer !== undefined)}
         >
           {children}
         </ScrollView>

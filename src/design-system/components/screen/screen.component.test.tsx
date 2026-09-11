@@ -277,6 +277,31 @@ describe('Screen', () => {
     expect(contentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
   });
 
+  it('drops the scroll content bottom padding when a footer owns the gap above it, so the gap does not double', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    // The footer slot below already supplies `paddingTop: theme.spacing(4)`
+    // (16) as the one gap above the button. If this container also kept its
+    // own `theme.spacing(4)` bottom padding, the two adjacent siblings would
+    // stack into a 32pt gap on a short (unscrolled) form — the disproportionate
+    // deposit-edit regression this fix removes.
+    expect(scrollContentStyle.paddingBottom).toBe(0);
+  });
+
+  it('keeps the scroll content base bottom padding when there is no footer to supply the gap', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    expect(scrollContentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
+  });
+
   it('renders no hairline divider above the footer', async () => {
     const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 
