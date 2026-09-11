@@ -12,7 +12,10 @@ describe('darkTheme iOS dark palette', () => {
     expect(darkTheme.colors.positive).toBe('#30D158');
     expect(darkTheme.colors.negative).toBe('#FF453A');
     expect(darkTheme.colors.border).toBe('#38383A');
-    expect(darkTheme.colors.scrim).toBe('rgba(0,0,0,0.55)');
+    // Lowered from 0.55 when the sheet's own background moved to
+    // GlassSurface's `material` (live-blur) variant — see the scrim doc
+    // comment in theme.ts.
+    expect(darkTheme.colors.scrim).toBe('rgba(0,0,0,0.4)');
     // Locks the onAccent value: a regression to black here would otherwise pass
     // every existing test.
     expect(darkTheme.colors.onAccent).toBe('#FFFFFF');

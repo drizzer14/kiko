@@ -10,6 +10,21 @@ import { darkTheme } from '../../theme';
 import BottomSheet from '.';
 import { SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
 
+// The global jest/setup.js mock renders LiquidGlassView as a plain View and
+// pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
+// file-level mock keeps the same default so every existing fallback-branch
+// test is unchanged, but exposes the flag as a MUTABLE property (the same
+// pattern `glass-surface.component.test.tsx` uses) so the glass-capable
+// describe block below can flip it on for its own scope.
+jest.mock('@callstack/liquid-glass', () => {
+  const { View } = require('react-native');
+  return { LiquidGlassView: View, isLiquidGlassSupported: false };
+});
+
+const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
+  isLiquidGlassSupported: boolean;
+};
+
 // The 66% cap is computed from the LIVE window height (`useWindowDimensions`),
 // not a hardcoded pixel value, so it tracks rotation on device. Reading the
 // same `Dimensions.get('window').height` RN reports under Jest keeps this
@@ -90,17 +105,16 @@ describe('BottomSheet', () => {
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
   });
 
-  // The sheet card's own background is a translucent glass panel, reusing
-  // `GlassSurface`'s `transparent` variant rather than a flat `backgroundColor`
-  // on the card itself — see `bottom-sheet.component.tsx`'s doc comment and
-  // `styles.glassFill`. Jest always exercises the non-liquid-glass fallback
-  // branch (`@callstack/liquid-glass` is globally mocked with
-  // `isLiquidGlassSupported: false` — see `jest/setup.js`), so `GlassSurface`'s
-  // own `-base` sublayer is the flat `View` that paints the `transparent`
-  // variant's translucent fill; on iOS 26+ the same `transparent` prop drives
-  // the real glass material instead (`glass-surface.component.tsx`'s
-  // `isLiquidGlassSupported` branch), which this asserts is the one passed.
-  it('renders the sheet card background through GlassSurface, in its transparent variant', async () => {
+  // The sheet card's own background is a real translucent blur MATERIAL,
+  // reusing `GlassSurface`'s `material` variant rather than a flat
+  // `backgroundColor` on the card itself — see `bottom-sheet.component.tsx`'s
+  // doc comment and `styles.glassFill`. This describe block always exercises
+  // the non-liquid-glass FALLBACK branch (`@callstack/liquid-glass` defaults
+  // to `isLiquidGlassSupported: false` above), so `GlassSurface`'s own
+  // `-base` sublayer is the flat `View` that paints the `material` variant's
+  // translucent fallback fill; the glass-capable describe block below covers
+  // the real live-blur branch instead.
+  it('renders the sheet card background through GlassSurface, translucent on the non-glass fallback', async () => {
     const { getByTestId, queryByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
         <Text>sheet body</Text>
@@ -117,6 +131,12 @@ describe('BottomSheet', () => {
     const glassStyle = StyleSheet.flatten(glass.props.style);
     expect(glassStyle.padding).toBe(0);
 
+    // No backdrop layer exists on the fallback path at all (see
+    // `glass-surface.component.tsx`'s comment: "The fallback (non-glass)
+    // branch needs no backdrop: its own base IS the flat themed fill") —
+    // this is what a translucent, never-muted fallback looks like.
+    expect(queryByTestId(`${SHEET_TEST_ID}-glass-backdrop`)).toBeNull();
+
     const glassBaseStyle = StyleSheet.flatten(
       getByTestId(`${SHEET_TEST_ID}-glass-base`).props.style,
     );
@@ -126,6 +146,44 @@ describe('BottomSheet', () => {
     // A tinted entity-card background never applies to a sheet, and the
     // panel carries no color wash — it stays a neutral frosted panel.
     expect(queryByTestId(`${SHEET_TEST_ID}-glass-wash`)).toBeNull();
+  });
+
+  // The real Liquid Glass branch (isLiquidGlassSupported === true), which the
+  // fallback-only tests above never reach. This is the item-2 fix itself: on
+  // iOS 26+ the sheet's glass must sample the LIVE content behind it (no
+  // color-pinning backdrop layer under it), so it reads as a real translucent
+  // blur instead of the near-opaque dark panel the old `transparent` variant
+  // produced there.
+  describe('on liquid-glass-capable iOS', () => {
+    beforeEach(() => {
+      liquidGlass.isLiquidGlassSupported = true;
+    });
+    afterEach(() => {
+      liquidGlass.isLiquidGlassSupported = false;
+    });
+
+    it('renders the live glass material with no muting backdrop underneath it', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      // `material`'s whole point: unlike `transparent` (which paints a
+      // translucent `surfaceTranslucent` backdrop UNDER the glass to
+      // partially pin the sample), this variant adds NO backdrop layer at
+      // all on the glass path, so the glass material samples the actual
+      // live content behind the sheet.
+      expect(queryByTestId(`${SHEET_TEST_ID}-glass-backdrop`)).toBeNull();
+
+      // The glass base itself carries no fixed color either (no `tintColor`
+      // pinning it, the same as a plain, tint-less GlassSurface) — it is the
+      // live-sampling material, not a color-pinned fill.
+      const glassBase = getByTestId(`${SHEET_TEST_ID}-glass-base`);
+      expect(glassBase.props.tintColor).toBeUndefined();
+
+      expect(queryByTestId(`${SHEET_TEST_ID}-glass-wash`)).toBeNull();
+    });
   });
 
   // The scrim, grabber, and children all still render once the card routes

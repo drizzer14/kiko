@@ -125,6 +125,22 @@ describe('GlassSurface', () => {
     expect(queryByTestId('transparent-fallback-backdrop')).toBeNull();
   });
 
+  // `material` (item 2, BottomSheet's own live-blur variant) must ALSO stay
+  // translucent on the non-glass fallback — a device without Liquid Glass
+  // has no live-sample material to fall back to, so without this branch the
+  // sheet would render as a solid opaque panel there instead of see-through.
+  it('fills the fallback base with the translucent token when material is set', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <GlassSurface testID="material-fallback" material>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('material-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(queryByTestId('material-fallback-backdrop')).toBeNull();
+  });
+
   // Device-only regression (encoded here as a JS-composition assertion, since
   // Jest renders LiquidGlass as a plain View and cannot reproduce the native
   // glass recomposite): the wash must be a SIBLING layered OVER the base
@@ -281,6 +297,39 @@ describe('GlassSurface', () => {
       );
 
       expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
+    });
+
+    // `material` (BottomSheet's own variant — item 2): a REAL translucent
+    // blur, so the glass path renders NO backdrop at all — byte-for-byte the
+    // same "live sample" tree a plain, tint-less surface already renders
+    // (unlike `transparent`, which pins a translucent backdrop under the
+    // glass to soften drift on a scrolling card). It carries no tintColor and
+    // no wash either.
+    it('keeps the live glass material with no backdrop when material is set', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="material-glass" material>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(queryByTestId('material-glass-backdrop')).toBeNull();
+      const base = getByTestId('material-glass-base');
+      expect(base.props.tintColor).toBeUndefined();
+      expect(queryByTestId('material-glass-wash')).toBeNull();
+    });
+
+    // `material` is a NEUTRAL variant like `transparent`, so a `tint` (an
+    // entity card, which must stay opaque) always wins over it too.
+    it('keeps the opaque backdrop and tint when both tint and material are set', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="tinted-material-glass" tint={tint} material>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const flat = StyleSheet.flatten(getByTestId('tinted-material-glass-backdrop').props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(getByTestId('tinted-material-glass-base').props.tintColor).toBe(tint);
     });
 
     // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.

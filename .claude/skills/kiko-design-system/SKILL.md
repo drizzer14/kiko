@@ -264,7 +264,7 @@ new component can land between reviews of this skill:
   drift.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
-  optional `bordered` edge, and three neutral/tinted variants of the
+  optional `bordered` edge, and neutral/tinted variants of the
   backdrop under the glass. A `tint` (an entity card) paints an OPAQUE
   `surface` backdrop and an entity-color wash — see "Entity color and
   tint" below. A `transparent` (a neutral frosted see-through PANEL —
@@ -283,18 +283,37 @@ new component can land between reviews of this skill:
   a closed glass row); pass the card's radius to `SwipeableRow`'s
   `radius` prop so the reveal clips to the same corners (GlassSurface
   defaults to `md`). Neither prop keeps the fully-live see-through material (no
-  backdrop). Read `glass-surface.props.d.ts` for the exact current prop
-  set rather than trusting this summary if it drifts.
+  backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
+  surface whose backdrop is STATIC while shown (BottomSheet is the one
+  consumer): it keeps the fully-live see-through glass on the glass path
+  (no backdrop at all, so the material samples the real content behind it —
+  a true blur, not `transparent`'s partially-pinned sample) but, unlike a
+  plain surface, still takes a TRANSLUCENT (not opaque) fallback fill on the
+  non-glass path, so a device without Liquid Glass reads see-through too. A
+  `tint` wins over `material` the same way it wins over `transparent`. Read
+  `glass-surface.props.d.ts` for the exact current prop set rather than
+  trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in
   the app routes through this rather than hand-rolling
   `Modal + backdrop + Box` again. The sheet card's own BACKGROUND is a
-  translucent glass panel, reusing `GlassSurface`'s `transparent`
-  variant (`surfaceTranslucent`; real Liquid Glass on iOS 26+, the same
-  themed flat translucent fallback elsewhere) rather than forking its
-  layering — real glass/fallback branching, backdrop, and base all stay
-  owned by `GlassSurface` itself. It is rendered as an
+  real translucent blur MATERIAL, reusing `GlassSurface`'s `material`
+  variant — a live-sampling Liquid Glass on iOS 26+ (no color-pinning
+  backdrop under it, so the sheet reads as an actual blur of the
+  content behind it, not a near-opaque flat panel), the same themed flat
+  translucent (`surfaceTranslucent`) fallback elsewhere — rather than
+  forking its layering — real glass/fallback branching, backdrop, and
+  base all stay owned by `GlassSurface` itself. `material` is
+  `transparent`'s sibling variant for a surface whose backdrop is STATIC
+  while shown (a modal sheet): `transparent` instead pins a translucent
+  backdrop under the glass to soften lightness drift on a scrolling
+  CARD, a concern that does not apply to a static sheet, so a modal
+  sheet takes the live-sample `material` variant instead — read
+  `glass-surface.props.d.ts`'s `material` doc for the exact distinction
+  and the constant-token doc comment on `theme.colors.scrim` in
+  `theme.ts` (lowered 0.55 -> 0.4 alongside this change, since the sheet's
+  glass now samples that same scrim). It is rendered as an
   absolutely-positioned first child of the sheet card
   (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
   and body that follow it in JSX. Since this is the ONE shared

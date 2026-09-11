@@ -42,6 +42,24 @@ export type GlassSurfaceProps = ViewProps & {
   // variant, so a `tint` (an entity card, which must stay opaque) always wins:
   // `transparent` is ignored when a `tint` is set. Defaults to `false`.
   transparent?: boolean;
+  // Renders the surface as a REAL translucent blur MATERIAL: the live
+  // see-through glass (same as a plain surface — no backdrop layer under the
+  // glass, so it is not muted or color-pinned) on the glass path, but with a
+  // TRANSLUCENT (not opaque) fallback fill on the non-glass path, so a device
+  // without Liquid Glass still reads see-through rather than a solid panel.
+  // This is DIFFERENT from `transparent`: `transparent` paints a translucent
+  // `surfaceTranslucent` backdrop UNDER the glass on both paths (a PARTIAL
+  // pin, for a scrolling card whose drift needs softening); `material` paints
+  // NO backdrop on the glass path at all, so the glass samples the live
+  // content behind it for a true blur look. Reach for it only for a surface
+  // whose backdrop is STATIC while shown (a modal bottom sheet) — the
+  // lightness-drift concern that motivates `transparent`'s partial pin for a
+  // scrolling card does not apply there. `BottomSheet` is the one consumer
+  // today (its `glassFill`); a new consumer should confirm the same static-
+  // backdrop condition before reaching for this instead of `transparent`. A
+  // `tint` (an entity card, which must stay opaque) always wins over this too,
+  // the same as `transparent`. Defaults to `false`.
+  material?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the
   // component (not a plain inline `borderWidth`/`borderColor`) for the same

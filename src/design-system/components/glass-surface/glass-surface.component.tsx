@@ -67,6 +67,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   radius = 'md',
   tint,
   transparent = false,
+  material = false,
   bordered = false,
   testID,
   ...props
@@ -83,6 +84,12 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // always wins over it — the two are contradictory and a tinted card must stay
   // opaque.
   const isTransparent = transparent && tint === undefined;
+  // `material` is the live-blur variant (see the prop doc): a `tint` wins over
+  // it too, for the same reason. It never adds a backdrop (see `backdropFill`
+  // below, which `material` deliberately does not feed) — only the FALLBACK
+  // fill (`fallbackFill` below) reads it, so the glass path is byte-for-byte
+  // the same "no backdrop, live sample" tree a plain surface already renders.
+  const isMaterial = material && tint === undefined;
   // The backdrop UNDER the glass, and its fill, both depend on the variant:
   //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
   //     translucent glass samples so the card's lightness cannot drift and the
@@ -114,7 +121,11 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // directly to round its material. The flat fallback has no corner-aware
   // rendering, so the parent mask is enough there — but a `transparent` surface
   // uses the TRANSLUCENT fill there so the non-glass path reads see-through too.
-  const fallbackFill = isTransparent ? styles.translucentBase : styles.opaqueBase;
+  // `material` reads the SAME translucent fill here — its glass-path tree is
+  // otherwise identical to a plain surface's (no backdrop above), so only the
+  // non-glass fallback needs to branch for it too, or a device without Liquid
+  // Glass would render the sheet as a solid opaque panel instead of see-through.
+  const fallbackFill = isTransparent || isMaterial ? styles.translucentBase : styles.opaqueBase;
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       // The app is dark-only (native chrome is pinned dark via
