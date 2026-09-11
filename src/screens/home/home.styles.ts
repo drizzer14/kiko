@@ -40,6 +40,13 @@ export const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing(5),
     paddingBottom: theme.spacing(1),
   },
+  // The FIRST day header drops the separator top pad: the content column's
+  // `gap(4)` already sits between the pinned filter/sync band and the list, so
+  // adding `sectionHeader`'s own top pad on top would make the gap above the
+  // list unequal to the gap between the filters row and the sync-progress bar.
+  firstSectionHeader: {
+    paddingTop: 0,
+  },
   // The large centered balance amount, one step up from `title` on the
   // `display` typography token — the net worth is the single most prominent
   // figure on this screen. MoneyText still owns the tone color, so this

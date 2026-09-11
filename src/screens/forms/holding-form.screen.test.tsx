@@ -191,6 +191,23 @@ describe('HoldingFormScreen term deposit', () => {
     expect(deposit.queryByLabelText('Balance')).toBeNull();
   });
 
+  it('separates the color picker and every sub-heading with form dividers (term deposit)', async () => {
+    // A bank create defaults to a term deposit: one divider after the color
+    // picker, one before "Contributions", one before "Terms".
+    const { getAllByTestId } = await renderScreen();
+
+    expect(getAllByTestId('form-divider')).toHaveLength(3);
+  });
+
+  it('separates the color picker and the details sub-heading with form dividers (bond)', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+
+    // One divider after the color picker, one before "Details".
+    expect(screen.getAllByTestId('form-divider')).toHaveLength(2);
+  });
+
   it('renders a visible text label above every term-deposit field', async () => {
     const screen = await renderScreen();
 

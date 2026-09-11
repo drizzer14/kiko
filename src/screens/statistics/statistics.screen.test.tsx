@@ -489,6 +489,18 @@ const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
   return (Array.isArray(tree) ? tree : [tree]).flatMap(flattenPreOrder);
 };
 
+// The element type a RNTL query returns (its bundled test-renderer instance),
+// derived from the query signature so no react-test-renderer dependency is
+// imported just for the annotation.
+type QueryNode = ReturnType<Awaited<ReturnType<typeof render>>['getByTestId']>;
+
+// The SFSymbolView glyph carrying `name` inside a given SelectableRow option
+// row — the filter option's icon no longer carries an accessibilityLabel (it
+// renders through the shared SelectableRow), so it is read off the host node
+// carrying that symbol name, scoped to the row from getByTestId.
+const optionGlyph = (row: QueryNode, name: string): QueryNode | undefined =>
+  row.queryAll((node) => node.props.name === name).at(0);
+
 describe('StatisticsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -704,20 +716,21 @@ describe('StatisticsScreen', () => {
   it('renders each category filter option with the slice icon, tinted with its color', async () => {
     seedSpending();
 
-    const { getByTestId, getByLabelText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     await act(async () => {
       fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
-    // The option icon (an SFSymbolView, mocked to a View) is labeled with the
-    // category title, and carries the breakdown slice's own icon + resolved
-    // color — proving the slice's icon/color reach the menu row rather than
-    // being discarded.
-    const grocery = getByLabelText('Groceries');
-    expect(grocery.props.name).toBe('cart');
-    expect(grocery.props.tintColor).toBeTruthy();
-    expect(getByLabelText('Transport').props.name).toBe('car');
+    // The option icon (an SFSymbolView, mocked to a View) sits inside its shared
+    // SelectableRow, and carries the breakdown slice's own icon + resolved color
+    // — proving the slice's icon/color reach the menu row rather than being
+    // discarded.
+    const grocery = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart');
+    expect(grocery?.props.name).toBe('cart');
+    expect(grocery?.props.tintColor).toBeTruthy();
+    const transport = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-transport`), 'car');
+    expect(transport?.props.name).toBe('car');
   });
 
   it('colors an uncolored category slice from the chart set hash', async () => {
@@ -725,13 +738,15 @@ describe('StatisticsScreen', () => {
     // `categoryColor(key)` — a hue from `chartSeriesDark`.
     seedSpending();
 
-    const { getByTestId, getByLabelText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     await act(async () => {
       fireEvent.press(getByTestId(CATEGORY_FILTER));
     });
 
-    expect(getByLabelText('Groceries').props.tintColor).toBe(categoryColor('groceries'));
+    expect(
+      optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props.tintColor,
+    ).toBe(categoryColor('groceries'));
   });
 
   it('orders the category filter options by the custom category order, not by spending magnitude', async () => {

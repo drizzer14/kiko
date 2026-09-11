@@ -35,6 +35,44 @@ jest.mock('../../design-system/components/text', () => {
   };
 });
 
+// The Button variant maps to a themed fill inside a react-native-unistyles
+// `variants` block that the project's Jest mock strips from the resolved style,
+// and onAccent/textPrimary are both white so the label color cannot tell primary
+// from secondaryTonal apart either. Mock Button to record the `variant` it
+// receives — following the contribution-buttons precedent — while still
+// rendering the label (and forwarding onPress/disabled) so every
+// getByText/press assertion in this file is unaffected.
+const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+
+jest.mock('../../design-system/components/button', () => {
+  const { Pressable, Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: (props: {
+      variant?: string;
+      children?: ReactNode;
+      onPress: () => void;
+      disabled?: boolean;
+      accessibilityLabel?: string;
+      testID?: string;
+    }) => {
+      mockButtonProps.push({ variant: props.variant, children: props.children });
+
+      return (
+        <Pressable
+          accessibilityLabel={props.accessibilityLabel}
+          testID={props.testID}
+          onPress={props.onPress}
+          disabled={props.disabled}
+        >
+          {props.children !== undefined && <RNText>{props.children}</RNText>}
+        </Pressable>
+      );
+    },
+  };
+});
+
 const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
@@ -225,6 +263,7 @@ const renderScreen = async () => {
 describe('AccountDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockReadToken.mockResolvedValue('token-abc');
@@ -237,11 +276,10 @@ describe('AccountDetailScreen', () => {
     });
   });
 
-  it('spaces the connected Monobank last-sync line, Sync now and Disconnect evenly', async () => {
-    // The three stacked connected-state elements — the "last synced" line, the
-    // "Sync now" button, and the "Disconnect" button — must be evenly spaced. The
-    // gap inside the status/actions group (last sync ↔ Sync now) must equal the
-    // content container's gap (the actions group ↔ Disconnect).
+  it('spaces the connected Monobank last-sync line above the actions row evenly', async () => {
+    // The last-sync line sits above the single actions row (Sync + Disconnect
+    // side by side). The gap inside the status/actions group (last sync ↔ actions
+    // row) must equal the content container's gap for one even vertical rhythm.
     setLiveData({ accounts: [account({ institution: 'monobank' })] });
 
     const { getByTestId } = await renderScreen();
@@ -252,6 +290,43 @@ describe('AccountDetailScreen', () => {
     ).gap;
 
     expect(groupGap).toBe(contentGap);
+  });
+
+  it('puts Sync and Disconnect side by side in a single row when connected', async () => {
+    setLiveData({ accounts: [account({ institution: 'monobank' })] });
+
+    const { getByTestId } = await renderScreen();
+
+    // The two buttons now share one horizontal row rather than stacking.
+    const row = getByTestId('monobank-sync-actions-row');
+    expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
+  });
+
+  it('makes the connected Sync button blue (primary) and keeps Disconnect neutral', async () => {
+    setLiveData({ accounts: [account({ institution: 'monobank' })] });
+
+    mockButtonProps.length = 0;
+    await renderScreen();
+
+    // Once connected, Sync is the affirmative re-import CTA in the solid blue
+    // `primary` fill; Disconnect stays the neutral `secondaryTonal` tint beside
+    // it (never blue).
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.variant).toBe('primary');
+    expect(disconnectEntry?.variant).toBe('secondaryTonal');
+  });
+
+  it('keeps the not-yet-connected Connect action neutral (secondaryTonal), not blue', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
+
+    mockButtonProps.length = 0;
+    await renderScreen();
+
+    // Before connection the same action button is the neutral Connect affordance,
+    // so making Sync blue must NOT bleed into the Connect state.
+    const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
+    expect(connectEntry?.variant).toBe('secondaryTonal');
   });
 
   it('lists holdings for the account', async () => {
@@ -467,25 +542,25 @@ describe('AccountDetailScreen', () => {
       description: 'the account has not loaded yet',
       account: undefined,
       visible: [],
-      hidden: ['Connect Monobank', 'Sync now'],
+      hidden: ['Connect Monobank', 'Sync'],
     },
     {
       description: 'a bank account not yet connected to Monobank',
       account: account({ kind: 'bank', institution: null }),
       visible: ['Connect Monobank'],
-      hidden: ['Sync now'],
+      hidden: ['Sync'],
     },
     {
       description: 'a bank account connected to Monobank',
       account: account({ kind: 'bank', institution: 'monobank' }),
-      visible: ['Sync now'],
+      visible: ['Sync'],
       hidden: ['Connect Monobank'],
     },
     {
       description: 'a cash account',
       account: account({ kind: 'cash', institution: null }),
       visible: [],
-      hidden: ['Connect Monobank', 'Sync now'],
+      hidden: ['Connect Monobank', 'Sync'],
     },
   ];
 
@@ -511,7 +586,7 @@ describe('AccountDetailScreen', () => {
     });
     const { getByText, queryByText } = await renderScreen();
     expect(queryByText('Connect Monobank')).toBeNull();
-    expect(queryByText('Sync now')).toBeNull();
+    expect(queryByText('Sync')).toBeNull();
     expect(getByText('Monobank is connected to another account')).toBeTruthy();
   });
 
@@ -522,10 +597,10 @@ describe('AccountDetailScreen', () => {
     await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
   });
 
-  it('re-syncs a connected account when Sync now is pressed', async () => {
+  it('re-syncs a connected account when Sync is pressed', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
     const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('Sync now'));
+    await fireEvent.press(getByText('Sync'));
     await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
   });
 
@@ -759,7 +834,7 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
-  it('offers a Disconnect Monobank action on a connected account and confirms before disconnecting', async () => {
+  it('offers a Disconnect action on a connected account and confirms before disconnecting', async () => {
     mockDisconnect.mockResolvedValue(undefined);
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
@@ -769,20 +844,20 @@ describe('AccountDetailScreen', () => {
       holdings: [],
     });
     const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('Disconnect Monobank'));
+    await fireEvent.press(getByText('Disconnect'));
     // The action confirms (an Alert) before it clears the connection + token.
     expect(alertSpy).toHaveBeenCalled();
     await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
     alertSpy.mockRestore();
   });
 
-  it('does not offer Disconnect Monobank on an account that is not connected', async () => {
+  it('does not offer Disconnect on an account that is not connected', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: null })],
       holdings: [],
     });
     const { queryByText } = await renderScreen();
-    expect(queryByText('Disconnect Monobank')).toBeNull();
+    expect(queryByText('Disconnect')).toBeNull();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {
@@ -853,6 +928,7 @@ describe('AccountDetailScreen', () => {
 describe('AccountDetailScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockReadToken.mockResolvedValue('token-abc');

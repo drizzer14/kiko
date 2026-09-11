@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
@@ -273,6 +273,36 @@ describe('TrendFilterField Clear disabling', () => {
     await press(getByRole('button', { name: '5' }));
 
     expect(getByTestId(`${TEST_ID}-clear`)).not.toBeDisabled();
+  });
+});
+
+describe('TrendFilterField grouped cards', () => {
+  it('wraps each top-mode section control set in its own GlassSurface card', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+    await press(getByTestId(TEST_ID));
+
+    // Each logical section's controls sit INSIDE their own grouped card
+    // (the section header is a sub-heading ABOVE the card, not inside it), so
+    // the sheet reads as iOS-HIG grouped cards rather than one flat block.
+    const selection = getByTestId(`${TEST_ID}-group-selection`);
+    const amount = getByTestId(`${TEST_ID}-group-amount`);
+    const measure = getByTestId(`${TEST_ID}-group-by`);
+
+    expect(within(selection).getByText('Manual')).toBeTruthy();
+    expect(within(amount).getByRole('button', { name: '5' })).toBeTruthy();
+    expect(within(measure).getByText('Rising')).toBeTruthy();
+  });
+
+  it('wraps the manual category list in a GlassSurface card', async () => {
+    const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
+    await press(getByTestId(TEST_ID));
+
+    // The manual category rows are grouped inside their own card too.
+    const categories = getByTestId(`${TEST_ID}-group-categories`);
+
+    expect(within(categories).getByTestId(`${TEST_ID}-option-groceries`)).toBeTruthy();
   });
 });
 

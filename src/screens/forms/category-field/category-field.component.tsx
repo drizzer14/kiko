@@ -1,16 +1,10 @@
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  type LayoutChangeEvent,
-  Pressable,
-  ScrollView,
-  type ScrollViewInstance,
-} from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { ScrollView, type ScrollViewInstance } from 'react-native';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
+import SelectableRow from '../../../design-system/components/selectable-row';
 import Text from '../../../design-system/components/text';
 import FieldTrigger from '../field-trigger';
 
@@ -24,9 +18,10 @@ const PLACEHOLDER_ICON = 'tag';
 
 // A labeled single-select category picker: the field shows the current
 // selection (its SF Symbol + title, or a placeholder when none) and opens a
-// bottom sheet listing every category as a vertical row. One choice; the
-// selected row is tinted accent and carries a trailing checkmark, then the
-// sheet closes on pick. Mirrors the DateField's field-plus-sheet chrome so the
+// bottom sheet listing every category as a shared `SelectableRow`. One choice;
+// the selected row fills with the accent surface and carries the shared LEADING
+// checkmark (uniform with the manual picker), then the sheet closes on pick.
+// Mirrors the DateField's field-plus-sheet chrome so the
 // two form pickers read as one family. Unlike the sign ChipRow it is ALWAYS
 // editable — a synced transaction's category IS editable (the override
 // propagates to every same-name row), so there is no `disabled`.
@@ -37,7 +32,6 @@ const CategoryField = ({
   onSelect,
   required,
 }: CategoryFieldProps): ReactElement => {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<ScrollViewInstance>(null);
@@ -123,13 +117,16 @@ const CategoryField = ({
             const isSelected = option.key === selectedKey;
 
             return (
-              <Pressable
+              <SelectableRow
                 key={option.key}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
                 accessibilityLabel={option.title}
+                selected={isSelected}
                 onPress={() => handleSelect(option.key)}
-                onLayout={(event: LayoutChangeEvent) => {
+                label={option.title}
+                icon={option.icon}
+                iconColor={option.color}
+                onLayout={(event) => {
                   rowOffsets.current[option.key] = event.nativeEvent.layout.y;
                   // Secondary trigger: if the SELECTED row's offset lands after
                   // the content-size pass, jump the moment it is recorded. The
@@ -138,32 +135,7 @@ const CategoryField = ({
                     scrollToSelected();
                   }
                 }}
-                style={[
-                  styles.option,
-                  { backgroundColor: isSelected ? theme.colors.accent : 'transparent' },
-                ]}
-              >
-                {isSelected ? (
-                  // The selected row sits on the accent fill, so its glyph needs
-                  // the always-white `onAccent` tone to match the checkmark
-                  // below — `textPrimary` flips to black on the light theme and
-                  // would vanish there. SymbolIcon's `color` overrides `tone`,
-                  // so it must be omitted here.
-                  <SymbolIcon name={option.icon} size={18} tone="onAccent" />
-                ) : (
-                  <SymbolIcon name={option.icon} size={18} color={option.color} />
-                )}
-
-                <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
-                  {option.title}
-                </Text>
-
-                {isSelected && (
-                  <Box style={styles.checkmark}>
-                    <SymbolIcon name="checkmark" size={16} tone="onAccent" />
-                  </Box>
-                )}
-              </Pressable>
+              />
             );
           })}
         </ScrollView>

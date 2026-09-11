@@ -127,6 +127,15 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
+  it('separates the color picker and the synchronization sub-heading with form dividers', async () => {
+    // Default create mode is a bank account, so the "Synchronization" sub-heading
+    // renders: one divider sits after the color picker and one before that
+    // sub-heading.
+    const { getAllByTestId } = await renderForm();
+
+    expect(getAllByTestId('form-divider')).toHaveLength(2);
+  });
+
   it('marks only the required Name field with an asterisk', async () => {
     const { getByText, getAllByText } = await renderForm();
 
@@ -207,6 +216,42 @@ describe('AccountFormScreen', () => {
     expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('reuses the syncable Monobank token entry (API link + paste icon) on the create form', async () => {
+    // The bank create form must offer the SAME token-entry surface as the
+    // account-detail edit screen: the "Open api.monobank.ua" link and the
+    // paste-from-clipboard icon button, proving both consume the shared input
+    // rather than the old stripped-down bare TextField.
+    const { getByText, getByLabelText } = await renderForm();
+
+    // Default create mode is a bank account, so the entry surface is present.
+    expect(getByText('Open api.monobank.ua')).toBeTruthy();
+    expect(getByLabelText('Paste from clipboard')).toBeTruthy();
+  });
+
+  it('omits the Disconnect action from the bank create form', async () => {
+    // Disconnect is an edit-surface-only concern: on a fresh create there is
+    // nothing connected to disconnect, so the shared input must not carry it.
+    const { queryByText } = await renderForm();
+
+    expect(queryByText('Disconnect')).toBeNull();
+    expect(queryByText('Disconnect Monobank')).toBeNull();
+  });
+
+  it('fills the create-form token field from the clipboard via the shared paste icon', async () => {
+    const Clipboard = require('@react-native-clipboard/clipboard');
+    Clipboard.getString.mockResolvedValue('  pasted-token\n');
+
+    const { getByLabelText, findByDisplayValue } = await renderForm();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Paste from clipboard'));
+    });
+
+    // The pasted value is trimmed before it reaches the field, mirroring the
+    // edit surface's paste behavior.
+    expect(await findByDisplayValue('pasted-token')).toBeTruthy();
   });
 
   it('keeps the icon field visible after selecting the Cash kind', async () => {

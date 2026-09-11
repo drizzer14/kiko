@@ -1525,6 +1525,16 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(synced.queryByText('Convert to exchange')).toBeTruthy();
   });
 
+  it('renders the Convert to exchange action at the small inline size', async () => {
+    const { getByRole } = await renderEdit('expense-manual');
+
+    // The action is a small inline secondary of the form's Save CTA, so it takes
+    // the shorter `small` size (34pt visible, 44pt tap via hitSlop) rather than
+    // the taller 44pt `compact` — matching the other small inline actions.
+    const convert = getByRole('button', { name: 'Convert to exchange' });
+    expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(34);
+  });
+
   it('does NOT show the action for a zero amount or a non-liquid holding', async () => {
     const zero = await renderEdit('zero-amount');
     expect(zero.queryByText('Convert to exchange')).toBeNull();

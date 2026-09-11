@@ -456,13 +456,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     );
   };
 
-  const renderDayHeader = ({ section }: { section: DaySection<TransactionRow> }): ReactElement => (
-    <Box style={styles.sectionHeader}>
-      <Text variant="caption" tone="textSecondary">
-        {section.title}
-      </Text>
-    </Box>
-  );
+  const renderDayHeader = ({ section }: { section: DaySection<TransactionRow> }): ReactElement => {
+    // The content column already spaces the list one `gap` below the pinned
+    // filter/sync band, so the FIRST day header drops its day-separator top pad —
+    // otherwise the gap above the list would read larger than the equal gaps
+    // between the filters row, the sync-progress bar, and the list. Later headers
+    // keep the pad to separate day groups within the list.
+    const isFirstSection = sections[0] === section;
+
+    return (
+      <Box
+        testID="home-day-header"
+        style={[styles.sectionHeader, isFirstSection && styles.firstSectionHeader]}
+      >
+        <Text variant="caption" tone="textSecondary">
+          {section.title}
+        </Text>
+      </Box>
+    );
+  };
 
   return (
     // The SectionList below is this screen's own scrollable surface and applies
@@ -470,7 +482,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     // not also reserve it — `bleedBottom` drops Screen's own content clearance
     // to avoid double-counting the gap below the last transaction row.
     <Screen bleedBottom>
-      <Box gap={4} style={styles.content}>
+      <Box gap={4} testID="home-content" style={styles.content}>
         <GlassSurface transparent padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
             <Text variant="caption" tone="textSecondary">

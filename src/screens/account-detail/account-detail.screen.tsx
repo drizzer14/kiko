@@ -43,21 +43,25 @@ import { formatLastSyncAt } from './format-last-sync';
 import HoldingCard from './holding-card';
 import MonobankTokenField from './monobank-token-field';
 
-// Connect (mark institution + first import) and Sync now (re-import) are the
-// same action; only the label and glyph differ. A link glyph while the action
-// still establishes the connection, a refresh glyph once it re-imports.
+// Connect (mark institution + first import) and Sync (re-import) are the same
+// action; the label, glyph, and emphasis differ. A link glyph on the neutral
+// `secondaryTonal` fill while the action still establishes the connection; a
+// refresh glyph on the affirmative blue `primary` fill once it re-imports. The
+// variant is decided here (not inline) so the screen component's JSX stays a
+// straight read and its cognitive-complexity budget is unaffected.
 const actionPresentation = (
   isConnectedToMonobank: boolean,
   isSyncing: boolean,
   t: TFunction,
-): { label: string; icon: string } => {
+): { label: string; icon: string; variant: 'primary' | 'secondaryTonal' } => {
   if (!isConnectedToMonobank) {
-    return { label: t('accountDetail.connectMonobank'), icon: 'link' };
+    return { label: t('accountDetail.connectMonobank'), icon: 'link', variant: 'secondaryTonal' };
   }
 
   return {
     label: isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow'),
     icon: 'arrow.triangle.2.circlepath',
+    variant: 'primary',
   };
 };
 
@@ -148,7 +152,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // could fire `sync` again before the first resolves.
   const inFlight = useRef(false);
 
-  // Connect (mark institution + first import) and Sync now (re-import) are the
+  // Connect (mark institution + first import) and Sync (re-import) are the
   // same action against a bank account; only the label differs. Guard on a
   // stored token first so a missing token points the user at the token field
   // above (NO_TOKEN_MESSAGE) instead of surfacing an opaque sync failure.
@@ -199,13 +203,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     );
   };
 
-  const { label: actionLabel, icon: actionIcon } = actionPresentation(
-    isConnectedToMonobank,
-    isSyncing,
-    t,
-  );
+  const {
+    label: actionLabel,
+    icon: actionIcon,
+    variant: actionVariant,
+  } = actionPresentation(isConnectedToMonobank, isSyncing, t);
 
-  // Show the action button for the connected account (Sync now) or for an
+  // Show the action button for the connected account (Sync) or for an
   // unconnected bank account only while no OTHER account holds the connection.
   const showActionButton = isBankAccount && (isConnectedToMonobank || !otherAccountConnected);
   // A different account already owns the single Monobank connection.
@@ -251,10 +255,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {showActionButton && <MonobankTokenField isConnected={isConnectedToMonobank} />}
 
         {showActionButton && (
-          // gap={4} (not 2) so the "last synced" line ↔ "Sync now" spacing equals
-          // the "Sync now" ↔ "Disconnect" spacing (the content container's
-          // gap={4}), giving the three stacked elements one even rhythm — the same
-          // fix applied to the crypto sync section.
+          // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing equals
+          // the surrounding content container's gap={4}, keeping one even vertical
+          // rhythm. The Sync and Disconnect buttons themselves sit SIDE BY SIDE in
+          // the single actions row below, not stacked.
           <Box gap={4} testID="monobank-sync-status-actions">
             {isConnectedToMonobank && (
               <Box direction="row" gap={2} style={styles.statusLine}>
@@ -275,31 +279,36 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 </Text>
               </Box>
             )}
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                handlePress();
-              }}
-              disabled={isSyncing}
-              icon={actionIcon}
-            >
-              {actionLabel}
-            </Button>
+            {/* Sync and Disconnect share a single row. The Sync action is the
+              affirmative blue `primary` CTA once connected; before connection the
+              same button is the neutral Connect affordance (secondaryTonal).
+              Disconnect stays a neutral tonal action beside it — never blue. */}
+            <Box direction="row" gap={2} testID="monobank-sync-actions-row">
+              <Button
+                variant={actionVariant}
+                size="small"
+                fullWidth={false}
+                onPress={() => {
+                  handlePress();
+                }}
+                disabled={isSyncing}
+                icon={actionIcon}
+              >
+                {actionLabel}
+              </Button>
+              {isConnectedToMonobank && (
+                <Button
+                  variant="secondaryTonal"
+                  size="small"
+                  fullWidth={false}
+                  onPress={confirmDisconnect}
+                  icon="link.badge.plus"
+                >
+                  {t('accountDetail.disconnectAction')}
+                </Button>
+              )}
+            </Box>
           </Box>
-        )}
-
-        {isConnectedToMonobank && (
-          <Button
-            variant="secondaryTonal"
-            size="small"
-            fullWidth={false}
-            onPress={confirmDisconnect}
-            icon="link.badge.plus"
-          >
-            {t('accountDetail.disconnectMonobank')}
-          </Button>
         )}
 
         {showConnectedElsewhereHint && (

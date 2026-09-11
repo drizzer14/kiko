@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 
@@ -59,6 +60,37 @@ jest.mock('../binance-credentials-field', () => {
   };
 });
 
+// The Button variant maps to a themed fill inside a react-native-unistyles
+// `variants` block that the project's Jest mock strips from the resolved style,
+// so the fill is not observable on the host tree (and onAccent/textPrimary are
+// both white, so the label color cannot tell primary from secondaryTonal apart
+// either). Mock Button to record the `variant` it receives — following the
+// contribution-buttons precedent — while still rendering the label so every
+// getByText/press assertion is unaffected.
+const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+
+jest.mock('../../../design-system/components/button', () => {
+  const { Pressable, Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: (props: {
+      variant?: string;
+      children: ReactNode;
+      onPress: () => void;
+      disabled?: boolean;
+    }) => {
+      mockButtonProps.push({ variant: props.variant, children: props.children });
+
+      return (
+        <Pressable onPress={props.onPress} disabled={props.disabled}>
+          <RNText>{props.children}</RNText>
+        </Pressable>
+      );
+    },
+  };
+});
+
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
 const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
@@ -100,6 +132,7 @@ const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountR
 describe('CryptoSyncSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockButtonProps.length = 0;
     mockSync.mockResolvedValue(true);
     mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
     mockDisconnect.mockResolvedValue(undefined);
@@ -168,7 +201,7 @@ describe('CryptoSyncSection', () => {
     expect(getByText('Wallet is already connected to another account')).toBeTruthy();
   });
 
-  it('once connected to a wallet, shows Sync now + last sync and Disconnect Wallet, no picker or fields', async () => {
+  it('once connected to a wallet, shows Sync + last sync and Disconnect, no picker or fields', async () => {
     const syncedAt = 1_700_000_000_000;
     const { getByText, queryByText, queryByLabelText } = await render(
       <CryptoSyncSection
@@ -177,30 +210,42 @@ describe('CryptoSyncSection', () => {
       />,
     );
 
-    expect(getByText('Sync now')).toBeTruthy();
-    expect(getByText('Disconnect Wallet')).toBeTruthy();
+    expect(getByText('Sync')).toBeTruthy();
+    expect(getByText('Disconnect')).toBeTruthy();
     const stamp = formatDateTime(syncedAt);
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
-  it('spaces the last-sync line and Sync now button as widely as Sync now and Disconnect', async () => {
-    // The three stacked connected-state elements — the "last synced" line, the
-    // "Sync now" button, and the "Disconnect" button — must be evenly spaced.
-    // The gap inside the status/actions group (last sync ↔ Sync now) must equal
-    // the section root's gap (the actions group ↔ Disconnect).
-    const { getByTestId, toJSON } = await render(
+  it('puts Sync and Disconnect side by side in a single row', async () => {
+    const { getByTestId } = await render(
       <CryptoSyncSection
         account={account({ institution: 'btc_wallet' })}
         holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
       />,
     );
 
-    const rootGap = StyleSheet.flatten(toJSON()?.props.style).gap;
-    const groupGap = StyleSheet.flatten(getByTestId('crypto-sync-status-actions').props.style).gap;
+    // The two buttons now share one horizontal row rather than stacking.
+    const row = getByTestId('crypto-sync-actions-row');
+    expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
+  });
 
-    expect(groupGap).toBe(rootGap);
+  it('makes the Sync button blue (primary) and keeps Disconnect neutral (secondaryTonal)', async () => {
+    mockButtonProps.length = 0;
+    await render(
+      <CryptoSyncSection
+        account={account({ institution: 'btc_wallet' })}
+        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
+      />,
+    );
+
+    // Sync is the affirmative re-import CTA, so it takes the solid blue `primary`
+    // accent fill; Disconnect stays the neutral `secondaryTonal` tint beside it.
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.variant).toBe('primary');
+    expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
   it('shows Never when a connected account has no synced holding yet', async () => {
@@ -216,7 +261,7 @@ describe('CryptoSyncSection', () => {
       <CryptoSyncSection account={account({ institution: 'btc_wallet' })} holdings={[]} />,
     );
 
-    await fireEvent.press(getByText('Sync now'));
+    await fireEvent.press(getByText('Sync'));
 
     await waitFor(() =>
       expect(mockSync).toHaveBeenCalledWith({ providerId: 'btc_wallet', targetAccountId: 'a' }),
@@ -231,8 +276,10 @@ describe('CryptoSyncSection', () => {
       <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
     );
 
-    await fireEvent.press(getByText('Disconnect Binance'));
+    await fireEvent.press(getByText('Disconnect'));
 
+    // The confirm sheet TITLE stays provider-specific ("Disconnect Binance"),
+    // even though the button label itself is the single word "Disconnect".
     expect(alertSpy).toHaveBeenCalledWith(
       'Disconnect Binance',
       expect.stringContaining('stored API key'),
