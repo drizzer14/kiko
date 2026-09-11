@@ -257,7 +257,6 @@ export const uk: typeof en = {
     pasteApiKey: 'Вставити API ключ із буфера обміну',
     pasteApiSecret: 'Вставити API секрет із буфера обміну',
     pasteFromClipboard: 'Вставити з буфера обміну',
-    sourceConnectedElsewhere: '{{source}} вже підключено до іншого рахунку',
     sourceLabel: 'Джерело',
     synchronization: 'Синхронізація',
     syncing: 'Синхронізуємо…',

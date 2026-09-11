@@ -275,7 +275,6 @@ export const en = {
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
-    sourceConnectedElsewhere: '{{source}} is already connected to another account',
     sourceLabel: 'Source',
     synchronization: 'Synchronization',
     syncing: 'Syncing…',

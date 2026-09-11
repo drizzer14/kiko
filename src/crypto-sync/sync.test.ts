@@ -222,7 +222,7 @@ describe('runBalanceSync', () => {
     );
   });
 
-  it('rejects connecting a second account while another holds the same institution, writing nothing', async () => {
+  it('connects a SECOND wallet account while another already holds a wallet (multi-connection)', async () => {
     const { provider, calls } = makeProvider();
     const { deps, accountsStore, holdingsStore } = makeInMemoryDeps([
       cryptoAccount({ id: 'acc-a', institution: 'btc_wallet' }),
@@ -230,12 +230,29 @@ describe('runBalanceSync', () => {
     ]);
     deps.targetAccountId = 'acc-b';
 
-    await expect(runBalanceSync(provider, { balances: [walletBalance(1)] }, deps)).rejects.toThrow(
-      'Wallet is already connected to another account',
-    );
-    expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBeNull();
-    expect(holdingsStore).toHaveLength(0);
-    expect(calls).toHaveLength(0);
+    await runBalanceSync(provider, { balances: [walletBalance(7)] }, deps);
+
+    // The second wallet resolves to its OWN account and writes its own holding —
+    // the one-connection-per-institution gate is gone (Task 5.2).
+    expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBe('btc_wallet');
+    expect(holdingsStore).toHaveLength(1);
+    expect(holdingsStore[0].accountId).toBe('acc-b');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].accountId).toBe('acc-b');
+  });
+
+  it('connects a SECOND Binance account while another already holds Binance (multi-connection)', async () => {
+    const { provider, calls } = makeProvider('binance');
+    const { deps, accountsStore } = makeInMemoryDeps([
+      cryptoAccount({ id: 'acc-a', institution: 'binance' }),
+      cryptoAccount({ id: 'acc-b', institution: null }),
+    ]);
+    deps.targetAccountId = 'acc-b';
+
+    await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
+
+    expect(accountsStore.map((account) => account.institution)).toEqual(['binance', 'binance']);
+    expect(calls[0].accountId).toBe('acc-b');
   });
 
   it('lets a wallet connection coexist with a Binance connection on another account', async () => {
