@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { Rect, Svg } from 'react-native-svg';
@@ -133,4 +133,4 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
   );
 };
 
-export default BarChart;
+export default memo(BarChart);
