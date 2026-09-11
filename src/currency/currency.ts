@@ -25,3 +25,14 @@ export const currencySymbol: Record<Currency, string> = {
 
 export const isCurrency = (value: string): value is Currency =>
   (currencyOptions as readonly string[]).includes(value);
+
+// Places the currency symbol relative to a formatted amount body: the UAH code
+// suffixes its symbol (Ukrainian convention, "2,500.00 ₴"), every other currency
+// prefixes it ("$1,234.50"). Any sign sits outside the symbol on both paths
+// ("-$1,234.50", "-2,500.00 ₴"). Shared by `formatMoney` and `formatCompactMoney`
+// so the placement rule lives in exactly one place.
+export const applySymbolPlacement = (currency: Currency, sign: string, body: string): string => {
+  const symbol = currencySymbol[currency];
+
+  return currency === 'UAH' ? `${sign}${body} ${symbol}` : `${sign}${symbol}${body}`;
+};

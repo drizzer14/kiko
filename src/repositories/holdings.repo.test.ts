@@ -841,8 +841,15 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
   // the opening balance as `currentBalance - sum(transactions)`, so a bare
   // balance write shifted every PAST point of the net-worth series by the delta.
   // With the delta on the ledger, the past is unchanged and only the edit
-  // instant moves.
+  // instant moves. `holdingValueAt` applies transactions by LOCAL DAY (to match
+  // the local-midnight daily buckets), so the edit and the past point it must not
+  // shift are dated on DIFFERENT calendar days here — a same-day pair would (by
+  // design) land in the same bucket.
   it('leaves the reconstructed history unshifted after a balance edit', async () => {
+    const DAY = 86_400_000;
+    const base = Date.UTC(2026, 0, 1);
+    const pastDay = base + DAY; // the earlier point the edit must not shift
+    const editDay = base + 2 * DAY; // the edit lands a later calendar day
     const holding = {
       id: 'h-1',
       currency: 'UAH',
@@ -850,12 +857,12 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       balanceMinorUnits: 100_00,
       metadata: null,
     } as const;
-    const earlier = { time: 1_000, amountMinorUnits: 10_00 };
-    const before = holdingValueAt(holding, [earlier], 5_000);
+    const earlier = { time: base, amountMinorUnits: 10_00 };
+    const before = holdingValueAt(holding, [earlier], pastDay);
     const { tx, captured } = makeBalanceDeltaTx({ balanceMinorUnits: holding.balanceMinorUnits });
     mockTx = tx;
 
-    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, 9_000);
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balanceMinorUnits: 500_00 }, editDay);
 
     const edited = {
       ...holding,
@@ -863,11 +870,11 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     };
     const ledger = [
       earlier,
-      { time: 9_000, amountMinorUnits: captured.inserts[0].amountMinorUnits as number },
+      { time: editDay, amountMinorUnits: captured.inserts[0].amountMinorUnits as number },
     ];
 
-    expect(holdingValueAt(edited, ledger, 5_000)).toBe(before);
-    expect(holdingValueAt(edited, ledger, 9_000)).toBe(500_00);
+    expect(holdingValueAt(edited, ledger, pastDay)).toBe(before);
+    expect(holdingValueAt(edited, ledger, editDay)).toBe(500_00);
   });
 });
 

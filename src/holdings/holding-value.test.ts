@@ -117,9 +117,13 @@ describe('holdingValue', () => {
         compounding: 'monthly',
       },
     };
-    // Held a full year => 1000.00 cumulative interest, tax 230.00, net 10,770.00.
+    // BUG2 day-after convention: over a 365-day span a recap-OFF deposit earns
+    // 364 days (it accrues from the day AFTER the contribution, matching the
+    // recap-ON engine), not 365. Gross = 10,000 * 10% * 364/365 = 997.26;
+    // tax = round(99726*18%) + round(99726*5%) = 17,951 + 4,986 = 22,937;
+    // net = 1,000,000 + 99,726 - 22,937 = 1,076,789.
     const value = holdingValue(holding, AFTER_1Y);
-    expect(value.equals(Money.of('UAH', 1_077_000))).toBe(true);
+    expect(value.equals(Money.of('UAH', 1_076_789))).toBe(true);
   });
 
   it('accrues cumulative interest for a recap-OFF daily-compounding deposit', () => {
@@ -317,14 +321,16 @@ describe('holdingValueBreakdown', () => {
   });
 
   it('surfaces cumulative accrued interest, net of tax, for a non-recapitalizing deposit', () => {
-    // deposit(): 100000 minor (1000.00) at 10% annual, held one year => 100.00
-    // cumulative interest (10000 minor), tax round(18%)+round(5%) = 2300.
+    // BUG2 day-after convention: recap-OFF now accrues from the day AFTER the
+    // contribution, matching the recap-ON engine above. So over the 365-day span
+    // it earns 364 days — 99.73 (9973 minor), tax round(18%)+round(5%) = 2294 —
+    // the SAME first-period figures as the recap-ON breakdown.
     const b = holdingValueBreakdown(deposit({ recapitalization: false }), AFTER_1Y);
     expect(b.principalOrCost.minorUnits).toBe(100000);
-    expect(b.interest.minorUnits).toBe(10000);
-    expect(b.tax.minorUnits).toBe(2300);
-    expect(b.gross.minorUnits).toBe(110000);
-    expect(b.net.minorUnits).toBe(107700);
+    expect(b.interest.minorUnits).toBe(9973);
+    expect(b.tax.minorUnits).toBe(2294);
+    expect(b.gross.minorUnits).toBe(109973);
+    expect(b.net.minorUnits).toBe(107679);
   });
 
   // A live bond is valued at its nominal (100,000 minor here), flat, regardless

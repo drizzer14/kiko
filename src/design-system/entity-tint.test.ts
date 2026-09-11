@@ -1,39 +1,5 @@
-import {
-  darkenHex,
-  ENTITY_TINT_OPACITY,
-  entityCardBackground,
-  entityTintBackground,
-  resolveEntityColor,
-} from './entity-tint';
+import { darkenHex, entityCardBackground, resolveEntityColor } from './entity-tint';
 import { darkTheme } from './theme';
-
-describe('entityTintBackground', () => {
-  it('defaults to the ENTITY_TINT_OPACITY token, in the 8-14% subtle-wash band', () => {
-    expect(ENTITY_TINT_OPACITY).toBeGreaterThanOrEqual(0.08);
-    expect(ENTITY_TINT_OPACITY).toBeLessThanOrEqual(0.14);
-  });
-
-  it('converts an entity-color hex to an rgba() string at the default opacity', () => {
-    expect(entityTintBackground('#FF453A')).toBe(`rgba(255, 69, 58, ${ENTITY_TINT_OPACITY})`);
-  });
-
-  it('accepts a lowercase hex the same way as uppercase', () => {
-    expect(entityTintBackground('#ff453a')).toBe(`rgba(255, 69, 58, ${ENTITY_TINT_OPACITY})`);
-  });
-
-  it('produces a distinct rgba() for every entity-color swatch in the theme', () => {
-    const { entityColors } = darkTheme.colors;
-    const tints = Object.values(entityColors).map((hex) => entityTintBackground(hex));
-
-    expect(new Set(tints).size).toBe(tints.length);
-  });
-
-  it('throws on a non-hex input rather than silently producing an invalid color', () => {
-    expect(() => entityTintBackground('not-a-hex')).toThrow(
-      'entityTintBackground: expected a #RRGGBB hex, received "not-a-hex"',
-    );
-  });
-});
 
 describe('darkenHex', () => {
   it('moves every channel toward black by the given percent', () => {
@@ -65,8 +31,8 @@ describe('entityCardBackground', () => {
     expect(entityCardBackground('#FF453A')).toBe(darkenHex('#FF453A', 90));
   });
 
-  it('differs from the plain (non-darkened) tint of the same hue', () => {
-    expect(entityCardBackground('#FF453A')).not.toBe(entityTintBackground('#FF453A'));
+  it('differs from a plain translucent rgba() tint of the same hue', () => {
+    expect(entityCardBackground('#FF453A')).not.toBe('rgba(255, 69, 58, 0.1)');
   });
 
   it('reads plainly darker than the raw entity hue on every channel, for every swatch', () => {
@@ -138,9 +104,9 @@ describe('resolveEntityColor', () => {
     const resolved = resolveEntityColor(null, undefined);
 
     expect(resolved).toBe(darkTheme.colors.entityColors.gray);
-    // The fallback itself must be a valid hex `entityTintBackground` accepts,
+    // The fallback itself must be a valid hex `entityCardBackground` accepts,
     // so a card's background never throws.
-    expect(() => entityTintBackground(resolved)).not.toThrow();
+    expect(() => entityCardBackground(resolved)).not.toThrow();
   });
 
   it('falls back to the safe default swatch when the stored color is an empty string and the type default is unmapped', () => {
