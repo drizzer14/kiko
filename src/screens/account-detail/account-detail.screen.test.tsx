@@ -125,10 +125,6 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
       __kind: 'byId',
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
-    connectedQuery: () => ({
-      __kind: 'connected',
-      toSQL: () => ({ sql: '', params: ['monobank'] }),
-    }),
     setIcon: (...args: unknown[]) => mockAccountSetIcon(...args),
     update: (...args: unknown[]) => mockAccountUpdate(...args),
   },
@@ -190,27 +186,20 @@ type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null
 
 /**
  * Drive the `useLiveQuery` calls, keying on the query's `__kind` (the
- * account-by-id and connected queries both subscribe to `['accounts']`, so the
- * table name alone can't tell them apart) and otherwise on the subscribed
- * table. `connected` defaults to the accounts currently marked
- * `institution: 'monobank'`; `settings` defaults to a UAH base. The Monobank
- * "last sync" line now reads the PER-CONNECTION `sync_state` cursor, seeded via
- * `syncState`.
+ * account-by-id query subscribes to `['accounts']`, so the table name alone
+ * can't tell it apart from a future account query) and otherwise on the
+ * subscribed table. `settings` defaults to a UAH base. The Monobank "last sync"
+ * line now reads the PER-CONNECTION `sync_state` cursor, seeded via `syncState`.
  */
 const setLiveData = (data: {
   accounts?: Account[];
   holdings?: Holding[];
-  connected?: Account[];
   rates?: Rate[];
   settings?: Settings[];
   syncState?: SyncState[];
 }): void => {
   const accounts = data.accounts ?? [];
-  const connected = data.connected ?? accounts.filter((a) => a.institution === 'monobank');
-  mockUseLiveQuery.mockImplementation((query: { __kind?: string }, tables: string[]) => {
-    if (query.__kind === 'connected') {
-      return { data: connected };
-    }
+  mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
     if (tables[0] === 'holdings') {
       // A real holding row always carries a `type`; default it here so a fixture
       // that only cares about name/currency/balance still yields a valid type
@@ -590,16 +579,17 @@ describe('AccountDetailScreen', () => {
     },
   );
 
-  it('hides Connect and shows a hint when another account is already connected', async () => {
+  it('lets a bank account connect independently, with no single-connection gate or hint', async () => {
+    // The single-connection gate is gone: a bank account shows Connect on its
+    // own — the screen no longer queries whether another account already holds a
+    // Monobank connection — and no "connected elsewhere" hint is ever rendered.
     setLiveData({
       accounts: [account({ id: 'a', kind: 'bank', institution: null })],
       holdings: [],
-      connected: [account({ id: 'other', kind: 'bank', institution: 'monobank' })],
     });
     const { getByText, queryByText } = await renderScreen();
-    expect(queryByText('Connect Monobank')).toBeNull();
-    expect(queryByText('Sync')).toBeNull();
-    expect(getByText('Monobank is connected to another account')).toBeTruthy();
+    expect(getByText('Connect Monobank')).toBeTruthy();
+    expect(queryByText('Monobank is connected to another account')).toBeNull();
   });
 
   it('syncs the account when a Monobank token exists (Connect action)', async () => {

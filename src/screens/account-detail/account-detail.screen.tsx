@@ -92,7 +92,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { t } = useTranslation();
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
-  const { data: connectedAccounts } = useLiveQuery(accountsRepo.connectedQuery(), ['accounts']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   // The Monobank "last sync" line reads this account's OWN cursor from the
@@ -147,9 +146,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const isBankAccount = account?.kind === 'bank';
   const isCryptoAccount = account?.kind === 'crypto';
   const isConnectedToMonobank = account?.institution === 'monobank';
-  // The single-connection invariant: another account already holds the one
-  // Monobank connection, so this one may not connect a second.
-  const otherAccountConnected = connectedAccounts.some((connected) => connected.id !== accountId);
 
   const { isSyncing, error, sync } = useSync();
   const [tokenMessage, setTokenMessage] = useState<string | undefined>();
@@ -215,12 +211,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     variant: actionVariant,
   } = actionPresentation(isConnectedToMonobank, isSyncing, t);
 
-  // Show the action button for the connected account (Sync) or for an
-  // unconnected bank account only while no OTHER account holds the connection.
-  const showActionButton = isBankAccount && (isConnectedToMonobank || !otherAccountConnected);
-  // A different account already owns the single Monobank connection.
-  const showConnectedElsewhereHint =
-    isBankAccount && !isConnectedToMonobank && otherAccountConnected;
+  // Every bank account shows the connect/sync affordance independently — there
+  // is no single-connection gate, so a second Monobank account can connect
+  // alongside the first (each binds its own per-account token and cursor).
+  const showActionButton = isBankAccount;
 
   return (
     <Screen
@@ -317,12 +311,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               )}
             </Box>
           </Box>
-        )}
-
-        {showConnectedElsewhereHint && (
-          <Text variant="caption" tone="textSecondary">
-            {t('accountDetail.connectedElsewhere')}
-          </Text>
         )}
 
         {tokenMessage !== undefined && (
