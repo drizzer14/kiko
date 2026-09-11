@@ -269,8 +269,9 @@ new component can land between reviews of this skill:
   `surface` backdrop and an entity-color wash — see "Entity color and
   tint" below. A `transparent` (a neutral frosted see-through PANEL —
   the settings, system, and category cards, the Statistics screen's
-  chart cards, the Home net-worth card, and the transaction/ledger list
-  rows on Home and holding-detail) paints a TRANSLUCENT
+  chart cards, the Home net-worth card, and the holding-detail ledger
+  list rows — the Home transaction row now takes the live-blur
+  `material` variant instead, see below) paints a TRANSLUCENT
   `surfaceTranslucent` backdrop and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. The `transparent`-vs-`tint` split is the rule for a new
@@ -284,13 +285,19 @@ new component can land between reviews of this skill:
   `radius` prop so the reveal clips to the same corners (GlassSurface
   defaults to `md`). Neither prop keeps the fully-live see-through material (no
   backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
-  surface whose backdrop is STATIC while shown (BottomSheet is the one
+  surface whose backdrop is STATIC while shown (BottomSheet is the first
   consumer): it keeps the fully-live see-through glass on the glass path
   (no backdrop at all, so the material samples the real content behind it —
   a true blur, not `transparent`'s partially-pinned sample) but, unlike a
   plain surface, still takes a TRANSLUCENT (not opaque) fallback fill on the
-  non-glass path, so a device without Liquid Glass reads see-through too. A
-  `tint` wins over `material` the same way it wins over `transparent`. Read
+  non-glass path, so a device without Liquid Glass reads see-through too. The
+  Home transaction row is a SECOND consumer that does NOT meet the static-
+  backdrop condition (it is a scrolling list card, so its live sample drifts
+  in lightness on scroll) but takes `material` anyway per an explicit product
+  decision to match the sheet's look, knowingly accepting that drift over
+  `transparent`'s partial pin — so the static-backdrop rule is the default
+  guidance, not an invariant. A `tint` wins over `material` the same way it
+  wins over `transparent`. Read
   `glass-surface.props.d.ts` for the exact current prop set rather than
   trusting this summary if it drifts.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent

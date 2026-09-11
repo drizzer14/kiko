@@ -40,9 +40,17 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // A manual row edits; a synced (Monobank) row opens read-only — the form
   // resolves which from the transaction's own `source`, so the row only needs
   // to pass the id.
+  //
+  // The card uses GlassSurface's `material` variant — the live-blur glass the
+  // BottomSheet uses (live-sampling Liquid Glass on iOS 26, a translucent
+  // fallback elsewhere) — so the row reads as glass consistent with the sheet.
+  // This is a deliberate product choice over `transparent`: `material` samples
+  // the live content behind it, so its lightness DRIFTS slightly as the list
+  // scrolls (the trade-off `transparent`'s partial pin was there to soften),
+  // accepted here to match the sheet's look.
   return (
     <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
-      <GlassSurface transparent padding={3} testID="transaction-row" style={styles.rowCard}>
+      <GlassSurface material padding={3} testID="transaction-row" style={styles.rowCard}>
         <Box gap={2}>
           <Box direction="row" style={styles.rowMain}>
             <Box direction="row" gap={2} style={styles.rowLead}>
