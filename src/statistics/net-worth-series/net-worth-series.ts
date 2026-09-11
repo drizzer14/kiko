@@ -1,4 +1,4 @@
-import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history.repo';
+import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
 import type { Currency } from '../../currency/currency';
 import { Money, toMajor } from '../../currency/money';

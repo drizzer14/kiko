@@ -1,7 +1,7 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { rateHistoryRepo } from '@kiko/rates/rate-history.repo';
+import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { transactionsRepo } from '@kiko/transactions/repo';

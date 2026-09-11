@@ -1,5 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides.repo';
+import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';

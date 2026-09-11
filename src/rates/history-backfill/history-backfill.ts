@@ -1,4 +1,4 @@
-import { rateHistoryRepo } from '@kiko/rates/rate-history.repo';
+import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
 import type { Currency } from '../../currency/currency';
 import type { CurrencyRateHistoryRow } from '../../db/schema';

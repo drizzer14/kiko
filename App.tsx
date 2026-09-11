@@ -13,7 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import LockGate from './src/auth/lock-gate/lock-gate.component';
 import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-settings';
-import MigrationsGate from './src/migration/migrations.gate';
+import MigrationsGate from './src/migration/migrations-gate';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
 import { useAutoSync } from './src/sync/use-auto-sync';

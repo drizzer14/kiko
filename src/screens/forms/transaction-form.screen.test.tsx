@@ -71,7 +71,7 @@ jest.mock('@kiko/categories/repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('@kiko/categories/category-overrides.repo', () => ({
+jest.mock('@kiko/categories/category-overrides-repo', () => ({
   categoryOverridesRepo: {
     upsertCategoryOverride: (...args: unknown[]) => mockUpsertCategoryOverride(...args),
   },
