@@ -137,12 +137,15 @@ verified usage, not dead weight:
   Babel plugin referenced only as the string `'inline-import'` in
   `babel.config.js` (it inlines the drizzle-orm migration `.sql`
   files as string exports), never imported from source, so Knip's
-  static scan cannot see the usage.
+  static scan cannot see the usage. Also `babel-plugin-module-resolver`
+  — a Babel plugin referenced only as the string `'module-resolver'` in
+  `babel.config.js` (it resolves the `@kiko/*` path aliases to `src/*`),
+  never imported from source, so Knip's static scan cannot see the usage.
 - **`tsconfig.json` `compilerOptions.types`**: the base
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that four test
   files legitimately use — `src/db/schema.category-overrides.test.ts`
-  and `src/repositories/categories.repo.test.ts` read
+  and `src/categories/categories.repo.test.ts` read
   `drizzle/migrations` through `node:fs` + `__dirname`,
   `__tests__/info-plist.test.ts` reads `ios/Kiko/Info.plist` the same
   way, and `src/holdings/interest.test.ts` sets `process.env.TZ` to
@@ -195,7 +198,11 @@ verified usage, not dead weight:
   `babel-plugin-inline-import` — a Babel plugin referenced only as the
   string `'inline-import'` in `babel.config.js` (it inlines the
   drizzle-orm migration `.sql` files as string exports), never
-  imported from source, for the same reason.
+  imported from source, for the same reason. Also
+  `babel-plugin-module-resolver` — referenced only as the string
+  `'module-resolver'` in `babel.config.js` (it resolves the `@kiko/*`
+  path aliases to `src/*`), never imported from source, for the same
+  reason.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
@@ -288,7 +295,7 @@ verified usage, not dead weight:
   `existsSync`, `__dirname`, `require` of a non-module path). **KEEP-LIST**
   — external paths tests DO read, which must stay in the sandbox and are
   therefore NOT ignored: `drizzle/migrations/**` (read by
-  `src/db/schema.*.test.ts`, `src/repositories/categories.repo.test.ts`,
+  `src/db/schema.*.test.ts`, `src/categories/categories.repo.test.ts`,
   and `src/db/__fixtures__/seed-category-colors.ts` via `__dirname`
   +`node:fs`) and `scripts/checks/*.sh` (read by the `__tests__/mutation-*`
   wrapper tests). `reports/` is deliberately kept: Stryker's incremental
