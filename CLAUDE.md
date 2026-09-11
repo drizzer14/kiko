@@ -25,6 +25,7 @@ below).
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
+| `npm run check:screenshots` | Maestro (`.maestro/appstore-screenshots.yaml`) + pixelmatch (`scripts/checks/screenshot-diff/compare-png.js`) | any captured image's per-pixel mismatch ratio over 0.5% (`maxMismatchRatio`) at pixelmatch `threshold` 0.1 fails; so does a missing baseline, a missing captured file, a Maestro run that fails or captures zero PNGs, or `maestro` missing from PATH | deep/manual only — needs a booted, pinned simulator with a screenshot-mode build already installed (ops), so it is NOT in `check:all`/`check:deep` and NOT hook-wired |
 
 Composite scripts:
 
@@ -95,6 +96,95 @@ skip is recorded only on a PASS, so a failing check always re-runs.
 `osv-scanner` is deliberately never deduped: its result depends on the
 external vulnerability database, which changes even when the lockfile
 does not.
+
+### `check:screenshots` (App Store screenshot visual regression)
+
+`scripts/checks/screenshots.sh` is a second manual/deep-tier check,
+same class as `check:mutation`: it needs a booted, pinned iOS
+simulator ("iPhone 17 Pro Max", 6.9-inch, 1320x2868 portrait) with a
+screenshot-mode build (`ENVFILE=.env.screenshots`) already installed
+— that step is the ops agent's job, never this wrapper's — so it is
+**not** wired to any hook and **not** part of `check:all` or
+`check:deep`. Run it by hand: `npm run check:screenshots`.
+
+It runs `.maestro/appstore-screenshots.yaml` (Maestro must be on
+`PATH`; the wrapper fails closed if it is not) through the shared
+`run_flow_and_collect` helper in
+`scripts/checks/screenshot-diff/run-flow-and-collect.sh`, then
+pixel-diffs every captured PNG against the committed baseline of the
+same name under `screenshots/appstore/6.9-inch/uk/`, using the pure
+`comparePng` core in `scripts/checks/screenshot-diff/compare-png.js`
+(also usable as a CLI, under that file's `require.main` guard — see
+its own header comment). Those committed baselines are simultaneously
+the App Store deliverable images and the regression baseline;
+`npm run screenshots:capture` (`scripts/screenshots-capture.sh`) is
+how ops produces/refreshes that set from a real capture — it is a
+separate, standalone script (no `_lib.sh`, no `print_block`, not a
+check, not in `check:all`/`check:deep`, not hook-wired) that runs the
+SAME flow through the SAME shared helper and copies the 12 named PNGs
+it captures into `screenshots/appstore/6.9-inch/uk/` (`mkdir -p`'d
+first, overwriting what was there); it never commits.
+
+The flow/helper/capture-script/check quartet had to route around a
+Maestro 2.10.0 constraint discovered only at runtime, verified by
+decompiling the installed `maestro-orchestra.jar` /
+`maestro-cli-2.10.0.jar` with `javap` (no other doc source covers
+this): `takeScreenshot` REFUSES any path that resolves outside this
+run's own `takeScreenshot` artifact folder — `Path.resolve()` on an
+absolute argument discards the base path entirely, so an
+`${OUTPUT_DIR}/<name>`-style absolute path (the original design)
+always fails that confinement check ("... it resolves outside this
+run's takeScreenshot output folder"). The flow therefore uses a BARE
+relative name per `takeScreenshot:` step (Maestro appends `.png`
+itself), and `run_flow_and_collect` runs
+`maestro test --debug-output <fresh temp dir> <flow>` and then
+SEARCHES that temp tree for `takeScreenshot/<name>.png` by basename —
+the exact nested path
+(`<debug-output-dir>/.maestro/tests/<session-timestamp>/<flow-name>[_N]/takeScreenshot/<name>.png`)
+embeds an unpredictable session-timestamp and flow-name segment, so it
+is located by search, not assumed. `takeScreenshot` (our named
+captures) and `screenshots` (Maestro's own automatic per-step debug
+capture, named `step-NNN-<commandName>.png`) are two DIFFERENT
+artifact collection directories Maestro writes under `--debug-output`
+— confirmed on disk during this investigation — so the search is
+scoped to the `takeScreenshot/` directory specifically, never the
+generic `screenshots/` one. The 12 canonical shot names are declared
+once, as `SCREENSHOT_NAMES`, in `run-flow-and-collect.sh` itself — the
+single source of truth both the check and the capture script read, so
+the shot list cannot drift between them.
+
+Chosen tolerances (kept in sync between `compare-png.js`'s own
+comment and `screenshots.sh`): a pixelmatch per-pixel color-distance
+`threshold` of `0.1` (pixelmatch's own documented default, restated
+explicitly so it reads as a deliberate choice rather than an inherited
+default that could silently drift on an upgrade) and a per-image
+`maxMismatchRatio` of `0.005` (0.5% of an image's pixels may differ
+before the whole image fails) — wide enough to absorb
+`@callstack/liquid-glass`'s blur material and any residual sub-pixel
+animation settling (reduced motion lowers this but does not guarantee
+bit-for-bit-identical stills across runs), narrow enough to still
+catch a real visual regression. A dimension mismatch is a hard fail,
+never a crash. The check also fails closed on a missing baseline, a
+missing captured file, a Maestro run that itself fails, and — the
+failure mode that would otherwise silently defeat the whole check — a
+"successful" Maestro run that captured zero PNGs.
+
+`compare-png.js`'s pure `comparePng(baselineBuffer, currentBuffer,
+options)` core is hermetically unit-tested in the colocated
+`compare-png.test.js` (identical buffers pass; a large enough pixel
+delta fails; a dimension mismatch fails without throwing) — no
+simulator involved, modeled on `__tests__/mutation-*.test.ts`'s
+"drive the real logic through a fast seam" shape.
+
+`pixelmatch` is pinned to `^5.3.0`, not the current major: `pixelmatch`
+6.0.0+ ships ESM-only (`export default`), which neither Jest's default
+CommonJS transform nor a plain `node compare-png.js` CLI invocation
+(no ts-node/tsx/babel-node in this project's toolchain) can `require()`.
+5.3.0 is the last CommonJS release line. `pngjs` has no such
+constraint and is pinned to `^7.0.0`. Both are devDependencies:
+`compare-png.js` is invoked only via `scripts/checks/screenshots.sh`
+(as a CLI) and its own colocated test, never imported from app `src/`
+code that ships to device.
 
 ## Override protocol
 

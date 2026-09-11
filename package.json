@@ -16,6 +16,8 @@
     "check:secrets": "bash scripts/checks/secrets.sh",
     "check:overrides": "bash scripts/checks/override-guard.sh",
     "check:typecheck": "bash scripts/checks/typecheck.sh",
+    "check:screenshots": "bash scripts/checks/screenshots.sh",
+    "screenshots:capture": "bash scripts/screenshots-capture.sh",
     "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:rules && npm run check:plist && npm run check:secrets && npm run check:overrides && npm run check:typecheck",
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",
@@ -81,6 +83,8 @@
     "jscpd": "^4.3.0",
     "knip": "^5.88.1",
     "patch-package": "^8.0.1",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
     "react-native-dotenv": "^4.1.1",
     "typescript": "^6.0.3"
   },

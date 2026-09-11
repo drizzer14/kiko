@@ -8,4 +8,9 @@ declare module '@env' {
   export const BTC_EXPLORER_ENDPOINT: string;
   export const BINANCE_API_ENDPOINT: string;
   export const BINANCE_API_MANAGEMENT_URL: string;
+  // DEV/TEST-ONLY (screenshot mode). Present only in `.env.screenshots`, absent
+  // from the committed `.env`, so a production build inlines `undefined`. Typed
+  // as optional to model that absence honestly — see src/screenshot/.
+  export const SCREENSHOT_MODE: string | undefined;
+  export const SCREENSHOT_LANG: string | undefined;
 }
