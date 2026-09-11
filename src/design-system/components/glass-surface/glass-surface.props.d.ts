@@ -54,11 +54,18 @@ export type GlassSurfaceProps = ViewProps & {
   // content behind it for a true blur look. Reach for it only for a surface
   // whose backdrop is STATIC while shown (a modal bottom sheet) — the
   // lightness-drift concern that motivates `transparent`'s partial pin for a
-  // scrolling card does not apply there. `BottomSheet` is the one consumer
-  // today (its `glassFill`); a new consumer should confirm the same static-
-  // backdrop condition before reaching for this instead of `transparent`. A
-  // `tint` (an entity card, which must stay opaque) always wins over this too,
-  // the same as `transparent`. Defaults to `false`.
+  // scrolling card does not apply there. `BottomSheet` is the first consumer
+  // (its `glassFill`), and the STATIC-backdrop condition is why it can. The
+  // Home transaction row is a SECOND consumer that does NOT meet that
+  // condition — it is a scrolling list card, so its live glass sample drifts in
+  // lightness on scroll — but takes `material` anyway per an explicit product
+  // decision to match the sheet's look, knowingly accepting that drift over
+  // `transparent`'s partial pin. So the static-backdrop rule is the DEFAULT
+  // guidance, not an invariant: a new consumer should still confirm it before
+  // reaching for this over `transparent`, or record (as the row does) a
+  // deliberate choice to accept the drift. A `tint` (an entity card, which must
+  // stay opaque) always wins over this too, the same as `transparent`. Defaults
+  // to `false`.
   material?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the

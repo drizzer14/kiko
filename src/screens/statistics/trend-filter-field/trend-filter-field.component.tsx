@@ -21,7 +21,7 @@ import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 import type { TrendFilterFieldProps } from './trend-filter-field.props';
 import { styles } from './trend-filter-field.styles';
 
-const MODES: readonly TrendMode[] = ['manual', 'top'];
+const MODES: readonly TrendMode[] = ['top', 'manual'];
 const AMOUNTS: readonly number[] = [1, 2, 3, 4, 5];
 const MEASURES: readonly TrendMeasure[] = ['contribution', 'frequency', 'rising'];
 
@@ -57,9 +57,11 @@ const draftToFilter = (draft: Draft): TrendFilter =>
 // label-smaller-than-value it used to be. Title case, per the design
 // system's heading rule.
 const SectionHeader: FC<{ children: string }> = ({ children }) => (
-  <Text variant="body" tone="textPrimary">
-    {children}
-  </Text>
+  <Box style={styles.label}>
+    <Text variant="body" tone="textPrimary">
+      {children}
+    </Text>
+  </Box>
 );
 
 // One manual-mode category row (or the leading "All" row). It delegates to the
@@ -274,11 +276,11 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
                 the row's own inset). It shares the manual section's shrink so
                 only the list scrolls under the sheet's height cap. This is a
                 plain `Box`, not `GlassSurface` — no frosted gray fill behind
-                the rows — but it keeps the two things `GlassSurface` was
-                actually relied on for: the `overflow: hidden` corner clip on
-                the scroll region (`styles.manualGroup`) and a hairline border
-                so the scrollable list still reads as one grouped region on the
-                translucent sheet. */}
+                the rows and no hairline border any more — it keeps only the one
+                thing `GlassSurface` was still relied on for: the
+                `overflow: hidden` corner clip on the scroll region
+                (`styles.manualGroup`), so the list sits transparent on the
+                sheet with just its rounded-corner clip. */}
             <Box style={styles.manualGroup} testID={`${testID}-group-categories`}>
               <ScrollView
                 style={styles.scroll}

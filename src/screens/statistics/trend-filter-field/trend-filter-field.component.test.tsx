@@ -300,6 +300,19 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
+  it('renders the Top mode option before Manual in the selection group', async () => {
+    const { getByTestId } = await renderField();
+    await press(getByTestId(TEST_ID));
+
+    // The saved default is always a Top filter, so the Top pill leads the mode
+    // row and Manual follows it (tree order = render order).
+    const selection = getByTestId(`${TEST_ID}-group-selection`);
+    const [first, second] = within(selection).getAllByRole('button');
+
+    expect(first).toHaveTextContent('Top');
+    expect(second).toHaveTextContent('Manual');
+  });
+
   it('groups the manual category list under a plain clipped container, with no frosted card fill', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
     await press(getByTestId(TEST_ID));

@@ -9,6 +9,7 @@ import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
 import { resolveBottomClearance } from '../../design-system/components/screen';
+import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
@@ -48,6 +49,21 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
   };
 });
+
+// The global jest/setup.js mock renders LiquidGlassView as a plain View and
+// pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
+// file-level mock keeps the same default so every existing fallback-branch
+// test is unchanged, but exposes the flag as a MUTABLE property (the same
+// pattern `bottom-sheet.component.test.tsx` uses) so the material-variant test
+// below can flip it on to prove the live-glass branch paints no backdrop.
+jest.mock('@callstack/liquid-glass', () => {
+  const { View } = require('react-native');
+  return { LiquidGlassView: View, isLiquidGlassSupported: false };
+});
+
+const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
+  isLiquidGlassSupported: boolean;
+};
 
 const mockUseLiveQuery = jest.fn();
 
@@ -279,6 +295,30 @@ describe('HomeScreen', () => {
     // Each row is wrapped in a GlassSurface, matching the app's glass-card
     // language, rather than a plain bordered list row.
     expect(getAllByTestId('transaction-row').length).toBeGreaterThan(0);
+  });
+
+  it("renders the transaction card through GlassSurface's live-blur material variant", async () => {
+    // The row now uses GlassSurface's `material` variant — the same live-blur
+    // glass the BottomSheet uses — not `transparent`. The two are IDENTICAL on
+    // the non-glass FALLBACK path (a translucent `-base` fill, no backdrop), so
+    // only the live-glass path distinguishes them: `transparent` pins a
+    // `-backdrop` layer UNDER the glass to soften scroll drift, while `material`
+    // paints NONE so the glass samples the live content behind it. The default
+    // seed (beforeEach) is a single transaction, so exactly one row renders.
+    const fallbackBase = StyleSheet.flatten(
+      (await renderHome()).getByTestId('transaction-row-base').props.style,
+    );
+    expect(fallbackBase.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+
+    try {
+      liquidGlass.isLiquidGlassSupported = true;
+      // `material`'s whole point: on the live-glass path it adds NO backdrop
+      // layer (what `transparent` would paint here), so this pins the variant —
+      // it fails if the row is reverted to `transparent`.
+      expect((await renderHome()).queryByTestId('transaction-row-backdrop')).toBeNull();
+    } finally {
+      liquidGlass.isLiquidGlassSupported = false;
+    }
   });
 
   it('renders the transaction time as zero-padded HH:MM', async () => {
