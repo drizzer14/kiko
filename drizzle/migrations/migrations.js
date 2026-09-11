@@ -27,6 +27,7 @@ import m0023 from './0023_add_failed_sync_ids.sql';
 import m0024 from './0024_add_synced_balance.sql';
 import m0025 from './0025_add_trend_filter.sql';
 import m0026 from './0026_add_transaction_indexes.sql';
+import m0027 from './0027_add_sync_state.sql';
 import journal from './meta/_journal.json';
 
 export default {
@@ -59,5 +60,6 @@ export default {
     m0024,
     m0025,
     m0026,
+    m0027,
   },
 };

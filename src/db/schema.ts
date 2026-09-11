@@ -251,6 +251,31 @@ export const settings = sqliteTable('settings', {
 export type SettingsRow = typeof settings.$inferSelect;
 
 /**
+ * Per-connection Monobank sync cursor. This DE-GLOBALIZES the former single-row
+ * `settings` cursor (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
+ * `failed_sync_monobank_ids`): those columns modelled ONE Monobank connection, so
+ * a second connected Monobank account would have shared and corrupted the one
+ * cursor. Each connected Monobank account now owns its own row here, keyed by its
+ * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
+ * reader-less in `src/db/settings-columns.test.ts` per the 2026-09-11
+ * multi-account plan (Task 1.3), same additive-only class as `appearance` /
+ * `lockGraceSeconds`. Each column mirrors the identically-named `settings` one;
+ * read the comments on those columns above for the load-bearing semantics
+ * (balance-diff skip, robust `lastFullSyncAt` graduation, the display stamp).
+ */
+export const syncState = sqliteTable('sync_state', {
+  accountId: text('account_id')
+    .primaryKey()
+    .references(() => accounts.id),
+  lastSyncAt: integer('last_sync_at'),
+  lastFullSyncAt: integer('last_full_sync_at'),
+  lastSyncDisplayAt: integer('last_sync_display_at'),
+  failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+});
+
+export type SyncStateRow = typeof syncState.$inferSelect;
+
+/**
  * Categories are keyed by a STABLE slug (`key`), so renaming a category or
  * changing its icon never rewrites the `category` value stored on transaction
  * rows. Transactions keep the stable key; the display layer resolves
