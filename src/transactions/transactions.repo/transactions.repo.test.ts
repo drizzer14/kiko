@@ -5,8 +5,8 @@
 // write of the balance happens inside the same unit and uses the DB-read
 // base (5000) + amount, not a caller-supplied snapshot.
 let mockTx: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockTx),
@@ -15,7 +15,7 @@ jest.mock('../db/client', () => {
 
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 
-import { categoryOverrides, holdings, transactions } from '../db/schema';
+import { categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { transactionsRepo } from './transactions.repo';
 

@@ -1,9 +1,9 @@
 import type { TFunction } from 'i18next';
 
-import type { TransactionRow } from '../db/schema';
+import type { TransactionRow } from '../../db/schema';
 
-import { defaultTransactionDescription } from './default-description';
-import { exchangeLegDescription } from './exchange-description';
+import { defaultTransactionDescription } from '../default-description';
+import { exchangeLegDescription } from '../exchange-description';
 
 /**
  * The label a transaction list row shows, resolved at RENDER time in three

@@ -3,8 +3,8 @@ import { appendDepositContributionTx } from '@kiko/holdings/holdings.repo';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
-import { database, write } from '../db/client';
-import { id } from '../db/id';
+import { database, write } from '../../db/client';
+import { id } from '../../db/id';
 import {
   accounts,
   categoryOverrides,
@@ -12,13 +12,13 @@ import {
   holdings,
   type TransactionRow,
   transactions,
-} from '../db/schema';
-import { isSyncedTransaction } from '../holdings/deletable';
-import type { ExchangeConvertDirection } from '../holdings/exchange-convert';
-import { exchangeReceivePath } from '../holdings/exchange-destination';
-import type { DepositContribution } from '../holdings/holding-metadata';
+} from '../../db/schema';
+import { isSyncedTransaction } from '../../holdings/deletable';
+import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
+import { exchangeReceivePath } from '../../holdings/exchange-destination';
+import type { DepositContribution } from '../../holdings/holding-metadata';
 
-import { normalizeTransactionName } from './normalize-name';
+import { normalizeTransactionName } from '../normalize-name';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
