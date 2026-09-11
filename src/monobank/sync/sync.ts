@@ -5,7 +5,6 @@ import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
 import { i18n } from '../../i18n';
-
 import { currencyFromCode } from '../currency-code';
 import { categoryForMcc } from '../mcc-category';
 import { fetchClientInfo, fetchStatement } from '../monobank.client';

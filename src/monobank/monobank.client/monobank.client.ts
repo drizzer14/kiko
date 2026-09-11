@@ -2,7 +2,6 @@ import { MONOBANK_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
 
 import { i18n } from '../../i18n';
-
 import type { MonobankClientInfo, MonobankStatementItem } from '../monobank.types';
 
 const base = MONOBANK_API_ENDPOINT;

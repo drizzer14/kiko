@@ -1,5 +1,6 @@
 import clientInfo from '../__fixtures__/client-info.json';
 import statement from '../__fixtures__/statement.json';
+
 import {
   fetchClientInfo,
   fetchStatement,

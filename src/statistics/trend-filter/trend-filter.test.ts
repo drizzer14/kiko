@@ -1,4 +1,5 @@
 import type { CategoryMeasure } from '../category-trend';
+
 import {
   DEFAULT_TREND_FILTER,
   resolveTrendFilter,

@@ -3,7 +3,6 @@ import type { Currency } from '../../currency/currency';
 import { Money, toMajor } from '../../currency/money';
 import { convert, type RateTable } from '../../rates/conversion';
 import { canConvert } from '../../rates/net-worth-view';
-
 import { type BreakdownTransaction, resolveCategoryColor } from '../category-breakdown';
 
 /**

@@ -6,7 +6,6 @@ import { useEffect, useRef } from 'react';
 
 import { hasToken } from '../../monobank/token';
 import { refreshRates } from '../../rates/rates-refresh';
-
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
 import { syncJobsFor } from '../sync-jobs';
 

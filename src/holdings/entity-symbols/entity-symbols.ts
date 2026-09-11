@@ -1,5 +1,4 @@
 import type { AccountRow } from '../../db/schema';
-
 import type { HoldingType } from '../holding-type';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its

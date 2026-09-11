@@ -1,7 +1,6 @@
 import type { Currency } from '../../currency/currency';
 import type { Money } from '../../currency/money';
 import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
-
 import { netWorth, type RateTable } from '../conversion';
 import { sumByCurrency } from '../currency-totals';
 

@@ -12,8 +12,8 @@ import {
   setSyncProgress,
   subscribeProgress,
 } from '../../monobank/sync-status';
-
 import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
+
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
 
 const NOW = 1_704_326_400_000;

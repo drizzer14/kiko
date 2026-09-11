@@ -17,6 +17,7 @@ jest.mock('react-native-keychain', () => ({
 
 import { binanceProvider, defaultBinanceDeps } from '../binance/binance.provider';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet/btc-wallet.provider';
+
 import { type CryptoSyncRequest, runCryptoSync } from './run-crypto-sync';
 
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';

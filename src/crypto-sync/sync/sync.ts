@@ -10,7 +10,6 @@ import {
   endProgressSession,
   registerWork,
 } from '../../monobank/sync-status';
-
 import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from '../provider';
 
 /**

@@ -1,7 +1,8 @@
 import * as Keychain from 'react-native-keychain';
 
-import { migrateSingleTokenToPerAccount } from './migrate-credential';
 import { MONOBANK_TOKEN_SERVICE, serviceFor } from '../token';
+
+import { migrateSingleTokenToPerAccount } from './migrate-credential';
 
 // A service-keyed in-memory Keychain: each `service` has its own credential
 // slot, so the global -> per-account move can be exercised across services.

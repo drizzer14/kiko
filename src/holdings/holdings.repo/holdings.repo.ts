@@ -4,7 +4,6 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { database, write } from '../../db/client';
 import { id } from '../../db/id';
 import { accounts, type HoldingRow, holdings, transactions } from '../../db/schema';
-
 import { isSyncedHolding } from '../deletable';
 import {
   asTermDepositMeta,

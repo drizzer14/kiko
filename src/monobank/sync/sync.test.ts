@@ -4,10 +4,16 @@
 // through SyncDeps, so the real repos are never exercised here.
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { i18n } from '../../i18n';
-
 import clientInfo from '../__fixtures__/client-info.json';
 import statement from '../__fixtures__/statement.json';
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
+import {
+  getProgressSnapshot,
+  isFastPhaseDone,
+  getSnapshot as isSyncingSnapshot,
+  subscribeProgress,
+} from '../sync-status';
+
 import {
   mapAccountToHolding,
   mapStatementItem,
@@ -15,12 +21,6 @@ import {
   runSync,
   type SyncDeps,
 } from './sync';
-import {
-  getProgressSnapshot,
-  isFastPhaseDone,
-  getSnapshot as isSyncingSnapshot,
-  subscribeProgress,
-} from '../sync-status';
 
 describe('mapStatementItem', () => {
   it('namespaces the external id by account id so two connections cannot collide', () => {

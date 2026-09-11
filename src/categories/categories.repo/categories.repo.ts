@@ -4,7 +4,6 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { database, write } from '../../db/client';
 import { id } from '../../db/id';
 import { categories, categoryOverrides, settings, transactions } from '../../db/schema';
-
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
 
 // The next free slot for a new category: one past the current highest

@@ -1,7 +1,6 @@
 import { ratesRepo } from '@kiko/rates/rates.repo';
 
 import type { Currency } from '../../currency/currency';
-
 import { fetchBTCPrice } from '../coingecko';
 import type { RateEntry } from '../conversion';
 import { fetchFiatRates } from '../monobank-rates';

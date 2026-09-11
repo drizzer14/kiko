@@ -1,5 +1,6 @@
-import { resolveDefaultCategoryTitle } from './default-category-title';
 import { i18n } from '../index';
+
+import { resolveDefaultCategoryTitle } from './default-category-title';
 
 describe('resolveDefaultCategoryTitle', () => {
   afterEach(async () => {

@@ -1,6 +1,5 @@
 import type { AccountRow } from '../../db/schema';
 import { entityColorsDark } from '../../design-system/palette';
-
 import type { HoldingType } from '../holding-type';
 
 // The default swatch shown for a newly-created account or holding, keyed by its

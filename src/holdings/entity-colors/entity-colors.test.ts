@@ -1,8 +1,8 @@
 import type { AccountRow } from '../../db/schema';
 import { entityColorsDark } from '../../design-system/palette';
+import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import { defaultAccountColor, defaultHoldingColor } from './entity-colors';
-import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 type AccountKind = AccountRow['kind'];
 

@@ -2,7 +2,6 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history.repo';
 
 import type { Currency } from '../../currency/currency';
 import type { CurrencyRateHistoryRow } from '../../db/schema';
-
 import { fetchBTCHistory } from '../coingecko-history';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { fetchNbuHistory } from '../nbu-history';

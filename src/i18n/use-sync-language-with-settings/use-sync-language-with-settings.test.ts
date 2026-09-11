@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react-native';
 
 import { i18n } from '../index';
+
 import { useSyncLanguageWithSettings } from './use-sync-language-with-settings';
 
 const mockData: { language: 'en' | 'uk' | null }[] = [];

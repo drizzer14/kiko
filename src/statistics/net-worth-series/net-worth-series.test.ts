@@ -8,8 +8,8 @@ import type { MonobankStatementItem } from '../../monobank/monobank.types';
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { mapStatementItem } from '../../monobank/sync';
-
 import type { SeriesHolding } from '../holding-value-at';
+
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
 const DAY = 86_400_000;

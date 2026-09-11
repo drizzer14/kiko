@@ -1,6 +1,8 @@
 // src/i18n/active-locale.test.ts
-import { activeLocale } from './active-locale';
+
 import { i18n } from '../index';
+
+import { activeLocale } from './active-locale';
 
 describe('activeLocale', () => {
   it('returns en-US for the English language', async () => {

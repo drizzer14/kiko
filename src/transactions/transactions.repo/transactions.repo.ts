@@ -17,7 +17,6 @@ import { isSyncedTransaction } from '../../holdings/deletable';
 import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
 import type { DepositContribution } from '../../holdings/holding-metadata';
-
 import { normalizeTransactionName } from '../normalize-name';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &

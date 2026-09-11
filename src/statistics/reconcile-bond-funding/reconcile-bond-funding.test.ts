@@ -1,7 +1,7 @@
 import { startOfLocalDay } from '../../dates/local-day';
 import type { BondMeta } from '../../holdings/holding-metadata';
-
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
+
 import { reconcileBondFunding } from './reconcile-bond-funding';
 
 const DAY = 86_400_000;
