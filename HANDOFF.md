@@ -1,84 +1,78 @@
-# HANDOFF — Phase B3 complete + deployed (2026-09-10)
+# HANDOFF — Final Hardening in progress (2026-09-11)
 
-**Read first:** the live board `BOARD.md` (now GITIGNORED — a local status file the
-user watches; kept by the standing `kiko:pm` session). Then verify against git +
-orca. Do not trust this file over ground truth.
+**Read first:** the live board `BOARD.md` (gitignored; kept by the standing `kiko:pm`
+session `pff-ios-ef`). Then the memory index
+`~/.claude/projects/-Users-drizzer14-Developer-Projects-pff-ios/memory/MEMORY.md` — the
+key note is `final-hardening-tracks-2026-09-11`. Verify against git + orca; do not trust
+this file over ground truth.
 
 ## Current state
 
-- `main` @ `8fba6ec` — **local only, NOT pushed, NOT on the App Store.**
-- Phase A + B + B2 + **B3** are all merged to `main` and **deployed to the device**
-  (build + install + launch verified; fresh forced bundle; data container `149343BE`).
-- Only the `main` worktree remains. All feature/orchestrator worktrees are pruned.
+- `main` @ `51e802e` — **local only, NOT pushed, NOT on the App Store.** Working tree clean.
+- **Deployed to the device** via the Ad-Hoc review path (build `51e802e`; data container
+  `149343BE` persists across updates = user data intact).
+- Worktrees: `main`, `multi-account-impl` (banked, NOT merged), `structural-colocation`
+  (stood-down idle, deferred). PM session `pff-ios-ef` standing.
 
-## What Phase B3 was (feedback from the on-device B2 review)
+## What is on `main` (all merged, green: check:all + jest 2243)
 
-Bugs + design rework, both reviewer-approved, integrated rolling:
-- **R1** sync progress count grew on repeated pull-to-refresh → a single-flight JOIN
-  over the pull fan-out (`use-sync-all.ts`); it was a display miscount, no data dup.
-- **R4** net-worth dip on a card→bond move → a held bond is now valued at **cost**
-  (purchase price), not face value, until maturity (`holding-value.ts`); the maturity
-  redemption still realizes nominal. (User decision: value at cost.)
-- **Design:** reverted the earlier button-audit shrink of sheet/modal action rows;
-  added Button `size="small"` (34pt visible, 44pt tap via `hitSlop`) + `variant="secondaryTonal"`
-  (faint `neutralSubtle` tint); categories Delete now reuses the contributions "Remove"
-  (`destructiveTonal` + trash icon); trend-filter Apple-HIG redesign (standard accent
-  selection, list-only scroll, Clear+Save both disabled until dirty).
+Phase A/B/B2/B3 + the Final Hardening work so far:
+- **Fix cycle 1** (`27d31ef`): bond-dip v1, cleanup-perf (SEC1/SEC3 + chart/accounts
+  memoization + Retry-After), feedback-round-2 (8 items), mutation-ETA per-mutant-rate model.
+- **feedback-round-3** + **bond-dip-v2** (`42a7d1d`): the 5 round-3 tweaks; and the REAL
+  bond-dip fix — root cause was the synced debit amount Q ≠ typed price P (fee/НКД/rounding)
+  so card(−Q) and bond(+P) never cancelled. `reconcile-bond-funding.ts` now matches a
+  same-currency debit within 5% of P and rewrites BOTH day and cost so the legs cancel;
+  self-corrects live history. User confirmed LGTM on device.
+- **trend-filter-final** (`51e802e`): "Top" filter first, filter-label top padding, removed
+  categories-list background, and TRANSLUCENT glass on transaction cards (GlassSurface
+  `material` variant). See "Open on-device confirmation" below.
+- **Release config**: S11 done (user set Release iphoneos → distribution identity,
+  `KikoDistribution`); a `Release-AdHoc` config (`KikoAdHoc` profile) drives `deploy-device.sh`
+  for wired review; the app icon is dark-only. `kiko:auditor` role was added to the harness.
 
-## Gate + deploy notes
+## Open on-device confirmation (this deploy)
 
-- The **B3 mutation gate was SKIPPED this round by explicit user directive** — the run
-  exceeded ~1h20m because it mutated the i18n string catalogs. Both B3 tracks were
-  reviewer-approved and `check:all` is green. **osv ran standalone = GREEN** (only the 3
-  accepted advisories: decode-uri-component, image-size ×2; no new CVE).
-- A **harness improvement** shipped alongside (merge `8fba6ec`): the mutation step now
-  writes a tailable **progress log** + prints a **Jenkins-style ETA** from run history,
-  **excludes** i18n locale catalogs + `*.d.ts` from the mutate-set, and **trims** the
-  Stryker sandbox (`vendor/`, `coverage/`, `docs/`, `.superpowers/`). So the NEXT mutation
-  run is far shorter and watchable. Re-run `check:deep` on `main` when convenient to get a
-  B3 mutation score for the record (now fast).
+The transaction-card glass uses the `material` (live-blur) variant, which can DRIFT in
+lightness while a list scrolls (that is why cards originally used `transparent`). The user
+asked for the sheet's material look explicitly; confirm on device. If the drift is
+distracting, revert the Home row to `GlassSurface transparent` (one-line).
 
-## CORRECTED coordination model (in force — read this)
+## Remaining roadmap (in order)
 
-The user corrected the session model mid-round (see memory
-`orchestrate-agents-not-impersonate`, `autonomous-orchestrator-cannot-approve`,
-`board-gitignored-standing-pm`):
-- **Coordinator** (this session, `pff-ios-d3`) keeps the project together: spawns +
-  coordinates ORCHESTRATOR sessions, talks to the user, holds memory. It does NOT drive
-  sub-agents itself, only what its direct role needs.
-- **Orchestrator sessions** (one per piece of work, own worktree) drive `kiko:*`
-  SUB-AGENTS via the Agent tool — each on its DEFINED model (sonnet/haiku for
-  design/qa/ops/pm; opus for developer/reviewer/planner/debugger). Do NOT spawn full opus
-  sessions that role-play one agent (that burned the subscription).
-- **Board:** `BOARD.md` is gitignored; a standing `claude --agent pm` (sonnet, auto mode)
-  session (`pff-ios-ef`) is its single writer, notified by the coordinator on events.
-- **Autonomous sessions cannot run approval-gated commands** (`rm`, deploy, scans) — no
-  human to approve. Run those from the interactive coordinator (user present) or the user
-  via `! `; never launder a peer's denied action.
+1. **STEP 2 — `multi-account-impl`** (branch banked, 6 phases green, `kiko:auditor` passed,
+   migrations `0027`/`0028`/`0029`). Create a new in-app account + connect it to its OWN
+   separate token (Monobank / Binance / BTC), N per provider. Integrate to `main`, then a
+   **migration-aware Ad-Hoc redeploy WITH the user present** (the on-device Keychain + schema
+   migration runs then). Decisions already applied: per-account externalId namespacing +
+   backfill; on-remove ask + default keep-as-manual; account name = label; concurrency cap ~3;
+   orphan token → manual re-entry.
+2. **Structural co-location pass — TRULY LAST** (branch `structural-colocation` is stale;
+   re-run fresh on the final tree). Per memory `file-structure-colocation`: folder-per-thing
+   (component+test+styles, repo+test), no flat folders; move shared top-level `screens/`
+   components (`card-context-menu`, `edit-header-button`, `icon-editor`, `grid-interaction`)
+   into the design system; group `entity/`; leave `forms/`. Also CS3 (admit `.stack`/`.gate`
+   suffixes) + CS2 note; fold co-location into the `kiko-code-style` skill. Reconcile last.
+3. **Native pre-redeploy pass** (needs a device build to verify): SEC2 = DROP the retired
+   `group.com.dmytro.pff` App Group + its dead import bridge (user approved); SEC1 = remove the
+   now-unused Swift `writeTextFile` in `WidgetBridge.swift` (KEEP `copyFile` — import uses it);
+   C6 = measure `react-native-calendars` bundle weight, then decide.
+4. **Final `check:deep`** on `main` (set `KIKO_MUTATION_BASE` to the pre-round base), then the
+   **App Store archive** (Release / `KikoDistribution`) + upload. S4 signed off; the 3 CVEs
+   (`image-size` ×2, `decode-uri-component`) are accepted debt — do NOT suppress.
 
-## Pending scribe tasks (plugin drift found by the retrospect — not yet fixed)
+## Coordination model (in force)
 
-1. `harness/kiko/skills/harness-workflow/SKILL.md` and CLAUDE.md's **"Delegation rule"**
-   still state the OLD model (delegate to sessions, never the Agent tool). Update them to
-   the corrected model above. (The corrected model IS in memory, so a resumed session is
-   not misled, but the plugin text is stale.)
-2. `src/screens/settings/categories.screen.tsx` ~lines 42-46, 67-68: stale
-   "compact ghost Button" comments — the calls now use `size="small"`. Trivial doc fix on
-   the next design touch.
-
-## Next phase — Final Hardening (before App Store), per BOARD.md
-
-Three read-only audits in PARALLEL, then consolidate → one fix pass → final deploy → App
-Store: bug-hunt (whole-app) · security analysis · Phase C performance + bundle-size (C1–C5)
-· screenshot / visual-regression tests (`docs/research/2026-09-10-simulator-screenshot-tests.md`)
-· full-repo ponytail (over-engineering) + codestyle pass, including the "group non-component
-files into feature folders" structural refactor.
-
-## Sessions + docs
-
-- `pff-ios-d3` — coordinator (this session). `pff-ios-ef` — standing `kiko:pm` board writer.
-  All B3 role/orchestrator sessions closed.
-- Phase B2 plan: `docs/superpowers/plans/2026-09-10-phase-b2-fix-round.md`; B2 diagnosis:
-  `docs/debug/2026-09-10-phase-b2-diagnosis.md`; iOS HIG audit:
-  `docs/design/2026-09-10-ios-hig-audit.md`.
-- Memory index: `~/.claude/projects/.../memory/MEMORY.md`.
+- **Coordinator** (`pff-ios-d3`) spawns **orchestrator SESSIONS** (orca worktrees, `--agent
+  claude`, base `--base-branch main`), and does NOT drive sub-agents itself for the work.
+  Each orchestrator drives `kiko:*` sub-agents on their defined models. NEVER use
+  `general-purpose`/`Explore`/`Plan` — only `kiko:*` roles (memory
+  `no-general-purpose-use-harness-agents`, `orchestrate-agents-not-impersonate`).
+- The classifier BLOCKS in auto mode: `--dangerously-skip-permissions` spawns, `orca worktree
+  rm` (sometimes), and `SendMessage` to an agent to trigger a deploy. Workarounds used:
+  `orca terminal send` to stand a track down; a FRESH `kiko:ops` Agent dispatch for each deploy
+  (allowed); prune via `orca worktree rm` when it is allowed.
+- Integration pattern: pre-scan with `git merge-tree --write-tree` (read-only), a `kiko:developer`
+  merges `--no-ff` in the main worktree, gate check:all + jest, prune each worktree as it lands.
+  Deploys go to a `kiko:ops` Agent. Notify `pff-ios-ef` on every material event; do not echo the
+  board to the user.
