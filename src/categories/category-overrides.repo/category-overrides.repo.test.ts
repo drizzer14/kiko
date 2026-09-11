@@ -4,15 +4,15 @@
 // both the rule payload and the id-filtered category update issued inside that
 // single transaction.
 let mockTx: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockTx),
   };
 });
 
-import { categoryOverrides, transactions } from '../db/schema';
+import { categoryOverrides, transactions } from '../../db/schema';
 
 import { categoryOverridesRepo } from './category-overrides.repo';
 

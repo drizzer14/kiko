@@ -1,5 +1,5 @@
-import { i18n } from '../i18n';
-import { resolveDefaultCategoryTitle } from '../i18n/default-category-title';
+import { i18n } from '../../i18n';
+import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 
 // The seeded catch-all category key. It is the INITIAL value of the
 // user-configurable `settings.defaultCategoryKey` (see the schema/migration),

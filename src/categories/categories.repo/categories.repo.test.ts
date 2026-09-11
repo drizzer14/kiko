@@ -6,8 +6,8 @@ import { join } from 'node:path';
 // transaction handle so the test can capture the update payload issued inside
 // that single transaction.
 let mockTx: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockTx),
@@ -22,7 +22,7 @@ import { SEEDED_CATEGORIES as CANONICAL_SEED } from '@kiko/db/__fixtures__/seede
 import type { SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
-import { categories, categoryOverrides, transactions } from '../db/schema';
+import { categories, categoryOverrides, transactions } from '../../db/schema';
 
 import { categoriesRepo } from './categories.repo';
 
@@ -330,7 +330,7 @@ describe('categoriesRepo.delete', () => {
 });
 
 describe('categories seed migration', () => {
-  const migrationsDir = join(__dirname, '../../drizzle/migrations');
+  const migrationsDir = join(__dirname, '../../../drizzle/migrations');
   const migrationFiles = (): { name: string; sql: string }[] =>
     readdirSync(migrationsDir)
       .filter((name) => name.endsWith('.sql'))
