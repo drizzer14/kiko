@@ -38,9 +38,13 @@ absent** — this skill states the shape and non-enum facts only:
   (nullable), `hold` (nullable boolean — Monobank's pending-
   authorization flag, whose settled amount can still change; null on
   a manual row), `comment` (nullable), `source` (see `schema.ts`'s
-  `transactions.source` enum), `externalId` (nullable, unique per
-  source — the key a re-imported Monobank statement item is upserted
-  on), `createdAt`.
+  `transactions.source` enum), `externalId` (nullable; the key a
+  re-imported synced item is upserted on, unique per `(source,
+  external_id)`. For a SYNCED row it is NAMESPACED by the holding's
+  account id — `${accountId}:${sourceId}` — so the global index cannot
+  collide across two connections of one provider, Binance record ids
+  being only per-account unique; see `kiko-architecture`'s "Namespaced
+  synced externalId". A manual row's is null), `createdAt`.
 
   Re-syncing an existing `externalId` **refreshes** that row's
   bank-owned columns — the settled `amountMinorUnits` and `hold`

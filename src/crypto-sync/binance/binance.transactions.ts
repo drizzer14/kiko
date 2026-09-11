@@ -157,7 +157,11 @@ const recordKey = (record: { id: string; txId: string }): string => record.id ||
  * Map one settled deposit to a positive Spot transaction, or `null` when it is
  * not settled, carries no id, or holds a non-finite amount/time.
  */
-const depositRow = (holdingId: string, record: BinanceDeposit): BinanceTransactionRow | null => {
+const depositRow = (
+  holdingId: string,
+  accountId: string,
+  record: BinanceDeposit,
+): BinanceTransactionRow | null => {
   if (record.status !== DEPOSIT_STATUS_SUCCESS) {
     return null;
   }
@@ -174,7 +178,7 @@ const depositRow = (holdingId: string, record: BinanceDeposit): BinanceTransacti
     amountMinorUnits: satoshis,
     time: record.insertTime,
     source: 'binance',
-    externalId: `deposit:${key}`,
+    externalId: `${accountId}:deposit:${key}`,
     // The stable, non-localized asset ticker, NOT a t(...) call. A blank
     // description normalizes to '' so the category-apply sheet is skipped for a
     // crypto row (item 12); a stable ticker gives the name rule something to
@@ -193,6 +197,7 @@ const depositRow = (holdingId: string, record: BinanceDeposit): BinanceTransacti
  */
 const withdrawalRow = (
   holdingId: string,
+  accountId: string,
   record: BinanceWithdrawal,
 ): BinanceTransactionRow | null => {
   if (record.status !== WITHDRAW_STATUS_COMPLETED) {
@@ -212,7 +217,7 @@ const withdrawalRow = (
     amountMinorUnits: -satoshis,
     time,
     source: 'binance',
-    externalId: `withdraw:${key}`,
+    externalId: `${accountId}:withdraw:${key}`,
     // See depositRow: the stable, non-localized asset ticker so the row groups
     // under the category-apply sheet (item 12).
     description: BINANCE_ASSET,
@@ -286,6 +291,7 @@ type WindowContext = {
   secret: string;
   options: FetchAccountOptions;
   spotId: string;
+  accountId: string;
 };
 
 /** Collect and map every settled deposit + withdrawal in one window. */
@@ -293,7 +299,7 @@ const windowRows = async (
   context: WindowContext,
   window: { start: number; end: number },
 ): Promise<BinanceTransactionRow[]> => {
-  const { deps, gate, apiKey, secret, options, spotId } = context;
+  const { deps, gate, apiKey, secret, options, spotId, accountId } = context;
   const deposits = await fetchAllInWindow(
     gate,
     (page) => deps.fetchDepositHistory(apiKey, secret, page, options),
@@ -308,8 +314,8 @@ const windowRows = async (
   );
 
   return [
-    ...deposits.map((record) => depositRow(spotId, record)),
-    ...withdrawals.map((record) => withdrawalRow(spotId, record)),
+    ...deposits.map((record) => depositRow(spotId, accountId, record)),
+    ...withdrawals.map((record) => withdrawalRow(spotId, accountId, record)),
   ].filter((row): row is BinanceTransactionRow => row !== null);
 };
 
@@ -345,7 +351,15 @@ const runSync = async (
     now: deps.now,
     sleep: deps.sleep,
   });
-  const context: WindowContext = { deps, gate, apiKey, secret, options, spotId: spot.id };
+  const context: WindowContext = {
+    deps,
+    gate,
+    apiKey,
+    secret,
+    options,
+    spotId: spot.id,
+    accountId,
+  };
   const rows: BinanceTransactionRow[] = [];
 
   for (const window of windows) {

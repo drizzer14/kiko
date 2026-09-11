@@ -235,6 +235,7 @@ const failedIdsToPersist = (ids: string[]): string[] | null => (ids.length > 0 ?
 export const mapStatementItem = (
   item: MonobankStatementItem,
   holdingId: string,
+  accountId: string,
 ): NewTransaction => ({
   holdingId,
   amountMinorUnits: item.amount,
@@ -249,7 +250,15 @@ export const mapStatementItem = (
   category: categoryForMcc(item.mcc),
   comment: item.comment ?? null,
   source: 'monobank',
-  externalId: item.id,
+  // NAMESPACED per connection (Phase 6): `${accountId}:${statementId}`. Monobank
+  // statement ids are globally unique, but the GLOBAL `(source, external_id)`
+  // unique index (schema.ts) is shared with Binance, whose deposit/withdrawal
+  // ids are only PER-ACCOUNT unique — so once more than one connection per
+  // provider is allowed, a bare id would let one connection's upsert refresh
+  // another's row. Prefixing by the holding's account id keeps every
+  // connection's keyspace disjoint. Migration 0029 backfills existing rows to
+  // this exact form, so a re-sync of a pre-migration row matches in place.
+  externalId: `${accountId}:${item.id}`,
 });
 
 export const mapAccountToHolding = (
@@ -480,8 +489,11 @@ const fetchAllStatements = async (
 // filter: it dropped a re-fetched item BEFORE the database saw it, so a held
 // item's provisional amount could never be refreshed to its settled value.
 // Doing it in SQL is also what makes the refresh atomic.
-const mapFetched = (items: MonobankStatementItem[], holdingId: string): NewTransaction[] =>
-  items.map((item) => mapStatementItem(item, holdingId));
+const mapFetched = (
+  items: MonobankStatementItem[],
+  holdingId: string,
+  accountId: string,
+): NewTransaction[] => items.map((item) => mapStatementItem(item, holdingId, accountId));
 
 /** Index a run's holdings by their Monobank id, skipping any without one. */
 const indexByMonobankId = (holdings: HoldingRow[]): Map<string, HoldingRow> => {
@@ -758,7 +770,7 @@ const importAccount = async (
     toSeconds,
     onPage,
   );
-  const fetched = mapFetched(items, holding.id);
+  const fetched = mapFetched(items, holding.id, accountId);
 
   if (fetched.length === 0) {
     return 0;

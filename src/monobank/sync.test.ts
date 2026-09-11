@@ -23,24 +23,36 @@ import {
 } from './sync-status';
 
 describe('mapStatementItem', () => {
-  it('maps a Monobank item to a transaction with the source and external id', () => {
+  it('namespaces the external id by account id so two connections cannot collide', () => {
     const item = statement[0];
-    const transaction = mapStatementItem(item, 'holding-1');
+    const transaction = mapStatementItem(item, 'holding-1', 'acc-1');
     expect(transaction.source).toBe('monobank');
-    expect(transaction.externalId).toBe(item.id);
+    // Phase 6: the synced external id is `${accountId}:${statementId}`, so the
+    // GLOBAL `(source, external_id)` unique index can never let a second Monobank
+    // (or Binance) connection refresh another connection's row on a shared raw id.
+    expect(transaction.externalId).toBe(`acc-1:${item.id}`);
     expect(transaction.amountMinorUnits).toBe(item.amount);
     expect(transaction.holdingId).toBe('holding-1');
   });
 
+  it('produces a distinct external id per account for the SAME raw statement id', () => {
+    const item = statement[0];
+    const a = mapStatementItem(item, 'holding-a', 'acc-a');
+    const b = mapStatementItem(item, 'holding-b', 'acc-b');
+    expect(a.externalId).toBe(`acc-a:${item.id}`);
+    expect(b.externalId).toBe(`acc-b:${item.id}`);
+    expect(a.externalId).not.toBe(b.externalId);
+  });
+
   it('converts Monobank unix seconds to milliseconds', () => {
     const item = statement[0];
-    const transaction = mapStatementItem(item, 'holding-1');
+    const transaction = mapStatementItem(item, 'holding-1', 'acc-1');
     expect(transaction.time).toBe(item.time * 1000);
   });
 
   it('carries mcc and description through, defaulting a missing comment to null', () => {
     const withoutComment = statement[1];
-    const transaction = mapStatementItem(withoutComment, 'holding-1');
+    const transaction = mapStatementItem(withoutComment, 'holding-1', 'acc-1');
     expect(transaction.mcc).toBe(withoutComment.mcc);
     expect(transaction.description).toBe(withoutComment.description);
     expect(transaction.comment).toBeNull();
@@ -48,7 +60,7 @@ describe('mapStatementItem', () => {
 
   it('derives category from the mcc via categoryForMcc', () => {
     const groceryItem = statement[0];
-    const transaction = mapStatementItem(groceryItem, 'holding-1');
+    const transaction = mapStatementItem(groceryItem, 'holding-1', 'acc-1');
     expect(groceryItem.mcc).toBe(5411);
     // The persisted value is the `categories.key` slug, never a display title.
     expect(transaction.category).toBe('groceries');
@@ -56,21 +68,21 @@ describe('mapStatementItem', () => {
 
   it('persists the counterparty IBAN when the statement item carries one', () => {
     const withCounterIban = statement[2];
-    const transaction = mapStatementItem(withCounterIban, 'holding-1');
+    const transaction = mapStatementItem(withCounterIban, 'holding-1', 'acc-1');
     expect(withCounterIban.counterIban).toBe('UA733220010000026201112223334');
     expect(transaction.counterIban).toBe('UA733220010000026201112223334');
   });
 
   it('defaults counterIban to null when the statement item has none', () => {
     const withoutCounterIban = statement[0];
-    const transaction = mapStatementItem(withoutCounterIban, 'holding-1');
+    const transaction = mapStatementItem(withoutCounterIban, 'holding-1', 'acc-1');
     expect(withoutCounterIban.counterIban).toBeUndefined();
     expect(transaction.counterIban).toBeNull();
   });
 
   it('keeps an existing comment', () => {
     const withComment = statement[0];
-    const transaction = mapStatementItem(withComment, 'holding-1');
+    const transaction = mapStatementItem(withComment, 'holding-1', 'acc-1');
     expect(transaction.comment).toBe(withComment.comment);
   });
 
@@ -79,14 +91,18 @@ describe('mapStatementItem', () => {
   // provisional amount from a final one.
   it('persists the pending-authorization hold flag', () => {
     const pending = statement[2];
-    const transaction = mapStatementItem(pending, 'holding-1');
+    const transaction = mapStatementItem(pending, 'holding-1', 'acc-1');
     expect(pending.hold).toBe(true);
     expect(transaction.hold).toBe(true);
   });
 
   it('defaults a hold-less payload to settled', () => {
     const { hold, ...withoutHold } = statement[0];
-    const transaction = mapStatementItem(withoutHold as MonobankStatementItem, 'holding-1');
+    const transaction = mapStatementItem(
+      withoutHold as MonobankStatementItem,
+      'holding-1',
+      'acc-1',
+    );
     expect(hold).toBe(false);
     expect(transaction.hold).toBe(false);
   });
@@ -409,7 +425,7 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(statement.length);
     // the grocery-MCC fixture item (5411) is synced with its derived category
     const groceryTransaction = transactionsStore.find(
-      (transaction) => transaction.externalId === statement[0].id,
+      (transaction) => transaction.externalId === `acc-1:${statement[0].id}`,
     );
     expect(groceryTransaction?.category).toBe('groceries');
   });
@@ -472,6 +488,69 @@ describe('runSync', () => {
     expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBe('monobank');
     expect(holdingsStore.some((holding) => holding.accountId === 'acc-b')).toBe(true);
     expect(result.importedTransactions).toBe(statement.length);
+  });
+
+  // Phase 6 / Risk R-1: two Monobank connections that each fetch a statement item
+  // carrying the SAME raw id must import TWO distinct rows, one per account —
+  // never let the second connection's upsert refresh the first's row on the
+  // GLOBAL `(source, external_id)` index. The account-id namespace is what keeps
+  // the two keys apart.
+  it('imports two DISTINCT rows when two connections share a raw statement id', async () => {
+    const accountA = bankAccount({ id: 'acc-a', institution: 'monobank' });
+    const accountB = bankAccount({ id: 'acc-b', institution: null });
+    // The SAME raw statement id fetched for whichever account is syncing.
+    const shared: MonobankStatementItem[] = [
+      { ...(statement[0] as MonobankStatementItem), id: 'shared-1' },
+    ];
+    const { deps, transactionsStore } = makeInMemoryDeps(
+      (accountId) => (accountId === firstAccountId ? shared : []),
+      [accountA, accountB],
+    );
+
+    await runSync({ ...deps, targetAccountId: 'acc-a' });
+    await runSync({ ...deps, targetAccountId: 'acc-b' });
+
+    // Two rows, namespaced apart — the second connection did NOT overwrite the
+    // first. With a global (source, external_id) key on the bare id, the second
+    // import would have refreshed account A's row instead of inserting B's.
+    const shared1Rows = transactionsStore.filter((row) =>
+      (row.externalId ?? '').endsWith(':shared-1'),
+    );
+    expect(shared1Rows).toHaveLength(2);
+    expect(new Set(shared1Rows.map((row) => row.externalId))).toEqual(
+      new Set(['acc-a:shared-1', 'acc-b:shared-1']),
+    );
+  });
+
+  // The backfill migration rewrites a pre-Phase-6 row's `external_id` to
+  // `${accountId}:${rawId}` — the EXACT form the sync now produces. So a re-sync
+  // after the backfill must match that already-backfilled row IN PLACE (refresh),
+  // never insert a duplicate. This asserts the namespaced key round-trips.
+  it('re-syncs a backfilled row in place, adding no duplicate', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const item: MonobankStatementItem[] = [
+      { ...(statement[0] as MonobankStatementItem), id: 'stmt-1', amount: -5_000 },
+    ];
+    const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      (accountId) => (accountId === firstAccountId ? item : []),
+      [connected],
+    );
+
+    // First run creates the card holding + imports the row (namespaced).
+    await runSync(deps);
+    const cardHolding = holdingsStore.find(
+      (holding) => monobankIdOf(holding.metadata) === firstAccountId,
+    );
+    // Simulate the backfilled form already stored (identical to what the sync
+    // writes): `${accountId}:${rawId}`. It is here from the first run.
+    expect(transactionsStore.some((row) => row.externalId === 'acc-mono:stmt-1')).toBe(true);
+    expect(cardHolding?.accountId).toBe('acc-mono');
+
+    // A second re-sync of the same id must refresh the same row, not duplicate it.
+    const second = await runSync(deps);
+
+    expect(transactionsStore.filter((row) => row.externalId === 'acc-mono:stmt-1')).toHaveLength(1);
+    expect(second.importedTransactions).toBe(0);
   });
 
   it('allows re-connecting the SAME already-connected account (idempotent re-sync)', async () => {
@@ -575,7 +654,7 @@ describe('runSync', () => {
     ];
     const second = await runSync(deps);
 
-    const rows = transactionsStore.filter((row) => row.externalId === 'stmt-1');
+    const rows = transactionsStore.filter((row) => row.externalId === 'acc-mono:stmt-1');
 
     expect(rows).toHaveLength(1);
     expect(rows[0].amountMinorUnits).toBe(-12_500);
@@ -819,7 +898,7 @@ describe('runSync', () => {
     );
 
     expect(windows).toContain(boundary);
-    expect(transactionsStore.some((row) => row.externalId === 'straggler')).toBe(true);
+    expect(transactionsStore.some((row) => row.externalId === 'acc-mono:straggler')).toBe(true);
   });
 
   it('terminates when a full capped page shares a single second', async () => {
@@ -1105,7 +1184,7 @@ describe('runSync', () => {
     // First run: the FIRST card fails, but the second card must still import —
     // the old fail-fast loop stopped every later card the moment one threw.
     await expect(runSync(deps)).rejects.toThrow();
-    expect(transactionsStore.some((row) => row.externalId === 'txn-B')).toBe(true);
+    expect(transactionsStore.some((row) => row.externalId === 'acc-mono:txn-B')).toBe(true);
     // The cursor stays put so card A's window is re-fetched next time.
     expect(setLastSyncAt).not.toHaveBeenCalled();
 
@@ -1115,8 +1194,8 @@ describe('runSync', () => {
     const second = await runSync(deps);
 
     expect(second.importedTransactions).toBe(1);
-    expect(transactionsStore.filter((row) => row.externalId === 'txn-B')).toHaveLength(1);
-    expect(transactionsStore.filter((row) => row.externalId === 'txn-A')).toHaveLength(1);
+    expect(transactionsStore.filter((row) => row.externalId === 'acc-mono:txn-B')).toHaveLength(1);
+    expect(transactionsStore.filter((row) => row.externalId === 'acc-mono:txn-A')).toHaveLength(1);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
   });
 
@@ -2071,7 +2150,7 @@ describe('runSync', () => {
 
       const order = fetchedIds(fetchStatement);
       expect(order[0]).toBe(idB);
-      expect(transactionsStore.some((row) => row.externalId === 'b-today')).toBe(true);
+      expect(transactionsStore.some((row) => row.externalId === 'acc-mono:b-today')).toBe(true);
     });
   });
 });
