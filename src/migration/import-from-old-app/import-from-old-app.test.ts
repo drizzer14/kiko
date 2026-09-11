@@ -1,4 +1,4 @@
-import { EXPORT_DB_FILE, SECRETS_FILE } from './migration-constants';
+import { EXPORT_DB_FILE, SECRETS_FILE } from '../migration-constants';
 
 const CONTAINER = '/private/var/mobile/Shared/AppGroup/UUID';
 const EXPORT_PATH = `${CONTAINER}/${EXPORT_DB_FILE}`;
@@ -27,7 +27,7 @@ const mockBridge = {
 // Forward through arrows so the factory (evaluated during the hoisted import
 // of `import-from-old-app`, before `mockBridge` is assigned) reads the live
 // object at call time rather than capturing its undefined initial value.
-jest.mock('./migration-bridge', () => ({
+jest.mock('../migration-bridge', () => ({
   migrationBridge: {
     sharedContainerPath: (...a: unknown[]) => mockBridge.sharedContainerPath(...a),
     fileExists: (...a: unknown[]) => mockBridge.fileExists(...a),

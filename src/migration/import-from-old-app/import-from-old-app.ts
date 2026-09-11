@@ -7,9 +7,9 @@ import { resetDbKey } from '@kiko/db/keys/db-key';
 import { saveGlobalToken } from '@kiko/monobank/token';
 import { open } from '@op-engineering/op-sqlite';
 
-import { migrationBridge } from './migration-bridge';
-import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from './migration-constants';
-import { deleteWithSidecars } from './migration-files';
+import { migrationBridge } from '../migration-bridge';
+import { EXPORT_DB_FILE, OLD_APP_GROUP_ID, SECRETS_FILE } from '../migration-constants';
+import { deleteWithSidecars } from '../migration-files';
 
 type MigrationSecrets = {
   monobankToken: string | null;
