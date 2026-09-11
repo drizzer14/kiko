@@ -20,6 +20,9 @@ export const styles = StyleSheet.create((theme) => ({
   // A compact segmented pill. Only the shape lives here; the selected/unselected
   // fill is a runtime theme color layered on at the call site (see the
   // component), so the transparent-unselected rationale stays next to its use.
+  // This is the DEFAULT (`labelVariant="body"`) sizing — every existing
+  // consumer that omits `labelVariant` (CurrencySwitch, LanguageSwitch, the
+  // base-currency and lock-grace settings pills) keeps this exact shape.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -33,5 +36,20 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,
+  },
+  // A compact size for `labelVariant="caption"` (the trend-filter sheet's value
+  // pills, which sit under their own larger `body` section label): the pill
+  // stayed body-sized around a caption label and read oversized. Only the
+  // vertical size shrinks — `minHeight`/`paddingVertical` — mirroring Button's
+  // `small` size (`SMALL_MIN_HEIGHT` in button.styles.ts, also 34), so the
+  // visible pill reads clearly smaller around the smaller text. This visible
+  // height is BELOW the 44pt HIG floor on purpose; the component restores the
+  // 44pt tap target with `hitSlop` (`COMPACT_HIT_SLOP`,
+  // option-pills.component.tsx), the same pattern Button's `small` size uses.
+  // Merged onto `pill` (never replaces it), so `paddingHorizontal`/
+  // `borderRadius`/etc. stay shared with the default size.
+  pillCompact: {
+    minHeight: 34,
+    paddingVertical: theme.spacing(1),
   },
 }));
