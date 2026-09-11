@@ -35,37 +35,6 @@ export const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     gap: theme.spacing(1),
   },
-  // One category multi-select row's tap area: rounded and inset so the selected
-  // fill reads as a contained row rather than an edge-to-edge band, holding the
-  // 44pt HIG minimum height so each row is a comfortable tap target. The row's
-  // own layout (check slot, icon slot, label) lives on `optionInner`.
-  option: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    borderRadius: theme.radii.sm,
-  },
-  // The selected row's fill: the FILLED accent surface — the app's standard
-  // selection vocabulary (the OptionPills / ChipRow selected pill) — so a chosen
-  // category reads unambiguously against the low-contrast sheet background, with
-  // the row's onAccent label/icon/checkmark carrying the contrast on top of it.
-  optionSelected: {
-    backgroundColor: theme.colors.accent,
-  },
-  // The row's inner layout: a fixed-width check slot, an icon slot, then the
-  // label. Mirrors the filter-menu row so the two pickers read identically.
-  optionInner: {
-    alignItems: 'center',
-  },
-  check: {
-    width: theme.spacing(5),
-    alignItems: 'center',
-  },
-  icon: {
-    width: theme.spacing(5),
-    alignItems: 'center',
-  },
   // The Clear/Save action row, pinned to the trailing edge below the scroll
   // region so both actions stay reachable regardless of scroll position.
   actions: {

@@ -336,17 +336,23 @@ describe('HomeScreen', () => {
       categories: [{ key: 'other', title: 'Other', icon: 'square.grid.2x2' }],
       transactions: [transaction({ category: 'Groceries' })],
     });
-    const { getByLabelText, getByTestId, getAllByLabelText } = await renderHome();
+    const { getByLabelText, getByTestId } = await renderHome();
 
-    expect(getByLabelText('Other').props.tintColor).toBe(resolveCategoryColor(null, 'other'));
+    const rowIconTint = getByLabelText('Other').props.tintColor;
+    expect(rowIconTint).toBe(resolveCategoryColor(null, 'other'));
 
     await act(async () => {
       fireEvent.press(getByTestId('category-filter-menu'));
     });
-    const tints = getAllByLabelText('Other').map((node) => node.props.tintColor);
 
-    expect(tints.length).toBeGreaterThan(1);
-    expect(new Set(tints).size).toBe(1);
+    // The filter option icon renders through the shared SelectableRow, so it no
+    // longer carries an accessibilityLabel — read it off the option row's glyph.
+    // It must fold onto the SAME resolved color as the transaction row icon.
+    const filterRow = getByTestId('category-filter-menu-option-other');
+    const filterIconTint = filterRow.queryAll((node) => node.props.name === 'square.grid.2x2').at(0)
+      ?.props.tintColor;
+
+    expect(filterIconTint).toBe(rowIconTint);
   });
 
   it('renders the signed transaction amount', async () => {

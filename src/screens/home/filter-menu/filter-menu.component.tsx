@@ -4,6 +4,7 @@ import { Pressable } from 'react-native';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
+import SelectableRow from '../../../design-system/components/selectable-row';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 
@@ -71,36 +72,17 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         <Text variant="heading">{label}</Text>
 
         {rows.map((option) => (
-          <Pressable
+          <SelectableRow
             key={option.value}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: isChecked(option.value, selected) }}
-            testID={`${testID}-option-${option.value}`}
+            selected={isChecked(option.value, selected)}
             onPress={() => onToggle(option.value)}
-          >
-            <Box direction="row" gap={2} style={styles.option}>
-              <Box style={styles.check}>
-                {isChecked(option.value, selected) && (
-                  <SymbolIcon name="checkmark" size={16} tone="textPrimary" />
-                )}
-              </Box>
-
-              {hasIcons && (
-                <Box style={styles.icon}>
-                  {option.icon != null && (
-                    <SymbolIcon
-                      name={option.icon}
-                      color={option.color}
-                      size={18}
-                      accessibilityLabel={option.label ?? option.value}
-                    />
-                  )}
-                </Box>
-              )}
-
-              <Text variant="body">{rowLabel(option)}</Text>
-            </Box>
-          </Pressable>
+            label={rowLabel(option)}
+            icon={option.icon}
+            iconColor={option.color}
+            reserveIconSlot={hasIcons}
+            testID={`${testID}-option-${option.value}`}
+          />
         ))}
       </BottomSheet>
     </>

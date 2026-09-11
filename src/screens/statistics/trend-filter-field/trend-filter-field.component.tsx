@@ -1,13 +1,13 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import OptionPills from '../../../design-system/components/option-pills';
+import SelectableRow from '../../../design-system/components/selectable-row';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import {
@@ -47,11 +47,6 @@ const draftToFilter = (draft: Draft): TrendFilter =>
     ? { mode: 'manual', keys: [...draft.manualKeys] }
     : { mode: 'top', amount: draft.amount, by: draft.by };
 
-// The selected manual row's label weight — semibold, so a chosen category reads
-// through weight on top of the accent fill. A module-level constant (not an
-// inline object) so it stays one stable style reference (mirrors OptionPills).
-const selectedLabelStyle = { fontWeight: '600' } as const;
-
 // A grouped-list section header: the caption type step in the PRIMARY (white)
 // tone — the iOS grouped-form header treatment, but pulled up from the dim grey
 // (`textSecondary`) it used before so it reads as a clear white sub-heading
@@ -65,13 +60,11 @@ const SectionHeader: FC<{ children: string }> = ({ children }) => (
   </Text>
 );
 
-// One manual-mode category row (or the leading "All" row). The SELECTED row
-// paints the filled accent surface — the app's standard selection vocabulary
-// (the OptionPills / ChipRow selected pill) — so a chosen category reads
-// unambiguously at a glance; unselected rows stay transparent. On the accent
-// fill the checkmark, the label, and the category icon all take the always-white
-// `onAccent` tone (the onAccent rule), which also keeps a blue-hued category's
-// glyph legible; unselected, the icon keeps the category's own identity color.
+// One manual-mode category row (or the leading "All" row). It delegates to the
+// shared `SelectableRow` — the single source of truth for a category-picker row
+// across the app — so the selected row paints the filled accent surface with an
+// `onAccent` checkmark/icon/label and an unselected row keeps the category's own
+// identity color (the OptionPills / ChipRow selection vocabulary).
 const ManualCategoryRow: FC<{
   option: FilterOption;
   checked: boolean;
@@ -79,44 +72,16 @@ const ManualCategoryRow: FC<{
   onPress: () => void;
   testID: string;
 }> = ({ option, checked, label, onPress, testID }) => {
-  const { theme } = useUnistyles();
-
   return (
-    <Pressable
+    <SelectableRow
       accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-      testID={testID}
+      selected={checked}
       onPress={onPress}
-      style={checked ? [styles.option, styles.optionSelected] : styles.option}
-    >
-      <Box direction="row" gap={2} style={styles.optionInner}>
-        <Box style={styles.check}>
-          {checked && (
-            <SymbolIcon name="checkmark" size={theme.iconSizes.caption} tone="onAccent" />
-          )}
-        </Box>
-
-        <Box style={styles.icon}>
-          {option.icon != null && (
-            <SymbolIcon
-              name={option.icon}
-              color={checked ? undefined : option.color}
-              tone={checked ? 'onAccent' : 'textSecondary'}
-              size={theme.iconSizes.body}
-              accessibilityLabel={option.label ?? option.value}
-            />
-          )}
-        </Box>
-
-        <Text
-          variant="body"
-          tone={checked ? 'onAccent' : 'textPrimary'}
-          style={checked ? selectedLabelStyle : undefined}
-        >
-          {label}
-        </Text>
-      </Box>
-    </Pressable>
+      label={label}
+      icon={option.icon}
+      iconColor={option.color}
+      testID={testID}
+    />
   );
 };
 

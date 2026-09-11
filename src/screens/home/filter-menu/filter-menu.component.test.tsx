@@ -1,15 +1,22 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
+import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
 
 import FilterMenu, { FILTER_ALL } from './filter-menu.component';
 import type { FilterOption } from './filter-menu.props';
 
 // The menu is a custom sheet: press the anchor (its testID) to open, then each
-// option is a checkbox row at `${testID}-option-${value}`. Every option that
-// carries an icon renders it as an SFSymbolView (mocked to a View under Jest)
-// labeled with the option's own `value`, so `getByLabelText(value)` reads that
-// glyph's `name`/`tintColor` props.
+// option is a shared `SelectableRow` checkbox at `${testID}-option-${value}`.
+// Each row that carries an icon renders it as an SFSymbolView (mocked to a View
+// under Jest) forwarding its `name`/`tintColor` props, so a glyph's native tint
+// is read off the host node carrying that symbol name. The component returns a
+// Fragment (anchor + sheet as siblings), so glyphs are searched from `container`
+// — `root` would only cover the anchor, missing the sheet's Modal subtree.
+const glyphTint = (utils: RenderResult, name: string): string | undefined =>
+  utils.container.queryAll((node) => node.props.name === name).at(0)?.props.tintColor;
+
 type MenuProps = {
   options?: FilterOption[];
   selected?: Set<string>;
@@ -52,17 +59,30 @@ describe('FilterMenu', () => {
   });
 
   it('renders an option icon tinted with its color when provided', async () => {
-    const { getByTestId, getByLabelText } = await renderMenu();
+    const utils = await renderMenu();
+
+    await openMenu(utils.getByTestId);
+
+    // Each unselected row's glyph reads in its own option color, passed straight
+    // through to the native tintColor (toSFSymbolTintColor is a no-op on hex).
+    expect(glyphTint(utils, 'creditcard')).toBe('#34C759');
+    expect(glyphTint(utils, 'building.columns')).toBe('#0A84FF');
+  });
+
+  it('fills a selected option row with the accent surface', async () => {
+    const { getByTestId } = await renderMenu({ selected: new Set(['Monobank']) });
 
     await openMenu(getByTestId);
 
-    // The icon is labeled with the option's value; its color is a hex, passed
-    // through to the native tintColor unchanged (toSFSymbolTintColor is a no-op
-    // on hex).
-    expect(getByLabelText('Monobank').props.name).toBe('creditcard');
-    expect(getByLabelText('Monobank').props.tintColor).toBe('#34C759');
-    expect(getByLabelText('PrivatBank').props.name).toBe('building.columns');
-    expect(getByLabelText('PrivatBank').props.tintColor).toBe('#0A84FF');
+    // Selecting a row now paints the FILLED accent surface (the shared
+    // SelectableRow / OptionPills selection vocabulary), so a chosen filter
+    // reads unambiguously blue instead of only carrying a checkmark; an
+    // unselected row paints none.
+    const selected = getByTestId(`${TEST_ID}-option-Monobank`);
+    const unselected = getByTestId(`${TEST_ID}-option-PrivatBank`);
+
+    expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBe(darkTheme.colors.accent);
+    expect(StyleSheet.flatten(unselected.props.style).backgroundColor).toBeUndefined();
   });
 
   it('routes an option press to onToggle with its value, not the icon/color', async () => {
@@ -89,25 +109,30 @@ describe('FilterMenu', () => {
   });
 
   it('renders an icon-less option as a plain label, with no glyph for it', async () => {
-    const { getByTestId, getByText, queryByLabelText } = await renderMenu({
+    const { getByTestId, getByText } = await renderMenu({
       options: [{ value: 'Cash' }],
     });
 
     await openMenu(getByTestId);
 
     // The row still renders and stays selectable...
-    expect(getByTestId(`${TEST_ID}-option-Cash`)).toBeTruthy();
+    const cashRow = getByTestId(`${TEST_ID}-option-Cash`);
+    expect(cashRow).toBeTruthy();
     expect(getByText('Cash')).toBeTruthy();
-    // ...but with no icon, no labeled glyph is emitted for it.
-    expect(queryByLabelText('Cash')).toBeNull();
+    // ...but with no icon (and unselected, so no checkmark) it emits no glyph.
+    expect(cashRow.queryAll((node) => node.props.name != null)).toHaveLength(0);
   });
 
   it('never renders an icon for the synthetic All row', async () => {
-    const { getByTestId, queryByLabelText } = await renderMenu();
+    const { getByTestId } = await renderMenu();
 
     await openMenu(getByTestId);
 
-    expect(queryByLabelText(FILTER_ALL)).toBeNull();
+    // The All row reserves the icon slot (the menu has icon-bearing rows) but
+    // never renders a glyph in it — only the leading checkmark when selected.
+    const allRow = getByTestId(`${TEST_ID}-option-${FILTER_ALL}`);
+    const glyphs = allRow.queryAll((node) => node.props.name != null);
+    expect(glyphs.every((node) => node.props.name === 'checkmark')).toBe(true);
   });
 
   describe('localization', () => {
