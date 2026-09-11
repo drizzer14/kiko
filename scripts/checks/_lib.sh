@@ -152,15 +152,20 @@ harness_lock_holder() {
   fi
 }
 
-# --- Mutation progress log + Jenkins-style ETA history -----------------------
+# --- Mutation progress log + per-mutant-rate ETA history ---------------------
 # check:deep's mutation step (scripts/checks/mutation.sh) is manual, not
 # hook-wired, and takes minutes. These helpers give a HUMAN a live, tailable
-# progress log and a Jenkins-style ETA computed from past runs, so nobody has to
-# poll the run — its exit code is still the only signal an agent waits on. All of
-# this is best-effort and MUST NOT change the gate's pass/fail: every write is
-# guarded, and a missing/corrupt history just means "no estimate". State lives in
-# a `mutation/` subdir of the per-worktree out-of-repo state dir (harness_state_dir),
-# keyed like the content-dedup fingerprints, so it never trips a filesystem scanner.
+# progress log and an ETA derived from past runs, so nobody has to poll the run
+# — its exit code is still the only signal an agent waits on. The ETA is based on
+# a PER-MUTANT RATE (seconds per mutant) computed from history, times the CURRENT
+# run's actual mutant count once Stryker reports it. A flat average of whole-run
+# DURATIONS would be meaningless: diff-scoped runs vary from a few dozen mutants
+# to thousands, so normalizing by mutant count is what makes the estimate mean
+# anything. All of this is best-effort and MUST NOT change the gate's pass/fail:
+# every write is guarded, and a missing/corrupt history just means "no estimate".
+# State lives in a `mutation/` subdir of the per-worktree out-of-repo state dir
+# (harness_state_dir), keyed like the content-dedup fingerprints, so it never
+# trips a filesystem scanner.
 
 # harness_mutation_progress_log <root> : the stable, tailable log file Stryker's
 # combined output is tee'd to. mkdir -p its dir so a `tail -f` works immediately.
@@ -203,55 +208,85 @@ harness_fmt_duration() {
   fi
 }
 
-# harness_mutation_history_stats <historyfile> : pure. Print one TSV line
-# "avgSeconds<TAB>lastDuration<TAB>lastCount<TAB>lastDate" computed from the valid
-# records (a record is valid only when its duration field is a positive integer),
-# or NOTHING when there are no valid records (missing/empty/corrupt file). The
-# average is over the last up-to-3 runs (Jenkins-style); the last run's own
-# fields feed the parenthetical detail. Portable awk (bash 3.2, no jq).
-harness_mutation_history_stats() {
+# harness_mutation_rate <historyfile> : pure. Print the MEDIAN per-mutant rate
+# (seconds per mutant) over the last up-to-5 VALID records, or NOTHING when there
+# are no valid records (missing/empty/corrupt/count-less history). A record is
+# valid only when BOTH its duration ($2) and its mutant count ($3) are
+# strictly-positive integers — so old count-less records (no rate is computable)
+# and 0-duration clock-skew records are excluded, and a rate can never divide by
+# an empty or zero count. Each valid record's rate is duration/count; normalizing
+# by mutant count is the whole point (a 5574-mutant run and a 40-mutant run give
+# comparable per-mutant rates, not wildly different whole-run durations). The
+# median is printed with printf "%g" so 2.0 prints "2" and 1.2 prints "1.2".
+# Portable awk only (bash 3.2: no mapfile, no jq); the median is a tiny insertion
+# sort over the <=5 collected rates, averaging the two middle values on an even
+# count.
+harness_mutation_rate() {
   [ -f "$1" ] || return 0
   awk -F'\t' '
-    # A record is valid only when its duration is a strictly-positive integer.
-    # A 0s duration (a mid-run backward clock jump) is filtered so it can never
-    # drag the rolling average toward zero — the wrapper also refuses to append
-    # one, this is defense-in-depth for a pre-existing/hand-edited history file.
-    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 {
-      v++; dur[v]=$2; cnt[v]=$3;
-      d=$1; sub(/T.*/, "", d); dt[v]=d;
+    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 && $3 ~ /^[0-9]+$/ && $3 + 0 > 0 {
+      v++; rate[v] = $2 / $3;
     }
     END {
       if (v == 0) exit 0;
-      start = v - 2; if (start < 1) start = 1;
-      sum = 0; k = 0;
-      for (i = start; i <= v; i++) { sum += dur[i]; k++ }
-      avg = int(sum / k + 0.5);
-      printf "%d\t%d\t%s\t%s\n", avg, dur[v], cnt[v], dt[v];
+      # Keep only the last up-to-5 valid records (most recent).
+      start = v - 4; if (start < 1) start = 1;
+      n = 0;
+      for (i = start; i <= v; i++) { n++; r[n] = rate[i]; }
+      # Insertion sort r[1..n] ascending.
+      for (i = 2; i <= n; i++) {
+        key = r[i]; j = i - 1;
+        while (j >= 1 && r[j] > key) { r[j + 1] = r[j]; j--; }
+        r[j + 1] = key;
+      }
+      if (n % 2 == 1) {
+        med = r[(n + 1) / 2];
+      } else {
+        med = (r[n / 2] + r[n / 2 + 1]) / 2;
+      }
+      printf "%g", med;
     }
   ' "$1" 2>/dev/null || true
 }
 
-# harness_mutation_estimate_line <historyfile> : print the human ETA line for a
-# run that is ABOUT to start. With history: an "Estimated ~<avg> (last run: ...)"
-# line; without any valid history: the plain no-estimate line. Never crashes.
-harness_mutation_estimate_line() {
-  local stats avg lastdur lastcnt lastdate
-  stats="$(harness_mutation_history_stats "$1")"
-  if [ -z "$stats" ]; then
-    printf 'No mutation history yet — no estimate available.\n'
-    return 0
-  fi
-  avg="$(printf '%s' "$stats" | cut -f1)"
-  lastdur="$(printf '%s' "$stats" | cut -f2)"
-  lastcnt="$(printf '%s' "$stats" | cut -f3)"
-  lastdate="$(printf '%s' "$stats" | cut -f4)"
-  if [ -n "$lastcnt" ]; then
-    printf 'Estimated ~%s (last run: %s over %s mutants on %s)\n' \
-      "$(harness_fmt_duration "$avg")" "$(harness_fmt_duration "$lastdur")" "$lastcnt" "$lastdate"
-  else
-    printf 'Estimated ~%s (last run: %s on %s)\n' \
-      "$(harness_fmt_duration "$avg")" "$(harness_fmt_duration "$lastdur")" "$lastdate"
-  fi
+# harness_mutation_eta_filter <rate> : a pipe STAGE for the mutation run. It reads
+# Stryker's combined output line by line and PASSES EVERY LINE THROUGH unchanged
+# (fflush after each so streaming stays live). On the FIRST line matching an
+# "N/M" counter it parses M (the run's mutant count = the denominator) and, if
+# <rate> is a positive number and M>0, prints exactly ONE extra line:
+#   Estimated ~<fmt> for <M> mutants (~<rate>s/mutant from history)
+# where <fmt> is rate*M rounded to whole seconds. When <rate> is empty or
+# non-positive it prints no ETA line and only passes lines through. This is a
+# downstream stage: it NEVER changes the exit code — the wrapper reads
+# PIPESTATUS[0] (Stryker), which adding a stage does not affect.
+harness_mutation_eta_filter() {
+  local rate="${1:-}"
+  awk -v rate="$rate" '
+    # fmtdur mirrors harness_fmt_duration in this same file: <60 -> "Ns";
+    # a whole minute -> "Nm"; else "Nm Ss".
+    function fmtdur(s,   m) {
+      s = int(s + 0.5);
+      if (s < 60) return s "s";
+      m = int(s / 60); s = s % 60;
+      if (s == 0) return m "m";
+      return m "m " s "s";
+    }
+    {
+      print; fflush();
+      if (!done && rate + 0 > 0 && $0 ~ /[0-9]+\/[0-9]+/) {
+        if (match($0, /[0-9]+\/[0-9]+/)) {
+          split(substr($0, RSTART, RLENGTH), a, "/");
+          m = a[2] + 0;
+          if (m > 0) {
+            printf "Estimated ~%s for %d mutants (~%gs/mutant from history)\n", \
+              fmtdur(rate * m), m, rate + 0;
+            fflush();
+            done = 1;
+          }
+        }
+      }
+    }
+  '
 }
 
 # harness_code_fingerprint <root> : a hash of only the inputs that change a

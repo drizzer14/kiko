@@ -4,9 +4,10 @@
 #
 # For a watching HUMAN it also (a) tees the combined Stryker output to a stable,
 # tailable progress log under the out-of-repo per-worktree state dir and prints
-# the exact `tail -f` command to watch it, and (b) prints a Jenkins-style ETA
-# computed from the history of past completed runs (see the harness_mutation_*
-# helpers in _lib.sh). This exists so a human can watch a multi-minute run
+# the exact `tail -f` command to watch it, and (b) prints an ETA derived from the
+# history of past completed runs: a PER-MUTANT rate (seconds/mutant) times this
+# run's actual mutant count, printed LIVE the moment Stryker reports that count
+# (see the harness_mutation_* helpers in _lib.sh). This exists so a human can watch a multi-minute run
 # directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
 # human. None of the progress/ETA/history code may change the pass/fail result:
@@ -97,18 +98,31 @@ fi
 # the out-of-repo per-worktree state dir, truncated at the start of each run so
 # `tail -f` shows the current run. The tee still duplicates to stdout LIVE and
 # `out` still captures the full output for the failure block; PIPESTATUS[0] reads
-# the producer's status through the tee (read immediately after the pipe). Print
-# the ETA (from history) and the exact `tail -f` command BEFORE the pipe, and
-# create the empty log first so the watch command works immediately. All of this
-# is guarded: it must never change the gate's exit code. `$mutate_arg` is a
-# single token with no spaces (or empty), so the unquoted expansion is safe.
+# the producer's status through the tee (read immediately after the pipe). The
+# ETA is a PER-MUTANT RATE from history (harness_mutation_rate) times the run's
+# ACTUAL mutant count — a flat duration average is meaningless when diff-scoped
+# runs span dozens to thousands of mutants — so the full ETA is printed LIVE by
+# harness_mutation_eta_filter (the last pipe stage) the moment Stryker first
+# reports the count. Before the run we can only announce that: with no usable
+# history we print the plain no-estimate line. Create the empty log first so the
+# watch command works immediately. All of this is guarded: it must never change
+# the gate's exit code. `$mutate_arg` is a single token with no spaces (or
+# empty), so the unquoted expansion is safe. The ETA line goes only to stdout via
+# the filter — the tee writes the log BEFORE the filter, so `$log` (and thus
+# `out`, the count/score parse, and the failure block) stays pure Stryker output.
 log="$(harness_mutation_progress_log "$ROOT")"
 : > "$log" 2>/dev/null || true
-harness_mutation_estimate_line "$(harness_mutation_history_file "$ROOT")"
+hist="$(harness_mutation_history_file "$ROOT")"
+rate="$(harness_mutation_rate "$hist")"
+if [ -z "$rate" ]; then
+  printf 'No mutation history yet — no estimate available.\n'
+else
+  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history).\n' "$rate"
+fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
 
 start="$(date +%s 2>/dev/null || printf '0')"
-"$BIN" run $mutate_arg 2>&1 | tee "$log"
+"$BIN" run $mutate_arg 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
 code="${PIPESTATUS[0]}"
 end="$(date +%s 2>/dev/null || printf '0')"
 out="$(cat "$log" 2>/dev/null || true)"
