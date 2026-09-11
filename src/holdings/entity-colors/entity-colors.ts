@@ -1,7 +1,7 @@
-import type { AccountRow } from '../db/schema';
-import { entityColorsDark } from '../design-system/palette';
+import type { AccountRow } from '../../db/schema';
+import { entityColorsDark } from '../../design-system/palette';
 
-import type { HoldingType } from './holding-type';
+import type { HoldingType } from '../holding-type';
 
 // The default swatch shown for a newly-created account or holding, keyed by its
 // kind/type. A user may override the color per entity later; until then the row

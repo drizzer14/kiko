@@ -1,4 +1,4 @@
-import type { AccountRow, HoldingRow } from '../db/schema';
+import type { AccountRow, HoldingRow } from '../../db/schema';
 
 // Runtime tuple mirroring the `holdings.type` enum in db/schema.ts. The
 // `satisfies` ties it to the schema: adding a type to the schema enum is a

@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 
-import type { HoldingType } from './holding-type';
+import type { HoldingType } from '../holding-type';
 
 // The receive path an Exchange destination takes, keyed by its holding type.
 // Exhaustive over the `holdings.type` enum (schema.ts:25) so adding a holding

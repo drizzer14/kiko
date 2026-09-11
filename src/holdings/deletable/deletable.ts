@@ -1,7 +1,7 @@
-import { balanceProviderIds } from '../crypto-sync/provider';
-import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+import { balanceProviderIds } from '../../crypto-sync/provider';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 
-import { syncedMetadataFields } from './holding-metadata';
+import { syncedMetadataFields } from '../holding-metadata';
 
 /** Every `accounts.institution` value that marks an account as owned by a sync. */
 const syncedInstitutions = ['monobank', ...balanceProviderIds] as const;

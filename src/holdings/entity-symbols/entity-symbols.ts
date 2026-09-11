@@ -1,6 +1,6 @@
-import type { AccountRow } from '../db/schema';
+import type { AccountRow } from '../../db/schema';
 
-import type { HoldingType } from './holding-type';
+import type { HoldingType } from '../holding-type';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
 // kind/type. Mirrors src/holdings/entity-colors.ts: fixed UI symbols (not

@@ -1,7 +1,7 @@
-import { i18n } from '../i18n';
+import { i18n } from '../../i18n';
 
 import { derivedEntries } from './derived-entries';
-import type { ValuableHolding } from './holding-value';
+import type { ValuableHolding } from '../holding-value';
 
 const DAY = 86_400_000;
 const T0 = 1_600_000_000_000;

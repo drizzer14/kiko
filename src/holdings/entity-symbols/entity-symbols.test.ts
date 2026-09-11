@@ -1,7 +1,7 @@
-import type { AccountRow } from '../db/schema';
+import type { AccountRow } from '../../db/schema';
 
 import { accountKindSymbol, holdingTypeSymbol } from './entity-symbols';
-import { holdingTypes, holdingTypesForAccountKind } from './holding-type';
+import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 type AccountKind = AccountRow['kind'];
 

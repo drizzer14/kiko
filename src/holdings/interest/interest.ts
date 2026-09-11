@@ -1,5 +1,5 @@
-import type { BondCouponFrequency, CompoundingFrequency } from './holding-metadata';
-import { splitInterestTaxMinor } from './tax';
+import type { BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
+import { splitInterestTaxMinor } from '../tax';
 
 const DAY_MS = 86_400_000;
 const DAYS_PER_YEAR = 365;

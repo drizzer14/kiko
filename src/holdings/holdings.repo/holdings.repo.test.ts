@@ -9,8 +9,8 @@
 // transaction. The query-builder tests below use `database` directly, which the
 // spread of the real module leaves untouched.
 let mockTx: unknown;
-jest.mock('../db/client', () => {
-  const actual = jest.requireActual('../db/client');
+jest.mock('../../db/client', () => {
+  const actual = jest.requireActual('../../db/client');
   return {
     ...actual,
     write: (work: (db: unknown) => unknown) => work(mockTx),
@@ -20,8 +20,8 @@ jest.mock('../db/client', () => {
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetTx } from '@kiko/db/capture-set-tx';
 
-import { accounts, holdings } from '../db/schema';
-import { holdingValueAt } from '../statistics/holding-value-at';
+import { accounts, holdings } from '../../db/schema';
+import { holdingValueAt } from '../../statistics/holding-value-at';
 
 import { holdingsRepo } from './holdings.repo';
 

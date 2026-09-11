@@ -1,5 +1,5 @@
-import { isExchangeSourceType } from './exchange-destination';
-import type { HoldingType } from './holding-type';
+import { isExchangeSourceType } from '../exchange-destination';
+import type { HoldingType } from '../holding-type';
 
 // Which leg the user records when converting an existing transaction into an
 // Exchange, chosen by the sign of the existing amount (spec "Direction, by the
