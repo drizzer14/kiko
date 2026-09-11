@@ -4,10 +4,10 @@ const mockRunSync = jest.fn();
 const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 
-jest.mock('../monobank/sync', () => ({
+jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
-jest.mock('../rates/rates-refresh', () => ({
+jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
 jest.mock('@kiko/rates/rates.repo', () => ({

@@ -2,8 +2,8 @@ import { ratesRepo } from '@kiko/rates/rates.repo';
 import either, { bifold, isLeft } from 'fnts/either';
 import { useState } from 'react';
 
-import { runSync } from '../monobank/sync';
-import { refreshRates } from '../rates/rates-refresh';
+import { runSync } from '../../monobank/sync';
+import { refreshRates } from '../../rates/rates-refresh';
 
 export type SyncAction<Input> = {
   isSyncing: boolean;

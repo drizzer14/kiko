@@ -12,7 +12,7 @@ const mockHasToken = jest.fn();
 const mockMonobankRun = jest.fn();
 const mockCryptoRun = jest.fn();
 
-jest.mock('./sync-jobs', () => ({
+jest.mock('../sync-jobs', () => ({
   syncJobsFor: (account: { name: string; institution: string | null }) => {
     if (account.institution === 'monobank') {
       return [{ name: account.name, run: mockMonobankRun }];
@@ -23,10 +23,10 @@ jest.mock('./sync-jobs', () => ({
     return [];
   },
 }));
-jest.mock('../monobank/token', () => ({
+jest.mock('../../monobank/token', () => ({
   hasToken: (...args: unknown[]) => mockHasToken(...args),
 }));
-jest.mock('../rates/rates-refresh', () => ({
+jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
 jest.mock('@kiko/rates/rates.repo', () => ({

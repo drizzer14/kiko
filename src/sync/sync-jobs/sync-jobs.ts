@@ -1,8 +1,8 @@
-import { isBalanceProviderId } from '../crypto-sync/provider';
-import { resyncRequest } from '../crypto-sync/resync-request';
-import { runCryptoSync } from '../crypto-sync/run-crypto-sync';
-import type { AccountRow } from '../db/schema';
-import { runSync } from '../monobank/sync';
+import { isBalanceProviderId } from '../../crypto-sync/provider';
+import { resyncRequest } from '../../crypto-sync/resync-request';
+import { runCryptoSync } from '../../crypto-sync/run-crypto-sync';
+import type { AccountRow } from '../../db/schema';
+import { runSync } from '../../monobank/sync';
 
 /**
  * The fan-out only needs each account's connection marker and a name to report a

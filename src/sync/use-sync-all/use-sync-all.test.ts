@@ -1,19 +1,19 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import type { AccountRow } from '../db/schema';
+import type { AccountRow } from '../../db/schema';
 
 const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();
 const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 
-jest.mock('../monobank/sync', () => ({
+jest.mock('../../monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
-jest.mock('../crypto-sync/run-crypto-sync', () => ({
+jest.mock('../../crypto-sync/run-crypto-sync', () => ({
   runCryptoSync: (...args: unknown[]) => mockRunCryptoSync(...args),
 }));
-jest.mock('../rates/rates-refresh', () => ({
+jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
 }));
 jest.mock('@kiko/rates/rates.repo', () => ({

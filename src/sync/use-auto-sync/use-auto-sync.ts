@@ -4,11 +4,11 @@ import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
-import { hasToken } from '../monobank/token';
-import { refreshRates } from '../rates/rates-refresh';
+import { hasToken } from '../../monobank/token';
+import { refreshRates } from '../../rates/rates-refresh';
 
-import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from './settle-limited';
-import { syncJobsFor } from './sync-jobs';
+import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
+import { syncJobsFor } from '../sync-jobs';
 
 /**
  * Throttle window for the automatic on-open sync. Matches the rates cache

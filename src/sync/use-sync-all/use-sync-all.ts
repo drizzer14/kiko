@@ -2,10 +2,10 @@ import { ratesRepo } from '@kiko/rates/rates.repo';
 import either from 'fnts/either';
 import { useState } from 'react';
 
-import { refreshRates } from '../rates/rates-refresh';
+import { refreshRates } from '../../rates/rates-refresh';
 
-import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from './settle-limited';
-import { type SyncableAccount, type SyncJob, syncJobsFor } from './sync-jobs';
+import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
+import { type SyncableAccount, type SyncJob, syncJobsFor } from '../sync-jobs';
 
 type UseSyncAll = {
   /** Names of the accounts whose sync failed on the last run — empty on full success. */
