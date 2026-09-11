@@ -141,6 +141,22 @@ describe('GlassSurface', () => {
     expect(queryByTestId('material-fallback-backdrop')).toBeNull();
   });
 
+  // `translucentStrong` (item, the Home transaction card's variant) must ALSO
+  // fill the non-glass fallback base with its OWN stronger token, not
+  // `transparent`'s — same pattern as the `transparent`/`material` fallback
+  // tests above.
+  it('fills the fallback base with the stronger translucent token when translucentStrong is set', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <GlassSurface testID="strong-fallback" translucentStrong>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('strong-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+    expect(queryByTestId('strong-fallback-backdrop')).toBeNull();
+  });
+
   // Device-only regression (encoded here as a JS-composition assertion, since
   // Jest renders LiquidGlass as a plain View and cannot reproduce the native
   // glass recomposite): the wash must be a SIBLING layered OVER the base
@@ -274,6 +290,25 @@ describe('GlassSurface', () => {
       expect(getByTestId('transparent-glass-base').props.tintColor).toBeUndefined();
     });
 
+    // `translucentStrong` (the Home transaction card's variant) opts a
+    // tint-LESS surface into the STRONGER translucent backdrop —
+    // `surfaceTranslucentStrong` (0.80 alpha), not `transparent`'s 0.60 —
+    // WITHOUT any color wash or tintColor, same shape as `transparent`.
+    it('paints the stronger translucent neutral backdrop for a tint-less surface when translucentStrong is set, with no wash', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="strong-glass" translucentStrong>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const backdrop = getByTestId('strong-glass-backdrop');
+      const flat = StyleSheet.flatten(backdrop.props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+
+      expect(queryByTestId('strong-glass-wash')).toBeNull();
+      expect(getByTestId('strong-glass-base').props.tintColor).toBeUndefined();
+    });
+
     // `transparent` is a NEUTRAL variant, so a `tint` (an entity card, which
     // must stay opaque) always wins: the backdrop is the OPAQUE surface, and the
     // material still carries the entity `tintColor`.
@@ -330,6 +365,22 @@ describe('GlassSurface', () => {
       const flat = StyleSheet.flatten(getByTestId('tinted-material-glass-backdrop').props.style);
       expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
       expect(getByTestId('tinted-material-glass-base').props.tintColor).toBe(tint);
+    });
+
+    // `translucentStrong` is a NEUTRAL variant like `transparent`/`material`,
+    // so a `tint` (an entity card, which must stay opaque) always wins over it
+    // too: the backdrop stays the OPAQUE surface, and the entity `tintColor`
+    // is still applied.
+    it('keeps the opaque backdrop and tint when both tint and translucentStrong are set', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="tinted-strong-glass" tint={tint} translucentStrong>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const flat = StyleSheet.flatten(getByTestId('tinted-strong-glass-backdrop').props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(getByTestId('tinted-strong-glass-base').props.tintColor).toBe(tint);
     });
 
     // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.

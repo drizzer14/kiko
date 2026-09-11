@@ -30,6 +30,17 @@ export const styles = StyleSheet.create((theme) => ({
   translucentBase: {
     backgroundColor: theme.colors.surfaceTranslucent,
   },
+  // The STRONGER translucent themed base, used the same two places as
+  // `translucentBase` above but for the `translucentStrong` variant (see
+  // `GlassSurface`'s `translucentStrong` prop): a scrolling card that must
+  // pin its live glass sample MORE (less lightness drift) while staying
+  // see-through, sitting between `transparent`'s 0.60 partial pin and an
+  // opaque `tint` card. Uses `surfaceTranslucentStrong` (0.80 alpha, same
+  // #1C1C1E hue as `surfaceTranslucent`) rather than `translucentBase`'s
+  // 0.60.
+  strongTranslucentBase: {
+    backgroundColor: theme.colors.surfaceTranslucentStrong,
+  },
   // The card edge, applied when `bordered` is set. A Unistyles-managed member
   // (not a plain inline object) for the same reason as `tinted`: Unistyles
   // writes it straight to the native ShadowNode, so the hairline separator

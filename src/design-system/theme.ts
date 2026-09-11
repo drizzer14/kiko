@@ -63,6 +63,13 @@ export const darkTheme = {
     // text stays legible on it. This is a distinct token from `scrim` (the
     // modal dim) — same alpha convention, different role.
     surfaceTranslucent: 'rgba(28,28,30,0.60)',
+    // The same #1C1C1E hue as `surfaceTranslucent`, but a HIGHER alpha (0.80 vs
+    // 0.60) — a stronger backdrop pin for a scrolling card that must drift LESS
+    // in lightness on scroll while staying see-through. It is the middle option
+    // between `transparent`'s 0.60 partial pin and an opaque `tint` card: more
+    // opaque than `surfaceTranslucent`, still translucent (never 1.0). This is
+    // the Home transaction card's backdrop.
+    surfaceTranslucentStrong: 'rgba(28,28,30,0.80)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
