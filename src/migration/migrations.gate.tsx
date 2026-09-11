@@ -1,8 +1,10 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { initDatabase } from '@kiko/db/client';
 import { runMigrations } from '@kiko/db/run-migrations';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { i18n } from '@kiko/i18n';
+import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { migrateLegacyToken } from '@kiko/monobank/token';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
@@ -47,6 +49,25 @@ const applyPersistedLanguage = async (): Promise<void> => {
   }
 };
 
+/**
+ * Move the single global Monobank token to a per-account Keychain item, bound to
+ * the currently-connected Monobank account (multi-account plan, 2026-09-11). Runs
+ * in the boot chain AFTER `migrateLegacyToken` (which first brings a pre-`kiko`
+ * token up to the global item) and BEFORE any per-account token read.
+ *
+ * The connected account id is resolved with a one-shot read of the same
+ * `connectedQuery` the sync fan-out uses; there is at most one connected Monobank
+ * account today (the one-connection invariant relaxes in a later phase), so the
+ * first row's id is the binding target. When none is connected the migration is a
+ * no-op that leaves the global item for a later Connect to adopt — see
+ * `migrateSingleTokenToPerAccount`.
+ */
+const migratePerAccountMonobankToken = async (): Promise<void> => {
+  const connected = await accountsRepo.connectedQuery('monobank');
+
+  await migrateSingleTokenToPerAccount(connected.at(0)?.id);
+};
+
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
@@ -63,13 +84,16 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // setter can ever run against a missing row, and a failed insert surfaces
     // as this gate's error state instead of an unhandled rejection. The
     // persisted language is applied next, before either gate paints anything
-    // user-visible. The legacy Keychain-token migration runs last, before any
-    // token read (the auto-sync hook mounts only on success).
+    // user-visible. The Keychain-token migrations run last, before any token
+    // read (the auto-sync hook mounts only on success): first the legacy
+    // (pre-`kiko`) -> global move, then the global -> per-account move that binds
+    // the token to its connected account.
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
       .then(applyPersistedLanguage)
       .then(migrateLegacyToken)
+      .then(migratePerAccountMonobankToken)
       .then(() => {
         if (!cancelled) {
           setState({ status: 'success' });

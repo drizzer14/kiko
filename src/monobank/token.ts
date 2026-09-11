@@ -1,6 +1,22 @@
 import * as Keychain from 'react-native-keychain';
 
-const service = 'kiko.monobank.token';
+/**
+ * The single GLOBAL Monobank token service. Historically the app stored ONE
+ * Monobank token per device under this service. The multi-account plan
+ * (2026-09-11) moves the secret to a PER-ACCOUNT item (`serviceFor` below);
+ * this global item is now transitional — it is what `migrate-credential.ts`
+ * reads and clears once the token is bound to its connected account, and what
+ * the old-app import restores into for that migration to pick up.
+ */
+export const MONOBANK_TOKEN_SERVICE = 'kiko.monobank.token';
+
+/**
+ * The per-account Keychain service for a Monobank token, keyed by the stable
+ * `accounts.id` (a local uuid — NOT a secret, so embedding it here leaks
+ * nothing). Each connected Monobank account holds its own isolated item, so a
+ * read/clear for account A can never touch account B's token.
+ */
+export const serviceFor = (accountId: string): string => `${MONOBANK_TOKEN_SERVICE}.${accountId}`;
 
 /**
  * LEGACY (pre-`kiko` rename) Keychain service. This literal is the documented
@@ -10,31 +26,34 @@ const service = 'kiko.monobank.token';
 const LEGACY_SERVICE = 'pff.monobank.token';
 
 /**
- * Storage-at-rest policy for the token: readable only while the device is
+ * Storage-at-rest policy for a token item: readable only while the device is
  * unlocked, and bound to this device (never restored onto another one from an
  * encrypted backup). Deliberately NO `accessControl` — a biometric prompt on
  * this item would break the silent background auto-sync read
  * (`useAutoSync` -> `readToken`). The app-wide biometric gate is `LockGate`
- * (`src/auth`), not the Keychain item. A token saved before this shipped keeps
- * its old (default) policy until the user reconnects, or until it is migrated
- * across from the legacy service below — see docs/security/README.md.
+ * (`src/auth`), not the Keychain item. Only the `service` differs between the
+ * global item and each per-account item; the hardening is identical, so it is
+ * derived here from ONE place and reused verbatim by every writer (the global
+ * functions, the legacy migration, and the per-account credential migration).
  */
-const HARDENED: Keychain.SetOptions = {
+export const hardenedFor = (service: string): Keychain.SetOptions => ({
   service,
   accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-};
+});
+
+const HARDENED: Keychain.SetOptions = hardenedFor(MONOBANK_TOKEN_SERVICE);
 
 export const saveToken = async (token: string): Promise<void> => {
   await Keychain.setGenericPassword('monobank', token, HARDENED);
 };
 
 export const readToken = async (): Promise<string | undefined> => {
-  const credentials = await Keychain.getGenericPassword({ service });
+  const credentials = await Keychain.getGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
   return credentials ? credentials.password : undefined;
 };
 
 export const clearToken = async (): Promise<void> => {
-  await Keychain.resetGenericPassword({ service });
+  await Keychain.resetGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
 };
 
 /**
@@ -49,7 +68,7 @@ export const clearToken = async (): Promise<void> => {
  * which is exactly what this function exists to avoid.
  */
 export const hasToken = async (): Promise<boolean> => {
-  return Keychain.hasGenericPassword({ service });
+  return Keychain.hasGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
 };
 
 /**
@@ -64,7 +83,7 @@ export const hasToken = async (): Promise<boolean> => {
  * legacy token (genuine fresh install) is a no-op.
  */
 export const migrateLegacyToken = async (): Promise<void> => {
-  const existing = await Keychain.getGenericPassword({ service });
+  const existing = await Keychain.getGenericPassword({ service: MONOBANK_TOKEN_SERVICE });
   if (existing) {
     return;
   }
