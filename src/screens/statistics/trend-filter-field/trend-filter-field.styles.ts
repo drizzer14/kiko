@@ -20,20 +20,24 @@ export const styles = StyleSheet.create((theme) => ({
   manualSection: {
     flexShrink: 1,
   },
-  // The manual list's grouped card must shrink WITH its section so the scroll
-  // region below it stays bounded under the sheet's 66% height cap; without
-  // this the card would take its full content height and nothing would
-  // scroll. This is a plain `Box`, not `GlassSurface` (no frosted gray fill
-  // behind the rows), but it reproduces the two things that card was actually
-  // relied on for: `overflow: hidden` clips the scrolling list to its own
-  // rounded corners, and the hairline `border` token keeps the scroll region
-  // reading as one grouped card on the translucent sheet instead of bare rows.
+  // A small, consistent top bump above each section's `SectionHeader` label so
+  // the header breathes from the control above it. The `Text` primitive's
+  // `style` prop only accepts typography keys, so the padding lives on a `Box`
+  // wrapper here rather than on the label's `Text`.
+  label: {
+    paddingTop: theme.spacing(1),
+  },
+  // The manual list's scroll region must shrink WITH its section so it stays
+  // bounded under the sheet's 66% height cap; without this it would take its
+  // full content height and nothing would scroll. The list now sits fully
+  // transparent straight on the sheet — no frosted gray fill and no hairline
+  // border any more (matching the earlier removal of the `GlassSurface` fill
+  // behind the value groups) — keeping only `overflow: hidden` + the shared
+  // radius token so the scrolling rows still clip to rounded corners.
   manualGroup: {
     flexShrink: 1,
     overflow: 'hidden',
     borderRadius: theme.radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
   },
   // The manual category list's own scroll region, shrinking to the space the
   // fixed header + action row leave (see date-range-field for the same pattern).
