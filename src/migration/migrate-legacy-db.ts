@@ -53,6 +53,15 @@ export const migrateLegacyDatabase = (): DB => {
   const kikoPath = kiko.getDbPath();
   kiko.close();
   kiko.delete();
+  // Defensive guard. `VACUUM INTO` cannot bind a parameter, so the target path
+  // is interpolated into SQL. The invariant is that `kikoPath` comes ONLY from
+  // the SQLite driver's own `getDbPath()` — never from external input. Reject a
+  // path carrying a single quote (SQL string-literal break-out) or a `..`
+  // traversal segment, so a future change that sourced the path externally
+  // cannot silently become an injection.
+  if (kikoPath.includes("'") || kikoPath.includes('..')) {
+    throw new Error(`Refusing unsafe VACUUM INTO target path: ${kikoPath}`);
+  }
   legacy.executeSync(`VACUUM INTO '${kikoPath}'`);
 
   return open({ name: DB_NAME });

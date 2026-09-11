@@ -84,6 +84,22 @@ describe('migrateLegacyDatabase', () => {
     expect(result).toBe(kikoReopened);
   });
 
+  it.each([
+    ["/mock/Documents/ki'ko.db", 'a single quote'],
+    ['/mock/Documents/../evil.db', 'a path-traversal segment'],
+  ])('throws when the VACUUM INTO target path contains %s', (badPath) => {
+    const kikoInitial = makeFakeDb('kiko.db', 0);
+    kikoInitial.getDbPath.mockReturnValue(badPath);
+    const legacy = makeFakeDb('pff.db', 5);
+    mockOpen.mockImplementation(({ name }: { name: string }) =>
+      name === 'pff.db' ? legacy : kikoInitial,
+    );
+
+    expect(() => migrateLegacyDatabase()).toThrow(/unsafe VACUUM INTO target path/i);
+    // The unsafe path is rejected before the legacy db writes anything.
+    expect(legacy.executeSync).not.toHaveBeenCalledWith(expect.stringContaining('VACUUM INTO'));
+  });
+
   it('deletes a stray empty legacy db and returns the fresh kiko.db (fresh install)', () => {
     const kiko = makeFakeDb('kiko.db', 0);
     const legacy = makeFakeDb('pff.db', 0);
