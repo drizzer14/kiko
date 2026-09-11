@@ -31,16 +31,6 @@ jest.mock('../../db/encrypted-database', () => ({
   }),
 }));
 
-// initDatabase() now always consults the one-time old-app import first, which
-// reaches for the native WidgetBridge (absent under Jest, where it throws by
-// design). This suite exercises ratesRepo, not the migration, and already stubs
-// the encrypted-open above, so stub the import to a clean no-op the same way
-// db/client.test.ts does.
-jest.mock('@kiko/migration/import-from-old-app', () => ({
-  importFromOldApp: async () => false,
-  finalizeImportBridge: async () => undefined,
-}));
-
 import { initDatabase } from '../../db/client';
 
 import { ratesRepo } from './rates.repo';
