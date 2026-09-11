@@ -4,7 +4,7 @@ const mockClearToken = jest.fn(async (_id: string) => {});
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { disconnect: (id: string) => mockDisconnectAccount(id) },
 }));
-jest.mock('./token', () => ({ clearToken: (id: string) => mockClearToken(id) }));
+jest.mock('../token', () => ({ clearToken: (id: string) => mockClearToken(id) }));
 
 import { disconnectMonobank } from './disconnect';
 

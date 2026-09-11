@@ -1,6 +1,6 @@
 import * as Keychain from 'react-native-keychain';
 
-import { hardenedFor, MONOBANK_TOKEN_SERVICE, serviceFor } from './token';
+import { hardenedFor, MONOBANK_TOKEN_SERVICE, serviceFor } from '../token';
 
 /**
  * Move the single GLOBAL Monobank token (`kiko.monobank.token`) to a PER-ACCOUNT

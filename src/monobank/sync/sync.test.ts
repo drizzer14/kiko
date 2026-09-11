@@ -2,12 +2,12 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
-import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
-import { i18n } from '../i18n';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
+import { i18n } from '../../i18n';
 
-import clientInfo from './__fixtures__/client-info.json';
-import statement from './__fixtures__/statement.json';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from './monobank.types';
+import clientInfo from '../__fixtures__/client-info.json';
+import statement from '../__fixtures__/statement.json';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 import {
   mapAccountToHolding,
   mapStatementItem,
@@ -20,7 +20,7 @@ import {
   isFastPhaseDone,
   getSnapshot as isSyncingSnapshot,
   subscribeProgress,
-} from './sync-status';
+} from '../sync-status';
 
 describe('mapStatementItem', () => {
   it('namespaces the external id by account id so two connections cannot collide', () => {

@@ -1,6 +1,6 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
-import { clearToken } from './token';
+import { clearToken } from '../token';
 
 /**
  * Disconnect a Monobank-connected account, the required first step before it
