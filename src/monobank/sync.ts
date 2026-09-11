@@ -295,12 +295,18 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 
 /**
  * Resolve the account this sync targets, WITHOUT writing anything. With a
- * `targetAccountId` (the Connect action), validate the one-connection-per-
- * institution invariant and return it — the caller marks it `institution:
- * 'monobank'` only once `fetchClientInfo` has actually succeeded (see
- * `markMonobankAccount`). Without a `targetAccountId`, reuse the
- * already-connected Monobank account. If neither is available there is
- * nothing to sync into — the new model requires the user to create and
+ * `targetAccountId` (the Connect action), validate the target exists and return
+ * it — the caller marks it `institution: 'monobank'` only once `fetchClientInfo`
+ * has actually succeeded (see `markMonobankAccount`). Multiple Monobank
+ * connections are now allowed: each has its OWN per-account token and its OWN
+ * `sync_state` cursor, and its holdings match per account (`upsertByMetadataKey`
+ * scopes by `accountId`), so a second connection can never import another's
+ * cards or corrupt its cursor — the one-connection-per-institution invariant is
+ * therefore retired here (multi-account plan, Phase 3). Without a
+ * `targetAccountId` (the legacy no-target path), reuse the FIRST connected
+ * Monobank account; the fan-out always passes a target now, so this path only
+ * serves an already-single-connection legacy caller. If neither is available
+ * there is nothing to sync into — the new model requires the user to create and
  * connect an account first, so we surface a clear error rather than silently
  * minting a stray 'Monobank' account.
  */
@@ -319,17 +325,7 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
     if (!target) {
       throw new Error(i18n.t('accountDetail.noMonobankConnection'));
     }
-    // The personal Monobank API is a single connection: at most one account may
-    // be institution=monobank at a time. Re-connecting the SAME account is an
-    // idempotent re-sync and stays allowed; a DIFFERENT already-connected
-    // account is rejected so its cards/jars are never imported twice (which
-    // would double-count net worth).
-    const otherConnected = accounts.find((account) => {
-      return account.institution === 'monobank' && account.id !== deps.targetAccountId;
-    });
-    if (otherConnected) {
-      throw new Error(i18n.t('accountDetail.monobankAlreadyConnected'));
-    }
+
     return deps.targetAccountId;
   }
   const existing = accounts.find((account) => account.institution === 'monobank');
@@ -887,32 +883,48 @@ const reconcileClosedHoldings = async (
 type SyncResult = { importedTransactions: number };
 
 /**
- * Module-level single-flight lock. Monobank's rate limit is per TOKEN, and all
- * three sync entry points — `useAutoSync` (app open), `useSyncAll`
- * (pull-to-refresh) and `useSync` (the manual button) — drive the one connected
- * token, so two overlapping runs collide into 429s (the reported "inconsistent"
- * symptom). While a run is in flight, every new trigger JOINS (awaits) it and
- * observes its result instead of starting a second concurrent run; the lock
- * releases the instant the run settles — success OR failure — so the next
- * trigger starts a fresh run.
+ * Module-level PER-ACCOUNT single-flight lock — a `Map` keyed by the resolved
+ * target account id, mirroring `inFlightBalanceSyncs` in `src/crypto-sync/sync.ts`.
+ * Monobank's rate limit is per TOKEN, and all three sync entry points —
+ * `useAutoSync` (app open), `useSyncAll` (pull-to-refresh) and `useSync` (the
+ * manual button) — drive an account's token, so two overlapping runs for the
+ * SAME account collide into 429s (the reported "inconsistent" symptom). While a
+ * run is in flight for an account, every new trigger for that SAME account JOINS
+ * (awaits) it and observes its result instead of starting a second concurrent
+ * run; the lock releases the instant that run settles — success OR failure — so
+ * the next trigger starts a fresh run.
+ *
+ * Keying PER ACCOUNT (not one global lock) is what lets the multi-connection
+ * fan-out drive N Monobank accounts at once: two DIFFERENT accounts have
+ * distinct tokens and distinct per-token rate-limit buckets, so they run
+ * concurrently and safely (see `syncJobsFor`, which now passes a `targetAccountId`
+ * per account). The key must be known SYNCHRONOUSLY — before any `await` — so two
+ * overlapping triggers for one account cannot both slip past into their own run;
+ * `runSync` therefore reads it from `overrides.targetAccountId` directly. A
+ * no-target legacy call is the single connected account and shares one fixed
+ * `institution:monobank` key, so its behavior is unchanged when exactly one
+ * connection exists.
  *
  * This guards CONCURRENCY only and is complementary to, NOT a replacement for,
  * the per-invocation 60s request gate in `./throttle`: that gate paces requests
  * WITHIN a single run to respect the per-token interval; this lock stops two
- * runs existing at once. Both invariants are load-bearing — see kiko-architecture.
+ * runs for one account existing at once. Both invariants are load-bearing — see
+ * kiko-architecture.
  *
- * Join (not queue) semantics are safe because the three triggers are equivalent
- * syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
+ * Join (not queue) semantics are safe because the triggers are equivalent syncs
+ * of the same account's token: `useAutoSync`/`useSyncAll` only fire for an
  * ALREADY-connected account, so there is no competing run when the first-time
- * Connect (a `targetAccountId` sync) executes, and a re-sync joining an
- * in-flight run of the same connected token yields exactly the result it would
- * have computed itself.
+ * Connect (a `targetAccountId` sync) executes, and a re-sync joining an in-flight
+ * run of the same account's token yields exactly the result it would have
+ * computed itself.
  */
-let inFlightSync: Promise<SyncResult> | null = null;
+const inFlightSyncs = new Map<string, Promise<SyncResult>>();
 
 export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
-  if (inFlightSync) {
-    return inFlightSync;
+  const key = overrides.targetAccountId ?? 'institution:monobank';
+  const joined = inFlightSyncs.get(key);
+  if (joined) {
+    return joined;
   }
   // Enter the shared progress SESSION the instant this run acquires the lock —
   // before any network/DB work. The first contributor lights the transient
@@ -920,18 +932,18 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
   // every reactive indicator shows the run; the session spans the whole fan-out
   // (this run plus any concurrent crypto `runBalanceSync`), so `isSyncing` and
   // the bar stay lit until the LAST path settles. A trigger that JOINS an
-  // in-flight run takes the early `return inFlightSync` above and never reaches
-  // here, so it neither re-enters nor prematurely leaves the session.
+  // in-flight run takes the early `return joined` above and never reaches here,
+  // so it neither re-enters nor prematurely leaves the session.
   beginProgressSession();
   // Reset the fast-phase-done signal at the START of the run, so a joined pull
   // observes THIS run's balance commit, not a stale one from a prior run. It
   // flips ON in `runSyncInner` once `upsertAllHoldings` commits the balances.
   setFastPhaseDone(false);
   const run = runSyncInner(overrides);
-  inFlightSync = run;
+  inFlightSyncs.set(key, run);
   const release = (): void => {
-    if (inFlightSync === run) {
-      inFlightSync = null;
+    if (inFlightSyncs.get(key) === run) {
+      inFlightSyncs.delete(key);
     }
     // Leave the shared progress session when the run settles (success OR
     // failure). The LAST contributor clears `isSyncing` and the progress bar.

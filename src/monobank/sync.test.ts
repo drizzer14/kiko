@@ -455,21 +455,23 @@ describe('runSync', () => {
     }
   });
 
-  it('rejects connecting a second account while another is already connected, importing nothing', async () => {
+  it('allows connecting a second Monobank account while another is already connected', async () => {
     const connected = bankAccount({ id: 'acc-a', institution: 'monobank' });
     const second = bankAccount({ id: 'acc-b', institution: null });
-    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
-      onlyFirstAccount,
-      [connected, second],
-    );
+    const { deps, accountsStore, holdingsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      connected,
+      second,
+    ]);
     deps.targetAccountId = 'acc-b';
 
-    await expect(runSync(deps)).rejects.toThrow('A Monobank account is already connected');
-    // account B is never marked, and no holdings/transactions land under it
-    expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBeNull();
-    expect(holdingsStore.filter((holding) => holding.accountId === 'acc-b')).toHaveLength(0);
-    expect(holdingsStore).toHaveLength(0);
-    expect(transactionsStore).toHaveLength(0);
+    const result = await runSync(deps);
+
+    // The one-connection-per-institution invariant is relaxed: account B connects
+    // independently, is marked monobank, and imports its own holdings/transactions
+    // under itself — the already-connected account A never blocks it.
+    expect(accountsStore.find((account) => account.id === 'acc-b')?.institution).toBe('monobank');
+    expect(holdingsStore.some((holding) => holding.accountId === 'acc-b')).toBe(true);
+    expect(result.importedTransactions).toBe(statement.length);
   });
 
   it('allows re-connecting the SAME already-connected account (idempotent re-sync)', async () => {
@@ -979,6 +981,66 @@ describe('runSync', () => {
     expect(firstResult.importedTransactions).toBe(statement.length);
     // No duplicate import from the coalesced second trigger.
     expect(transactionsStore).toHaveLength(statement.length);
+  });
+
+  // Per-account single-flight (mirrors `inFlightBalanceSyncs` on the crypto side):
+  // two triggers for DIFFERENT target accounts have distinct keys, distinct tokens
+  // and distinct per-token rate-limit buckets, so they run concurrently and must
+  // NOT coalesce into one run.
+  it('runs two different target accounts concurrently without joining', async () => {
+    const accountA = bankAccount({ id: 'acc-a', institution: 'monobank' });
+    const accountB = bankAccount({ id: 'acc-b', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [accountA, accountB]);
+
+    // Hold client-info open until both triggers have fired, so the second call
+    // arrives while the first is provably still running.
+    let release!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchClientInfo = jest.fn(async () => {
+      await opened;
+      return {
+        accounts: clientInfo.accounts as MonobankAccount[],
+        jars: clientInfo.jars as MonobankJar[],
+      };
+    });
+    deps.fetchClientInfo = fetchClientInfo;
+
+    const first = runSync({ ...deps, targetAccountId: 'acc-a' });
+    const second = runSync({ ...deps, targetAccountId: 'acc-b' });
+    release();
+    await Promise.all([first, second]);
+
+    // Two independent runs → client-info fetched once PER account, not coalesced.
+    expect(fetchClientInfo).toHaveBeenCalledTimes(2);
+  });
+
+  it('joins two concurrent triggers for the SAME target account', async () => {
+    const accountA = bankAccount({ id: 'acc-a', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [accountA]);
+
+    let release!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchClientInfo = jest.fn(async () => {
+      await opened;
+      return {
+        accounts: clientInfo.accounts as MonobankAccount[],
+        jars: clientInfo.jars as MonobankJar[],
+      };
+    });
+    deps.fetchClientInfo = fetchClientInfo;
+
+    const first = runSync({ ...deps, targetAccountId: 'acc-a' });
+    const second = runSync({ ...deps, targetAccountId: 'acc-a' });
+    release();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    // Same key → exactly one underlying run, both triggers observe its result.
+    expect(fetchClientInfo).toHaveBeenCalledTimes(1);
+    expect(firstResult).toBe(secondResult);
   });
 
   it('starts a fresh sync once the previous one has settled (lock releases)', async () => {
