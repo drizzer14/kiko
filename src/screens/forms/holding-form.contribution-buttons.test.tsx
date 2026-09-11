@@ -1,5 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -110,6 +111,28 @@ describe('HoldingFormScreen contribution button variants', () => {
       expect(entry.size).toBe('small');
       expect(entry.icon).toBe('plus');
     }
+  });
+
+  // The mapped contributions and the inline Add button are grouped under ONE
+  // container with a tighter inner gap (spacing(2) = 8pt) so the small Add
+  // button hugs the list, instead of sitting the section's full spacing(4) =
+  // 16pt below it — the disproportionate top-gap fix. theme.spacing(2) === 2*4.
+  const TIGHT_GROUP_GAP = 8;
+
+  it('groups the Add contribution button with the contributions under a tighter gap', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+
+    const group = screen.getByTestId('contributions-group');
+
+    // The group's own gap is the tighter 8pt rhythm, not the section's 16pt —
+    // this is what pulls the Add button up close to the list.
+    expect(StyleSheet.flatten(group.props.style).gap).toBe(TIGHT_GROUP_GAP);
+
+    // The Add button lives INSIDE that tight group (hugging the list), no longer
+    // a direct sibling sitting the full section gap below the last contribution.
+    expect(within(group).getByText('Add contribution')).toBeTruthy();
   });
 
   it('hands each Remove contribution button the tinted destructiveTonal variant', async () => {

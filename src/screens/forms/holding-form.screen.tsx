@@ -572,53 +572,70 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('forms.holding.contributions')}</Text>
 
-            {contributions.map((contribution, index) => (
-              <Box key={contribution.id} gap={2}>
-                <TextField
-                  label={t('forms.holding.contributionAmount', { index: index + 1 })}
-                  value={contribution.amount}
-                  onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  suffix={currencySymbol[currency]}
-                  required
-                />
+            {/* The mapped contributions and the inline Add button form ONE
+                group under a tighter inner gap (spacing(2) = 8pt), so the small
+                Add button hugs the list — ~8pt below the last contribution —
+                rather than sitting the section's full spacing(4) = 16pt below
+                it. That 16pt is the uniform outer-section gap between
+                full-height rows (headings, dividers, the balance group); above
+                a short `size="small"` button, and right after each
+                contribution's own tight 8pt internal rhythm, it read as a
+                disproportionate top gap (the Add button is NOT the shared
+                Screen footer, so last round's footer-padding fix never touched
+                it). The contributions keep their own spacing(4) = 16pt
+                separation from each other via the inner list Box, so distinct
+                contributions stay visually distinct. */}
+            <Box gap={2} testID="contributions-group">
+              <Box gap={4}>
+                {contributions.map((contribution, index) => (
+                  <Box key={contribution.id} gap={2}>
+                    <TextField
+                      label={t('forms.holding.contributionAmount', { index: index + 1 })}
+                      value={contribution.amount}
+                      onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      suffix={currencySymbol[currency]}
+                      required
+                    />
 
-                <DateField
-                  label={t('forms.holding.contributionDate', { index: index + 1 })}
-                  value={contribution.date}
-                  onChange={(next) => updateContributionDate(index, next)}
-                  placeholder={t('forms.holding.selectDatePlaceholder')}
-                  required
-                />
+                    <DateField
+                      label={t('forms.holding.contributionDate', { index: index + 1 })}
+                      value={contribution.date}
+                      onChange={(next) => updateContributionDate(index, next)}
+                      placeholder={t('forms.holding.selectDatePlaceholder')}
+                      required
+                    />
 
-                {contributions.length > 1 && (
-                  <Button
-                    variant="destructiveTonal"
-                    size="small"
-                    fullWidth={false}
-                    icon="trash"
-                    disabled={contribution.saved}
-                    accessibilityLabel={t('forms.holding.removeContribution', {
-                      index: index + 1,
-                    })}
-                    onPress={() => removeContribution(index)}
-                  >
-                    {t('forms.holding.remove')}
-                  </Button>
-                )}
+                    {contributions.length > 1 && (
+                      <Button
+                        variant="destructiveTonal"
+                        size="small"
+                        fullWidth={false}
+                        icon="trash"
+                        disabled={contribution.saved}
+                        accessibilityLabel={t('forms.holding.removeContribution', {
+                          index: index + 1,
+                        })}
+                        onPress={() => removeContribution(index)}
+                      >
+                        {t('forms.holding.remove')}
+                      </Button>
+                    )}
+                  </Box>
+                ))}
               </Box>
-            ))}
 
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              icon="plus"
-              onPress={addContribution}
-            >
-              {t('forms.holding.addContribution')}
-            </Button>
+              <Button
+                variant="primary"
+                size="small"
+                fullWidth={false}
+                icon="plus"
+                onPress={addContribution}
+              >
+                {t('forms.holding.addContribution')}
+              </Button>
+            </Box>
 
             <Divider testID="form-divider" />
 
