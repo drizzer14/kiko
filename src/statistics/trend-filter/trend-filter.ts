@@ -1,4 +1,4 @@
-import type { CategoryMeasure } from './category-trend';
+import type { CategoryMeasure } from '../category-trend';
 
 /** The two trend-filter modes: an explicit manual pick, or a live "Top N". */
 export type TrendMode = 'manual' | 'top';

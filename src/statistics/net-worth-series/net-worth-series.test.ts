@@ -1,15 +1,15 @@
 // `buildNetWorthSeries` uses `rateTableAt` from the rate-history repo, whose
 // module opens the op-sqlite connection at load. Stub the native module so the
 // (pure) builder can be exercised without a real database.
-import { startOfLocalDay } from '../dates/local-day';
-import type { CurrencyRateHistoryRow, HoldingRow } from '../db/schema';
-import type { MonobankStatementItem } from '../monobank/monobank.types';
+import { startOfLocalDay } from '../../dates/local-day';
+import type { CurrencyRateHistoryRow, HoldingRow } from '../../db/schema';
+import type { MonobankStatementItem } from '../../monobank/monobank.types';
 // `sync.ts` itself imports the repos, which open the op-sqlite connection at
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
-import { mapStatementItem } from '../monobank/sync';
+import { mapStatementItem } from '../../monobank/sync';
 
-import type { SeriesHolding } from './holding-value-at';
+import type { SeriesHolding } from '../holding-value-at';
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
 const DAY = 86_400_000;

@@ -1,4 +1,4 @@
-import type { Currency } from '../currency/currency';
+import type { Currency } from '../../currency/currency';
 
 /**
  * The maximum time gap between the two legs of one internal transfer.

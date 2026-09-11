@@ -2,13 +2,13 @@ import {
   type CategoryDisplay,
   resolveCategoryDisplay,
   resolveCategoryKey,
-} from '../categories/category-display';
-import type { Currency } from '../currency/currency';
-import { Money } from '../currency/money';
-import type { HoldingRow, TransactionRow } from '../db/schema';
-import { chartSeriesDark } from '../design-system/palette';
-import { convert, type RateTable } from '../rates/conversion';
-import { canConvert } from '../rates/net-worth-view';
+} from '../../categories/category-display';
+import type { Currency } from '../../currency/currency';
+import { Money } from '../../currency/money';
+import type { HoldingRow, TransactionRow } from '../../db/schema';
+import { chartSeriesDark } from '../../design-system/palette';
+import { convert, type RateTable } from '../../rates/conversion';
+import { canConvert } from '../../rates/net-worth-view';
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,

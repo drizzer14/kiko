@@ -1,4 +1,4 @@
-import { DAY_MS } from '../dates/duration';
+import { DAY_MS } from '../../dates/duration';
 
 // Past this line-window span the daily bucket count would grow unbounded, so
 // the series coarsens to a weekly bucket to keep the point count sane.

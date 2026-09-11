@@ -1,9 +1,9 @@
-import type { Currency } from '../currency/currency';
-import type { AccountRow, HoldingRow } from '../db/schema';
-import { resolveEntityColor } from '../design-system/entity-tint';
-import { defaultAccountColor } from '../holdings/entity-colors';
-import type { RateTable } from '../rates/conversion';
-import { guardedNetWorth } from '../rates/net-worth-view';
+import type { Currency } from '../../currency/currency';
+import type { AccountRow, HoldingRow } from '../../db/schema';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import { defaultAccountColor } from '../../holdings/entity-colors';
+import type { RateTable } from '../../rates/conversion';
+import { guardedNetWorth } from '../../rates/net-worth-view';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two

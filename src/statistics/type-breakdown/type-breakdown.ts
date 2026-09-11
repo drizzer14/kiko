@@ -1,10 +1,10 @@
-import type { Currency } from '../currency/currency';
-import { Money } from '../currency/money';
-import type { HoldingRow } from '../db/schema';
-import { type HoldingType, holdingTypes } from '../holdings/holding-type';
-import { holdingValue } from '../holdings/holding-value';
-import { convert, type RateTable } from '../rates/conversion';
-import { canConvert } from '../rates/net-worth-view';
+import type { Currency } from '../../currency/currency';
+import { Money } from '../../currency/money';
+import type { HoldingRow } from '../../db/schema';
+import { type HoldingType, holdingTypes } from '../../holdings/holding-type';
+import { holdingValue } from '../../holdings/holding-value';
+import { convert, type RateTable } from '../../rates/conversion';
+import { canConvert } from '../../rates/net-worth-view';
 
 /** A holding as the by-type bar needs it: its type plus its convertible value. */
 export type BreakdownHolding = Pick<

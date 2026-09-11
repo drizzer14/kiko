@@ -1,10 +1,10 @@
-import { resolveCategoryDisplay } from '../categories/category-display';
-import type { Currency } from '../currency/currency';
-import { Money, toMajor } from '../currency/money';
-import { convert, type RateTable } from '../rates/conversion';
-import { canConvert } from '../rates/net-worth-view';
+import { resolveCategoryDisplay } from '../../categories/category-display';
+import type { Currency } from '../../currency/currency';
+import { Money, toMajor } from '../../currency/money';
+import { convert, type RateTable } from '../../rates/conversion';
+import { canConvert } from '../../rates/net-worth-view';
 
-import { type BreakdownTransaction, resolveCategoryColor } from './category-breakdown';
+import { type BreakdownTransaction, resolveCategoryColor } from '../category-breakdown';
 
 /**
  * One point on a category's spending line: `amount` is that category's total

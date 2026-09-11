@@ -1,4 +1,4 @@
-import { ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC } from '../monobank/mcc-category';
+import { ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC } from '../../monobank/mcc-category';
 
 /**
  * The minimal transaction shape the MCC/IBAN exclusion rule needs. `mcc` is the
