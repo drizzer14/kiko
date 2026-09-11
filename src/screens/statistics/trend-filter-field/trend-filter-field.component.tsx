@@ -6,6 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
+import GlassSurface from '../../../design-system/components/glass-surface';
 import OptionPills from '../../../design-system/components/option-pills';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
@@ -51,13 +52,15 @@ const draftToFilter = (draft: Draft): TrendFilter =>
 // inline object) so it stays one stable style reference (mirrors OptionPills).
 const selectedLabelStyle = { fontWeight: '600' } as const;
 
-// A grouped-list section header: the caption type step in the secondary tone,
-// the iOS grouped-form header treatment. It sits one type step BELOW the sheet
-// title and the body-size row labels, so the sheet reads with a clear
-// title > row-label > section-header hierarchy at a glance (title case, per the
-// design system's heading rule — the size and tone carry the hierarchy).
+// A grouped-list section header: the caption type step in the PRIMARY (white)
+// tone — the iOS grouped-form header treatment, but pulled up from the dim grey
+// (`textSecondary`) it used before so it reads as a clear white sub-heading
+// above its grouped card rather than a weak, washed-out label. It sits below
+// the stronger `heading` sheet title, so the sheet reads with a clear
+// title > section-header > card-contents hierarchy at a glance (title case, per
+// the design system's heading rule).
 const SectionHeader: FC<{ children: string }> = ({ children }) => (
-  <Text variant="caption" tone="textSecondary">
+  <Text variant="caption" tone="textPrimary">
     {children}
   </Text>
 );
@@ -248,16 +251,23 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
       >
         <Text variant="heading">{t('statistics.trendFilter.title')}</Text>
 
+        {/* Each section is a white sub-heading ABOVE a frosted `GlassSurface`
+            grouped card that holds only that section's controls — the iOS-HIG
+            grouped-card layout, so the controls read as lifted off the flat
+            sheet instead of floating on it. `transparent` frosts the card so
+            the sheet reads through; `bordered` draws the hairline card edge. */}
         <Box gap={2}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 
-          <OptionPills
-            options={MODES}
-            selected={draft.mode}
-            onSelect={setMode}
-            label={(mode) => t(`statistics.trendFilter.${mode}`)}
-            columns={2}
-          />
+          <GlassSurface transparent bordered padding={3} testID={`${testID}-group-selection`}>
+            <OptionPills
+              options={MODES}
+              selected={draft.mode}
+              onSelect={setMode}
+              label={(mode) => t(`statistics.trendFilter.${mode}`)}
+              columns={2}
+            />
+          </GlassSurface>
         </Box>
 
         {draft.mode === 'top' ? (
@@ -265,50 +275,66 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             <Box gap={2}>
               <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
 
-              <OptionPills
-                options={AMOUNTS}
-                selected={draft.amount}
-                onSelect={setAmount}
-                columns={AMOUNTS.length}
-              />
+              <GlassSurface transparent bordered padding={3} testID={`${testID}-group-amount`}>
+                <OptionPills
+                  options={AMOUNTS}
+                  selected={draft.amount}
+                  onSelect={setAmount}
+                  columns={AMOUNTS.length}
+                />
+              </GlassSurface>
             </Box>
 
             <Box gap={2}>
               <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
 
-              <OptionPills
-                options={MEASURES}
-                selected={draft.by}
-                onSelect={setBy}
-                label={measureLabel}
-                columns={MEASURES.length}
-              />
+              <GlassSurface transparent bordered padding={3} testID={`${testID}-group-by`}>
+                <OptionPills
+                  options={MEASURES}
+                  selected={draft.by}
+                  onSelect={setBy}
+                  label={measureLabel}
+                  columns={MEASURES.length}
+                />
+              </GlassSurface>
             </Box>
           </>
         ) : (
           <Box gap={2} style={styles.manualSection}>
             <SectionHeader>{t('statistics.trendFilter.categories')}</SectionHeader>
 
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
+            {/* The list card carries NO `padding`: each `ManualCategoryRow`
+                already self-insets, so an edge-to-edge scroll region inside the
+                card is the iOS grouped-list row treatment (and avoids doubling
+                the row's own inset). It shares the manual section's shrink so
+                only the list scrolls under the sheet's height cap. */}
+            <GlassSurface
+              transparent
+              bordered
+              style={styles.manualGroup}
+              testID={`${testID}-group-categories`}
             >
-              {manualRows.map((option) => (
-                <ManualCategoryRow
-                  key={option.value}
-                  option={option}
-                  checked={isChecked(option.value)}
-                  label={
-                    option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value)
-                  }
-                  onPress={() =>
-                    option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
-                  }
-                  testID={`${testID}-option-${option.value}`}
-                />
-              ))}
-            </ScrollView>
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {manualRows.map((option) => (
+                  <ManualCategoryRow
+                    key={option.value}
+                    option={option}
+                    checked={isChecked(option.value)}
+                    label={
+                      option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value)
+                    }
+                    onPress={() =>
+                      option.value === FILTER_ALL ? clearManual() : toggleManual(option.value)
+                    }
+                    testID={`${testID}-option-${option.value}`}
+                  />
+                ))}
+              </ScrollView>
+            </GlassSurface>
           </Box>
         )}
 

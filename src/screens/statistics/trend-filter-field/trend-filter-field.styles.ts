@@ -20,6 +20,13 @@ export const styles = StyleSheet.create((theme) => ({
   manualSection: {
     flexShrink: 1,
   },
+  // The manual list's grouped GlassSurface card must shrink WITH its section so
+  // the scroll region below it stays bounded under the sheet's 66% height cap;
+  // without this the card would take its full content height and nothing would
+  // scroll. The card's own `overflow: hidden` clips the list to its corners.
+  manualGroup: {
+    flexShrink: 1,
+  },
   // The manual category list's own scroll region, shrinking to the space the
   // fixed header + action row leave (see date-range-field for the same pattern).
   scroll: {
