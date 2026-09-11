@@ -108,6 +108,25 @@ describe('429 / Retry-After handling', () => {
     expect(sleep).toHaveBeenCalledWith(60_000);
   });
 
+  it('falls back to the per-token interval when Retry-After is a non-positive 0', async () => {
+    const sleep = jest.fn(async () => undefined);
+    let call = 0;
+    const fetchImpl = jest.fn(async () => {
+      call += 1;
+      return call === 1
+        ? rateLimited('0')
+        : ({ ok: true, status: 200, json: async () => clientInfo } as unknown as Response);
+    }) as unknown as typeof fetch;
+
+    await fetchClientInfo('secret', fetchImpl, { sleep });
+
+    // A `Retry-After: 0` header must not collapse the backoff to zero — a
+    // non-positive value falls back to the per-token interval, exactly like a
+    // missing or non-numeric header.
+    expect(sleep).toHaveBeenCalledWith(60_000);
+    expect(sleep).not.toHaveBeenCalledWith(0);
+  });
+
   it('gives up after the bounded retry count and surfaces a distinct rate-limited error', async () => {
     const sleep = jest.fn(async () => undefined);
     const fetchImpl = jest.fn(async () => rateLimited('1')) as unknown as typeof fetch;

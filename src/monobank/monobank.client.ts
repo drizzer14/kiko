@@ -75,13 +75,14 @@ const defaultSleep = (milliseconds: number): Promise<void> =>
 
 /**
  * Retry-After is defined in seconds (Monobank sends a plain integer). Convert
- * to milliseconds; anything missing or non-numeric falls back to the per-token
- * interval so a malformed header never collapses the backoff to zero.
+ * to milliseconds; anything missing, non-numeric, or non-positive (including a
+ * literal `Retry-After: 0`) falls back to the per-token interval so a malformed
+ * or zero header never collapses the backoff to zero.
  */
 const retryAfterMs = (response: Response): number => {
   const header = response.headers?.get?.('Retry-After');
   const seconds = header ? Number.parseInt(header, 10) : Number.NaN;
-  return Number.isFinite(seconds) ? seconds * 1000 : RATE_LIMIT_FALLBACK_MS;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : RATE_LIMIT_FALLBACK_MS;
 };
 
 /**
