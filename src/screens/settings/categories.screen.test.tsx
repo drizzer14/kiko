@@ -63,8 +63,8 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 // (`openDeleteMenu`), unit-tested on its own; here it is mocked so the screen
 // test can assert the wiring — the category title and the delete callback —
 // without presenting a real sheet.
-jest.mock('../grid-interaction', () => ({
-  ...jest.requireActual('../grid-interaction'),
+jest.mock('../../design-system/grid-interaction', () => ({
+  ...jest.requireActual('../../design-system/grid-interaction'),
   openDeleteMenu: (...args: unknown[]) => mockOpenDeleteMenu(...args),
 }));
 jest.mock('../../db/use-live-query', () => ({

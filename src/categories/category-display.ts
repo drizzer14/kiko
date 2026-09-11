@@ -28,7 +28,7 @@ export type CategoryDisplay = { title: string; icon: string; color: string | nul
 // freezing to whatever language was active when this module first loaded —
 // this is a plain (non-component) module, so it reads the i18next instance
 // directly rather than `useTranslation()`, the same pattern as
-// `src/screens/grid-interaction.ts`.
+// `src/design-system/grid-interaction/grid-interaction.ts`.
 export const neutralCategory = (): CategoryDisplay => ({
   title: i18n.t('categories.uncategorized'),
   icon: 'creditcard',

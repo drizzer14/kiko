@@ -1,7 +1,7 @@
 import { ActionSheetIOS } from 'react-native';
 import { trigger } from 'react-native-haptic-feedback';
 
-import { i18n } from '../i18n';
+import { i18n } from '../../i18n';
 
 // The subset of react-native-sortables' `onDragEnd` params this app reads. The
 // library also passes `keyToIndex`; it is not needed here. Kept local (callers

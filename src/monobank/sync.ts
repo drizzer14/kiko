@@ -324,7 +324,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 // account-detail.screen.tsx), so it genuinely needs to be localized, not left
 // as a diagnostic-only string. This module has no React context of its own,
 // so it reads the i18next instance directly (the same pattern as
-// `src/screens/grid-interaction.ts`) rather than threading a `t` prop through
+// `src/design-system/grid-interaction/grid-interaction.ts`) rather than threading a `t` prop through
 // every sync call site. 'Monobank' itself is a brand name and is not
 // translated (matching every other Monobank-branded catalog entry).
 const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {

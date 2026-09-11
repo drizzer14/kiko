@@ -1,7 +1,7 @@
 import { ActionSheetIOS } from 'react-native';
 import { trigger } from 'react-native-haptic-feedback';
 
-import { i18n } from '../i18n';
+import { i18n } from '../../i18n';
 
 import { onGridDragEnd, openDeleteMenu } from './grid-interaction';
 

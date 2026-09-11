@@ -5,7 +5,7 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
 import FieldLabel from '../../../design-system/components/field-label';
-import IconEditor from '../../icon-editor';
+import IconEditor from '../../../design-system/components/icon-editor';
 
 import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 import { styles } from './holding-identity-field.styles';

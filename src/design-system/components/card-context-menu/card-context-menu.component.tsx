@@ -1,8 +1,7 @@
+import { openDeleteMenu } from '@kiko/design-system/grid-interaction';
 import type { FC, ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-
-import { openDeleteMenu } from '../grid-interaction';
 
 // The gesture's jest test id, exported so the component test can look the
 // long-press up with `getByGestureTestId` and drive it.

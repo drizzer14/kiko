@@ -1,13 +1,13 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import '../../design-system/unistyles';
-import { i18n } from '../../i18n';
+import '../../unistyles';
+import { i18n } from '../../../i18n';
 
 import EditHeaderButton from './edit-header-button.component';
 
 // Button's SF Symbol icon is mocked the same way button.component.test.tsx
 // mocks it, so the leading pencil glyph is queryable without the native
 // SFSymbolView.
-jest.mock('../../design-system/components/symbol', () => {
+jest.mock('../symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {

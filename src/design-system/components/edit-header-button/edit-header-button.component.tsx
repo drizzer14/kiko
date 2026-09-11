@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Button from '../../design-system/components/button';
+import Button from '../button';
 
 // The header-right "Edit" affordance shared by the account- and holding-detail
 // screens: the shared borderless (ghost) Button — compact and self-hugging,

@@ -6,11 +6,11 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
 
+import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
 import { entityCardBackground } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
-import { HOLD_GESTURE_TEST_ID } from '../card-context-menu';
 
 import AccountsScreen from './accounts.screen';
 

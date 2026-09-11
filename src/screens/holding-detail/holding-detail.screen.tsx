@@ -27,6 +27,7 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import EditHeaderButton from '../../design-system/components/edit-header-button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
@@ -53,7 +54,6 @@ import { convert, type RateTable } from '../../rates/conversion';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { transactionRowDescription } from '../../transactions/row-description';
-import EditHeaderButton from '../edit-header-button';
 import EntityAmountHeader from '../entity-amount-header';
 import EntityHeaderIcon from '../entity-header-icon';
 

@@ -1,10 +1,9 @@
+import { openDeleteMenu } from '@kiko/design-system/grid-interaction';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Pressable, Text } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-
-import { openDeleteMenu } from '../grid-interaction';
 
 import CardContextMenu, { HOLD_GESTURE_TEST_ID } from './card-context-menu.component';
 
@@ -18,8 +17,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 // grid-interaction.test.ts; here the module is mocked so the component test can
 // assert the long-press gesture is wired to it with the card's name and delete
 // callback — without presenting a real native sheet.
-jest.mock('../grid-interaction', () => ({
-  ...jest.requireActual('../grid-interaction'),
+jest.mock('@kiko/design-system/grid-interaction', () => ({
+  ...jest.requireActual('@kiko/design-system/grid-interaction'),
   openDeleteMenu: jest.fn(),
 }));
 

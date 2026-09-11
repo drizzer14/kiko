@@ -14,20 +14,20 @@ import type { Currency } from '../../currency/currency';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import CardContextMenu from '../../design-system/components/card-context-menu';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { entityCardBackground, resolveEntityColor } from '../../design-system/entity-tint';
+import { onGridDragEnd } from '../../design-system/grid-interaction';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import CardContextMenu from '../card-context-menu';
-import { onGridDragEnd } from '../grid-interaction';
 
 import { styles } from './accounts.styles';
 

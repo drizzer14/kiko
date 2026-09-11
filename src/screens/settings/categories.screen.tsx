@@ -15,12 +15,12 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
+import { onGridDragEnd, openDeleteMenu } from '../../design-system/grid-interaction';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 import type { SettingsStackParamList } from '../../navigation/types';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import ColorPicker from '../forms/color-picker';
 import HoldingIdentityField from '../forms/holding-identity-field';
-import { onGridDragEnd, openDeleteMenu } from '../grid-interaction';
 
 import AddCategoryRow from './add-category-row';
 
