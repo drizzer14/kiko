@@ -1,17 +1,17 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/holdings.repo';
 
-import type { AccountRow, HoldingRow } from '../db/schema';
-import { i18n } from '../i18n';
+import type { AccountRow, HoldingRow } from '../../db/schema';
+import { i18n } from '../../i18n';
 import {
   beginProgressSession,
   commitHolding,
   commitWork,
   endProgressSession,
   registerWork,
-} from '../monobank/sync-status';
+} from '../../monobank/sync-status';
 
-import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from './provider';
+import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from '../provider';
 
 /**
  * The injectable data-access seams of a balance sync. Mirrors `SyncDeps` in

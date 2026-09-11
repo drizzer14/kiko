@@ -4,7 +4,7 @@ const mockClearCredentials = jest.fn(async (_id: string) => {});
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { disconnect: (id: string) => mockDisconnectAccount(id) },
 }));
-jest.mock('./binance/binance.credentials', () => ({
+jest.mock('../binance/binance.credentials', () => ({
   clearCredentials: (id: string) => mockClearCredentials(id),
 }));
 

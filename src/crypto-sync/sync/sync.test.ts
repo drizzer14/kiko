@@ -3,17 +3,17 @@
 // `jest/setup.js` lets the module graph load; runBalanceSync's data access is
 // fully injected through BalanceSyncDeps, so the real repos are never exercised
 // here.
-import type { AccountRow, HoldingRow } from '../db/schema';
-import { i18n } from '../i18n';
+import type { AccountRow, HoldingRow } from '../../db/schema';
+import { i18n } from '../../i18n';
 import {
   getProgressSnapshot,
   getSnapshot as isSyncingSnapshot,
   setSyncing,
   setSyncProgress,
   subscribeProgress,
-} from '../monobank/sync-status';
+} from '../../monobank/sync-status';
 
-import type { BalanceProvider, ProviderBalance, SyncTarget } from './provider';
+import type { BalanceProvider, ProviderBalance, SyncTarget } from '../provider';
 import { type BalanceSyncDeps, runBalanceSync } from './sync';
 
 const NOW = 1_704_326_400_000;

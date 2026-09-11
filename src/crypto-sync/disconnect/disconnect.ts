@@ -1,7 +1,7 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
-import { clearCredentials } from './binance/binance.credentials';
-import type { BalanceProviderId } from './provider';
+import { clearCredentials } from '../binance/binance.credentials';
+import type { BalanceProviderId } from '../provider';
 
 /**
  * Disconnect a wallet- or Binance-connected account, the required first step
