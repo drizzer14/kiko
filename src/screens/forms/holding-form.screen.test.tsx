@@ -982,6 +982,29 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
   });
+
+  it('disables Remove on a saved contribution while keeping it enabled on a newly-added one', async () => {
+    const screen = await renderEdit(depositHolding);
+
+    // The one stored contribution hydrates as row 1 (saved). Add a second row so
+    // both Remove controls render (the length > 1 guard) — row 2 is unsaved.
+    await fireEvent.press(screen.getByText('Add contribution'));
+
+    const savedRemove = screen.getByLabelText('Remove contribution 1');
+    const newRemove = screen.getByLabelText('Remove contribution 2');
+
+    // A persisted contribution is part of the deposit's history: its Remove is
+    // disabled, and pressing it is a no-op (the disabled Pressable never fires).
+    expect(savedRemove.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(savedRemove);
+    expect(screen.getByLabelText('Contribution 1 Amount')).toBeTruthy();
+    expect(screen.getByLabelText('Contribution 2 Amount')).toBeTruthy();
+
+    // The newly-added row is removable: its Remove is enabled and drops the row.
+    expect(newRemove.props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(newRemove);
+    expect(screen.queryByLabelText('Contribution 2 Amount')).toBeNull();
+  });
 });
 
 describe('HoldingFormScreen — localization', () => {

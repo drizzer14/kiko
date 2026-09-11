@@ -47,16 +47,25 @@ import { useSubmitOnce } from './use-submit-once';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
-type Contribution = { id: number; amount: string; date: number | null };
+// `saved` marks a contribution that is already persisted in the holding's
+// stored metadata (an edit-mode hydrated row) versus one the user just added in
+// this session. Only unsaved rows may be removed — a persisted contribution is
+// part of the deposit's history, so its Remove control renders disabled. The
+// flag is explicit rather than inferred from id ordering: an explicit boolean is
+// clearer and does not break if the seeding/id scheme ever changes.
+type Contribution = { id: number; amount: string; date: number | null; saved: boolean };
 
 // Seed the repeatable contributions list from a stored deposit: each stored
 // amount is minor units, shown back in the field as a grouped major string the
-// user can edit (the inverse of the create form's parse-on-save).
+// user can edit (the inverse of the create form's parse-on-save). Every seeded
+// row is `saved: true` — it already exists in the database, so it cannot be
+// removed here.
 const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribution[] =>
   meta.contributions.map((contribution, index) => ({
     id: index,
     amount: groupAmount(majorAmountText(currency, contribution.amountMinorUnits)),
     date: contribution.date,
+    saved: true,
   }));
 
 // Seed the bond number/date fields from stored metadata. Minor-unit money
@@ -230,7 +239,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // term deposit state
   const nextContributionId = useRef(1);
   const [contributions, setContributions] = useState<Contribution[]>([
-    { id: 0, amount: '', date: null },
+    { id: 0, amount: '', date: null, saved: false },
   ]);
   const [annualRate, setAnnualRate] = useState('');
   const [termMonths, setTermMonths] = useState('');
@@ -310,7 +319,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const addContribution = (): void => {
     const id = nextContributionId.current++;
-    setContributions((rows) => [...rows, { id, amount: '', date: null }]);
+    setContributions((rows) => [...rows, { id, amount: '', date: null, saved: false }]);
   };
 
   const removeContribution = (index: number): void => {
@@ -589,6 +598,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                     size="small"
                     fullWidth={false}
                     icon="trash"
+                    disabled={contribution.saved}
                     accessibilityLabel={t('forms.holding.removeContribution', {
                       index: index + 1,
                     })}
