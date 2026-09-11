@@ -1,4 +1,4 @@
-import { type FC, useState } from 'react';
+import { type FC, memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
@@ -278,4 +278,4 @@ const PieChart: FC<PieChartProps> = ({
   );
 };
 
-export default PieChart;
+export default memo(PieChart);

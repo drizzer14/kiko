@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
@@ -308,4 +308,4 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
   );
 };
 
-export default CategoryTrendLine;
+export default memo(CategoryTrendLine);

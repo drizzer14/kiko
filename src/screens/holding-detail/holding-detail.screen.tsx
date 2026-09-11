@@ -6,7 +6,7 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
-import { type FC, useLayoutEffect } from 'react';
+import { type FC, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -393,15 +393,22 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // carry a `time`; the merged list is sorted newest-first to match the repo's
   // `desc(time)` ordering. Real rows stay interactive (swipe-to-delete, tap to
   // edit); derived rows are read-only and marked "Computed".
-  const derived: DerivedEntry[] = holding ? derivedEntries(holding, now, t) : [];
-  const ledger = [
-    ...transactions.map((transaction) => ({
-      kind: 'transaction' as const,
-      time: transaction.time,
-      transaction,
-    })),
-    ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
-  ].sort((first, second) => second.time - first.time);
+  const derived: DerivedEntry[] = useMemo(
+    () => (holding ? derivedEntries(holding, now, t) : []),
+    [holding, now, t],
+  );
+  const ledger = useMemo(
+    () =>
+      [
+        ...transactions.map((transaction) => ({
+          kind: 'transaction' as const,
+          time: transaction.time,
+          transaction,
+        })),
+        ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
+      ].sort((first, second) => second.time - first.time),
+    [transactions, derived],
+  );
   const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
   // Which add action the footer offers — or none, for a bond or a synced
   // holding (see `footerActionFor`).
@@ -423,7 +430,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // Counterpart holding names, so an Exchange/Convert leg on this holding reads
   // as "Exchange to/from <the OTHER holding's CURRENT name>" in the active
   // language — nothing is persisted (see transactions/row-description.ts).
-  const holdingNameById = new Map(holdings.map((candidate) => [candidate.id, candidate.name]));
+  const holdingNameById = useMemo(
+    () => new Map(holdings.map((candidate) => [candidate.id, candidate.name])),
+    [holdings],
+  );
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
@@ -450,10 +460,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           {showBreakdown && (
             <Box gap={1} style={styles.breakdown}>
               {breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => (
-                <Box
-                  key={detail.label}
-                  style={{ flexDirection: 'row', justifyContent: 'space-between' }}
-                >
+                <Box key={detail.label} direction="row" style={styles.breakdownDetailRow}>
                   <Text variant="caption" tone="textSecondary">
                     {detail.label}
                   </Text>
@@ -574,6 +581,12 @@ const styles = StyleSheet.create((theme) => ({
   // apart from the principal/gross/interest/tax rows beneath it.
   breakdown: {
     marginTop: theme.spacing(3),
+  },
+  // One breakdown detail line (principal/gross/interest/tax/expected-profit):
+  // label on the left, amount on the right, split by space-between. The row
+  // direction comes from the `Box direction="row"` prop.
+  breakdownDetailRow: {
+    justifyContent: 'space-between',
   },
   // A hairline rule separating the Value block from the Transactions list — the
   // same standard hairline treatment the account-detail sections use

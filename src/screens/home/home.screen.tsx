@@ -12,10 +12,9 @@ import type { TFunction } from 'i18next';
 import type { FC, ReactElement } from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, RefreshControl, SectionList } from 'react-native';
+import { RefreshControl, SectionList } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUnistyles } from 'react-native-unistyles';
 
 import {
   buildCategoryDisplayMap,
@@ -24,9 +23,8 @@ import {
   resolveCategoryKey,
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
-import { formatDate, formatTime } from '../../dates/format';
+import { formatDate } from '../../dates/format';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
@@ -34,23 +32,22 @@ import CurrencyBreakdown from '../../design-system/components/currency-breakdown
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
-import { isTimeExemptHoldingType } from '../../holdings/holding-type';
 import type { HomeStackParamList, TabParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { transactionRowDescription } from '../../transactions/row-description';
 import { transactionSpan } from '../../transactions/transaction-span';
 
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
 import SyncProgressBar from './sync-progress-bar';
 import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
+import TransactionRow from './transaction-row';
+import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
 
 // Home lives in its own tab; some of its future navigation targets belong to
@@ -129,7 +126,6 @@ const groupByDay = <Row extends { time: number }>(
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
-  const { theme } = useUnistyles();
 
   // The floating native glass tab bar sits over this screen's bottom edge, so
   // this SectionList — which owns the true bottom edge, since Home passes
@@ -151,7 +147,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // `<SectionList>` below is inferred at `<TransactionRow, DaySection<...>>`,
   // and `DefaultSectionT` does not satisfy `DaySection`, so the alias would not
   // be assignable to this list's own `ref`.
-  const listRef = useRef<SectionList<TransactionRow, DaySection<TransactionRow>>>(null);
+  const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
@@ -164,7 +160,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     'accounts',
   ]);
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  type TransactionRow = (typeof transactions)[number];
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
   const categoryByKey = useMemo(
@@ -393,88 +388,58 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [filteredTransactions, todayStart, t],
   );
 
-  const renderTransaction = ({ item }: { item: TransactionRow }): ReactElement => {
-    const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
-    const description = transactionRowDescription({
-      transaction: item,
-      holdingName: item.holdingName,
-      holdingNameById,
-      t,
-    });
+  // Navigating to the shared Transaction form is stable across renders (it
+  // closes over `navigation` alone), so the memoized rows below never re-render
+  // just because a new press handler identity was created.
+  const handleRowPress = useCallback(
+    (transactionId: string): void => {
+      navigation.navigate('TransactionForm', { transactionId });
+    },
+    [navigation],
+  );
 
-    // Every row is tappable: it opens the shared Transaction form for this id.
-    // A manual row edits; a synced (Monobank) row opens read-only — the form
-    // resolves which from the transaction's own `source`, so the row only needs
-    // to pass the id.
-    return (
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => navigation.navigate('TransactionForm', { transactionId: item.id })}
-      >
-        <GlassSurface transparent padding={3} testID="transaction-row" style={styles.rowCard}>
-          <Box gap={2}>
-            <Box direction="row" style={styles.rowMain}>
-              <Box direction="row" gap={2} style={styles.rowLead}>
-                <SymbolIcon
-                  name={category.icon}
-                  size={theme.iconSizes.body}
-                  tone="textSecondary"
-                  // The row icon and this category's filter chip must hash on the
-                  // SAME resolved key (`categoryKeyForRow`, above): hashing here
-                  // on the raw lowercased slug renders one category in two hues
-                  // whenever that slug is absent from the categories table, since
-                  // the chip has already folded it onto the default key.
-                  color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
-                  accessibilityLabel={category.title}
-                />
-                <Box style={styles.rowDescription}>
-                  <Text variant="body">{description}</Text>
-                </Box>
-              </Box>
-              <Box style={styles.rowAmount}>
-                <MoneyText
-                  money={Money.of(item.currency, item.amountMinorUnits)}
-                  context="transaction"
-                />
-              </Box>
-            </Box>
-            <Box direction="row" gap={2} style={styles.rowFooter}>
-              <Box style={styles.rowFooterMeta}>
-                <Text variant="caption" tone="textSecondary">
-                  {`${item.accountName} · ${category.title}`}
-                </Text>
-              </Box>
-              {!isTimeExemptHoldingType(item.holdingType) && (
-                <Text variant="caption" tone="textSecondary">
-                  {formatTime(item.time)}
-                </Text>
-              )}
-            </Box>
-          </Box>
-        </GlassSurface>
-      </Pressable>
-    );
-  };
+  // A stable `renderItem` identity is what lets the SectionList row bail-out
+  // engage: the row body now lives in the memoized `TransactionRow` component,
+  // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
+  // reactive fire during a sync) as long as its props are unchanged.
+  const renderTransaction = useCallback(
+    ({ item }: { item: HomeTransactionRow }): ReactElement => {
+      return (
+        <TransactionRow
+          item={item}
+          categoryByKey={categoryByKey}
+          defaultCategoryKey={defaultCategoryKey}
+          holdingNameById={holdingNameById}
+          categoryKeyForRow={categoryKeyForRow}
+          onPress={handleRowPress}
+        />
+      );
+    },
+    [categoryByKey, defaultCategoryKey, holdingNameById, categoryKeyForRow, handleRowPress],
+  );
 
-  const renderDayHeader = ({ section }: { section: DaySection<TransactionRow> }): ReactElement => {
-    // The content column already spaces the list one `gap` below the pinned
-    // filter/sync band, so the FIRST day header drops its day-separator top pad —
-    // otherwise the gap above the list would read larger than the equal gaps
-    // between the filters row, the sync-progress bar, and the list. Later headers
-    // keep the pad to separate day groups within the list.
-    const isFirstSection = sections[0] === section;
+  const renderDayHeader = useCallback(
+    ({ section }: { section: DaySection<HomeTransactionRow> }): ReactElement => {
+      // The content column already spaces the list one `gap` below the pinned
+      // filter/sync band, so the FIRST day header drops its day-separator top pad
+      // — otherwise the gap above the list would read larger than the equal gaps
+      // between the filters row, the sync-progress bar, and the list. Later
+      // headers keep the pad to separate day groups within the list.
+      const isFirstSection = sections[0] === section;
 
-    return (
-      <Box
-        testID="home-day-header"
-        style={[styles.sectionHeader, isFirstSection && styles.firstSectionHeader]}
-      >
-        <Text variant="caption" tone="textSecondary">
-          {section.title}
-        </Text>
-      </Box>
-    );
-  };
+      return (
+        <Box
+          testID="home-day-header"
+          style={[styles.sectionHeader, isFirstSection && styles.firstSectionHeader]}
+        >
+          <Text variant="caption" tone="textSecondary">
+            {section.title}
+          </Text>
+        </Box>
+      );
+    },
+    [sections],
+  );
 
   return (
     // The SectionList below is this screen's own scrollable surface and applies

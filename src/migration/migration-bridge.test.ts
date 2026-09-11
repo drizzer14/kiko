@@ -3,7 +3,6 @@ const mockCopyFile = jest.fn();
 const mockFileExists = jest.fn();
 const mockDeleteFile = jest.fn();
 const mockReadTextFile = jest.fn();
-const mockWriteTextFile = jest.fn();
 
 const withNative = () =>
   jest.doMock('react-native', () => ({
@@ -14,7 +13,6 @@ const withNative = () =>
         fileExists: mockFileExists,
         deleteFile: mockDeleteFile,
         readTextFile: mockReadTextFile,
-        writeTextFile: mockWriteTextFile,
       },
     },
   }));

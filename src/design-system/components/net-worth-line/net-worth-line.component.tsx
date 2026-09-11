@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DimensionValue, View } from 'react-native';
 import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
@@ -678,4 +678,4 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   );
 };
 
-export default NetWorthLine;
+export default memo(NetWorthLine);
