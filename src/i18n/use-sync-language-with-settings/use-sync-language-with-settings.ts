@@ -1,9 +1,9 @@
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useEffect } from 'react';
 
-import { useLiveQuery } from '../db/use-live-query';
+import { useLiveQuery } from '../../db/use-live-query';
 
-import { i18n } from './index';
+import { i18n } from '../index';
 
 /**
  * Keeps the active i18next language in sync with the persisted choice. Reads the

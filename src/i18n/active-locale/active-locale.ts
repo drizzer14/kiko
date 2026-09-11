@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 
-import type { AppLanguage } from './device-language';
-import { i18n } from './index';
+import type { AppLanguage } from '../device-language';
+import { i18n } from '../index';
 
 // The BCP-47 locale for Number.prototype.toLocaleString, off the active
 // i18next language. uk-UA groups as `1 234,56` (space thousands, comma

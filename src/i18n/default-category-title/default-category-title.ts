@@ -1,4 +1,4 @@
-import { i18n } from './index';
+import { i18n } from '../index';
 
 // The exact English seed titles from drizzle/migrations/0002_seed_categories.sql,
 // keyed by stable slug. A row whose title still equals its seed title is an
