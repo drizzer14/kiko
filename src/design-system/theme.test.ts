@@ -22,6 +22,39 @@ describe('darkTheme iOS dark palette', () => {
   });
 });
 
+describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
+  // `surfaceTranslucent` (the `transparent` GlassSurface variant's backdrop)
+  // must not change value: `surfaceTranslucentStrong` is a NEW, middle-ground
+  // option, not a replacement.
+  it('pins surfaceTranslucent unchanged at its 0.60 alpha', () => {
+    expect(darkTheme.colors.surfaceTranslucent).toBe('rgba(28,28,30,0.60)');
+  });
+
+  it('pins surfaceTranslucentStrong at its 0.80 alpha', () => {
+    expect(darkTheme.colors.surfaceTranslucentStrong).toBe('rgba(28,28,30,0.80)');
+  });
+
+  // Not a tautology: this encodes the design intent that `surfaceTranslucentStrong`
+  // is the SAME hue as `surfaceTranslucent`, but MORE opaque while staying
+  // translucent (never fully opaque) — the middle option between `transparent`'s
+  // 0.60 partial pin and an opaque `tint` card.
+  it('shares the same RGB hue as surfaceTranslucent, at a higher but still-translucent alpha', () => {
+    const parseRgba = (value: string) => {
+      const match = value.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
+      if (!match) throw new Error(`not an rgba() string: ${value}`);
+      return { rgb: `${match[1]},${match[2]},${match[3]}`, alpha: Number(match[4]) };
+    };
+
+    const translucent = parseRgba(darkTheme.colors.surfaceTranslucent);
+    const strong = parseRgba(darkTheme.colors.surfaceTranslucentStrong);
+
+    expect(strong.rgb).toBe(translucent.rgb);
+    expect(strong.rgb).toBe('28,28,30');
+    expect(strong.alpha).toBeGreaterThan(translucent.alpha);
+    expect(strong.alpha).toBeLessThan(1);
+  });
+});
+
 describe('icon-size token scale', () => {
   // Every icon size is 1.25x its paired type-scale step, rounded to the nearest
   // point (iOS HIG: a symbol reads as a peer of, and slightly heavier than, the

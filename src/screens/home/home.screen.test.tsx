@@ -54,8 +54,9 @@ jest.mock('react-native-safe-area-context', () => {
 // pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
 // file-level mock keeps the same default so every existing fallback-branch
 // test is unchanged, but exposes the flag as a MUTABLE property (the same
-// pattern `bottom-sheet.component.test.tsx` uses) so the material-variant test
-// below can flip it on to prove the live-glass branch paints no backdrop.
+// pattern `bottom-sheet.component.test.tsx` uses) so the translucentStrong-
+// variant test below can flip it on to prove the live-glass branch paints a
+// stronger-translucent backdrop under the glass.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
@@ -297,25 +298,29 @@ describe('HomeScreen', () => {
     expect(getAllByTestId('transaction-row').length).toBeGreaterThan(0);
   });
 
-  it("renders the transaction card through GlassSurface's live-blur material variant", async () => {
-    // The row now uses GlassSurface's `material` variant — the same live-blur
-    // glass the BottomSheet uses — not `transparent`. The two are IDENTICAL on
-    // the non-glass FALLBACK path (a translucent `-base` fill, no backdrop), so
-    // only the live-glass path distinguishes them: `transparent` pins a
-    // `-backdrop` layer UNDER the glass to soften scroll drift, while `material`
-    // paints NONE so the glass samples the live content behind it. The default
+  it("renders the transaction card through GlassSurface's stronger-translucent translucentStrong backdrop variant", async () => {
+    // The row uses GlassSurface's `translucentStrong` variant — a MORE-opaque
+    // (0.80 alpha) translucent backdrop pinned UNDER the glass, so the card
+    // stays see-through but drifts LESS in lightness on scroll than either
+    // `material` (no backdrop) or `transparent` (a softer 0.60 backdrop). On the
+    // non-glass FALLBACK path the `-base` fill IS that stronger translucent
+    // color; on the live-glass path a `-backdrop` layer carries it. The default
     // seed (beforeEach) is a single transaction, so exactly one row renders.
     const fallbackBase = StyleSheet.flatten(
       (await renderHome()).getByTestId('transaction-row-base').props.style,
     );
-    expect(fallbackBase.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(fallbackBase.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
 
     try {
       liquidGlass.isLiquidGlassSupported = true;
-      // `material`'s whole point: on the live-glass path it adds NO backdrop
-      // layer (what `transparent` would paint here), so this pins the variant —
-      // it fails if the row is reverted to `transparent`.
-      expect((await renderHome()).queryByTestId('transaction-row-backdrop')).toBeNull();
+      // `translucentStrong`'s whole point: on the live-glass path it paints a
+      // `-backdrop` layer filled with the stronger translucent color. This pins
+      // the variant — it fails if the row is reverted to `material` (no backdrop
+      // at all) or to `transparent` (a 0.60-alpha backdrop, not 0.80).
+      const backdrop = StyleSheet.flatten(
+        (await renderHome()).getByTestId('transaction-row-backdrop').props.style,
+      );
+      expect(backdrop.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
     } finally {
       liquidGlass.isLiquidGlassSupported = false;
     }

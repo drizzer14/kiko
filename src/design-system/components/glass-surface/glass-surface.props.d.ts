@@ -42,6 +42,21 @@ export type GlassSurfaceProps = ViewProps & {
   // variant, so a `tint` (an entity card, which must stay opaque) always wins:
   // `transparent` is ignored when a `tint` is set. Defaults to `false`.
   transparent?: boolean;
+  // A middle-ground neutral backdrop, like `transparent` but MORE opaque: it
+  // also paints a TRANSLUCENT backdrop UNDER the glass on both the glass and
+  // fallback paths (so the material samples a pinned color and the fallback
+  // reads see-through), but with a MORE opaque fill —
+  // `theme.colors.surfaceTranslucentStrong` (0.80 alpha) instead of
+  // `transparent`'s `surfaceTranslucent` (0.60) — so a scrolling card drifts
+  // LESS in lightness on scroll while still reading see-through, not opaque.
+  // It sits between `material` (no backdrop at all, so the glass samples the
+  // live content behind it — maximum drift) and `transparent` (a softer 0.60
+  // partial pin): `material` < `transparent` < `translucentStrong` < an
+  // opaque `tint` card, in order of how much the backdrop pins the sample.
+  // It carries NO color wash, same as `transparent`. It is a NEUTRAL variant,
+  // so a `tint` (an entity card, which must stay opaque) always wins over it,
+  // the same as `transparent`/`material`. Defaults to `false`.
+  translucentStrong?: boolean;
   // Renders the surface as a REAL translucent blur MATERIAL: the live
   // see-through glass (same as a plain surface — no backdrop layer under the
   // glass, so it is not muted or color-pinned) on the glass path, but with a

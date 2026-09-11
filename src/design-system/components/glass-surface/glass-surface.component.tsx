@@ -6,6 +6,31 @@ import { useUnistyles } from 'react-native-unistyles';
 import type { GlassSurfaceProps } from './glass-surface.props';
 import { styles } from './glass-surface.styles';
 
+// Extracted to keep the component's own cognitive complexity down: the
+// backdrop fill has a strict precedence — an entity `tint` (opaque) beats
+// `translucentStrong` (the stronger 0.80-alpha pin), which beats `transparent`
+// (the softer 0.60-alpha pin), which beats no backdrop at all (a plain or
+// `material` surface).
+const resolveBackdropFill = (
+  tint: string | undefined,
+  isStrong: boolean,
+  isTransparent: boolean,
+) => {
+  if (tint !== undefined) return styles.opaqueBase;
+  if (isStrong) return styles.strongTranslucentBase;
+  if (isTransparent) return styles.translucentBase;
+  return false;
+};
+
+// Same precedence idea for the non-glass fallback fill: `translucentStrong`'s
+// stronger pin beats `transparent`/`material`'s shared translucent fill, which
+// beats the opaque themed base a plain surface falls back to.
+const resolveFallbackFill = (isStrong: boolean, isTransparent: boolean, isMaterial: boolean) => {
+  if (isStrong) return styles.strongTranslucentBase;
+  if (isTransparent || isMaterial) return styles.translucentBase;
+  return styles.opaqueBase;
+};
+
 // A shared surface for card-like grouping (accounts list, settings sections):
 // real Liquid Glass material on iOS 26+, a themed flat surface everywhere
 // else. isLiquidGlassSupported renders LiquidGlassView as a plain View with
@@ -47,8 +72,13 @@ import { styles } from './glass-surface.styles';
 // to composite over (no pop-in) and PARTIALLY pins the sampled color (the
 // lightness drift is softened, not fully removed), while its alpha lets the
 // screen behind read through — the see-through look. It carries NO entity color
-// wash. A plain surface that opts into neither `tint` nor `transparent` keeps
-// the fully-live see-through glass: no backdrop, no wash.
+// wash. `translucentStrong` is a fourth, MORE-opaque neutral option between
+// `transparent` and an opaque `tint` card: the SAME translucent-backdrop
+// mechanism, but with the stronger `surfaceTranslucentStrong` fill (0.80 vs
+// 0.60 alpha), so a scrolling card's live sample drifts LESS while still
+// reading see-through. A plain surface that opts into neither `tint`,
+// `transparent`, `translucentStrong`, nor `material` keeps the fully-live
+// see-through glass: no backdrop, no wash.
 //
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
@@ -67,6 +97,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   radius = 'md',
   tint,
   transparent = false,
+  translucentStrong = false,
   material = false,
   bordered = false,
   testID,
@@ -84,6 +115,10 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // always wins over it — the two are contradictory and a tinted card must stay
   // opaque.
   const isTransparent = transparent && tint === undefined;
+  // `translucentStrong` is a NEUTRAL variant too (the middle option between
+  // `transparent` and an opaque `tint` card), so a `tint` wins over it for the
+  // same reason.
+  const isStrong = translucentStrong && tint === undefined;
   // `material` is the live-blur variant (see the prop doc): a `tint` wins over
   // it too, for the same reason. It never adds a backdrop (see `backdropFill`
   // below, which `material` deliberately does not feed) — only the FALLBACK
@@ -94,15 +129,19 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
   //     translucent glass samples so the card's lightness cannot drift and the
   //     material never composites over nothing solid (the pop-in);
+  //   - a `translucentStrong` card gets the STRONGER `surfaceTranslucentStrong`
+  //     fill — a scrolling card that must pin its live sample MORE (less drift)
+  //     while staying see-through, between a `transparent` panel and an opaque
+  //     `tint` card;
   //   - a `transparent` frosted panel gets the TRANSLUCENT `surfaceTranslucent`
   //     fill — a real filled View (so still no pop-in) that partially pins the
   //     sample and lets the screen behind read through;
-  //   - a plain surface (neither) renders NO backdrop and keeps the fully-live
-  //     see-through material.
+  //   - a plain or `material` surface (none of the above) renders NO backdrop
+  //     and keeps the fully-live see-through material.
   // The fallback (non-glass) branch needs no backdrop: its own base IS the flat
-  // themed fill (see `base`).
-  const backdropFill =
-    tint !== undefined ? styles.opaqueBase : isTransparent && styles.translucentBase;
+  // themed fill (see `base`). See `resolveBackdropFill` above for the exact
+  // precedence.
+  const backdropFill = resolveBackdropFill(tint, isStrong, isTransparent);
   const backdrop: ReactNode = isLiquidGlassSupported && backdropFill && (
     <View
       style={[RNStyleSheet.absoluteFill, backdropFill]}
@@ -125,7 +164,10 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // otherwise identical to a plain surface's (no backdrop above), so only the
   // non-glass fallback needs to branch for it too, or a device without Liquid
   // Glass would render the sheet as a solid opaque panel instead of see-through.
-  const fallbackFill = isTransparent || isMaterial ? styles.translucentBase : styles.opaqueBase;
+  // `translucentStrong` reads its OWN stronger fill here too, so the fallback
+  // path reads the same "more opaque, still see-through" panel as the glass
+  // path's backdrop. See `resolveFallbackFill` above for the exact precedence.
+  const fallbackFill = resolveFallbackFill(isStrong, isTransparent, isMaterial);
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       // The app is dark-only (native chrome is pinned dark via
