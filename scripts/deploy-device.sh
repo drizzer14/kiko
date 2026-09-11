@@ -8,10 +8,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Configuration
 WORKSPACE="$REPO_ROOT/ios/Kiko.xcworkspace"
 SCHEME="Kiko"
-CONFIGURATION="Release"
+CONFIGURATION="Release-AdHoc"
 SDK="iphoneos"
 DERIVED_DATA="$REPO_ROOT/ios/build"
-APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Kiko.app"
+APP_PATH="$DERIVED_DATA/Build/Products/Release-AdHoc-iphoneos/Kiko.app"
 BUNDLE_ID="com.dmytro-vasylkivskyi.kiko"
 
 # Resolve device ID with priority: (1) CLI arg, (2) DEVICE_ID env var, (3) auto-detect
