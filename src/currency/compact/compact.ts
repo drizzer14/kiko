@@ -1,4 +1,4 @@
-import { applySymbolPlacement, type Currency } from './currency';
+import { applySymbolPlacement, type Currency } from '../currency';
 
 // A compact money unit: the divisor that scales a major-unit value into the
 // unit's magnitude, the decimals to render it at, and the letter suffix. Chosen

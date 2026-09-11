@@ -1,4 +1,4 @@
-import { type Currency, currencyScale } from './currency';
+import { type Currency, currencyScale } from '../currency';
 
 // Minor units -> major units for a currency's decimal scale (e.g. 1234 UAH
 // minor -> 12.34). The single source of truth for this conversion, shared by

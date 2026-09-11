@@ -1,5 +1,5 @@
 import { formatMoney } from './format';
-import { Money } from './money';
+import { Money } from '../money';
 
 describe('formatMoney', () => {
   it('formats fiat with two decimals and code', () => {

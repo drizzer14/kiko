@@ -1,5 +1,5 @@
-import { applySymbolPlacement, currencyScale } from './currency';
-import type { Money } from './money';
+import { applySymbolPlacement, currencyScale } from '../currency';
+import type { Money } from '../money';
 
 export const formatMoney = (money: Money, locale = 'en-US'): string => {
   const scale = currencyScale[money.currency];

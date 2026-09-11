@@ -1,4 +1,4 @@
-import { currencyOptions } from './currency';
+import { currencyOptions } from '../currency';
 import { currencySignSymbol } from './currency-symbols';
 
 // A real SF Symbol name: lowercase letters/digits, dot-separated segments

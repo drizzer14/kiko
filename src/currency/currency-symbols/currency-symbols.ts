@@ -1,4 +1,4 @@
-import type { Currency } from './currency';
+import type { Currency } from '../currency';
 
 // The SF Symbol currency-sign glyph shown for each currency, keyed by its code.
 // Mirrors src/holdings/entity-symbols.ts (the account Kind / holding Type
