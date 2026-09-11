@@ -71,7 +71,7 @@ export const transactions = sqliteTable(
     // Monobank's `hold` flag: the item is a PENDING authorization whose final
     // settled amount can still change (a restaurant tip, a fuel pre-auth). The
     // row is imported anyway, so a pending charge shows in the ledger
-    // immediately; `addManyDedup` (repositories/transactions.repo.ts) then
+    // immediately; `addManyDedup` (transactions/transactions.repo.ts) then
     // upserts on (source, external_id), so the settled re-fetch REFRESHES the
     // amount and clears this flag — without ever touching `category`, which may
     // hold the user's own override. Null on manual rows and on rows synced

@@ -52,20 +52,20 @@ const mockAccountReorder = jest.fn();
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     remove: (...args: unknown[]) => mockAccountRemove(...args),
     reorder: (...args: unknown[]) => mockAccountReorder(...args),
   },
 }));
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/rates.repo', () => ({
+jest.mock('@kiko/rates/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

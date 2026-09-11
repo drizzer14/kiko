@@ -1,9 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
-import { holdingsRepo } from '../../repositories/holdings.repo';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -32,7 +33,7 @@ const selectedSwatchHex = (
   return undefined;
 };
 
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: {
     create: jest.fn().mockResolvedValue('new-holding-id'),
     setIcon: jest.fn(),
@@ -62,7 +63,7 @@ jest.mock('../../db/use-live-query', () => ({
       ? { data: mockEditHoldings }
       : { data: [{ id: 'acc-1', kind: mockAccountKind, institution: mockAccountInstitution }] },
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

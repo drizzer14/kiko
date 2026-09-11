@@ -37,7 +37,7 @@ collection" sections). This skill summarizes the settled contract.
   it never reads `when` to decide what to apply. So journal `when`
   order is NOT load-bearing: a non-monotonic `when` across worktrees is
   harmless (main itself carries a pre-existing 0006/0007 `when`
-  disorder). `src/db/migrations.gate.tsx` owns the launch UI: a loading
+  disorder). `src/migration/migrations.gate.tsx` owns the launch UI: a loading
   state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
 
@@ -120,12 +120,12 @@ The sync pipeline is deliberately functional, not OOP — see
    account half-connected; mirrors `crypto-sync/sync.ts`'s
    `runBalanceSync` ordering. `runSync` does not create the settings
    row itself — the single settings row is guaranteed to exist by the
-   app-boot migrations gate (`src/db/migrations.gate.tsx`) before any
+   app-boot migrations gate (`src/migration/migrations.gate.tsx`) before any
    sync can run.
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
    import each item as a Transaction, UPSERTED on
    `(source, externalId)` — the Monobank statement id — by
-   `addManyDedup` (`src/repositories/transactions.repo.ts`). Two
+   `addManyDedup` (`src/transactions/transactions.repo.ts`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
    - Re-syncing an existing external id **refreshes** the row's
@@ -217,7 +217,7 @@ a restated list:
 - A card carrying an outstanding `hold: true` transaction is ALWAYS
   fetched (a same-amount hold->settled refresh doesn't move the
   balance) — the set comes from `holdingIdsWithHoldQuery`
-  (`src/repositories/transactions.repo.ts`).
+  (`src/transactions/transactions.repo.ts`).
 - The first-ever sync fetches every card (`shouldFullFetch`).
 
 Safety net: a new `settings.lastFullSyncAt` column (migration
@@ -366,12 +366,12 @@ The per-invocation gate above paces requests **within** one run. It is
 NOT enough on its own: the rate limit is per token, and all three sync
 entry points drive the same connected token —
 
-- `useAutoSync` (`src/screens/use-auto-sync.ts`) on app open,
-- `useSyncAll` (`src/screens/use-sync-all.ts`) on pull-to-refresh,
-- `useSync` (`src/screens/use-sync.ts`) on the manual button —
+- `useAutoSync` (`src/sync/use-auto-sync.ts`) on app open,
+- `useSyncAll` (`src/sync/use-sync-all.ts`) on pull-to-refresh,
+- `useSync` (`src/sync/use-sync.ts`) on the manual button —
 
 `useAutoSync` and `useSyncAll` share ONE fan-out job builder
-(`syncJobsFor`, `src/screens/sync-jobs.ts`), so the app-open sync drives
+(`syncJobsFor`, `src/sync/sync-jobs.ts`), so the app-open sync drives
 EXACTLY the pull-to-refresh set — the connected Monobank account (only
 when a token is stored) PLUS every connected crypto account — under
 `Promise.allSettled`. So a crypto balance + Binance transaction import
@@ -501,7 +501,7 @@ re-drive:
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable
-  account — see `src/screens/use-sync-all.ts`), which fires no
+  account — see `src/sync/use-sync-all.ts`), which fires no
   `fastPhaseDone`, so the spinner can never hang. A pull that JOINS a run
   whose fast phase already committed clears immediately.
 - The `fastPhaseDone` signal is read only inside the pull handler, so an
@@ -566,7 +566,7 @@ steps are the kind of thing that changes as the rollout progresses:
   `executeRawAsync` shape landmine — read that file's comment on
   `DrizzleOPSQLiteClient`/`wrapClientForDrizzle` before touching the
   read path.
-- `src/db/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
+- `src/migration/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
   -> `runMigrations()` -> `settingsRepo.ensure()` -> the module-level
   `applyPersistedLanguage()` helper (reads `settings.language` through
   the repo and calls `i18n.changeLanguage`, swallowing a failure — a
@@ -602,7 +602,7 @@ here:
   keyed on the structural marker column
   `transactions.exchangeCounterpartHoldingId` (see `src/db/schema.ts`
   and `recordExchange` / `recordExchangeCounterpart` in
-  `src/repositories/transactions.repo.ts`, which write it on both legs).
+  `src/transactions/transactions.repo.ts`, which write it on both legs).
   It catches what the other two structurally cannot: a cross-currency
   pair, and the single debit leg of an exchange into a term deposit.
   The legs persist no description — the label is resolved at render time

@@ -17,13 +17,13 @@ const mockDisconnect = jest.fn();
 jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../../use-crypto-sync', () => ({
+jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => mockUseCryptoSync(),
 }));
 jest.mock('../../../crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),
 }));
-jest.mock('../../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     connectedQuery: (institution: string) => ({
       __institution: institution,

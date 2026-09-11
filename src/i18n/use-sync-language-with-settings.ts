@@ -1,7 +1,7 @@
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useEffect } from 'react';
 
 import { useLiveQuery } from '../db/use-live-query';
-import { settingsRepo } from '../repositories/settings.repo';
 
 import { i18n } from './index';
 

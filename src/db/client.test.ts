@@ -13,7 +13,7 @@ jest.mock('./encrypted-database', () => ({
 // legacy-rename migration and never touches the encrypted-database module.
 const mockPlaintext = { execute: mockExecute, executeRaw: jest.fn() };
 const mockMigrateLegacyDatabase = jest.fn(() => mockPlaintext);
-jest.mock('./migrate-legacy-db', () => ({
+jest.mock('@kiko/migration/migrate-legacy-db', () => ({
   migrateLegacyDatabase: () => mockMigrateLegacyDatabase(),
 }));
 
@@ -30,7 +30,7 @@ jest.mock('./db-config', () => ({
 // no-op import (false) so every pre-existing suite is unaffected.
 const mockImportFromOldApp = jest.fn(async () => false);
 const mockFinalizeImportBridge = jest.fn(async () => undefined);
-jest.mock('./migration/import-from-old-app', () => ({
+jest.mock('@kiko/migration/import-from-old-app', () => ({
   importFromOldApp: () => mockImportFromOldApp(),
   finalizeImportBridge: () => mockFinalizeImportBridge(),
 }));

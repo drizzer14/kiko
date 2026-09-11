@@ -158,7 +158,7 @@ and immediately if a sync starts failing with a TLS error.
 - **`settings.lock_grace_seconds` is a legacy column with zero readers.** It
   survives from the abandoned grace-period design (migration
   `drizzle/migrations/0011_add_lock_settings.sql`), has no setter in
-  `src/repositories/settings.repo.ts` and no reader anywhere in `src/`. It is
+  `src/settings/settings.repo.ts` and no reader anywhere in `src/`. It is
   intentionally NOT dropped: a destructive migration on a live single-user
   database buys nothing here, and the column is harmless (`NOT NULL DEFAULT 30`).
   It is pinned as the sole documented exception in the

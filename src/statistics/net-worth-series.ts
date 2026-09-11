@@ -1,10 +1,11 @@
+import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history.repo';
+
 import type { Currency } from '../currency/currency';
 import { Money, toMajor } from '../currency/money';
 import type { CurrencyRateHistoryRow } from '../db/schema';
 import { convert, type RateTable } from '../rates/conversion';
 import { toUtcMidnight } from '../rates/history-entry';
 import { canConvert } from '../rates/net-worth-view';
-import { earliestRateTable, rateTableAt } from '../repositories/rate-history.repo';
 
 import { bucketTimes } from './buckets';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from './holding-value-at';

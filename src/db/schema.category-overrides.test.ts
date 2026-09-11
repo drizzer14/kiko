@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { darkTheme } from '../design-system/theme';
-import { SEEDED_CATEGORIES } from '../repositories/__fixtures__/seeded-categories';
 
 import {
   parseSeedCategoryColors,

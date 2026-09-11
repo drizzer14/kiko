@@ -1,3 +1,8 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { categoriesRepo } from '@kiko/categories/categories.repo';
+import { categoryOverridesRepo } from '@kiko/categories/category-overrides.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 import type { TFunction } from 'i18next';
 import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,11 +41,6 @@ import {
   isExchangeSourceType,
 } from '../../holdings/exchange-destination';
 import type { TransactionFormParams } from '../../navigation/types';
-import { accountsRepo } from '../../repositories/accounts.repo';
-import { categoriesRepo } from '../../repositories/categories.repo';
-import { categoryOverridesRepo } from '../../repositories/category-overrides.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
-import { transactionsRepo } from '../../repositories/transactions.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { defaultTransactionDescription } from '../../transactions/default-description';
 import { normalizeTransactionName } from '../../transactions/normalize-name';

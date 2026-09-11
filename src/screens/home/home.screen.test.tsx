@@ -3,12 +3,13 @@ import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 
+import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
+
 import { defaultDateRange } from '../../dates/default-range';
 import { DAY_MS } from '../../dates/duration';
 import { formatDate } from '../../dates/format';
 import { resolveBottomClearance } from '../../design-system/components/screen';
 import { i18n } from '../../i18n';
-import { SEEDED_CATEGORIES } from '../../repositories/__fixtures__/seeded-categories';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
@@ -53,28 +54,28 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-jest.mock('../../repositories/accounts.repo', () => ({
+jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/holdings.repo', () => ({
+jest.mock('@kiko/holdings/holdings.repo', () => ({
   holdingsRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/rates.repo', () => ({
+jest.mock('@kiko/rates/rates.repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/transactions.repo', () => ({
+jest.mock('@kiko/transactions/transactions.repo', () => ({
   transactionsRepo: { listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('../../repositories/categories.repo', () => ({
+jest.mock('@kiko/categories/categories.repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
 const mockSyncAll = jest.fn();
 const mockUseSyncAll = jest.fn();
-jest.mock('../use-sync-all', () => ({
+jest.mock('@kiko/sync/use-sync-all', () => ({
   useSyncAll: (...args: unknown[]) => mockUseSyncAll(...args),
 }));
 

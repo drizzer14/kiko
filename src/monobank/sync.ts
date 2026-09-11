@@ -1,9 +1,10 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
+
 import type { AccountRow, HoldingRow, SettingsRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
-import { accountsRepo } from '../repositories/accounts.repo';
-import { holdingsRepo } from '../repositories/holdings.repo';
-import { settingsRepo } from '../repositories/settings.repo';
-import { transactionsRepo } from '../repositories/transactions.repo';
 
 import { currencyFromCode } from './currency-code';
 import { categoryForMcc } from './mcc-category';
@@ -150,7 +151,7 @@ interface SyncSettingsRepo {
  * There is deliberately no settings-row-creation seam here either: the
  * single settings row (id = 1) that `settingsRepo.getQuery` reads and the
  * settings setters write is guaranteed to exist by the app-boot migrations
- * gate (`src/db/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
+ * gate (`src/migration/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
  * before any screen — and so before any sync — can run.
  */
 export interface SyncDeps {
@@ -290,7 +291,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * connect an account first, so we surface a clear error rather than silently
  * minting a stray 'Monobank' account.
  */
-// `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message's
+// `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message's
 // `.message` verbatim as the account-detail screen's error `<Text>` (see
 // account-detail.screen.tsx), so it genuinely needs to be localized, not left
 // as a diagnostic-only string. This module has no React context of its own,

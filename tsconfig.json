@@ -10,7 +10,14 @@
     // not a way to silence an error. Widening `types` is the only way to reach
     // them: the alternative, hand-writing ambient `fs`/`path`/`__dirname`
     // declarations, would be a strictly less accurate copy of @types/node.
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    // No `baseUrl`: TypeScript 5+ resolves `paths` relative to this file's
+    // directory without one, and `baseUrl` is deprecated (removed in TS 7),
+    // which `check:typecheck` fails on. `@kiko/*` maps to `src/*` — mirrored by
+    // the babel `module-resolver` alias and the jest `moduleNameMapper`.
+    "paths": {
+      "@kiko/*": ["./src/*"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["**/node_modules", "**/Pods"]

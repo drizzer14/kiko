@@ -1,3 +1,4 @@
+import KikoCalendar from '@kiko/calendar';
 import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
 import type { DateData } from 'react-native-calendars';
@@ -9,7 +10,6 @@ import Box from '../../../design-system/components/box';
 import FieldLabel from '../../../design-system/components/field-label';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import KikoCalendar from '../../calendar';
 
 import type { DateFieldProps } from './date-field.props';
 import { styles } from './date-field.styles';

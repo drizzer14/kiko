@@ -22,7 +22,7 @@ const mockLiveQuery: { current: { data: SettingsRow[]; isLoading: boolean } } = 
 jest.mock('../db/use-live-query', () => ({
   useLiveQuery: () => mockLiveQuery.current,
 }));
-jest.mock('../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 

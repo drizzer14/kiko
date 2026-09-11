@@ -165,7 +165,7 @@ type SyncedTransactionInput = Parameters<SyncDeps['transactionsRepo']['addManyDe
  * user's own value, and the real `addManyDedup` upsert leaves them alone too.
  *
  * This list MIRRORS that upsert's `onConflictDoUpdate` set in
- * `repositories/transactions.repo.ts` and must change with it, or the double
+ * `transactions/transactions.repo.ts` and must change with it, or the double
  * stops standing for the repository it doubles.
  */
 const bankOwnedColumns = (input: SyncedTransactionInput) => ({
@@ -432,7 +432,7 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
-  // `useSyncAction` (src/screens/use-sync.ts) surfaces this thrown message
+  // `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message
   // verbatim as the account-detail screen's error text, so it genuinely needs
   // to resolve in the active language, unlike a swallowed/discarded error.
   it('throws the no-account-connected message in Ukrainian once the active language switches', async () => {

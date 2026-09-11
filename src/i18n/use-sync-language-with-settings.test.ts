@@ -7,7 +7,7 @@ const mockData: { language: 'en' | 'uk' | null }[] = [];
 jest.mock('../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockData }),
 }));
-jest.mock('../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({}) },
 }));
 

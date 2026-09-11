@@ -42,7 +42,7 @@ jest.mock('./keys/db-key', () => ({
 // pre-rename pff.db already folded in). Tests set userTables to model an
 // upgrade (>0) or a fresh install (0).
 const mockMigrateLegacyDatabase = jest.fn<FakeDb, []>();
-jest.mock('./migrate-legacy-db', () => ({
+jest.mock('@kiko/migration/migrate-legacy-db', () => ({
   migrateLegacyDatabase: () => mockMigrateLegacyDatabase(),
 }));
 

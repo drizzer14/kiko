@@ -1,3 +1,6 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/holdings.repo';
+
 import type { AccountRow, HoldingRow } from '../db/schema';
 import { i18n } from '../i18n';
 import {
@@ -7,8 +10,6 @@ import {
   endProgressSession,
   registerWork,
 } from '../monobank/sync-status';
-import { accountsRepo } from '../repositories/accounts.repo';
-import { type ExchangeHolding, holdingsRepo } from '../repositories/holdings.repo';
 
 import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from './provider';
 
@@ -54,7 +55,7 @@ const defaultDeps: BalanceSyncDeps = {
  */
 // Unlike the Monobank/disconnect error paths (which the screen swallows behind
 // a bare `catch` and a generic translated fallback — see
-// `accountDetail.tryAgainMessage`), `useSyncAction` (src/screens/use-sync.ts)
+// `accountDetail.tryAgainMessage`), `useSyncAction` (src/sync/use-sync.ts)
 // surfaces THIS thrown message's `.message` verbatim as the sync screen's
 // error `<Text>`, so it genuinely needs `providerDisplayName`'s translated
 // name, not the raw `providerId`. This module has no React context of its

@@ -1,3 +1,5 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,9 +20,7 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import { accountsRepo } from '../../../repositories/accounts.repo';
 import ChipRow from '../../forms/chip-row';
-import { useCryptoSync } from '../../use-crypto-sync';
 import { styles } from '../account-detail.styles';
 import BinanceCredentialsField from '../binance-credentials-field';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';

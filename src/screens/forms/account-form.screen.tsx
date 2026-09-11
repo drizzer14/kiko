@@ -1,3 +1,6 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import { useSync } from '@kiko/sync/use-sync';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,10 +24,7 @@ import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { fetchClientInfo } from '../../monobank/monobank.client';
 import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { accountsRepo } from '../../repositories/accounts.repo';
 import MonobankTokenInput from '../account-detail/monobank-token-input';
-import { useCryptoSync } from '../use-crypto-sync';
-import { useSync } from '../use-sync';
 
 import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';

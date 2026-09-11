@@ -24,7 +24,7 @@ jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockLiveQueryData = [{ baseCurrency: 'UAH', lockEnabled: false }];
 
-jest.mock('../../repositories/settings.repo', () => ({
+jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setLanguage: jest.fn(),

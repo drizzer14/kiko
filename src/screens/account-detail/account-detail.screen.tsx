@@ -1,3 +1,8 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { ratesRepo } from '@kiko/rates/rates.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { useSync } from '@kiko/sync/use-sync';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
 import type { FC } from 'react';
@@ -26,16 +31,11 @@ import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import { accountsRepo } from '../../repositories/accounts.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
-import { ratesRepo } from '../../repositories/rates.repo';
-import { settingsRepo } from '../../repositories/settings.repo';
 import CardContextMenu from '../card-context-menu';
 import EditHeaderButton from '../edit-header-button';
 import EntityAmountHeader from '../entity-amount-header';
 import EntityHeaderIcon from '../entity-header-icon';
 import { onGridDragEnd } from '../grid-interaction';
-import { useSync } from '../use-sync';
 
 import { styles } from './account-detail.styles';
 import CryptoSyncSection from './crypto-sync-section';

@@ -1,3 +1,5 @@
+import { categoriesRepo } from '@kiko/categories/categories.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,8 +17,6 @@ import GlassSurface from '../../design-system/components/glass-surface';
 import Screen from '../../design-system/components/screen';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
 import type { SettingsStackParamList } from '../../navigation/types';
-import { categoriesRepo } from '../../repositories/categories.repo';
-import { settingsRepo } from '../../repositories/settings.repo';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import ColorPicker from '../forms/color-picker';
 import HoldingIdentityField from '../forms/holding-identity-field';

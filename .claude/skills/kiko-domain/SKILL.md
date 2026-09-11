@@ -46,7 +46,7 @@ absent** — this skill states the shape and non-enum facts only:
   bank-owned columns — the settled `amountMinorUnits` and `hold`
   among them — and **never** its `category` (the user's override, or
   a name rule's rewrite) or `comment`. Read `addManyDedup` in
-  `src/repositories/transactions.repo.ts` for the exact refreshable
+  `src/transactions/transactions.repo.ts` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
   pending item is imported at its provisional amount at all, rather
   than trusting a column list restated here.
@@ -75,7 +75,7 @@ repository functions enforce it, and every balance a USER sets goes
 through one of them:
 
 - **An edit**: `holdingsRepo.updateWithBalanceDelta`
-  (`src/repositories/holdings.repo.ts`) writes the patch AND, when
+  (`src/holdings/holdings.repo.ts`) writes the patch AND, when
   `balanceMinorUnits` differs from the stored value, the DIFFERENCE as
   a `manual` row — one `db.transaction()`, delta computed from the row
   re-read inside it (never a render snapshot), no row at all for a zero
@@ -84,11 +84,11 @@ through one of them:
   non-balance writers (icon/color/metadata, the sync's own writes,
   reorder) and must never be handed a `balanceMinorUnits`.
 - **A new holding's opening balance**: `holdingsRepo.create`
-  (`src/repositories/holdings.repo.ts`) seeds the same kind of row for
+  (`src/holdings/holdings.repo.ts`) seeds the same kind of row for
   a non-zero `balanceMinorUnits`, in the transaction that inserts the
   holding. Zero seeds nothing.
 - **A new cash account's opening balance**: `accountsRepo.createCashAccount`
-  (`src/repositories/accounts.repo.ts`) does the same for its first
+  (`src/accounts/accounts.repo.ts`) does the same for its first
   holding, in the transaction that inserts the account and that
   holding.
 
@@ -240,7 +240,7 @@ An Exchange/Convert leg is NOT identified by its description. Both legs
 carry the counterpart holding's id in a dedicated column — read
 `src/db/schema.ts` (`transactions.exchangeCounterpartHoldingId`, whose
 comment records why it is a column rather than a reserved `category`
-value or a shared `externalId`) and `src/repositories/transactions.repo.ts`
+value or a shared `externalId`) and `src/transactions/transactions.repo.ts`
 (`recordExchange` / `recordExchangeCounterpart`, which write it on both
 legs inside the one transaction; an exchange into a term deposit writes
 the marker on its single debit leg). Three consequences hold together:

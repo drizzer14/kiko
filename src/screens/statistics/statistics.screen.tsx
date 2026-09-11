@@ -1,3 +1,10 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { categoriesRepo } from '@kiko/categories/categories.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { rateHistoryRepo } from '@kiko/rates/rate-history.repo';
+import { ratesRepo } from '@kiko/rates/rates.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { transactionsRepo } from '@kiko/transactions/transactions.repo';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
@@ -28,13 +35,6 @@ import {
   runBackfill,
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
-import { accountsRepo } from '../../repositories/accounts.repo';
-import { categoriesRepo } from '../../repositories/categories.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
-import { rateHistoryRepo } from '../../repositories/rate-history.repo';
-import { ratesRepo } from '../../repositories/rates.repo';
-import { settingsRepo } from '../../repositories/settings.repo';
-import { transactionsRepo } from '../../repositories/transactions.repo';
 import { type AccountSlice, buildAccountContribution } from '../../statistics/account-contribution';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import {

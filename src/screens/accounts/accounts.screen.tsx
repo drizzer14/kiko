@@ -1,3 +1,7 @@
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { holdingsRepo } from '@kiko/holdings/holdings.repo';
+import { ratesRepo } from '@kiko/rates/rates.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,10 +26,6 @@ import { accountKindSymbol } from '../../holdings/entity-symbols';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import { accountsRepo } from '../../repositories/accounts.repo';
-import { holdingsRepo } from '../../repositories/holdings.repo';
-import { ratesRepo } from '../../repositories/rates.repo';
-import { settingsRepo } from '../../repositories/settings.repo';
 import CardContextMenu from '../card-context-menu';
 import { onGridDragEnd } from '../grid-interaction';
 
