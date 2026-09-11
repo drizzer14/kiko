@@ -34,6 +34,25 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
     expect(darkTheme.colors.surfaceTranslucentStrong).toBe('rgba(28,28,30,0.80)');
   });
 
+  // `surfaceWashStrong` is the fix for the device bug where
+  // `surfaceTranslucentStrong` alone was invisible under the live glass: a
+  // neutral dark overlay painted OVER the finished glass (not under it, where
+  // the material's own refraction eats an alpha bump). It must stay a plain
+  // black, translucent (never opaque), and strictly stronger than the failed
+  // 0.20-alpha backdrop delta while staying below the modal `scrim`'s 0.4 —
+  // a near-opaque dim is not the goal.
+  it('pins surfaceWashStrong at a plain-black, translucent alpha between the backdrop delta and the modal scrim', () => {
+    expect(darkTheme.colors.surfaceWashStrong).toBe('rgba(0,0,0,0.30)');
+
+    const match = darkTheme.colors.surfaceWashStrong.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/);
+    if (!match) throw new Error('surfaceWashStrong is not an rgba() string');
+    const [, r, g, b, alphaStr] = match;
+    expect(`${r},${g},${b}`).toBe('0,0,0');
+    const alpha = Number(alphaStr);
+    expect(alpha).toBeGreaterThan(0.2);
+    expect(alpha).toBeLessThan(0.4);
+  });
+
   // Not a tautology: this encodes the design intent that `surfaceTranslucentStrong`
   // is the SAME hue as `surfaceTranslucent`, but MORE opaque while staying
   // translucent (never fully opaque) — the middle option between `transparent`'s

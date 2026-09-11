@@ -46,6 +46,11 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // the card stays see-through but drifts LESS in lightness as the list scrolls.
   // It is the deliberate middle ground between `material` (no backdrop, so the
   // glass samples the live content and drifts most) and an opaque `tint` card.
+  // On device that backdrop bump alone was invisible under the live glass's own
+  // refraction, so `translucentStrong` also paints a neutral dark `wash` OVER
+  // the finished glass — see `GlassSurface`'s `translucentStrong` prop doc for
+  // the full mechanism. No change needed here: the prop is the same, only what
+  // it renders under the hood changed.
   return (
     <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
       <GlassSurface translucentStrong padding={3} testID="transaction-row" style={styles.rowCard}>

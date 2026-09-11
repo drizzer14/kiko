@@ -41,6 +41,21 @@ export const styles = StyleSheet.create((theme) => ({
   strongTranslucentBase: {
     backgroundColor: theme.colors.surfaceTranslucentStrong,
   },
+  // The `translucentStrong` NEUTRAL DARK wash, painted OVER the finished glass
+  // (a sibling drawn atop the base, same layering slot as the entity-tint
+  // wash) — ONLY on the real Liquid Glass path. Device bug fix: bumping
+  // `strongTranslucentBase`'s alpha under the glass was invisible on-device,
+  // because the live glass material samples/refracts that backdrop instead of
+  // reliably showing the darker alpha. A flat View painted on top of the
+  // already-composited glass is not subject to that refraction, so this is
+  // the reliable lever. Not applied on the non-glass fallback: there, `base`
+  // already IS `strongTranslucentBase` directly (no glass sampling it away),
+  // so stacking this wash on top there too would double-darken a path that
+  // was never the broken one. See `theme.colors.surfaceWashStrong`'s own doc
+  // comment and `GlassSurface`'s component-level block comment.
+  strongWash: {
+    backgroundColor: theme.colors.surfaceWashStrong,
+  },
   // The card edge, applied when `bordered` is set. A Unistyles-managed member
   // (not a plain inline object) for the same reason as `tinted`: Unistyles
   // writes it straight to the native ShadowNode, so the hairline separator

@@ -144,8 +144,12 @@ describe('GlassSurface', () => {
   // `translucentStrong` (item, the Home transaction card's variant) must ALSO
   // fill the non-glass fallback base with its OWN stronger token, not
   // `transparent`'s — same pattern as the `transparent`/`material` fallback
-  // tests above.
-  it('fills the fallback base with the stronger translucent token when translucentStrong is set', async () => {
+  // tests above. It must NOT additionally paint the neutral dark `wash`: that
+  // layer exists only to fix the REAL glass path (the backdrop-alpha bump was
+  // invisible under live glass refraction); the fallback's own base already
+  // renders the stronger fill directly, so stacking a second darkening layer
+  // on it here would double-darken a path that was never the broken one.
+  it('fills the fallback base with the stronger translucent token when translucentStrong is set, with no extra wash', async () => {
     const { getByTestId, queryByTestId } = await render(
       <GlassSurface testID="strong-fallback" translucentStrong>
         <Text>content</Text>
@@ -155,6 +159,7 @@ describe('GlassSurface', () => {
     const flat = StyleSheet.flatten(getByTestId('strong-fallback-base').props.style);
     expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
     expect(queryByTestId('strong-fallback-backdrop')).toBeNull();
+    expect(queryByTestId('strong-fallback-wash')).toBeNull();
   });
 
   // Device-only regression (encoded here as a JS-composition assertion, since
@@ -292,20 +297,28 @@ describe('GlassSurface', () => {
 
     // `translucentStrong` (the Home transaction card's variant) opts a
     // tint-LESS surface into the STRONGER translucent backdrop —
-    // `surfaceTranslucentStrong` (0.80 alpha), not `transparent`'s 0.60 —
-    // WITHOUT any color wash or tintColor, same shape as `transparent`.
-    it('paints the stronger translucent neutral backdrop for a tint-less surface when translucentStrong is set, with no wash', async () => {
-      const { getByTestId, queryByTestId } = await render(
+    // `surfaceTranslucentStrong` (0.80 alpha), not `transparent`'s 0.60 — AND,
+    // on this real glass path, an additional NEUTRAL DARK `wash` layered over
+    // the finished glass (`surfaceWashStrong`). This is the device-bug fix:
+    // the backdrop-alpha bump alone was invisible under the live glass's own
+    // refraction, so a second, non-refracted overlay on top of the glass is
+    // what actually darkens the card while it stays see-through. No
+    // `tintColor` — the wash is neutral, not an entity hue.
+    it('paints the stronger translucent neutral backdrop AND the neutral dark wash for a tint-less surface when translucentStrong is set on the real glass path', async () => {
+      const { getByTestId } = await render(
         <GlassSurface testID="strong-glass" translucentStrong>
           <Text>content</Text>
         </GlassSurface>,
       );
 
       const backdrop = getByTestId('strong-glass-backdrop');
-      const flat = StyleSheet.flatten(backdrop.props.style);
-      expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+      const backdropFlat = StyleSheet.flatten(backdrop.props.style);
+      expect(backdropFlat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
 
-      expect(queryByTestId('strong-glass-wash')).toBeNull();
+      const wash = getByTestId('strong-glass-wash');
+      const washFlat = StyleSheet.flatten(wash.props.style);
+      expect(washFlat.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
+
       expect(getByTestId('strong-glass-base').props.tintColor).toBeUndefined();
     });
 
@@ -369,9 +382,11 @@ describe('GlassSurface', () => {
 
     // `translucentStrong` is a NEUTRAL variant like `transparent`/`material`,
     // so a `tint` (an entity card, which must stay opaque) always wins over it
-    // too: the backdrop stays the OPAQUE surface, and the entity `tintColor`
-    // is still applied.
-    it('keeps the opaque backdrop and tint when both tint and translucentStrong are set', async () => {
+    // too: the backdrop stays the OPAQUE surface, the entity `tintColor` is
+    // still applied, and the `wash` stays the entity color — NOT the neutral
+    // dark `surfaceWashStrong` overlay, which is `translucentStrong`'s own
+    // wash only when no `tint` is set (see `resolveWashFill`).
+    it('keeps the opaque backdrop, tint, and entity-color wash when both tint and translucentStrong are set', async () => {
       const { getByTestId } = await render(
         <GlassSurface testID="tinted-strong-glass" tint={tint} translucentStrong>
           <Text>content</Text>
@@ -381,6 +396,9 @@ describe('GlassSurface', () => {
       const flat = StyleSheet.flatten(getByTestId('tinted-strong-glass-backdrop').props.style);
       expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
       expect(getByTestId('tinted-strong-glass-base').props.tintColor).toBe(tint);
+
+      const washFlat = StyleSheet.flatten(getByTestId('tinted-strong-glass-wash').props.style);
+      expect(washFlat.backgroundColor).toBe(tint);
     });
 
     // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.

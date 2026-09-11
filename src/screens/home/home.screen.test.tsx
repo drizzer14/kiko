@@ -304,23 +304,34 @@ describe('HomeScreen', () => {
     // stays see-through but drifts LESS in lightness on scroll than either
     // `material` (no backdrop) or `transparent` (a softer 0.60 backdrop). On the
     // non-glass FALLBACK path the `-base` fill IS that stronger translucent
-    // color; on the live-glass path a `-backdrop` layer carries it. The default
-    // seed (beforeEach) is a single transaction, so exactly one row renders.
+    // color, with NO extra wash (the fallback was never the broken path — see
+    // GlassSurface's `translucentStrong` doc); on the live-glass path a
+    // `-backdrop` layer carries it, PLUS a `-wash` layer (the device-bug fix:
+    // the backdrop alpha alone is invisible under the live glass's own
+    // refraction, so a neutral dark overlay painted OVER the finished glass is
+    // what actually makes the card read darker). The default seed (beforeEach)
+    // is a single transaction, so exactly one row renders.
+    const { getByTestId: getByTestIdFallback, queryByTestId: queryByTestIdFallback } =
+      await renderHome();
     const fallbackBase = StyleSheet.flatten(
-      (await renderHome()).getByTestId('transaction-row-base').props.style,
+      getByTestIdFallback('transaction-row-base').props.style,
     );
     expect(fallbackBase.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+    expect(queryByTestIdFallback('transaction-row-wash')).toBeNull();
 
     try {
       liquidGlass.isLiquidGlassSupported = true;
       // `translucentStrong`'s whole point: on the live-glass path it paints a
-      // `-backdrop` layer filled with the stronger translucent color. This pins
-      // the variant — it fails if the row is reverted to `material` (no backdrop
-      // at all) or to `transparent` (a 0.60-alpha backdrop, not 0.80).
-      const backdrop = StyleSheet.flatten(
-        (await renderHome()).getByTestId('transaction-row-backdrop').props.style,
-      );
+      // `-backdrop` layer filled with the stronger translucent color AND a
+      // `-wash` layer filled with the neutral dark overlay. This pins the
+      // variant — it fails if the row is reverted to `material` (no backdrop,
+      // no wash) or to `transparent` (a 0.60-alpha backdrop, no wash at all).
+      const { getByTestId } = await renderHome();
+      const backdrop = StyleSheet.flatten(getByTestId('transaction-row-backdrop').props.style);
       expect(backdrop.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+
+      const wash = StyleSheet.flatten(getByTestId('transaction-row-wash').props.style);
+      expect(wash.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
     } finally {
       liquidGlass.isLiquidGlassSupported = false;
     }

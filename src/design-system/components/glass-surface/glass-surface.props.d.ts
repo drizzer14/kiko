@@ -53,9 +53,24 @@ export type GlassSurfaceProps = ViewProps & {
   // live content behind it — maximum drift) and `transparent` (a softer 0.60
   // partial pin): `material` < `transparent` < `translucentStrong` < an
   // opaque `tint` card, in order of how much the backdrop pins the sample.
-  // It carries NO color wash, same as `transparent`. It is a NEUTRAL variant,
-  // so a `tint` (an entity card, which must stay opaque) always wins over it,
-  // the same as `transparent`/`material`. Defaults to `false`.
+  // It is a NEUTRAL variant, so a `tint` (an entity card, which must stay
+  // opaque) always wins over it, the same as `transparent`/`material`.
+  // Defaults to `false`.
+  //
+  // Device bug fix: the backdrop-alpha bump above was, on its own, INVISIBLE
+  // on the Home transaction card — the live glass material samples/refracts
+  // whatever backdrop sits under it, so a 0.60 -> 0.80 alpha change gets
+  // washed out instead of reliably darkening the visible card. On the REAL
+  // glass path only, this variant therefore ALSO paints a NEUTRAL DARK
+  // `wash` — a flat overlay drawn OVER the finished glass (`theme.colors
+  // .surfaceWashStrong`), the same layering slot as an entity `tint`'s color
+  // wash but neutral (no hue). A wash painted on top of the already-
+  // composited glass is not subject to the material's refraction, so it is
+  // the reliable lever that actually darkens the card while it stays glassy
+  // and see-through. The non-glass fallback does NOT get this extra wash: its
+  // `base` already IS the stronger translucent fill directly (nothing sits
+  // between it and the screen behind to wash the alpha out), so it was never
+  // the broken path and needs no second darkening layer.
   translucentStrong?: boolean;
   // Renders the surface as a REAL translucent blur MATERIAL: the live
   // see-through glass (same as a plain surface — no backdrop layer under the

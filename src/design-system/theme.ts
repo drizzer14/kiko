@@ -70,6 +70,26 @@ export const darkTheme = {
     // opaque than `surfaceTranslucent`, still translucent (never 1.0). This is
     // the Home transaction card's backdrop.
     surfaceTranslucentStrong: 'rgba(28,28,30,0.80)',
+    // A NEUTRAL DARK overlay painted OVER the finished `translucentStrong`
+    // GlassSurface (its `wash` layer — a sibling drawn atop the glass base, not
+    // a backdrop under it). Device bug fix: `surfaceTranslucentStrong` alone
+    // (0.60 -> 0.80 alpha) was INVISIBLE on the Home transaction card — a
+    // `LiquidGlassView` with `effect="regular"` samples/refracts whatever sits
+    // behind it, so a backdrop-alpha bump under the glass gets washed out by
+    // that live sample instead of reliably darkening the visible surface. A
+    // flat `View` drawn ON TOP of the already-composited glass is not subject
+    // to that refraction — its alpha darkens the final pixel directly — so this
+    // is the reliable lever for "visibly darker, still see-through." Plain
+    // black (not the `#1C1C1E` surface hue) because a wash over live glass
+    // needs no hue of its own, only a darkening step, and pure black composites
+    // predictably regardless of what the glass is sampling. 0.30 sits below
+    // `scrim`'s 0.4 (a near-opaque modal dim is not the goal here) and well
+    // above the failed 0.20-alpha backdrop-only delta, chosen to read as a
+    // clear, deliberate step down in lightness from `transparent` on device
+    // while keeping the card glassy and see-through. See `GlassSurface`'s
+    // `translucentStrong` prop doc and its component-level block comment for
+    // the exact layer this feeds.
+    surfaceWashStrong: 'rgba(0,0,0,0.30)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a

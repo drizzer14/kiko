@@ -31,6 +31,18 @@ const resolveFallbackFill = (isStrong: boolean, isTransparent: boolean, isMateri
   return styles.opaqueBase;
 };
 
+// The `wash` layer's fill and gate. An entity `tint` always wins (its colored
+// wash exists on BOTH the glass and fallback paths, unconditionally, because
+// the fallback's own base is a generic themed gray it needs recoloring out
+// of). `translucentStrong`'s neutral dark wash is different: it is gated to
+// `isGlassPath` ONLY — see the `strongWash` style and `surfaceWashStrong`
+// token doc comments for why the non-glass fallback does not need it.
+const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPath: boolean) => {
+  if (tint !== undefined) return { backgroundColor: tint };
+  if (isStrong && isGlassPath) return styles.strongWash;
+  return undefined;
+};
+
 // A shared surface for card-like grouping (accounts list, settings sections):
 // real Liquid Glass material on iOS 26+, a themed flat surface everywhere
 // else. isLiquidGlassSupported renders LiquidGlassView as a plain View with
@@ -46,7 +58,10 @@ const resolveFallbackFill = (isStrong: boolean, isTransparent: boolean, isMateri
 //      a `transparent` frosted panel, and NONE for a plain live-glass surface;
 //   2. the base — the Liquid Glass material (glass path) or the flat themed
 //      background (fallback path), a layer with NO children;
-//   3. the `wash` — the entity-color flat tint, a SIBLING drawn OVER the base;
+//   3. the `wash` — a flat fill, a SIBLING drawn OVER the base: the
+//      entity-color tint for a `tint` card (both paths), or, on the REAL
+//      glass path only, `translucentStrong`'s own neutral dark overlay (see
+//      below);
 //   4. `children`, on top of the wash.
 //
 // STABILITY — why the tint no longer drifts. A `LiquidGlassView` with
@@ -71,14 +86,22 @@ const resolveFallbackFill = (isStrong: boolean, isTransparent: boolean, isMateri
 // backdrop is a real filled `View`, so it still gives the glass something solid
 // to composite over (no pop-in) and PARTIALLY pins the sampled color (the
 // lightness drift is softened, not fully removed), while its alpha lets the
-// screen behind read through — the see-through look. It carries NO entity color
-// wash. `translucentStrong` is a fourth, MORE-opaque neutral option between
+// screen behind read through — the see-through look. It carries NO wash.
+// `translucentStrong` is a fourth, MORE-opaque neutral option between
 // `transparent` and an opaque `tint` card: the SAME translucent-backdrop
-// mechanism, but with the stronger `surfaceTranslucentStrong` fill (0.80 vs
-// 0.60 alpha), so a scrolling card's live sample drifts LESS while still
-// reading see-through. A plain surface that opts into neither `tint`,
-// `transparent`, `translucentStrong`, nor `material` keeps the fully-live
-// see-through glass: no backdrop, no wash.
+// mechanism, with the stronger `surfaceTranslucentStrong` fill (0.80 vs 0.60
+// alpha) — BUT that backdrop bump alone turned out to be INVISIBLE on device
+// (the Home transaction card): a `LiquidGlassView` with `effect="regular"`
+// samples/refracts whatever backdrop sits under it, so the alpha difference
+// gets washed out on the real glass path instead of reliably darkening the
+// card. `translucentStrong` therefore ALSO paints a NEUTRAL DARK `wash` — a
+// flat overlay drawn OVER the finished glass (`surfaceWashStrong`, see the
+// `wash` layer below and the token's own doc comment in `theme.ts`) — but
+// ONLY on the real glass path; the non-glass fallback's own base already
+// renders the stronger fill directly with nothing sampling it away, so it
+// never needed a second darkening layer. A plain surface that opts into
+// neither `tint`, `transparent`, `translucentStrong`, nor `material` keeps
+// the fully-live see-through glass: no backdrop, no wash.
 //
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
@@ -183,15 +206,18 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   ) : (
     <View style={[RNStyleSheet.absoluteFill, fallbackFill]} testID={testID && `${testID}-base`} />
   );
-  // The flat entity-color wash: an `absoluteFill` sibling layered OVER the
-  // base, below `children`. A plain colored `View`, not a gradient — see the
-  // `tint` prop docs for why this is a fresh child element rather than an
-  // inline style folded onto the parent's own style array.
-  const wash: ReactNode = tint !== undefined && (
-    <View
-      style={[RNStyleSheet.absoluteFill, { backgroundColor: tint }]}
-      testID={testID && `${testID}-wash`}
-    />
+  // The flat wash: an `absoluteFill` sibling layered OVER the base, below
+  // `children`. A plain colored `View`, not a gradient — see the `tint` prop
+  // docs for why this is a fresh child element rather than an inline style
+  // folded onto the parent's own style array. Two fills share this one layer
+  // (see `resolveWashFill` above): the entity-color tint (both paths,
+  // unconditionally), or `translucentStrong`'s neutral dark overlay — but
+  // the LATTER only on the real glass path (`isLiquidGlassSupported`), since
+  // that is the only path the backdrop-alpha bump alone failed to darken; the
+  // non-glass fallback's own base already renders the stronger fill directly.
+  const washFill = resolveWashFill(tint, isStrong, isLiquidGlassSupported);
+  const wash: ReactNode = washFill && (
+    <View style={[RNStyleSheet.absoluteFill, washFill]} testID={testID && `${testID}-wash`} />
   );
 
   return (
