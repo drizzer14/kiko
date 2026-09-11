@@ -184,12 +184,13 @@ const makeInMemoryDeps = (
   const accountsStore: AccountRow[] = initialAccounts.map((account) => ({ ...account }));
   const holdingsStore: HoldingRow[] = [];
   const transactionsStore: TransactionRow[] = [];
-  // The single settings row the sync reads through `settingsRepo.getQuery`. It is
-  // mutable so a test can seed a cursor/full-fetch marker/force-fetch set (and,
-  // via a setter it wires itself, read a write back). The defaults model a
-  // never-synced app — null cursor, null full-fetch marker, no force-fetch set —
-  // which forces a full fetch, the starting point every existing test builds on.
-  const settingsRow: Awaited<ReturnType<SyncDeps['settingsRepo']['getQuery']>>[number] = {
+  // The connected account's per-connection sync_state row the sync reads through
+  // `syncStateRepo.getQuery(accountId)`. It is mutable so a test can seed a
+  // cursor/full-fetch marker/force-fetch set (and, via a setter it wires itself,
+  // read a write back). The defaults model a never-synced app — null cursor, null
+  // full-fetch marker, no force-fetch set — which forces a full fetch, the
+  // starting point every existing test builds on.
+  const syncStateRow: Awaited<ReturnType<SyncDeps['syncStateRepo']['getQuery']>>[number] = {
     lastSyncAt: null,
     lastFullSyncAt: null,
     failedSyncMonobankIds: null,
@@ -290,8 +291,8 @@ const makeInMemoryDeps = (
   // The injected repositories are whole OBJECTS now, not per-method wrappers: the
   // sync calls `deps.<repo>.<method>()` directly, so each in-memory double stands
   // for the real repo module. A test overrides a single method on the returned
-  // repo (e.g. `deps.settingsRepo.setLastSyncAt = jest.fn(...)`) or seeds a value
-  // through `settingsRow` / `deps.transactionsRepo.holdingIdsWithHoldQuery`.
+  // repo (e.g. `deps.syncStateRepo.setLastSyncAt = jest.fn(...)`) or seeds a value
+  // through `syncStateRow` / `deps.transactionsRepo.holdingIdsWithHoldQuery`.
   const accountsRepo: SyncDeps['accountsRepo'] = {
     listQuery: async () => accountsStore.map((account) => ({ ...account })),
     update: async (accountId, patch) => {
@@ -336,24 +337,30 @@ const makeInMemoryDeps = (
     holdingIdsWithHoldQuery: async () => [],
   };
 
-  const settingsRepo: SyncDeps['settingsRepo'] = {
+  const syncStateRepo: SyncDeps['syncStateRepo'] = {
     // The sync derives all three cursors — `lastSyncAt`, `lastFullSyncAt`,
-    // `failedSyncMonobankIds` — from this single row. `null` everywhere forces a
-    // full fetch (via `shouldFullFetch`), which is what every existing test builds
-    // from until it seeds `settingsRow`; on that full fetch the from-window derives
-    // from `lastFullSyncAt` (see `fromCursorSeconds`), so a non-null default equal
-    // to `now` would collapse the window to empty and fetch nothing. A test
-    // exercising the balance-diff skip seeds BOTH a recent `lastSyncAt` and a
-    // recent `lastFullSyncAt` so the periodic safety net does not fire.
-    getQuery: async () => [settingsRow],
+    // `failedSyncMonobankIds` — from this single connected account's row. `null`
+    // everywhere forces a full fetch (via `shouldFullFetch`), which is what every
+    // existing test builds from until it seeds `syncStateRow`; on that full fetch
+    // the from-window derives from `lastFullSyncAt` (see `fromCursorSeconds`), so a
+    // non-null default equal to `now` would collapse the window to empty and fetch
+    // nothing. A test exercising the balance-diff skip seeds BOTH a recent
+    // `lastSyncAt` and a recent `lastFullSyncAt` so the periodic safety net does
+    // not fire. `getQuery` ignores the account id here because these
+    // single-connection tests model exactly one connected account; `ensure` is a
+    // no-op because the row always exists.
+    getQuery: async () => [syncStateRow],
+    ensure: async () => undefined,
     setLastSyncAt: async () => undefined,
     setLastSyncDisplayAt: async () => undefined,
     setLastFullSyncAt: async () => undefined,
     // No card is force-retried by default. This spy lets a test assert the
     // persisted set without wiring a store; the production sync converts an empty
     // set to `null` before calling it (see `failedIdsToPersist` in `sync.ts`), so
-    // the argument is `string[] | null`.
-    setFailedSyncMonobankIds: jest.fn(async (_ids: string[] | null): Promise<void> => undefined),
+    // the second argument is `string[] | null` and the first is the account id.
+    setFailedSyncMonobankIds: jest.fn(
+      async (_accountId: string, _ids: string[] | null): Promise<void> => undefined,
+    ),
   };
 
   const deps: SyncDeps = {
@@ -369,10 +376,10 @@ const makeInMemoryDeps = (
     accountsRepo,
     holdingsRepo,
     transactionsRepo,
-    settingsRepo,
+    syncStateRepo,
   };
 
-  return { deps, accountsStore, holdingsStore, transactionsStore, settingsRow, sleep };
+  return { deps, accountsStore, holdingsStore, transactionsStore, syncStateRow, sleep };
 };
 
 describe('runSync', () => {
@@ -685,8 +692,10 @@ describe('runSync', () => {
       accounts: [supported, unsupportedAccount],
       jars: [unsupportedJar],
     });
-    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
 
     const result = await runSync(deps);
 
@@ -859,17 +868,58 @@ describe('runSync', () => {
 
     const fetchStatement = jest.fn(deps.fetchStatement as SyncDeps['fetchStatement']);
     deps.fetchStatement = fetchStatement;
-    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
 
     await runSync(deps);
 
-    const [persisted] = setLastSyncAt.mock.calls.at(-1) ?? [];
+    const [, persisted] = setLastSyncAt.mock.calls.at(-1) ?? [];
     const [, , , statementTo] = fetchStatement.mock.calls.at(-1) ?? [];
 
     // The cursor must be the same instant the statement window closed at, not
     // whatever the clock reads after the throttle sleeps that follow it.
     expect(persisted).toBe((statementTo as number) * 1000);
+  });
+
+  // Phase 1: the Monobank cursor is per-connection in `sync_state`, keyed by the
+  // resolved account id — the row is ensured to exist, read, and written all by
+  // that id, so a second connection can never share or corrupt this one's cursor.
+  it('ensures, reads, and writes the sync_state cursor keyed by the resolved account id', async () => {
+    const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
+
+    const ensure = jest.fn(async (_accountId: string): Promise<void> => undefined);
+    const getQuery = jest.fn(deps.syncStateRepo.getQuery);
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.ensure = ensure;
+    deps.syncStateRepo.getQuery = getQuery;
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+
+    await runSync(deps);
+
+    expect(ensure).toHaveBeenCalledWith('acc-mono');
+    expect(getQuery).toHaveBeenCalledWith('acc-mono');
+    expect(setLastSyncAt).toHaveBeenCalledWith('acc-mono', expect.any(Number));
+  });
+
+  // A targeted connect (a first-time Connect passes `targetAccountId`) keys the
+  // cursor by that same target id, so the freshly-connected account gets its own
+  // cursor row rather than writing into any other connection's.
+  it('keys the sync_state cursor by the targetAccountId on a first-time connect', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps } = makeInMemoryDeps(onlyFirstAccount, [target]);
+    deps.targetAccountId = 'acc-1';
+
+    const ensure = jest.fn(async (_accountId: string): Promise<void> => undefined);
+    deps.syncStateRepo.ensure = ensure;
+
+    await runSync(deps);
+
+    expect(ensure).toHaveBeenCalledWith('acc-1');
   });
 
   // The single-flight lock: while one `runSync` is in flight, a second trigger
@@ -942,7 +992,7 @@ describe('runSync', () => {
       id: 'txn-B',
     };
 
-    const { deps, settingsRow, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
+    const { deps, syncStateRow, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
 
     let failA = true;
     deps.fetchStatement = async (_token, accountId) => {
@@ -960,12 +1010,12 @@ describe('runSync', () => {
     };
 
     // The cursor starts null (a first sync) and `setLastSyncAt` writes it back
-    // through the shared settings row, so the second run reads what the first
-    // persisted.
-    const setLastSyncAt = jest.fn(async (timestamp: number): Promise<void> => {
-      settingsRow.lastSyncAt = timestamp;
+    // through this connection's sync_state row, so the second run reads what the
+    // first persisted.
+    const setLastSyncAt = jest.fn(async (_accountId: string, timestamp: number): Promise<void> => {
+      syncStateRow.lastSyncAt = timestamp;
     });
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
 
     // First run: the FIRST card fails, but the second card must still import —
     // the old fail-fast loop stopped every later card the moment one threw.
@@ -1009,10 +1059,14 @@ describe('runSync', () => {
       return id === idB ? [itemB] : [];
     };
 
-    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
-    deps.settingsRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    const setLastSyncDisplayAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
     deps.now = () => 1_700_000_000_000;
 
     await expect(runSync(deps)).rejects.toThrow();
@@ -1021,7 +1075,7 @@ describe('runSync', () => {
     // display stamp still moves — to the injected `now`.
     expect(setLastSyncAt).not.toHaveBeenCalled();
     expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
-    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
   });
 
   // A TOTAL failure (every card errored) never reached any statement, so it
@@ -1034,8 +1088,10 @@ describe('runSync', () => {
     deps.fetchStatement = async () => {
       throw new Error('Monobank request failed: 500');
     };
-    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    const setLastSyncDisplayAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
 
     await expect(runSync(deps)).rejects.toThrow();
 
@@ -1047,10 +1103,14 @@ describe('runSync', () => {
   it('stamps both the display timestamp and the cursor on a clean run that imported rows', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
-    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
-    deps.settingsRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    const setLastSyncDisplayAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
     deps.now = () => 1_700_000_000_000;
 
     const result = await runSync(deps);
@@ -1058,7 +1118,7 @@ describe('runSync', () => {
     expect(result.importedTransactions).toBe(statement.length);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
     expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
-    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
   });
 
   // A clean run that imported nothing (a re-sync with no new rows) is still a
@@ -1069,10 +1129,14 @@ describe('runSync', () => {
   it('stamps the display timestamp on a clean run that imported nothing', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps } = makeInMemoryDeps(onlyFirstAccount, [connected]);
-    const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-    deps.settingsRepo.setLastSyncAt = setLastSyncAt;
-    deps.settingsRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    const setLastSyncDisplayAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
     deps.now = () => 1_700_000_000_000;
 
     await runSync(deps); // first run imports the fixture rows
@@ -1083,7 +1147,7 @@ describe('runSync', () => {
     expect(second.importedTransactions).toBe(0);
     expect(setLastSyncAt).toHaveBeenCalledTimes(1);
     expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
-    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(1_700_000_000_000);
+    expect(setLastSyncDisplayAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
   });
 
   // The reactive sync-in-progress signal: `runSync` lights it the instant it
@@ -1307,7 +1371,7 @@ describe('runSync', () => {
 
     it('skips an unchanged card and fetches a changed one on an incremental run', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       // First sync populates each holding's stored balance at its client-info
       // value; it is a full fetch (no cursor yet).
@@ -1316,8 +1380,8 @@ describe('runSync', () => {
       // Incremental run: a cursor exists and the last full fetch is recent, so
       // the balance-diff skip is live. Card A's balance is unchanged; card B's
       // moved, so only B must be fetched.
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account, index) =>
           index === 1 ? { ...account, balance: account.balance + 5000 } : { ...account },
@@ -1337,8 +1401,10 @@ describe('runSync', () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
       const { deps } = makeInMemoryDeps(() => [], [connected]);
       deps.now = () => 1_700_000_000_000;
-      const setLastFullSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      deps.settingsRepo.setLastFullSyncAt = setLastFullSyncAt;
+      const setLastFullSyncAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setLastFullSyncAt = setLastFullSyncAt;
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
@@ -1347,12 +1413,12 @@ describe('runSync', () => {
       await runSync(deps);
 
       expect(fetchedIds(fetchStatement)).toEqual(expect.arrayContaining([idA, idB]));
-      expect(setLastFullSyncAt).toHaveBeenCalledWith(1_700_000_000_000);
+      expect(setLastFullSyncAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
     });
 
     it('fetches an unchanged card that still carries an outstanding hold', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, holdingsStore, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       await runSync(deps);
       const heldHoldingId = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === idA)
@@ -1361,8 +1427,8 @@ describe('runSync', () => {
       // Incremental run, both balances unchanged, but card A's holding has an
       // outstanding hold — a hold→settled refresh does not move the balance, so
       // A must still be fetched while B (unchanged, no hold) is skipped.
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
       deps.transactionsRepo.holdingIdsWithHoldQuery = async () => [{ holdingId: heldHoldingId }];
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
@@ -1375,7 +1441,7 @@ describe('runSync', () => {
 
     it('fetches every card on the periodic full-fetch even when balances are unchanged', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
       deps.now = () => 1_700_000_000_000;
 
       await runSync(deps);
@@ -1383,17 +1449,19 @@ describe('runSync', () => {
       // Incremental run with unchanged balances and no holds, but the last full
       // fetch is >24h old, so the safety net forces an all-cards fetch and
       // re-stamps the marker.
-      settingsRow.lastSyncAt = 1_700_000_000_000 - 1000;
-      settingsRow.lastFullSyncAt = 1_700_000_000_000 - (24 * 60 * 60 * 1000 + 1);
-      const setLastFullSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      deps.settingsRepo.setLastFullSyncAt = setLastFullSyncAt;
+      syncStateRow.lastSyncAt = 1_700_000_000_000 - 1000;
+      syncStateRow.lastFullSyncAt = 1_700_000_000_000 - (24 * 60 * 60 * 1000 + 1);
+      const setLastFullSyncAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setLastFullSyncAt = setLastFullSyncAt;
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
       await runSync(deps);
 
       expect(fetchedIds(fetchStatement)).toEqual(expect.arrayContaining([idA, idB]));
-      expect(setLastFullSyncAt).toHaveBeenCalledWith(1_700_000_000_000);
+      expect(setLastFullSyncAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
     });
 
     // The recovery this whole safety net exists for: the incremental cursor
@@ -1407,7 +1475,7 @@ describe('runSync', () => {
     // argument, not merely WHICH ids are fetched.
     it('widens the periodic full fetch back to lastFullSyncAt, not the recent cursor', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
       deps.now = () => 1_700_000_000_000;
 
       // First sync populates each holding's stored balance (a full fetch, no
@@ -1421,8 +1489,8 @@ describe('runSync', () => {
       // request covers it.
       const lastFullSyncAt = 1_699_800_000_000;
       const recentCursor = 1_699_999_000_000;
-      settingsRow.lastSyncAt = recentCursor;
-      settingsRow.lastFullSyncAt = lastFullSyncAt;
+      syncStateRow.lastSyncAt = recentCursor;
+      syncStateRow.lastFullSyncAt = lastFullSyncAt;
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
@@ -1457,25 +1525,31 @@ describe('runSync', () => {
         }
         return [];
       };
-      const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      const setLastFullSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      const setFailedSyncIds = jest.fn(async (_ids: string[] | null): Promise<void> => undefined);
-      deps.settingsRepo.setLastSyncAt = setLastSyncAt;
-      deps.settingsRepo.setLastFullSyncAt = setLastFullSyncAt;
-      deps.settingsRepo.setFailedSyncMonobankIds = setFailedSyncIds;
+      const setLastSyncAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      const setLastFullSyncAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      const setFailedSyncIds = jest.fn(
+        async (_accountId: string, _ids: string[] | null): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+      deps.syncStateRepo.setLastFullSyncAt = setLastFullSyncAt;
+      deps.syncStateRepo.setFailedSyncMonobankIds = setFailedSyncIds;
 
       await expect(runSync(deps)).rejects.toThrow();
 
       // The marker graduates on the partial failure; the failed card is stored
       // for a forced retry; the cursor stays put.
-      expect(setLastFullSyncAt).toHaveBeenCalledWith(1_700_000_000_000);
-      expect(setFailedSyncIds).toHaveBeenCalledWith([idA]);
+      expect(setLastFullSyncAt).toHaveBeenCalledWith(expect.any(String), 1_700_000_000_000);
+      expect(setFailedSyncIds).toHaveBeenCalledWith(expect.any(String), [idA]);
       expect(setLastSyncAt).not.toHaveBeenCalled();
     });
 
     it('force-fetches a previously-failed card even when its balance is unchanged, still skipping a different unchanged card', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       // First sync populates each holding's stored balance (a full fetch).
       await runSync(deps);
@@ -1483,9 +1557,9 @@ describe('runSync', () => {
       // Incremental run: cursor + recent full fetch, both balances UNCHANGED.
       // Card A is in the force-retry set, so it is fetched despite the unchanged
       // balance; card B (unchanged, not failed, no hold) is skipped.
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
-      settingsRow.failedSyncMonobankIds = [idA];
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.failedSyncMonobankIds = [idA];
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
@@ -1497,14 +1571,16 @@ describe('runSync', () => {
 
     it('removes a previously-failed card from the set once it syncs clean', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
       await runSync(deps);
 
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
-      settingsRow.failedSyncMonobankIds = [idA];
-      const setFailedSyncIds = jest.fn(async (_ids: string[] | null): Promise<void> => undefined);
-      deps.settingsRepo.setFailedSyncMonobankIds = setFailedSyncIds;
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.failedSyncMonobankIds = [idA];
+      const setFailedSyncIds = jest.fn(
+        async (_accountId: string, _ids: string[] | null): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setFailedSyncMonobankIds = setFailedSyncIds;
       deps.fetchStatement = jest.fn(
         async () => [] as MonobankStatementItem[],
       ) as unknown as SyncDeps['fetchStatement'];
@@ -1514,21 +1590,23 @@ describe('runSync', () => {
       // idA is force-fetched, succeeds, and is dropped — the set is now empty,
       // so it is persisted as NULL (the sync maps an empty set to null before the
       // repo call — see `failedIdsToPersist` in `sync.ts`).
-      expect(setFailedSyncIds).toHaveBeenCalledWith(null);
+      expect(setFailedSyncIds).toHaveBeenCalledWith(expect.any(String), null);
     });
 
     it('prunes a stale failed id that is no longer present in client-info', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
       await runSync(deps);
 
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
       // 'ghost-card' failed on a prior run but no longer appears in client-info
       // (the user disconnected it): it must be dropped, not force-fetched forever.
-      settingsRow.failedSyncMonobankIds = ['ghost-card'];
-      const setFailedSyncIds = jest.fn(async (_ids: string[] | null): Promise<void> => undefined);
-      deps.settingsRepo.setFailedSyncMonobankIds = setFailedSyncIds;
+      syncStateRow.failedSyncMonobankIds = ['ghost-card'];
+      const setFailedSyncIds = jest.fn(
+        async (_accountId: string, _ids: string[] | null): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setFailedSyncMonobankIds = setFailedSyncIds;
       deps.fetchStatement = jest.fn(
         async () => [] as MonobankStatementItem[],
       ) as unknown as SyncDeps['fetchStatement'];
@@ -1537,21 +1615,25 @@ describe('runSync', () => {
 
       // The pruned set is empty, which the sync persists as NULL (see
       // `failedIdsToPersist` in `sync.ts`).
-      expect(setFailedSyncIds).toHaveBeenCalledWith(null);
+      expect(setFailedSyncIds).toHaveBeenCalledWith(expect.any(String), null);
     });
 
     it('refreshes the display timestamp and imports zero when every card is skipped', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       await runSync(deps);
 
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
-      const setLastSyncDisplayAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      const setLastSyncAt = jest.fn(async (_timestamp: number): Promise<void> => undefined);
-      deps.settingsRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
-      deps.settingsRepo.setLastSyncAt = setLastSyncAt;
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
+      const setLastSyncDisplayAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      const setLastSyncAt = jest.fn(
+        async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+      );
+      deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
+      deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
       const fetchStatement = jest.fn(async () => [] as MonobankStatementItem[]);
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
@@ -1578,7 +1660,7 @@ describe('runSync', () => {
     // — the marker is the ONLY thing that can force this re-fetch here.
     it('re-fetches a card whose display balance advanced but whose statements never imported', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, holdingsStore, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       // A clean full fetch populates each holding's marker at its client-info
       // balance (each card is fetched, so `setSyncedBalance` runs for both).
@@ -1597,9 +1679,9 @@ describe('runSync', () => {
       const advanced = (holdingA.syncedBalanceMinorUnits ?? 0) + 5000;
       holdingA.balanceMinorUnits = advanced;
 
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - 1000;
-      settingsRow.failedSyncMonobankIds = [];
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
+      syncStateRow.failedSyncMonobankIds = [];
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
           account.id === idA ? { ...account, balance: advanced } : { ...account },
@@ -1667,7 +1749,7 @@ describe('runSync', () => {
   // only 2 holdings.
   it('weights workTotal by each card statement-window count, not by holding count', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-    const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+    const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
     // First run stores the card balances and markers; the jar lands unchanged
     // afterward, so the second run's only work is the two cards.
@@ -1676,8 +1758,8 @@ describe('runSync', () => {
     // Force a wide FULL fetch: a full-fetch cursor 90 days back makes each card
     // page 3 windows. The jar balance is unchanged, so it adds no work.
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    settingsRow.lastSyncAt = 1704326400000 - 1000;
-    settingsRow.lastFullSyncAt = 1704326400000 - ninetyDaysMs;
+    syncStateRow.lastSyncAt = 1704326400000 - 1000;
+    syncStateRow.lastFullSyncAt = 1704326400000 - ninetyDaysMs;
 
     let workTotalDuringRun = 0;
     let holdingsTotalDuringRun = 0;
@@ -1701,7 +1783,7 @@ describe('runSync', () => {
   // jar does zero work, so the bar never appears.
   it('publishes no progress when no holding does any work', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-    const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+    const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
     const emissions: Array<{ workTotal: number; total: number }> = [];
     const unsubscribe = subscribeProgress(() => {
@@ -1711,8 +1793,8 @@ describe('runSync', () => {
 
     // Seed the run so nothing changed: recent cursors (no full fetch) and each
     // card's marker already equal to its /client-info balance.
-    settingsRow.lastSyncAt = 1704326400000 - 1000;
-    settingsRow.lastFullSyncAt = 1704326400000 - 1000;
+    syncStateRow.lastSyncAt = 1704326400000 - 1000;
+    syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
     // First sync populates markers; a second identical run then skips every card.
     await runSync(deps);
     emissions.length = 0;
@@ -1730,10 +1812,10 @@ describe('runSync', () => {
   // in the up-front upsert — even when every card is balance-diff-skipped.
   it('counts a CHANGED jar as one work unit, completed at the fast phase, with every card skipped', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-    const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+    const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
     // Recent cursors so this is never a full fetch — the card skip can engage.
-    settingsRow.lastSyncAt = 1704326400000 - 1000;
-    settingsRow.lastFullSyncAt = 1704326400000 - 1000;
+    syncStateRow.lastSyncAt = 1704326400000 - 1000;
+    syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
 
     // A mutable jar balance: the second run sees a CHANGED jar while the two
     // cards stay unchanged (and so balance-diff-skipped).
@@ -1793,7 +1875,7 @@ describe('runSync', () => {
     // fixture; a change on it must move it to the FIRST 60s slot.
     it('fetches a changed card first even when it is ordered last in client-info', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       // First sync stores each card's balance and the full-fetch marker.
       await runSync(deps);
@@ -1801,8 +1883,8 @@ describe('runSync', () => {
       // A periodic full fetch (both cards fetched) where only card B's balance
       // moved since the last sync. Client-info order is [A, B]; changed-first
       // ordering must fetch B before A.
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
           account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
@@ -1825,7 +1907,7 @@ describe('runSync', () => {
     // outstanding authorization) keeps the NARROW incremental lastSyncAt cursor.
     it('fetches a wide window for a behind-marker card and the incremental cursor for an in-sync card', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, holdingsStore, settingsRow } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(() => [], [connected]);
 
       await runSync(deps);
 
@@ -1836,8 +1918,8 @@ describe('runSync', () => {
       // behind-marker card's window reaches further back than the in-sync card's.
       const lastSyncAt = 1704326400000 - 1000;
       const lastFullSyncAt = 1704326400000 - 2 * 60 * 60 * 1000;
-      settingsRow.lastSyncAt = lastSyncAt;
-      settingsRow.lastFullSyncAt = lastFullSyncAt;
+      syncStateRow.lastSyncAt = lastSyncAt;
+      syncStateRow.lastFullSyncAt = lastFullSyncAt;
       deps.transactionsRepo.holdingIdsWithHoldQuery = async () => [{ holdingId: heldHoldingId }];
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
@@ -1868,7 +1950,7 @@ describe('runSync', () => {
     // never loses the changed card's just-imported transactions.
     it('imports the changed card first, durable even when a later card fails', async () => {
       const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
-      const { deps, settingsRow, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
+      const { deps, syncStateRow, transactionsStore } = makeInMemoryDeps(() => [], [connected]);
 
       await runSync(deps);
 
@@ -1880,8 +1962,8 @@ describe('runSync', () => {
       // Periodic full fetch: both cards fetched. Only B changed, so B is fetched
       // first; the later card A then fails, modelling a run cut short after the
       // first (changed) card.
-      settingsRow.lastSyncAt = 1704326400000 - 1000;
-      settingsRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      syncStateRow.lastSyncAt = 1704326400000 - 1000;
+      syncStateRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
           account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
