@@ -1,4 +1,4 @@
-import type { AccountRow, HoldingRow, TransactionRow } from '../db/schema';
+import type { AccountRow, HoldingRow, SettingsRow, TransactionRow } from '../db/schema';
 import { i18n } from '../i18n';
 import { accountsRepo } from '../repositories/accounts.repo';
 import { holdingsRepo } from '../repositories/holdings.repo';
@@ -53,10 +53,93 @@ const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
 const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * The `accountsRepo` methods the sync calls directly. The whole repo module is
+ * injected (production wires the real one; a test wires an in-memory double), so
+ * there is no per-method wrapper to keep in step with it.
+ */
+interface SyncAccountsRepo {
+  listQuery: () => PromiseLike<AccountRow[]>;
+  update: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
+}
+
+/**
+ * The `holdingsRepo` methods the sync calls directly.
+ *
+ * - `upsertMonobankMany` writes every card/jar of one client-info snapshot in a
+ *   SINGLE transaction, so the reactive `holdings` callback fires ONCE for the
+ *   fast phase rather than once per card (a tight N+M burst that starved the JS
+ *   thread and stuttered the pull spinner).
+ * - `setSyncedBalance` advances one card's crash-safe statement-import marker
+ *   (`holdings.syncedBalanceMinorUnits`). Called ONLY after a card's statement
+ *   fetch+import commits, so the marker never leads the imported data: an
+ *   interrupted run leaves it behind and the next run re-imports the card. The
+ *   balance-diff skip compares against THIS marker, not `holdings.balanceMinorUnits`
+ *   (the display balance `upsertMonobankMany` overwrites up front every run).
+ * - `closeMany` stamps `closedAt` on a set of holdings in ONE transaction. The
+ *   sync calls it ONLY on a COMPLETE, clean full-fetch run to reconcile away a
+ *   holding Monobank no longer returns (a closed card, a deleted jar); never on a
+ *   partial/failed/empty response — see the guarded close block in `runSyncInner`.
+ */
+interface SyncHoldingsRepo {
+  listByAccountQuery: (accountId: string) => PromiseLike<HoldingRow[]>;
+  upsertMonobankMany: (holdings: MonobankHolding[]) => Promise<unknown>;
+  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
+  closeMany: (holdingIds: string[]) => Promise<unknown>;
+}
+
+/**
+ * The `transactionsRepo` methods the sync calls directly. `addManyDedup` resolves
+ * the number of rows actually INSERTED — a refreshed row is not one.
+ * `holdingIdsWithHoldQuery` yields the DISTINCT holding ids that still carry an
+ * outstanding Monobank hold (a pending authorization); such a card is fetched
+ * even when its balance is unchanged, since a same-amount hold→settled refresh
+ * does not move the balance.
+ */
+interface SyncTransactionsRepo {
+  addManyDedup: (transactions: NewTransaction[]) => Promise<number>;
+  holdingIdsWithHoldQuery: () => PromiseLike<{ holdingId: string }[]>;
+}
+
+/** The settings columns the sync reads out of `settingsRepo.getQuery`. */
+type SyncSettingsSnapshot = Pick<
+  SettingsRow,
+  'lastSyncAt' | 'lastFullSyncAt' | 'failedSyncMonobankIds'
+>;
+
+/**
+ * The `settingsRepo` methods the sync calls directly. The sync reads the single
+ * settings row through `getQuery` (guaranteed to exist by the app-boot migrations
+ * gate) and derives its three cursors from it — `lastSyncAt` (the statement
+ * cursor), `lastFullSyncAt` (the periodic full-fetch marker) and
+ * `failedSyncMonobankIds` (the force-retry set). The setters:
+ *
+ * - `setLastSyncAt` advances the statement cursor, ONLY on a fully clean run.
+ * - `setLastSyncDisplayAt` stamps the DISPLAY "last synced" time — decoupled from
+ *   the cursor — on every run that REACHED Monobank with at least one card
+ *   succeeding (INCLUDING a partial failure), so the user sees a fresh time even
+ *   when the cursor deliberately stays put to re-cover a failed card.
+ * - `setLastFullSyncAt` stamps the last-full-fetch time; written on a full-fetch
+ *   run even when one card failed, so a flaky card cannot strand the account in
+ *   permanent full-fetch mode.
+ * - `setFailedSyncMonobankIds` persists the force-fetch set for the NEXT run,
+ *   stored as null when empty. Written on BOTH the clean and the partial-failure
+ *   path, before the partial-failure throw.
+ */
+interface SyncSettingsRepo {
+  getQuery: () => PromiseLike<SyncSettingsSnapshot[]>;
+  setLastSyncAt: (timestamp: number) => Promise<unknown>;
+  setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
+  setLastFullSyncAt: (timestamp: number) => Promise<unknown>;
+  setFailedSyncMonobankIds: (ids: string[] | null) => Promise<unknown>;
+}
+
+/**
  * The injectable seams of the sync pipeline. Network, clock and delay are
  * injected so tests run instantly with fakes and never touch the real API
- * or wait on a real timer; the data-access functions are injected so tests
- * can drive an in-memory double instead of the native op-sqlite repos.
+ * or wait on a real timer; the underlying repositories are injected as
+ * objects so a test can drive an in-memory double instead of the native
+ * op-sqlite repos, and the sync calls their methods directly rather than
+ * through a hand-mirrored wrapper surface.
  *
  * There is deliberately no `gate` seam here: `runSync` builds its rate-limit
  * gate from `now`/`sleep`, which are already injectable, so a test needs no
@@ -65,9 +148,9 @@ const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
  * scoping the gate exists to get right (see `./throttle`).
  *
  * There is deliberately no settings-row-creation seam here either: the
- * single settings row (id = 1) that `getLastSyncAt`/`setLastSyncAt` read
- * and write is guaranteed to exist by the app-boot migrations gate
- * (`src/db/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
+ * single settings row (id = 1) that `settingsRepo.getQuery` reads and the
+ * settings setters write is guaranteed to exist by the app-boot migrations
+ * gate (`src/db/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
  * before any screen — and so before any sync — can run.
  */
 export interface SyncDeps {
@@ -96,83 +179,10 @@ export interface SyncDeps {
    * absent, the sync targets the already-connected Monobank account.
    */
   targetAccountId?: string;
-  listAccounts: () => Promise<AccountRow[]>;
-  updateAccount: (accountId: string, patch: Partial<AccountRow>) => Promise<unknown>;
-  listHoldingsByAccount: (accountId: string) => Promise<HoldingRow[]>;
-  /**
-   * Close a set of holdings (stamp `closedAt`) in ONE transaction. Called ONLY on
-   * a COMPLETE, clean full-fetch run to reconcile away a holding Monobank no
-   * longer returns (a closed card, a deleted jar), so it stops counting toward
-   * net worth. Never called on a partial/failed/empty response — see the guarded
-   * close block in `runSyncInner`. Wired to `holdingsRepo.closeMany`.
-   */
-  closeHoldings: (holdingIds: string[]) => Promise<unknown>;
-  /**
-   * Upsert every card/jar of one client-info snapshot in a SINGLE transaction,
-   * so the reactive `holdings` callback fires ONCE for the fast phase rather
-   * than once per card (a tight N+M burst that starved the JS thread and
-   * stuttered the pull spinner). See `holdingsRepo.upsertMonobankMany`.
-   */
-  upsertHoldings: (holdings: MonobankHolding[]) => Promise<unknown>;
-  /**
-   * Advance one card's crash-safe statement-import marker
-   * (`holdings.syncedBalanceMinorUnits`) to the balance whose statements were
-   * just imported. Called ONLY after a card's statement fetch+import commits, so
-   * the marker never leads the imported data: an interrupted run leaves it
-   * behind and the next run re-imports the card. The balance-diff skip compares
-   * against THIS marker, not `holdings.balanceMinorUnits` (the display balance
-   * `upsertHolding` overwrites up front every run).
-   */
-  setSyncedBalance: (holdingId: string, balanceMinorUnits: number) => Promise<unknown>;
-  /** Resolves the number of rows actually INSERTED — a refreshed row is not one. */
-  addTransactions: (transactions: NewTransaction[]) => Promise<number>;
-  getLastSyncAt: () => Promise<number | null>;
-  setLastSyncAt: (timestamp: number) => Promise<unknown>;
-  /**
-   * Stamp the DISPLAY "last synced" timestamp — decoupled from the statement
-   * cursor (`setLastSyncAt`). Written on every run that REACHED Monobank with at
-   * least one card succeeding (INCLUDING a partial failure), regardless of
-   * whether any new rows imported, so the user sees a fresh time even when the
-   * cursor deliberately stays put to re-cover a failed card. The crash-safe
-   * marker (`syncedBalanceMinorUnits`) makes a still-pending card re-fetch next
-   * run, so stamping on any success is honest, not falsely current.
-   */
-  setLastSyncDisplayAt: (timestamp: number) => Promise<unknown>;
-  /**
-   * Read the epoch-ms timestamp of the last FULL statement fetch (every card
-   * fetched regardless of balance), or `null` if one has never run. Drives the
-   * balance-diff skip's periodic safety net (see `FULL_FETCH_INTERVAL_MS`).
-   */
-  getLastFullSyncAt: () => Promise<number | null>;
-  /**
-   * Stamp the last-full-fetch timestamp (epoch ms). Written only after a fully
-   * clean full-fetch run, so a partial failure re-attempts the full fetch next
-   * run.
-   */
-  setLastFullSyncAt: (timestamp: number) => Promise<unknown>;
-  /**
-   * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
-   * pending authorization). Such a card is fetched even when its balance is
-   * unchanged, because a same-amount hold→settled refresh does not move the
-   * balance.
-   */
-  getHoldingIdsWithHold: () => Promise<string[]>;
-  /**
-   * The Monobank account ids whose statement fetch FAILED on the LAST run
-   * (`settings.failedSyncMonobankIds`, or an empty set when null). The next run
-   * force-fetches exactly these, regardless of balance, so one flaky card does
-   * not strand the whole account in daily full-fetch mode — the fix for a
-   * partial failure that would otherwise never graduate `lastFullSyncAt`.
-   */
-  getFailedSyncIds: () => Promise<string[]>;
-  /**
-   * Persist the force-fetch set for the NEXT run: the ids still present in
-   * client-info that either failed this run or failed a prior run and were not
-   * re-fetched clean. Stored as null when empty (see
-   * `settingsRepo.setFailedSyncMonobankIds`). Written on BOTH the clean and the
-   * partial-failure path, before the partial-failure throw.
-   */
-  setFailedSyncIds: (ids: string[]) => Promise<unknown>;
+  accountsRepo: SyncAccountsRepo;
+  holdingsRepo: SyncHoldingsRepo;
+  transactionsRepo: SyncTransactionsRepo;
+  settingsRepo: SyncSettingsRepo;
 }
 
 const defaultDeps: SyncDeps = {
@@ -182,24 +192,31 @@ const defaultDeps: SyncDeps = {
   readToken,
   fetchClientInfo,
   fetchStatement,
-  listAccounts: async () => accountsRepo.listQuery(),
-  updateAccount: (accountId, patch) => accountsRepo.update(accountId, patch),
-  listHoldingsByAccount: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  closeHoldings: (holdingIds) => holdingsRepo.closeMany(holdingIds),
-  upsertHoldings: (holdings) => holdingsRepo.upsertMonobankMany(holdings),
-  setSyncedBalance: (holdingId, balanceMinorUnits) =>
-    holdingsRepo.setSyncedBalance(holdingId, balanceMinorUnits),
-  addTransactions: (transactions) => transactionsRepo.addManyDedup(transactions),
-  getLastSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null,
-  setLastSyncAt: (timestamp) => settingsRepo.setLastSyncAt(timestamp),
-  setLastSyncDisplayAt: (timestamp) => settingsRepo.setLastSyncDisplayAt(timestamp),
-  getLastFullSyncAt: async () => (await settingsRepo.getQuery()).at(0)?.lastFullSyncAt ?? null,
-  setLastFullSyncAt: (timestamp) => settingsRepo.setLastFullSyncAt(timestamp),
-  getHoldingIdsWithHold: async () =>
-    (await transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId),
-  getFailedSyncIds: async () => (await settingsRepo.getQuery()).at(0)?.failedSyncMonobankIds ?? [],
-  setFailedSyncIds: (ids) => settingsRepo.setFailedSyncMonobankIds(ids.length > 0 ? ids : null),
+  accountsRepo,
+  holdingsRepo,
+  transactionsRepo,
+  settingsRepo,
 };
+
+// The single settings row is guaranteed to exist by the app-boot migrations gate,
+// so `.at(0)` is the row; each reader defaults a null column the way the sync
+// expects. Kept as module helpers (not inlined into `runSyncInner`) so the
+// optional-chaining/`??` reads do not inflate that function's cognitive
+// complexity.
+const readLastSyncAt = async (deps: SyncDeps): Promise<number | null> =>
+  (await deps.settingsRepo.getQuery()).at(0)?.lastSyncAt ?? null;
+
+const readLastFullSyncAt = async (deps: SyncDeps): Promise<number | null> =>
+  (await deps.settingsRepo.getQuery()).at(0)?.lastFullSyncAt ?? null;
+
+const readFailedSyncIds = async (deps: SyncDeps): Promise<string[]> =>
+  (await deps.settingsRepo.getQuery()).at(0)?.failedSyncMonobankIds ?? [];
+
+const readHoldingIdsWithHold = async (deps: SyncDeps): Promise<string[]> =>
+  (await deps.transactionsRepo.holdingIdsWithHoldQuery()).map((row) => row.holdingId);
+
+/** The force-fetch set is persisted as null when empty (see `settingsRepo`). */
+const failedIdsToPersist = (ids: string[]): string[] | null => (ids.length > 0 ? ids : null);
 
 export const mapStatementItem = (
   item: MonobankStatementItem,
@@ -282,7 +299,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 // every sync call site. 'Monobank' itself is a brand name and is not
 // translated (matching every other Monobank-branded catalog entry).
 const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
-  const accounts = await deps.listAccounts();
+  const accounts = await deps.accountsRepo.listQuery();
   if (deps.targetAccountId !== undefined) {
     const target = accounts.find((account) => account.id === deps.targetAccountId);
     if (!target) {
@@ -321,7 +338,7 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
  */
 const markMonobankAccount = async (deps: SyncDeps, accountId: string): Promise<void> => {
   if (deps.targetAccountId !== undefined) {
-    await deps.updateAccount(accountId, { institution: 'monobank' });
+    await deps.accountsRepo.update(accountId, { institution: 'monobank' });
   }
 };
 
@@ -377,7 +394,7 @@ const upsertAllHoldings = async (
     holdings.push({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
   }
 
-  await deps.upsertHoldings(holdings);
+  await deps.holdingsRepo.upsertMonobankMany(holdings);
 };
 
 /**
@@ -715,7 +732,7 @@ const importAccount = async (
   toSeconds: number,
   onPage?: () => void,
 ): Promise<number> => {
-  const holdings = await deps.listHoldingsByAccount(accountId);
+  const holdings = await deps.holdingsRepo.listByAccountQuery(accountId);
   const holding = holdings.find((candidate) => monobankIdOf(candidate.metadata) === account.id);
 
   if (!holding) {
@@ -740,7 +757,7 @@ const importAccount = async (
   // The count is the repository's, not this list's length: a re-fetched item
   // refreshes an existing row rather than adding one, and the user is told how
   // many transactions were IMPORTED.
-  return deps.addTransactions(fetched);
+  return deps.transactionsRepo.addManyDedup(fetched);
 };
 
 /** One card's fetch plan: its holding, its from-window, and its WORK weight. */
@@ -786,7 +803,7 @@ const fetchCardWithProgress = async (
     onPage,
   );
 
-  await deps.setSyncedBalance(card.holding.id, card.account.balance);
+  await deps.holdingsRepo.setSyncedBalance(card.holding.id, card.account.balance);
   // Reconcile the card's work to its full up-front estimate (a card that paged
   // fewer windows than estimated still reaches its share), then complete the
   // holding for the label.
@@ -836,7 +853,7 @@ const reconcileClosedHoldings = async (
     ...accounts.map((account) => account.id),
     ...(jars ?? []).map((jar) => jar.id),
   ]);
-  const current = await deps.listHoldingsByAccount(accountId);
+  const current = await deps.holdingsRepo.listByAccountQuery(accountId);
   const staleIds = current
     .filter((holding) => {
       const holdingMonobankId = monobankIdOf(holding.metadata);
@@ -849,7 +866,7 @@ const reconcileClosedHoldings = async (
     .map((holding) => holding.id);
 
   if (staleIds.length > 0) {
-    await deps.closeHoldings(staleIds);
+    await deps.holdingsRepo.closeMany(staleIds);
   }
 };
 
@@ -942,7 +959,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // column already IS "the balance as of the last sync" for a Monobank holding
   // (the sync rewrites it every run), so the balance-diff skip needs no new
   // column — but it must be read before the upsert clobbers it.
-  const priorHoldingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
+  const priorHoldingByMonobankId = indexByMonobankId(
+    await deps.holdingsRepo.listByAccountQuery(accountId),
+  );
 
   await upsertAllHoldings(deps, accountId, accounts, jars);
 
@@ -956,23 +975,25 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // monobankId → holding map, giving each card's holding id (needed for the
   // outstanding-hold carve-out) and confirming the holding exists. `holdIds` is
   // the set of holding ids that still carry an outstanding Monobank hold.
-  const holdingByMonobankId = indexByMonobankId(await deps.listHoldingsByAccount(accountId));
-  const holdIds = new Set(await deps.getHoldingIdsWithHold());
+  const holdingByMonobankId = indexByMonobankId(
+    await deps.holdingsRepo.listByAccountQuery(accountId),
+  );
+  const holdIds = new Set(await readHoldingIdsWithHold(deps));
 
   // The cards force-fetched this run because their statement fetch FAILED last
   // run — fetched regardless of balance (see `isBalanceDiffSkip`). The raw prior
   // array is kept for the end-of-run diff that decides whether to re-persist.
-  const priorFailedIds = await deps.getFailedSyncIds();
+  const priorFailedIds = await readFailedSyncIds(deps);
   const failedSet = new Set(priorFailedIds);
 
   const toSeconds = Math.floor(deps.now() / 1000);
-  const lastSyncAt = await deps.getLastSyncAt();
+  const lastSyncAt = await readLastSyncAt(deps);
 
   // Full-fetch decision: fetch EVERY card regardless of balance on the first
   // sync ever, when a full fetch has never run, or once the last one is older
   // than `FULL_FETCH_INTERVAL_MS`. Otherwise the balance-diff skip applies per
   // card below. Computed BEFORE the window because it widens the from-cursor.
-  const lastFullSyncAt = await deps.getLastFullSyncAt();
+  const lastFullSyncAt = await readLastFullSyncAt(deps);
   const isFullFetch = shouldFullFetch(deps.now, lastSyncAt, lastFullSyncAt);
 
   // Order the queue CHANGED-FIRST so a genuinely-active card imports in the
@@ -1117,7 +1138,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // fully clean run would instead FREEZE "Last sync" whenever one card fails
   // persistently, which is the outcome the user rejected.
   if (failures.length < accounts.length) {
-    await deps.setLastSyncDisplayAt(deps.now());
+    await deps.settingsRepo.setLastSyncDisplayAt(deps.now());
   }
 
   // Persist the force-fetch set for the NEXT run BEFORE the partial-failure
@@ -1129,7 +1150,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   const currentIds = new Set(accounts.map((account) => account.id));
   const newFailedIds = nextFailedSet(priorFailedIds, succeededIds, failedIds, currentIds);
   if (!sameIdSet(priorFailedIds, newFailedIds)) {
-    await deps.setFailedSyncIds(newFailedIds);
+    await deps.settingsRepo.setFailedSyncMonobankIds(failedIdsToPersist(newFailedIds));
   }
 
   // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE — the key R6-1
@@ -1144,7 +1165,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
   // convention, so the next full fetch resumes precisely where this one ended.
   if (isFullFetch) {
-    await deps.setLastFullSyncAt(toSeconds * 1000);
+    await deps.settingsRepo.setLastFullSyncAt(toSeconds * 1000);
   }
 
   if (failures.length > 0) {
@@ -1171,6 +1192,6 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // card, each a silent hole in imported history (the balance still came out
   // right, because it is overwritten from /client-info). Advanced ONLY on a
   // fully clean run (see the partial-failure branch above).
-  await deps.setLastSyncAt(toSeconds * 1000);
+  await deps.settingsRepo.setLastSyncAt(toSeconds * 1000);
   return { importedTransactions };
 };
