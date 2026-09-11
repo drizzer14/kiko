@@ -276,16 +276,17 @@ describe('TrendFilterField Clear disabling', () => {
   });
 });
 
-describe('TrendFilterField grouped cards', () => {
-  it('wraps each top-mode section control set in its own GlassSurface card', async () => {
+describe('TrendFilterField grouped sections', () => {
+  it('groups each top-mode section under its own label, with no frosted card fill behind the values', async () => {
     const { getByTestId } = await renderField({
       filter: { mode: 'top', amount: 3, by: 'contribution' },
     });
     await press(getByTestId(TEST_ID));
 
-    // Each logical section's controls sit INSIDE their own grouped card
-    // (the section header is a sub-heading ABOVE the card, not inside it), so
-    // the sheet reads as iOS-HIG grouped cards rather than one flat block.
+    // Each logical section's label and value control still sit together (the
+    // section header is a sub-heading directly ABOVE its value), so the
+    // sheet keeps a clear grouped structure — but the group is a plain `Box`
+    // now, not a `GlassSurface`, so it carries no `backgroundColor` fill.
     const selection = getByTestId(`${TEST_ID}-group-selection`);
     const amount = getByTestId(`${TEST_ID}-group-amount`);
     const measure = getByTestId(`${TEST_ID}-group-by`);
@@ -293,16 +294,25 @@ describe('TrendFilterField grouped cards', () => {
     expect(within(selection).getByText('Manual')).toBeTruthy();
     expect(within(amount).getByRole('button', { name: '5' })).toBeTruthy();
     expect(within(measure).getByText('Rising')).toBeTruthy();
+
+    expect(StyleSheet.flatten(selection.props.style).backgroundColor).toBeUndefined();
+    expect(StyleSheet.flatten(amount.props.style).backgroundColor).toBeUndefined();
+    expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
-  it('wraps the manual category list in a GlassSurface card', async () => {
+  it('groups the manual category list under a plain clipped container, with no frosted card fill', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
     await press(getByTestId(TEST_ID));
 
-    // The manual category rows are grouped inside their own card too.
+    // The manual category rows are still grouped inside their own scroll
+    // container (now a plain `Box`, not `GlassSurface`) so the corner-clip
+    // and shrink-to-scroll behavior the old card provided is unchanged, but
+    // there is no gray fill behind the rows any more.
     const categories = getByTestId(`${TEST_ID}-group-categories`);
 
     expect(within(categories).getByTestId(`${TEST_ID}-option-groceries`)).toBeTruthy();
+    expect(StyleSheet.flatten(categories.props.style).overflow).toBe('hidden');
+    expect(StyleSheet.flatten(categories.props.style).backgroundColor).toBeUndefined();
   });
 });
 

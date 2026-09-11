@@ -368,7 +368,29 @@ new component can land between reviews of this skill:
   — not a low-contrast raised surface, so the selection stays clear on
   the low-contrast sheet background. Unselected pills stay transparent
   with a `textSecondary` label. The pill content is centered and the
-  pill holds the 44pt HIG minimum touch target.
+  pill holds the 44pt HIG minimum touch target. The pill label's `Text`
+  variant defaults to `body` (the original hardcoded size — every
+  existing consumer that omits the prop, `CurrencySwitch` and
+  `LanguageSwitch`, is unaffected) and takes an optional `labelVariant`
+  override for a caller whose value sits under its own larger section
+  label and must read as visually subordinate to it — the Statistics
+  trend-filter sheet (`trend-filter-field.component.tsx`) passes
+  `labelVariant="caption"` for exactly this reason: its section labels
+  were raised from `caption` to `body` to fix an inverted
+  label-smaller-than-value hierarchy, so the values had to drop a step
+  to stay under them. The optional leading icon's size is derived from
+  the same prop (`theme.iconSizes[labelVariant]`, never a hardcoded
+  `theme.iconSizes.body`), per the "SF Symbol sizing" HIG rule — the
+  glyph stays paired with its label's type step rather than only ever
+  matching the default. The trend-filter sheet also dropped the frosted
+  `GlassSurface transparent bordered` card that used to sit behind each
+  value group — the values now sit directly on the sheet under their
+  labels (the iOS grouped-form look, no inner gray fill) — except the
+  manual-mode category list, which still needs a clipped, shrinkable
+  scroll region: that one case keeps a plain `Box` with `overflow:
+  'hidden'`, the shared radius token, and a hairline `border` (no fill),
+  reproducing only the corner-clip and shrink-to-scroll behavior
+  `GlassSurface` used to provide.
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any

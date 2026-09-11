@@ -5,7 +5,6 @@ import { Pressable, ScrollView } from 'react-native';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
-import GlassSurface from '../../../design-system/components/glass-surface';
 import OptionPills from '../../../design-system/components/option-pills';
 import SelectableRow from '../../../design-system/components/selectable-row';
 import SymbolIcon from '../../../design-system/components/symbol';
@@ -47,15 +46,18 @@ const draftToFilter = (draft: Draft): TrendFilter =>
     ? { mode: 'manual', keys: [...draft.manualKeys] }
     : { mode: 'top', amount: draft.amount, by: draft.by };
 
-// A grouped-list section header: the caption type step in the PRIMARY (white)
-// tone — the iOS grouped-form header treatment, but pulled up from the dim grey
+// A grouped-list section header: the body type step in the PRIMARY (white)
+// tone — the iOS grouped-form header treatment, pulled up from the dim grey
 // (`textSecondary`) it used before so it reads as a clear white sub-heading
-// above its grouped card rather than a weak, washed-out label. It sits below
-// the stronger `heading` sheet title, so the sheet reads with a clear
-// title > section-header > card-contents hierarchy at a glance (title case, per
-// the design system's heading rule).
+// above its section's controls rather than a weak, washed-out label. `body`
+// (not the former `caption`) keeps the label ABOVE its OptionPills value in
+// the type scale — the value pills below now render at `caption` via
+// `labelVariant`, so the hierarchy reads `heading` (sheet title) > `body`
+// (this label) > `caption` (the value) rather than the inverted
+// label-smaller-than-value it used to be. Title case, per the design
+// system's heading rule.
 const SectionHeader: FC<{ children: string }> = ({ children }) => (
-  <Text variant="caption" tone="textPrimary">
+  <Text variant="body" tone="textPrimary">
     {children}
   </Text>
 );
@@ -216,52 +218,51 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
       >
         <Text variant="heading">{t('statistics.trendFilter.title')}</Text>
 
-        {/* Each section is a white sub-heading ABOVE a frosted `GlassSurface`
-            grouped card that holds only that section's controls — the iOS-HIG
-            grouped-card layout, so the controls read as lifted off the flat
-            sheet instead of floating on it. `transparent` frosts the card so
-            the sheet reads through; `bordered` draws the hairline card edge. */}
-        <Box gap={2}>
+        {/* Each section is a white `body`-step sub-heading directly ABOVE its
+            value control — no frosted `GlassSurface` card behind the values
+            any more (design review: the gray-filled card read as a
+            competing surface under a sheet that is already glass). The
+            values sit straight on the sheet, the iOS grouped-form look, and
+            drop to the `caption` step via `OptionPills`' `labelVariant` so
+            they stay visually subordinate to their now-larger label. */}
+        <Box gap={2} testID={`${testID}-group-selection`}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 
-          <GlassSurface transparent bordered padding={3} testID={`${testID}-group-selection`}>
-            <OptionPills
-              options={MODES}
-              selected={draft.mode}
-              onSelect={setMode}
-              label={(mode) => t(`statistics.trendFilter.${mode}`)}
-              columns={2}
-            />
-          </GlassSurface>
+          <OptionPills
+            options={MODES}
+            selected={draft.mode}
+            onSelect={setMode}
+            label={(mode) => t(`statistics.trendFilter.${mode}`)}
+            columns={2}
+            labelVariant="caption"
+          />
         </Box>
 
         {draft.mode === 'top' ? (
           <>
-            <Box gap={2}>
+            <Box gap={2} testID={`${testID}-group-amount`}>
               <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
 
-              <GlassSurface transparent bordered padding={3} testID={`${testID}-group-amount`}>
-                <OptionPills
-                  options={AMOUNTS}
-                  selected={draft.amount}
-                  onSelect={setAmount}
-                  columns={AMOUNTS.length}
-                />
-              </GlassSurface>
+              <OptionPills
+                options={AMOUNTS}
+                selected={draft.amount}
+                onSelect={setAmount}
+                columns={AMOUNTS.length}
+                labelVariant="caption"
+              />
             </Box>
 
-            <Box gap={2}>
+            <Box gap={2} testID={`${testID}-group-by`}>
               <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
 
-              <GlassSurface transparent bordered padding={3} testID={`${testID}-group-by`}>
-                <OptionPills
-                  options={MEASURES}
-                  selected={draft.by}
-                  onSelect={setBy}
-                  label={measureLabel}
-                  columns={MEASURES.length}
-                />
-              </GlassSurface>
+              <OptionPills
+                options={MEASURES}
+                selected={draft.by}
+                onSelect={setBy}
+                label={measureLabel}
+                columns={MEASURES.length}
+                labelVariant="caption"
+              />
             </Box>
           </>
         ) : (
@@ -272,13 +273,14 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
                 already self-insets, so an edge-to-edge scroll region inside the
                 card is the iOS grouped-list row treatment (and avoids doubling
                 the row's own inset). It shares the manual section's shrink so
-                only the list scrolls under the sheet's height cap. */}
-            <GlassSurface
-              transparent
-              bordered
-              style={styles.manualGroup}
-              testID={`${testID}-group-categories`}
-            >
+                only the list scrolls under the sheet's height cap. This is a
+                plain `Box`, not `GlassSurface` — no frosted gray fill behind
+                the rows — but it keeps the two things `GlassSurface` was
+                actually relied on for: the `overflow: hidden` corner clip on
+                the scroll region (`styles.manualGroup`) and a hairline border
+                so the scrollable list still reads as one grouped region on the
+                translucent sheet. */}
+            <Box style={styles.manualGroup} testID={`${testID}-group-categories`}>
               <ScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
@@ -299,7 +301,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
                   />
                 ))}
               </ScrollView>
-            </GlassSurface>
+            </Box>
           </Box>
         )}
 
