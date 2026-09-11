@@ -279,6 +279,17 @@ const maskedPAN = holding.metadata.maskedPAN; // correct
 const maskedPan = holding.metadata.maskedPan; // wrong
 ```
 
+**Exception — wire-mirror casing.** A type or field that mirrors an
+external wire/API payload keeps that payload's own casing on purpose,
+even where it disagrees with the acronym rule above. `maskedPan` and
+`counterIban` (`src/db/schema.ts`, `src/monobank/monobank.types.d.ts`,
+`src/monobank/sync.ts`) are the standing example: those are the
+literal Monobank API JSON field names, not names chosen in application
+code, so they stay lower-`an`/lower-`iban` rather than becoming
+`maskedPAN`/`counterIBAN`. This is an intentional, allowed exception,
+not drift to fix — do not "correct" a wire-mirrored field to match the
+acronym rule.
+
 This applies inside a compound name too, not just standalone —
 `fetchBtcPrice` was renamed to `fetchBTCPrice` during review (and its
 callers, `loadBTC` and `RefreshDeps.fetchBTCPrice`, followed the same
@@ -313,12 +324,25 @@ the domain's own glyph map (see `kiko-domain`'s "Entity glyphs" rule).
   `<name>.component.test.tsx`.
 - A screen: `<name>.screen.tsx`.
 - A repository: `<name>.repo.ts`.
+- A navigation stack component: `<name>.stack.tsx` — the stacks under
+  `src/navigation/` (`home.stack.tsx`, `accounts.stack.tsx`, and their
+  siblings) are components, just named for what React Navigation calls
+  them rather than generically.
+- A gate component: `<name>.gate.tsx` — an early-return guard component
+  such as `src/migration/migrations.gate.tsx` (the lock gate).
 
-An **infrastructural** React module does not take `.component.tsx` —
-it isn't a UI building block, it's plumbing. A migrations gate or a
-navigator stays unsuffixed. `@ovpn/ui` follows the same split: it
-names providers/contexts `*.context.tsx` rather than
-`*.component.tsx`.
+`.stack.tsx` and `.gate.tsx` are **component-bearing suffixes**,
+admitted alongside `.component.tsx` and `.screen.tsx`: a file under
+either one default-exports a component the same way (see "Exports"
+above). This is a documentation amendment only — existing
+`.stack.tsx`/`.gate.tsx` files are correct as they are; nothing needs
+renaming.
+
+An **infrastructural** React module that is none of the above — a
+provider or context, for example — still does not take
+`.component.tsx`; it isn't a UI building block, it's plumbing.
+`@ovpn/ui` follows the same split: it names providers/contexts
+`*.context.tsx` rather than `*.component.tsx`.
 
 A type-only file — one that exports only types, no runtime value, no
 ambient side effect — uses the `.d.ts` extension: `<name>.props.d.ts`,
@@ -365,6 +389,60 @@ parent's closure.
 A component uses an explicit `return` —
 `(props) => { return (<...>); }` — never the arrow-shorthand implicit
 return `(props) => (<...>)`.
+
+## Folder-per-thing co-location
+
+A "thing" — a component, a repository, a domain/logic unit — keeps
+every file that belongs to it together in **one folder named after
+it**. Never scatter a thing's implementation, test, and styles as
+loose siblings in a shared flat folder; a folder that is a flat dump
+of many unrelated files is hard to read and navigate (user directive).
+
+Two shapes this takes today:
+
+- A design-system **component** folder (see "One component per file"
+  above) — implementation, test, props type, and styles together,
+  with a barrel:
+
+  ```
+  currency-breakdown/
+    currency-breakdown.component.tsx
+    currency-breakdown.component.test.tsx
+    currency-breakdown.props.d.ts
+    currency-breakdown.styles.ts
+    index.ts
+  ```
+
+- A **logic-unit** folder — a repository or other non-component
+  module — pairs its implementation with its own test in that unit's
+  feature folder, rather than a separate top-level layer folder (the
+  old `src/repositories/` split by kind, not by feature, and was
+  co-located away):
+
+  ```
+  holdings/
+    holdings.repo.ts
+    holdings.repo.test.ts
+    …
+  ```
+
+  Read the feature folder you're touching (`src/holdings/`,
+  `src/accounts/`, `src/rates/`, and their siblings) for the live
+  pattern rather than trusting a restated file inventory here — it
+  would only drift.
+
+Deliberate exceptions that stay flat/loose — these are not violations
+of the rule, they simply aren't "a thing" with an owner:
+
+- A module's own entry point, e.g. `src/i18n/index.ts` — it re-exports
+  the module, it doesn't have its own folder to sit in.
+- A type-augmentation `.d.ts` file (an ambient/global declaration).
+  This is distinct from a component's own `.props.d.ts`, which does
+  live inside that component's folder as shown above.
+- A cross-cutting shared test helper directory such as
+  `src/test-support/` — its files are used by many things, not owned
+  by any single one, so they don't belong inside any one thing's
+  folder.
 
 ## Helper placement
 
