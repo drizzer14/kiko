@@ -42,14 +42,20 @@ export type ScreenProps = {
   // The plain-branch counterpart of `scroll` for a large-title screen whose
   // child is ITSELF the scrollable surface (a virtualized FlatList/SectionList
   // that must own the scrolling, so it cannot nest inside `scroll` mode's
-  // ScrollView). It drops the SafeAreaView's top edge — the native large-title
-  // header owns the top inset, so reserving it here too double-offsets content
-  // beneath the header — and zeroes the content wrapper's top padding so the
-  // child scrollable reaches the top edge and iOS applies the large-title
-  // content inset to it. The child must set
+  // ScrollView). It renders that child as a DIRECT child of the SafeAreaView —
+  // NO intermediate padded `content` wrapper — so the child is the scroll view
+  // iOS tracks to COLLAPSE the native large title (an interposed wrapper stops
+  // the collapse; the working `account-detail` scroll branch is the proven
+  // direct-child reference). It also drops the SafeAreaView's top edge, since
+  // the large-title header owns the top inset and reserving it here too would
+  // double-offset content beneath the header. Because there is no wrapper, the
+  // child owns ALL of its own padding: it must set
   // `contentInsetAdjustmentBehavior="automatic"` and supply its own top content
-  // padding (e.g. HoldingDetail's ledger FlatList). Only meaningful in the
-  // plain (non-scroll) branch; ignored in `scroll` mode (which already drops
-  // the top edge for its own ScrollView).
+  // padding (for the collapse), its own horizontal padding, AND — the
+  // `bleedBottom` contract — its own floating tab-bar bottom clearance via
+  // `resolveBottomClearance` when it has no `footer` (e.g. HoldingDetail's
+  // ledger FlatList). A `footer` still pins below the child as a sibling with
+  // its own clearance. Only meaningful in the plain (non-scroll) branch; ignored
+  // in `scroll` mode (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;
 };

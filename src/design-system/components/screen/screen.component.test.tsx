@@ -236,25 +236,55 @@ describe('Screen', () => {
     expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toBeUndefined();
   });
 
+  it('renders the bleedTop child directly under the SafeAreaView with no content wrapper, so the native large title can track it as its scroll view', async () => {
+    const { getByText, queryByTestId } = await renderScreen({ bleedTop: true });
+
+    // The native iOS large-title collapse tracks the FIRST scroll view found
+    // walking the screen's first-child chain (react-native-screens'
+    // `RNSScrollViewFinder`, and UIKit's own large-header search). An
+    // intermediate padded wrapper `View` between the SafeAreaView and the child
+    // scrollable stops that collapse — the working `account-detail` scroll
+    // branch proves a scrollable rendered as a DIRECT child of the SafeAreaView
+    // both collapses AND does not float (feedback round-3, item 1). So under
+    // `bleedTop` Screen renders the child directly, with NO `screen-content`
+    // wrapper, exactly like the scroll branch's ScrollView: the child (a
+    // FlatList) becomes the tracked scroll view. The render helper's plain
+    // `Text` stands in for that scrollable child here.
+    expect(queryByTestId(CONTENT_TEST_ID)).toBeNull();
+    // The child's IMMEDIATE parent is the SafeAreaView itself — it forwards the
+    // `edges` prop (an intermediate wrapper would not) — proving nothing is
+    // interposed between the two.
+    expect(getByText('content').parent?.props.edges).toBeDefined();
+  });
+
   it('drops the top safe-area edge in the plain branch when bleedTop is set (a large-title header owns the top inset)', async () => {
-    const { getByTestId } = await renderScreen({ bleedTop: true });
+    const { getByText } = await renderScreen({ bleedTop: true });
 
     // The child scrollable applies the large-title inset itself (via
     // `contentInsetAdjustmentBehavior="automatic"`), so reserving the top edge
     // here too would double-offset content beneath the header — same rationale
-    // the always-scrolling branch already follows.
-    const edges = getByTestId(CONTENT_TEST_ID).parent?.props.edges as readonly string[] | undefined;
+    // the always-scrolling branch already follows. Read from the child's direct
+    // parent (the SafeAreaView), since `bleedTop` interposes no wrapper.
+    const edges = getByText('content').parent?.props.edges as readonly string[] | undefined;
     expect(edges).toEqual(expect.arrayContaining(['left', 'right', 'bottom']));
     expect(edges).not.toContain('top');
   });
 
-  it('removes the plain content top padding when bleedTop is set so the child scrollable reaches the large-title inset', async () => {
-    const { getByTestId } = await renderScreen({ bleedTop: true });
+  it('still pins a footer below the bleedTop child, clear of the floating tab bar', async () => {
+    const { getByText, getByTestId } = await renderScreen({ bleedTop: true, footer: footerNode });
 
-    // A wrapper top padding would push the child scrollable below the header,
-    // defeating iOS's automatic large-title content inset — so it drops to 0
-    // and the child supplies its own top spacing inside its content container.
-    expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingTop).toBe(0);
+    // Dropping the content wrapper must not drop the footer slot: it stays a
+    // sibling of the child scrollable, pinned to the bottom edge with the same
+    // tab-bar clearance every other footer gets.
+    const footer = getByTestId(FOOTER_TEST_ID);
+    expect(within(footer).queryByText('footer content')).toBeTruthy();
+    expect(within(footer).queryByText('content')).toBeNull();
+    expect(StyleSheet.flatten(footer.props.style).paddingBottom).toBe(
+      FOOTER_GAP + BOTTOM_CLEARANCE,
+    );
+    // The child is still a direct child of the SafeAreaView, not nested inside
+    // the footer.
+    expect(getByText('content').parent?.props.edges).toBeDefined();
   });
 
   it('keeps the base top padding in the plain branch by default (no bleedTop)', async () => {

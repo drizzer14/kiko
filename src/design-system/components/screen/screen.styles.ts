@@ -34,16 +34,15 @@ export const styles = StyleSheet.create((theme) => ({
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
   // and top padding stay at the base spacing step regardless.
-  content: (ownsClearance: boolean, bottomClearance: number, bleedTop: boolean) => ({
+  content: (ownsClearance: boolean, bottomClearance: number) => ({
     flex: 1,
-    // A `bleedTop` screen's child is itself the scrollable surface under a
-    // large-title header (it sets `contentInsetAdjustmentBehavior="automatic"`
-    // and supplies its own top content padding). This wrapper adds no top
-    // padding in that case — the child scrollable must reach the top edge for
-    // iOS to apply the large-title content inset to it; a wrapper offset would
-    // push it below the header and defeat the automatic adjustment. Every other
-    // (headerless or non-scrolling) plain screen keeps the base top padding.
-    paddingTop: bleedTop ? 0 : theme.spacing(4),
+    // A large-title `bleedTop` screen never reaches this wrapper — it renders
+    // its scrollable child directly under the SafeAreaView (see
+    // `screen.component.tsx`) so the child, not this padded View, is the scroll
+    // view iOS tracks for the large-title collapse. So this wrapper always keeps
+    // the base top padding for the headerless/non-scrolling screens that DO use
+    // it.
+    paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),
     paddingBottom: ownsClearance
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance

@@ -9,6 +9,8 @@ import type { TFunction } from 'i18next';
 import { type FC, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable } from 'react-native';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
 
@@ -28,7 +30,7 @@ import Button from '../../design-system/components/button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
-import Screen from '../../design-system/components/screen';
+import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import SwipeableRow from '../../design-system/components/swipeable-row';
 import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import SymbolIcon from '../../design-system/components/symbol';
@@ -413,6 +415,20 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // Which add action the footer offers — or none, for a bond or a synced
   // holding (see `footerActionFor`).
   const footerAction = footerActionFor(holding, account);
+  // The ledger FlatList is a direct child of `Screen`'s SafeAreaView under
+  // `bleedTop` (no `content` wrapper — that is what lets iOS track it for the
+  // large-title collapse), so this screen owns the FlatList's bottom padding
+  // itself, the `bleedBottom` contract. When there IS a footer, the Screen
+  // footer slot owns the floating tab-bar clearance and the list needs only a
+  // plain gap above it; with NO footer (a bond or synced holding), the list is
+  // the screen's true bottom edge and must clear the tab bar itself via the ONE
+  // shared arithmetic (the same computation Home's list uses). `useSafeAreaInsets`
+  // supplies the bottom inset the SafeAreaView already reserves, so the tab-bar
+  // height is not double-counted.
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const listBottomClearance =
+    footerAction === 'none' ? resolveBottomClearance(tabBarHeight, insets.bottom) : 0;
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -530,15 +546,20 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   return (
     <Screen
       // The FlatList below OWNS this screen's scrolling under the accounts
-      // stack's native large title (`headerLargeTitle: true`). `bleedTop` drops
-      // Screen's top safe-area edge and its content top padding so the list
-      // reaches the top edge and iOS applies the large-title content inset to
-      // it (via the FlatList's own `contentInsetAdjustmentBehavior="automatic"`
-      // below) — without it the large title floats above / overlaps the summary
-      // header at scroll-top (feedback round-2, item 2). This mirrors the
-      // working `account-detail` scroll ScrollView, which Screen's `scroll`
-      // branch configures the same way; this screen cannot use `scroll` because
-      // a virtualized FlatList must not nest inside that branch's ScrollView.
+      // stack's native large title (`headerLargeTitle: true`). `bleedTop` makes
+      // Screen render the FlatList as a DIRECT child of its SafeAreaView — with
+      // NO intermediate `content` wrapper — so iOS tracks the FlatList as the
+      // scroll view that drives the large-title COLLAPSE (an interposed wrapper
+      // stops the collapse: the title stays stuck expanded — feedback round-3,
+      // item 1). `bleedTop` also drops Screen's top safe-area edge so the list
+      // reaches the top edge and iOS applies the large-title content inset to it
+      // (via the FlatList's own `contentInsetAdjustmentBehavior="automatic"`
+      // below) — keeping the no-float fix from feedback round-2, item 2. This
+      // mirrors the working `account-detail` scroll ScrollView, a direct child
+      // of its own SafeAreaView; this screen cannot use `scroll` because a
+      // virtualized FlatList must not nest inside that branch's ScrollView.
+      // Because there is no wrapper, the FlatList owns its own horizontal and
+      // bottom padding (see `styles.listContent` / `listBottomClearance`).
       bleedTop
       footer={
         // A large, full-width primary action, shown for the holdings that take
@@ -562,8 +583,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       }
     >
       {/* The ledger is a virtualized FlatList that OWNS this screen's scrolling
-          (Screen renders its non-scroll branch, keeping the safe-area + padding
-          around it), so only the visible rows mount — a synced card can carry
+          (under `bleedTop` Screen renders it directly inside its SafeAreaView,
+          with no wrapper, so the FlatList supplies its own padding), so only the
+          visible rows mount — a synced card can carry
           thousands. The summary block + Transactions heading ride along in
           `ListHeaderComponent`; nesting an eager list inside a scrolling Screen
           would break virtualization and warn about a nested VirtualizedList.
@@ -582,30 +604,42 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // setting the shared `Screen` scroll branch applies to its ScrollView.
         contentInsetAdjustmentBehavior="automatic"
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={styles.listContent(listBottomClearance)}
       />
     </Screen>
   );
 };
 
 const styles = StyleSheet.create((theme) => ({
-  // The ledger FlatList fills the Screen's (non-scroll branch) padded content
-  // box and owns the scrolling itself, so only visible rows mount.
+  // The ledger FlatList fills the Screen's SafeAreaView directly (under
+  // `bleedTop` there is no `content` wrapper between them) and owns the
+  // scrolling itself, so only visible rows mount. `flex: 1` makes it fill that
+  // SafeAreaView so it is the scroll view iOS tracks for the large-title
+  // collapse.
   list: {
     flex: 1,
   },
-  // The scroll content: `spacing(2)` between every child — the header block and
-  // the first row, and each row and the next — reproducing the old
-  // `<Box gap={2}>` that wrapped the Transactions heading and its rows. The
-  // `spacing(4)` top padding lives HERE (inside the scroll content) rather than
-  // on Screen's content wrapper, because Screen drops that wrapper's top
-  // padding under `bleedTop` so the list can reach the large-title inset — this
-  // keeps the same top gap the wrapper used to provide, below the collapsed
-  // large title, matching account-detail's scroll content padding.
-  listContent: {
+  // The scroll content. Under `bleedTop` the FlatList is a DIRECT child of
+  // Screen's SafeAreaView (no `content` wrapper — that is what lets iOS track it
+  // for the large-title collapse), so this content container owns ALL of the
+  // padding the wrapper used to provide:
+  //  - top: `spacing(4)` below the collapsed large title (matching
+  //    account-detail's scroll content), living here so the FlatList itself
+  //    still reaches the top edge for iOS's automatic large-title inset;
+  //  - horizontal: `spacing(4)`, the screen's side gutter the wrapper used to
+  //    apply;
+  //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
+  //    footer owns the floating tab-bar clearance, else `resolveBottomClearance`
+  //    so the last row clears the bar exactly once (see the screen component).
+  // The `spacing(2)` gap sits between every child — the header block and the
+  // first row, and each row and the next — reproducing the old `<Box gap={2}>`
+  // that wrapped the Transactions heading and its rows.
+  listContent: (bottomClearance: number) => ({
     paddingTop: theme.spacing(4),
+    paddingHorizontal: theme.spacing(4),
+    paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
-  },
+  }),
   // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
   // rather than a settled statement line.
   futureRow: {
