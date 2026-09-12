@@ -58,7 +58,32 @@ uploads to the App Store on the user's behalf.
 
 ## First release
 
-The current `MARKETING_VERSION` is `1.0` at build `2`. The first
-release maps this to tag `v1.0.0`: step 3 sets
-`MARKETING_VERSION=1.0.0` and bumps the build to `3`, which matches
-the pending build-3 step in the roadmap.
+Part A's steps 4-5 (tag + publish) always wait for the App Store to
+actually publish, never merely to be submitted — this two-phase
+ordering (tag-less archive first, then tag+publish only after
+publication) is the general rule for every release, not something
+special about this one. `v1.0.0`, the first release, is simply the
+first time it applies; these notes record its concrete state:
+
+1. **Earlier, tag-less step — build bump + archive (DONE).** Step 3's
+   version-sync ran with `MARKETING_VERSION` going from `1.0` (build
+   `2`) to `MARKETING_VERSION=1.0.0` (build `3`), and Part B's archive
+   was produced from build `3`. **No git tag was created at this
+   step** — step 4 (`git tag`) and step 5 (`gh release create`) were
+   deliberately skipped for the first release. Build `3` has since
+   been submitted for App Store review.
+2. **Later, post-publication step — tag + publish (PENDING).** Create
+   the `v1.0.0` tag and run `gh release create` (Part A steps 4-5)
+   ONLY after the App Store actually **publishes** the app — being
+   "submitted" or "in review" is not enough. Until Apple's review
+   finishes and the app goes live, there is no `v1.0.0` tag and no
+   GitHub release, even though the archive already exists and is
+   already with Apple.
+
+This two-phase ordering is the **general rule for every release, not
+an exception for the first one**: Part A's steps 1-5 are written above
+as one sequence, but steps 4-5 (tag + publish) always wait for the App
+Store to actually publish the app, never merely for it to be
+submitted or in review. Step 3 (version sync + archive) always runs
+first and always tag-less. `v1.0.0` is simply the first release this
+ordering applies to.
