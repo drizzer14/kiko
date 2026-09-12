@@ -1,14 +1,11 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
-import { StyleSheet as RNStyleSheet, View, type ViewInstance } from 'react-native';
+import { isStableGlass } from '@kiko/screenshot/screenshot-mode';
+import type { FC, ReactNode } from 'react';
+import { StyleSheet as RNStyleSheet, type StyleProp, View, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import type { GlassSurfaceProps } from './glass-surface.props';
-import {
-  isPositionSettled,
-  type ScreenPosition,
-  shouldStopResampling,
-} from './glass-surface.resample';
+import { useBloomResample } from './glass-surface.resample.hook';
 import { styles } from './glass-surface.styles';
 
 // Extracted to keep the component's own cognitive complexity down: the
@@ -58,6 +55,51 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
   if (tint !== undefined) return { backgroundColor: tint };
   if (isStrong && isGlassPath) return styles.strongWash;
   return undefined;
+};
+
+// Every neutral variant (`transparent`, `translucentStrong`, `material`,
+// `bloom`) shares the same precedence rule against an entity `tint`: the two
+// are contradictory, so `tint` always wins. Extracted to a plain function
+// (a call adds no cognitive-complexity cost, unlike an inline `&&`) purely to
+// keep `GlassSurface`'s own complexity under budget — see the four call
+// sites below for what each variant means on its own.
+const isActiveVariant = (flag: boolean, tint: string | undefined): boolean =>
+  flag && tint === undefined;
+
+// The OPAQUE stable-glass surface, rendered ONLY when `isStableGlass()` is true
+// (the pixelmatch regression build — see the branch in GlassSurface and the
+// `isStableGlass` doc). No live LiquidGlass, no bloom: a fixed design-system
+// `surface` fill (`styles.opaqueBase`, the same token the tinted-card backdrop
+// and non-glass fallback use — never a hardcoded color) with the entity `tint`
+// painted as a flat wash over it, so a tinted card keeps its color but pinned.
+// Layer testIDs mirror the live path (`-base`, `-wash`) so a single test can
+// assert either branch. Split out purely to keep GlassSurface's cognitive
+// complexity under budget.
+const StableSurface: FC<{
+  children: ReactNode;
+  style: StyleProp<ViewStyle>;
+  tint: string | undefined;
+  testID: string | undefined;
+}> = ({ children, style, tint, testID }) => {
+  const wash: ReactNode = tint !== undefined && (
+    <View
+      style={[RNStyleSheet.absoluteFill, { backgroundColor: tint }]}
+      testID={testID && `${testID}-wash`}
+    />
+  );
+
+  return (
+    <View style={style} testID={testID}>
+      <View
+        style={[RNStyleSheet.absoluteFill, styles.opaqueBase]}
+        testID={testID && `${testID}-base`}
+      />
+
+      {wash}
+
+      {children}
+    </View>
+  );
 };
 
 // A shared surface for card-like grouping (accounts list, settings sections):
@@ -178,107 +220,55 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // The card edge goes through the Unistyles-managed `bordered` member so it
   // lands on the first paint (see the `bordered` prop docs).
   const edge = bordered ? styles.bordered : false;
+
+  // `bloom` is a BASE-GLASS property, not tied to any one variant (see the
+  // prop doc): a `tint` still wins over it for the same reason as the other
+  // neutral variants. Hoisted above the `isStableGlass()` early return below
+  // (and so is `needsResample`) because both feed `useBloomResample`, a
+  // hook — every hook this component calls must run unconditionally, before
+  // any early return, per the rules of hooks.
+  const isBloom = isActiveVariant(bloom, tint);
+  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12 on the categories
+  // screen's `Sortable.Grid`-managed card): see `useBloomResample`
+  // (`glass-surface.resample.hook.ts`) for the full mechanism doc. `bloom` on
+  // the real glass path renders a backdrop-less `LiquidGlassView` with
+  // `effect="clear"` (see `glassEffect`/`base` below), which samples its
+  // backdrop exactly once, at native layout — scoped to `needsResample`
+  // (glass-path `bloom` only): every other variant is already pinned by its
+  // own backdrop/wash layer on the first frame and never needed a second
+  // native remount.
+  const needsResample = isBloom && isLiquidGlassSupported;
+  const { remountToken, surfaceRef } = useBloomResample(needsResample);
+
+  // STABLE-GLASS regression mode (see `isStableGlass`): render a FIXED, OPAQUE
+  // surface with NO live LiquidGlass sampling and NO bloom, so the pixelmatch
+  // regression check gets byte-stable pixels (the 'clear' bloom re-refracts
+  // varying chart/scroll content and drifts run-to-run). DEAD in production and
+  // on the real-glass marketing build alike — both leave `SCREENSHOT_STABLE_GLASS`
+  // unset, so `isStableGlass()` is false and the live tree below renders
+  // byte-for-byte unchanged. Delegated to `StableSurface` so this component's
+  // cognitive complexity stays under budget.
+  if (isStableGlass()) {
+    return (
+      <StableSurface style={[styles.surface, edge, sizing, style]} tint={tint} testID={testID}>
+        {children}
+      </StableSurface>
+    );
+  }
   // `transparent` is a NEUTRAL-surface variant, so a `tint` (an entity card)
   // always wins over it — the two are contradictory and a tinted card must stay
   // opaque.
-  const isTransparent = transparent && tint === undefined;
+  const isTransparent = isActiveVariant(transparent, tint);
   // `translucentStrong` is a NEUTRAL variant too (the middle option between
   // `transparent` and an opaque `tint` card), so a `tint` wins over it for the
   // same reason.
-  const isStrong = translucentStrong && tint === undefined;
+  const isStrong = isActiveVariant(translucentStrong, tint);
   // `material` is the live-blur variant (see the prop doc): a `tint` wins over
   // it too, for the same reason. It never adds a backdrop (see `backdropFill`
   // below, which `material` deliberately does not feed) — only the FALLBACK
   // fill (`fallbackFill` below) reads it, so the glass path is byte-for-byte
   // the same "no backdrop, live sample" tree a plain surface already renders.
-  const isMaterial = material && tint === undefined;
-  // `bloom` is a BASE-GLASS property, not tied to any one variant (see the
-  // prop doc): a `tint` still wins over it for the same reason as the other
-  // neutral variants.
-  const isBloom = bloom && tint === undefined;
-  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12 on the categories
-  // screen's `Sortable.Grid`-managed card). `bloom` on the real glass path
-  // renders a backdrop-less `LiquidGlassView` with `effect="clear"` (see
-  // `glassEffect`/`base` below). A `'clear'`-effect glass samples its
-  // backdrop exactly once, at native layout — there is no imperative
-  // re-sample API. A surface that mounts inside `react-native-sortables`'
-  // `Sortable.Grid` (the category card) is MEASURED by Sortable first, then
-  // transform-repositioned into its real on-screen spot; the glass's
-  // one-shot sample fires during that measure pass, before the transform
-  // lands, capturing nothing solid — the card then reads fully transparent
-  // until an unrelated event (a drag, which teleports the card into a portal
-  // and remounts a fresh `LiquidGlassView` already in its real position)
-  // forces a second sample. `remountToken` flips EXACTLY ONCE, once the
-  // surface's real on-screen position has settled (see the effect below),
-  // forcing React to tear down and recreate the `LiquidGlassView` with a
-  // fresh `key` so the fresh view lays out — and samples — in the surface's
-  // real, final position. Scoped to `needsResample` (glass-path `bloom`
-  // only): every other variant is already pinned by its own backdrop/wash
-  // layer on the first frame and never needed a second native remount.
-  const needsResample = isBloom && isLiquidGlassSupported;
-  const [remountToken, setRemountToken] = useState(0);
-  const hasResampled = useRef(false);
-  const surfaceRef = useRef<ViewInstance>(null);
-  useEffect(() => {
-    if (!needsResample || hasResampled.current) {
-      return;
-    }
-
-    let frame: number | undefined;
-    let cancelled = false;
-    let attempt = 0;
-    let lastPosition: ScreenPosition | undefined;
-
-    const resample = () => {
-      hasResampled.current = true;
-      setRemountToken((token) => token + 1);
-    };
-
-    // Condition-based settle check, not a fixed frame count: a
-    // `Sortable.Grid` item is positioned by a Reanimated TRANSFORM computed
-    // from the cumulative measured heights of every preceding card, which
-    // settles progressively — a card further down the grid can take several
-    // more frames than a card near the top, so a fixed 2-frame delay races
-    // (and loses, for lower cards) an animation with no fixed duration.
-    // `measureInWindow` reads the REAL composited on-screen position (it
-    // includes the live transform, unlike `onLayout`, which does not re-fire
-    // for a transform-only move). `isPositionSettled`/`shouldStopResampling`
-    // (`glass-surface.resample.ts`) hold the actual settle/cap decision as
-    // plain, synchronously-testable functions — this closure is only the
-    // thin adapter wiring them into `measureInWindow` and
-    // `requestAnimationFrame`.
-    const checkSettled = () => {
-      if (cancelled) {
-        return;
-      }
-
-      attempt += 1;
-      surfaceRef.current?.measureInWindow((x, y) => {
-        if (cancelled) {
-          return;
-        }
-
-        const current: ScreenPosition = { x, y };
-
-        if (shouldStopResampling(attempt, isPositionSettled(lastPosition, current))) {
-          resample();
-          return;
-        }
-
-        lastPosition = current;
-        frame = requestAnimationFrame(checkSettled);
-      });
-    };
-
-    frame = requestAnimationFrame(checkSettled);
-
-    return () => {
-      cancelled = true;
-      if (frame !== undefined) {
-        cancelAnimationFrame(frame);
-      }
-    };
-  }, [needsResample]);
+  const isMaterial = isActiveVariant(material, tint);
   // The backdrop UNDER the glass, and its fill, both depend on the variant:
   //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
   //     translucent glass samples so the card's lightness cannot drift and the

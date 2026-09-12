@@ -9,6 +9,7 @@ import './src/i18n';
 import { NavigationContainer } from '@react-navigation/native';
 import type { FC } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import LockGate from './src/auth/lock-gate/lock-gate.component';
@@ -16,6 +17,7 @@ import { useSyncLanguageWithSettings } from './src/i18n/use-sync-language-with-s
 import MigrationsGate from './src/migration/migrations-gate';
 import { navigationDarkTheme } from './src/navigation/dark-theme';
 import RootNavigator from './src/navigation/root.navigator';
+import { isScreenshotMode } from './src/screenshot/screenshot-mode';
 import { useAutoSync } from './src/sync/use-auto-sync';
 
 /**
@@ -45,6 +47,12 @@ export default function App(): React.JSX.Element {
     // root to attach native gesture recognizers to. `flex: 1` lets it fill the
     // screen; without it the tree would collapse to zero height.
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* DEV/TEST-ONLY: in a build made against `.env.screenshots`, force reduced
+          motion app-wide via reanimated's official global switch so animations
+          settle for deterministic screenshots. A dead branch in production
+          (`isScreenshotMode()` is always false there), and no other animation
+          code is touched. */}
+      {isScreenshotMode() ? <ReducedMotionConfig mode={ReduceMotion.Always} /> : null}
       <SafeAreaProvider>
         <MigrationsGate>
           {/* Inside MigrationsGate: the gate reads settings.lockEnabled, so the

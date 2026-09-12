@@ -1,0 +1,36 @@
+# LOCKED-scenario visual-regression flow. Captures the app-lock cold-launch
+# gate (`src/auth/lock-gate/lock-gate.component.tsx`) — a single shot.
+#
+# PREREQUISITE (ops): a STABLE-glass, LOCKED-scenario screenshot-mode build
+# (`ENVFILE=.env.screenshots.locked.stable`) is already installed on a
+# booted, pinned simulator — same simulator/clock prerequisites as
+# `.maestro/appstore-screenshots.yaml`'s header comment (not repeated here to
+# avoid drift). This build sets `SCREENSHOT_SCENARIO=locked` in addition to
+# `SCREENSHOT_MODE`/`SCREENSHOT_STABLE_GLASS`/`SCREENSHOT_LANG`: the seed
+# builds the SAME rich dataset but forces `lockEnabled: true`
+# (`src/screenshot/seed/screenshot-seed.ts`), so `LockGate` finds the app
+# locked at the very first render, after `MigrationsGate` (which reads
+# settings, so it must succeed first) resolves.
+#
+# `LockGate` does NOT auto-invoke the biometric sheet under screenshot mode
+# (`isScreenshotMode()` short-circuits the mount-time `attemptUnlock()` call —
+# see `lock-gate.component.tsx`), so this flow never triggers, and never needs
+# to dismiss, a system biometric/passcode dialog. It never taps the manual
+# "Unlock" button either — the point of this flow is to capture the LOCKED
+# frame itself.
+#
+# This flow was authored without a live Maestro run (see the task
+# constraints); ops/qa should verify the exact step sequence on a real device
+# the first time this flow executes.
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+- assertVisible:
+    id: "lock-gate"
+- takeScreenshot: lock-gate

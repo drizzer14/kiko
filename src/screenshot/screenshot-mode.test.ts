@@ -1,0 +1,101 @@
+import {
+  isScreenshotMode,
+  isStableGlass,
+  parseScreenshotLanguage,
+  parseScreenshotMode,
+  parseScreenshotScenario,
+  screenshotLanguage,
+  screenshotScenario,
+} from './screenshot-mode';
+
+// react-native-dotenv INLINES every `@env` value at BUILD time — its Babel
+// plugin replaces each import reference with the literal read from `.env`
+// (ENVFILE unset under Jest), then deletes the import (verified in
+// node_modules/react-native-dotenv/index.js). So a Jest `jest.mock('@env')`
+// never runs: there is no runtime module left to intercept. The build-time
+// branch is therefore tested through the PURE parsers below, exercised with
+// both a `'true'` and a non-`'true'` value, while `isScreenshotMode()` /
+// `screenshotLanguage()` are asserted against the committed `.env`, which
+// carries NEITHER key — so production defaults (mode off, language 'en') are
+// what those wrappers must return here.
+describe('parseScreenshotMode', () => {
+  it('is true only for the exact string "true"', () => {
+    expect(parseScreenshotMode('true')).toBe(true);
+  });
+
+  it('is false when the value is undefined (key absent from .env)', () => {
+    expect(parseScreenshotMode(undefined)).toBe(false);
+  });
+
+  it('is false for any other value, including "false" and "1"', () => {
+    expect(parseScreenshotMode('false')).toBe(false);
+    expect(parseScreenshotMode('1')).toBe(false);
+    expect(parseScreenshotMode('TRUE')).toBe(false);
+    expect(parseScreenshotMode('')).toBe(false);
+  });
+});
+
+describe('parseScreenshotLanguage', () => {
+  it('returns the value when it is a supported language', () => {
+    expect(parseScreenshotLanguage('en')).toBe('en');
+    expect(parseScreenshotLanguage('uk')).toBe('uk');
+  });
+
+  it('defaults to "en" when the value is undefined (key absent)', () => {
+    expect(parseScreenshotLanguage(undefined)).toBe('en');
+  });
+
+  it('defaults to "en" for any unsupported value', () => {
+    expect(parseScreenshotLanguage('fr')).toBe('en');
+    expect(parseScreenshotLanguage('EN')).toBe('en');
+    expect(parseScreenshotLanguage('')).toBe('en');
+  });
+});
+
+describe('parseScreenshotScenario', () => {
+  it('returns the value when it is a supported scenario', () => {
+    expect(parseScreenshotScenario('rich')).toBe('rich');
+    expect(parseScreenshotScenario('empty')).toBe('empty');
+    expect(parseScreenshotScenario('locked')).toBe('locked');
+  });
+
+  it('defaults to "rich" when the value is undefined (key absent)', () => {
+    expect(parseScreenshotScenario(undefined)).toBe('rich');
+  });
+
+  it('defaults to "rich" for any unsupported value', () => {
+    expect(parseScreenshotScenario('RICH')).toBe('rich');
+    expect(parseScreenshotScenario('full')).toBe('rich');
+    expect(parseScreenshotScenario('')).toBe('rich');
+  });
+});
+
+describe('isScreenshotMode', () => {
+  it('is false under the committed .env (no SCREENSHOT_MODE key) — production stays unchanged', () => {
+    expect(isScreenshotMode()).toBe(false);
+  });
+});
+
+describe('screenshotLanguage', () => {
+  it('defaults to "en" under the committed .env (no SCREENSHOT_LANG key)', () => {
+    expect(screenshotLanguage()).toBe('en');
+  });
+});
+
+describe('screenshotScenario', () => {
+  it('defaults to "rich" under the committed .env (no SCREENSHOT_SCENARIO key)', () => {
+    expect(screenshotScenario()).toBe('rich');
+  });
+});
+
+describe('isStableGlass', () => {
+  // `isStableGlass()` is `isScreenshotMode() && SCREENSHOT_STABLE_GLASS === 'true'`.
+  // The committed `.env` (the value inlined under Jest) carries NEITHER key, so
+  // it must be false — production and the real-glass marketing build alike keep
+  // the live glass. Its `=== 'true'` parse is exercised BOTH ways by the shared
+  // `parseScreenshotMode` describe above (it is the same pure parser), and the
+  // AND-gate on screenshot mode is what this asserts here.
+  it('is false under the committed .env (neither screenshot mode nor the stable flag) — real glass stays live', () => {
+    expect(isStableGlass()).toBe(false);
+  });
+});

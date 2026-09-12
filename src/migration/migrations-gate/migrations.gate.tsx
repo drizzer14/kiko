@@ -7,6 +7,8 @@ import Text from '@kiko/design-system/components/text';
 import { i18n } from '@kiko/i18n';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { migrateLegacyToken } from '@kiko/monobank/token';
+import { isScreenshotMode } from '@kiko/screenshot/screenshot-mode';
+import { seedScreenshotData } from '@kiko/screenshot/seed/screenshot-seed';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -85,6 +87,22 @@ const migratePerAccountBinanceCredential = async (): Promise<void> => {
   await migrateBinanceCredentialToPerAccount(connected.at(0)?.id);
 };
 
+/**
+ * DEV/TEST-ONLY. In a build made against `.env.screenshots`
+ * (`isScreenshotMode()` true), rebuild the deterministic App Store screenshot
+ * dataset before the gate paints its children. A no-op dead branch in
+ * production: the committed `.env` carries no `SCREENSHOT_MODE`, so
+ * `isScreenshotMode()` is always false there and the seed is never imported at
+ * runtime. Runs AFTER the settings row exists and the persisted language is
+ * applied (the seed overwrites both), and BEFORE children mount so the first
+ * paint already shows the demo data.
+ */
+const seedScreenshotDataIfEnabled = async (): Promise<void> => {
+  if (isScreenshotMode()) {
+    await seedScreenshotData();
+  }
+};
+
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
@@ -110,6 +128,7 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
       .then(applyPersistedLanguage)
+      .then(seedScreenshotDataIfEnabled)
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
       .then(migratePerAccountBinanceCredential)

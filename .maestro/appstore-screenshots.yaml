@@ -1,0 +1,284 @@
+# App Store screenshot capture flow (6.9-inch / iPhone 17 Pro Max, Ukrainian).
+#
+# PREREQUISITE (ops): a screenshot-mode build (`ENVFILE=.env.screenshots`,
+# which inlines SCREENSHOT_MODE=true + SCREENSHOT_LANG=uk) is already
+# installed on a BOOTED, PINNED simulator — "iPhone 17 Pro Max" (6.9-inch,
+# 1320x2868 portrait, the only orientation the app supports). Set the
+# simulator's clock to 2026-09-10 first (`xcrun simctl status_bar ... `, or a
+# real date-set) so every "last 30 days" chart on Statistics is full — the
+# seed's 63 transactions span roughly six months ending at the device clock.
+# `MigrationsGate` re-seeds the deterministic Ukrainian demo dataset at every
+# boot (idempotent) and forces reduced motion; the app then shows real seeded
+# content with the lock OFF, so this flow never needs to authenticate.
+#
+# Every `takeScreenshot` step below uses a BARE relative name (e.g.
+# `01-home-networth`, no directory, no extension) — never an absolute or
+# OUTPUT_DIR-prefixed path. Maestro 2.10.0's `takeScreenshot` REFUSES any path
+# that resolves outside this run's own `takeScreenshot` artifact folder
+# (verified by decompiling the installed maestro-orchestra.jar with javap; an
+# earlier `${OUTPUT_DIR}/<name>` design failed at runtime with "Invalid path
+# ... it resolves outside this run's takeScreenshot output folder"), so an
+# absolute destination cannot be passed inline in the flow at all. Maestro
+# appends `.png` to the bare name itself and writes it under a
+# `takeScreenshot/` subfolder inside whatever `--debug-output <dir>` resolves
+# to for this run — the caller (scripts/checks/screenshot-diff/run-flow-and-
+# collect.sh, shared by both scripts/checks/screenshots.sh and
+# scripts/screenshots-capture.sh) runs `maestro test --debug-output <temp
+# dir> .maestro/appstore-screenshots.yaml` and then SEARCHES that temp dir's
+# tree for `takeScreenshot/<name>.png` by basename (the exact nested path
+# includes an unpredictable session-timestamp + flow-name segment, so it is
+# located by search, not assumed).
+#
+# Run command (ops), to capture the deliverable/baseline set:
+#   npm run screenshots:capture
+# (equivalently: bash scripts/screenshots-capture.sh)
+#
+# Run command (ops/CI), to regression-check against the committed baseline:
+#   npm run check:screenshots
+appId: com.dmytro-vasylkivskyi.kiko
+---
+# Fresh launch (do not clearState: the seed is idempotent and re-running it
+# against an already-seeded DB is the steady-state case anyway; clearing state
+# would also drop the persisted language/lock settings the seed relies on).
+- launchApp
+
+# MigrationsGate shows this testID while `initDatabase -> runMigrations ->
+# settingsRepo.ensure -> ... -> seedScreenshotDataIfEnabled` runs. A generous
+# timeout: the seed writes 5 accounts / 5 holdings / 63 transactions on a cold
+# boot, which is slower than a normal launch.
+#
+# `timeout` is NOT a property of `assertNotVisible` (Maestro 2.10.0 parse
+# error: "Unknown Property: timeout") — `assertVisible`/`assertNotVisible`'s
+# selector map (YamlElementSelector) has no `timeout` field at all. Waiting
+# for an element to disappear with an explicit timeout is `extendedWaitUntil`
+# (YamlExtendedWaitUntil), which DOES declare `timeout` alongside `visible`/
+# `notVisible`, verified against the installed maestro-orchestra.jar's actual
+# YamlExtendedWaitUntil field list.
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 1-2. Home tab (the app boots onto HomeTab by default)
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "home-content"
+- takeScreenshot: 01-home-networth
+
+- assertVisible:
+    id: "home-transactions"
+# A bare `scroll` (one momentum-driven swipe) was tried here and FAILED
+# determinism on the stable-glass regression build: its landing offset varies
+# a few px run-to-run, shifting the whole transaction list and producing a
+# 14.1% pixel diff (533770/3785760 px) against the committed baseline — a
+# real, observed failure, and NOT a glass-material issue (the other 9 shots,
+# including the three chart shots that DO drift on live glass, land at 0%
+# diff on the stable build). Every other scrolling shot in this flow already
+# avoids a bare `scroll` for the same reason (see the Statistics section
+# below) — this was the one shot still using it.
+#
+# Fixed the same way: scroll to a specific, uniquely-identified element so
+# the stop offset is deterministic. `transaction-row` (transaction-
+# row.component.tsx) is NOT a unique per-row testID — every row shares it —
+# so the target is the row's own description TEXT instead. "Комунальні
+# послуги" (a recurring monthly utilities expense, src/screenshot/seed/
+# screenshot-seed.ts's MONTHLY_EXPENSES) is rendered verbatim by
+# `transactionRowDescription` (a non-empty stored `description` always wins,
+# no localization/transform) and, grep-verified, is the sole
+# `description: 'Комунальні послуги'` literal in the whole seed file — it is
+# written once per seeded month, but Home's default filter is the last 30
+# days (src/dates/default-range.ts) ending at the device clock (set to the
+# seed's ANCHOR day per this file's own header comment), so only ONE of
+# those monthly occurrences (day 13 of the current/newest month) falls
+# inside the rendered, filtered list — making the visible text unique on
+# this screen. It sits 6th of the 11 transactions the last-30-days filter
+# admits (Зарплата, Сільпо, Пузата Хата, Uklon, Київський метрополітен,
+# **Комунальні послуги**, Планета Кіно, Rozetka, Спортзал «Sport Life»,
+# Amazon, Нова Пошта — newest-first, per transactionsRepo's own ordering),
+# i.e. roughly the middle of the list — genuinely "partway down", matching
+# what the original bare `scroll` was reaching for, deterministically.
+#
+# NOTE: the three literal one-off big-ticket expenses elsewhere in the seed
+# ("Ремонт квартири", "Відпустка (Буковель)", "Купівля ноутбука") do NOT
+# qualify: each lands 45+ days before the device clock (month 1/2/3 of the
+# 6-month ledger), outside Home's 30-day filter window entirely, so none of
+# them ever renders on this screen — verified against
+# src/screens/home/home.screen.tsx's `matchesDate`/`withinDateRange` filter
+# before picking a different target.
+- scrollUntilVisible:
+    element:
+      text: "Комунальні послуги"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 02-home-transactions-scrolled
+
+# ---------------------------------------------------------------------------
+# 3-5. Accounts tab -> Account detail -> Holding detail (ledger)
+# ---------------------------------------------------------------------------
+# Native bottom tab bar (@bottom-tabs/react-navigation / react-native-bottom-tabs,
+# bounds [0,873][440,956]) — tapped by its SF Symbol icon resource-id
+# (`{ sfSymbol: ... }` in src/navigation/root.navigator.tsx's tabBarIcon),
+# NEVER by localized tab text. Verified from an on-device hierarchy dump: the
+# Accounts tab is ICON-ONLY (no text label at all — unlike Home/Statistics/
+# Settings, which do show their Ukrainian title alongside the icon), so
+# `tapOn: "Рахунки"` matched the account-filter-menu's "Рахунки" label in the
+# MIDDLE of the Home screen instead of the tab and never navigated anywhere
+# (a real, observed failure — every other tab's localized text is ALSO
+# ambiguous for the same reason: on-screen content can repeat a tab's title).
+# Icon ids, confirmed from the dump: Home = house.fill, Accounts =
+# wallet.pass.fill, Statistics = chart.xyaxis.line, Settings = gearshape.fill.
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- takeScreenshot: 03-accounts-grid
+
+# One account-card per seeded account; tapOn matches the first on-screen match.
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+- takeScreenshot: 04-account-detail
+
+# Each account has exactly one seeded holding, so the first holding-grid-item
+# is deterministic. scrollUntilVisible is defensive in case the account header
+# (sync status / actions row) pushes it below the fold on a smaller viewport.
+- scrollUntilVisible:
+    element:
+      id: "holding-grid-item"
+    direction: DOWN
+- tapOn:
+    id: "holding-grid-item"
+- assertVisible:
+    id: "holding-value-header"
+- assertVisible:
+    id: "ledger-list"
+- takeScreenshot: 05-holding-detail-ledger
+
+# ---------------------------------------------------------------------------
+# 6-8. Statistics tab — one screenshot per distinct on-screen frame, in
+# on-screen order
+# ---------------------------------------------------------------------------
+# Jump DIRECTLY to Statistics by its tab icon — do NOT `back` out of the
+# Accounts stack first. @bottom-tabs/react-navigation switches to the tapped
+# tab from ANY stack depth (we are currently 2 screens deep: HoldingDetail ->
+# AccountDetail -> Accounts), so unwinding the stack first is unnecessary and
+# was itself the failure: `back` from HoldingDetail landed somewhere that
+# never satisfied `assertVisible: accounts-grid` (a real, observed failure).
+# Every section change in this flow uses this same direct tab-icon-tap +
+# target-screen-assertVisible shape — see the comment above the Accounts tap
+# for why the icon id, not localized text, is the selector.
+- tapOn:
+    id: "chart.xyaxis.line"
+- assertVisible:
+    id: "statistics-blocks"
+
+# waitForAnimationToEnd settles the tree before each screenshot as a cheap
+# guard: it returns as soon as the tree is static (bounded by `timeout`), so it
+# is not a fixed 5s delay per shot. Verified as a real Maestro 2.10.0 command by
+# decompiling the installed maestro-orchestra.jar
+# (YamlWaitForAnimationToEndCommand: timeout/label/optional fields).
+#
+# The Statistics charts are SEPARATE stacked blocks (statistics-block-line /
+# -pie / -category / -trend, each a distinct testID in statistics.screen.tsx —
+# confirmed there). Each scrolls to `visibilityPercentage: 100` (fully on
+# screen, not just minimally visible) so a screenshot never lands mid-scroll.
+# `timeout: 20000` covers the longest scroll. (The other shots —
+# Home/Accounts/Settings — are single screens and need none of this.)
+#
+# Do NOT add `centerElement: true` here: it was tried (to separate the line
+# shot from a since-dropped by-type-bar shot, see below) and made the donut
+# shot non-deterministic — centering leaves a donut chart at a
+# momentum-dependent MID-scroll offset that varies by a few px run-to-run,
+# which `visibilityPercentage: 100` alone does not pin down.
+#
+# Three Statistics shots, in on-screen top-to-bottom order:
+#   06 statistics-block-line   07 statistics-block-pie   08 statistics-block-trend
+#
+# 06 (line, TOP of the screen) and 08 (trend, very BOTTOM — see its own
+# comment below) scroll to their BLOCK CONTAINER: each clamps to a distinct,
+# deterministic edge of the scroll range.
+#
+# 07 (account-contribution) also targets its own block container
+# (`statistics-block-pie`): that PieChart (statistics.screen.tsx:782) passes
+# no `centerTotal` prop, so it has no inner center-total element to target.
+#
+# 08 targets `statistics-block-trend`, NOT the category donut's own
+# `category-pie-center-total` inner label — a standalone category-donut shot
+# was tried and DROPPED (coordinator decision, 2026-09-12): on the current
+# (app-wide bloom-glass, tab-press-scroll-fixed) build, scrolling to
+# `category-pie-center-total` landed at the SAME frame as scrolling to
+# `statistics-block-trend` (the category donut and the trend chart below it
+# both fit on screen together at that scroll offset), so the two shots were
+# byte-identical. Rather than ship a duplicate, 08 targets the trend block
+# directly and keeps the "expenses-by-category" name because that donut is
+# still the dominant, top-most content in the landed frame (the trend chart
+# renders below it, visible but secondary) — this is the coordinator-approved
+# "category-donut+trend" shot. OPS + COORDINATOR MUST VERIFY after a real
+# capture that the three Statistics frames (06/07/08) are in fact visually
+# distinct, and MAY ADJUST THE 08 NAME if the landed content differs from
+# what this comment describes (e.g. if the trend chart dominates the frame
+# instead of the category donut).
+#
+# There is still NO standalone "by type" bar-chart shot: it duplicated the
+# line chart's frame (statistics.screen.tsx stacks `statistics-block-bar`
+# immediately below `statistics-block-line`, close enough that the "За типом"
+# bar row already appeared under the net-worth line), so it stays dropped
+# from the deliverable/baseline set entirely.
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-line"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 06-statistics-net-worth-line
+
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-pie"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 07-statistics-account-contribution
+
+# Shot 08 is the ONLY shot taken at the very bottom of the Statistics
+# ScrollView. Its ~9.7% run-to-run pixel drift was NOT a chart animation (the
+# trend chart is pure static SVG) but iOS's NATIVE scroll-bounce settle at the
+# bottom edge — not reanimated-driven, so neither `ReducedMotionConfig` nor
+# `waitForAnimationToEnd` can gate it. Fixed by the screenshot-mode
+# `bounces={false}` gate in screen.component.tsx plus this fully-visible
+# scroll stop that clamps to a fixed bottom offset (confirmed: 0.0001%
+# mismatch in the determinism run, without `centerElement`).
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-trend"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 08-statistics-expenses-by-category
+
+# ---------------------------------------------------------------------------
+# 9-10. Settings -> System sub-page
+# ---------------------------------------------------------------------------
+# Tab bar icon id, not text — see the comment above the Accounts tap.
+- tapOn:
+    id: "gearshape.fill"
+- assertVisible:
+    id: "settings-card-system"
+- takeScreenshot: 09-settings-main
+
+- tapOn:
+    id: "settings-row-system"
+- assertVisible:
+    id: "settings-card-language"
+- takeScreenshot: 10-settings-system

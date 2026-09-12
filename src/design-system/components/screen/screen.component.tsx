@@ -1,3 +1,4 @@
+import { isScreenshotMode } from '@kiko/screenshot/screenshot-mode';
 import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
@@ -64,6 +65,14 @@ const Screen: FC<ScreenProps> = ({
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
+          // Screenshot-mode ONLY: turn off the native iOS overscroll bounce so
+          // the App Store spending-trend shot — taken at the very bottom of this
+          // ScrollView — lands at a fixed, bottom-clamped offset instead of
+          // catching iOS's run-to-run bounce settle (native motion, so neither
+          // `ReducedMotionConfig` nor Maestro's `waitForAnimationToEnd` can gate
+          // it). `undefined` keeps RN's default (`true`), so real users are
+          // unaffected. Gated on the build-time `isScreenshotMode()` dead branch.
+          bounces={isScreenshotMode() ? false : undefined}
           contentInsetAdjustmentBehavior="automatic"
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`

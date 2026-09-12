@@ -1,0 +1,67 @@
+# EMPTY-scenario visual-regression flow. Captures the app's empty states: no
+# accounts, no holdings, no transactions, no rates, no history (see
+# `src/screenshot/seed/screenshot-seed.ts`'s `buildScreenshotDataset`,
+# `scenario === 'empty'` branch — the seed's `purge()` still keeps the 10
+# default categories and the single settings row, everything else is empty).
+#
+# PREREQUISITE (ops): a STABLE-glass, EMPTY-scenario screenshot-mode build
+# (`ENVFILE=.env.screenshots.empty.stable`) is already installed on a booted,
+# pinned simulator — same simulator/clock prerequisites as
+# `.maestro/appstore-screenshots.yaml`'s header comment (not repeated here to
+# avoid drift). This build sets `SCREENSHOT_SCENARIO=empty` in addition to
+# `SCREENSHOT_MODE`/`SCREENSHOT_STABLE_GLASS`/`SCREENSHOT_LANG`.
+#
+# SCOPE — 3 shots, one per tab whose empty state is reachable without a
+# mid-scroll: empty Home, empty Accounts, empty Statistics. None of these
+# screens early-return or swap their container testID when their data is
+# empty (grep-verified: `home-content`/`home-transactions` on
+# `home.screen.tsx` and `statistics-blocks` on `statistics.screen.tsx` are
+# unconditional), so the SAME top-level testIDs the rich flow asserts still
+# apply here. The one exception is Accounts: `accounts.screen.tsx` swaps its
+# `accounts-grid` Box for an untestID'd `styles.empty` Box + translated text
+# when `activeAccounts.length === 0`, so this flow asserts the empty-state
+# TEXT (`t('accounts.emptyState')`, Ukrainian: "Ще немає рахунків") instead of
+# a testID — there is no `accounts-empty`-style testID in the source to assert
+# on. See `src/screens/accounts/accounts.screen.tsx`.
+#
+# This flow was authored without a live Maestro run (see the task
+# constraints); ops/qa should verify the exact step sequence on a real device
+# the first time this flow executes.
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 1. Home tab, empty — the net-worth header still renders (zero total), and
+#    the SectionList's `ListEmptyComponent` renders in place of any day
+#    section, but the list itself keeps its `home-transactions` testID.
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "home-content"
+- assertVisible:
+    id: "home-transactions"
+- takeScreenshot: 01-home-empty
+
+# ---------------------------------------------------------------------------
+# 2. Accounts tab, empty — no `accounts-grid` testID exists in this state;
+#    assert the localized empty-state text instead (see header comment).
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    text: "Ще немає рахунків"
+- takeScreenshot: 02-accounts-empty
+
+# ---------------------------------------------------------------------------
+# 3. Statistics tab, empty — `statistics-blocks` is unconditional.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "chart.xyaxis.line"
+- assertVisible:
+    id: "statistics-blocks"
+- takeScreenshot: 03-statistics-empty
