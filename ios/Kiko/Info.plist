@@ -24,6 +24,16 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Export compliance. Kiko uses only STANDARD, EXEMPT encryption:
+	     SQLCipher (AES-256) for the local database at rest, HMAC-SHA256
+	     (@noble/hashes) to sign Binance API requests, plus Apple's own
+	     Keychain/TLS. It is a personal-finance app, not an encryption
+	     product, so it qualifies for the Category 5 Part 2 exemption.
+	     `false` = "no non-exempt encryption", which pre-answers App Store
+	     Connect's export-compliance question on every build. Flip to `true`
+	     only if a legal review classifies the encryption as non-exempt. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
