@@ -68,9 +68,52 @@ appId: com.dmytro-vasylkivskyi.kiko
 
 - assertVisible:
     id: "home-transactions"
-- scroll
-- assertVisible:
-    id: "home-transactions"
+# A bare `scroll` (one momentum-driven swipe) was tried here and FAILED
+# determinism on the stable-glass regression build: its landing offset varies
+# a few px run-to-run, shifting the whole transaction list and producing a
+# 14.1% pixel diff (533770/3785760 px) against the committed baseline — a
+# real, observed failure, and NOT a glass-material issue (the other 9 shots,
+# including the three chart shots that DO drift on live glass, land at 0%
+# diff on the stable build). Every other scrolling shot in this flow already
+# avoids a bare `scroll` for the same reason (see the Statistics section
+# below) — this was the one shot still using it.
+#
+# Fixed the same way: scroll to a specific, uniquely-identified element so
+# the stop offset is deterministic. `transaction-row` (transaction-
+# row.component.tsx) is NOT a unique per-row testID — every row shares it —
+# so the target is the row's own description TEXT instead. "Комунальні
+# послуги" (a recurring monthly utilities expense, src/screenshot/seed/
+# screenshot-seed.ts's MONTHLY_EXPENSES) is rendered verbatim by
+# `transactionRowDescription` (a non-empty stored `description` always wins,
+# no localization/transform) and, grep-verified, is the sole
+# `description: 'Комунальні послуги'` literal in the whole seed file — it is
+# written once per seeded month, but Home's default filter is the last 30
+# days (src/dates/default-range.ts) ending at the device clock (set to the
+# seed's ANCHOR day per this file's own header comment), so only ONE of
+# those monthly occurrences (day 13 of the current/newest month) falls
+# inside the rendered, filtered list — making the visible text unique on
+# this screen. It sits 6th of the 11 transactions the last-30-days filter
+# admits (Зарплата, Сільпо, Пузата Хата, Uklon, Київський метрополітен,
+# **Комунальні послуги**, Планета Кіно, Rozetka, Спортзал «Sport Life»,
+# Amazon, Нова Пошта — newest-first, per transactionsRepo's own ordering),
+# i.e. roughly the middle of the list — genuinely "partway down", matching
+# what the original bare `scroll` was reaching for, deterministically.
+#
+# NOTE: the three literal one-off big-ticket expenses elsewhere in the seed
+# ("Ремонт квартири", "Відпустка (Буковель)", "Купівля ноутбука") do NOT
+# qualify: each lands 45+ days before the device clock (month 1/2/3 of the
+# 6-month ledger), outside Home's 30-day filter window entirely, so none of
+# them ever renders on this screen — verified against
+# src/screens/home/home.screen.tsx's `matchesDate`/`withinDateRange` filter
+# before picking a different target.
+- scrollUntilVisible:
+    element:
+      text: "Комунальні послуги"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
 - takeScreenshot: 02-home-transactions-scrolled
 
 # ---------------------------------------------------------------------------

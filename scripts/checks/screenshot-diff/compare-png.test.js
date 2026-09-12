@@ -1,6 +1,15 @@
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { PNG } = require('pngjs');
 
-const { comparePng, DEFAULT_MAX_MISMATCH_RATIO, DEFAULT_THRESHOLD } = require('./compare-png');
+const {
+  comparePng,
+  parseExcludeList,
+  DEFAULT_MAX_MISMATCH_RATIO,
+  DEFAULT_THRESHOLD,
+} = require('./compare-png');
 
 // Hermetic: every PNG this test compares is generated in-memory with pngjs —
 // no simulator, no Maestro, no filesystem baseline. Models the intent of
@@ -124,5 +133,120 @@ describe('comparePng', () => {
 
     expect(result.mismatchRatio).toBeGreaterThan(DEFAULT_MAX_MISMATCH_RATIO);
     expect(result.pass).toBe(false);
+  });
+});
+
+describe('parseExcludeList', () => {
+  it('returns an empty set for undefined or empty input (diff everything)', () => {
+    expect(parseExcludeList(undefined)).toEqual(new Set());
+    expect(parseExcludeList('')).toEqual(new Set());
+  });
+
+  it('splits a comma-separated list into a set of trimmed names', () => {
+    const result = parseExcludeList(
+      '02-home-transactions-scrolled, 07-statistics-account-contribution',
+    );
+
+    expect(result).toEqual(
+      new Set(['02-home-transactions-scrolled', '07-statistics-account-contribution']),
+    );
+  });
+
+  it('drops empty segments from a trailing comma or double comma', () => {
+    const result = parseExcludeList('01-home-networth,,02-home-transactions-scrolled,');
+
+    expect(result).toEqual(new Set(['01-home-networth', '02-home-transactions-scrolled']));
+  });
+});
+
+// CLI-level (spawned subprocess) coverage of the exclude-list WIRING: unlike
+// `parseExcludeList` above (pure parsing only), this proves the CLI loop
+// ACTUALLY skips a listed name's diff — including when that name's own
+// mismatch is enormous — while still failing on a real, non-excluded
+// mismatch. Models __tests__/mutation-*.test.ts's "drive the real wrapper
+// through a fast seam", but the seam here is the whole CLI's stdout+exit
+// code rather than an in-process function call, because the skip behavior
+// lives in the `require.main === module` block, which only runs when this
+// file is invoked directly (the way scripts/checks/screenshots.sh actually
+// calls it), not when required as a module.
+describe('compare-png.js CLI exclude behavior', () => {
+  const CLI = path.join(__dirname, 'compare-png.js');
+
+  const writePng = (dir, name, buffer) => {
+    fs.writeFileSync(path.join(dir, name), buffer);
+  };
+
+  const runCli = (baselineDir, captureDir, excludeCsv) => {
+    try {
+      const stdout = execFileSync(
+        process.execPath,
+        [CLI, baselineDir, captureDir, '0.1', '0.005', excludeCsv ?? ''],
+        { encoding: 'utf8' },
+      );
+      return { code: 0, stdout };
+    } catch (error) {
+      return { code: error.status, stdout: error.stdout };
+    }
+  };
+
+  it('skips a listed name even when it mismatches heavily, and exits 0 when nothing else fails', () => {
+    const baselineDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-baseline-'));
+    const captureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-capture-'));
+
+    const baseline = solidPng(10, 10, 10);
+    // Every pixel flipped — a 100% mismatch that would fail the diff on its own.
+    const currentMismatched = solidPngWithMismatches(10, 10, 10, WIDTH * HEIGHT);
+
+    writePng(baselineDir, 'excluded-shot.png', baseline);
+    writePng(captureDir, 'excluded-shot.png', currentMismatched);
+
+    const { code, stdout } = runCli(baselineDir, captureDir, 'excluded-shot');
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('SKIP\texcluded-shot.png');
+    expect(stdout).not.toContain('FAIL\texcluded-shot.png');
+  });
+
+  it('still fails on a non-excluded mismatch while a different name is excluded', () => {
+    const baselineDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-baseline-'));
+    const captureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-capture-'));
+
+    const baseline = solidPng(10, 10, 10);
+    const currentMismatched = solidPngWithMismatches(10, 10, 10, WIDTH * HEIGHT);
+    const currentIdentical = solidPng(10, 10, 10);
+
+    // "excluded-shot" mismatches heavily but is excluded; "regressed-shot"
+    // mismatches heavily and is NOT excluded, so the run must still fail.
+    writePng(baselineDir, 'excluded-shot.png', baseline);
+    writePng(captureDir, 'excluded-shot.png', currentMismatched);
+    writePng(baselineDir, 'regressed-shot.png', baseline);
+    writePng(captureDir, 'regressed-shot.png', currentMismatched);
+    writePng(baselineDir, 'stable-shot.png', baseline);
+    writePng(captureDir, 'stable-shot.png', currentIdentical);
+
+    const { code, stdout } = runCli(baselineDir, captureDir, 'excluded-shot');
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('SKIP\texcluded-shot.png');
+    expect(stdout).toContain('FAIL\tregressed-shot.png');
+    expect(stdout).toContain('PASS\tstable-shot.png');
+  });
+
+  it('does not require an excluded name to exist in the capture dir at all', () => {
+    const baselineDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-baseline-'));
+    const captureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiko-cmp-capture-'));
+
+    // "excluded-shot" has a baseline but was never captured this run (e.g. a
+    // flaky Maestro step); since it is excluded, this must NOT read as a
+    // MISSING failure the way an un-excluded missing capture would.
+    writePng(baselineDir, 'excluded-shot.png', solidPng(1, 2, 3));
+    writePng(baselineDir, 'stable-shot.png', solidPng(4, 5, 6));
+    writePng(captureDir, 'stable-shot.png', solidPng(4, 5, 6));
+
+    const { code, stdout } = runCli(baselineDir, captureDir, 'excluded-shot');
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('SKIP\texcluded-shot.png');
+    expect(stdout).not.toContain('MISSING\texcluded-shot.png');
   });
 });

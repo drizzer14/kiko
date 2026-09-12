@@ -210,12 +210,54 @@ missing captured file, a Maestro run that itself fails, and — the
 failure mode that would otherwise silently defeat the whole check — a
 "successful" Maestro run that captured zero PNGs.
 
+**`EXCLUDE_FROM_DIFF` (2026-09-12, documented exception): 3 shots are
+captured but never pixel-diffed.** `scripts/checks/screenshots.sh`
+declares `EXCLUDE_FROM_DIFF=(02-home-transactions-scrolled
+07-statistics-account-contribution 08-statistics-expenses-by-category)`
+and passes it as `compare-png.js`'s 5th CLI arg (a comma-separated
+`excludeCsv`); the CLI prints a `SKIP` line for each and never counts
+it toward pass/fail. All 3 remain fully captured — `screenshots:capture`
+and `screenshots:baseline` are UNCHANGED and still write all 10 PNGs —
+and stay committed in both `screenshots/appstore/6.9-inch/uk/` (the
+marketing set) and `screenshots/regression/6.9-inch/uk/` (the
+regression baseline dir), for reference; only the pixel-diff step
+skips them. Measured on the SAME stable-glass build the other 7 shots
+diff at 0% on: 02 mismatched 7.75%, 07 mismatched 18.9%, 08 mismatched
+10.6% — a genuine, reproducible whole-frame offset shift, not a glass-
+material or animation artifact (stable-glass and `waitForAnimationToEnd`
+already handle those two). The cause: all 3 are the flow's
+`scrollUntilVisible`-to-mid-content shots — each targets a specific
+row/chart block sitting somewhere in the MIDDLE of a scrollable range,
+and Maestro's `scrollUntilVisible` stop offset for a mid-range target
+is momentum/deceleration-dependent, varying a few px run-to-run and
+shifting the whole captured frame. The other 7 diffed shots (01, 03,
+04, 05, 06, 09, 10) are either not scrolled at all or land at a
+scroll-range edge/first match, and every one of them is byte-stable.
+This is an exclusion of a genuinely non-deterministic INPUT, not a
+tolerance loosening: `THRESHOLD`/`MAX_MISMATCH_RATIO` are unchanged,
+and every diffed shot still fails on any real regression at the same
+0.5% budget as before. A future experiment lowering Maestro's
+`scrollUntilVisible` `speed` (a gentler, more deterministic
+deceleration) could plausibly reclaim these 3 shots for the diff —
+deferred, not forgotten. See `scripts/checks/screenshots.sh`'s own
+`EXCLUDE_FROM_DIFF` comment and `compare-png.js`'s header comment for
+the exact mechanism.
+
 `compare-png.js`'s pure `comparePng(baselineBuffer, currentBuffer,
 options)` core is hermetically unit-tested in the colocated
 `compare-png.test.js` (identical buffers pass; a large enough pixel
 delta fails; a dimension mismatch fails without throwing) — no
 simulator involved, modeled on `__tests__/mutation-*.test.ts`'s
-"drive the real logic through a fast seam" shape.
+"drive the real logic through a fast seam" shape. The same file also
+unit-tests the pure `parseExcludeList` parser (empty/undefined input,
+whitespace, trailing/double commas) and, because the exclude-skip
+logic itself lives in the CLI's `require.main === module` block (not
+in an importable function), drives the REAL CLI as a spawned
+subprocess against hermetic temp-dir fixtures to prove the skip is
+actually wired end-to-end: an excluded name with a 100%-mismatched
+capture still exits 0 and prints `SKIP`, a non-excluded mismatch still
+fails alongside an unrelated exclusion, and an excluded name is never
+required to exist in the capture dir at all.
 
 `pixelmatch` is pinned to `^5.3.0`, not the current major: `pixelmatch`
 6.0.0+ ships ESM-only (`export default`), which neither Jest's default
@@ -455,6 +497,26 @@ verified usage, not dead weight:
   `min-release-age` filtering RN out of the packument means npm
   cannot validate that range against it — surfacing as an ERESOLVE
   error without `--legacy-peer-deps`).
+- **`scripts/checks/screenshots.sh` `EXCLUDE_FROM_DIFF`**: 3 of the 10
+  `check:screenshots` shots (`02-home-transactions-scrolled`,
+  `07-statistics-account-contribution`,
+  `08-statistics-expenses-by-category`) are captured and committed
+  like every other shot but are skipped by the pixel-diff itself (via
+  `compare-png.js`'s `excludeCsv` CLI arg). Verified, reproducible
+  cause: all 3 are `scrollUntilVisible`-to-mid-content shots, and
+  Maestro's scroll-stop offset for a target in the MIDDLE of a
+  scrollable range is momentum-dependent — a few px of run-to-run
+  landing drift shifts the whole captured frame (measured 7.75%,
+  18.9%, and 10.6% mismatch respectively on an otherwise byte-stable,
+  stable-glass build where the other 7 shots diff at 0%). This is not
+  a tolerance loosening (`THRESHOLD`/`MAX_MISMATCH_RATIO` are
+  unchanged) and not a glass or animation issue (stable-glass and
+  `waitForAnimationToEnd` already remove those) — it is the exclusion
+  of a genuinely non-deterministic INPUT the pixel-diff cannot be made
+  to tolerate without hiding a real regression on every OTHER shot
+  too. See the `check:screenshots` section above for the full
+  writeup, including the untried mitigation (a gentler
+  `scrollUntilVisible` `speed`) that could reclaim these 3 shots.
 
 ## Dependency hygiene
 

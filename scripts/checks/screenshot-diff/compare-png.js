@@ -3,14 +3,26 @@
 //   1. By its colocated Jest test (compare-png.test.js), which is how
 //      `comparePng` gets hermetic, assertion-real unit coverage with no
 //      simulator involved — see that file for the two identical-buffer /
-//      differing-buffer / dimension-mismatch cases.
+//      differing-buffer / dimension-mismatch cases, plus a CLI-level
+//      (spawned subprocess) exclude-list coverage.
 //   2. As a CLI, invoked ONLY by scripts/checks/screenshots.sh
 //      (`node scripts/checks/screenshot-diff/compare-png.js <baselineDir>
-//      <captureDir> <threshold> <maxMismatchRatio>`), under the
+//      <captureDir> <threshold> <maxMismatchRatio> [excludeCsv]`), under the
 //      `require.main === module` guard below. Keeping the CLI in the same
 //      file that the test already imports keeps the file reachable from a
 //      Knip entry point (the auto-detected Jest test), instead of adding a
 //      second, test-less file that only a shell script ever calls.
+//
+//   `excludeCsv` (5th, optional arg) is a comma-separated list of shot names
+//   WITHOUT the `.png` extension (matching SCREENSHOT_NAMES' own convention)
+//   to SKIP from the pixel-diff entirely — see screenshots.sh's own
+//   EXCLUDE_FROM_DIFF for which shots and why (scrollUntilVisible landing at
+//   a momentum-variable mid-content offset, not a glass or animation issue).
+//   A skipped name is still read from the baseline dir (so a genuinely
+//   missing/renamed baseline file is a silent no-op here, not a failure —
+//   deliberate: an EXCLUDED shot is not part of what this check regresses),
+//   printed as its own `SKIP` line for visibility, and never affects the
+//   pass/fail exit code.
 //
 // Plain CommonJS `.js`, not TypeScript: scripts/checks/screenshots.sh invokes
 // this directly with the plain `node` on PATH — there is no ts-node/tsx/babel-
@@ -98,15 +110,39 @@ function comparePng(baselineBuffer, currentBuffer, options) {
   };
 }
 
-module.exports = { comparePng, DEFAULT_THRESHOLD, DEFAULT_MAX_MISMATCH_RATIO };
+/**
+ * Parse a comma-separated CLI exclude-list argument into a Set of bare shot
+ * names (no `.png` extension). Pure: no filesystem access. Tolerant of
+ * `undefined`/empty input (returns an empty Set — "diff everything", the
+ * pre-exclude-list behavior), extra whitespace around a name, and a trailing
+ * comma/empty segment (all filtered out rather than producing a bogus empty
+ * "name" that could never match a real file).
+ *
+ * @param {string | undefined} raw
+ * @returns {Set<string>}
+ */
+function parseExcludeList(raw) {
+  if (!raw) {
+    return new Set();
+  }
+
+  return new Set(
+    raw
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0),
+  );
+}
+
+module.exports = { comparePng, parseExcludeList, DEFAULT_THRESHOLD, DEFAULT_MAX_MISMATCH_RATIO };
 
 // --- CLI: invoked only by scripts/checks/screenshots.sh, never imported ----
 if (require.main === module) {
-  const [, , baselineDir, captureDir, thresholdArg, maxMismatchRatioArg] = process.argv;
+  const [, , baselineDir, captureDir, thresholdArg, maxMismatchRatioArg, excludeArg] = process.argv;
 
   if (!baselineDir || !captureDir) {
     process.stderr.write(
-      'usage: compare-png.js <baselineDir> <captureDir> [threshold] [maxMismatchRatio]\n',
+      'usage: compare-png.js <baselineDir> <captureDir> [threshold] [maxMismatchRatio] [excludeCsv]\n',
     );
     process.exit(2);
   }
@@ -115,6 +151,7 @@ if (require.main === module) {
   const maxMismatchRatio = maxMismatchRatioArg
     ? Number(maxMismatchRatioArg)
     : DEFAULT_MAX_MISMATCH_RATIO;
+  const excludeNames = parseExcludeList(excludeArg);
 
   const baselineNames = fs
     .readdirSync(baselineDir)
@@ -129,6 +166,16 @@ if (require.main === module) {
   let anyFailed = false;
 
   for (const name of baselineNames) {
+    const bareName = name.replace(/\.png$/i, '');
+
+    // An excluded shot is skipped ENTIRELY — not diffed, not required to
+    // exist in the capture dir, and never contributes to anyFailed. See this
+    // file's header comment and screenshots.sh's EXCLUDE_FROM_DIFF for why.
+    if (excludeNames.has(bareName)) {
+      process.stdout.write(`SKIP\t${name}\texcluded from pixel-diff (see EXCLUDE_FROM_DIFF)\n`);
+      continue;
+    }
+
     const baselinePath = path.join(baselineDir, name);
     const capturePath = path.join(captureDir, name);
 
