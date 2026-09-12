@@ -44,7 +44,7 @@ type SyncedHolding = NewHolding & {
   renameFromDefault?: string;
 };
 
-type MonobankHolding = NewHolding & { monobankId: string };
+export type MonobankHolding = NewHolding & { monobankId: string };
 
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;

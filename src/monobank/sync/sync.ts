@@ -1,5 +1,5 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
+import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
@@ -22,8 +22,6 @@ import { readToken } from '../token';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;
-
-type MonobankHolding = NewHolding & { monobankId: string };
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
