@@ -1,78 +1,62 @@
-# HANDOFF — Final Hardening in progress (2026-09-11)
+# HANDOFF — App submitted to the App Store (2026-09-12)
 
-**Read first:** the live board `BOARD.md` (gitignored; kept by the standing `kiko:pm`
-session `pff-ios-ef`). Then the memory index
-`~/.claude/projects/-Users-drizzer14-Developer-Projects-pff-ios/memory/MEMORY.md` — the
-key note is `final-hardening-tracks-2026-09-11`. Verify against git + orca; do not trust
-this file over ground truth.
+**Read first:** the live board `BOARD.md` (kept by the standing `kiko:pm` session `pff-ios-ef` —
+ask it for a ground-truth snapshot). Then the memory index
+`~/.claude/projects/-Users-drizzer14-Developer-Projects-pff-ios/memory/MEMORY.md`. Verify against
+git + orca; do not trust this file over ground truth.
 
 ## Current state
 
-- `main` @ `51e802e` — **local only, NOT pushed, NOT on the App Store.** Working tree clean.
-- **Deployed to the device** via the Ad-Hoc review path (build `51e802e`; data container
-  `149343BE` persists across updates = user data intact).
-- Worktrees: `main`, `multi-account-impl` (banked, NOT merged), `structural-colocation`
-  (stood-down idle, deferred). PM session `pff-ios-ef` standing.
+- **Build 3 is SUBMITTED for App Store review** (marketing 1.0, build 3). Archive was
+  `~/Library/Developer/Xcode/Archives/2026-09-12/Kiko-build-3.xcarchive`, all invariants verified,
+  uploaded by the user. Awaiting Apple review.
+- **`main` is PUSHED** to `origin` (`git@github.com:drizzer14/kiko.git`, repo is PUBLIC). No git
+  release tag yet — the `vX.Y.Z` tag/GitHub release is created ONLY after the App Store publishes
+  (memory [[release-after-appstore-publishes]]).
+- **Privacy policy is LIVE** on GitHub Pages from a dedicated `gh-pages` branch (so hosting did not
+  require pushing app history): `https://drizzer14.github.io/kiko/` (uk primary) and `/en.html` (en).
+  Sources: `docs/privacy-policy.md` (uk), `docs/privacy-policy.en.md` (en).
+- All Orca worktrees are pruned; only `main` remains. Standing PM = `pff-ios-ef`.
 
-## What is on `main` (all merged, green: check:all + jest 2243)
+## What shipped this session (all green: check:all + jest)
 
-Phase A/B/B2/B3 + the Final Hardening work so far:
-- **Fix cycle 1** (`27d31ef`): bond-dip v1, cleanup-perf (SEC1/SEC3 + chart/accounts
-  memoization + Retry-After), feedback-round-2 (8 items), mutation-ETA per-mutant-rate model.
-- **feedback-round-3** + **bond-dip-v2** (`42a7d1d`): the 5 round-3 tweaks; and the REAL
-  bond-dip fix — root cause was the synced debit amount Q ≠ typed price P (fee/НКД/rounding)
-  so card(−Q) and bond(+P) never cancelled. `reconcile-bond-funding.ts` now matches a
-  same-currency debit within 5% of P and rewrites BOTH day and cost so the legs cancel;
-  self-corrects live history. User confirmed LGTM on device.
-- **trend-filter-final** (`51e802e`): "Top" filter first, filter-label top padding, removed
-  categories-list background, and TRANSLUCENT glass on transaction cards (GlassSurface
-  `material` variant). See "Open on-device confirmation" below.
-- **Release config**: S11 done (user set Release iphoneos → distribution identity,
-  `KikoDistribution`); a `Release-AdHoc` config (`KikoAdHoc` profile) drives `deploy-device.sh`
-  for wired review; the app icon is dark-only. `kiko:auditor` role was added to the harness.
+- **Bottom-sheet fixes** — the scrim's Liquid Glass rim pushed off-screen (32pt overscan, blur kept),
+  and the drag-to-close grab zone raised to a 44pt `minHeight`. User LGTM on-device.
+- **Categories glass first-paint fix** — the `clear` bloom material samples once at native layout, and
+  a `react-native-sortables` card's transform settles progressively, so lower cards read transparent.
+  Fix = `useBloomResample` hook (`glass-surface.resample.hook.ts`) that re-samples once the card's
+  composited position settles. Bloom intact. User LGTM on-device.
+- **`.env` untracked + auto-generated** — `.env` is gitignored; `scripts/ensure-env.js` (postinstall,
+  after patch-package) copies `.env.example` → `.env` when missing. `.env` is public-only.
+- **`kiko:release` skill** — `harness/kiko/skills/release/SKILL.md` (semver vX.Y.Z tags, user-facing
+  changelog, version sync, App Store archive checklist; never attaches builds to GitHub).
+- **Screenshots infra merged** — 10 uk marketing PNGs (`screenshots/appstore/6.9-inch/uk/`, 1320x2868)
+  plus a 6.5" resized set (`screenshots/appstore/6.5-inch/uk/`, 1284x2778, for the listing's 6.5" slot);
+  a stable-glass pixelmatch regression suite (`check:screenshots` / `:empty` / `:locked`). The seed is
+  dev/test-only; net worth ~151k UAH, volatile net-worth line.
+- **Export compliance** — `Info.plist` declares `ITSAppUsesNonExemptEncryption = false` (standard/exempt
+  crypto: SQLCipher AES + HMAC). Build 3 was answered manually; builds 4+ skip the prompt.
+- **Proper README** — replaced the RN-CLI boilerplate with a real Kiko README (uk `README.md` primary,
+  en `README.en.md`).
 
-## Open on-device confirmation (this deploy)
+## Notes for the next session
 
-The transaction-card glass uses the `material` (live-blur) variant, which can DRIFT in
-lightness while a list scrolls (that is why cards originally used `transparent`). The user
-asked for the sheet's material look explicitly; confirm on device. If the drift is
-distracting, revert the Home row to `GlassSurface transparent` (one-line).
-
-## Remaining roadmap (in order)
-
-1. **STEP 2 — `multi-account-impl`** (branch banked, 6 phases green, `kiko:auditor` passed,
-   migrations `0027`/`0028`/`0029`). Create a new in-app account + connect it to its OWN
-   separate token (Monobank / Binance / BTC), N per provider. Integrate to `main`, then a
-   **migration-aware Ad-Hoc redeploy WITH the user present** (the on-device Keychain + schema
-   migration runs then). Decisions already applied: per-account externalId namespacing +
-   backfill; on-remove ask + default keep-as-manual; account name = label; concurrency cap ~3;
-   orphan token → manual re-entry.
-2. **Structural co-location pass — TRULY LAST** (branch `structural-colocation` is stale;
-   re-run fresh on the final tree). Per memory `file-structure-colocation`: folder-per-thing
-   (component+test+styles, repo+test), no flat folders; move shared top-level `screens/`
-   components (`card-context-menu`, `edit-header-button`, `icon-editor`, `grid-interaction`)
-   into the design system; group `entity/`; leave `forms/`. Also CS3 (admit `.stack`/`.gate`
-   suffixes) + CS2 note; fold co-location into the `kiko-code-style` skill. Reconcile last.
-3. **Native pre-redeploy pass** (needs a device build to verify): SEC2 = DROP the retired
-   `group.com.dmytro.pff` App Group + its dead import bridge (user approved); SEC1 = remove the
-   now-unused Swift `writeTextFile` in `WidgetBridge.swift` (KEEP `copyFile` — import uses it);
-   C6 = measure `react-native-calendars` bundle weight, then decide.
-4. **Final `check:deep`** on `main` (set `KIKO_MUTATION_BASE` to the pre-round base), then the
-   **App Store archive** (Release / `KikoDistribution`) + upload. S4 signed off; the 3 CVEs
-   (`image-size` ×2, `decode-uri-component`) are accepted debt — do NOT suppress.
+- **check:screenshots is a BUILD-RECIPE, not a code issue** — it needs an EMBEDDED build (Maestro has
+  no Metro): FORCE_BUNDLING + clean + pod install + grep the jsbundle for the `isStableGlass` marker +
+  OpenJDK 21. See memory [[screenshot-build-recipe]].
+- **Scribe follow-ups (deferred):** update the `kiko:release` skill's "First release" section to
+  separate the tag-less archive step from the post-publication release; optionally fold the screenshot
+  build recipe + App Store submission gotchas into `docs/` or the ops skill (the user said DO NOT edit
+  CLAUDE.md for the recipe — confirm first).
+- **Backlog:** the user asked to "proceed with our backlog" in the fresh session — ask PM `pff-ios-ef`
+  for the live board / read `BOARD.md` to establish it before starting.
 
 ## Coordination model (in force)
 
-- **Coordinator** (`pff-ios-d3`) spawns **orchestrator SESSIONS** (orca worktrees, `--agent
-  claude`, base `--base-branch main`), and does NOT drive sub-agents itself for the work.
-  Each orchestrator drives `kiko:*` sub-agents on their defined models. NEVER use
-  `general-purpose`/`Explore`/`Plan` — only `kiko:*` roles (memory
-  `no-general-purpose-use-harness-agents`, `orchestrate-agents-not-impersonate`).
-- The classifier BLOCKS in auto mode: `--dangerously-skip-permissions` spawns, `orca worktree
-  rm` (sometimes), and `SendMessage` to an agent to trigger a deploy. Workarounds used:
-  `orca terminal send` to stand a track down; a FRESH `kiko:ops` Agent dispatch for each deploy
-  (allowed); prune via `orca worktree rm` when it is allowed.
-- Integration pattern: pre-scan with `git merge-tree --write-tree` (read-only), a `kiko:developer`
-  merges `--no-ff` in the main worktree, gate check:all + jest, prune each worktree as it lands.
-  Deploys go to a `kiko:ops` Agent. Notify `pff-ios-ef` on every material event; do not echo the
-  board to the user.
+- I am the **worktree coordinator, not an agent orchestrator** (user re-correction 2026-09-12). Spawn
+  orchestrator SESSIONS (`orca worktree create --agent claude --base-branch main`, verify head == local
+  main) that drive the `kiko:*` agents; do NOT drive role agents directly, even for small or read-only
+  tasks. Integration (pure `git merge` + gate check:all/jest + prune), memory, and PM/peer messaging are
+  mine and stay direct. Deploys/archives via a fresh `kiko:ops` Agent are allowed. Notify `pff-ios-ef`
+  on every material event; do not echo the board to the user. Repo id for `orca`:
+  `d1d4f630-dcc4-4263-9912-1a82f56c380e`.
