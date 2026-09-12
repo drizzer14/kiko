@@ -295,8 +295,11 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "Дата calendar"
 - waitForAnimationToEnd
 - takeScreenshot: r09-transaction-date-sheet
+# Dismiss by tapping the exposed scrim ABOVE the bottom-anchored sheet card;
+# tapping the full-screen backdrop by id center-taps INTO the sheet and never dismisses.
 - tapOn:
-    id: "transaction-date-backdrop"
+    point: "50%,15%"
+- waitForAnimationToEnd
 
 # MODAL + SELECTION: native time spinner sheet open
 - tapOn:
@@ -305,8 +308,11 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "Час picker"
 - waitForAnimationToEnd
 - takeScreenshot: r10-transaction-time-sheet
+# Dismiss by tapping the exposed scrim ABOVE the bottom-anchored sheet card;
+# tapping the full-screen backdrop by id center-taps INTO the sheet and never dismisses.
 - tapOn:
-    id: "transaction-time-backdrop"
+    point: "50%,15%"
+- waitForAnimationToEnd
 
 # MODAL: "Apply category to all" confirmation sheet (category changed above)
 - tapOn:
