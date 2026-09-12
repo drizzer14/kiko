@@ -97,6 +97,65 @@ export type GlassSurfaceProps = ViewProps & {
   // stay opaque) always wins over this too, the same as `transparent`. Defaults
   // to `false`.
   material?: boolean;
+  // Opts the surface into MAXIMUM live-sampling by the real Liquid Glass
+  // material — a BASE-GLASS property (not tied to any one variant), applied
+  // APP-WIDE to every neutral (non-`tint`) `GlassSurface` consumer: every
+  // Statistics chart card, the Settings/System/category cards, the Home
+  // net-worth card, the BottomSheet's shared `material` glass fill, the
+  // Home transaction row (`translucentStrong`), and the holding-detail
+  // ledger rows. Proved first on exactly one surface (the Statistics
+  // account-contribution pie card) before this rollout.
+  //
+  // The Settings category card (`categories.screen.tsx`'s `CategoryCard`,
+  // `transparent bordered`) already shows a weak version of this on-device
+  // today: `transparent`'s own translucent (0.60-alpha) backdrop UNDER the
+  // glass only PARTIALLY pins what the material samples, so some of the real
+  // screen behind/adjacent to the card — the destructive-red Delete button
+  // beside it — still bleeds through and blooms into the glass, just weakly.
+  // `bloom` is that same lever, pushed further, as an explicit opt-in: on the
+  // real glass path it OMITS the backdrop layer entirely (the same
+  // fully-live-sample tree a plain or `material` surface already renders —
+  // see the component's own block comment), removing the pin so a vivid
+  // nearby color (a destructive-red button, a gold chart bar, a chart
+  // segment) bleeds through at full strength, AND switches the native
+  // `UIGlassEffect` style from `'regular'` to `'clear'` — Apple's more
+  // transparent, less legibility-biased material variant, so whatever bleeds
+  // through reads with more of its original saturation instead of muted/
+  // frosted. Both are genuine `LiquidGlassView` props (`effect`, and simply
+  // not rendering a backdrop `View`) — never a painted overlay, gradient
+  // layer, or drop-shadow, and no new color of its own: `bloom` does not
+  // inject a hue, it only permits more of what is ALREADY on screen through.
+  // Composable with `transparent`: `bloom` overrides `transparent`'s own
+  // backdrop pin on the glass path (bloom wins — opting in means wanting the
+  // live sample), but the non-glass FALLBACK still reads `transparent`'s
+  // translucent fill, since there is no real optical sampling on that path
+  // to strengthen. A `tint` (an entity card, which must stay pinned and
+  // stable — see the `tint` prop's drift-fix doc) always wins over `bloom`,
+  // the same precedence as every other neutral variant.
+  //
+  // Composable with `translucentStrong` too — the Home transaction row's
+  // case, and the one place this composition matters most since it is a
+  // SCROLLING card. `resolveBackdropFill`'s precedence checks `isBloom`
+  // before `isStrong`, so `bloom` wins on the backdrop: the 0.80-alpha pin
+  // is removed and the glass live-samples the real screen behind the row.
+  // `resolveWashFill`, by contrast, is driven by `isStrong` alone and does
+  // not read `isBloom` at all, so `translucentStrong`'s neutral dark
+  // `surfaceWashStrong` overlay keeps painting OVER the now-backdrop-less,
+  // `'clear'`-effect glass. This is a deliberate, coherent combination, not
+  // an accidental side effect of the shared precedence: the dark wash is
+  // KEPT for row-text legibility over the now-live-sampling material, while
+  // the backdrop pin — the anti-drift mechanism `translucentStrong` exists
+  // for — is the one thing `bloom` intentionally trades away on this
+  // surface, per the product decision to accept the resulting drift
+  // everywhere bloom is applied, including scrolling rows.
+  //
+  // TRADEOFF, stated explicitly: MORE live sampling means MORE lightness/
+  // color drift on a card whose surroundings change — the exact instability
+  // `translucentStrong`'s pin (the Home transaction row) exists to kill.
+  // Applied app-wide per an explicit product decision (see the doc above)
+  // that knowingly accepts this drift even on a scrolling surface, not only
+  // a static one. Defaults to `false`.
+  bloom?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the
   // component (not a plain inline `borderWidth`/`borderColor`) for the same

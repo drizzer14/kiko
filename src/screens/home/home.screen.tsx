@@ -448,7 +448,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     // to avoid double-counting the gap below the last transaction row.
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
-        <GlassSurface transparent padding={4} radius="lg">
+        <GlassSurface transparent bloom padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}

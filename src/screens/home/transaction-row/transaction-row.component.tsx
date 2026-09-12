@@ -49,11 +49,29 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // On device that backdrop bump alone was invisible under the live glass's own
   // refraction, so `translucentStrong` also paints a neutral dark `wash` OVER
   // the finished glass — see `GlassSurface`'s `translucentStrong` prop doc for
-  // the full mechanism. No change needed here: the prop is the same, only what
-  // it renders under the hood changed.
+  // the full mechanism.
+  //
+  // It also takes `bloom`, per the app-wide bloom rollout — this row is the
+  // one place the rollout deliberately keeps its accepted tradeoff explicit:
+  // `resolveBackdropFill` checks `bloom` BEFORE `translucentStrong`, so `bloom`
+  // WINS on the backdrop — the 0.80-alpha pin is removed and the glass goes
+  // back to live-sampling the real scrolling content behind the row (the exact
+  // drift `translucentStrong` exists to kill, now knowingly re-admitted here,
+  // per product decision, everywhere bloom applies). The dark `surfaceWashStrong`
+  // wash is UNCHANGED by this: `resolveWashFill` is driven by `translucentStrong`
+  // alone and never reads `bloom`, so it keeps painting over the now-backdrop-
+  // less, `'clear'`-effect glass — this is what keeps the row's text legible.
+  // COMBINE, not replace: the dark wash stays for legibility; only the
+  // anti-drift backdrop pin is traded away for bloom's live sample.
   return (
     <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
-      <GlassSurface translucentStrong padding={3} testID="transaction-row" style={styles.rowCard}>
+      <GlassSurface
+        translucentStrong
+        bloom
+        padding={3}
+        testID="transaction-row"
+        style={styles.rowCard}
+      >
         <Box gap={2}>
           <Box direction="row" style={styles.rowMain}>
             <Box direction="row" gap={2} style={styles.rowLead}>

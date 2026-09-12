@@ -320,6 +320,28 @@ describe('useScrollToTopOnTabPress', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it('does not scroll when resting above the stretch-inflated header target (E > R)', async () => {
+    const scrollTo = jest.fn();
+    const scrollRef = { current: { scrollTo } } as RefObject<TabRootScrollable | null>;
+
+    // The regression. A large-title rubber-band pull makes native momentarily
+    // emit a header height TALLER than the resting one, and the hook's max-latch
+    // keeps that stretched value, so the tracked expanded height E exceeds the
+    // true resting inset R. At rest the ScrollView then sits at -R, which is LESS
+    // negative than -E. The old `scrollOffset.value <= -E` guard was false here
+    // (`-R > -E`), so it animated to -E — a hair PAST rest, the reported
+    // overscroll. The hook must instead clamp the target to the observed resting
+    // offset, making an at-rest re-tap a no-op even though -R != -E.
+    const RESTING_OFFSET = -(MOCK_EXPANDED_HEADER_HEIGHT - 8);
+    const { fireTabPress } = await setup(scrollRef, {
+      headerHeight: MOCK_EXPANDED_HEADER_HEIGHT,
+      scrollOffset: { value: RESTING_OFFSET },
+    });
+    fireTabPress();
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
   it('does not scroll when the live offset is above the target', async () => {
     const scrollTo = jest.fn();
     const scrollRef = { current: { scrollTo } } as RefObject<TabRootScrollable | null>;

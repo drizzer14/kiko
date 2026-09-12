@@ -56,7 +56,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   const lockAvailable = canOfferLock(sensorStatus);
 
   return (
-    <GlassSurface testID="settings-card-app-lock" padding={3}>
+    <GlassSurface testID="settings-card-app-lock" padding={3} bloom>
       <SettingsRow testID="settings-row-app-lock" icon="faceid" label={t('settings.appLock.label')}>
         <Switch
           testID="settings-switch-app-lock"
