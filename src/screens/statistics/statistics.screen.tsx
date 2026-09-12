@@ -773,7 +773,12 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-pie" transparent padding={4} radius="lg">
+        {/* STAGE 1 of the live-bloom rollout (`GlassSurface`'s `bloom` prop):
+            this is the one representative surface the mechanism is proven
+            on before any wider app-wide rollout — see the prop's own doc
+            comment for the exact tuning and the drift tradeoff it accepts
+            (a STATIC card, never a scrolling one). */}
+        <GlassSurface testID="statistics-block-pie" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.accountContribution')}

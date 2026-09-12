@@ -8,6 +8,7 @@ import { styles } from './glass-surface.styles';
 
 // Extracted to keep the component's own cognitive complexity down: the
 // backdrop fill has a strict precedence — an entity `tint` (opaque) beats
+// `bloom` (explicitly NO backdrop — maximum live sample), which beats
 // `translucentStrong` (the stronger 0.80-alpha pin), which beats `transparent`
 // (the softer 0.60-alpha pin), which beats no backdrop at all (a plain or
 // `material` surface).
@@ -15,19 +16,30 @@ const resolveBackdropFill = (
   tint: string | undefined,
   isStrong: boolean,
   isTransparent: boolean,
+  isBloom: boolean,
 ) => {
   if (tint !== undefined) return styles.opaqueBase;
+  if (isBloom) return false;
   if (isStrong) return styles.strongTranslucentBase;
   if (isTransparent) return styles.translucentBase;
   return false;
 };
 
-// Same precedence idea for the non-glass fallback fill: `translucentStrong`'s
-// stronger pin beats `transparent`/`material`'s shared translucent fill, which
-// beats the opaque themed base a plain surface falls back to.
-const resolveFallbackFill = (isStrong: boolean, isTransparent: boolean, isMaterial: boolean) => {
+// Same precedence idea for the non-glass fallback fill: there is no real
+// optical sampling to strengthen on this path, so `bloom` does not remove
+// the fallback fill the way it removes the glass-path backdrop — it only
+// guarantees the fallback stays translucent (the same fill `transparent`
+// already gives), same as `material`. `translucentStrong`'s stronger pin
+// still beats all of `transparent`/`material`/`bloom`'s shared translucent
+// fill, which beats the opaque themed base a plain surface falls back to.
+const resolveFallbackFill = (
+  isStrong: boolean,
+  isTransparent: boolean,
+  isMaterial: boolean,
+  isBloom: boolean,
+) => {
   if (isStrong) return styles.strongTranslucentBase;
-  if (isTransparent || isMaterial) return styles.translucentBase;
+  if (isTransparent || isMaterial || isBloom) return styles.translucentBase;
   return styles.opaqueBase;
 };
 
@@ -103,6 +115,20 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
 // neither `tint`, `transparent`, `translucentStrong`, nor `material` keeps
 // the fully-live see-through glass: no backdrop, no wash.
 //
+// `bloom` is a fifth, ORTHOGONAL base-glass property (see its prop doc): the
+// OPPOSITE lever from `translucentStrong`'s anti-drift pin. It OMITS the
+// backdrop on the glass path entirely — the same fully-live-sample tree a
+// plain/`material` surface already renders — and switches the native
+// `UIGlassEffect` style from `'regular'` to `'clear'`, so a vivid neighboring
+// color already on screen (a destructive-red Delete button, a gold chart
+// bar) bleeds through and blooms into the glass at full, saturated strength
+// instead of the muted, partially-pinned bleed `transparent`'s own 0.60-alpha
+// backdrop already lets through weakly (see the Settings category card,
+// which shows exactly this today). It injects no color of its own — never a
+// painted overlay, gradient layer, or drop-shadow. STAGE 1: wired to exactly
+// one consumer, the Statistics account-contribution pie card, a STATIC
+// surface where the drift tradeoff below does not apply.
+//
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
 // a fresh `LiquidGlassView`; with the library's `animated` default of `true`
@@ -122,6 +148,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   transparent = false,
   translucentStrong = false,
   material = false,
+  bloom = false,
   bordered = false,
   testID,
   ...props
@@ -148,6 +175,10 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // fill (`fallbackFill` below) reads it, so the glass path is byte-for-byte
   // the same "no backdrop, live sample" tree a plain surface already renders.
   const isMaterial = material && tint === undefined;
+  // `bloom` is a BASE-GLASS property, not tied to any one variant (see the
+  // prop doc): a `tint` still wins over it for the same reason as the other
+  // neutral variants.
+  const isBloom = bloom && tint === undefined;
   // The backdrop UNDER the glass, and its fill, both depend on the variant:
   //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
   //     translucent glass samples so the card's lightness cannot drift and the
@@ -160,11 +191,15 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   //     fill — a real filled View (so still no pop-in) that partially pins the
   //     sample and lets the screen behind read through;
   //   - a plain or `material` surface (none of the above) renders NO backdrop
-  //     and keeps the fully-live see-through material.
+  //     and keeps the fully-live see-through material;
+  //   - `bloom` (see the prop doc) also renders NO backdrop — it OVERRIDES
+  //     `transparent`'s own partial pin (bloom wins: opting in means wanting
+  //     the live sample), so the glass samples nothing but the real screen
+  //     behind/adjacent to the card at full strength.
   // The fallback (non-glass) branch needs no backdrop: its own base IS the flat
   // themed fill (see `base`). See `resolveBackdropFill` above for the exact
   // precedence.
-  const backdropFill = resolveBackdropFill(tint, isStrong, isTransparent);
+  const backdropFill = resolveBackdropFill(tint, isStrong, isTransparent, isBloom);
   const backdrop: ReactNode = isLiquidGlassSupported && backdropFill && (
     <View
       style={[RNStyleSheet.absoluteFill, backdropFill]}
@@ -189,14 +224,25 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // Glass would render the sheet as a solid opaque panel instead of see-through.
   // `translucentStrong` reads its OWN stronger fill here too, so the fallback
   // path reads the same "more opaque, still see-through" panel as the glass
-  // path's backdrop. See `resolveFallbackFill` above for the exact precedence.
-  const fallbackFill = resolveFallbackFill(isStrong, isTransparent, isMaterial);
+  // path's backdrop. `bloom` reads the SAME translucent fill here too — there
+  // is no real optical sampling on this path to strengthen, so it only needs
+  // to stay see-through, the same as `material`. See `resolveFallbackFill`
+  // above for the exact precedence.
+  const fallbackFill = resolveFallbackFill(isStrong, isTransparent, isMaterial, isBloom);
+  // `bloom` switches the native `UIGlassEffect` style from `'regular'` to
+  // `'clear'` (see the prop doc) — Apple's more transparent, less
+  // legibility-biased material, so whatever bleeds through the now-backdrop-
+  // less glass reads with more of its original saturation. `tint` never
+  // changes this: an entity card always wins over `bloom` on the backdrop
+  // above, so `effect` staying `'regular'` there is consistent with keeping
+  // that card pinned and stable.
+  const glassEffect = isBloom ? 'clear' : 'regular';
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       // The app is dark-only (native chrome is pinned dark via
       // `UIUserInterfaceStyle`), so the glass material samples its backdrop
       // under a fixed dark interface style — no scheme flip to repaint for.
-      effect="regular"
+      effect={glassEffect}
       colorScheme="dark"
       tintColor={tint}
       animated={false}

@@ -97,6 +97,47 @@ export type GlassSurfaceProps = ViewProps & {
   // stay opaque) always wins over this too, the same as `transparent`. Defaults
   // to `false`.
   material?: boolean;
+  // Opts the surface into MAXIMUM live-sampling by the real Liquid Glass
+  // material — a BASE-GLASS property (not tied to any one variant) that
+  // other variants could later inherit, rather than a one-off baked into
+  // `transparent`. STAGE 1: applied to exactly one surface today, the
+  // Statistics account-contribution pie card, to prove the mechanism before
+  // any wider rollout.
+  //
+  // The Settings category card (`categories.screen.tsx`'s `CategoryCard`,
+  // `transparent bordered`) already shows a weak version of this on-device
+  // today: `transparent`'s own translucent (0.60-alpha) backdrop UNDER the
+  // glass only PARTIALLY pins what the material samples, so some of the real
+  // screen behind/adjacent to the card — the destructive-red Delete button
+  // beside it — still bleeds through and blooms into the glass, just weakly.
+  // `bloom` is that same lever, pushed further, as an explicit opt-in: on the
+  // real glass path it OMITS the backdrop layer entirely (the same
+  // fully-live-sample tree a plain or `material` surface already renders —
+  // see the component's own block comment), removing the pin so a vivid
+  // nearby color (a destructive-red button, a gold chart bar, a chart
+  // segment) bleeds through at full strength, AND switches the native
+  // `UIGlassEffect` style from `'regular'` to `'clear'` — Apple's more
+  // transparent, less legibility-biased material variant, so whatever bleeds
+  // through reads with more of its original saturation instead of muted/
+  // frosted. Both are genuine `LiquidGlassView` props (`effect`, and simply
+  // not rendering a backdrop `View`) — never a painted overlay, gradient
+  // layer, or drop-shadow, and no new color of its own: `bloom` does not
+  // inject a hue, it only permits more of what is ALREADY on screen through.
+  // Composable with `transparent`: `bloom` overrides `transparent`'s own
+  // backdrop pin on the glass path (bloom wins — opting in means wanting the
+  // live sample), but the non-glass FALLBACK still reads `transparent`'s
+  // translucent fill, since there is no real optical sampling on that path
+  // to strengthen. A `tint` (an entity card, which must stay pinned and
+  // stable — see the `tint` prop's drift-fix doc) always wins over `bloom`,
+  // the same precedence as every other neutral variant.
+  //
+  // TRADEOFF, stated explicitly: MORE live sampling means MORE lightness/
+  // color drift on a card whose surroundings change — the exact instability
+  // `translucentStrong`'s pin (the Home transaction row) exists to kill.
+  // `bloom` is therefore reached for ONLY on a STATIC surface with nothing
+  // scrolling behind or around it (a Settings/category card, a Statistics
+  // chart card) — never a scrolling list row. Defaults to `false`.
+  bloom?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the
   // component (not a plain inline `borderWidth`/`borderColor`) for the same

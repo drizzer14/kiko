@@ -141,6 +141,35 @@ describe('GlassSurface', () => {
     expect(queryByTestId('material-fallback-backdrop')).toBeNull();
   });
 
+  // `bloom` (see the prop doc) must ALSO keep the non-glass fallback fill
+  // translucent — the same `surfaceTranslucent` token `transparent`/`material`
+  // already use — so a device without Liquid Glass reads see-through too;
+  // there is no real optical sampling on that path for `bloom` to strengthen.
+  it('fills the fallback base with the translucent token when bloom is set', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <GlassSurface testID="bloom-fallback" bloom>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('bloom-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(queryByTestId('bloom-fallback-backdrop')).toBeNull();
+  });
+
+  // The opt-in check: with no `bloom`, the fallback stays the plain opaque
+  // theme surface — the translucent fill never applies unasked.
+  it('leaves the fallback base as the plain themed surface when bloom is not set', async () => {
+    const { getByTestId } = await render(
+      <GlassSurface testID="not-bloom-fallback">
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('not-bloom-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+  });
+
   // `translucentStrong` (item, the Home transaction card's variant) must ALSO
   // fill the non-glass fallback base with its OWN stronger token, not
   // `transparent`'s — same pattern as the `transparent`/`material` fallback
@@ -399,6 +428,57 @@ describe('GlassSurface', () => {
 
       const washFlat = StyleSheet.flatten(getByTestId('tinted-strong-glass-wash').props.style);
       expect(washFlat.backgroundColor).toBe(tint);
+    });
+
+    // `bloom` (see the prop doc) tunes the REAL glass on the real glass path:
+    // it OMITS the backdrop entirely (overriding `transparent`'s own partial
+    // pin, so the glass samples the real screen behind/adjacent to the card
+    // at full strength) and switches the native `UIGlassEffect` style from
+    // `'regular'` to `'clear'` — composable with `transparent`, which is
+    // exactly the Statistics account-contribution pie card's combination.
+    it('removes the backdrop and switches the native glass to the clear style when bloom is set (with transparent)', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="bloom-glass" transparent bloom>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(queryByTestId('bloom-glass-backdrop')).toBeNull();
+      expect(getByTestId('bloom-glass-base').props.effect).toBe('clear');
+    });
+
+    // The opt-in check on the real glass path: with no `bloom`, the material
+    // keeps the standard `'regular'` style and `transparent`'s own partial
+    // pin stays in place — the live-sampling tuning never applies unasked.
+    it('keeps the regular glass style and the neutral backdrop when bloom is not set', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="not-bloom-glass" transparent>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const backdrop = getByTestId('not-bloom-glass-backdrop');
+      const backdropFlat = StyleSheet.flatten(backdrop.props.style);
+      expect(backdropFlat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+
+      expect(getByTestId('not-bloom-glass-base').props.effect).toBe('regular');
+    });
+
+    // `bloom` is a NEUTRAL base-glass property like `transparent`, so a
+    // `tint` (an entity card, which must stay pinned and stable) always wins
+    // over it too: the backdrop stays the OPAQUE surface, the material
+    // carries the entity `tintColor`, and the effect stays `'regular'`.
+    it('keeps the opaque backdrop, entity tint, and regular effect when both tint and bloom are set', async () => {
+      const { getByTestId } = await render(
+        <GlassSurface testID="tinted-bloom-glass" tint={tint} bloom>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const flat = StyleSheet.flatten(getByTestId('tinted-bloom-glass-backdrop').props.style);
+      expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(getByTestId('tinted-bloom-glass-base').props.tintColor).toBe(tint);
+      expect(getByTestId('tinted-bloom-glass-base').props.effect).toBe('regular');
     });
 
     // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.
