@@ -91,6 +91,17 @@ REGRESSION_RICH_NAMES=(
   09-settings-main
   r04-categories
   10-settings-system
+  # 2026-09-12 visual-regression expansion — filled edit forms, open sheets,
+  # and selection controls. Captured interleaved in the flow (see
+  # .maestro/regression.yaml); the r0N value is a unique label, not an order key.
+  r05-edit-account-form
+  r06-edit-holding-form
+  r07-edit-transaction-form
+  r08-transaction-category-sheet
+  r09-transaction-date-sheet
+  r10-transaction-time-sheet
+  r11-transaction-category-override-sheet
+  r12-add-holding-bond-form
 )
 
 # REGRESSION_EMPTY_NAMES (2026-09-12) — the shot list for `.maestro/
