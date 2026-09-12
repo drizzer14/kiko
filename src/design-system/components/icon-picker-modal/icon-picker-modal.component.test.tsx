@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../../design-system/unistyles';
+import '../../unistyles';
 import '../../../i18n';
 import IconPickerModal from '.';
 

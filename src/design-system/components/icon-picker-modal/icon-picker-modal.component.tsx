@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+import BottomSheet from '../bottom-sheet';
+import Box from '../box';
+import Button from '../button';
+import SymbolIcon from '../symbol';
+import Text from '../text';
 
 import type { IconPickerModalProps } from './icon-picker-modal.props';
 import { styles } from './icon-picker-modal.styles';

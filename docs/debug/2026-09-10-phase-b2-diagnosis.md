@@ -36,7 +36,7 @@ This matches the symptom exactly:
 
 - Holding card — `src/screens/account-detail/holding-card/holding-card.component.tsx:95`
   passes NO `size` → blank.
-- Icon picker — `src/screens/settings/icon-picker-modal/icon-picker-modal.component.tsx:257`
+- Icon picker — `src/design-system/components/icon-picker-modal/icon-picker-modal.component.tsx:257`
   passes NO `size` → blank.
 - Entity header icon — `src/screens/entity-header-icon/entity-header-icon.component.tsx:25`
   passes `size={28}` → still renders (explains why only default-size glyphs broke).
