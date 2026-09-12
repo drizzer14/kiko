@@ -26,11 +26,17 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   valueTone,
   trailing,
   required,
+  testID,
 }) => (
   <Box gap={1}>
     <FieldLabel label={label} required={required} />
 
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      testID={testID}
+    >
       <Box direction="row" gap={2} style={styles.field}>
         {icon !== undefined && (
           <SymbolIcon name={icon} size={18} tone="textSecondary" color={iconColor} />

@@ -38,6 +38,8 @@ const TimeField: FC<TimeFieldProps> = ({
   onChange,
   placeholder,
   disabled = false,
+  testID,
+  backdropTestID,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -61,6 +63,7 @@ const TimeField: FC<TimeFieldProps> = ({
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={() => setOpen(true)}
+        testID={testID}
       >
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
           <SymbolIcon name="clock" size={18} tone="textSecondary" />
@@ -71,7 +74,12 @@ const TimeField: FC<TimeFieldProps> = ({
         </Box>
       </Pressable>
 
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={4}
+        backdropTestID={backdropTestID}
+      >
         <Text variant="heading">{label}</Text>
 
         <DateTimePicker

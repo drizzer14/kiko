@@ -36,6 +36,8 @@ const DateField: FC<DateFieldProps> = ({
   placeholder,
   disabled = false,
   required,
+  testID,
+  backdropTestID,
 }) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
@@ -84,6 +86,7 @@ const DateField: FC<DateFieldProps> = ({
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={() => setOpen(true)}
+        testID={testID}
       >
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
           <SymbolIcon name="calendar" size={18} tone="textSecondary" />
@@ -94,7 +97,12 @@ const DateField: FC<DateFieldProps> = ({
         </Box>
       </Pressable>
 
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={4}
+        backdropTestID={backdropTestID}
+      >
         <Text variant="heading">{label}</Text>
 
         <KikoCalendar

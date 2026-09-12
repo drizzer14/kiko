@@ -498,6 +498,8 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         value={props.time}
         onChange={props.onChangeTime}
         disabled={props.isReadOnly}
+        testID="transaction-date-field"
+        backdropTestID="transaction-date-backdrop"
       />
 
       <TimeField
@@ -505,6 +507,8 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         value={props.time}
         onChange={props.onChangeTime}
         disabled={props.isReadOnly}
+        testID="transaction-time-field"
+        backdropTestID="transaction-time-backdrop"
       />
     </>
   );
@@ -578,6 +582,7 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
       {!props.isExchange && (
         <CategoryField
           label={props.t('forms.transaction.category')}
+          testID="transaction-category-field"
           options={props.categoryOptions}
           selectedKey={props.selectedCategory}
           onSelect={props.onSelectCategory}
@@ -1122,7 +1127,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           ) : undefined
         }
       >
-        <Box gap={4}>
+        <Box gap={4} testID="transaction-form">
           {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
 
           {/* Convert-mode replaces the entire income/expense/exchange field

@@ -31,6 +31,7 @@ const CategoryField = ({
   selectedKey,
   onSelect,
   required,
+  testID,
 }: CategoryFieldProps): ReactElement => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -88,6 +89,7 @@ const CategoryField = ({
       <FieldTrigger
         label={label}
         required={required}
+        testID={testID}
         onPress={() => setOpen(true)}
         icon={selected?.icon ?? PLACEHOLDER_ICON}
         iconColor={selected?.color}
@@ -101,7 +103,13 @@ const CategoryField = ({
           second same-axis ScrollView around it, and would also sweep the
           heading below into the scrollable region along with `scrollRef`'s
           own offsets. */}
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={2} scrollable={false}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={2}
+        scrollable={false}
+        testID="category-picker-sheet"
+      >
         <Text variant="heading">{label}</Text>
 
         <ScrollView
@@ -119,6 +127,7 @@ const CategoryField = ({
             return (
               <SelectableRow
                 key={option.key}
+                testID={`category-option-${option.key}`}
                 accessibilityRole="button"
                 accessibilityLabel={option.title}
                 selected={isSelected}
