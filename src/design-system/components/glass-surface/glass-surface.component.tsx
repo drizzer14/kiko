@@ -1,9 +1,14 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
-import { StyleSheet as RNStyleSheet, View } from 'react-native';
+import { StyleSheet as RNStyleSheet, View, type ViewInstance } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import type { GlassSurfaceProps } from './glass-surface.props';
+import {
+  isPositionSettled,
+  type ScreenPosition,
+  shouldStopResampling,
+} from './glass-surface.resample';
 import { styles } from './glass-surface.styles';
 
 // Extracted to keep the component's own cognitive complexity down: the
@@ -203,37 +208,74 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // lands, capturing nothing solid — the card then reads fully transparent
   // until an unrelated event (a drag, which teleports the card into a portal
   // and remounts a fresh `LiquidGlassView` already in its real position)
-  // forces a second sample. Generalizes the deferred-remount mechanism
-  // 9d69a77 removed (originally 881cbfc, there keyed off a since-removed
-  // light/dark scheme flip): `remountToken` flips EXACTLY ONCE, on a
-  // post-mount frame (see the effect below), forcing React to tear down and
-  // recreate the `LiquidGlassView` with a fresh `key` so the fresh view lays
-  // out — and samples — in the surface's real, final position. Scoped to
-  // `needsResample` (glass-path `bloom` only): every other variant is
-  // already pinned by its own backdrop/wash layer on the first frame and
-  // never needed a second native remount.
+  // forces a second sample. `remountToken` flips EXACTLY ONCE, once the
+  // surface's real on-screen position has settled (see the effect below),
+  // forcing React to tear down and recreate the `LiquidGlassView` with a
+  // fresh `key` so the fresh view lays out — and samples — in the surface's
+  // real, final position. Scoped to `needsResample` (glass-path `bloom`
+  // only): every other variant is already pinned by its own backdrop/wash
+  // layer on the first frame and never needed a second native remount.
   const needsResample = isBloom && isLiquidGlassSupported;
   const [remountToken, setRemountToken] = useState(0);
   const hasResampled = useRef(false);
+  const surfaceRef = useRef<ViewInstance>(null);
   useEffect(() => {
     if (!needsResample || hasResampled.current) {
       return;
     }
-    hasResampled.current = true;
-    // Two frames, not one: the surface commits into its initial spot on the
-    // first frame, and Sortable's own worklet-driven position transform can
-    // land anywhere in that same frame or the next one, so waiting a second
-    // frame ensures the remount happens strictly after the transform, never
-    // racing it (the same reasoning 881cbfc used to let a scheme flip's
-    // interface-style trait settle before its own remount).
-    let inner: number | undefined;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setRemountToken((token) => token + 1));
-    });
+
+    let frame: number | undefined;
+    let cancelled = false;
+    let attempt = 0;
+    let lastPosition: ScreenPosition | undefined;
+
+    const resample = () => {
+      hasResampled.current = true;
+      setRemountToken((token) => token + 1);
+    };
+
+    // Condition-based settle check, not a fixed frame count: a
+    // `Sortable.Grid` item is positioned by a Reanimated TRANSFORM computed
+    // from the cumulative measured heights of every preceding card, which
+    // settles progressively — a card further down the grid can take several
+    // more frames than a card near the top, so a fixed 2-frame delay races
+    // (and loses, for lower cards) an animation with no fixed duration.
+    // `measureInWindow` reads the REAL composited on-screen position (it
+    // includes the live transform, unlike `onLayout`, which does not re-fire
+    // for a transform-only move). `isPositionSettled`/`shouldStopResampling`
+    // (`glass-surface.resample.ts`) hold the actual settle/cap decision as
+    // plain, synchronously-testable functions — this closure is only the
+    // thin adapter wiring them into `measureInWindow` and
+    // `requestAnimationFrame`.
+    const checkSettled = () => {
+      if (cancelled) {
+        return;
+      }
+
+      attempt += 1;
+      surfaceRef.current?.measureInWindow((x, y) => {
+        if (cancelled) {
+          return;
+        }
+
+        const current: ScreenPosition = { x, y };
+
+        if (shouldStopResampling(attempt, isPositionSettled(lastPosition, current))) {
+          resample();
+          return;
+        }
+
+        lastPosition = current;
+        frame = requestAnimationFrame(checkSettled);
+      });
+    };
+
+    frame = requestAnimationFrame(checkSettled);
+
     return () => {
-      cancelAnimationFrame(outer);
-      if (inner !== undefined) {
-        cancelAnimationFrame(inner);
+      cancelled = true;
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
       }
     };
   }, [needsResample]);
@@ -332,7 +374,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   );
 
   return (
-    <View style={[styles.surface, edge, sizing, style]} testID={testID} {...props}>
+    <View ref={surfaceRef} style={[styles.surface, edge, sizing, style]} testID={testID} {...props}>
       {backdrop}
 
       {base}
