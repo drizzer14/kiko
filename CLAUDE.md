@@ -369,6 +369,13 @@ Only public, non-secret values (a public API URL, a feature flag) belong
 in `.env`. Secrets live in the iOS Keychain (`react-native-keychain`),
 never in `.env`, `.env.local`, the database, or a log.
 
+`.env` is not tracked; only the public `.env.example` template is. The
+`postinstall` step (`scripts/ensure-env.js`) copies `.env.example` to
+`.env` automatically when `.env` is missing, so a fresh checkout,
+worktree, or CI has a working `.env` with no manual step. It never
+overwrites an existing `.env`, so a hand-edited file or a `.env.local`
+override survives `npm install`.
+
 ### Known dependency CVEs
 
 `check:deep` will continue to flag 2 `image-size` advisories
