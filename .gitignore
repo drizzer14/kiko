@@ -41,9 +41,10 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
-# Env: `.env` and `.env.example` are committed (public, non-secret config
-# consumed via react-native-dotenv, so Jest/CI need no mock). Only local
-# overrides are ignored.
+# Env: `.env` is local and NOT committed. react-native-dotenv reads it at
+# build time; copy `.env.example` to `.env` after cloning. Only the
+# `.env.example` template is tracked. All values are public, non-secret config.
+.env
 .env.local
 
 # fastlane
