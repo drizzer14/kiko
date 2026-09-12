@@ -31,7 +31,6 @@ const storedAddress = (holdings: HoldingRow[]): string | undefined =>
 
 export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
   id: 'btc_wallet',
-  kind: 'wallet',
   metadataField: 'walletAddress',
   fetchBalances: async (deps, target) => {
     const address = (deps.address ?? storedAddress(target.holdings))?.trim();
@@ -46,8 +45,6 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
 
     const balanceMinorUnits = await deps.fetchAddressBalance(address, deps.fetchImpl);
 
-    return [
-      { currency: 'BTC', balanceMinorUnits, metadataKey: address, name: WALLET_HOLDING_NAME },
-    ];
+    return [{ balanceMinorUnits, metadataKey: address, name: WALLET_HOLDING_NAME }];
   },
 };

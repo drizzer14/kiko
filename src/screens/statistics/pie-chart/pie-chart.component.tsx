@@ -5,10 +5,10 @@ import { Path, Svg } from 'react-native-svg';
 
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
+import Box from '../../../design-system/components/box';
+import MoneyText from '../../../design-system/components/money-text';
+import Text from '../../../design-system/components/text';
 import type { AccountSlice } from '../../../statistics/account-contribution';
-import Box from '../box';
-import MoneyText from '../money-text';
-import Text from '../text';
 
 import { styles } from './pie-chart.styles';
 

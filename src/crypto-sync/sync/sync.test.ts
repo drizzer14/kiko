@@ -33,7 +33,6 @@ const cryptoAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
 });
 
 const walletBalance = (balanceMinorUnits: number): ProviderBalance => ({
-  currency: 'BTC',
   balanceMinorUnits,
   metadataKey: ADDRESS,
   name: 'BTC Wallet',
@@ -50,7 +49,6 @@ const makeProvider = (id: BalanceProvider<FakeDeps>['id'] = 'btc_wallet') => {
   const calls: SyncTarget[] = [];
   const provider: BalanceProvider<FakeDeps> = {
     id,
-    kind: 'wallet',
     metadataField: 'walletAddress',
     fetchBalances: async (deps, target) => {
       calls.push(target);
@@ -302,7 +300,6 @@ describe('runBalanceSync', () => {
     // Distinct match keys so three Spot/Funding/Earn balances upsert as three
     // holdings, not one (the in-memory double keys on metadataKey).
     const btcBalance = (metadataKey: string, balanceMinorUnits: number): ProviderBalance => ({
-      currency: 'BTC',
       balanceMinorUnits,
       metadataKey,
       name: metadataKey,

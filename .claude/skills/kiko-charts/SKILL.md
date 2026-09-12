@@ -5,9 +5,9 @@ description: Invoke when touching a react-native-svg chart component (BarChart, 
 
 # Kiko chart conventions
 
-Source files: `src/design-system/components/bar-chart/`,
-`src/design-system/components/pie-chart/`,
-`src/design-system/components/net-worth-line/`, and the manual mock at
+Source files: `src/screens/statistics/bar-chart/`,
+`src/screens/statistics/pie-chart/`,
+`src/screens/statistics/net-worth-line/`, and the manual mock at
 `__mocks__/react-native-svg.tsx`.
 
 ## Fixed logical coordinate space + stretch-to-fit
@@ -161,7 +161,7 @@ function for the tie-break rule before touching legend percent rendering.
 ## category-trend-line (spending trend by category)
 
 `CategoryTrendLine`
-(`src/design-system/components/category-trend-line/category-trend-line.component.tsx`)
+(`src/screens/statistics/category-trend-line/category-trend-line.component.tsx`)
 is the "Spending Trend by Category" chart: a multi-line plot, one
 `<Polyline>` per category, each point that category's total EXPENSE
 inside one calendar-month bucket (a per-period figure, never
@@ -214,7 +214,7 @@ most-positive first) — then excludes every windowed category NOT in the top N.
 
 ## PieChart donut mode
 
-`PieChart` (`src/design-system/components/pie-chart/pie-chart.component.tsx`)
+`PieChart` (`src/screens/statistics/pie-chart/pie-chart.component.tsx`)
 supports an `innerRatio` prop (thins the ring, opening a larger center
 hole) and a `centerTotal` prop (a `Money` value rendered centered in
 that hole) — the Expenses-by-Category donut is the current caller.

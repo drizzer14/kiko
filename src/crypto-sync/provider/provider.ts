@@ -29,11 +29,6 @@ export const providerDisplayName = (providerId: BalanceProviderId, t: TFunction)
     .exhaustive();
 
 export type ProviderBalance = {
-  /**
-   * Always 'BTC' in this milestone; kept as a field, not hardcoded inline, so a
-   * later multi-asset provider only widens this type.
-   */
-  currency: 'BTC';
   /** Satoshis. */
   balanceMinorUnits: number;
   /**
@@ -66,12 +61,6 @@ export type SyncTarget = { accountId: string; holdings: HoldingRow[] };
 
 export interface BalanceProvider<Deps> {
   id: BalanceProviderId;
-  /**
-   * 'exchange' holds a secret in the Keychain; 'wallet' holds only a public
-   * key in metadata. Reserved for provider-family branching (credential
-   * handling, copy) as more providers land.
-   */
-  kind: 'exchange' | 'wallet';
   /** The `holdings.metadata` field the provider's `metadataKey` is stored under. */
   metadataField: ExchangeMetadataField;
   fetchBalances: (deps: Deps, target: SyncTarget) => Promise<ProviderBalance[]>;
