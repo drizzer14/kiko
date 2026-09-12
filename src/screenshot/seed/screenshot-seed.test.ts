@@ -110,6 +110,36 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(history).toHaveLength(3 * 27);
   });
 
+  it('defaults to the rich dataset when no scenario is passed', () => {
+    expect(buildScreenshotDataset('uk')).toEqual(buildScreenshotDataset('uk', 'rich'));
+  });
+
+  it('rich scenario carries the app lock OFF so no gate fronts the screenshots', () => {
+    expect(buildScreenshotDataset('uk', 'rich').lockEnabled).toBe(false);
+  });
+
+  it('empty scenario seeds zero accounts, no rates, no history, lock off — the empty states show', () => {
+    const dataset = buildScreenshotDataset('uk', 'empty');
+
+    expect(dataset.accounts).toHaveLength(0);
+    expect(dataset.rates).toHaveLength(0);
+    expect(dataset.history).toHaveLength(0);
+    expect(dataset.baseCurrency).toBe('UAH');
+    expect(dataset.language).toBe('uk');
+    expect(dataset.lockEnabled).toBe(false);
+  });
+
+  it('locked scenario seeds the SAME rich dataset but enables the app lock', () => {
+    const locked = buildScreenshotDataset('uk', 'locked');
+    const rich = buildScreenshotDataset('uk', 'rich');
+
+    expect(locked.accounts).toEqual(rich.accounts);
+    expect(locked.rates).toEqual(rich.rates);
+    expect(locked.history).toEqual(rich.history);
+    expect(locked.baseCurrency).toBe('UAH');
+    expect(locked.lockEnabled).toBe(true);
+  });
+
   it('produces a healthy, positive net worth in UAH from its own pinned rates', () => {
     const dataset = buildScreenshotDataset('uk');
     const holdings = dataset.accounts

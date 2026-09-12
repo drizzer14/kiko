@@ -1,0 +1,207 @@
+# RICH-scenario visual-regression flow (separate from the curated marketing
+# flow, `.maestro/appstore-screenshots.yaml` — that file is UNCHANGED and still
+# owns the 10-shot App Store deliverable set). This flow exists ONLY for
+# `check:screenshots` / `screenshots:baseline` (rich): a broader deterministic
+# BREADTH suite over the same rich seeded dataset, plus the 7 marketing shots
+# that are already known to be pixel-stable on the stable-glass build.
+#
+# PREREQUISITE (ops): a STABLE-glass screenshot-mode build
+# (`ENVFILE=.env.screenshots.stable`) is already installed on a booted, pinned
+# simulator — "iPhone 17 Pro Max" (6.9-inch, 1320x2868 portrait). Set the
+# simulator's clock to 2026-09-10 first, same as the marketing flow — see
+# `.maestro/appstore-screenshots.yaml`'s header comment for the full
+# prerequisite list (it is not repeated here to avoid drift).
+#
+# SCOPE — deterministic (non-scrolled / top-clamped) states only. This flow
+# deliberately captures ONLY the 7 marketing shots that measured 0% mismatch on
+# the stable-glass build (01, 03, 04, 05, 06, 09, 10) — it does NOT recreate
+# the 3 mid-scroll shots (02-home-transactions-scrolled,
+# 07-statistics-account-contribution, 08-statistics-expenses-by-category):
+# those land at a momentum/deceleration-dependent `scrollUntilVisible` stop
+# offset that drifts 7.75-18.9% run to run on the SAME stable-glass build (see
+# `scripts/checks/screenshots.sh`'s retired `EXCLUDE_FROM_DIFF` comment and
+# CLAUDE.md's `check:screenshots` section for the historical measurement).
+# Simply never capturing a non-deterministic shot is preferred here over
+# capturing-then-excluding it from the diff, per the 2026-09-12 coordinator
+# decision — there is no `EXCLUDE_FROM_DIFF` list for this flow's check.
+#
+# BREADTH additions (4 forms/screens beyond the 7 shared marketing shots),
+# named with an `r0N-` prefix so they can never collide with the shared
+# marketing numbering (01/03/04/05/06/09/10):
+#   r01-add-account-form   — AccountForm, reached from the Accounts tab root
+#   r02-add-holding-form   — HoldingForm, reached from AccountDetail's footer
+#   r03-add-transaction-form — TransactionForm, reached from HoldingDetail's
+#                              footer (the seeded first holding is a plain
+#                              manual card, so `footerActionFor` resolves to
+#                              'transaction', not 'contribution'/'none' — see
+#                              holding-detail.screen.tsx)
+#   r04-categories         — the Settings > Categories sub-screen
+#
+# NOT included (investigated, not deterministically reachable as a distinct
+# state — see this repo's screenshot-harness handoff notes): a "Settings >
+# Language" SUB-PAGE does not exist. `SystemScreen` (settings/system.screen.tsx)
+# renders the language control INLINE via `settings-row-language` +
+# `LanguageSwitch` on the same screen already captured as 10-settings-system —
+# there is no separate pushed screen to navigate to or capture.
+#
+# NAVIGATION NOTE — no `back` command anywhere in this flow. The marketing
+# flow's own header comment already documents one observed `back` failure
+# (from HoldingDetail, `back` "landed somewhere that never satisfied
+# assertVisible: accounts-grid"). Rather than depend on an already-flagged-
+# unreliable command, every "return to a tab's root screen" step below instead
+# taps a DIFFERENT tab's icon and then taps back to the original tab's icon.
+# Each tab's native stack pops itself to root on blur
+# (`src/navigation/reset-tab-stack-on-blur.ts`, wired into every one of the 4
+# tab stacks via `screenListeners={resetTabStackOnBlur}`) — a real, code-level
+# guarantee, not a Maestro timing assumption. This flow was authored without a
+# live Maestro run (see the task constraints); ops/qa should verify the exact
+# step sequence on a real device the first time this flow executes.
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 1. Home tab (top, non-scrolled — shared with the marketing set)
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "home-content"
+- takeScreenshot: 01-home-networth
+
+# ---------------------------------------------------------------------------
+# 2. Accounts tab root (shared) + BREADTH: add-account form
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- takeScreenshot: 03-accounts-grid
+
+- tapOn:
+    id: "add-account-footer"
+- assertVisible:
+    text: "Додати рахунок"
+- takeScreenshot: r01-add-account-form
+
+# Reset the Accounts stack back to its root (see the NAVIGATION NOTE above)
+# by blurring it — tap a different tab's icon, then tap back.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+
+# ---------------------------------------------------------------------------
+# 3. Account detail (shared) + BREADTH: add-holding form
+# ---------------------------------------------------------------------------
+# First on-screen account-card, same deterministic target as the marketing flow.
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+- takeScreenshot: 04-account-detail
+
+- tapOn:
+    text: "Додати актив"
+- assertVisible:
+    text: "Додати актив"
+- takeScreenshot: r02-add-holding-form
+
+# Reset the Accounts stack back to root again before re-entering.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+
+# ---------------------------------------------------------------------------
+# 4. Holding detail / ledger (shared) + BREADTH: add-transaction form
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+
+# Each account has exactly one seeded holding, so the first holding-grid-item
+# is deterministic. scrollUntilVisible is defensive in case the account header
+# pushes it below the fold on a smaller viewport (same as the marketing flow).
+- scrollUntilVisible:
+    element:
+      id: "holding-grid-item"
+    direction: DOWN
+- tapOn:
+    id: "holding-grid-item"
+- assertVisible:
+    id: "holding-value-header"
+- assertVisible:
+    id: "ledger-list"
+- takeScreenshot: 05-holding-detail-ledger
+
+# The seeded first account's first holding is a plain manual card (not a term
+# deposit, not a bond, not synced), so `footerActionFor` resolves to
+# 'transaction' and the footer shows "Додати транзакцію" — see this file's
+# header comment.
+- tapOn:
+    text: "Додати транзакцію"
+- assertVisible:
+    text: "Додати транзакцію"
+- takeScreenshot: r03-add-transaction-form
+
+# ---------------------------------------------------------------------------
+# 5. Statistics tab — top block only (shared; no mid-scroll shots here)
+# ---------------------------------------------------------------------------
+# Jump DIRECTLY to Statistics by its tab icon from this deeply pushed screen —
+# same pattern (and same rationale) as the marketing flow's own Accounts ->
+# Statistics transition.
+- tapOn:
+    id: "chart.xyaxis.line"
+- assertVisible:
+    id: "statistics-blocks"
+
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-line"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 06-statistics-net-worth-line
+
+# ---------------------------------------------------------------------------
+# 6. Settings main (shared) + BREADTH: categories screen
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "gearshape.fill"
+- assertVisible:
+    id: "settings-card-system"
+- takeScreenshot: 09-settings-main
+
+- tapOn:
+    id: "settings-row-categories"
+- assertVisible:
+    id: "category-card"
+- takeScreenshot: r04-categories
+
+# Reset the Settings stack back to root before visiting System.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "gearshape.fill"
+- assertVisible:
+    id: "settings-card-system"
+
+# ---------------------------------------------------------------------------
+# 7. Settings -> System sub-page (shared)
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "settings-row-system"
+- assertVisible:
+    id: "settings-card-language"
+- takeScreenshot: 10-settings-system

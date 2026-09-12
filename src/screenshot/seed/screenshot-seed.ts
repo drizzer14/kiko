@@ -20,7 +20,11 @@ import {
 } from '../../db/schema';
 import { entityColorsDark } from '../../design-system/palette';
 import type { AppLanguage } from '../../i18n';
-import { screenshotLanguage } from '../screenshot-mode';
+import {
+  type ScreenshotScenario,
+  screenshotLanguage,
+  screenshotScenario,
+} from '../screenshot-mode';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT
@@ -103,6 +107,11 @@ type ScreenshotDataset = {
   accounts: SeedAccount[];
   rates: SeedRate[];
   history: SeedHistoryRow[];
+  // Whether the app lock starts on. `false` for the marketing/rich and empty
+  // sets (no gate in front of the screenshots); `true` only for the `locked`
+  // scenario, which captures the cold-launch LockGate. Persisted via
+  // `settingsRepo.setLockEnabled` in `applySettings`.
+  lockEnabled: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -510,14 +519,40 @@ const buildAccounts = (): SeedAccount[] => [
  * The complete deterministic screenshot dataset. Pure: it reads no clock and no
  * database, so its shape (counts, sums, fixed times, pinned rates) is fully
  * unit-testable. `seedScreenshotData` is the thin writer that persists it.
+ *
+ * Scenario (defaults to `'rich'`):
+ * - `'rich'`: the full marketing/regression dataset (accounts, ledger, rates,
+ *   history), lock OFF. Unchanged from before the scenario switch existed.
+ * - `'empty'`: NO accounts, rates, or history, lock OFF — the app renders its
+ *   empty states (empty accounts, home, statistics). Base currency and language
+ *   still apply.
+ * - `'locked'`: the SAME rich dataset, but lock ON, so the cold-launch LockGate
+ *   shows the lock screen for capture.
  */
-export const buildScreenshotDataset = (language: AppLanguage): ScreenshotDataset => ({
-  language,
-  baseCurrency: BASE_CURRENCY,
-  accounts: buildAccounts(),
-  rates: buildRates(),
-  history: buildHistory(),
-});
+export const buildScreenshotDataset = (
+  language: AppLanguage,
+  scenario: ScreenshotScenario = 'rich',
+): ScreenshotDataset => {
+  if (scenario === 'empty') {
+    return {
+      language,
+      baseCurrency: BASE_CURRENCY,
+      accounts: [],
+      rates: [],
+      history: [],
+      lockEnabled: false,
+    };
+  }
+
+  return {
+    language,
+    baseCurrency: BASE_CURRENCY,
+    accounts: buildAccounts(),
+    rates: buildRates(),
+    history: buildHistory(),
+    lockEnabled: scenario === 'locked',
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Writer. Uses the existing repos + the sanctioned write() path only.
@@ -543,10 +578,11 @@ const purge = (): Promise<void> =>
 const applySettings = async (dataset: ScreenshotDataset): Promise<void> => {
   await settingsRepo.setBaseCurrency(dataset.baseCurrency);
   await settingsRepo.setLanguage(dataset.language);
-  // Defensive: a fresh seeded DB is already lock-off (the column defaults
-  // false), but a re-seed over a DB where the user enabled the lock must not
-  // leave a Face ID gate in front of the screenshots.
-  await settingsRepo.setLockEnabled(false);
+  // Set the lock explicitly from the dataset every run: the rich and empty
+  // scenarios force it OFF (a re-seed over a DB where the user enabled the lock
+  // must not leave a Face ID gate in front of the screenshots), while the
+  // `locked` scenario forces it ON to capture the cold-launch LockGate.
+  await settingsRepo.setLockEnabled(dataset.lockEnabled);
 };
 
 const seedHolding = async (accountId: string, holding: SeedHolding): Promise<void> => {
@@ -597,7 +633,7 @@ const seedAccounts = async (dataset: ScreenshotDataset): Promise<void> => {
  * the rate history the charts need.
  */
 export const seedScreenshotData = async (): Promise<void> => {
-  const dataset = buildScreenshotDataset(screenshotLanguage());
+  const dataset = buildScreenshotDataset(screenshotLanguage(), screenshotScenario());
 
   await purge();
   await applySettings(dataset);

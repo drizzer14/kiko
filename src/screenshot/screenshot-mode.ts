@@ -1,6 +1,21 @@
-import { SCREENSHOT_LANG, SCREENSHOT_MODE, SCREENSHOT_STABLE_GLASS } from '@env';
+import {
+  SCREENSHOT_LANG,
+  SCREENSHOT_MODE,
+  SCREENSHOT_SCENARIO,
+  SCREENSHOT_STABLE_GLASS,
+} from '@env';
 
 import { type AppLanguage, appLanguages } from '../i18n';
+
+/**
+ * Which deterministic dataset the screenshot seed builds. `rich` (the default)
+ * is the full marketing dataset; `empty` seeds no accounts so the app shows its
+ * empty states; `locked` seeds the rich dataset but enables the app lock so the
+ * cold-launch `LockGate` shows. See `screenshot-seed.ts`.
+ */
+export type ScreenshotScenario = 'rich' | 'empty' | 'locked';
+
+const SCREENSHOT_SCENARIOS: readonly ScreenshotScenario[] = ['rich', 'empty', 'locked'];
 
 /**
  * Whether a raw `@env` value opts into screenshot mode. Split out as a PURE
@@ -23,6 +38,16 @@ export const parseScreenshotLanguage = (value: string | undefined): AppLanguage 
 };
 
 /**
+ * Resolve the seed scenario from a raw `@env` value, defaulting to `'rich'` when
+ * the key is unset or is not one of the supported scenarios. Pure for the same
+ * testability reason as `parseScreenshotMode`.
+ */
+export const parseScreenshotScenario = (value: string | undefined): ScreenshotScenario =>
+  value !== undefined && (SCREENSHOT_SCENARIOS as readonly string[]).includes(value)
+    ? (value as ScreenshotScenario)
+    : 'rich';
+
+/**
  * DEV/TEST-ONLY flag: `true` only in a build made against `.env.screenshots`
  * (`ENVFILE=.env.screenshots`, which sets `SCREENSHOT_MODE=true`). The committed
  * `.env` carries no such key, so a production build inlines `undefined` here and
@@ -38,6 +63,17 @@ export const isScreenshotMode = (): boolean => parseScreenshotMode(SCREENSHOT_MO
  * one-line env change plus a rebuild, with zero data drift.
  */
 export const screenshotLanguage = (): AppLanguage => parseScreenshotLanguage(SCREENSHOT_LANG);
+
+/**
+ * The dataset scenario the deterministic screenshot seed builds. Read from
+ * `@env`'s `SCREENSHOT_SCENARIO`, defaulting to `'rich'`; the marketing and the
+ * default stable-glass env files leave it unset (so the rich set never drifts),
+ * while `.env.screenshots.empty.stable` and `.env.screenshots.locked.stable`
+ * pin the regression variants. A single env value keeps the empty-state and
+ * lock-screen captures a one-line env change plus a rebuild.
+ */
+export const screenshotScenario = (): ScreenshotScenario =>
+  parseScreenshotScenario(SCREENSHOT_SCENARIO);
 
 /**
  * DEV/TEST-ONLY flag: `true` only in a build made against

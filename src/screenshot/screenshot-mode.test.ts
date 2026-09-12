@@ -3,7 +3,9 @@ import {
   isStableGlass,
   parseScreenshotLanguage,
   parseScreenshotMode,
+  parseScreenshotScenario,
   screenshotLanguage,
+  screenshotScenario,
 } from './screenshot-mode';
 
 // react-native-dotenv INLINES every `@env` value at BUILD time — its Babel
@@ -50,6 +52,24 @@ describe('parseScreenshotLanguage', () => {
   });
 });
 
+describe('parseScreenshotScenario', () => {
+  it('returns the value when it is a supported scenario', () => {
+    expect(parseScreenshotScenario('rich')).toBe('rich');
+    expect(parseScreenshotScenario('empty')).toBe('empty');
+    expect(parseScreenshotScenario('locked')).toBe('locked');
+  });
+
+  it('defaults to "rich" when the value is undefined (key absent)', () => {
+    expect(parseScreenshotScenario(undefined)).toBe('rich');
+  });
+
+  it('defaults to "rich" for any unsupported value', () => {
+    expect(parseScreenshotScenario('RICH')).toBe('rich');
+    expect(parseScreenshotScenario('full')).toBe('rich');
+    expect(parseScreenshotScenario('')).toBe('rich');
+  });
+});
+
 describe('isScreenshotMode', () => {
   it('is false under the committed .env (no SCREENSHOT_MODE key) — production stays unchanged', () => {
     expect(isScreenshotMode()).toBe(false);
@@ -59,6 +79,12 @@ describe('isScreenshotMode', () => {
 describe('screenshotLanguage', () => {
   it('defaults to "en" under the committed .env (no SCREENSHOT_LANG key)', () => {
     expect(screenshotLanguage()).toBe('en');
+  });
+});
+
+describe('screenshotScenario', () => {
+  it('defaults to "rich" under the committed .env (no SCREENSHOT_SCENARIO key)', () => {
+    expect(screenshotScenario()).toBe('rich');
   });
 });
 

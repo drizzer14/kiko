@@ -13,6 +13,12 @@ declare module '@env' {
   // as optional to model that absence honestly — see src/screenshot/.
   export const SCREENSHOT_MODE: string | undefined;
   export const SCREENSHOT_LANG: string | undefined;
+  // DEV/TEST-ONLY (screenshot dataset scenario). Present only in the regression
+  // env files `.env.screenshots.empty.stable` / `.env.screenshots.locked.stable`;
+  // absent from `.env`, `.env.screenshots`, and `.env.screenshots.stable`, so
+  // those builds inline `undefined` and the seed defaults to the rich dataset.
+  // Values: 'rich' | 'empty' | 'locked' — see src/screenshot/screenshot-mode.ts.
+  export const SCREENSHOT_SCENARIO: string | undefined;
   // DEV/TEST-ONLY (STABLE-GLASS regression variant). Present only in
   // `.env.screenshots.stable`, absent from both `.env` and `.env.screenshots`,
   // so production and the real-glass marketing build both inline `undefined`

@@ -67,24 +67,90 @@ SCREENSHOT_NAMES=(
   10-settings-system
 )
 
-# run_flow_and_collect <flow_yaml> <dest_dir>
+# REGRESSION_RICH_NAMES (2026-09-12) — the shot list for `.maestro/
+# regression.yaml`, a SEPARATE flow from the marketing one above (see that
+# file's own header comment for the full rationale). 7 of these 11 names are
+# shared with SCREENSHOT_NAMES (01, 03, 04, 05, 06, 09, 10 — the marketing
+# shots that measured 0% mismatch on the stable-glass build); the 3 mid-scroll
+# marketing shots (02/07/08) are deliberately NOT reproduced here (a
+# non-deterministic shot is simply never captured, rather than captured and
+# excluded — see regression.yaml's header comment); the 4 `r0N-` names are new
+# BREADTH additions (forms + the categories screen) with no marketing
+# equivalent. This is the single source of truth both
+# `scripts/checks/screenshots.sh` (the check) and `scripts/screenshots-
+# baseline.sh` (the baseline producer) read for the rich regression scenario.
+REGRESSION_RICH_NAMES=(
+  01-home-networth
+  03-accounts-grid
+  r01-add-account-form
+  04-account-detail
+  r02-add-holding-form
+  05-holding-detail-ledger
+  r03-add-transaction-form
+  06-statistics-net-worth-line
+  09-settings-main
+  r04-categories
+  10-settings-system
+)
+
+# REGRESSION_EMPTY_NAMES (2026-09-12) — the shot list for `.maestro/
+# regression-empty.yaml`: the app's empty states (no accounts/holdings/
+# transactions). See that file's header comment for which testID or text each
+# shot asserts before capturing.
+REGRESSION_EMPTY_NAMES=(
+  01-home-empty
+  02-accounts-empty
+  03-statistics-empty
+)
+
+# REGRESSION_LOCKED_NAMES (2026-09-12) — the shot list for `.maestro/
+# regression-locked.yaml`: the single app-lock cold-launch gate frame.
+REGRESSION_LOCKED_NAMES=(
+  lock-gate
+)
+
+# run_flow_and_collect <flow_yaml> <dest_dir> [names]
 #
 # Runs the flow via `maestro test --debug-output <temp>`, streaming Maestro's
 # combined output to stdout live (this helper is only ever used from the
 # manual/deep tier, so streaming is allowed — see the kiko-linter skill's
 # wrapper contract) and also saving it to "<dest_dir>/.maestro-output.log" for
 # a caller that wants to quote it in a failure message. Then, for every name
-# in SCREENSHOT_NAMES, searches the `--debug-output` tree for
+# in <names> (see below), searches the `--debug-output` tree for
 # "takeScreenshot/<name>.png" and copies the first match into
 # "<dest_dir>/<name>.png". <dest_dir> is mkdir -p'd first. The temporary
 # `--debug-output` tree is always removed before returning, success or not.
+#
+# <names> (optional, 3rd arg): a single space-separated string of bare shot
+# names (no `.png` extension) — pass it as `"${SOME_NAMES_ARRAY[*]}"`. When
+# omitted, defaults to `"${SCREENSHOT_NAMES[*]}"` (the 10 marketing names),
+# preserving the original two-arg call shape for any caller that still wants
+# the marketing set. This is a plain space-joined string, not an array
+# reference, because this project's `#!/usr/bin/env bash` resolves to the
+# system bash (3.2 on this machine, verified via `bash --version`), which has
+# no nameref (`local -n`, bash 4.3+) or associative-array support — a plain
+# string plus `local -a names; names=($names_arg)` word-split is the
+# lowest-common-denominator way to pass a caller-chosen list through a
+# positional argument. None of the screenshot names in any of the NAMES
+# arrays above contain whitespace, so word-splitting is safe here.
 #
 # Returns Maestro's own exit code. A code 0 does NOT by itself mean every (or
 # any) screenshot was captured — the caller must check <dest_dir>'s contents
 # (a Maestro run that "succeeds" but captures nothing is exactly the failure
 # mode both callers guard against separately).
 run_flow_and_collect() {
-  local flow="$1" dest="$2" debug_dir maestro_out maestro_code name found
+  local flow="$1" dest="$2" names_arg="${3:-}" debug_dir maestro_out maestro_code name found
+  local -a names
+
+  if [ -n "$names_arg" ]; then
+    # Deliberate word-split: $names_arg is always a space-joined list of bare,
+    # hyphenated, whitespace-free screenshot names (see the NAMES arrays
+    # above) — never arbitrary/unsanitized input.
+    # shellcheck disable=SC2206
+    names=($names_arg)
+  else
+    names=("${SCREENSHOT_NAMES[@]}")
+  fi
 
   debug_dir="$(mktemp -d "${TMPDIR:-/tmp}/kiko-maestro-debug.XXXXXX")"
   mkdir -p "$dest"
@@ -94,7 +160,7 @@ run_flow_and_collect() {
   printf '%s\n' "$maestro_out"
   printf '%s\n' "$maestro_out" > "$dest/.maestro-output.log"
 
-  for name in "${SCREENSHOT_NAMES[@]}"; do
+  for name in "${names[@]}"; do
     found="$(find "$debug_dir" -type f -path '*/takeScreenshot/*' -name "${name}.png" 2>/dev/null | head -n 1)"
     if [ -n "$found" ]; then
       cp "$found" "$dest/${name}.png"
