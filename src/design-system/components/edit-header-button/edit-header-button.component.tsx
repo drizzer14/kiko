@@ -23,6 +23,7 @@ const EditHeaderButton: FC<{ onPress: () => void }> = ({ onPress }) => {
       size="compact"
       fullWidth={false}
       icon="pencil"
+      testID="edit-header-button"
       accessibilityLabel={t('common.edit')}
       onPress={onPress}
     >

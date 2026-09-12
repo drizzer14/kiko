@@ -511,7 +511,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         </Button>
       }
     >
-      <Box gap={4}>
+      <Box gap={4} testID="holding-form">
         <HoldingIdentityField
           icon={icon}
           fallbackIcon={holdingTypeSymbol[type]}

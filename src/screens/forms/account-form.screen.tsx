@@ -256,7 +256,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         </Button>
       }
     >
-      <Box gap={4}>
+      <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon
             picker stays visible whatever the kind is. The cash create path
             (createCashAccount) now persists the picked icon in its own atomic

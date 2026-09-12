@@ -8,4 +8,7 @@ export type CategoryFieldProps = {
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. Forwarded to the shared FieldTrigger.
   required?: boolean;
+  // An optional testID forwarded to the field trigger, so a flow can open the
+  // category picker sheet deterministically.
+  testID?: string;
 };

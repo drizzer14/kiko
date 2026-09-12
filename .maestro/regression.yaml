@@ -37,6 +37,36 @@
 #                              holding-detail.screen.tsx)
 #   r04-categories         — the Settings > Categories sub-screen
 #
+# 2026-09-12 visual-regression expansion — 8 further BREADTH shots covering
+# filled EDIT forms, open bottom-sheet modals, and selection controls in a
+# chosen state (see docs/superpowers/plans/2026-09-12-visual-regression-
+# expansion.md). Numbering continues after r04; r12 is captured out of order
+# (between r05 and r02's bond variant) — the `r0N` value is a unique label,
+# not an ordering key (`compare-png.js` enumerates the baseline dir, not the
+# array order):
+#   r05-edit-account-form              — edit-mode AccountForm for the seeded
+#                                         Монобанк account (edit-header-button)
+#   r12-add-holding-bond-form          — the add-holding form switched to the
+#                                         Bond type (bondKind / couponFrequency
+#                                         chip rows in their default state)
+#   r06-edit-holding-form              — edit-mode HoldingForm for the seeded
+#                                         Монобанк card holding
+#   r07-edit-transaction-form          — edit-mode TransactionForm for the
+#                                         newest (salary) ledger row
+#   r08-transaction-category-sheet     — category-picker BottomSheet open
+#   r09-transaction-date-sheet         — date-calendar BottomSheet open
+#   r10-transaction-time-sheet         — native time-spinner BottomSheet open
+#   r11-transaction-category-override-sheet — the "Apply category to all"
+#                                         confirmation BottomSheet, raised by
+#                                         Save after the category picked above
+#                                         changed the row's category
+# r08-r11 are all captured from ONE visit to the transaction edit form
+# (r07's screen): each sheet is a full-screen Modal that would otherwise cover
+# the tab bar, so every open sheet is dismissed first — either a backdrop tap
+# (`transaction-date-backdrop` / `transaction-time-backdrop`) or a row pick
+# that itself closes the sheet (`category-option-groceries`) — before the flow
+# ever taps a tab icon again.
+#
 # NOT included (investigated, not deterministically reachable as a distinct
 # state — see this repo's screenshot-harness handoff notes): a "Settings >
 # Language" SUB-PAGE does not exist. `SystemScreen` (settings/system.screen.tsx)
@@ -106,11 +136,44 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "account-detail-content"
 - takeScreenshot: 04-account-detail
 
+# BREADTH: edit-account form (filled from the seeded Монобанк account)
+- tapOn:
+    id: "edit-header-button"
+- assertVisible:
+    id: "account-form"
+- assertVisible:
+    text: "Монобанк"
+- waitForAnimationToEnd
+- takeScreenshot: r05-edit-account-form
+
+# Reset the Accounts stack to root (tab-blur), then re-enter for the next push.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+
 - tapOn:
     text: "Додати актив"
 - assertVisible:
     text: "Додати актив"
 - takeScreenshot: r02-add-holding-form
+
+# BREADTH: bond variant of the add-holding form (bond fields + bondKind /
+# couponFrequency chip rows in their default selected state).
+- tapOn:
+    text: "Облігація"
+- assertVisible:
+    id: "holding-form"
+- assertVisible:
+    text: "Деталі облігації"
+- waitForAnimationToEnd
+- takeScreenshot: r12-add-holding-bond-form
 
 # Reset the Accounts stack back to root again before re-entering.
 - tapOn:
@@ -152,6 +215,115 @@ appId: com.dmytro-vasylkivskyi.kiko
 - assertVisible:
     text: "Додати транзакцію"
 - takeScreenshot: r03-add-transaction-form
+
+# Reset to root, then re-enter the holding detail before the edit-holding shot.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+- scrollUntilVisible:
+    element:
+      id: "holding-grid-item"
+    direction: DOWN
+- tapOn:
+    id: "holding-grid-item"
+- assertVisible:
+    id: "ledger-list"
+
+# BREADTH: edit-holding form (filled from the seeded Монобанк card holding)
+- tapOn:
+    id: "edit-header-button"
+- assertVisible:
+    id: "holding-form"
+- assertVisible:
+    text: "Монобанк"
+- waitForAnimationToEnd
+- takeScreenshot: r06-edit-holding-form
+
+# Reset to root, then re-enter the holding detail for the transaction shots.
+- tapOn:
+    id: "house.fill"
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+- scrollUntilVisible:
+    element:
+      id: "holding-grid-item"
+    direction: DOWN
+- tapOn:
+    id: "holding-grid-item"
+- assertVisible:
+    id: "ledger-list"
+
+# BREADTH: edit-transaction form (filled from the newest ledger row, salary)
+- tapOn:
+    id: "ledger-row"
+- assertVisible:
+    id: "transaction-form"
+- assertVisible:
+    text: "Зарплата"
+- waitForAnimationToEnd
+- takeScreenshot: r07-edit-transaction-form
+
+# MODAL + SELECTION: category picker sheet open
+- tapOn:
+    id: "transaction-category-field"
+- assertVisible:
+    id: "category-picker-sheet"
+- waitForAnimationToEnd
+- takeScreenshot: r08-transaction-category-sheet
+# Pick a known category — closes the sheet AND marks the category changed
+# (needed so the override sheet r11 appears on Save).
+- tapOn:
+    id: "category-option-groceries"
+
+# MODAL + SELECTION: date calendar sheet open (day already marked selected)
+- tapOn:
+    id: "transaction-date-field"
+- assertVisible:
+    id: "Дата calendar"
+- waitForAnimationToEnd
+- takeScreenshot: r09-transaction-date-sheet
+# Dismiss by tapping the exposed scrim ABOVE the bottom-anchored sheet card;
+# tapping the full-screen backdrop by id center-taps INTO the sheet and never dismisses.
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+
+# MODAL + SELECTION: native time spinner sheet open
+- tapOn:
+    id: "transaction-time-field"
+- assertVisible:
+    id: "Час picker"
+- waitForAnimationToEnd
+- takeScreenshot: r10-transaction-time-sheet
+# Dismiss by tapping the exposed scrim ABOVE the bottom-anchored sheet card;
+# tapping the full-screen backdrop by id center-taps INTO the sheet and never dismisses.
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+
+# MODAL: "Apply category to all" confirmation sheet (category changed above)
+- tapOn:
+    text: "Зберегти"
+- assertVisible:
+    id: "category-override-sheet"
+- waitForAnimationToEnd
+- takeScreenshot: r11-transaction-category-override-sheet
+# Dismiss (Cancel = navigation.goBack) — returns to the ledger.
+- tapOn:
+    text: "Скасувати"
 
 # ---------------------------------------------------------------------------
 # 5. Statistics tab — top block only (shared; no mid-scroll shots here)
