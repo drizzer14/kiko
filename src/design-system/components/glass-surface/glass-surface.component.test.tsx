@@ -1,5 +1,5 @@
 import { render, within } from '@testing-library/react-native';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 // The border width the surface applies comes from Unistyles' own
 // `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so the
 // assertion reads the expected value from the same source the style uses.
@@ -11,6 +11,16 @@ import { darkTheme } from '../../theme';
 // `design-system/components/glass-surface`), not `./glass-surface.component`
 // directly, so this test also exercises index.ts's re-export.
 import GlassSurface from '.';
+import { MAX_SETTLE_ATTEMPTS } from './glass-surface.resample';
+
+// The minimal shape the first-paint re-sample tests below need from a `View`
+// ref/instance — just enough to spy on `measureInWindow`, not the full RN
+// native-methods surface.
+type MeasureInWindowCallback = (x: number, y: number, width: number, height: number) => void;
+
+type MeasurableInstance = {
+  measureInWindow: (callback: MeasureInWindowCallback) => void;
+};
 
 // The global jest/setup.js mock renders LiquidGlassView as a plain View and
 // pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
@@ -283,6 +293,27 @@ describe('GlassSurface', () => {
       liquidGlass.isLiquidGlassSupported = false;
     });
 
+    // `measureInWindow` is a per-instance mock under the RN jest preset
+    // (`MockNativeMethods`), but it is assigned on the shared `View` class
+    // prototype (Babel's loose class-properties transform), not as an own
+    // property of each instance — so spying on ONE instance's prototype (a
+    // throwaway probe view, here) controls `measureInWindow` for every `View`
+    // rendered afterwards, including the one `GlassSurface` attaches its own
+    // `surfaceRef` to.
+    let measurableViewPrototype: MeasurableInstance;
+
+    beforeAll(async () => {
+      let probeInstance: MeasurableInstance | null = null;
+      await render(
+        <View
+          ref={(node) => {
+            probeInstance = node as unknown as MeasurableInstance;
+          }}
+        />,
+      );
+      measurableViewPrototype = Object.getPrototypeOf(probeInstance) as MeasurableInstance;
+    });
+
     // The entity tint is composited into the material via the library's own
     // native `tintColor` prop — a fixed tint no recomposite can wash out — fed
     // the card's own `tint`. `animated={false}` stops the frost-in animation
@@ -487,65 +518,166 @@ describe('GlassSurface', () => {
       expect(getByTestId('bloom-glass-base').props.effect).toBe('clear');
     });
 
-    // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12): a `bloom`
-    // surface on the real glass path has no backdrop under a `'clear'`-effect
-    // `LiquidGlassView`, which samples its backdrop exactly once, at native
-    // layout. `GlassSurface` compensates by scheduling a one-time, two-frame
-    // deferred remount (`needsResample`/`remountToken` in the component) so
-    // the fresh native view lays out (and samples) in the surface's real,
-    // final on-screen position — this is what fixed the categories screen's
-    // `Sortable.Grid`-managed card, which is MEASURED before being
-    // transform-repositioned. Two `requestAnimationFrame` calls (the mock
-    // below runs each synchronously), never a third even across a re-render
-    // with the same props — the ref guard fires the remount exactly once per
-    // mount, not on every render/prop change (which would thrash the native
-    // view on every commit instead of settling once).
-    it('schedules a one-time, two-frame remount for a bloom surface on the real glass path', async () => {
-      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-        cb(0);
-        return 0;
+    // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12, follow-up fix
+    // confirmed 2026-09-12): a `bloom` surface on the real glass path has no
+    // backdrop under a `'clear'`-effect `LiquidGlassView`, which samples its
+    // backdrop exactly once, at native layout. `GlassSurface` compensates by
+    // polling the surface's REAL on-screen position (`measureInWindow`, which
+    // includes a `Sortable.Grid` item's live Reanimated transform, unlike
+    // `onLayout`) every frame until two consecutive reads agree, then
+    // remounting exactly once (`needsResample`/`remountToken`, decision math
+    // in `glass-surface.resample.ts`). A fixed 2-frame delay (the original
+    // fix) raced this transform and lost for any card whose transform had not
+    // yet landed by frame 2 — only cards near the top of the grid happened to
+    // settle that fast. These tests drive `measureInWindow` (mocked on the
+    // shared `View` prototype — see `probeViewPrototype` above) through a
+    // scripted sequence of on-screen reads to prove the loop actually keeps
+    // polling past frame 2 rather than assuming a fixed duration.
+    describe('bloom re-sample settle loop', () => {
+      let measureInWindowSpy: ReturnType<typeof jest.spyOn>;
+
+      beforeEach(() => {
+        measureInWindowSpy = jest.spyOn(measurableViewPrototype, 'measureInWindow');
       });
 
-      const { getByTestId, rerender } = await render(
-        <GlassSurface testID="bloom-resample-glass" transparent bloom>
-          <Text>content</Text>
-        </GlassSurface>,
-      );
-
-      expect(rafSpy).toHaveBeenCalledTimes(2);
-      expect(getByTestId('bloom-resample-glass-base').props.effect).toBe('clear');
-
-      rerender(
-        <GlassSurface testID="bloom-resample-glass" transparent bloom>
-          <Text>content</Text>
-        </GlassSurface>,
-      );
-
-      // Still 2, not 4: the same mounted instance never reschedules.
-      expect(rafSpy).toHaveBeenCalledTimes(2);
-
-      rafSpy.mockRestore();
-    });
-
-    // The opt-in check for the re-sample itself: a surface that never sets
-    // `bloom` already samples correctly on the first frame (it keeps a real
-    // backdrop, or the standard `'regular'` effect), so it must not pay for
-    // an extra native remount it does not need.
-    it('does not schedule a remount for a non-bloom surface on the real glass path', async () => {
-      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-        cb(0);
-        return 0;
+      afterEach(() => {
+        measureInWindowSpy.mockRestore();
       });
 
-      await render(
-        <GlassSurface testID="not-bloom-resample-glass" transparent>
-          <Text>content</Text>
-        </GlassSurface>,
-      );
+      // The minimum-latency case (a top-of-grid card, or the previously-safe
+      // fixed-2-frame path): the position already matches on the very next
+      // read, so the loop settles — and remounts — after exactly two reads,
+      // never fewer (a single read has nothing to compare against) and never
+      // more.
+      it('remounts once two consecutive reads agree, for a card whose position is already settled', async () => {
+        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+          cb(0);
+          return 0;
+        });
 
-      expect(rafSpy).not.toHaveBeenCalled();
+        try {
+          measureInWindowSpy.mockImplementation((callback: MeasureInWindowCallback) =>
+            callback(0, 100, 0, 0),
+          );
 
-      rafSpy.mockRestore();
+          const { getByTestId, rerender } = await render(
+            <GlassSurface testID="bloom-resample-glass" transparent bloom>
+              <Text>content</Text>
+            </GlassSurface>,
+          );
+
+          expect(measureInWindowSpy).toHaveBeenCalledTimes(2);
+          expect(rafSpy).toHaveBeenCalledTimes(2);
+          expect(getByTestId('bloom-resample-glass-base').props.effect).toBe('clear');
+
+          rerender(
+            <GlassSurface testID="bloom-resample-glass" transparent bloom>
+              <Text>content</Text>
+            </GlassSurface>,
+          );
+
+          // Still 2, not 4: the same mounted instance never reschedules once
+          // it has already resampled.
+          expect(measureInWindowSpy).toHaveBeenCalledTimes(2);
+          expect(rafSpy).toHaveBeenCalledTimes(2);
+        } finally {
+          rafSpy.mockRestore();
+        }
+      });
+
+      // The confirmed bug scenario: a lower-in-the-grid card's position
+      // transform keeps moving past frame 2. The old fixed-2-frame remount
+      // would have fired here regardless, sampling nothing solid. The settle
+      // loop instead keeps polling — six reads here — until the position
+      // finally repeats, and only remounts then.
+      it('keeps polling past a fixed 2-frame count while the position keeps moving, and remounts once it settles', async () => {
+        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+          cb(0);
+          return 0;
+        });
+
+        try {
+          const positions = [10, 40, 90, 150, 150, 150];
+          let call = 0;
+          // `measureInWindow`'s callback recurses synchronously all the way
+          // back into another `measureInWindow` call under the mocked,
+          // synchronous `requestAnimationFrame` above, so the index must be
+          // captured and advanced BEFORE invoking `callback` — advancing it
+          // afterwards would read the same stale index on every nested call.
+          measureInWindowSpy.mockImplementation((callback: MeasureInWindowCallback) => {
+            const index = call;
+            call += 1;
+            callback(0, positions[index], 0, 0);
+          });
+
+          await render(
+            <GlassSurface testID="bloom-resample-glass-slow" transparent bloom>
+              <Text>content</Text>
+            </GlassSurface>,
+          );
+
+          // Settles on the 5th read matching the 4th (both 150) — never at
+          // frame 2, proving the loop did not assume a fixed duration.
+          expect(measureInWindowSpy).toHaveBeenCalledTimes(5);
+          expect(rafSpy).toHaveBeenCalledTimes(5);
+        } finally {
+          rafSpy.mockRestore();
+        }
+      });
+
+      // The bounded-loop guarantee: a position that never repeats (e.g. a
+      // continuously animating card) must not poll forever — the loop caps
+      // out at `MAX_SETTLE_ATTEMPTS` and remounts anyway rather than leaving
+      // the card unsampled indefinitely.
+      it('caps the settle loop and remounts anyway if the position never stops changing', async () => {
+        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+          cb(0);
+          return 0;
+        });
+
+        try {
+          let y = 0;
+          measureInWindowSpy.mockImplementation((callback: MeasureInWindowCallback) => {
+            y += 1;
+            callback(0, y, 0, 0);
+          });
+
+          await render(
+            <GlassSurface testID="bloom-resample-glass-never-settles" transparent bloom>
+              <Text>content</Text>
+            </GlassSurface>,
+          );
+
+          expect(measureInWindowSpy).toHaveBeenCalledTimes(MAX_SETTLE_ATTEMPTS);
+          expect(rafSpy).toHaveBeenCalledTimes(MAX_SETTLE_ATTEMPTS);
+        } finally {
+          rafSpy.mockRestore();
+        }
+      });
+
+      // The opt-in check for the re-sample itself: a surface that never sets
+      // `bloom` already samples correctly on the first frame (it keeps a real
+      // backdrop, or the standard `'regular'` effect), so it must not pay for
+      // an extra native remount it does not need.
+      it('does not schedule a remount for a non-bloom surface on the real glass path', async () => {
+        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+          cb(0);
+          return 0;
+        });
+
+        try {
+          await render(
+            <GlassSurface testID="not-bloom-resample-glass" transparent>
+              <Text>content</Text>
+            </GlassSurface>,
+          );
+
+          expect(rafSpy).not.toHaveBeenCalled();
+          expect(measureInWindowSpy).not.toHaveBeenCalled();
+        } finally {
+          rafSpy.mockRestore();
+        }
+      });
     });
 
     // The opt-in check on the real glass path: with no `bloom`, the material
