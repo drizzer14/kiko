@@ -184,6 +184,20 @@ describe('BottomSheet', () => {
 
       expect(queryByTestId(`${SHEET_TEST_ID}-glass-wash`)).toBeNull();
     });
+
+    // The sheet's glass also takes `bloom` (the app-wide rollout). Since
+    // `material` already renders no backdrop, the only change here is the
+    // native effect switching from `'regular'` to `'clear'` — Apple's more
+    // transparent, less legibility-biased material.
+    it('switches the native glass to the clear style with bloom applied', async () => {
+      const { getByTestId } = await render(
+        <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      expect(getByTestId(`${SHEET_TEST_ID}-glass-base`).props.effect).toBe('clear');
+    });
   });
 
   // The scrim, grabber, and children all still render once the card routes

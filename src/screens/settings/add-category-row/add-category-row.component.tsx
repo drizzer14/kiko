@@ -81,7 +81,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
       // treatment as every category card above it — so it reads as the final
       // item in the stack rather than a leftover list row. No gradient: it has
       // no entity color of its own yet.
-      <GlassSurface testID="add-category-card" padding={4} bordered>
+      <GlassSurface testID="add-category-card" padding={4} bordered bloom>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('categories.addCategory')}
@@ -103,7 +103,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   }
 
   return (
-    <GlassSurface testID="add-category-card" padding={4} bordered>
+    <GlassSurface testID="add-category-card" padding={4} bordered bloom>
       <Box gap={3}>
         {/* The shared identity field in its caption-free (dense list) mode, so
             the icon chip and the name field line up at equal height — matching

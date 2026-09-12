@@ -191,6 +191,24 @@ describe('GlassSurface', () => {
     expect(queryByTestId('strong-fallback-wash')).toBeNull();
   });
 
+  // Combining `bloom` with `translucentStrong` must not disturb the non-glass
+  // FALLBACK path: `resolveFallbackFill` checks `isStrong` before `isBloom`,
+  // so the fallback keeps the SAME stronger translucent fill either way —
+  // there is no real optical sampling on this path for `bloom` to strengthen,
+  // and `translucentStrong`'s own token already wins the precedence.
+  it('keeps the stronger translucent fallback fill unchanged when bloom is combined with translucentStrong', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <GlassSurface testID="strong-bloom-fallback" translucentStrong bloom>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    const flat = StyleSheet.flatten(getByTestId('strong-bloom-fallback-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+    expect(queryByTestId('strong-bloom-fallback-backdrop')).toBeNull();
+    expect(queryByTestId('strong-bloom-fallback-wash')).toBeNull();
+  });
+
   // Device-only regression (encoded here as a JS-composition assertion, since
   // Jest renders LiquidGlass as a plain View and cannot reproduce the native
   // glass recomposite): the wash must be a SIBLING layered OVER the base
@@ -479,6 +497,32 @@ describe('GlassSurface', () => {
       expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
       expect(getByTestId('tinted-bloom-glass-base').props.tintColor).toBe(tint);
       expect(getByTestId('tinted-bloom-glass-base').props.effect).toBe('regular');
+    });
+
+    // The app-wide bloom rollout's key reconciliation: the Home transaction
+    // card combines `translucentStrong` (its own stronger backdrop pin + dark
+    // wash) with `bloom`. `resolveBackdropFill` checks `isBloom` BEFORE
+    // `isStrong`, so `bloom` wins on the backdrop — it is removed entirely,
+    // same as a plain `bloom`-only surface, re-admitting the live sample
+    // `translucentStrong`'s pin exists to prevent. `resolveWashFill`, by
+    // contrast, is driven by `isStrong` alone and never reads `isBloom`, so
+    // the neutral dark `surfaceWashStrong` wash keeps painting OVER the now-
+    // backdrop-less, `'clear'`-effect glass — COMBINE, not replace: the dark
+    // wash stays (for row-text legibility), only the anti-drift backdrop pin
+    // is traded away for bloom's live sample.
+    it('removes the backdrop and switches to the clear effect but keeps the dark wash when bloom is combined with translucentStrong', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="strong-bloom-glass" translucentStrong bloom>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(queryByTestId('strong-bloom-glass-backdrop')).toBeNull();
+      expect(getByTestId('strong-bloom-glass-base').props.effect).toBe('clear');
+
+      const wash = getByTestId('strong-bloom-glass-wash');
+      const washFlat = StyleSheet.flatten(wash.props.style);
+      expect(washFlat.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
     });
 
     // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.

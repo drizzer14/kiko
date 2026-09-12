@@ -65,8 +65,15 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `glass-surface.props.d.ts`'s `material` doc for the full distinction; this
  * was `transparent` before, which painted a translucent `surfaceTranslucent`
  * backdrop UNDER the glass and muted the live sample into a near-solid dark
- * panel — device feedback). It is rendered as an absolutely-positioned first
- * child (`styles.glassFill`), painted BEHIND the grabber and the body content
+ * panel — device feedback). It also takes `bloom` (part of the app-wide
+ * bloom rollout — see `glass-surface.props.d.ts`'s `bloom` doc): since
+ * `material` already renders no backdrop on the glass path, the only change
+ * `bloom` adds here is switching the native `UIGlassEffect` style from
+ * `'regular'` to `'clear'`, Apple's more transparent, less legibility-biased
+ * material — consistent with the sheet already being the live-sample,
+ * static-backdrop surface `bloom` is designed for. It is rendered as an
+ * absolutely-positioned first child (`styles.glassFill`), painted BEHIND the
+ * grabber and the body content
  * that follow it in JSX, so every sheet in the app picks this up from this one
  * change point. `padding={0}` keeps the card's own existing padding
  * (`styles.sheet`) as the single inset — `GlassSurface`'s own `padding` prop
@@ -193,6 +200,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         >
           <GlassSurface
             material
+            bloom
             radius="lg"
             padding={0}
             style={styles.glassFill}

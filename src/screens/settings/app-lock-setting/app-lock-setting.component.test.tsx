@@ -1,6 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
 import AppLockSetting from './app-lock-setting.component';
 
@@ -29,6 +31,20 @@ describe('AppLockSetting', () => {
     expect(queryByText(/Set a device passcode/)).toBeNull();
     expect(queryByText(/unavailable/)).toBeNull();
     expect(queryByText(/No Face ID enrolled/)).toBeNull();
+  });
+
+  // The app-wide bloom rollout: this card carries no `transparent`/`material`
+  // variant, so before bloom its non-glass fallback rendered the plain,
+  // OPAQUE themed `surface` fill. Adding `bloom` (see GlassSurface's
+  // `resolveFallbackFill`) makes the fallback fill TRANSLUCENT instead —
+  // the one observable-under-Jest regression bloom's fallback path
+  // introduces for a previously-plain surface.
+  it('fills the App Lock card fallback base with the translucent bloom token, not the plain opaque surface', async () => {
+    const { getByTestId } = await renderSetting();
+
+    const flat = StyleSheet.flatten(getByTestId('settings-card-app-lock-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(flat.backgroundColor).not.toBe(darkTheme.colors.surface);
   });
 
   it('reports a toggle', async () => {

@@ -298,7 +298,7 @@ describe('HomeScreen', () => {
     expect(getAllByTestId('transaction-row').length).toBeGreaterThan(0);
   });
 
-  it("renders the transaction card through GlassSurface's stronger-translucent translucentStrong backdrop variant", async () => {
+  it("renders the transaction card through GlassSurface's stronger-translucent translucentStrong backdrop variant, reconciled with the app-wide bloom rollout", async () => {
     // The row uses GlassSurface's `translucentStrong` variant — a MORE-opaque
     // (0.80 alpha) translucent backdrop pinned UNDER the glass, so the card
     // stays see-through but drifts LESS in lightness on scroll than either
@@ -311,6 +311,18 @@ describe('HomeScreen', () => {
     // refraction, so a neutral dark overlay painted OVER the finished glass is
     // what actually makes the card read darker). The default seed (beforeEach)
     // is a single transaction, so exactly one row renders.
+    //
+    // The row ALSO takes `bloom` (the app-wide rollout). On the fallback path
+    // this changes nothing — `resolveFallbackFill` checks `isStrong` before
+    // `isBloom`, so the stronger translucent fill still wins. On the real
+    // glass path it is the key reconciliation: `bloom` wins the BACKDROP
+    // (removed entirely, re-admitting the live sample `translucentStrong`'s
+    // pin exists to prevent) and switches the native effect to `'clear'`, but
+    // the dark `-wash` is UNCHANGED — `resolveWashFill` is driven by
+    // `translucentStrong` alone and never reads `bloom` — so it keeps painting
+    // over the now-backdrop-less glass. COMBINE, not replace: the dark wash
+    // stays for row-text legibility; only the anti-drift backdrop pin is
+    // traded away for bloom's live sample.
     const { getByTestId: getByTestIdFallback, queryByTestId: queryByTestIdFallback } =
       await renderHome();
     const fallbackBase = StyleSheet.flatten(
@@ -321,15 +333,15 @@ describe('HomeScreen', () => {
 
     try {
       liquidGlass.isLiquidGlassSupported = true;
-      // `translucentStrong`'s whole point: on the live-glass path it paints a
-      // `-backdrop` layer filled with the stronger translucent color AND a
-      // `-wash` layer filled with the neutral dark overlay. This pins the
-      // variant — it fails if the row is reverted to `material` (no backdrop,
-      // no wash) or to `transparent` (a 0.60-alpha backdrop, no wash at all).
-      const { getByTestId } = await renderHome();
-      const backdrop = StyleSheet.flatten(getByTestId('transaction-row-backdrop').props.style);
-      expect(backdrop.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
+      // `bloom` wins on the backdrop: it is entirely absent, not just a
+      // different fill — this fails if the row ever drops `bloom` and reverts
+      // to plain `translucentStrong`'s pinned backdrop.
+      const { getByTestId, queryByTestId } = await renderHome();
+      expect(queryByTestId('transaction-row-backdrop')).toBeNull();
+      expect(getByTestId('transaction-row-base').props.effect).toBe('clear');
 
+      // The dark wash survives the reconciliation — legibility is preserved
+      // even though the backdrop pin is gone.
       const wash = StyleSheet.flatten(getByTestId('transaction-row-wash').props.style);
       expect(wash.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
     } finally {

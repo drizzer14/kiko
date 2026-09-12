@@ -240,6 +240,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     return (
       <GlassSurface
         transparent
+        bloom
         padding={3}
         testID="ledger-row"
         style={row.entry.isFuture ? styles.futureRow : undefined}
@@ -291,7 +292,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       radius={theme.radii.md}
     >
       <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
-        <GlassSurface transparent padding={3} testID="ledger-row">
+        <GlassSurface transparent bloom padding={3} testID="ledger-row">
           <Box gap={1}>
             <Box direction="row" style={styles.rowMain}>
               <Box direction="row" gap={2} style={styles.rowLead}>

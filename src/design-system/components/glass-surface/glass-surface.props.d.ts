@@ -98,11 +98,13 @@ export type GlassSurfaceProps = ViewProps & {
   // to `false`.
   material?: boolean;
   // Opts the surface into MAXIMUM live-sampling by the real Liquid Glass
-  // material — a BASE-GLASS property (not tied to any one variant) that
-  // other variants could later inherit, rather than a one-off baked into
-  // `transparent`. STAGE 1: applied to exactly one surface today, the
-  // Statistics account-contribution pie card, to prove the mechanism before
-  // any wider rollout.
+  // material — a BASE-GLASS property (not tied to any one variant), applied
+  // APP-WIDE to every neutral (non-`tint`) `GlassSurface` consumer: every
+  // Statistics chart card, the Settings/System/category cards, the Home
+  // net-worth card, the BottomSheet's shared `material` glass fill, the
+  // Home transaction row (`translucentStrong`), and the holding-detail
+  // ledger rows. Proved first on exactly one surface (the Statistics
+  // account-contribution pie card) before this rollout.
   //
   // The Settings category card (`categories.screen.tsx`'s `CategoryCard`,
   // `transparent bordered`) already shows a weak version of this on-device
@@ -131,12 +133,28 @@ export type GlassSurfaceProps = ViewProps & {
   // stable — see the `tint` prop's drift-fix doc) always wins over `bloom`,
   // the same precedence as every other neutral variant.
   //
+  // Composable with `translucentStrong` too — the Home transaction row's
+  // case, and the one place this composition matters most since it is a
+  // SCROLLING card. `resolveBackdropFill`'s precedence checks `isBloom`
+  // before `isStrong`, so `bloom` wins on the backdrop: the 0.80-alpha pin
+  // is removed and the glass live-samples the real screen behind the row.
+  // `resolveWashFill`, by contrast, is driven by `isStrong` alone and does
+  // not read `isBloom` at all, so `translucentStrong`'s neutral dark
+  // `surfaceWashStrong` overlay keeps painting OVER the now-backdrop-less,
+  // `'clear'`-effect glass. This is a deliberate, coherent combination, not
+  // an accidental side effect of the shared precedence: the dark wash is
+  // KEPT for row-text legibility over the now-live-sampling material, while
+  // the backdrop pin — the anti-drift mechanism `translucentStrong` exists
+  // for — is the one thing `bloom` intentionally trades away on this
+  // surface, per the product decision to accept the resulting drift
+  // everywhere bloom is applied, including scrolling rows.
+  //
   // TRADEOFF, stated explicitly: MORE live sampling means MORE lightness/
   // color drift on a card whose surroundings change — the exact instability
   // `translucentStrong`'s pin (the Home transaction row) exists to kill.
-  // `bloom` is therefore reached for ONLY on a STATIC surface with nothing
-  // scrolling behind or around it (a Settings/category card, a Statistics
-  // chart card) — never a scrolling list row. Defaults to `false`.
+  // Applied app-wide per an explicit product decision (see the doc above)
+  // that knowingly accepts this drift even on a scrolling surface, not only
+  // a static one. Defaults to `false`.
   bloom?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the

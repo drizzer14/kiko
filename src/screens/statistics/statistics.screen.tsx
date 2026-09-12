@@ -748,7 +748,7 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-line" transparent padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-line" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
@@ -763,7 +763,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-bar" transparent padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-bar" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.byType')}
@@ -773,11 +773,6 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        {/* STAGE 1 of the live-bloom rollout (`GlassSurface`'s `bloom` prop):
-            this is the one representative surface the mechanism is proven
-            on before any wider app-wide rollout — see the prop's own doc
-            comment for the exact tuning and the drift tradeoff it accepts
-            (a STATIC card, never a scrolling one). */}
         <GlassSurface testID="statistics-block-pie" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
@@ -788,7 +783,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-category" transparent padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-category" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.expensesByCategory')}
@@ -816,7 +811,7 @@ const StatisticsScreen: FC = () => {
           </Box>
         </GlassSurface>
 
-        <GlassSurface testID="statistics-block-trend" transparent padding={4} radius="lg">
+        <GlassSurface testID="statistics-block-trend" transparent bloom padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.spendingTrendByCategory')}

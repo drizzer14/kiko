@@ -43,7 +43,7 @@ const SystemScreen: FC<SystemScreenProps> = () => {
   return (
     <Screen scroll>
       <Box gap={4}>
-        <GlassSurface testID="settings-card-language" padding={3}>
+        <GlassSurface testID="settings-card-language" padding={3} bloom>
           <SettingsRow testID="settings-row-language" icon="globe" label={t('settings.language')}>
             <LanguageSwitch selected={effectiveLanguage} onSelect={handleSelectLanguage} />
           </SettingsRow>

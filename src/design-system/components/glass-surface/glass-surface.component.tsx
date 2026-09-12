@@ -125,9 +125,14 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
 // instead of the muted, partially-pinned bleed `transparent`'s own 0.60-alpha
 // backdrop already lets through weakly (see the Settings category card,
 // which shows exactly this today). It injects no color of its own — never a
-// painted overlay, gradient layer, or drop-shadow. STAGE 1: wired to exactly
-// one consumer, the Statistics account-contribution pie card, a STATIC
-// surface where the drift tradeoff below does not apply.
+// painted overlay, gradient layer, or drop-shadow. Proved first on exactly
+// one consumer (the Statistics account-contribution pie card), then rolled
+// out app-wide to every neutral (non-`tint`) `GlassSurface` — including the
+// Home transaction row's `translucentStrong` card and the holding-detail
+// ledger rows, both scrolling surfaces where the drift tradeoff below was
+// knowingly accepted rather than avoided (see the `bloom` prop doc's
+// "Composable with `translucentStrong`" paragraph for the transaction row's
+// exact backdrop-removed/wash-kept combination).
 //
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
