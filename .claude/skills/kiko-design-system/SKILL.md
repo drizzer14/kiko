@@ -300,6 +300,37 @@ new component can land between reviews of this skill:
   wins over `transparent`. Read
   `glass-surface.props.d.ts` for the exact current prop set rather than
   trusting this summary if it drifts.
+
+  **`bloom`'s first-paint re-sample.** `bloom` (see the prop's own doc)
+  opts a neutral surface into maximum live-sampling: on the real glass
+  path it renders a `LiquidGlassView` with NO backdrop under it and
+  `effect="clear"`. A `'clear'`-effect glass samples its backdrop exactly
+  once, at native layout — there is no imperative re-sample API. Confirmed
+  2026-09-12: the categories screen's category card (`transparent bloom`,
+  a `react-native-sortables` `Sortable.Grid` item) rendered fully
+  transparent on first paint on iOS 26+, because Sortable MEASURES an item
+  first and only then transform-repositions it — the glass's one-shot
+  sample fired during that measure pass, before the transform landed, with
+  nothing solid behind it yet. Dragging the card "fixed" it only because a
+  drag teleports the card into a portal, which remounts a fresh
+  `LiquidGlassView` already in its real position. The Statistics
+  account-contribution pie card (also `transparent bloom`) never showed
+  this, because it is a plain `<Screen scroll>` child that lays out once,
+  already in its final spot — the same combination of props, two different
+  layout containers, only one of them broken. `GlassSurface` now
+  compensates for this ITSELF, generically, for every `bloom` consumer: a
+  one-time, two-`requestAnimationFrame`-deferred remount
+  (`needsResample`/`remountToken`/`hasResampled` in the component) forces
+  a fresh native `LiquidGlassView` after the surface has settled into its
+  real on-screen position, whatever container placed it there. This is
+  transparent to a consumer — nothing about writing `<GlassSurface
+  transparent bloom>` changes — and `bloom`'s own documented no-backdrop/
+  `'clear'`-effect semantics are unchanged; only the shared component
+  gained a compensating one-shot re-sample. A `bloom` surface that is
+  itself STATIC and never re-triggered by anything else (a settings card,
+  a chart card, a list row) no longer needs a scroll/drag/animation to
+  become visible — the fix lives in `GlassSurface`, not in any consumer's
+  layout choice.
 - **BottomSheet** — the one bottom-sheet primitive: a transparent
   `Modal`, a full-bleed dismiss scrim, and a bottom-anchored sheet
   card owning its own safe-area-aware bottom padding. Every sheet in

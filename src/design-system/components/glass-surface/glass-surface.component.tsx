@@ -1,5 +1,5 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import type { FC, ReactNode } from 'react';
+import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
 import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -134,6 +134,13 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
 // "Composable with `translucentStrong`" paragraph for the transaction row's
 // exact backdrop-removed/wash-kept combination).
 //
+// A backdrop-less `'clear'`-effect glass only samples once, at native
+// layout — see the `needsResample`/`remountToken` block below for the
+// one-shot post-mount re-sample this component now performs for exactly
+// that combination, and why a `Sortable.Grid`-managed card (the category
+// card) needed it while a plain `<Screen scroll>` child (the Statistics pie
+// card) did not.
+//
 // `animated={false}` stops the frost-in animation replaying on every remount.
 // react-native-sortables teleports the dragged card into a portal, remounting
 // a fresh `LiquidGlassView`; with the library's `animated` default of `true`
@@ -184,6 +191,52 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // prop doc): a `tint` still wins over it for the same reason as the other
   // neutral variants.
   const isBloom = bloom && tint === undefined;
+  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12 on the categories
+  // screen's `Sortable.Grid`-managed card). `bloom` on the real glass path
+  // renders a backdrop-less `LiquidGlassView` with `effect="clear"` (see
+  // `glassEffect`/`base` below). A `'clear'`-effect glass samples its
+  // backdrop exactly once, at native layout — there is no imperative
+  // re-sample API. A surface that mounts inside `react-native-sortables`'
+  // `Sortable.Grid` (the category card) is MEASURED by Sortable first, then
+  // transform-repositioned into its real on-screen spot; the glass's
+  // one-shot sample fires during that measure pass, before the transform
+  // lands, capturing nothing solid — the card then reads fully transparent
+  // until an unrelated event (a drag, which teleports the card into a portal
+  // and remounts a fresh `LiquidGlassView` already in its real position)
+  // forces a second sample. Generalizes the deferred-remount mechanism
+  // 9d69a77 removed (originally 881cbfc, there keyed off a since-removed
+  // light/dark scheme flip): `remountToken` flips EXACTLY ONCE, on a
+  // post-mount frame (see the effect below), forcing React to tear down and
+  // recreate the `LiquidGlassView` with a fresh `key` so the fresh view lays
+  // out — and samples — in the surface's real, final position. Scoped to
+  // `needsResample` (glass-path `bloom` only): every other variant is
+  // already pinned by its own backdrop/wash layer on the first frame and
+  // never needed a second native remount.
+  const needsResample = isBloom && isLiquidGlassSupported;
+  const [remountToken, setRemountToken] = useState(0);
+  const hasResampled = useRef(false);
+  useEffect(() => {
+    if (!needsResample || hasResampled.current) {
+      return;
+    }
+    hasResampled.current = true;
+    // Two frames, not one: the surface commits into its initial spot on the
+    // first frame, and Sortable's own worklet-driven position transform can
+    // land anywhere in that same frame or the next one, so waiting a second
+    // frame ensures the remount happens strictly after the transform, never
+    // racing it (the same reasoning 881cbfc used to let a scheme flip's
+    // interface-style trait settle before its own remount).
+    let inner: number | undefined;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setRemountToken((token) => token + 1));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      if (inner !== undefined) {
+        cancelAnimationFrame(inner);
+      }
+    };
+  }, [needsResample]);
   // The backdrop UNDER the glass, and its fill, both depend on the variant:
   //   - a tinted entity card gets the OPAQUE `surface` fill — a fixed color the
   //     translucent glass samples so the card's lightness cannot drift and the
@@ -244,6 +297,13 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   const glassEffect = isBloom ? 'clear' : 'regular';
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
+      // `key={remountToken}` is the first-paint re-sample fix above: it stays
+      // `0` (never remounts) for every surface but a `bloom` one, and flips
+      // exactly once, on a post-mount frame, for a `bloom` surface — forcing
+      // a fresh native view that lays out (and samples) in this surface's
+      // real, final position rather than wherever it was when first
+      // measured.
+      key={remountToken}
       // The app is dark-only (native chrome is pinned dark via
       // `UIUserInterfaceStyle`), so the glass material samples its backdrop
       // under a fixed dark interface style — no scheme flip to repaint for.

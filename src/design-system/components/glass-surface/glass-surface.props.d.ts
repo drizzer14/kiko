@@ -155,6 +155,28 @@ export type GlassSurfaceProps = ViewProps & {
   // Applied app-wide per an explicit product decision (see the doc above)
   // that knowingly accepts this drift even on a scrolling surface, not only
   // a static one. Defaults to `false`.
+  //
+  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12). The real glass
+  // path's `LiquidGlassView` has NO backdrop under it when `bloom` is set
+  // (see above) and runs with `effect="clear"` (see the component's
+  // `glassEffect`) — a `'clear'`-effect glass samples its backdrop exactly
+  // once, at native layout, with no imperative re-sample API. That is fine
+  // for a surface that lays out once, already in its real on-screen
+  // position (a plain `<Screen scroll>` child, e.g. the Statistics pie
+  // card). It is NOT fine for a surface managed by
+  // `react-native-sortables`' `Sortable.Grid` (the categories screen's
+  // category card): Sortable MEASURES each item first, then
+  // transform-repositions it, so the glass's one-shot sample fired during
+  // the measure pass — before the transform landed, with nothing solid to
+  // sample — leaving the card fully transparent until an unrelated event
+  // (a drag, which teleports the card into a portal and remounts a fresh
+  // `LiquidGlassView` already in its final position) forced a second
+  // sample. `GlassSurface` now compensates for this ITSELF: a `bloom`
+  // surface on the real glass path gets exactly one forced remount on a
+  // post-mount frame (`needsResample`/`remountToken` in the component),
+  // regardless of what kind of layout container it sits in — no consumer
+  // needs to opt into or work around this, and `bloom`'s own no-backdrop/
+  // `'clear'`-effect semantics documented above are unchanged.
   bloom?: boolean;
   // Draws the shared card edge: a hairline separator border in the theme's
   // `border` token. Routed through a Unistyles-managed style member inside the

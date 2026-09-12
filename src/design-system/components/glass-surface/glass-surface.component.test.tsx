@@ -170,6 +170,28 @@ describe('GlassSurface', () => {
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
+  // The first-paint re-sample fix (see the "on liquid-glass-capable iOS"
+  // describe block below) exists only to force a fresh native
+  // `LiquidGlassView` to re-sample — there is no real optical sampling on
+  // the non-glass fallback path at all, so `bloom` here must not schedule
+  // one even though it is set.
+  it('does not schedule a remount for a bloom surface on the non-glass fallback path', async () => {
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+
+    await render(
+      <GlassSurface testID="bloom-fallback-resample" bloom>
+        <Text>content</Text>
+      </GlassSurface>,
+    );
+
+    expect(rafSpy).not.toHaveBeenCalled();
+
+    rafSpy.mockRestore();
+  });
+
   // `translucentStrong` (item, the Home transaction card's variant) must ALSO
   // fill the non-glass fallback base with its OWN stronger token, not
   // `transparent`'s — same pattern as the `transparent`/`material` fallback
@@ -463,6 +485,67 @@ describe('GlassSurface', () => {
 
       expect(queryByTestId('bloom-glass-backdrop')).toBeNull();
       expect(getByTestId('bloom-glass-base').props.effect).toBe('clear');
+    });
+
+    // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12): a `bloom`
+    // surface on the real glass path has no backdrop under a `'clear'`-effect
+    // `LiquidGlassView`, which samples its backdrop exactly once, at native
+    // layout. `GlassSurface` compensates by scheduling a one-time, two-frame
+    // deferred remount (`needsResample`/`remountToken` in the component) so
+    // the fresh native view lays out (and samples) in the surface's real,
+    // final on-screen position — this is what fixed the categories screen's
+    // `Sortable.Grid`-managed card, which is MEASURED before being
+    // transform-repositioned. Two `requestAnimationFrame` calls (the mock
+    // below runs each synchronously), never a third even across a re-render
+    // with the same props — the ref guard fires the remount exactly once per
+    // mount, not on every render/prop change (which would thrash the native
+    // view on every commit instead of settling once).
+    it('schedules a one-time, two-frame remount for a bloom surface on the real glass path', async () => {
+      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+        cb(0);
+        return 0;
+      });
+
+      const { getByTestId, rerender } = await render(
+        <GlassSurface testID="bloom-resample-glass" transparent bloom>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(rafSpy).toHaveBeenCalledTimes(2);
+      expect(getByTestId('bloom-resample-glass-base').props.effect).toBe('clear');
+
+      rerender(
+        <GlassSurface testID="bloom-resample-glass" transparent bloom>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      // Still 2, not 4: the same mounted instance never reschedules.
+      expect(rafSpy).toHaveBeenCalledTimes(2);
+
+      rafSpy.mockRestore();
+    });
+
+    // The opt-in check for the re-sample itself: a surface that never sets
+    // `bloom` already samples correctly on the first frame (it keeps a real
+    // backdrop, or the standard `'regular'` effect), so it must not pay for
+    // an extra native remount it does not need.
+    it('does not schedule a remount for a non-bloom surface on the real glass path', async () => {
+      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+        cb(0);
+        return 0;
+      });
+
+      await render(
+        <GlassSurface testID="not-bloom-resample-glass" transparent>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      expect(rafSpy).not.toHaveBeenCalled();
+
+      rafSpy.mockRestore();
     });
 
     // The opt-in check on the real glass path: with no `bloom`, the material
