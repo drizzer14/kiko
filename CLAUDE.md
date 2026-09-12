@@ -121,7 +121,7 @@ the App Store deliverable images and the regression baseline;
 how ops produces/refreshes that set from a real capture — it is a
 separate, standalone script (no `_lib.sh`, no `print_block`, not a
 check, not in `check:all`/`check:deep`, not hook-wired) that runs the
-SAME flow through the SAME shared helper and copies the 12 named PNGs
+SAME flow through the SAME shared helper and copies the 10 named PNGs
 it captures into `screenshots/appstore/6.9-inch/uk/` (`mkdir -p`'d
 first, overwriting what was there); it never commits.
 
@@ -148,7 +148,7 @@ capture, named `step-NNN-<commandName>.png`) are two DIFFERENT
 artifact collection directories Maestro writes under `--debug-output`
 — confirmed on disk during this investigation — so the search is
 scoped to the `takeScreenshot/` directory specifically, never the
-generic `screenshots/` one. The 12 canonical shot names are declared
+generic `screenshots/` one. The 10 canonical shot names are declared
 once, as `SCREENSHOT_NAMES`, in `run-flow-and-collect.sh` itself — the
 single source of truth both the check and the capture script read, so
 the shot list cannot drift between them.

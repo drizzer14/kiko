@@ -59,6 +59,11 @@ type SeedTransaction = {
   amountMinorUnits: number;
   time: number;
   category: string | null;
+  // A realistic Ukrainian merchant/operation label so the ledger reads like a
+  // real account instead of the generic "expense/income" fallback. Persisted
+  // verbatim (it is demo data, not localized), so a UK or EN screenshot set
+  // both show the same institution names.
+  description: string;
 };
 
 type SeedHolding = {
@@ -188,6 +193,10 @@ const buildHistory = (): SeedHistoryRow[] => {
 
 type MonthlyExpense = {
   category: string;
+  // The recurring merchant/operation the monthly spend reads as. One per
+  // category so each ledger row names a real Ukrainian merchant matched to its
+  // category (the category chart stays accurate — only the label changed).
+  description: string;
   baseMinorUnits: number;
   monthlyDriftMinorUnits: number;
   dayOfMonth: number;
@@ -196,25 +205,63 @@ type MonthlyExpense = {
 
 // Categories reference the 10 seeded slugs (src/db/__fixtures__/seeded-categories.ts).
 const MONTHLY_EXPENSES: MonthlyExpense[] = [
-  { category: 'groceries', baseMinorUnits: 320_000, monthlyDriftMinorUnits: 6_000, dayOfMonth: 4 },
-  { category: 'dining', baseMinorUnits: 150_000, monthlyDriftMinorUnits: 5_000, dayOfMonth: 7 },
-  { category: 'transport', baseMinorUnits: 62_000, monthlyDriftMinorUnits: 2_000, dayOfMonth: 10 },
-  { category: 'utilities', baseMinorUnits: 210_000, monthlyDriftMinorUnits: 4_000, dayOfMonth: 13 },
+  {
+    category: 'groceries',
+    description: 'Сільпо',
+    baseMinorUnits: 320_000,
+    monthlyDriftMinorUnits: 6_000,
+    dayOfMonth: 4,
+  },
+  {
+    category: 'dining',
+    description: 'Пузата Хата',
+    baseMinorUnits: 150_000,
+    monthlyDriftMinorUnits: 5_000,
+    dayOfMonth: 7,
+  },
+  {
+    category: 'transport',
+    description: 'Uklon',
+    baseMinorUnits: 62_000,
+    monthlyDriftMinorUnits: 2_000,
+    dayOfMonth: 10,
+  },
+  {
+    category: 'utilities',
+    description: 'Комунальні послуги',
+    baseMinorUnits: 210_000,
+    monthlyDriftMinorUnits: 4_000,
+    dayOfMonth: 13,
+  },
   {
     category: 'entertainment',
+    description: 'Планета Кіно',
     baseMinorUnits: 90_000,
     monthlyDriftMinorUnits: 3_000,
     dayOfMonth: 16,
   },
-  { category: 'shopping', baseMinorUnits: 240_000, monthlyDriftMinorUnits: 8_000, dayOfMonth: 19 },
+  {
+    category: 'shopping',
+    description: 'Rozetka',
+    baseMinorUnits: 240_000,
+    monthlyDriftMinorUnits: 8_000,
+    dayOfMonth: 19,
+  },
   {
     category: 'health',
+    description: 'Спортзал «Sport Life»',
     baseMinorUnits: 140_000,
     monthlyDriftMinorUnits: 0,
     dayOfMonth: 22,
     everyNthMonth: 2,
   },
-  { category: 'other', baseMinorUnits: 48_000, monthlyDriftMinorUnits: 1_000, dayOfMonth: 25 },
+  {
+    category: 'other',
+    description: 'Нова Пошта',
+    baseMinorUnits: 48_000,
+    monthlyDriftMinorUnits: 1_000,
+    dayOfMonth: 25,
+  },
 ];
 
 const MONTHLY_SALARY_MINOR_UNITS = 5_000_000;
@@ -229,6 +276,7 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
       amountMinorUnits: CARD_OPENING_MINOR_UNITS,
       time: at(LEDGER_MONTHS * MONTH_DAYS + 5),
       category: null,
+      description: 'Поповнення рахунку',
     },
   ];
 
@@ -239,6 +287,7 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
       amountMinorUnits: MONTHLY_SALARY_MINOR_UNITS,
       time: at(monthStart + 2),
       category: null,
+      description: 'Зарплата',
     });
 
     for (const expense of MONTHLY_EXPENSES) {
@@ -250,6 +299,7 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
         amountMinorUnits: -(expense.baseMinorUnits + month * expense.monthlyDriftMinorUnits),
         time: at(monthStart + expense.dayOfMonth),
         category: expense.category,
+        description: expense.description,
       });
     }
   }
@@ -265,12 +315,12 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
 
 const buildAccounts = (): SeedAccount[] => [
   {
-    name: 'Основна картка',
+    name: 'Монобанк',
     kind: 'bank',
     color: entityColorsDark.blue,
     holdings: [
       {
-        name: 'Основна картка',
+        name: 'Монобанк',
         type: 'card',
         currency: 'UAH',
         color: entityColorsDark.blue,
@@ -289,62 +339,102 @@ const buildAccounts = (): SeedAccount[] => [
         currency: 'UAH',
         color: entityColorsDark.green,
         transactions: [
-          { amountMinorUnits: 2_000_000, time: at(170), category: null },
-          { amountMinorUnits: -150_000, time: at(60), category: 'cash' },
-          { amountMinorUnits: -60_000, time: at(40), category: 'groceries' },
-          { amountMinorUnits: -40_000, time: at(12), category: 'transport' },
+          {
+            amountMinorUnits: 2_000_000,
+            time: at(170),
+            category: null,
+            description: 'Зняття готівки в банкоматі',
+          },
+          { amountMinorUnits: -150_000, time: at(60), category: 'cash', description: 'Ринок' },
+          { amountMinorUnits: -60_000, time: at(40), category: 'groceries', description: 'АТБ' },
+          {
+            amountMinorUnits: -40_000,
+            time: at(12),
+            category: 'transport',
+            description: 'Київський метрополітен',
+          },
         ],
       },
     ],
   },
   {
-    name: 'Долари',
+    name: 'ПриватБанк',
     kind: 'bank',
     color: entityColorsDark.teal,
     holdings: [
       {
-        name: 'Долари',
+        name: 'ПриватБанк',
         type: 'card',
         currency: 'USD',
         color: entityColorsDark.teal,
         transactions: [
-          { amountMinorUnits: 1_000_000, time: at(150), category: null },
-          { amountMinorUnits: 80_000, time: at(90), category: null },
-          { amountMinorUnits: -30_000, time: at(25), category: 'shopping' },
+          {
+            amountMinorUnits: 1_000_000,
+            time: at(150),
+            category: null,
+            description: 'Поповнення рахунку',
+          },
+          {
+            amountMinorUnits: 80_000,
+            time: at(90),
+            category: null,
+            description: 'Фріланс-проєкт',
+          },
+          { amountMinorUnits: -30_000, time: at(25), category: 'shopping', description: 'Amazon' },
         ],
       },
     ],
   },
   {
-    name: 'Євро',
+    name: 'Wise',
     kind: 'bank',
     color: entityColorsDark.indigo,
     holdings: [
       {
-        name: 'Євро',
+        name: 'Wise',
         type: 'card',
         currency: 'EUR',
         color: entityColorsDark.indigo,
         transactions: [
-          { amountMinorUnits: 450_000, time: at(120), category: null },
-          { amountMinorUnits: -50_000, time: at(35), category: 'shopping' },
+          {
+            amountMinorUnits: 450_000,
+            time: at(120),
+            category: null,
+            description: 'Поповнення рахунку',
+          },
+          {
+            amountMinorUnits: -50_000,
+            time: at(35),
+            category: 'shopping',
+            description: 'Booking.com',
+          },
         ],
       },
     ],
   },
   {
-    name: 'Bitcoin',
+    name: 'Binance',
     kind: 'crypto',
     color: entityColorsDark.orange,
     holdings: [
       {
-        name: 'Bitcoin',
+        name: 'Binance',
         type: 'crypto_asset',
         currency: 'BTC',
         color: entityColorsDark.orange,
         transactions: [
-          { amountMinorUnits: 30_000_000, time: at(140), category: null },
-          { amountMinorUnits: 5_000_000, time: at(60), category: null },
+          {
+            amountMinorUnits: 30_000_000,
+            time: at(140),
+            category: null,
+            description: 'Купівля BTC',
+          },
+          {
+            amountMinorUnits: 5_000_000,
+            time: at(60),
+            category: null,
+            description: 'Купівля BTC',
+          },
         ],
       },
     ],
@@ -407,13 +497,15 @@ const seedHolding = async (accountId: string, holding: SeedHolding): Promise<voi
     // recordManual adjusts the holding balance by the amount, so the holding's
     // final balance is the sum of its seeded transactions (the holding was
     // created with a zero opening balance, emitting no clock-stamped opening
-    // row of its own). No description is persisted — the ledger resolves a
-    // localized label at render time from the category.
+    // row of its own). Each row persists a realistic merchant/operation
+    // description so the ledger reads like a real account rather than the
+    // generic "expense/income" fallback used when the description is blank.
     await transactionsRepo.recordManual({
       holdingId,
       amountMinorUnits: transaction.amountMinorUnits,
       time: transaction.time,
       category: transaction.category ?? undefined,
+      description: transaction.description,
     });
   }
 };

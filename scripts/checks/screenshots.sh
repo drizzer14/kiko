@@ -13,7 +13,7 @@
 #      shared run_flow_and_collect helper (screenshot-diff/run-flow-and-
 #      collect.sh, also used by scripts/screenshots-capture.sh so the two
 #      cannot drift): a fresh `--debug-output` temp tree per run, with each
-#      of the 12 named PNGs it captures copied into a fresh mktemp -d capture
+#      of the 10 named PNGs it captures copied into a fresh mktemp -d capture
 #      directory — never a path inside the repo, so no .gitignore entry is
 #      needed for it.
 #   2. Pixel-diffs every captured PNG against the committed baseline of the

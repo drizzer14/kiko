@@ -9,12 +9,11 @@
 # It runs the same flow as scripts/checks/screenshots.sh, through the SAME
 # shared helper (scripts/checks/screenshot-diff/run-flow-and-collect.sh) so
 # the "run the flow, then find the PNGs" logic cannot drift between the two,
-# then copies the 12 named PNGs it captured into
+# then copies the 10 named PNGs it captured into
 # screenshots/appstore/6.9-inch/uk/ (mkdir -p'd first), OVERWRITING whatever
-# was there before. Those files are simultaneously the App Store deliverable
-# images (the user picks 10 of the 12) and the check:screenshots regression
-# baseline. This script never commits anything — review the diff before
-# committing.
+# was there before. Those files are simultaneously the finalized App Store
+# deliverable set and the check:screenshots regression baseline. This script
+# never commits anything — review the diff before committing.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"

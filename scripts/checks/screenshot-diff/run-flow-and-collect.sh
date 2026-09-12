@@ -34,9 +34,26 @@
 #     a run, so this helper SEARCHES the whole `--debug-output` tree for
 #     `takeScreenshot/<name>.png` by basename instead of hardcoding the path.
 #
-# The 12 canonical shot names are the SINGLE SOURCE OF TRUTH here — both
+# The 10 canonical shot names are the SINGLE SOURCE OF TRUTH here — both
 # callers read SCREENSHOT_NAMES from this file, so the flow, the check, and
-# the capture script cannot drift out of sync on the shot list.
+# the capture script cannot drift out of sync on the shot list. Two Statistics
+# shots were deliberately dropped, not just renamed:
+#   - "by type" bar chart: it duplicated the line chart's frame
+#     (statistics.screen.tsx stacks statistics-block-bar immediately below
+#     statistics-block-line, close enough that it already appears under the
+#     net-worth line in the line-chart shot's frame).
+#   - account-contribution pie: unlike the category donut (which passes
+#     `centerTotal`, so pie-chart.component.tsx renders its
+#     `category-pie-center-total` inner element — a precise, deterministic
+#     scroll stop), this donut passes no `centerTotal` and so has NO inner
+#     center-total element at all (a real, observed failure: scrolling to
+#     that id found nothing at runtime). Its only targetable element, its
+#     block container (`statistics-block-pie`), sits too close to the
+#     category donut's own container for `visibilityPercentage: 100` alone to
+#     stop at two reliably distinct offsets (a real, observed failure: both
+#     containers landed at the SAME near-bottom scroll offset, producing
+#     byte-identical captures). With no reliable target available, the shot
+#     was dropped entirely rather than shipping a flaky or duplicate capture.
 SCREENSHOT_NAMES=(
   01-home-networth
   02-home-transactions-scrolled
@@ -44,12 +61,10 @@ SCREENSHOT_NAMES=(
   04-account-detail
   05-holding-detail-ledger
   06-statistics-net-worth-line
-  07-statistics-by-type-bar
-  08-statistics-account-contribution-pie
-  09-statistics-expenses-by-category
-  10-statistics-spending-trend
-  11-settings-main
-  12-settings-system
+  07-statistics-expenses-by-category
+  08-statistics-spending-trend
+  09-settings-main
+  10-settings-system
 )
 
 # run_flow_and_collect <flow_yaml> <dest_dir>

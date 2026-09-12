@@ -117,7 +117,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 - takeScreenshot: 05-holding-detail-ledger
 
 # ---------------------------------------------------------------------------
-# 6-10. Statistics tab — one screenshot per chart block, in on-screen order
+# 6-8. Statistics tab — one screenshot per chart block, in on-screen order
 # ---------------------------------------------------------------------------
 # Jump DIRECTLY to Statistics by its tab icon — do NOT `back` out of the
 # Accounts stack first. @bottom-tabs/react-navigation switches to the tapped
@@ -133,92 +133,111 @@ appId: com.dmytro-vasylkivskyi.kiko
 - assertVisible:
     id: "statistics-blocks"
 
-# waitForAnimationToEnd settles each chart before its screenshot: reduced
-# motion (forced by the screenshot-mode build) does not fully suppress every
-# entrance/line-draw animation, so a screenshot taken immediately after the
-# chart becomes visible can land mid-animation. Observed for real: shot 10
-# (spending-trend) failed the pixel-diff regression check at a 9.7% mismatch
-# between two otherwise-identical consecutive captures — far above the 0.5%
-# tolerance — which is the signature of a still-animating frame, not a real
-# visual change. `timeout: 5000` bounds the wait; it returns as soon as the
-# animation settles, so this is not a fixed 5s delay per shot. Verified as a
-# real Maestro 2.10.0 command by decompiling the installed maestro-
-# orchestra.jar (YamlWaitForAnimationToEndCommand: timeout/label/optional
-# fields, all optional). Applied to every Statistics chart shot (06-10) —
-# the ones that actually animate; the other shots (Home/Accounts/Settings)
-# did not exhibit this failure.
-- assertVisible:
-    id: "statistics-block-line"
+# waitForAnimationToEnd settles the tree before each screenshot as a cheap
+# guard: it returns as soon as the tree is static (bounded by `timeout`), so it
+# is not a fixed 5s delay per shot. Verified as a real Maestro 2.10.0 command by
+# decompiling the installed maestro-orchestra.jar
+# (YamlWaitForAnimationToEndCommand: timeout/label/optional fields).
+#
+# The Statistics charts are SEPARATE stacked blocks (statistics-block-line /
+# -pie / -category / -trend, each a distinct testID in statistics.screen.tsx —
+# confirmed there). Each scrolls to `visibilityPercentage: 100` (fully on
+# screen, not just minimally visible) so a screenshot never lands mid-scroll.
+# `timeout: 20000` covers the longest scroll. (The other shots —
+# Home/Accounts/Settings — are single screens and need none of this.)
+#
+# Do NOT add `centerElement: true` here: it was tried (to separate the line
+# shot from a since-dropped by-type-bar shot, see below) and made the donut
+# shot non-deterministic — centering leaves a donut chart at a
+# momentum-dependent MID-scroll offset that varies by a few px run-to-run,
+# which `visibilityPercentage: 100` alone does not pin down.
+#
+# The final three targets — proven distinct AND deterministic in real
+# determinism runs (each landed at a different offset, no run-to-run drift,
+# ~0.0001% mismatch individually):
+#   06 statistics-block-line   07 category-pie-center-total   08 statistics-block-trend
+#
+# 06 (line, TOP of the screen) and 08 (trend, very BOTTOM — see its own
+# comment below) scroll to their BLOCK CONTAINER: each clamps to a distinct,
+# deterministic edge of the scroll range.
+#
+# 07 (expenses-by-category) targets its donut's OWN inner center-total label,
+# NOT its block container: the category PieChart at statistics.screen.tsx:805
+# passes both `testID="category-pie"` AND `centerTotal={categoryTotal}`, and
+# pie-chart.component.tsx only renders its `${testID}-center-total` View when
+# `centerTotal !== undefined` (pie-chart.component.tsx:234) — so
+# `category-pie-center-total` DOES render, giving a precise, deterministic
+# scroll stop distinct from the trend block below it.
+#
+# There is NO standalone account-contribution-pie shot: that PieChart
+# (statistics.screen.tsx:782) passes no `centerTotal` prop, so it has NO
+# inner center-total element at all (a real, observed failure: scrolling to
+# `pie-chart-center-total`, the component's `testID` DEFAULT_TEST_ID-derived
+# id, found nothing at runtime — its center is genuinely empty). Its only
+# targetable element is then its block container (`statistics-block-pie`),
+# but that container sits too close to the category donut's container for
+# `visibilityPercentage: 100` alone to stop at two reliably distinct offsets
+# (a real, observed failure: the two containers landed at the SAME
+# near-bottom scroll offset, producing byte-identical captures). With no
+# precise inner target available for this donut and its container
+# unreliable, the shot was dropped from the deliverable/baseline set
+# entirely rather than shipping a flaky or duplicate capture.
+#
+# There is also NO standalone "by type" bar-chart shot: it duplicated the
+# line chart's frame (statistics.screen.tsx stacks `statistics-block-bar`
+# immediately below `statistics-block-line`, close enough that the "За типом"
+# bar row already appeared under the net-worth line), so it was dropped from
+# the deliverable/baseline set entirely.
+- scrollUntilVisible:
+    element:
+      id: "statistics-block-line"
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: 06-statistics-net-worth-line
 
 - scrollUntilVisible:
     element:
-      id: "statistics-block-bar"
-    direction: DOWN
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: 07-statistics-by-type-bar
-
-- scrollUntilVisible:
-    element:
-      id: "statistics-block-pie"
-    direction: DOWN
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: 08-statistics-account-contribution-pie
-
-# Scroll to the EXACT element being screenshotted, not to the block's header
-# (statistics-block-category, statistics.screen.tsx:786). The category block
-# is taller than the others (header + a filter row + the chart), so stopping
-# the scroll as soon as the header becomes visible left the chart itself
-# still off-screen below the fold (a real, observed failure).
-#
-# `category-pie` (the testID passed to <PieChart testID="category-pie" ...>
-# at statistics.screen.tsx:805) is NOT itself a rendered element's id — the
-# design-system PieChart component uses its `testID` prop only as a PREFIX
-# for its actual sub-elements (`${testID}-center-total`, `${testID}-arc-*`,
-# `${testID}-legend-*`, `${testID}-swatch-*`; see pie-chart.component.tsx /
-# pie-chart.component.test.tsx), so `scrollUntilVisible: { id: "category-pie" }`
-# could never match anything (confirmed against a real on-device hierarchy
-# dump: no element has that exact id). `category-pie-center-total` is the
-# donut's center total label — scrolling IT fully into view guarantees the
-# whole donut is on screen for the shot.
-# visibilityPercentage: 100 requires the target to be FULLY on screen (not
-# just minimally visible) before this scroll stops, so the screenshot cannot
-# land mid-scroll; a generous timeout covers the extra scroll distance this
-# block needs versus the others.
-- scrollUntilVisible:
-    element:
       id: "category-pie-center-total"
     direction: DOWN
-    timeout: 20000
     visibilityPercentage: 100
+    timeout: 20000
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: 09-statistics-expenses-by-category
+- takeScreenshot: 07-statistics-expenses-by-category
 
+# Shot 08 is the ONLY shot taken at the very bottom of the Statistics
+# ScrollView. Its ~9.7% run-to-run pixel drift was NOT a chart animation (the
+# trend chart is pure static SVG) but iOS's NATIVE scroll-bounce settle at the
+# bottom edge — not reanimated-driven, so neither `ReducedMotionConfig` nor
+# `waitForAnimationToEnd` can gate it. Fixed by the screenshot-mode
+# `bounces={false}` gate in screen.component.tsx plus this fully-visible
+# scroll stop that clamps to a fixed bottom offset (confirmed: 0.0001%
+# mismatch in the determinism run, without `centerElement`).
 - scrollUntilVisible:
     element:
       id: "statistics-block-trend"
     direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: 10-statistics-spending-trend
+- takeScreenshot: 08-statistics-spending-trend
 
 # ---------------------------------------------------------------------------
-# 11-12. Settings -> System sub-page
+# 9-10. Settings -> System sub-page
 # ---------------------------------------------------------------------------
 # Tab bar icon id, not text — see the comment above the Accounts tap.
 - tapOn:
     id: "gearshape.fill"
 - assertVisible:
     id: "settings-card-system"
-- takeScreenshot: 11-settings-main
+- takeScreenshot: 09-settings-main
 
 - tapOn:
     id: "settings-row-system"
 - assertVisible:
     id: "settings-card-language"
-- takeScreenshot: 12-settings-system
+- takeScreenshot: 10-settings-system
