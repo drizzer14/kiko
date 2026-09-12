@@ -21,10 +21,10 @@ declare module 'react-native-svg' {
 
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import Box from '../box';
-import Text from '../text';
 
 import { styles } from './net-worth-line.styles';
 

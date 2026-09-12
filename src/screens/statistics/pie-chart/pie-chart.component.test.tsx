@@ -3,7 +3,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
 import type { AccountSlice } from '../../../statistics/account-contribution';
-import '../../unistyles';
+import '../../../design-system/unistyles';
 import PieChart from './pie-chart.component';
 
 // Flatten a (possibly nested/array) style prop into its plain object layers so a

@@ -1,10 +1,10 @@
 import { act, render } from '@testing-library/react-native';
 
 import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
+import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import { darkTheme } from '../../theme';
-import '../../unistyles';
+import '../../../design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
 

@@ -2,7 +2,7 @@ import { render } from '@testing-library/react-native';
 
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import type { TypeSlice } from '../../../statistics/type-breakdown';
-import '../../unistyles';
+import '../../../design-system/unistyles';
 import BarChart from './index';
 
 const data: TypeSlice[] = [

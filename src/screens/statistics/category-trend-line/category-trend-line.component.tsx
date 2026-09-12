@@ -5,10 +5,10 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 import type { Currency } from '../../../currency/currency';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
 import type { CategoryTrendSeries } from '../../../statistics/category-trend';
-import Box from '../box';
-import Text from '../text';
 
 import { styles } from './category-trend-line.styles';
 

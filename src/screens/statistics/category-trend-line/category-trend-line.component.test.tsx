@@ -1,7 +1,7 @@
 import { render, within } from '@testing-library/react-native';
 
 import type { CategoryTrendSeries } from '../../../statistics/category-trend';
-import '../../unistyles';
+import '../../../design-system/unistyles';
 import CategoryTrendLine from './index';
 
 const JAN = Date.UTC(2025, 0, 1);

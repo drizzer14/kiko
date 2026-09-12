@@ -16,12 +16,8 @@ import { Money } from '../../currency/money';
 import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
-import BarChart from '../../design-system/components/bar-chart';
 import Box from '../../design-system/components/box';
-import CategoryTrendLine from '../../design-system/components/category-trend-line';
 import GlassSurface from '../../design-system/components/glass-surface';
-import NetWorthLine from '../../design-system/components/net-worth-line';
-import PieChart from '../../design-system/components/pie-chart';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -65,6 +61,10 @@ import { transactionSpan } from '../../transactions/transaction-span';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
 
+import BarChart from './bar-chart';
+import CategoryTrendLine from './category-trend-line';
+import NetWorthLine from './net-worth-line';
+import PieChart from './pie-chart';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
 
