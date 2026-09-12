@@ -68,6 +68,64 @@ Two hard blockers were the icon (now fixed) and the "Кіко" display name
 with the read-only on-device framing and a demo token. Everything else
 is small config or already satisfied.
 
+## Operational notes (2026-09-12, post-implementation)
+
+Build 3 has been submitted for App Store review (see the `release`
+skill's "First release" section for the tag/publish timing). These
+notes record operational facts learned while getting there, since
+this doc was originally written pre-implementation.
+
+### Screenshot build recipe (`check:screenshots*`)
+
+`check:screenshots`, `check:screenshots:empty`, and
+`check:screenshots:locked` (CLAUDE.md's "check:screenshots" section
+is the source of truth for the per-scenario ENVFILE/flow/baseline-dir
+enumeration — rich/empty/locked — and for the `isStableGlass()`
+mechanism; not repeated here) each need an **embedded** iOS build
+installed on the pinned simulator before they can run. Metro must not
+be involved — the app must run standalone, the same way a real
+device/App-Store build does. The recipe:
+
+1. Set `FORCE_BUNDLING=1` (or equivalent) so the archive/build step
+   bundles JS in rather than reaching for a Metro dev server.
+2. Clean the `ios/build` output first (a stale embedded bundle from a
+   previous scenario silently passes the wrong content).
+3. Run `pod install` after the clean — a clean wipes generated pod
+   artifacts (e.g. ReactCodegen) that the build needs.
+4. Build with the scenario's own `ENVFILE` (one of the three
+   `*.stable` variants documented in CLAUDE.md).
+5. Before trusting the build, `grep` the produced `main.jsbundle` for
+   the `isStableGlass` marker to confirm the stable-glass code path
+   was actually compiled in — a build that silently fell back to the
+   real, non-deterministic glass material would pass installation but
+   fail the pixel-diff with flaky, non-regression-related mismatches.
+6. Install the verified build on the booted, pinned simulator, matching
+   the scenario the check about to run expects (rich/empty/locked —
+   running a check against the wrong scenario's build fails on real
+   content differences, which is expected, not a harness bug).
+
+Maestro itself (the engine both `check:screenshots*` and the
+`screenshots:baseline*` producers drive) needs **OpenJDK 21** on the
+machine; without it Maestro's own CLI fails to start.
+
+### App Store submission gotchas
+
+- **Screenshot dimensions are per device slot**, not one universal
+  size: 6.5-inch accepts either `1242x2688` or `1284x2778`; 6.9-inch
+  is `1320x2868`. Submitting the wrong pixel size for a slot is a
+  silent App Store Connect rejection at upload, not a build-time
+  error.
+- **Export compliance**: `ios/Kiko/Info.plist` must declare
+  `ITSAppUsesNonExemptEncryption = false` (standard HTTPS/Keychain
+  use only, no proprietary encryption). France requires a **separate**
+  encryption declaration in App Store Connect even with this flag set
+  correctly in the Info.plist — do not assume the Info.plist key alone
+  satisfies every territory.
+- **Age rating**: 4+.
+- **Privacy policy**: bilingual, Ukrainian primary + English, hosted
+  on the `gh-pages` branch. Source of truth in the working tree:
+  `docs/privacy-policy.md` (uk) and `docs/privacy-policy.en.md` (en).
+
 ## References
 - Review Guidelines: https://developer.apple.com/app-store/review/guidelines/
 - Account deletion: https://developer.apple.com/support/offering-account-deletion-in-your-app/
