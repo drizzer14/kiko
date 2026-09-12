@@ -137,6 +137,46 @@ const collectTabNavigations = (
   return tabNavigations;
 };
 
+// Decide whether, and where, an active-tab re-tap should scroll, given the
+// header-derived expanded top, the running record of the true resting top, and
+// the live content offset. Extracted from the `tabPress` handler as a pure step
+// so the handler stays under the cognitive-complexity limit and this arithmetic
+// is read in one place.
+//
+// `restingTop` is the ScrollView's settled content offset
+// (`-adjustedContentInset.top`) — the exact top the content rests at, which,
+// unlike `headerTarget`, is NEVER inflated by a large-title rubber-band stretch.
+// It is recorded (mutating the caller's ref) whenever the offset is at rest in
+// the top inset region: negative (the inset band sits above `y: 0`) AND not
+// below the header-implied top (a deeper transient pull is excluded by that
+// bound, so it can never corrupt the record). The target is then clamped to it
+// with `Math.max` — the LESS-negative of the two wins, discarding a
+// stretch-inflated header target — so a scroll-to-top can never pass rest. Until
+// a resting offset has been seen, the header target stands (the
+// scroll-from-scrolled case). Finally, an offset already at or above the target
+// skips the scroll: redundant, or (for an undershooting target) it would push
+// the content back down — and, with the target clamped to rest, this is the
+// exact no-op an at-rest re-tap needs even when the header height was inflated
+// past rest by an earlier stretch (`-R > -E`, the overscroll regression).
+const resolveScrollTarget = (
+  headerTarget: number,
+  restingTop: { current: number | undefined },
+  offset: number | undefined,
+): { scroll: false } | { scroll: true; target: number } => {
+  if (offset !== undefined && offset < 0 && offset >= headerTarget) {
+    restingTop.current = offset;
+  }
+
+  const target =
+    restingTop.current !== undefined ? Math.max(headerTarget, restingTop.current) : headerTarget;
+
+  if (offset !== undefined && offset <= target) {
+    return { scroll: false };
+  }
+
+  return { scroll: true, target };
+};
+
 /**
  * Scrolls a tab-root screen's primary scrollable back to the true top (animated)
  * when the user re-taps the already-active bottom-tab item — the standard iOS
@@ -160,13 +200,18 @@ const collectTabNavigations = (
  * negative target reaches UIKit verbatim and an over-large one parks the content
  * in a void of empty space with nothing to bring it back.
  *
- * The target is therefore the EXPANDED header height the device itself reports
+ * The target starts from the EXPANDED header height the device itself reports
  * (see `expandedHeaderHeight` in the body), not a live height plus a guessed
- * constant, and the optional `scrollOffset` lets the hook skip the scroll
- * entirely when the content is already at or above that target. Home hides its
- * header (`headerHeight` is 0, target 0) and its `SectionList` is not the
- * overflow-enabled ScrollView, so RN still clamps its 0 target — Home is
- * unaffected either way.
+ * constant. But that reported height is momentarily INFLATED by a large-title
+ * rubber-band pull, and the body's max-latch keeps the stretched value, so it can
+ * be MORE negative than the true resting top. The optional `scrollOffset` fixes
+ * that: the hook records the settled resting offset from it and clamps the target
+ * to it (see `resolveScrollTarget`), so a scroll-to-top can never pass rest — and
+ * skips the scroll entirely when the content is already at or above the target,
+ * which makes an at-rest re-tap the exact no-op it should be. Home hides its
+ * header (`headerHeight` is 0, target 0), passes no `scrollOffset`, and its
+ * `SectionList` is not the overflow-enabled ScrollView, so RN still clamps its 0
+ * target — Home is unaffected either way.
  */
 export const useScrollToTopOnTabPress = (
   ref: RefObject<TabRootScrollable | null>,
@@ -213,6 +258,16 @@ export const useScrollToTopOnTabPress = (
   // collapsed default); the maximum is exact from then on rather than a guessed
   // constant.
   const expandedHeaderHeight = useRef(0);
+  // The ScrollView's true resting content offset (`-adjustedContentInset.top`),
+  // observed directly off the live `scrollOffset` while the content sits at rest.
+  // It is the exact top the content settles to, so — unlike the header-derived
+  // target below — it can NEVER be inflated by a large-title rubber-band stretch,
+  // and clamping the scroll target to it means a scroll-to-top can never overshoot
+  // rest. `undefined` until a resting offset has been seen (a caller without a
+  // `scrollOffset`, or before the first at-rest tap). Discarded on a frame change
+  // alongside the tracked header height, since the resting inset changes with the
+  // frame too.
+  const restingTop = useRef<number | undefined>(undefined);
   const trackedFrame = useRef({ width, height });
   // The header height that was still live when the frame changed — i.e. the
   // PRE-rotation one, which the context keeps reporting until the next native
@@ -233,6 +288,7 @@ export const useScrollToTopOnTabPress = (
 
     trackedFrame.current = { width, height };
     expandedHeaderHeight.current = 0;
+    restingTop.current = undefined;
     staleHeaderHeight.current = headerHeight;
   }, [width, height, headerHeight]);
 
@@ -295,26 +351,20 @@ export const useScrollToTopOnTabPress = (
               return;
             }
 
-            // The expanded large-title top, as the device reported it. No
-            // hardcoded band — see `expandedHeaderHeight` above. A header-hidden
-            // screen (Home) reports `0`, so the target stays `0` and RN's own
-            // clamp handles it.
-            const target = -expandedHeaderHeight.current;
+            // The header-derived expanded top, negated (a header-hidden screen
+            // like Home reports `0`). See `resolveScrollTarget` for how the
+            // observed resting top then clamps it.
+            const decision = resolveScrollTarget(
+              -expandedHeaderHeight.current,
+              restingTop,
+              scrollOffset?.value,
+            );
 
-            // If the content is ALREADY at or above the target, skip: the
-            // scroll would either do nothing (redundant) or, for a target that
-            // UNDERSHOOTS the real top, push the content back DOWN away from
-            // the top. Note what this does not do — it cannot stop an
-            // OVERSHOOTING target from parking the content in a void, because
-            // an over-large target is by definition below (more negative than)
-            // the current offset and passes this check. Not producing a void is
-            // the target's job, and the target is the height the device itself
-            // reported.
-            if (scrollOffset !== undefined && scrollOffset.value <= target) {
+            if (!decision.scroll) {
               return;
             }
 
-            scrollToTrueTop(scrollable, target);
+            scrollToTrueTop(scrollable, decision.target);
           });
         },
       ),
