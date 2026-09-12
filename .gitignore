@@ -69,6 +69,11 @@ yarn-error.log
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*
 
+# Scratch captures — ad-hoc dev screenshots (scratch_*.png). Deliverable
+# screenshots live under screenshots/; these are throwaway and never tracked.
+scratch_*
+scratch*.png
+
 # testing
 /coverage
 
