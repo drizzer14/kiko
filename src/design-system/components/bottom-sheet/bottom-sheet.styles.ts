@@ -33,6 +33,37 @@ const SHEET_PADDING_STEP = 4;
 // padding rather than `sheet`'s own.
 const CONTENT_BOTTOM_PADDING_STEP = SHEET_PADDING_STEP;
 
+// DEVICE BUG fix: Liquid Glass draws a native specular rim at the edge of
+// whatever bounds it is given — a `UIGlassEffect` property this app does not
+// control, not a border/inset anywhere in this file. At the scrim's original
+// full-screen size that rim landed exactly on the screen edge and read as a
+// sharp 1px hairline all the way around the perimeter of every Modal in the
+// app (every sheet routes through this one scrim). `backdropFill` below
+// extends the glass past all four screen edges by this many points, which
+// pushes the rim itself off-screen; the Modal's native window still clips
+// at the real screen bounds regardless, so the overscan never leaks
+// visually — it only relocates where the (now off-screen) rim falls, leaving
+// nothing but uniform blur inside the visible area. The rim is only ever
+// visible on-device (an iOS 26+ Liquid Glass build); it cannot be reproduced
+// in the simulator or a layout inspector, so this fix needs on-device
+// confirmation rather than a snapshot/unit test.
+const BACKDROP_RIM_OVERSCAN = 32;
+
+// The grabber region's floor: the iOS HIG 44pt minimum touch target
+// (`kiko-design-system`'s "Touch targets" HIG axis), the same floor
+// `button.styles.ts`'s `COMPACT_MIN_HEIGHT` restores for a Button. DEVICE BUG
+// fix: a header-less sheet's region used to be only ~21pt tall (paddingTop 4 +
+// the 5pt pill + paddingBottom 12, no header sibling to fill it out), well
+// under the floor, with no `hitSlop` to compensate. `minHeight` grows the
+// region's OWN claimed bounds rather than the Pan's hit-test area past them,
+// so the added space is still inside `grabberRegion` (still draggable, still
+// painted over the sheet's glass background) and never overlaps the
+// scrollable body that starts only once this region ends — the enlarged
+// target can never steal a touch meant for the ScrollView below it. A sheet
+// that DOES pass a `header` (already taller than 44pt with real content) is
+// unaffected — `minHeight` is a floor, not a fixed height.
+const GRABBER_REGION_MIN_HEIGHT = 44;
+
 export const styles = StyleSheet.create((theme) => ({
   // Fills the modal window and pins the sheet to the bottom edge. The scrim and
   // the sheet are siblings inside it (not parent/child), so a tap on the sheet
@@ -58,12 +89,22 @@ export const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
   },
-  // Fills the backdrop Pressable's own bounds for either branch below —
+  // Covers the backdrop Pressable's own bounds for either branch below —
   // shared sizing so the LiquidGlassView (iOS 26+, real blur material via
   // its own `effect`/`colorScheme`/`tintColor` props) and the plain-View
-  // fallback cover the Pressable identically.
+  // fallback cover the Pressable identically. Deliberately sized PAST the
+  // Pressable's own edges by `BACKDROP_RIM_OVERSCAN` on all four sides (see
+  // that constant's doc above) rather than an exact `flex: 1` fill — this is
+  // the hairline-rim fix: on the glass branch it pushes Liquid Glass's own
+  // native specular rim off-screen; on the plain-View fallback the overscan
+  // is harmless (a flat fill has no rim to hide), so both branches share this
+  // one sizing rather than branching sizing too.
   backdropFill: {
-    flex: 1,
+    position: 'absolute',
+    top: -BACKDROP_RIM_OVERSCAN,
+    left: -BACKDROP_RIM_OVERSCAN,
+    right: -BACKDROP_RIM_OVERSCAN,
+    bottom: -BACKDROP_RIM_OVERSCAN,
   },
   // The non-liquid-glass fallback (older iOS, or Android): no real blur
   // material is available without a new native dependency (see
@@ -166,11 +207,20 @@ export const styles = StyleSheet.create((theme) => ({
   // the dismiss. Its bottom pad separates the region from the first content row;
   // the sheet card's own `paddingTop` sits above it. `gap` only takes effect
   // when a header is present (a lone grabber is a single child, so there is
-  // nothing to space) — so a headerless sheet keeps its exact prior layout. The
-  // grabber centers itself via its own `alignSelf` below rather than this
-  // region's `alignItems`, so the header stays full-width/left-aligned (the
-  // region's default `stretch`) instead of being centered with the pill.
+  // nothing to space). The grabber centers itself via its own `alignSelf`
+  // below rather than this region's `alignItems`, so the header stays
+  // full-width/left-aligned (the region's default `stretch`) instead of
+  // being centered with the pill. DEVICE BUG fix: `minHeight` (see
+  // `GRABBER_REGION_MIN_HEIGHT` above) floors this region at the 44pt HIG
+  // touch-target minimum — the padding+pill alone measured only ~21pt for a
+  // headerless sheet, well under it. A header-bearing sheet already clears
+  // 44pt on its own content and is unaffected; a headerless sheet now shows a
+  // little more breathing room below the pill before the body starts, which
+  // is the visible tradeoff of restoring the tap target honestly (growing the
+  // region's own claimed bounds) rather than hiding it in an invisible
+  // `hitSlop` that could reach into the scrollable body below.
   grabberRegion: {
+    minHeight: GRABBER_REGION_MIN_HEIGHT,
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(3),
     gap: theme.spacing(3),

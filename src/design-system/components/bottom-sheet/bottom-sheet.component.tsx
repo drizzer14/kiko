@@ -53,6 +53,20 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
  * a11y, not the pressable target itself.
  *
+ * DEVICE BUG fix: Liquid Glass draws a native specular rim at the edge of
+ * whatever bounds it is given (a `UIGlassEffect` property, not a border/inset
+ * this app draws), which at this scrim's original full-screen size landed
+ * exactly on the screen edge and read as a sharp 1px hairline around the
+ * whole perimeter, on every Modal (all route through this one scrim). Rather
+ * than dropping to a flat, non-blurred dim, `styles.backdropFill` keeps the
+ * live blur and extends its bounds past all four screen edges
+ * (`BACKDROP_RIM_OVERSCAN`), which pushes the rim itself off-screen — the
+ * Modal's native window still clips at the real screen edges regardless, so
+ * only the uniform blur is ever visible. The sheet CARD's own Liquid Glass
+ * (`glassFill` below) is untouched by this — only the full-bleed scrim
+ * changed. The rim is only reproducible on an iOS 26+ Liquid Glass device, so
+ * this fix needs on-device confirmation, not a simulator/unit-test check.
+ *
  * The sheet card's own background is a REAL translucent blur MATERIAL, reusing
  * `GlassSurface`'s `material` variant rather than a fork of its layering — the
  * live see-through Liquid Glass on iOS 26+ (no backdrop under it, so it

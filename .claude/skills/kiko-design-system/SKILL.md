@@ -355,6 +355,35 @@ new component can land between reviews of this skill:
   `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
   `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
   prop set rather than trusting this summary if it drifts.
+
+  The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
+  card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
+  DEVICE BUG fix of its own: Liquid Glass draws a native specular rim at
+  the edge of whatever bounds it is given (a `UIGlassEffect` property,
+  not a border/inset this app draws), which at the scrim's original
+  exact-screen-size bounds landed on the screen edge and read as a sharp
+  1px hairline around the whole perimeter, on every Modal (all route
+  through this one scrim). The fix keeps the live blur (never drops to a
+  flat dim) and instead extends `styles.backdropFill`'s own bounds past
+  all four screen edges by `BACKDROP_RIM_OVERSCAN` (32pt,
+  `bottom-sheet.styles.ts`) — the Modal's native window still clips at
+  the real screen edges regardless, so the overscan only relocates where
+  the now off-screen rim falls, leaving nothing but uniform blur visible.
+  The rim is only reproducible on an iOS 26+ Liquid Glass device, never
+  in the simulator or a unit test — any future scrim-sizing change here
+  needs on-device confirmation, not just a green test suite.
+
+  The grabber region (`styles.grabberRegion`) also floors at
+  `GRABBER_REGION_MIN_HEIGHT` (44pt, the HIG touch-target minimum) via
+  `minHeight` rather than a `hitSlop` — a header-less sheet's region
+  used to measure only ~21pt (padding + the 5pt pill, no header sibling
+  to fill it out), under the 44pt floor with nothing to compensate.
+  `minHeight` grows the region's OWN claimed bounds (still fully inside
+  `grabberRegion`, still draggable) rather than expanding the Pan's
+  hit-test area past that View's edges the way `hitSlop` would, so the
+  fix can never bleed into the scrollable body that starts only once the
+  region ends — see "Touch targets" under the standing HIG reference
+  above for the general rule this follows.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
