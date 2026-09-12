@@ -1,9 +1,9 @@
-import IconPickerModal from '@kiko/screens/settings/icon-picker-modal';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import Box from '../box';
+import IconPickerModal from '../icon-picker-modal';
 import SymbolIcon from '../symbol';
 import Text from '../text';
 
