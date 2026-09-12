@@ -25,7 +25,7 @@ below).
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
-| `npm run check:screenshots` | Maestro (`.maestro/appstore-screenshots.yaml`) + pixelmatch (`scripts/checks/screenshot-diff/compare-png.js`) | any captured image's per-pixel mismatch ratio over 0.5% (`maxMismatchRatio`) at pixelmatch `threshold` 0.1 fails; so does a missing baseline, a missing captured file, a Maestro run that fails or captures zero PNGs, or `maestro` missing from PATH | deep/manual only — needs a booted, pinned simulator with a screenshot-mode build already installed (ops), so it is NOT in `check:all`/`check:deep` and NOT hook-wired |
+| `npm run check:screenshots` | Maestro (`.maestro/appstore-screenshots.yaml`) + pixelmatch (`scripts/checks/screenshot-diff/compare-png.js`), diffed against the STABLE-glass `screenshots/regression/6.9-inch/uk/` baseline (NOT the marketing `screenshots/appstore/...` set) | any captured image's per-pixel mismatch ratio over 0.5% (`maxMismatchRatio`) at pixelmatch `threshold` 0.1 fails; so does a missing baseline, a missing captured file, a Maestro run that fails or captures zero PNGs, or `maestro` missing from PATH | deep/manual only — needs a booted, pinned simulator with a STABLE-glass screenshot-mode build (`ENVFILE=.env.screenshots.stable`) already installed (ops), so it is NOT in `check:all`/`check:deep` and NOT hook-wired |
 
 Composite scripts:
 
@@ -99,33 +99,68 @@ does not.
 
 ### `check:screenshots` (App Store screenshot visual regression)
 
+**Marketing vs. regression — two separate baselines, two separate
+builds (2026-09-12 design).** The same 10-shot Maestro flow
+(`.maestro/appstore-screenshots.yaml`) is captured against TWO
+different builds for two different purposes, and the resulting PNGs
+are never interchangeable:
+
+| | Marketing | Regression |
+|---|---|---|
+| Purpose | The actual App Store deliverable images | The `check:screenshots` pixelmatch baseline |
+| Build | `ENVFILE=.env.screenshots` (real, live `@callstack/liquid-glass` bloom) | `ENVFILE=.env.screenshots.stable` (opaque, non-refracting glass) |
+| Produced by | `npm run screenshots:capture` (`scripts/screenshots-capture.sh`) | `npm run screenshots:baseline` (`scripts/screenshots-baseline.sh`) |
+| Committed under | `screenshots/appstore/6.9-inch/uk/` | `screenshots/regression/6.9-inch/uk/` |
+| Determinism | Non-deterministic by design (real glass) — never diffed pixel-for-pixel against itself | Byte-stable — this is the whole point of the split |
+
+Why: the real 'clear' bloom glass re-refracts whatever content sits
+behind it (a chart, a scrolling list), so a marketing-build capture of
+the SAME screen drifts 2-10% run-to-run on chart/scroll-heavy
+screens — useless as a pixelmatch regression baseline, since
+`check:screenshots` would then flake on the glass material alone
+rather than catching a real UI regression. The fix is
+`isStableGlass()` (`src/screenshot/screenshot-mode.ts`), which reads
+`SCREENSHOT_STABLE_GLASS` (set only in `.env.screenshots.stable`) and
+makes `GlassSurface`
+(`src/design-system/components/glass-surface/glass-surface.component.tsx`)
+render a fixed, opaque, non-LiquidGlass surface instead — no live
+sampling, so the same screen renders byte-identical pixels across
+runs. The marketing build never sets this flag, so it keeps the real
+bloom glass App Store screenshots are meant to showcase. Never point
+`check:screenshots` at the marketing dir, and never treat a marketing
+capture as a valid regression baseline — the two builds render
+intentionally different pixels for the same screen.
+
 `scripts/checks/screenshots.sh` is a second manual/deep-tier check,
 same class as `check:mutation`: it needs a booted, pinned iOS
 simulator ("iPhone 17 Pro Max", 6.9-inch, 1320x2868 portrait) with a
-screenshot-mode build (`ENVFILE=.env.screenshots`) already installed
-— that step is the ops agent's job, never this wrapper's — so it is
-**not** wired to any hook and **not** part of `check:all` or
-`check:deep`. Run it by hand: `npm run check:screenshots`.
+STABLE-glass screenshot-mode build (`ENVFILE=.env.screenshots.stable`)
+already installed — that step is the ops agent's job, never this
+wrapper's — so it is **not** wired to any hook and **not** part of
+`check:all` or `check:deep`. Run it by hand: `npm run
+check:screenshots`.
 
 It runs `.maestro/appstore-screenshots.yaml` (Maestro must be on
 `PATH`; the wrapper fails closed if it is not) through the shared
 `run_flow_and_collect` helper in
 `scripts/checks/screenshot-diff/run-flow-and-collect.sh`, then
-pixel-diffs every captured PNG against the committed baseline of the
-same name under `screenshots/appstore/6.9-inch/uk/`, using the pure
-`comparePng` core in `scripts/checks/screenshot-diff/compare-png.js`
-(also usable as a CLI, under that file's `require.main` guard — see
-its own header comment). Those committed baselines are simultaneously
-the App Store deliverable images and the regression baseline;
-`npm run screenshots:capture` (`scripts/screenshots-capture.sh`) is
-how ops produces/refreshes that set from a real capture — it is a
-separate, standalone script (no `_lib.sh`, no `print_block`, not a
-check, not in `check:all`/`check:deep`, not hook-wired) that runs the
-SAME flow through the SAME shared helper and copies the 10 named PNGs
-it captures into `screenshots/appstore/6.9-inch/uk/` (`mkdir -p`'d
-first, overwriting what was there); it never commits.
+pixel-diffs every captured PNG against the committed REGRESSION
+baseline of the same name under `screenshots/regression/6.9-inch/uk/`,
+using the pure `comparePng` core in
+`scripts/checks/screenshot-diff/compare-png.js` (also usable as a CLI,
+under that file's `require.main` guard — see its own header comment).
+`npm run screenshots:baseline` (`scripts/screenshots-baseline.sh`) is
+how ops produces/refreshes that regression baseline from a real
+stable-glass capture; `npm run screenshots:capture`
+(`scripts/screenshots-capture.sh`) separately produces/refreshes the
+marketing deliverable set from a real bloom-glass capture. Both are
+standalone scripts (no `_lib.sh`, no `print_block`, not a check, not
+in `check:all`/`check:deep`, not hook-wired) that run the SAME flow
+through the SAME shared helper and each copy the 10 named PNGs they
+capture into their own destination dir (`mkdir -p`'d first,
+overwriting what was there); neither commits.
 
-The flow/helper/capture-script/check quartet had to route around a
+The flow/helper/capture-scripts/check family had to route around a
 Maestro 2.10.0 constraint discovered only at runtime, verified by
 decompiling the installed `maestro-orchestra.jar` /
 `maestro-cli-2.10.0.jar` with `javap` (no other doc source covers
@@ -150,8 +185,14 @@ artifact collection directories Maestro writes under `--debug-output`
 scoped to the `takeScreenshot/` directory specifically, never the
 generic `screenshots/` one. The 10 canonical shot names are declared
 once, as `SCREENSHOT_NAMES`, in `run-flow-and-collect.sh` itself — the
-single source of truth both the check and the capture script read, so
-the shot list cannot drift between them.
+single source of truth the check and both capture scripts read, so the
+shot list cannot drift between them. There are exactly three
+Statistics shots in that list (net-worth line, account-contribution,
+expenses-by-category); a fourth, standalone category-donut shot was
+tried and dropped (2026-09-12) because it landed at the same on-screen
+frame as the trend-block shot on the current build — see the flow's
+own comment above that shot for the full rationale and the
+ops+coordinator verification it still requires.
 
 Chosen tolerances (kept in sync between `compare-png.js`'s own
 comment and `screenshots.sh`): a pixelmatch per-pixel color-distance

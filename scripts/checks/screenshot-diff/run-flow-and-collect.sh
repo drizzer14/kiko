@@ -36,24 +36,24 @@
 #
 # The 10 canonical shot names are the SINGLE SOURCE OF TRUTH here — both
 # callers read SCREENSHOT_NAMES from this file, so the flow, the check, and
-# the capture script cannot drift out of sync on the shot list. Two Statistics
-# shots were deliberately dropped, not just renamed:
-#   - "by type" bar chart: it duplicated the line chart's frame
-#     (statistics.screen.tsx stacks statistics-block-bar immediately below
-#     statistics-block-line, close enough that it already appears under the
-#     net-worth line in the line-chart shot's frame).
-#   - account-contribution pie: unlike the category donut (which passes
-#     `centerTotal`, so pie-chart.component.tsx renders its
-#     `category-pie-center-total` inner element — a precise, deterministic
-#     scroll stop), this donut passes no `centerTotal` and so has NO inner
-#     center-total element at all (a real, observed failure: scrolling to
-#     that id found nothing at runtime). Its only targetable element, its
-#     block container (`statistics-block-pie`), sits too close to the
-#     category donut's own container for `visibilityPercentage: 100` alone to
-#     stop at two reliably distinct offsets (a real, observed failure: both
-#     containers landed at the SAME near-bottom scroll offset, producing
-#     byte-identical captures). With no reliable target available, the shot
-#     was dropped entirely rather than shipping a flaky or duplicate capture.
+# the capture script cannot drift out of sync on the shot list. There is
+# still NO standalone "by type" bar-chart shot: it duplicated the line
+# chart's frame (statistics.screen.tsx stacks statistics-block-bar
+# immediately below statistics-block-line, close enough that it already
+# appears under the net-worth line in the line-chart shot's frame), so it
+# stays dropped from this list entirely.
+#
+# There are exactly THREE Statistics shots, not four: a standalone
+# category-donut shot (targeting `category-pie-center-total`) was tried and
+# DROPPED (coordinator decision, 2026-09-12) because on the current app-wide
+# bloom-glass, tab-press-scroll-fixed build it landed at the SAME frame as
+# the trend-block shot (both the category donut and the trend chart below it
+# fit on screen together at that scroll offset), producing a byte-identical
+# duplicate of 08-statistics-expenses-by-category. See
+# `.maestro/appstore-screenshots.yaml`'s comment above shot 08 for the full
+# rationale, and for the OPS + COORDINATOR VERIFICATION requirement (confirm
+# 06/07/08 are three visually distinct frames after a real capture, and
+# adjust the 08 name if the landed content differs).
 SCREENSHOT_NAMES=(
   01-home-networth
   02-home-transactions-scrolled
@@ -61,8 +61,8 @@ SCREENSHOT_NAMES=(
   04-account-detail
   05-holding-detail-ledger
   06-statistics-net-worth-line
-  07-statistics-expenses-by-category
-  08-statistics-spending-trend
+  07-statistics-account-contribution
+  08-statistics-expenses-by-category
   09-settings-main
   10-settings-system
 )

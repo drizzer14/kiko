@@ -117,7 +117,8 @@ appId: com.dmytro-vasylkivskyi.kiko
 - takeScreenshot: 05-holding-detail-ledger
 
 # ---------------------------------------------------------------------------
-# 6-8. Statistics tab — one screenshot per chart block, in on-screen order
+# 6-8. Statistics tab — one screenshot per distinct on-screen frame, in
+# on-screen order
 # ---------------------------------------------------------------------------
 # Jump DIRECTLY to Statistics by its tab icon — do NOT `back` out of the
 # Accounts stack first. @bottom-tabs/react-navigation switches to the tapped
@@ -152,42 +153,39 @@ appId: com.dmytro-vasylkivskyi.kiko
 # momentum-dependent MID-scroll offset that varies by a few px run-to-run,
 # which `visibilityPercentage: 100` alone does not pin down.
 #
-# The final three targets — proven distinct AND deterministic in real
-# determinism runs (each landed at a different offset, no run-to-run drift,
-# ~0.0001% mismatch individually):
-#   06 statistics-block-line   07 category-pie-center-total   08 statistics-block-trend
+# Three Statistics shots, in on-screen top-to-bottom order:
+#   06 statistics-block-line   07 statistics-block-pie   08 statistics-block-trend
 #
 # 06 (line, TOP of the screen) and 08 (trend, very BOTTOM — see its own
 # comment below) scroll to their BLOCK CONTAINER: each clamps to a distinct,
 # deterministic edge of the scroll range.
 #
-# 07 (expenses-by-category) targets its donut's OWN inner center-total label,
-# NOT its block container: the category PieChart at statistics.screen.tsx:805
-# passes both `testID="category-pie"` AND `centerTotal={categoryTotal}`, and
-# pie-chart.component.tsx only renders its `${testID}-center-total` View when
-# `centerTotal !== undefined` (pie-chart.component.tsx:234) — so
-# `category-pie-center-total` DOES render, giving a precise, deterministic
-# scroll stop distinct from the trend block below it.
+# 07 (account-contribution) also targets its own block container
+# (`statistics-block-pie`): that PieChart (statistics.screen.tsx:782) passes
+# no `centerTotal` prop, so it has no inner center-total element to target.
 #
-# There is NO standalone account-contribution-pie shot: that PieChart
-# (statistics.screen.tsx:782) passes no `centerTotal` prop, so it has NO
-# inner center-total element at all (a real, observed failure: scrolling to
-# `pie-chart-center-total`, the component's `testID` DEFAULT_TEST_ID-derived
-# id, found nothing at runtime — its center is genuinely empty). Its only
-# targetable element is then its block container (`statistics-block-pie`),
-# but that container sits too close to the category donut's container for
-# `visibilityPercentage: 100` alone to stop at two reliably distinct offsets
-# (a real, observed failure: the two containers landed at the SAME
-# near-bottom scroll offset, producing byte-identical captures). With no
-# precise inner target available for this donut and its container
-# unreliable, the shot was dropped from the deliverable/baseline set
-# entirely rather than shipping a flaky or duplicate capture.
+# 08 targets `statistics-block-trend`, NOT the category donut's own
+# `category-pie-center-total` inner label — a standalone category-donut shot
+# was tried and DROPPED (coordinator decision, 2026-09-12): on the current
+# (app-wide bloom-glass, tab-press-scroll-fixed) build, scrolling to
+# `category-pie-center-total` landed at the SAME frame as scrolling to
+# `statistics-block-trend` (the category donut and the trend chart below it
+# both fit on screen together at that scroll offset), so the two shots were
+# byte-identical. Rather than ship a duplicate, 08 targets the trend block
+# directly and keeps the "expenses-by-category" name because that donut is
+# still the dominant, top-most content in the landed frame (the trend chart
+# renders below it, visible but secondary) — this is the coordinator-approved
+# "category-donut+trend" shot. OPS + COORDINATOR MUST VERIFY after a real
+# capture that the three Statistics frames (06/07/08) are in fact visually
+# distinct, and MAY ADJUST THE 08 NAME if the landed content differs from
+# what this comment describes (e.g. if the trend chart dominates the frame
+# instead of the category donut).
 #
-# There is also NO standalone "by type" bar-chart shot: it duplicated the
+# There is still NO standalone "by type" bar-chart shot: it duplicated the
 # line chart's frame (statistics.screen.tsx stacks `statistics-block-bar`
 # immediately below `statistics-block-line`, close enough that the "За типом"
-# bar row already appeared under the net-worth line), so it was dropped from
-# the deliverable/baseline set entirely.
+# bar row already appeared under the net-worth line), so it stays dropped
+# from the deliverable/baseline set entirely.
 - scrollUntilVisible:
     element:
       id: "statistics-block-line"
@@ -200,13 +198,13 @@ appId: com.dmytro-vasylkivskyi.kiko
 
 - scrollUntilVisible:
     element:
-      id: "category-pie-center-total"
+      id: "statistics-block-pie"
     direction: DOWN
     visibilityPercentage: 100
     timeout: 20000
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: 07-statistics-expenses-by-category
+- takeScreenshot: 07-statistics-account-contribution
 
 # Shot 08 is the ONLY shot taken at the very bottom of the Statistics
 # ScrollView. Its ~9.7% run-to-run pixel drift was NOT a chart animation (the
@@ -224,7 +222,7 @@ appId: com.dmytro-vasylkivskyi.kiko
     timeout: 20000
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: 08-statistics-spending-trend
+- takeScreenshot: 08-statistics-expenses-by-category
 
 # ---------------------------------------------------------------------------
 # 9-10. Settings -> System sub-page

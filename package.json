@@ -18,6 +18,7 @@
     "check:typecheck": "bash scripts/checks/typecheck.sh",
     "check:screenshots": "bash scripts/checks/screenshots.sh",
     "screenshots:capture": "bash scripts/screenshots-capture.sh",
+    "screenshots:baseline": "bash scripts/screenshots-baseline.sh",
     "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:rules && npm run check:plist && npm run check:secrets && npm run check:overrides && npm run check:typecheck",
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",

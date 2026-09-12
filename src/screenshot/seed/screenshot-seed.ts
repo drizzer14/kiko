@@ -203,6 +203,16 @@ type MonthlyExpense = {
   everyNthMonth?: number;
 };
 
+// An irregular big-ticket spend that lands in only ONE of the ledger months.
+type OneOffExpense = {
+  // Which month it lands in (0 = the most recent month, LEDGER_MONTHS-1 = oldest).
+  month: number;
+  category: string;
+  description: string;
+  minorUnits: number;
+  dayOfMonth: number;
+};
+
 // Categories reference the 10 seeded slugs (src/db/__fixtures__/seeded-categories.ts).
 const MONTHLY_EXPENSES: MonthlyExpense[] = [
   {
@@ -264,8 +274,50 @@ const MONTHLY_EXPENSES: MonthlyExpense[] = [
   },
 ];
 
-const MONTHLY_SALARY_MINOR_UNITS = 5_000_000;
-const CARD_OPENING_MINOR_UNITS = 6_000_000;
+// Monthly take-home pay, indexed by month (0 = the most recent month,
+// LEDGER_MONTHS-1 = the oldest). Deliberately UNEVEN and, in the three months a
+// one-off big-ticket buy lands (see ONE_OFF_EXPENSES), SMALLER than that month's
+// total spending — so the net-worth line FALLS month-over-month in those months
+// instead of climbing in a straight line. Fixed literals derived from nothing
+// but the month index, so the dataset stays byte-identical run to run.
+const MONTHLY_INCOME_MINOR_UNITS = [
+  2_500_000, // month 0 (newest): ₴25,000
+  2_300_000, // month 1:          ₴23,000
+  2_600_000, // month 2:          ₴26,000
+  2_100_000, // month 3:          ₴21,000
+  2_400_000, // month 4:          ₴24,000
+  2_200_000, // month 5 (oldest): ₴22,000
+];
+
+// Irregular big-ticket spends, one per listed month. Each is large enough that,
+// stacked on that month's recurring spending, it OUTWEIGHS the month's income —
+// these are the deliberate down/red segments on the net-worth line. Categorized
+// against the real seeded slugs so the pie/trend stay accurate.
+const ONE_OFF_EXPENSES: OneOffExpense[] = [
+  {
+    month: 1,
+    category: 'other',
+    description: 'Ремонт квартири',
+    minorUnits: 1_800_000,
+    dayOfMonth: 15,
+  },
+  {
+    month: 2,
+    category: 'entertainment',
+    description: 'Відпустка (Буковель)',
+    minorUnits: 1_600_000,
+    dayOfMonth: 12,
+  },
+  {
+    month: 3,
+    category: 'shopping',
+    description: 'Купівля ноутбука',
+    minorUnits: 1_400_000,
+    dayOfMonth: 9,
+  },
+];
+
+const CARD_OPENING_MINOR_UNITS = 2_000_000;
 
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (): SeedTransaction[] => {
@@ -284,7 +336,7 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
     const monthStart = month * MONTH_DAYS;
 
     list.push({
-      amountMinorUnits: MONTHLY_SALARY_MINOR_UNITS,
+      amountMinorUnits: MONTHLY_INCOME_MINOR_UNITS[month],
       time: at(monthStart + 2),
       category: null,
       description: 'Зарплата',
@@ -300,6 +352,19 @@ const buildMainCardTransactions = (): SeedTransaction[] => {
         time: at(monthStart + expense.dayOfMonth),
         category: expense.category,
         description: expense.description,
+      });
+    }
+
+    for (const oneOff of ONE_OFF_EXPENSES) {
+      if (oneOff.month !== month) {
+        continue;
+      }
+
+      list.push({
+        amountMinorUnits: -oneOff.minorUnits,
+        time: at(monthStart + oneOff.dayOfMonth),
+        category: oneOff.category,
+        description: oneOff.description,
       });
     }
   }
@@ -340,7 +405,7 @@ const buildAccounts = (): SeedAccount[] => [
         color: entityColorsDark.green,
         transactions: [
           {
-            amountMinorUnits: 2_000_000,
+            amountMinorUnits: 800_000,
             time: at(170),
             category: null,
             description: 'Зняття готівки в банкоматі',
@@ -369,18 +434,18 @@ const buildAccounts = (): SeedAccount[] => [
         color: entityColorsDark.teal,
         transactions: [
           {
-            amountMinorUnits: 1_000_000,
+            amountMinorUnits: 140_000,
             time: at(150),
             category: null,
             description: 'Поповнення рахунку',
           },
           {
-            amountMinorUnits: 80_000,
+            amountMinorUnits: 8_000,
             time: at(90),
             category: null,
             description: 'Фріланс-проєкт',
           },
-          { amountMinorUnits: -30_000, time: at(25), category: 'shopping', description: 'Amazon' },
+          { amountMinorUnits: -26_000, time: at(25), category: 'shopping', description: 'Amazon' },
         ],
       },
     ],
@@ -397,13 +462,13 @@ const buildAccounts = (): SeedAccount[] => [
         color: entityColorsDark.indigo,
         transactions: [
           {
-            amountMinorUnits: 450_000,
+            amountMinorUnits: 80_000,
             time: at(120),
             category: null,
             description: 'Поповнення рахунку',
           },
           {
-            amountMinorUnits: -50_000,
+            amountMinorUnits: -20_000,
             time: at(35),
             category: 'shopping',
             description: 'Booking.com',
@@ -424,14 +489,14 @@ const buildAccounts = (): SeedAccount[] => [
         color: entityColorsDark.orange,
         transactions: [
           {
-            amountMinorUnits: 30_000_000,
+            amountMinorUnits: 1_000_000,
             time: at(140),
             category: null,
             description: 'Купівля BTC',
           },
           {
-            amountMinorUnits: 5_000_000,
-            time: at(60),
+            amountMinorUnits: 200_000,
+            time: at(130),
             category: null,
             description: 'Купівля BTC',
           },

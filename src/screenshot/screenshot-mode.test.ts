@@ -1,5 +1,6 @@
 import {
   isScreenshotMode,
+  isStableGlass,
   parseScreenshotLanguage,
   parseScreenshotMode,
   screenshotLanguage,
@@ -58,5 +59,17 @@ describe('isScreenshotMode', () => {
 describe('screenshotLanguage', () => {
   it('defaults to "en" under the committed .env (no SCREENSHOT_LANG key)', () => {
     expect(screenshotLanguage()).toBe('en');
+  });
+});
+
+describe('isStableGlass', () => {
+  // `isStableGlass()` is `isScreenshotMode() && SCREENSHOT_STABLE_GLASS === 'true'`.
+  // The committed `.env` (the value inlined under Jest) carries NEITHER key, so
+  // it must be false — production and the real-glass marketing build alike keep
+  // the live glass. Its `=== 'true'` parse is exercised BOTH ways by the shared
+  // `parseScreenshotMode` describe above (it is the same pure parser), and the
+  // AND-gate on screenshot mode is what this asserts here.
+  it('is false under the committed .env (neither screenshot mode nor the stable flag) — real glass stays live', () => {
+    expect(isStableGlass()).toBe(false);
   });
 });

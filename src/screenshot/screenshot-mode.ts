@@ -1,4 +1,4 @@
-import { SCREENSHOT_LANG, SCREENSHOT_MODE } from '@env';
+import { SCREENSHOT_LANG, SCREENSHOT_MODE, SCREENSHOT_STABLE_GLASS } from '@env';
 
 import { type AppLanguage, appLanguages } from '../i18n';
 
@@ -38,3 +38,21 @@ export const isScreenshotMode = (): boolean => parseScreenshotMode(SCREENSHOT_MO
  * one-line env change plus a rebuild, with zero data drift.
  */
 export const screenshotLanguage = (): AppLanguage => parseScreenshotLanguage(SCREENSHOT_LANG);
+
+/**
+ * DEV/TEST-ONLY flag: `true` only in a build made against
+ * `.env.screenshots.stable` (which sets BOTH `SCREENSHOT_MODE=true` and
+ * `SCREENSHOT_STABLE_GLASS=true`). It is deliberately AND-gated on screenshot
+ * mode so a stray `SCREENSHOT_STABLE_GLASS` alone can never touch a real build —
+ * the committed `.env` and the marketing `.env.screenshots` both leave it unset,
+ * so this is `false` in production and on the real-glass marketing path alike.
+ *
+ * When `true`, `GlassSurface` renders a fixed OPAQUE surface (no live
+ * LiquidGlass sampling, no bloom) so the pixelmatch visual-regression check gets
+ * byte-stable pixels; the 'clear' bloom glass otherwise re-refracts varying
+ * chart/scroll content and drifts run-to-run. Reuses `parseScreenshotMode` for
+ * the `=== 'true'` parse (the same exact-string semantics), so the parser is
+ * already unit-tested both ways.
+ */
+export const isStableGlass = (): boolean =>
+  isScreenshotMode() && parseScreenshotMode(SCREENSHOT_STABLE_GLASS);

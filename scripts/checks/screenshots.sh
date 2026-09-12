@@ -11,15 +11,22 @@
 # What it does:
 #   1. Runs the Maestro flow (.maestro/appstore-screenshots.yaml) via the
 #      shared run_flow_and_collect helper (screenshot-diff/run-flow-and-
-#      collect.sh, also used by scripts/screenshots-capture.sh so the two
-#      cannot drift): a fresh `--debug-output` temp tree per run, with each
-#      of the 10 named PNGs it captures copied into a fresh mktemp -d capture
-#      directory — never a path inside the repo, so no .gitignore entry is
-#      needed for it.
-#   2. Pixel-diffs every captured PNG against the committed baseline of the
-#      same name under screenshots/appstore/6.9-inch/uk/, via the pure
-#      comparePng core in scripts/checks/screenshot-diff/compare-png.js
-#      (invoked as a CLI — see that file's require.main guard).
+#      collect.sh, also used by scripts/screenshots-capture.sh and
+#      scripts/screenshots-baseline.sh so none of the three can drift): a
+#      fresh `--debug-output` temp tree per run, with each of the 10 named
+#      PNGs it captures copied into a fresh mktemp -d capture directory —
+#      never a path inside the repo, so no .gitignore entry is needed for it.
+#   2. Pixel-diffs every captured PNG against the committed REGRESSION
+#      baseline of the same name under screenshots/regression/6.9-inch/uk/
+#      (NOT screenshots/appstore/6.9-inch/uk/ — that is the marketing
+#      deliverable set, captured from a different, non-deterministic build;
+#      see this repo's CLAUDE.md "check:screenshots" section for the full
+#      marketing-vs-regression split and why), via the pure comparePng core
+#      in scripts/checks/screenshot-diff/compare-png.js (invoked as a CLI —
+#      see that file's require.main guard). This check therefore only ever
+#      makes sense run against a STABLE-glass build (ENVFILE=
+#      .env.screenshots.stable) — a real bloom-glass build (.env.screenshots)
+#      will fail it on drift alone, by design.
 #   3. Fails on any image over tolerance, any missing baseline, any missing
 #      captured file, or a run that captured ZERO PNGs at all (a Maestro run
 #      that silently produced nothing must never read as a pass).
@@ -32,7 +39,7 @@ source "$DIR/screenshot-diff/run-flow-and-collect.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 
 FLOW="$ROOT/.maestro/appstore-screenshots.yaml"
-BASELINE_DIR="$ROOT/screenshots/appstore/6.9-inch/uk"
+BASELINE_DIR="$ROOT/screenshots/regression/6.9-inch/uk"
 DIFF_CLI="$ROOT/scripts/checks/screenshot-diff/compare-png.js"
 
 # Chosen tolerances — kept in sync with the comment in compare-png.js and the

@@ -13,4 +13,11 @@ declare module '@env' {
   // as optional to model that absence honestly — see src/screenshot/.
   export const SCREENSHOT_MODE: string | undefined;
   export const SCREENSHOT_LANG: string | undefined;
+  // DEV/TEST-ONLY (STABLE-GLASS regression variant). Present only in
+  // `.env.screenshots.stable`, absent from both `.env` and `.env.screenshots`,
+  // so production and the real-glass marketing build both inline `undefined`
+  // here. When `'true'` (and screenshot mode is on) GlassSurface renders a
+  // fixed opaque surface instead of live LiquidGlass, so the pixelmatch
+  // regression check gets byte-stable pixels — see src/screenshot/.
+  export const SCREENSHOT_STABLE_GLASS: string | undefined;
 }

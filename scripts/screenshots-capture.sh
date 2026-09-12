@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# screenshots:capture — produces the App Store screenshot deliverable/
-# baseline set. This is NOT a check: no print_block/_lib.sh, not hook-wired,
-# not part of check:all or check:deep. Run it by hand once a screenshot-mode
-# build (ENVFILE=.env.screenshots) is installed on a booted, pinned simulator
-# — see .maestro/appstore-screenshots.yaml's header comment for the exact
+# screenshots:capture — produces the App Store MARKETING screenshot
+# deliverable set (real bloom glass, non-deterministic by design). This is
+# NOT a check: no print_block/_lib.sh, not hook-wired, not part of check:all
+# or check:deep. Run it by hand once a screenshot-mode build (ENVFILE=
+# .env.screenshots) is installed on a booted, pinned simulator — see
+# .maestro/appstore-screenshots.yaml's header comment for the exact
 # prerequisites (simulator model, clock date, etc).
 #
-# It runs the same flow as scripts/checks/screenshots.sh, through the SAME
-# shared helper (scripts/checks/screenshot-diff/run-flow-and-collect.sh) so
-# the "run the flow, then find the PNGs" logic cannot drift between the two,
-# then copies the 10 named PNGs it captured into
-# screenshots/appstore/6.9-inch/uk/ (mkdir -p'd first), OVERWRITING whatever
-# was there before. Those files are simultaneously the finalized App Store
-# deliverable set and the check:screenshots regression baseline. This script
-# never commits anything — review the diff before committing.
+# It runs the same flow as scripts/checks/screenshots.sh and
+# scripts/screenshots-baseline.sh, through the SAME shared helper
+# (scripts/checks/screenshot-diff/run-flow-and-collect.sh) so the "run the
+# flow, then find the PNGs" logic cannot drift between the three, then
+# copies the 10 named PNGs it captured into screenshots/appstore/6.9-inch/uk/
+# (mkdir -p'd first), OVERWRITING whatever was there before. Those files are
+# the finalized App Store deliverable set ONLY — see
+# scripts/screenshots-baseline.sh / scripts/checks/screenshots.sh for the
+# separate, stable-glass check:screenshots regression baseline (this script
+# does NOT produce or touch it; the two builds render intentionally
+# different pixels — see CLAUDE.md's "check:screenshots" section). This
+# script never commits anything — review the diff before committing.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
