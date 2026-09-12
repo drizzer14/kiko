@@ -38,7 +38,6 @@ const makeDeps = (
 describe('bitcoinWalletProvider', () => {
   it('is the btc_wallet provider keyed on walletAddress', () => {
     expect(bitcoinWalletProvider.id).toBe('btc_wallet');
-    expect(bitcoinWalletProvider.kind).toBe('wallet');
     expect(bitcoinWalletProvider.metadataField).toBe('walletAddress');
   });
 
@@ -58,7 +57,7 @@ describe('bitcoinWalletProvider', () => {
 
     expect(deps.fetchAddressBalance).toHaveBeenCalledWith(ADDRESS, deps.fetchImpl);
     expect(balances).toEqual([
-      { currency: 'BTC', balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
+      { balanceMinorUnits: 12_345_678, metadataKey: ADDRESS, name: 'BTC Wallet' },
     ]);
   });
 

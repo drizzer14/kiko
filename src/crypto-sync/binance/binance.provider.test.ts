@@ -68,7 +68,6 @@ const byKey = (balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances
 describe('binanceProvider', () => {
   it('is the binance exchange provider keyed on binanceAsset', () => {
     expect(binanceProvider.id).toBe('binance');
-    expect(binanceProvider.kind).toBe('exchange');
     expect(binanceProvider.metadataField).toBe('binanceAsset');
   });
 
@@ -137,7 +136,6 @@ describe('binanceProvider — Spot holding', () => {
     // Spot reuses the legacy 'BTC' key so the pre-split aggregated holding is
     // updated IN PLACE into the Spot holding (see the transition test).
     expect(byKey(balances, 'BTC')).toEqual({
-      currency: 'BTC',
       balanceMinorUnits: 75_000_000, // 0.5 + 0.25 BTC
       metadataKey: 'BTC',
       name: 'Binance Spot',
@@ -200,7 +198,6 @@ describe('binanceProvider — Funding holding', () => {
     // Spot and Funding are DISTINCT holdings — not summed together.
     expect(byKey(balances, 'BTC')?.balanceMinorUnits).toBe(75_000_000);
     expect(byKey(balances, 'BTC:funding')).toEqual({
-      currency: 'BTC',
       balanceMinorUnits: 40_000_000, // 0.4 BTC
       metadataKey: 'BTC:funding',
       name: 'Binance Funding',
@@ -269,7 +266,6 @@ describe('binanceProvider — Funding holding', () => {
     const balances = await binanceProvider.fetchBalances(deps, target);
 
     expect(byKey(balances, 'BTC:funding')).toEqual({
-      currency: 'BTC',
       balanceMinorUnits: 0,
       metadataKey: 'BTC:funding',
       name: 'Binance Funding',
@@ -298,7 +294,6 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
     expect(byKey(balances, 'BTC:earn')).toEqual({
-      currency: 'BTC',
       balanceMinorUnits: 50_000_000, // 0.3 + 0.2 BTC, one holding
       metadataKey: 'BTC:earn',
       name: 'Binance Earn',

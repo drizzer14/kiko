@@ -248,12 +248,11 @@ const appendWallet = (
   if (satoshis === 0 && !existingKeys.has(metadataKey)) {
     return;
   }
-  batch.push({ currency: 'BTC', balanceMinorUnits: satoshis, metadataKey, name });
+  batch.push({ balanceMinorUnits: satoshis, metadataKey, name });
 };
 
 export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
-  kind: 'exchange',
   metadataField: 'binanceAsset',
   fetchBalances: async (deps, target) => {
     const credentials = await deps.readCredentials(target.accountId);
@@ -272,7 +271,6 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const spot = spotSatoshis(await deps.fetchAccount(apiKey, secret, options));
     const balances: ProviderBalance[] = [
       {
-        currency: 'BTC',
         balanceMinorUnits: spot,
         metadataKey: SPOT_KEY,
         name: SPOT_HOLDING_NAME,

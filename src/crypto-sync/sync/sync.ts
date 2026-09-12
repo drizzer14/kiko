@@ -183,7 +183,7 @@ const runBalanceSyncInner = async <Deps>(
         accountId,
         name: balance.name,
         type: 'crypto_asset',
-        currency: balance.currency,
+        currency: 'BTC',
         balanceMinorUnits: balance.balanceMinorUnits,
         metadata: { syncedAt },
         metadataField: provider.metadataField,
