@@ -725,6 +725,70 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
   });
 
+  it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
+    // Parity with the wallet-field case above, targeting the OTHER source field:
+    // the empty-name reject must guard both CryptoSyncForm fields, not just Wallet.
+    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCryptoSync).not.toHaveBeenCalled();
+    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+  });
+
+  it('treats a whitespace-only name exactly like an empty name on the crypto form', async () => {
+    // A name of only spaces must not satisfy canSave: the sync form still shows
+    // (full parity, no gate on visibility), the hint stays up, and a Connect
+    // creates nothing — trimmedName === '' is the same reject path as a truly
+    // empty name.
+    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Crypto'));
+
+    expect(getByLabelText('wallet-field')).toBeTruthy();
+    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCryptoSync).not.toHaveBeenCalled();
+  });
+
+  it('retries the crypto create after an empty-name reject, once a valid name is entered', async () => {
+    // The empty-name reject inside ensureCryptoAccount must leave no poisoned
+    // latch behind: a first Connect with no name creates nothing, and a SECOND
+    // Connect on the same field — after typing a valid name — must still succeed,
+    // creating the account exactly once and running its sync.
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCryptoSync).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Crypto', kind: 'crypto' }),
+    );
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await waitFor(() =>
+      expect(mockCryptoSync).toHaveBeenCalledWith({
+        providerId: 'btc_wallet',
+        targetAccountId: createdId,
+        address: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      }),
+    );
+  });
+
   it("creates the crypto account first, then runs the wallet field's connect against its id", async () => {
     const { getByLabelText, getByText } = await renderForm();
 
