@@ -27,10 +27,11 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   trailing,
   required,
   disabled = false,
+  hideLabel = false,
   testID,
 }) => (
   <Box gap={1}>
-    <FieldLabel label={label} required={required} />
+    {!hideLabel && <FieldLabel label={label} required={required} />}
 
     <Pressable
       accessibilityRole="button"

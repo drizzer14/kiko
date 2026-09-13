@@ -59,16 +59,22 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* The base currency is FIAT-ONLY: it drives every net-worth conversion,
             so a crypto base (BTC) is not selectable here. The field reuses the
             shared searchable CurrencyField the account/holding forms use, its
-            `options` restricted to `fiatCurrencyOptions`. Its own caption labels
-            the control, so no wrapping SettingsRow header is needed. */}
+            `options` restricted to `fiatCurrencyOptions`. It is wrapped in a
+            SettingsRow so it carries the same leading icon + label framing as
+            every other settings row; `hideLabel` suppresses CurrencyField's own
+            inline caption so "Base Currency" is not shown twice, while the label
+            still titles the picker sheet. */}
         <GlassSurface testID="settings-card-base-currency" padding={3} transparent bloom>
-          <CurrencyField
-            testID="settings-row-base-currency"
-            label={t('settings.baseCurrency')}
-            selected={settings?.baseCurrency}
-            onSelect={handleSelectCurrency}
-            options={fiatCurrencyOptions}
-          />
+          <SettingsRow icon="dollarsign.circle" label={t('settings.baseCurrency')}>
+            <CurrencyField
+              testID="settings-row-base-currency"
+              label={t('settings.baseCurrency')}
+              hideLabel
+              selected={settings?.baseCurrency}
+              onSelect={handleSelectCurrency}
+              options={fiatCurrencyOptions}
+            />
+          </SettingsRow>
         </GlassSurface>
 
         <GlassSurface testID="settings-card-categories" padding={3} transparent bloom>

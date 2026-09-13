@@ -21,8 +21,8 @@ export const styles = StyleSheet.create((theme) => ({
   // fill is a runtime theme color layered on at the call site (see the
   // component), so the transparent-unselected rationale stays next to its use.
   // This is the DEFAULT (`labelVariant="body"`) sizing — every existing
-  // consumer that omits `labelVariant` (CurrencySwitch, LanguageSwitch, the
-  // base-currency and lock-grace settings pills) keeps this exact shape.
+  // consumer that omits `labelVariant` (LanguageSwitch, the lock-grace
+  // settings pills) keeps this exact shape.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',

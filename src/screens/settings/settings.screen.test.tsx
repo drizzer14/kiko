@@ -102,6 +102,25 @@ describe('SettingsScreen', () => {
     expect(getByTestId('settings-row-base-currency')).toBeTruthy();
   });
 
+  it('frames the base-currency row like every other settings row, with a leading dollarsign.circle icon', async () => {
+    const { root } = await renderScreen();
+
+    // The row is wrapped in a SettingsRow, so it carries the same leading-icon
+    // chrome as the System/Categories rows — the icon glyph is the mocked
+    // SFSymbolView, which forwards `name` as a host prop. The dollarsign.circle
+    // glyph is unique to the base-currency row, so a whole-tree lookup suffices.
+    const glyphs = root?.queryAll((node) => node.props.name === 'dollarsign.circle') ?? [];
+    expect(glyphs.length).toBeGreaterThan(0);
+  });
+
+  it('labels the base-currency control exactly once (SettingsRow labels it, CurrencyField shows no duplicate caption)', async () => {
+    const { getAllByText } = await renderScreen();
+
+    // The SettingsRow renders "Base Currency"; the CurrencyField must NOT also
+    // render its own inline caption, or the label would appear twice.
+    expect(getAllByText('Base Currency')).toHaveLength(1);
+  });
+
   it('renders each setting in its own separate card, not one shared grouped card', async () => {
     const navigation = navigationSpy();
     const { getByTestId } = await renderScreen(navigation);

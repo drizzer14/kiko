@@ -53,6 +53,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   options = currencyOptions,
   required,
   disabled,
+  hideLabel,
   testID,
 }) => {
   const { t } = useTranslation();
@@ -83,6 +84,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     <Box gap={1}>
       <FieldTrigger
         label={label}
+        hideLabel={hideLabel}
         required={required}
         disabled={disabled}
         testID={testID}

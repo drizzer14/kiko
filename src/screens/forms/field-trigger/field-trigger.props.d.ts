@@ -10,6 +10,11 @@ export type FieldTriggerProps = {
   // The caption shown above the field AND the Pressable's accessibility
   // label, mirroring every other labeled form field.
   label: string;
+  // Suppress the visible caption above the field while keeping `label` as the
+  // Pressable's accessibility label. Defaults to false. Set by a caller that
+  // already labels the control externally (e.g. a Settings row's own header),
+  // so the caption is not shown twice.
+  hideLabel?: boolean;
   onPress: () => void;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.
