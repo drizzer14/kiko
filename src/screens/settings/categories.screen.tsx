@@ -1,7 +1,7 @@
 import { categoriesRepo } from '@kiko/categories/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useState } from 'react';
+import { type FC, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
@@ -294,6 +294,31 @@ const CategoryListRow: FC<{
 // guessed).
 const CATEGORY_DRAG_ACTIVATION_MS = 600;
 
+// A pure projection with no closure, hoisted to module scope per
+// kiko-code-style's "Helper placement" rule. This ALSO fixes the root cause of
+// the flaky category-card backgrounds: `Sortable.Grid`'s underlying item store
+// (`react-native-sortables`' `ItemsProvider`/`createItemsStore`) invalidates
+// and RE-RENDERS EVERY row — not just the one whose data changed — the moment
+// either `keyExtractor` or `renderItem` is a NEW function reference, regardless
+// of whether any row's actual data changed (its `apply()` sets
+// `rendererChanged = renderItem !== currentRenderer` and treats that alone as
+// "every row changed"). An inline arrow literal
+// (`keyExtractor={(category) => category.key}`) is a fresh reference on every
+// render of `CategoriesScreen` — and this screen re-renders on every category
+// mutation anywhere in the list (a rename, an icon pick, a color pick, a
+// reorder, a delete — each writes the `categories` table, which re-fires this
+// screen's `useLiveQuery`). So editing ONE category's color used to force
+// every OTHER unaffected card through a full node recompute too: each
+// `GlassSurface` card here renders `bloom` (see `glass-surface.component.tsx`),
+// whose real Liquid-Glass material samples its backdrop from the app's actual
+// current visual state — a card that is unnecessarily torn down and rebuilt by
+// this churn can resample a transient, not-yet-settled backdrop and paint
+// visibly wrong until something else (a drag, a remount) forces a correct
+// resample. Hoisting this extractor (it closes over nothing) makes it
+// referentially stable forever, the same fix class `renderCategoryRow` below
+// applies to `renderItem`.
+const categoryKeyExtractor = (category: CategoryRow): string => category.key;
+
 // The Categories settings sub-screen: a live-queried vertical stack of every
 // category, each rendered as its own card (matching the account/holding card
 // treatment) so it renames its title and re-picks its icon in place. The
@@ -312,13 +337,44 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // at its new position, which is the "immediately jump" behavior.
   const orderedKeys = categories.map((category) => category.key);
 
-  const moveToTop = (key: string): void => {
-    categoriesRepo.reorder([key, ...orderedKeys.filter((other) => other !== key)]);
-  };
+  // `orderedKeys` is a plain render-scoped value — a fresh array on every
+  // render, since `categories` itself is a fresh array on every live-query fire
+  // (a write to any one row re-executes the whole `SELECT`, and every row comes
+  // back as a brand-new object; see `useLiveQuery`). `moveToTop`/`moveToBottom`
+  // read it through this ref rather than closing over it directly, so the two
+  // callbacks below can stay referentially STABLE (see `categoryKeyExtractor`'s
+  // doc above for why a stable identity here is the actual fix, not a
+  // micro-optimization) while still always reordering against the CURRENT
+  // list, not a stale snapshot captured at some earlier render.
+  const orderedKeysRef = useRef(orderedKeys);
+  orderedKeysRef.current = orderedKeys;
 
-  const moveToBottom = (key: string): void => {
-    categoriesRepo.reorder([...orderedKeys.filter((other) => other !== key), key]);
-  };
+  const moveToTop = useCallback((key: string): void => {
+    categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
+  }, []);
+
+  const moveToBottom = useCallback((key: string): void => {
+    categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
+  }, []);
+
+  // Memoized on the same principle as `categoryKeyExtractor` above: with
+  // `moveToTop`/`moveToBottom` now stable and `defaultCategoryKey` changing
+  // only when the actual default changes, this function is a stable reference
+  // across every render this screen does NOT need to rebuild every card for —
+  // so `Sortable.Grid`'s item store only recomputes a row when that row's own
+  // data actually changed, instead of on every unrelated edit anywhere in the
+  // list.
+  const renderCategoryRow = useCallback(
+    ({ item }: { item: CategoryRow }) => (
+      <CategoryListRow
+        category={item}
+        isDefault={item.key === defaultCategoryKey}
+        onMoveToTop={() => moveToTop(item.key)}
+        onMoveToBottom={() => moveToBottom(item.key)}
+      />
+    ),
+    [defaultCategoryKey, moveToTop, moveToBottom],
+  );
 
   // The scroll-mode ScrollView's ref, so expanding the inline add-category form
   // (appended below the last category card) can bring its revealed fields into
@@ -367,15 +423,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
           rowGap={theme.spacing(4)}
           scrollableRef={scrollableRef}
           autoScrollActivationOffset={75}
-          keyExtractor={(category) => category.key}
-          renderItem={({ item }) => (
-            <CategoryListRow
-              category={item}
-              isDefault={item.key === defaultCategoryKey}
-              onMoveToTop={() => moveToTop(item.key)}
-              onMoveToBottom={() => moveToBottom(item.key)}
-            />
-          )}
+          keyExtractor={categoryKeyExtractor}
+          renderItem={renderCategoryRow}
           onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
             onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
           }
