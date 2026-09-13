@@ -1,12 +1,10 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
-import type { Currency } from '../../currency/currency';
-import { write } from '../../db/client';
 import {
   type AccountRow,
   accounts,
@@ -18,13 +16,15 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
-import { entityColorsDark } from '../../design-system/palette';
-import type { AppLanguage } from '../../i18n';
 import {
   type ScreenshotScenario,
   screenshotLanguage,
   screenshotScenario,
 } from '../screenshot-mode';
+import { write } from '../../db/client';
+import type { AppLanguage } from '../../i18n';
+import type { Currency } from '../../currency/currency';
+import { entityColorsDark } from '../../design-system/palette';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT

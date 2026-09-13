@@ -1,19 +1,19 @@
 import type { TFunction } from 'i18next';
-import { type FC, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { type FC, useEffect, useState } from 'react';
 
-import { type Currency, currencyOptions } from '../../../currency/currency';
-import { currencySignSymbol } from '../../../currency/currency-symbols';
-import FieldTrigger from '../../../screens/forms/field-trigger';
-import BottomSheet from '../bottom-sheet';
 import Box from '../box';
-import SelectableRow from '../selectable-row';
 import Text from '../text';
 import TextField from '../text-field';
+import BottomSheet from '../bottom-sheet';
+import SelectableRow from '../selectable-row';
+import FieldTrigger from '../../../screens/forms/field-trigger';
+import { currencySignSymbol } from '../../../currency/currency-symbols';
+import { type Currency, currencyOptions } from '../../../currency/currency';
 
-import type { CurrencyFieldProps } from './currency-field.props';
 import { styles } from './currency-field.styles';
+import type { CurrencyFieldProps } from './currency-field.props';
 
 // The localized display name for a currency code, looked up from the i18n
 // catalogues (`currencyNames.<CODE>`) rather than a static map, so the label

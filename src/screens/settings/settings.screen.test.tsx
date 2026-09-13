@@ -1,7 +1,6 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
-import { currencyOptions } from '../../currency/currency';
 import { i18n } from '../../i18n';
 import {
   asNavigationProp,
@@ -9,6 +8,7 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '../../test-support/navigation-props';
+import { currencyOptions } from '../../currency/currency';
 
 import SettingsScreen from './settings.screen';
 

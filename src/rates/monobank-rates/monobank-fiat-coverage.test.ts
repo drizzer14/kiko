@@ -1,7 +1,7 @@
-import { type Currency, currencyOptions, isCurrency, isFiat } from '../../currency/currency';
 import { codeFromCurrency } from '../../monobank/currency-code';
-import { buildRateTable, canConvert, guardedNetWorth } from '../net-worth-view';
 import { type RefreshDeps, refreshRates } from '../rates-refresh';
+import { buildRateTable, canConvert, guardedNetWorth } from '../net-worth-view';
+import { type Currency, currencyOptions, isCurrency, isFiat } from '../../currency/currency';
 
 import { fetchFiatRates } from './monobank-rates';
 
