@@ -27,6 +27,12 @@ export type FieldTriggerProps = {
   // Extra content rendered after the value (e.g. a trailing account-name
   // caption) — optional, so a field with nothing to disambiguate omits it.
   trailing?: ReactNode;
+  /**
+   * Read-only: the trigger renders dimmed and its press is inert. Defaults to
+   * false. Used by a field the domain forbids changing after creation (a
+   * holding's currency in edit mode).
+   */
+  disabled?: boolean;
   // An optional testID applied to the Pressable trigger, so a flow can tap the
   // field to open its picker sheet. Omitted leaves the trigger untagged.
   testID?: string;

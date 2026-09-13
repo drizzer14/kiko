@@ -26,6 +26,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   valueTone,
   trailing,
   required,
+  disabled = false,
   testID,
 }) => (
   <Box gap={1}>
@@ -34,10 +35,12 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       testID={testID}
     >
-      <Box direction="row" gap={2} style={styles.field}>
+      <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
         {icon !== undefined && (
           <SymbolIcon name={icon} size={18} tone="textSecondary" color={iconColor} />
         )}

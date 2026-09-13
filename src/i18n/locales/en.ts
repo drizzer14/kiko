@@ -135,7 +135,9 @@ export const en = {
       date: 'Date',
       icon: 'Icon',
       name: 'Name',
+      searchCurrency: 'Search currency',
       selectCategory: 'Select category',
+      selectCurrency: 'Select currency',
       time: 'Time',
     },
     account: {
