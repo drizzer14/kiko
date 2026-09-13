@@ -422,12 +422,13 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a cash account atomically with the initial value', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByText, getByTestId, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await fireEvent.press(getByText('Cash'));
     await fireEvent.changeText(getByLabelText('Initial value'), '250.50');
-    await fireEvent.press(getByText('EUR'));
+    await fireEvent.press(getByTestId('account-currency-field'));
+    await fireEvent.press(getByTestId('currency-option-EUR'));
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreateCashAccount).toHaveBeenCalledWith({
@@ -443,6 +444,17 @@ describe('AccountFormScreen', () => {
     });
     expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('offers only fiat currencies for a cash account (no BTC)', async () => {
+    const { getByLabelText, getByText, getByTestId, queryByTestId } = await renderForm();
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('Cash'));
+    await fireEvent.press(getByTestId('account-currency-field'));
+
+    expect(getByTestId('currency-option-USD')).toBeTruthy();
+    expect(getByTestId('currency-option-GBP')).toBeTruthy();
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 });
 

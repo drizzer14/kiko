@@ -5,14 +5,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
-import { currencySignSymbol } from '../../currency/currency-symbols';
+import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import { id } from '../../db/id';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import CurrencyField from '../../design-system/components/currency-field';
 import Divider from '../../design-system/components/divider';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
@@ -402,12 +402,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             them. */}
         {!isEdit && kind === 'cash' && (
           <>
-            <ChipRow
+            <CurrencyField
               label={t('forms.fields.currency')}
-              options={currencyOptions}
               selected={currency}
               onSelect={setCurrency}
-              icons={currencySignSymbol}
+              options={fiatCurrencyOptions}
+              testID="account-currency-field"
             />
 
             <TextField
