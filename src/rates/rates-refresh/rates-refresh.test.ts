@@ -1,4 +1,6 @@
+import { isCurrency } from '../../currency/currency';
 import type { RateEntry } from '../conversion';
+import { buildRateTable, canConvert } from '../net-worth-view';
 
 import { type RefreshDeps, refreshRates } from './rates-refresh';
 
@@ -143,5 +145,47 @@ describe('refreshRates', () => {
     await refreshRates(deps);
 
     expect(captured).toHaveLength(0);
+  });
+
+  // Locks in the build-6 failure class: a pickable currency with no rate path
+  // silently drops out of every net-worth sum (`canConvert`,
+  // `src/rates/net-worth-view`). GBP and CHF are the two fiat codes this track
+  // added; this feeds a real Monobank-shaped response including both through
+  // the REAL `refreshRates` composition and proves the stored table actually
+  // supports converting them, not just that some row got written.
+  it('composes a convertible rate path for GBP and CHF (no silent net-worth drop)', async () => {
+    const gbpChfFiat: RateEntry[] = [
+      { base: 'USD', quote: 'UAH', rate: 41, source: 'monobank' },
+      { base: 'GBP', quote: 'UAH', rate: 52, source: 'monobank' },
+      { base: 'CHF', quote: 'UAH', rate: 46, source: 'monobank' },
+    ];
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => gbpChfFiat,
+      fetchBTCPrice: async () => [],
+    });
+
+    await refreshRates(deps);
+
+    expect(captured).toHaveLength(1);
+    // `captured[0]`'s local `StoredRate` type declares `base`/`quote` as plain
+    // `string` (this file's shared test helper shape), but `buildRateTable`
+    // requires the real `Currency` union. Narrow with the app's own
+    // `isCurrency` predicate rather than casting past the type.
+    const table = buildRateTable(
+      captured[0].map((row) => {
+        if (!isCurrency(row.base) || !isCurrency(row.quote)) {
+          throw new Error(`expected a known currency pair, got ${row.base}:${row.quote}`);
+        }
+        return { base: row.base, quote: row.quote, rate: row.rate };
+      }),
+    );
+
+    expect(canConvert('GBP', 'UAH', table)).toBe(true);
+    expect(canConvert('CHF', 'UAH', table)).toBe(true);
+    // A cross-pair with no direct Monobank quote: composed via the UAH pivot
+    // inside `buildUahPrice`/`buildPairs`, not fetched directly.
+    expect(canConvert('GBP', 'USD', table)).toBe(true);
+    expect(canConvert('CHF', 'USD', table)).toBe(true);
+    expect(canConvert('GBP', 'CHF', table)).toBe(true);
   });
 });
