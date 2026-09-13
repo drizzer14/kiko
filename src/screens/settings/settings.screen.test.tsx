@@ -159,10 +159,11 @@ describe('SettingsScreen', () => {
   it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
     const navigation = navigationSpy();
     const { getAllByRole } = await renderScreen(navigation);
-    // BTC, USD, EUR, UAH — four separate currency pressables — plus the two
-    // navigating rows' own pressables (System, Categories) — 6 total. Language
+    // UAH, USD, EUR, GBP, CHF, BTC — six separate currency pressables (the
+    // CurrencySwitch iterates the full currencyOptions set) — plus the two
+    // navigating rows' own pressables (System, Categories) — 8 total. Language
     // moved to the System sub-screen, so its two pressables are gone from here.
-    expect(getAllByRole('button')).toHaveLength(6);
+    expect(getAllByRole('button')).toHaveLength(8);
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
