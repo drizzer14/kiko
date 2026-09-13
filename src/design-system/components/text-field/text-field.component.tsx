@@ -3,12 +3,12 @@ import { TextInput } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
+import Text from '../text';
 import FieldLabel from '../field-label';
 import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
-import Text from '../text';
 
-import type { TextFieldProps } from './text-field.props';
 import { styles } from './text-field.styles';
+import type { TextFieldProps } from './text-field.props';
 
 // iOS numeric keyboards (`decimal-pad` / `number-pad`) render no return key, so
 // a `returnKeyType='done'` default is a no-op on them — they rely solely on the

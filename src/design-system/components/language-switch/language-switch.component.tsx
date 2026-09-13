@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { appLanguages } from '../../../i18n';
 import OptionPills from '../option-pills';
+import { appLanguages } from '../../../i18n';
 
 import type { LanguageSwitchProps } from './language-switch.props';
 

@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react-native';
 import '../../unistyles';
 
-import { entityIconTileGradient } from '../../entity-tint';
 import { darkTheme } from '../../theme';
+import { entityIconTileGradient } from '../../entity-tint';
 
 import EntityIconTile from '.';
 

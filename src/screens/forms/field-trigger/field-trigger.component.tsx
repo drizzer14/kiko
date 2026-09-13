@@ -2,12 +2,12 @@ import type { FC } from 'react';
 import { Pressable } from 'react-native';
 
 import Box from '../../../design-system/components/box';
-import FieldLabel from '../../../design-system/components/field-label';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import FieldLabel from '../../../design-system/components/field-label';
 
-import type { FieldTriggerProps } from './field-trigger.props';
 import { styles } from './field-trigger.styles';
+import type { FieldTriggerProps } from './field-trigger.props';
 
 // The shared "labeled field that opens a picker sheet" trigger: a caption
 // above a bordered row showing the current icon + value, tapping which opens

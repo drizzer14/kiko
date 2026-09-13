@@ -1,59 +1,59 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { TFunction } from 'i18next';
-import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
 
-import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  resolveCategoryDisplay,
-} from '../../categories/category-display';
-import { type Currency, currencySymbol } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import { parseAmount } from '../../currency/parse';
-import type { HoldingRow, TransactionRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
-import BottomSheet from '../../design-system/components/bottom-sheet';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
-import Text from '../../design-system/components/text';
-import TextField from '../../design-system/components/text-field';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import {
   canConvertToExchange,
   type ExchangeConvertDirection,
   exchangeConvertDirection,
 } from '../../holdings/exchange-convert';
 import {
+  buildCategoryDisplayMap,
+  DEFAULT_CATEGORY_KEY,
+  resolveCategoryDisplay,
+} from '../../categories/category-display';
+import { Money } from '../../currency/money';
+import {
   isExchangeCreateDestinationType,
   isExchangeCreateSourceType,
   isExchangeDestinationType,
   isExchangeSourceType,
 } from '../../holdings/exchange-destination';
+import { parseAmount } from '../../currency/parse';
+import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
+import Text from '../../design-system/components/text';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
+import SymbolIcon from '../../design-system/components/symbol';
+import TextField from '../../design-system/components/text-field';
+import { holdingTypeSymbol } from '../../holdings/entity-symbols';
+import type { HoldingRow, TransactionRow } from '../../db/schema';
+import { defaultHoldingColor } from '../../holdings/entity-colors';
 import type { TransactionFormParams } from '../../navigation/types';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import BottomSheet from '../../design-system/components/bottom-sheet';
+import { type Currency, currencySymbol } from '../../currency/currency';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { defaultTransactionDescription } from '../../transactions/default-description';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
+import { defaultTransactionDescription } from '../../transactions/default-description';
 
-import { groupAmount, majorAmountText } from './amount-format';
-import CategoryField from './category-field';
 import ChipRow from './chip-row';
-import ConvertExchangeFields from './convert-exchange-fields';
 import DateField from './date-field';
-import ExchangeFields from './exchange-fields';
-import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
 import TimeField from './time-field';
+import CategoryField from './category-field';
+import ExchangeFields from './exchange-fields';
 import { useSubmitOnce } from './use-submit-once';
+import ConvertExchangeFields from './convert-exchange-fields';
+import { groupAmount, majorAmountText } from './amount-format';
+import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its

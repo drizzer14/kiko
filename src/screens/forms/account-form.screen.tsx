@@ -1,36 +1,36 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { useSync } from '@kiko/sync/use-sync';
+import { useTranslation } from 'react-i18next';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
-import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import { parseAmount } from '../../currency/parse';
 import { id } from '../../db/id';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import CurrencyField from '../../design-system/components/currency-field';
-import Divider from '../../design-system/components/divider';
-import Screen from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
-import TextField from '../../design-system/components/text-field';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
-import { fetchClientInfo } from '../../monobank/client';
+import { Money } from '../../currency/money';
 import { saveToken } from '../../monobank/token';
-import type { AccountsStackParamList } from '../../navigation/types';
+import { parseAmount } from '../../currency/parse';
+import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
+import Text from '../../design-system/components/text';
+import { fetchClientInfo } from '../../monobank/client';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
+import Divider from '../../design-system/components/divider';
 import CryptoSyncForm from '../account-detail/crypto-sync-form';
+import TextField from '../../design-system/components/text-field';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { defaultAccountColor } from '../../holdings/entity-colors';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import type { AccountsStackParamList } from '../../navigation/types';
 import MonobankTokenInput from '../account-detail/monobank-token-input';
+import CurrencyField from '../../design-system/components/currency-field';
+import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../currency/currency';
 
-import { groupAmount } from './amount-format';
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';
-import HoldingIdentityField from './holding-identity-field';
+import { groupAmount } from './amount-format';
 import { useSubmitOnce } from './use-submit-once';
+import HoldingIdentityField from './holding-identity-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

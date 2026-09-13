@@ -1,26 +1,26 @@
-import { categoriesRepo } from '@kiko/categories/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useCallback, useRef, useState } from 'react';
+import Sortable from 'react-native-sortables';
 import { useTranslation } from 'react-i18next';
+import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import Sortable from 'react-native-sortables';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
-import type { CategoryRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import GlassSurface from '../../design-system/components/glass-surface';
-import Screen from '../../design-system/components/screen';
-import { onGridDragEnd, openDeleteMenu } from '../../design-system/grid-interaction';
-import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
-import type { SettingsStackParamList } from '../../navigation/types';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import ColorPicker from '../forms/color-picker';
+import type { CategoryRow } from '../../db/schema';
+import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
 import HoldingIdentityField from '../forms/holding-identity-field';
+import type { SettingsStackParamList } from '../../navigation/types';
+import GlassSurface from '../../design-system/components/glass-surface';
+import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
+import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
+import { onGridDragEnd, openDeleteMenu } from '../../design-system/grid-interaction';
 
 import AddCategoryRow from './add-category-row';
 

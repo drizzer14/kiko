@@ -1,12 +1,12 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
-import { entityIconTileGradient } from '../../../design-system/entity-tint';
 import { darkTheme } from '../../../design-system/theme';
+import { entityIconTileGradient } from '../../../design-system/entity-tint';
 
 import HoldingCard from './holding-card.component';
 

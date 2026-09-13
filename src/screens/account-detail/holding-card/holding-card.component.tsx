@@ -1,24 +1,24 @@
+import { Pressable } from 'react-native';
+import { type FC, useEffect, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { type FC, useEffect, useState } from 'react';
-import { Pressable } from 'react-native';
 
-import type { Currency } from '../../../currency/currency';
-import { formatMoney } from '../../../currency/format';
 import type { HoldingRow } from '../../../db/schema';
+import { formatMoney } from '../../../currency/format';
 import Box from '../../../design-system/components/box';
-import EntityIconTile from '../../../design-system/components/entity-icon-tile';
-import GlassSurface from '../../../design-system/components/glass-surface';
-import MoneyText from '../../../design-system/components/money-text';
 import Text from '../../../design-system/components/text';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
-import { holdingValue } from '../../../holdings/holding-value';
 import { activeLocale } from '../../../i18n/active-locale';
-import type { AccountsStackParamList } from '../../../navigation/types';
-import { convert, type RateTable } from '../../../rates/conversion';
 import { canConvert } from '../../../rates/net-worth-view';
+import type { Currency } from '../../../currency/currency';
+import { holdingValue } from '../../../holdings/holding-value';
+import { convert, type RateTable } from '../../../rates/conversion';
+import MoneyText from '../../../design-system/components/money-text';
+import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
+import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import { resolveEntityColor } from '../../../design-system/entity-tint';
+import type { AccountsStackParamList } from '../../../navigation/types';
+import GlassSurface from '../../../design-system/components/glass-surface';
+import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';
 

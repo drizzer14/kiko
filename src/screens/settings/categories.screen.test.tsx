@@ -1,11 +1,11 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
+import { darkTheme } from '../../design-system/theme';
 import { categoryColor } from '../../statistics/category-breakdown';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
