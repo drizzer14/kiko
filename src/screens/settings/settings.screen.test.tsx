@@ -8,7 +8,6 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '../../test-support/navigation-props';
-import { currencyOptions } from '../../currency/currency';
 
 import SettingsScreen from './settings.screen';
 
@@ -157,15 +156,16 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('settings-row-language')).toBeNull();
   });
 
-  it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
-    const navigation = navigationSpy();
-    const { getAllByRole } = await renderScreen(navigation);
-    // One separate currency pressable per option (the CurrencySwitch iterates
-    // the full currencyOptions set), plus the two navigating rows' own
-    // pressables (System, Categories). Derived from currencyOptions so it never
-    // drifts when a currency is added. Language moved to the System sub-screen,
-    // so its two pressables are gone from here.
-    expect(getAllByRole('button')).toHaveLength(currencyOptions.length + 2);
+  it('offers a fiat-only base-currency picker (no crypto selectable as base)', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    // The base currency now uses the shared searchable CurrencyField: tapping its
+    // trigger opens the picker sheet, whose options are restricted to fiat — BTC
+    // (crypto) is never offered as a base currency, but the fiat codes are.
+    await fireEvent.press(getByTestId('settings-row-base-currency'));
+
+    expect(getByTestId('currency-option-USD')).toBeTruthy();
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
@@ -178,8 +178,12 @@ describe('SettingsScreen', () => {
   });
 
   it('calls setBaseCurrency when a currency option is pressed', async () => {
-    const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('USD'));
+    const { getByTestId } = await renderScreen();
+
+    // Open the CurrencyField sheet, then pick a currency row.
+    await fireEvent.press(getByTestId('settings-row-base-currency'));
+    await fireEvent.press(getByTestId('currency-option-USD'));
+
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');
   });
 
