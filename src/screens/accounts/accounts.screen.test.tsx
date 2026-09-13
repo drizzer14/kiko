@@ -7,7 +7,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '../../design-system/unistyles';
 
 import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
-import { entityCardBackground } from '../../design-system/entity-tint';
+import { entityIconTileGradient } from '../../design-system/entity-tint';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -350,7 +350,14 @@ describe('AccountsScreen', () => {
     expect(queryByLabelText('Change Cash icon')).toBeNull();
   });
 
-  it('tints the account icon with its stored color', async () => {
+  // EXPERIMENT (Item D, 2026-09-13, squircle-gradient icon tile — see
+  // `EntityIconTile`'s `ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT` flag): with
+  // the experiment on, the account's color drives the icon TILE's gradient
+  // fill (never the raw glyph tint, which is now the fixed legible
+  // `onAccent` white), and the card itself goes back to a plain neutral
+  // surface instead of an entity-colored wash. See holding-card.component.test.tsx
+  // for the identical pair of tests on the holding card.
+  it('tints the account icon glyph with the legible onAccent token, not the raw entity color', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -359,18 +366,10 @@ describe('AccountsScreen', () => {
     });
     const { getByLabelText } = await renderAccounts();
 
-    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.blue);
+    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  it('falls back to the kind default color when the account has no stored color', async () => {
-    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    const { getByLabelText } = await renderAccounts();
-
-    // A `cash` account with no color reads the cash kind default (khaki).
-    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
-  });
-
-  it('washes each account card with a flat darkened background of its color on first render', async () => {
+  it("derives the icon tile's gradient from the account's stored color", async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -379,17 +378,37 @@ describe('AccountsScreen', () => {
     });
     const { getByTestId } = await renderAccounts();
 
-    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.blue));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.blue);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
   });
 
-  it('washes an uncolored account card with a flat darkened background of its kind default', async () => {
+  it("derives the icon tile's gradient from the kind default when the account has no stored color", async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId } = await renderAccounts();
 
     // A `cash` account with no color reads the cash kind default (khaki).
-    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.khaki));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.khaki);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
+  });
+
+  it('leaves the account card itself a neutral frosted surface, not an entity-color wash', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
+      ],
+      holdings: [],
+    });
+    const { getByTestId, queryByTestId } = await renderAccounts();
+
+    // The color now lives on the icon tile only (see the tests above) — the
+    // card's own base goes back to the shared neutral `surfaceTranslucent`
+    // fill every other frosted list card/row uses, and there is no colored
+    // wash layer over it at all.
+    const flat = StyleSheet.flatten(getByTestId('account-card-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(queryByTestId('account-card-wash')).toBeNull();
   });
 
   it('draws the shared hairline card border on first render (G2)', async () => {

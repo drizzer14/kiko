@@ -5,7 +5,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
-import { entityCardBackground } from '../../../design-system/entity-tint';
+import { entityIconTileGradient } from '../../../design-system/entity-tint';
 import { darkTheme } from '../../../design-system/theme';
 
 import HoldingCard from './holding-card.component';
@@ -77,40 +77,51 @@ describe('HoldingCard', () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it('tints the icon with the holding stored color', async () => {
+  // EXPERIMENT (Item D, 2026-09-13, squircle-gradient icon tile — see
+  // `EntityIconTile`'s `ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT` flag): with
+  // the experiment on, the holding's color drives the icon TILE's gradient
+  // fill (never the raw glyph tint, now the fixed legible `onAccent` white),
+  // and the card itself goes back to a plain neutral surface instead of an
+  // entity-colored wash — mirrors accounts.screen.test.tsx's identical pair.
+  it('tints the icon glyph with the legible onAccent token, not the raw holding color', async () => {
     const { getByLabelText } = await renderCard({
       holding: holding({ color: darkTheme.colors.entityColors.violet }),
     });
 
-    expect(getByLabelText('Black card icon').props.tintColor).toBe(
-      darkTheme.colors.entityColors.violet,
-    );
+    expect(getByLabelText('Black card icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  it('falls back to the type default color when the holding has no stored color', async () => {
-    const { getByLabelText } = await renderCard({ holding: holding({ color: null }) });
-
-    // A `card` holding with no color reads the card type default (white).
-    expect(getByLabelText('Black card icon').props.tintColor).toBe(
-      darkTheme.colors.entityColors.white,
-    );
-  });
-
-  it('washes the card with a flat darkened background of its stored color on first render', async () => {
+  it("derives the icon tile's gradient from the holding's stored color", async () => {
     const { getByTestId } = await renderCard({
       holding: holding({ color: darkTheme.colors.entityColors.violet }),
     });
 
-    const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.violet));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.violet);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
   });
 
-  it('washes the card with a flat darkened background of the type default color when it has no stored color', async () => {
+  it("derives the icon tile's gradient from the type default when the holding has no stored color", async () => {
     const { getByTestId } = await renderCard({ holding: holding({ color: null }) });
 
     // A `card` holding with no color reads the card type default (white).
-    const flat = StyleSheet.flatten(getByTestId('holding-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.white));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.white);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
+  });
+
+  it('leaves the card itself a neutral frosted surface, not an entity-color wash', async () => {
+    const { getByTestId, queryByTestId } = await renderCard({
+      holding: holding({ color: darkTheme.colors.entityColors.violet }),
+    });
+
+    // The color now lives on the icon tile only (see the tests above) — the
+    // card's own base goes back to the shared neutral `surfaceTranslucent`
+    // fill every other frosted list card/row uses, and there is no colored
+    // wash layer over it at all.
+    const flat = StyleSheet.flatten(getByTestId('holding-card-base').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
+    expect(queryByTestId('holding-card-wash')).toBeNull();
   });
 
   it('draws the shared hairline card border on first render (matches the account card, G2)', async () => {
