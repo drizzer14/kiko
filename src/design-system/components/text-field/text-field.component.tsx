@@ -81,7 +81,7 @@ const TextField: FC<TextFieldProps> = ({
   return (
     <>
       <Box gap={1}>
-        <FieldLabel label={label} required={required} />
+        {label !== undefined && <FieldLabel label={label} required={required} />}
 
         {hasSuffix ? (
           <Box style={styles.suffixContainer}>

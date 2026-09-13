@@ -135,7 +135,7 @@ export const en = {
       date: 'Date',
       icon: 'Icon',
       name: 'Name',
-      searchCurrency: 'Search currency',
+      searchCurrencyPlaceholder: 'Search by code or name',
       selectCategory: 'Select category',
       selectCurrency: 'Select currency',
       time: 'Time',

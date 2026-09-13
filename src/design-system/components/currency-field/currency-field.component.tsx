@@ -107,10 +107,9 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         <Text variant="heading">{label}</Text>
 
         <TextField
-          label={t('forms.fields.searchCurrency')}
           value={query}
           onChangeText={setQuery}
-          placeholder={t('forms.fields.searchCurrency')}
+          placeholder={t('forms.fields.searchCurrencyPlaceholder')}
           autoCapitalize="none"
           autoCorrect={false}
         />

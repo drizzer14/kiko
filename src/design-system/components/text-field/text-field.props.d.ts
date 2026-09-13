@@ -15,7 +15,11 @@ export type TextFieldProps = Pick<
   // ordinary field is never masked unless the caller opts in.
   | 'secureTextEntry'
 > & {
-  label: string;
+  // Optional. When omitted, no caption renders above the input — used where a
+  // surrounding heading already names the field (e.g. the CurrencyField search
+  // box, sitting under the sheet's own heading). The placeholder then carries
+  // the field's hint, and the accessible name falls back to the placeholder.
+  label?: string;
   value: string;
   onChangeText: (text: string) => void;
   // When true, the label shows a red asterisk marking the field as required.

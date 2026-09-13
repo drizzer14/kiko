@@ -29,7 +29,7 @@ describe('CurrencyField', () => {
       />,
     );
     await open(utils);
-    await fireEvent.changeText(utils.getByLabelText('Search currency'), 'chf');
+    await fireEvent.changeText(utils.getByPlaceholderText('Search by code or name'), 'chf');
     expect(utils.getByTestId('currency-option-CHF')).toBeTruthy();
     expect(utils.queryByTestId('currency-option-USD')).toBeNull();
   });
@@ -44,7 +44,7 @@ describe('CurrencyField', () => {
       />,
     );
     await open(utils);
-    await fireEvent.changeText(utils.getByLabelText('Search currency'), 'pound');
+    await fireEvent.changeText(utils.getByPlaceholderText('Search by code or name'), 'pound');
     expect(utils.getByTestId('currency-option-GBP')).toBeTruthy();
     expect(utils.queryByTestId('currency-option-EUR')).toBeNull();
   });

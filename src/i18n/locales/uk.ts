@@ -119,7 +119,7 @@ export const uk: typeof en = {
       date: 'Дата',
       icon: 'Іконка',
       name: 'Назва',
-      searchCurrency: 'Пошук валюти',
+      searchCurrencyPlaceholder: 'Пошук за кодом або назвою',
       selectCategory: 'Оберіть категорію',
       selectCurrency: 'Оберіть валюту',
       time: 'Час',
