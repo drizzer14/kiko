@@ -4,10 +4,18 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
 import FieldLabel from '../field-label';
+import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 import Text from '../text';
 
 import type { TextFieldProps } from './text-field.props';
 import { styles } from './text-field.styles';
+
+// iOS numeric keyboards (`decimal-pad` / `number-pad`) render no return key, so
+// a `returnKeyType='done'` default is a no-op on them — they rely solely on the
+// InputAccessoryView Done below. Every other keyboard has a return key we can
+// label. This list only steers the returnKeyType default; the Done accessory
+// itself is unconditional (see below).
+const RETURN_KEYLESS_KEYBOARD_TYPES = ['decimal-pad', 'number-pad'];
 
 const TextField: FC<TextFieldProps> = ({
   label,
@@ -15,6 +23,7 @@ const TextField: FC<TextFieldProps> = ({
   onChangeText,
   placeholder,
   keyboardType,
+  returnKeyType,
   editable = true,
   accessibilityLabel = label,
   autoCapitalize,
@@ -25,9 +34,23 @@ const TextField: FC<TextFieldProps> = ({
   required,
 }) => {
   const { theme } = useUnistyles();
+  // The native Done keyboard accessory, shared with every other Kiko input.
+  // Unconditional on iOS (text and numeric alike); `inputAccessoryViewID` is
+  // this field's own id (or `undefined` off iOS).
+  const { inputAccessoryViewID, accessory } = useKeyboardDoneAccessory();
   // An empty string (a currency not yet known) is treated the same as no
   // suffix, so those callers render exactly as a plain field.
   const hasSuffix = suffix !== undefined && suffix !== '';
+
+  // Give inputs that HAVE a return key a `done` return key by default, as a
+  // secondary dismiss affordance beside the accessory — but never override a
+  // return key the caller chose (e.g. a `search` field), and never set one on a
+  // return-keyless numeric keyboard where it would do nothing.
+  const resolvedReturnKeyType =
+    returnKeyType ??
+    (keyboardType !== undefined && RETURN_KEYLESS_KEYBOARD_TYPES.includes(keyboardType)
+      ? undefined
+      : 'done');
 
   // The input itself is identical whether or not a suffix renders; only its
   // trailing padding grows (so the caret never slides under the glyph), and it
@@ -39,6 +62,8 @@ const TextField: FC<TextFieldProps> = ({
       placeholder={placeholder}
       placeholderTextColor={theme.colors.textSecondary}
       keyboardType={keyboardType}
+      returnKeyType={resolvedReturnKeyType}
+      inputAccessoryViewID={inputAccessoryViewID}
       editable={editable}
       accessibilityLabel={accessibilityLabel}
       autoCapitalize={autoCapitalize}
@@ -54,21 +79,25 @@ const TextField: FC<TextFieldProps> = ({
   );
 
   return (
-    <Box gap={1}>
-      <FieldLabel label={label} required={required} />
+    <>
+      <Box gap={1}>
+        <FieldLabel label={label} required={required} />
 
-      {hasSuffix ? (
-        <Box style={styles.suffixContainer}>
-          {input}
+        {hasSuffix ? (
+          <Box style={styles.suffixContainer}>
+            {input}
 
-          <Box style={styles.suffixSlot}>
-            <Text tone="textSecondary">{suffix}</Text>
+            <Box style={styles.suffixSlot}>
+              <Text tone="textSecondary">{suffix}</Text>
+            </Box>
           </Box>
-        </Box>
-      ) : (
-        input
-      )}
-    </Box>
+        ) : (
+          input
+        )}
+      </Box>
+
+      {accessory}
+    </>
   );
 };
 
