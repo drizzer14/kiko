@@ -1,11 +1,4 @@
-import {
-  currencyName,
-  currencyOptions,
-  fiatCurrencyOptions,
-  isCrypto,
-  isCurrency,
-  isFiat,
-} from './currency';
+import { currencyOptions, fiatCurrencyOptions, isCrypto, isCurrency, isFiat } from './currency';
 
 describe('currencyOptions', () => {
   it('opens with the originally shipped fiat set in canonical order and ends with BTC', () => {
@@ -51,22 +44,5 @@ describe('fiat / crypto classification', () => {
   it('exposes the fiat subset (every option except BTC), order-preserving', () => {
     expect([...fiatCurrencyOptions]).toEqual(currencyOptions.filter((code) => code !== 'BTC'));
     expect(fiatCurrencyOptions).not.toContain('BTC');
-  });
-});
-
-describe('currencyName', () => {
-  it('gives every currency a non-empty human-readable name', () => {
-    for (const code of currencyOptions) {
-      expect(currencyName[code].length).toBeGreaterThan(0);
-    }
-  });
-
-  it('names the fiat and crypto codes', () => {
-    expect(currencyName.USD).toBe('US Dollar');
-    expect(currencyName.GBP).toBe('British Pound');
-    expect(currencyName.CHF).toBe('Swiss Franc');
-    expect(currencyName.JPY).toBe('Japanese Yen');
-    expect(currencyName.PLN).toBe('Polish Zloty');
-    expect(currencyName.BTC).toBe('Bitcoin');
   });
 });

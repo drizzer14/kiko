@@ -1,8 +1,9 @@
+import type { TFunction } from 'i18next';
 import { type FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
-import { type Currency, currencyName, currencyOptions } from '../../../currency/currency';
+import { type Currency, currencyOptions } from '../../../currency/currency';
 import { currencySignSymbol } from '../../../currency/currency-symbols';
 import FieldTrigger from '../../../screens/forms/field-trigger';
 import BottomSheet from '../bottom-sheet';
@@ -14,17 +15,24 @@ import TextField from '../text-field';
 import type { CurrencyFieldProps } from './currency-field.props';
 import { styles } from './currency-field.styles';
 
+// The localized display name for a currency code, looked up from the i18n
+// catalogues (`currencyNames.<CODE>`) rather than a static map, so the label
+// and search follow the active language.
+const currencyName = (t: TFunction, code: Currency): string => t(`currencyNames.${code}`);
+
 // A currency matches a search query when the query is a substring of either
-// its code (e.g. "chf") or its human-readable name (e.g. "pound"), matched
+// its code (e.g. "chf") or its localized name (e.g. "pound" / "фунт"), matched
 // case-insensitively. An empty (or whitespace-only) query matches everything.
-const matches = (code: Currency, query: string): boolean => {
+const matches = (t: TFunction, code: Currency, query: string): boolean => {
   const trimmed = query.trim().toLowerCase();
 
   if (trimmed === '') {
     return true;
   }
 
-  return code.toLowerCase().includes(trimmed) || currencyName[code].toLowerCase().includes(trimmed);
+  return (
+    code.toLowerCase().includes(trimmed) || currencyName(t, code).toLowerCase().includes(trimmed)
+  );
 };
 
 // A labeled, searchable single-select currency picker: the field shows the
@@ -59,7 +67,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     }
   }, [open]);
 
-  const visible = options.filter((code) => matches(code, query));
+  const visible = options.filter((code) => matches(t, code, query));
 
   const handleSelect = (code: Currency): void => {
     onSelect(code);
@@ -69,7 +77,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   const triggerValue =
     selected === undefined
       ? t('forms.fields.selectCurrency')
-      : `${selected} — ${currencyName[selected]}`;
+      : `${selected} — ${currencyName(t, selected)}`;
 
   return (
     <Box gap={1}>
@@ -113,10 +121,10 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
               key={code}
               testID={`currency-option-${code}`}
               accessibilityRole="button"
-              accessibilityLabel={`${code} ${currencyName[code]}`}
+              accessibilityLabel={`${code} ${currencyName(t, code)}`}
               selected={code === selected}
               onPress={() => handleSelect(code)}
-              label={`${code} — ${currencyName[code]}`}
+              label={`${code} — ${currencyName(t, code)}`}
               icon={currencySignSymbol[code]}
             />
           ))}
