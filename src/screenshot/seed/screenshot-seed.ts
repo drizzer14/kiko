@@ -125,6 +125,8 @@ const PRICE_IN_UAH: Record<Currency, number> = {
   UAH: 1,
   USD: 41,
   EUR: 44.5,
+  GBP: 52,
+  CHF: 46,
   BTC: 2_665_000,
 };
 
