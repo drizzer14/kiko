@@ -180,6 +180,19 @@ Monobank statement currencies arrive as ISO 4217 numeric codes
 literal with `ts-pattern` at the sync boundary, never store the raw
 numeric code.
 
+**One source of truth for the currency-code set: `currencyOptions` in
+`src/currency/currency.ts`.** The Drizzle column enums in
+`src/db/schema.ts` were once a HIDDEN second, hard-coded copy of this
+set (a real drift risk — the same class of bug the `Account.kind`
+"broker" incident above documents); they now DERIVE from
+`currencyOptions` instead. When you add, remove, or rename a currency
+code, change `currency.ts` only, then verify (do not re-hardcode) that
+`schema.ts`'s currency-bearing column enums, `rates-refresh.ts`'s
+`allCurrencies`, and `monobank-rates.ts`'s `fiatCurrencies` all still
+derive from `currencyOptions` rather than carrying their own literal
+list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
+hint, not a DB constraint, so changing the set needs no migration.
+
 ## Category color resolution
 
 A category's display color is never read as a raw
