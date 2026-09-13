@@ -117,3 +117,72 @@ describe('guardedBreakdown', () => {
     expect(guardedBreakdown(holdings, 'UAH', rates, NOW)).toHaveLength(2);
   });
 });
+
+// Regression coverage for the manual-only-user bug: `useAutoSync` used to skip
+// `refreshRates` whenever the sync fan-out had no jobs, so a user with no
+// connected Monobank/crypto account never got a live cross-rate cached. That
+// left `canConvert` permanently false for every non-base-currency holding,
+// which silently dropped it from BOTH `guardedNetWorth` and `guardedBreakdown`
+// — the actual user-visible symptom, reproduced here at the aggregation level
+// rather than through the hook. `use-auto-sync.test.ts` already covers the fix
+// at the sync-fan-out level; these lock in the currency-guard behavior itself,
+// in BOTH base-currency directions, so the guard is proven symmetric rather
+// than only verified for one hardcoded base.
+describe('guardedNetWorth / guardedBreakdown — base-currency flip regression', () => {
+  it('drops a UAH holding from the USD-base total and breakdown when no UAH:USD rate is cached (base-currency flip)', () => {
+    const holdings = [
+      // 100.00 USD
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+      // 1000.00 UAH, unconvertible without a rate
+      {
+        currency: 'UAH' as const,
+        balanceMinorUnits: 100_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+    const rates: Record<string, number> = {};
+
+    const total = guardedNetWorth(holdings, 'USD', rates, NOW);
+    const breakdown = guardedBreakdown(holdings, 'USD', rates, NOW);
+
+    expect(total.currency).toBe('USD');
+    expect(total.minorUnits).toBe(10_000);
+    expect(breakdown.map((money) => money.currency)).toEqual(['USD']);
+  });
+
+  it('includes a UAH holding in the USD-base total and breakdown once UAH:USD is cached (base-currency flip)', () => {
+    const holdings = [
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+      {
+        currency: 'UAH' as const,
+        balanceMinorUnits: 100_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+    const rates = { 'UAH:USD': 0.025 };
+
+    const total = guardedNetWorth(holdings, 'USD', rates, NOW);
+    const breakdown = guardedBreakdown(holdings, 'USD', rates, NOW);
+
+    expect(total.currency).toBe('USD');
+    // 100.00 USD + (1000.00 UAH * 0.025) = 125.00 USD
+    expect(total.minorUnits).toBe(12_500);
+    // `guardedBreakdown` reports each row in its OWN currency (unconverted), so
+    // the UAH row must survive as 1000.00 UAH, not be dropped or converted.
+    expect(breakdown.map((money) => money.currency).sort()).toEqual(['UAH', 'USD']);
+    expect(breakdown.find((money) => money.currency === 'UAH')?.minorUnits).toBe(100_000);
+    expect(breakdown.find((money) => money.currency === 'USD')?.minorUnits).toBe(10_000);
+  });
+});

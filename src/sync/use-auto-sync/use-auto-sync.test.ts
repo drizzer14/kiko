@@ -75,16 +75,21 @@ describe('useAutoSync', () => {
     mockHasToken.mockResolvedValue(true);
   });
 
-  it('does nothing when no account is connected', async () => {
+  it('refreshes live rates but runs no sync for a manual-only user (no connected sync account)', async () => {
+    // A manual-only user has no connected sync account, so the fan-out is empty.
+    // The live currencyRates table must STILL be populated, or a
+    // non-base-currency holding is dropped from every net-worth aggregation
+    // (`canConvert` in net-worth-view). The sync fan-out stays gated on jobs; the
+    // rate refresh must not be — `refreshRates` is itself self-throttled.
     mockConnectedQuery.mockResolvedValue([]);
+    mockLatestFetchedAt.mockResolvedValue(7);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 7 }));
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
-    expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
@@ -124,7 +129,7 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
   });
 
-  it('does nothing when the only connected account is a tokenless Monobank one', async () => {
+  it('runs no sync but still refreshes rates when the only connected account is a tokenless Monobank one', async () => {
     mockConnectedQuery.mockResolvedValue([monobank]);
     mockHasToken.mockResolvedValue(false);
 
@@ -133,9 +138,11 @@ describe('useAutoSync', () => {
     // The token gate probes the connected Monobank account's OWN per-account item.
     await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono'));
 
+    // The tokenless account yields no job, so nothing syncs — but the live-rate
+    // refresh is decoupled from the fan-out and still runs.
+    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
-    expect(mockRefreshRates).not.toHaveBeenCalled();
   });
 
   it('drops ONLY the tokenless Monobank account and keeps the tokened one plus crypto', async () => {

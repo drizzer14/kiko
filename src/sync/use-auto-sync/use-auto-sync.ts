@@ -90,16 +90,18 @@ export const useAutoSync = (): void => {
       );
       const jobs = jobLists.flat();
 
-      if (jobs.length === 0) {
-        return;
+      // Only the sync FAN-OUT is gated on having jobs; the rate refresh is
+      // decoupled from it so a manual-only user still gets cross-rates cached.
+      // Running it unconditionally is safe: `refreshRates` is self-throttled by
+      // `lastRefreshAt` and hits only the PUBLIC, tokenless endpoint.
+      if (jobs.length > 0) {
+        // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
+        // requests at once (device load / provider rate limits) — see `settleAllLimited`.
+        await settleAllLimited(
+          jobs.map((job) => job.run),
+          SYNC_CONCURRENCY_LIMIT,
+        );
       }
-
-      // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
-      // requests at once (device load / provider rate limits) — see `settleAllLimited`.
-      await settleAllLimited(
-        jobs.map((job) => job.run),
-        SYNC_CONCURRENCY_LIMIT,
-      );
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
     });
