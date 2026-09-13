@@ -1,6 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
+import { currencyOptions } from '../../currency/currency';
 import { i18n } from '../../i18n';
 import {
   asNavigationProp,
@@ -159,11 +160,12 @@ describe('SettingsScreen', () => {
   it('renders each currency option as its own independently pressable control within the row (no shared multi-action box)', async () => {
     const navigation = navigationSpy();
     const { getAllByRole } = await renderScreen(navigation);
-    // UAH, USD, EUR, GBP, CHF, BTC — six separate currency pressables (the
-    // CurrencySwitch iterates the full currencyOptions set) — plus the two
-    // navigating rows' own pressables (System, Categories) — 8 total. Language
-    // moved to the System sub-screen, so its two pressables are gone from here.
-    expect(getAllByRole('button')).toHaveLength(8);
+    // One separate currency pressable per option (the CurrencySwitch iterates
+    // the full currencyOptions set), plus the two navigating rows' own
+    // pressables (System, Categories). Derived from currencyOptions so it never
+    // drifts when a currency is added. Language moved to the System sub-screen,
+    // so its two pressables are gone from here.
+    expect(getAllByRole('button')).toHaveLength(currencyOptions.length + 2);
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {

@@ -771,7 +771,8 @@ describe('runSync', () => {
 
   // A foreign-currency sub-account (a multi-currency card, a FOP account, a
   // foreign jar) carries a currency Kiko cannot represent (anything outside the
-  // supported fiat set — e.g. PLN 985, JPY 392). Such an account/jar must be
+  // supported fiat set — e.g. RUB 643, or an unassigned code). Such an
+  // account/jar must be
   // SILENTLY SKIPPED — excluded from
   // net worth — rather than aborting the entire sync: the mappers throw on an
   // unrepresentable currency, and `upsertHoldings` used to call them inside its
@@ -784,11 +785,11 @@ describe('runSync', () => {
     const supported = clientInfo.accounts[0] as MonobankAccount; // UAH (980)
     const unsupportedAccount: MonobankAccount = {
       ...(clientInfo.accounts[1] as MonobankAccount),
-      currencyCode: 985, // PLN — not representable in Kiko
+      currencyCode: 643, // RUB — not representable in Kiko
     };
     const unsupportedJar: MonobankJar = {
       ...(clientInfo.jars[0] as MonobankJar),
-      currencyCode: 392, // JPY — not representable in Kiko
+      currencyCode: 999, // unassigned ISO code — not representable in Kiko
     };
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
       connected,
@@ -804,8 +805,8 @@ describe('runSync', () => {
 
     const result = await runSync(deps);
 
-    // Only the supported card landed as a holding — the PLN account and JPY jar
-    // were skipped, never upserted.
+    // Only the supported card landed as a holding — the RUB account and the
+    // unassigned-code jar were skipped, never upserted.
     expect(holdingsStore).toHaveLength(1);
     expect(holdingsStore[0].type).toBe('card');
     expect(holdingsStore[0].currency).toBe('UAH');

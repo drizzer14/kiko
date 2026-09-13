@@ -119,17 +119,17 @@ describe('groupAmount fail-safe', () => {
 // then `parseAmount`) — back to the EXACT stored minor units, for every
 // currency scale in the table, not just BTC's dust case.
 describe('majorAmountText -> groupAmount -> parseAmount round-trip (exact parity)', () => {
-  const samplesByCurrency: Record<Currency, number[]> = {
-    BTC: [0, 1, 5, 10, 50, 99, 12_345, 100_000_000, 150_000_000, 123_456_789],
-    UAH: [0, 1, 50, 99, 100, 12_345, 123_456],
-    USD: [0, 1, 50, 99, 100, 250_000],
-    EUR: [0, 1, 50, 99, 100, 250_000],
-    GBP: [0, 1, 50, 99, 100, 250_000],
-    CHF: [0, 1, 50, 99, 100, 250_000],
-  };
+  // Sample minor-units values, derived per currency rather than hardcoded per
+  // code, so any currency added to `currencyOptions` is covered automatically.
+  // BTC's 8-decimal scale needs the dust/large-satoshi cases; every fiat scale
+  // (0, 2, 3) round-trips the shared integer set.
+  const samplesFor = (currency: Currency): number[] =>
+    currency === 'BTC'
+      ? [0, 1, 5, 10, 50, 99, 12_345, 100_000_000, 150_000_000, 123_456_789]
+      : [0, 1, 50, 99, 100, 12_345, 123_456];
 
   it.each(currencyOptions)('round-trips every sample minor-units value for %s', (currency) => {
-    for (const minorUnits of samplesByCurrency[currency]) {
+    for (const minorUnits of samplesFor(currency)) {
       const rendered = majorAmountText(currency, minorUnits);
       const grouped = groupAmount(rendered);
       const parsed = parseAmount(grouped);

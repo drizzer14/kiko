@@ -8,36 +8,49 @@ import {
 } from './currency';
 
 describe('currencyOptions', () => {
-  it('lists the currencies in the canonical display order UAH, USD, EUR, GBP, CHF, BTC', () => {
-    expect([...currencyOptions]).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF', 'BTC']);
+  it('opens with the originally shipped fiat set in canonical order and ends with BTC', () => {
+    expect(currencyOptions.slice(0, 5)).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF']);
+    expect(currencyOptions.at(-1)).toBe('BTC');
+  });
+
+  it('includes the additional Monobank-priced fiats', () => {
+    for (const code of ['JPY', 'PLN', 'CAD', 'AUD', 'TRY', 'INR', 'GEL'] as const) {
+      expect(currencyOptions).toContain(code);
+    }
+  });
+
+  it('has no duplicate codes', () => {
+    expect(new Set(currencyOptions).size).toBe(currencyOptions.length);
   });
 });
 
 describe('isCurrency', () => {
-  it('accepts each supported currency code', () => {
-    for (const code of ['UAH', 'USD', 'EUR', 'GBP', 'CHF', 'BTC']) {
+  it('accepts every supported currency code', () => {
+    for (const code of currencyOptions) {
       expect(isCurrency(code)).toBe(true);
     }
   });
 
-  it('rejects an unsupported code', () => {
-    expect(isCurrency('JPY')).toBe(false);
-    expect(isCurrency('PLN')).toBe(false);
+  it('rejects a code the app does not support', () => {
+    // RUB is not in Monobank's UAH-priced fiat set, so it stays unsupported.
+    expect(isCurrency('RUB')).toBe(false);
+    expect(isCurrency('XYZ')).toBe(false);
   });
 });
 
 describe('fiat / crypto classification', () => {
   it('treats only BTC as crypto', () => {
     expect(isCrypto('BTC')).toBe(true);
-    for (const code of ['UAH', 'USD', 'EUR', 'GBP', 'CHF'] as const) {
+    for (const code of fiatCurrencyOptions) {
       expect(isCrypto(code)).toBe(false);
       expect(isFiat(code)).toBe(true);
     }
     expect(isFiat('BTC')).toBe(false);
   });
 
-  it('exposes the fiat subset in canonical order, without any crypto code', () => {
-    expect([...fiatCurrencyOptions]).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF']);
+  it('exposes the fiat subset (every option except BTC), order-preserving', () => {
+    expect([...fiatCurrencyOptions]).toEqual(currencyOptions.filter((code) => code !== 'BTC'));
+    expect(fiatCurrencyOptions).not.toContain('BTC');
   });
 });
 
@@ -52,6 +65,8 @@ describe('currencyName', () => {
     expect(currencyName.USD).toBe('US Dollar');
     expect(currencyName.GBP).toBe('British Pound');
     expect(currencyName.CHF).toBe('Swiss Franc');
+    expect(currencyName.JPY).toBe('Japanese Yen');
+    expect(currencyName.PLN).toBe('Polish Zloty');
     expect(currencyName.BTC).toBe('Bitcoin');
   });
 });

@@ -1,3 +1,5 @@
+import { currencyOptions, isCrypto } from '../../currency/currency';
+
 import { codeFromCurrency, currencyFromCode } from './currency-code';
 
 describe('currency-code', () => {
@@ -7,8 +9,10 @@ describe('currency-code', () => {
     expect(currencyFromCode(978)).toBe('EUR');
   });
 
-  it('returns undefined for an unknown code', () => {
-    expect(currencyFromCode(392)).toBeUndefined();
+  it('returns undefined for a code the app does not support', () => {
+    // 643 (RUB) is not in Monobank's UAH-priced fiat set; 999 is unassigned.
+    expect(currencyFromCode(643)).toBeUndefined();
+    expect(currencyFromCode(999)).toBeUndefined();
   });
 
   it('maps currencies back to codes', () => {
@@ -20,5 +24,28 @@ describe('currency-code', () => {
     expect(currencyFromCode(756)).toBe('CHF');
     expect(codeFromCurrency('GBP')).toBe(826);
     expect(codeFromCurrency('CHF')).toBe(756);
+  });
+
+  it('maps the additional Monobank fiats in both directions', () => {
+    expect(currencyFromCode(392)).toBe('JPY');
+    expect(codeFromCurrency('JPY')).toBe(392);
+    expect(currencyFromCode(985)).toBe('PLN');
+    expect(codeFromCurrency('PLN')).toBe(985);
+  });
+
+  it('gives BTC no ISO numeric code (crypto, not a Monobank fiat)', () => {
+    expect(codeFromCurrency('BTC')).toBeUndefined();
+  });
+
+  it('round-trips every fiat currency through both directions', () => {
+    for (const currency of currencyOptions) {
+      if (isCrypto(currency)) {
+        continue;
+      }
+
+      const code = codeFromCurrency(currency);
+      expect(code).toBeDefined();
+      expect(currencyFromCode(code as number)).toBe(currency);
+    }
   });
 });

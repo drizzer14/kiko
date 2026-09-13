@@ -120,8 +120,15 @@ type ScreenshotDataset = {
 // `rates/rates-refresh.ts` produces), so any screen's conversion resolves.
 // ---------------------------------------------------------------------------
 
-/** Value of one major unit of each currency in UAH at ANCHOR. */
-const PRICE_IN_UAH: Record<Currency, number> = {
+// The seed only prices the handful of currencies the screenshot dataset holds,
+// not the full supported set (Monobank quotes ~100 fiats; seeding a UAH anchor
+// for every one would add nothing to the fixtures). A local subset type keeps
+// this map exhaustive over exactly what the seed uses, so it never has to grow
+// when a new currency is added to `currencyOptions`.
+type SeededCurrency = 'UAH' | 'USD' | 'EUR' | 'GBP' | 'CHF' | 'BTC';
+
+/** Value of one major unit of each seeded currency in UAH at ANCHOR. */
+const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   UAH: 1,
   USD: 41,
   EUR: 44.5,
@@ -130,7 +137,7 @@ const PRICE_IN_UAH: Record<Currency, number> = {
   BTC: 2_665_000,
 };
 
-const CURRENCIES: Currency[] = ['UAH', 'USD', 'EUR', 'BTC'];
+const CURRENCIES: SeededCurrency[] = ['UAH', 'USD', 'EUR', 'BTC'];
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
   base === 'BTC' || quote === 'BTC' ? 'coingecko' : 'monobank';

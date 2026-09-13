@@ -21,8 +21,8 @@ const fixture: MonoRate[] = [
   { currencyCodeA: 826, currencyCodeB: 980, date: 1, rateCross: 52 }, // GBP:UAH cross 52
   { currencyCodeA: 756, currencyCodeB: 980, date: 1, rateCross: 46 }, // CHF:UAH cross 46
   { currencyCodeA: 840, currencyCodeB: 978, date: 1, rateSell: 0.93 }, // USD:EUR sell-only
-  { currencyCodeA: 392, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 }, // JPY:UAH -> dropped
-  { currencyCodeA: 985, currencyCodeB: 980, date: 1 }, // no rate at all -> dropped
+  { currencyCodeA: 643, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 }, // RUB:UAH -> dropped (outside the supported set)
+  { currencyCodeA: 985, currencyCodeB: 980, date: 1 }, // PLN: in the set, but no rate at all -> dropped
 ];
 
 // A holding of a foreign currency is a bank ASSET: monobank values it at its
