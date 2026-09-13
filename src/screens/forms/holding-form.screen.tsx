@@ -5,14 +5,14 @@ import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
-import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
-import { currencySignSymbol } from '../../currency/currency-symbols';
+import { type Currency, currencySymbol } from '../../currency/currency';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
 import type { HoldingRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import CurrencyField from '../../design-system/components/currency-field';
 import Divider from '../../design-system/components/divider';
 import Screen from '../../design-system/components/screen';
 import Switch from '../../design-system/components/switch';
@@ -546,13 +546,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           disabled={isEdit}
         />
 
-        <ChipRow
+        <CurrencyField
           label={t('forms.fields.currency')}
-          options={currencyOptions}
           selected={currency}
           onSelect={setCurrency}
-          icons={currencySignSymbol}
           disabled={isEdit}
+          testID="holding-currency-field"
         />
 
         {type !== 'term_deposit' && type !== 'bond' && !isSyncedEdit && (

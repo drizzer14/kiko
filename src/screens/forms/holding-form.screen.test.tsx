@@ -178,6 +178,18 @@ describe('HoldingFormScreen term deposit', () => {
     }
   });
 
+  it('offers crypto currencies for a holding (BTC and UAH present)', async () => {
+    // A holding may legitimately be in a crypto currency, so — unlike the cash
+    // account form — the holding currency picker keeps the FULL set: opening the
+    // field offers both fiat (UAH) and crypto (BTC).
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByTestId('holding-currency-field'));
+
+    expect(getByTestId('currency-option-BTC')).toBeTruthy();
+    expect(getByTestId('currency-option-UAH')).toBeTruthy();
+  });
+
   it('does not render the opening Balance input for a term deposit', async () => {
     // A simple (cash) holding shows the Balance input.
     mockAccountKind = 'cash';
@@ -832,13 +844,17 @@ describe('HoldingFormScreen edit mode', () => {
   });
 
   it('shows type and currency read-only (disabled) so neither can change', async () => {
-    const { getByText } = await renderEdit(cardHolding);
+    const { getByText, getByTestId, queryByTestId } = await renderEdit(cardHolding);
 
     // A synced card's type is dropped from the CREATE options, but edit mode uses
     // the full set — so the Card chip still renders (read-only) rather than
     // crashing on a type that is no longer manually creatable.
     expect(getByText('Card').parent?.props.accessibilityState.disabled).toBe(true);
-    expect(getByText('UAH').parent?.props.accessibilityState.disabled).toBe(true);
+    // The currency field is disabled in edit mode: its trigger reports the
+    // disabled state and pressing it opens no sheet, so the currency is fixed.
+    expect(getByTestId('holding-currency-field').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(getByTestId('holding-currency-field'));
+    expect(queryByTestId('currency-option-USD')).toBeNull();
   });
 
   it('renders an existing synced jar holding read-only, though jar is not manually creatable', async () => {
