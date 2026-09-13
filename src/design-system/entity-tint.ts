@@ -23,7 +23,7 @@ const parseHex = (hex: string): [red: number, green: number, blue: number] => {
   const match = hex.match(HEX_PATTERN);
 
   if (!match) {
-    throw new Error(`entityTintBackground: expected a #RRGGBB hex, received "${hex}"`);
+    throw new Error(`parseHex: expected a #RRGGBB hex, received "${hex}"`);
   }
 
   const [, digits] = match;
@@ -130,3 +130,93 @@ const CARD_DARKEN_PERCENT = 90;
 // to `GlassSurface`'s `tint` prop.
 export const entityCardBackground = (colorHex: string): string =>
   darkenHex(colorHex, CARD_DARKEN_PERCENT);
+
+// Lightens a `#RRGGBB` hex toward white by `percent` (0-100): each channel
+// moves `percent`% of the way to 255. `darkenHex`'s mirror image — added
+// alongside `entityIconTileGradient` below, the icon-tile gradient's only
+// other consumer of a channel-blend helper besides `darkenHex` itself.
+export const lightenHex = (hex: string, percent: number): string => {
+  const [red, green, blue] = parseHex(hex);
+  const lighten = (channel: number): string =>
+    Math.round(channel + (255 - channel) * (percent / 100))
+      .toString(16)
+      .padStart(2, '0');
+
+  return `#${lighten(red)}${lighten(green)}${lighten(blue)}`;
+};
+
+// EXPERIMENT (Item D, 2026-09-13 design review): the two gradient stops for
+// `EntityIconTile`'s squircle-gradient treatment — see
+// `design-system/components/entity-icon-tile/`. A vertical gradient of the
+// entity's OWN hue, lighter at the top and darker at the bottom, the same
+// "one hue, several renderings" rule `entityCardBackground` follows: never a
+// second, unrelated color, always derived from `resolveEntityColor`'s result.
+// Percentages are deliberately gentle (not `CARD_DARKEN_PERCENT`'s near-black
+// 90%) — the tile is small and meant to read as a saturated, legible chip
+// behind a white glyph (the iOS Settings icon-tile look), not a near-black
+// card tone.
+const ICON_TILE_LIGHTEN_PERCENT = 15;
+const ICON_TILE_DARKEN_PERCENT = 20;
+
+export const entityIconTileGradient = (colorHex: string): [top: string, bottom: string] => [
+  lightenHex(colorHex, ICON_TILE_LIGHTEN_PERCENT),
+  darkenHex(colorHex, ICON_TILE_DARKEN_PERCENT),
+];
+
+// DEVICE BUG (review, 2026-09-13): `EntityIconTile` used to paint its SF
+// Symbol glyph with a fixed white `onAccent` tint on every tile, regardless of
+// how bright the tile's own gradient reads. Several palette swatches
+// (`white`, `yellow`, `khaki`, `mint`, `teal` — see `palette.ts`) are
+// themselves light enough that a white glyph on top of them fails WCAG
+// contrast, reading as a near-invisible icon. `isLightEntityColor` below
+// answers this with the REAL WCAG relative-luminance + contrast-ratio method
+// (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance /
+// https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio), computed on the
+// RESOLVED entity color (never a gradient stop — the base hue represents the
+// whole tile, so the check stays correct regardless of how aggressively a
+// future gradient darkens/lightens its own stops), rather than the simpler
+// 0-255 weighted-average "perceived brightness" approximation: a plain
+// weighted average was tried first and, worked through by hand for every
+// palette swatch, could not be tuned to both flag the five failing swatches
+// above AND leave `violet` (already asserted staying white in
+// `holding-card.component.test.tsx`) and `blue` (asserted the same way in
+// `accounts.screen.test.tsx`) alone — those two sit close enough to the
+// naive brightness midpoint that no single threshold on that formula placed
+// every swatch correctly, while the real WCAG contrast ratio does.
+const sRGBChannelToLinear = (channel: number): number => {
+  const normalized = channel / 255;
+
+  return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+};
+
+// WCAG relative luminance (0 = black, 1 = white) of a `#RRGGBB` hex.
+const relativeLuminance = (hex: string): number => {
+  const [red, green, blue] = parseHex(hex);
+
+  return (
+    0.2126 * sRGBChannelToLinear(red) +
+    0.7152 * sRGBChannelToLinear(green) +
+    0.0722 * sRGBChannelToLinear(blue)
+  );
+};
+
+// WCAG contrast ratio between two relative luminances, order-independent
+// (the formula always divides the lighter by the darker).
+const contrastRatio = (luminanceA: number, luminanceB: number): number => {
+  const lighter = Math.max(luminanceA, luminanceB);
+  const darker = Math.min(luminanceA, luminanceB);
+
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+// The WCAG 1.4.11 "Non-text Contrast" floor (3:1) — an SF Symbol glyph is a
+// graphical UI component, not body text, so this is the applicable success
+// criterion rather than the stricter 4.5:1 text-contrast ratio.
+const GLYPH_CONTRAST_MINIMUM = 3;
+
+// Whether a resolved entity color is bright enough that the standard white
+// `onAccent` glyph on top of it would fail the 3:1 WCAG glyph-contrast floor
+// — if so, `EntityIconTile` must switch to the dark tint instead. See the
+// method note above.
+export const isLightEntityColor = (colorHex: string): boolean =>
+  contrastRatio(1, relativeLuminance(colorHex)) < GLYPH_CONTRAST_MINIMUM;

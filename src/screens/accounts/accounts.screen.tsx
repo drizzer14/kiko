@@ -15,10 +15,12 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CardContextMenu from '../../design-system/components/card-context-menu';
+import EntityIconTile, {
+  ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT,
+} from '../../design-system/components/entity-icon-tile';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { entityCardBackground, resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
@@ -149,7 +151,19 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       testID="account-card"
                       padding={4}
                       bordered
-                      tint={entityCardBackground(color)}
+                      // EXPERIMENT (Item D): with the squircle-gradient icon tile
+                      // on, the card itself goes back to a neutral frosted
+                      // surface — the same `transparent` treatment every other
+                      // neutral list row/card uses — since the entity color now
+                      // lives on the icon tile instead of the whole card. Reading
+                      // the SAME flag `EntityIconTile` reads keeps the two in sync;
+                      // flip that one flag to revert both at once.
+                      tint={
+                        ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT
+                          ? undefined
+                          : entityCardBackground(color)
+                      }
+                      transparent={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT}
                     >
                       <Pressable
                         accessibilityRole="button"
@@ -162,7 +176,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                         style={styles.row}
                       >
                         <Box direction="row" gap={3} style={styles.rowLead}>
-                          <SymbolIcon
+                          <EntityIconTile
                             name={item.icon ?? accountKindSymbol[item.kind]}
                             color={color}
                             accessibilityLabel={t('accounts.icon', { name: item.name })}

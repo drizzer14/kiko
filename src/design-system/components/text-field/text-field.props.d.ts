@@ -4,6 +4,10 @@ export type TextFieldProps = Pick<
   TextInputProps,
   | 'placeholder'
   | 'keyboardType'
+  // Optional. When omitted, a field with a return key defaults to `done`; a
+  // caller passing its own (e.g. `search`) is never overridden, and a
+  // return-keyless numeric keyboard is left without one.
+  | 'returnKeyType'
   | 'autoCapitalize'
   | 'autoCorrect'
   | 'multiline'

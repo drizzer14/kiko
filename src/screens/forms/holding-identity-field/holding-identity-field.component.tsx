@@ -6,6 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import Box from '../../../design-system/components/box';
 import FieldLabel from '../../../design-system/components/field-label';
 import IconEditor from '../../../design-system/components/icon-editor';
+import { useKeyboardDoneAccessory } from '../../../design-system/components/keyboard-done-accessory';
 
 import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 import { styles } from './holding-identity-field.styles';
@@ -39,6 +40,9 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const nameLabel = t('forms.fields.name');
+  // The same native Done keyboard accessory every other Kiko input carries, so
+  // this name field dismisses the keyboard identically.
+  const { inputAccessoryViewID, accessory } = useKeyboardDoneAccessory();
 
   return (
     <Box direction="row" gap={3} style={captioned ? styles.container : styles.containerBare}>
@@ -64,9 +68,13 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
           onFocus={onFocus}
           placeholder={namePlaceholder}
           placeholderTextColor={theme.colors.textSecondary}
+          returnKeyType="done"
+          inputAccessoryViewID={inputAccessoryViewID}
           style={styles.nameField}
         />
       </Box>
+
+      {accessory}
     </Box>
   );
 };

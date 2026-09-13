@@ -7,9 +7,11 @@ import type { Currency } from '../../../currency/currency';
 import { formatMoney } from '../../../currency/format';
 import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
+import EntityIconTile, {
+  ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT,
+} from '../../../design-system/components/entity-icon-tile';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import MoneyText from '../../../design-system/components/money-text';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { entityCardBackground, resolveEntityColor } from '../../../design-system/entity-tint';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
@@ -88,11 +90,15 @@ const HoldingCard: FC<{
       testID="holding-card"
       padding={4}
       bordered
-      tint={entityCardBackground(color)}
+      // EXPERIMENT (Item D): see the matching comment in accounts.screen.tsx —
+      // the same flag `EntityIconTile` reads keeps this card's background in
+      // sync with the icon tile's own look.
+      tint={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT ? undefined : entityCardBackground(color)}
+      transparent={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT}
     >
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>
-          <SymbolIcon
+          <EntityIconTile
             name={holding.icon ?? holdingTypeSymbol[holding.type]}
             color={color}
             accessibilityLabel={`${holding.name} icon`}

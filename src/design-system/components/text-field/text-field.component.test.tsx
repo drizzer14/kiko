@@ -1,4 +1,6 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
+import '../../../i18n';
 import '../../unistyles';
 import TextField from '.';
 
@@ -63,5 +65,81 @@ describe('TextField', () => {
     );
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('renders a Done accessory for a numeric (decimal-pad) field on iOS', async () => {
+    const { getByText } = await render(
+      <TextField
+        label="Amount"
+        value="100.00"
+        onChangeText={jest.fn()}
+        keyboardType="decimal-pad"
+      />,
+    );
+
+    expect(getByText('Done')).toBeTruthy();
+  });
+
+  it('renders a Done accessory for a numeric (number-pad) field on iOS', async () => {
+    const { getByText } = await render(
+      <TextField label="Amount" value="100" onChangeText={jest.fn()} keyboardType="number-pad" />,
+    );
+
+    expect(getByText('Done')).toBeTruthy();
+  });
+
+  it('renders a Done accessory for a default (text) field too', async () => {
+    // The native Done accessory is unconditional on iOS — every input carries
+    // it, text and numeric alike, so the whole app shows one identical Done.
+    const { getByText } = await render(
+      <TextField label="Amount" value="100.00" onChangeText={jest.fn()} />,
+    );
+
+    expect(getByText('Done')).toBeTruthy();
+  });
+
+  it('dismisses the keyboard when the Done accessory is pressed', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+
+    const { getByText } = await render(
+      <TextField
+        label="Amount"
+        value="100.00"
+        onChangeText={jest.fn()}
+        keyboardType="decimal-pad"
+      />,
+    );
+
+    fireEvent.press(getByText('Done'));
+
+    expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+    dismissSpy.mockRestore();
+  });
+
+  it("defaults a text field's return key to Done", async () => {
+    const { getByLabelText } = await render(
+      <TextField label="Name" value="Jane" onChangeText={jest.fn()} />,
+    );
+
+    expect(getByLabelText('Name').props.returnKeyType).toBe('done');
+  });
+
+  it('does not override a caller-provided returnKeyType', async () => {
+    const { getByLabelText } = await render(
+      <TextField label="Search" value="q" onChangeText={jest.fn()} returnKeyType="search" />,
+    );
+
+    expect(getByLabelText('Search').props.returnKeyType).toBe('search');
+  });
+
+  it('leaves a return-keyless numeric field without a returnKeyType default', async () => {
+    const { getByLabelText } = await render(
+      <TextField label="Amount" value="1" onChangeText={jest.fn()} keyboardType="decimal-pad" />,
+    );
+
+    // A decimal-pad keyboard has no return key, so there is nothing to label —
+    // its dismissal affordance is the InputAccessoryView Done instead.
+    expect(getByLabelText('Amount').props.returnKeyType).toBeUndefined();
   });
 });

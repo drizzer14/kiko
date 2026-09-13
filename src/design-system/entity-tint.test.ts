@@ -1,4 +1,11 @@
-import { darkenHex, entityCardBackground, resolveEntityColor } from './entity-tint';
+import {
+  darkenHex,
+  entityCardBackground,
+  entityIconTileGradient,
+  isLightEntityColor,
+  lightenHex,
+  resolveEntityColor,
+} from './entity-tint';
 import { darkTheme } from './theme';
 
 describe('darkenHex', () => {
@@ -61,8 +68,82 @@ describe('entityCardBackground', () => {
 
   it('throws on a non-hex input, same as its building blocks', () => {
     expect(() => entityCardBackground('not-a-hex')).toThrow(
-      'entityTintBackground: expected a #RRGGBB hex, received "not-a-hex"',
+      'parseHex: expected a #RRGGBB hex, received "not-a-hex"',
     );
+  });
+});
+
+describe('lightenHex', () => {
+  it('moves every channel toward white by the given percent', () => {
+    // 50% of the way from 0 to 255 is 128 (0x80); from 255 stays 255.
+    expect(lightenHex('#000000', 50)).toBe('#808080');
+    expect(lightenHex('#FFFFFF', 50)).toBe('#ffffff');
+  });
+
+  it('accepts a lowercase hex the same way as uppercase', () => {
+    expect(lightenHex('#ff453a', 10)).toBe(lightenHex('#FF453A', 10));
+  });
+
+  it('is a no-op at 0%', () => {
+    expect(lightenHex('#FF453A', 0)).toBe('#ff453a');
+  });
+});
+
+describe('entityIconTileGradient', () => {
+  it('returns a [top, bottom] pair of opaque #RRGGBB hexes', () => {
+    const [top, bottom] = entityIconTileGradient('#FF453A');
+
+    expect(top).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(bottom).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+
+  it('lightens the top stop and darkens the bottom stop from the same base hue', () => {
+    const [top, bottom] = entityIconTileGradient('#FF453A');
+
+    expect(top).toBe(lightenHex('#FF453A', 15));
+    expect(bottom).toBe(darkenHex('#FF453A', 20));
+  });
+
+  it('produces a distinct pair for every entity-color swatch in the theme', () => {
+    const pairs = Object.values(darkTheme.colors.entityColors).map((hex) =>
+      entityIconTileGradient(hex).join(':'),
+    );
+
+    expect(new Set(pairs).size).toBe(pairs.length);
+  });
+
+  it('throws on a non-hex input, same as its building blocks', () => {
+    expect(() => entityIconTileGradient('not-a-hex')).toThrow(
+      'parseHex: expected a #RRGGBB hex, received "not-a-hex"',
+    );
+  });
+});
+
+describe('isLightEntityColor', () => {
+  // The concrete swatches the review flagged as failing WCAG AA with a fixed
+  // white glyph — see `palette.ts`'s `entityColorsDark` and
+  // `entity-tint.ts`'s `LIGHT_TILE_BRIGHTNESS_THRESHOLD` doc comment for the
+  // brightness numbers behind each one.
+  it.each([
+    ['white', darkTheme.colors.entityColors.white],
+    ['yellow', darkTheme.colors.entityColors.yellow],
+    ['khaki', darkTheme.colors.entityColors.khaki],
+    ['mint', darkTheme.colors.entityColors.mint],
+    ['teal', darkTheme.colors.entityColors.teal],
+  ])('flags the light %s swatch as needing a dark glyph', (_name, hex) => {
+    expect(isLightEntityColor(hex)).toBe(true);
+  });
+
+  // A dark, already-legible-with-white-glyph swatch stays `false`, so
+  // `EntityIconTile` keeps painting its glyph with the standard white
+  // `onAccent` tint on it.
+  it.each([
+    ['blue', darkTheme.colors.entityColors.blue],
+    ['indigo', darkTheme.colors.entityColors.indigo],
+    ['pink', darkTheme.colors.entityColors.pink],
+    ['red', darkTheme.colors.entityColors.red],
+  ])('does not flag the dark %s swatch', (_name, hex) => {
+    expect(isLightEntityColor(hex)).toBe(false);
   });
 });
 

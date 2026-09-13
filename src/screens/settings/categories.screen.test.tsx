@@ -30,6 +30,51 @@ jest.mock('react-native-reanimated', () => {
   });
 });
 
+// Override the shared `react-native-sortables` mock (`jest/setup.js`) for this
+// file only, so the identity-churn regression test below can inspect the exact
+// `renderItem`/`keyExtractor` props `Sortable.Grid` receives on each render —
+// the shared mock's `Grid` destructures them straight off `props` without
+// exposing them on the rendered host View. Otherwise byte-for-byte the same
+// shape (renders `data` through `renderItem`, keyed via `keyExtractor`, and
+// surfaces `onDragEnd`/the rest on the `sortable-grid` host View), so every
+// other test in this file is unaffected.
+type MockGridProps = {
+  data?: unknown[];
+  renderItem: (info: { item: unknown; index: number }) => unknown;
+  keyExtractor?: (item: unknown) => string;
+  onDragEnd?: (...args: unknown[]) => void;
+  [prop: string]: unknown;
+};
+
+const mockGridSpy = jest.fn<void, [MockGridProps]>();
+jest.mock('react-native-sortables', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  const Grid = ({ data, renderItem, keyExtractor, onDragEnd, ...rest }: MockGridProps) => {
+    mockGridSpy({ data, renderItem, keyExtractor, onDragEnd, ...rest });
+
+    return React.createElement(
+      View,
+      { testID: 'sortable-grid', onDragEnd, ...rest },
+      (data ?? []).map((item: unknown, index: number) =>
+        React.createElement(
+          React.Fragment,
+          { key: keyExtractor ? keyExtractor(item) : index },
+          renderItem({ item, index }),
+        ),
+      ),
+    );
+  };
+
+  const Passthrough = ({ children }: { children?: unknown }) => children ?? null;
+
+  return {
+    __esModule: true,
+    default: { Grid, Flex: Passthrough, Layer: Passthrough, Handle: Passthrough },
+  };
+});
+
 const mockUpdateTitle = jest.fn();
 const mockUpdateIcon = jest.fn();
 const mockUpdateColor = jest.fn();
@@ -109,6 +154,46 @@ describe('CategoriesScreen', () => {
     expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
     // The add-category affordance is its own trailing card in the same stack.
     expect(getByTestId('add-category-card')).toBeTruthy();
+  });
+
+  // ROOT-CAUSE REGRESSION for the flaky category-card backgrounds: an inline
+  // `keyExtractor`/`renderItem` (a fresh function on every render) makes
+  // `react-native-sortables`' item store (`ItemsProvider`/`createItemsStore`)
+  // treat the renderer itself as changed and recompute EVERY row's node, not
+  // just the row whose data actually changed — including every card's
+  // `GlassSurface`, which samples its live `bloom` glass material from the
+  // app's current visual state (see `categoryKeyExtractor`'s doc comment in
+  // `categories.screen.tsx`). This asserts the FIX (`categoryKeyExtractor` +
+  // the memoized `renderCategoryRow`) directly: the exact function references
+  // `Sortable.Grid` receives must survive a re-render triggered by an
+  // unrelated category write — a live-query refire that hands back a brand
+  // new array of brand new row objects (`useLiveQuery`'s real behavior),
+  // never a `.rerender` reusing the previous props.
+  it('keeps keyExtractor and renderItem referentially stable across a re-render triggered by an unrelated category edit', async () => {
+    const { rerender } = await renderScreen();
+
+    const initialProps = mockGridSpy.mock.calls.at(-1)?.[0];
+    expect(initialProps?.keyExtractor).toEqual(expect.any(Function));
+    expect(initialProps?.renderItem).toEqual(expect.any(Function));
+
+    // Simulate the live query re-firing after an edit to some OTHER category
+    // (a rename/recolor/icon-pick elsewhere in the list): a brand-new array of
+    // brand-new row objects for the same category set, exactly what a real
+    // `categories` table re-`SELECT` hands back.
+    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+
+    await act(async () => {
+      rerender(
+        <CategoriesScreen
+          navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
+          route={asRouteProp<CategoriesProps['route']>('Categories')}
+        />,
+      );
+    });
+
+    const nextProps = mockGridSpy.mock.calls.at(-1)?.[0];
+    expect(nextProps?.keyExtractor).toBe(initialProps?.keyExtractor);
+    expect(nextProps?.renderItem).toBe(initialProps?.renderItem);
   });
 
   it('renames a category via updateTitle and shows the new title in the field', async () => {

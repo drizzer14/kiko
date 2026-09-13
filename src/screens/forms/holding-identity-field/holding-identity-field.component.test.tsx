@@ -149,6 +149,20 @@ describe('HoldingIdentityField', () => {
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
 
+  it('renders the shared native Done keyboard accessory for the name field on iOS', async () => {
+    // The name field carries the same app-wide native Done every other Kiko
+    // input shows above the keyboard.
+    const { getByText } = await setup();
+
+    expect(getByText('Done')).toBeTruthy();
+  });
+
+  it('sets returnKeyType to done on the name field, matching the shared TextField default', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(getByLabelText('Name').props.returnKeyType).toBe('done');
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {
