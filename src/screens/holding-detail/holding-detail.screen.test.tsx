@@ -4,6 +4,7 @@ import { Alert, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
+import { formatDate } from '../../dates/format';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
@@ -398,7 +399,9 @@ describe('HoldingDetailScreen', () => {
 
     // The separate schedule card is gone; the lifecycle renders inline. A brand-
     // new deposit's future accruals render dimmed with a "Projected" marker.
-    expect(getAllByText(/^Projected ·/).length).toBeGreaterThan(0);
+    // futureDepositHolding is a term_deposit (day-granular), so the marker
+    // carries no trailing time separator.
+    expect(getAllByText('Projected').length).toBeGreaterThan(0);
   });
 
   it('renders the deposit lifecycle inline in the transactions list', async () => {
@@ -437,8 +440,9 @@ describe('HoldingDetailScreen', () => {
     expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
   });
 
-  it('stamps a time-specific holding row with the full date and HH:MM time', async () => {
-    // A card is time-specific: its row shows "DD.MM.YYYY HH:MM".
+  it('stamps a time-specific holding row with the bare HH:MM time', async () => {
+    // A card is time-specific: its row shows the bare "HH:MM" — the day
+    // header (not the row) now owns the date.
     const at = new Date(2024, 0, 15, 9, 5).getTime();
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
@@ -446,7 +450,7 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText } = await renderScreen();
 
-    expect(getByText('15.01.2024 09:05')).toBeTruthy();
+    expect(getByText('09:05')).toBeTruthy();
   });
 
   it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
@@ -460,7 +464,7 @@ describe('HoldingDetailScreen', () => {
     // The timestamp caption is wrapped in a right-aligned footer container
     // (alignSelf 'flex-end') so it lands under the amount column rather than
     // left-aligned under the description — mirroring the Home row layout.
-    const footer = ancestorWithStyle(getByText('15.01.2024 09:05'), 'alignSelf');
+    const footer = ancestorWithStyle(getByText('09:05'), 'alignSelf');
     expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
   });
 
@@ -469,18 +473,19 @@ describe('HoldingDetailScreen', () => {
 
     const { getAllByText } = await renderScreen();
 
-    // The derived "Computed · date" caption uses the same right-aligned footer
-    // container, so it too sits under the amount column.
-    const footer = ancestorWithStyle(getAllByText(/^Computed ·/)[0], 'alignSelf');
+    // The derived "Computed" caption uses the same right-aligned footer
+    // container, so it too sits under the amount column. depositHolding is a
+    // term_deposit (day-granular), so the caption carries no trailing time.
+    const footer = ancestorWithStyle(getAllByText('Computed')[0], 'alignSelf');
     expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
   });
 
   it.each([
     ['a term_deposit', depositHolding],
     ['a bond', bondHolding],
-  ])('drops the HH:MM time on %s row, showing the date only', async (_label, holding) => {
-    // A deposit/bond event is day-granular, so its row shows the date with no
-    // trailing time.
+  ])('renders no HH:MM on %s row, leaving the date to the day header', async (_label, holding) => {
+    // A deposit/bond event is day-granular, so the row renders no footer at
+    // all: the shared day-section header is the ONLY place the date appears.
     const at = new Date(2024, 5, 20, 9, 5).getTime();
     seed(holding, [
       { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Top-up', source: 'manual' },
@@ -488,6 +493,8 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText, queryByText } = await renderScreen();
 
+    // getByText throws on more than one match, so this also proves the date is
+    // emitted exactly once — by the day header, not repeated in the row footer.
     expect(getByText('20.06.2024')).toBeTruthy();
     expect(queryByText('20.06.2024 09:05')).toBeNull();
   });
@@ -707,8 +714,10 @@ describe('HoldingDetailScreen', () => {
     expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
     expect(getAllByText('Income tax 18%').length).toBeGreaterThan(0);
     expect(getAllByText('Military levy 5%').length).toBeGreaterThan(0);
-    // Every settled derived row carries a "Computed" marker so it reads as derived.
-    expect(getAllByText(/^Computed ·/).length).toBeGreaterThanOrEqual(3);
+    // Every settled derived row carries a "Computed" marker so it reads as
+    // derived. depositHolding is a term_deposit (day-granular), so the marker
+    // carries no trailing time separator.
+    expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
   });
 
   it('renders derived rows read-only: no swipe-delete and not tappable to the form', async () => {
@@ -832,6 +841,81 @@ describe('HoldingDetailScreen', () => {
 
     expect(queryByTestId('screen-footer')).toBeNull();
     expect(queryByText('Add transaction')).toBeNull();
+  });
+
+  it('groups the ledger by day with Today/Yesterday separators, newest day first', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    // Ordered newest-first, matching the repo query's own `desc(time)` order.
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: now, description: 'TodayTxn', source: 'manual' },
+      {
+        id: 'x2',
+        amountMinorUnits: -5000,
+        time: now - day,
+        description: 'YesterdayTxn',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByText, getAllByText } = await renderScreen();
+
+    expect(getByText('Today')).toBeTruthy();
+    expect(getByText('Yesterday')).toBeTruthy();
+
+    // getAllByText returns matches in tree order, so the rendered order of the
+    // separators and their rows proves the newest day (and its row) comes
+    // first — the same grouping shape and assertion style Home's own
+    // day-grouping test uses.
+    const rendered = getAllByText(/^(Today|TodayTxn|Yesterday|YesterdayTxn)$/).map(
+      (node) => node.props.children,
+    );
+    expect(rendered).toEqual(['Today', 'TodayTxn', 'Yesterday', 'YesterdayTxn']);
+  });
+
+  it('collapses same-day transactions under a single day header', async () => {
+    const now = Date.now();
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: now,
+        description: 'FirstToday',
+        source: 'manual',
+      },
+      {
+        id: 'x2',
+        amountMinorUnits: -3000,
+        time: now - 60 * 1000,
+        description: 'SecondToday',
+        source: 'manual',
+      },
+    ]);
+
+    const { getAllByTestId, getByText } = await renderScreen();
+
+    // Both same-day rows render...
+    expect(getByText('FirstToday')).toBeTruthy();
+    expect(getByText('SecondToday')).toBeTruthy();
+    // ...but only ONE day header is emitted for the whole ledger, proving the
+    // second row did not open its own section.
+    expect(getAllByTestId('ledger-day-header')).toHaveLength(1);
+  });
+
+  it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const older = now - 5 * day;
+    const expectedHeader = formatDate(older);
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: older, description: 'OldTxn', source: 'manual' },
+    ]);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(expectedHeader)).toBeTruthy();
+    expect(queryByText('Today')).toBeNull();
+    expect(queryByText('Yesterday')).toBeNull();
   });
 
   it('keeps the footer add action for a disconnected former-Monobank holding', async () => {

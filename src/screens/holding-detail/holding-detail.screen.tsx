@@ -22,7 +22,8 @@ import {
 import type { Currency } from '../../currency/currency';
 import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
-import { formatDate, formatDateTime } from '../../dates/format';
+import { formatTime } from '../../dates/format';
+import { startOfLocalDay } from '../../dates/local-day';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
@@ -53,6 +54,7 @@ import type { AccountsStackParamList } from '../../navigation/types';
 import { convert, type RateTable } from '../../rates/conversion';
 import { buildRateTable, canConvert } from '../../rates/net-worth-view';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { groupByDay } from '../../transactions/group-by-day';
 import { transactionRowDescription } from '../../transactions/row-description';
 import EntityAmountHeader from '../entity-amount-header';
 import EntityHeaderIcon from '../entity-header-icon';
@@ -195,6 +197,16 @@ type LedgerRow =
 const ledgerKey = (row: LedgerRow): string =>
   row.kind === 'derived' ? row.entry.id : row.transaction.id;
 
+// A flattened ledger entry for the FlatList: the merged row plus, on the FIRST
+// row of each calendar day, that day's header title ("Today"/"Yesterday"/
+// DD.MM.YYYY). The day grouping reuses the Home transaction list's shared
+// `groupByDay`; rendering each day header INSIDE its first row's cell (rather
+// than as a separate SectionList header cell) keeps the list's virtualization
+// cell-count equal to the row count, so a synced card's thousands of rows still
+// mount only as they scroll into view — the same virtualization contract the
+// ungrouped list had.
+type LedgerListItem = { row: LedgerRow; dayTitle: string | null };
+
 // The read context a ledger row needs to render, threaded in from the screen so
 // the row component stays at module scope (keeping the screen's own
 // cognitive-complexity budget clear, the same pattern the helpers above follow).
@@ -259,8 +271,8 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
           </Box>
           <Box style={styles.rowFooter}>
             <Text variant="caption" tone="textSecondary">
-              {row.entry.isFuture ? t('holdingDetail.projected') : t('holdingDetail.computed')} ·{' '}
-              {showTime ? formatDateTime(row.entry.time) : formatDate(row.entry.time)}
+              {row.entry.isFuture ? t('holdingDetail.projected') : t('holdingDetail.computed')}
+              {showTime ? ` · ${formatTime(row.entry.time)}` : ''}
             </Text>
           </Box>
         </Box>
@@ -324,11 +336,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 />
               </Box>
             </Box>
-            <Box style={styles.rowFooter}>
-              <Text variant="caption" tone="textSecondary">
-                {showTime ? formatDateTime(row.transaction.time) : formatDate(row.transaction.time)}
-              </Text>
-            </Box>
+            {showTime && (
+              <Box style={styles.rowFooter}>
+                <Text variant="caption" tone="textSecondary">
+                  {formatTime(row.transaction.time)}
+                </Text>
+              </Box>
+            )}
           </Box>
         </GlassSurface>
       </Pressable>
@@ -411,6 +425,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         ...derived.map((entry) => ({ kind: 'derived' as const, time: entry.time, entry })),
       ].sort((first, second) => second.time - first.time),
     [transactions, derived],
+  );
+  // Group the merged ledger into per-day sections the SAME way the Home
+  // transaction list does — one section per calendar day, newest day first,
+  // headed by "Today"/"Yesterday"/DD.MM.YYYY — through the shared `groupByDay`,
+  // then flatten back to one row per FlatList item, tagging each day's FIRST row
+  // with that day's header title. Keyed on the local DAY (not the per-render
+  // `now` millisecond) so it only recomputes when the ledger changes or the day
+  // rolls over at midnight.
+  const todayStart = startOfLocalDay(now);
+  const listData = useMemo<LedgerListItem[]>(
+    () =>
+      groupByDay(ledger, todayStart, t).flatMap((section) =>
+        section.data.map((row, index) => ({
+          row,
+          dayTitle: index === 0 ? section.title : null,
+        })),
+      ),
+    [ledger, todayStart, t],
   );
   const showBreakdown = holding?.type === 'term_deposit' || holding?.type === 'bond';
   // Which add action the footer offers — or none, for a bond or a synced
@@ -586,17 +618,36 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       {/* The ledger is a virtualized FlatList that OWNS this screen's scrolling
           (under `bleedTop` Screen renders it directly inside its SafeAreaView,
           with no wrapper, so the FlatList supplies its own padding), so only the
-          visible rows mount — a synced card can carry
-          thousands. The summary block + Transactions heading ride along in
-          `ListHeaderComponent`; nesting an eager list inside a scrolling Screen
-          would break virtualization and warn about a nested VirtualizedList.
-          The `spacing(2)` row gap matches the old `<Box gap={2}>` — it lands
-          between the header and the first row and between rows alike. */}
+          visible rows mount — a synced card can carry thousands. Its rows are
+          grouped into per-day sections through the shared `groupByDay` — the
+          SAME grouping the Home transaction list uses — so a day header
+          ("Today"/"Yesterday"/DD.MM.YYYY) heads each calendar day, newest day
+          first. The header renders INSIDE its day's first row cell (not as a
+          separate SectionList header cell), which keeps the cell-count equal to
+          the row count so virtualization is unchanged; Home's own day headers
+          are non-sticky, so this reads identically on screen. The summary block
+          + Transactions heading ride along in `ListHeaderComponent`; nesting an
+          eager list inside a scrolling Screen would break virtualization and
+          warn about a nested VirtualizedList. The `spacing(2)` row gap matches
+          the old `<Box gap={2}>` — it lands between the header and the first row
+          and between rows alike. */}
       <FlatList
         testID="ledger-list"
-        data={ledger}
-        keyExtractor={ledgerKey}
-        renderItem={({ item }) => <LedgerRowItem row={item} context={rowContext} />}
+        data={listData}
+        keyExtractor={(item) => ledgerKey(item.row)}
+        renderItem={({ item }) => (
+          <>
+            {item.dayTitle !== null && (
+              <Box testID="ledger-day-header" style={styles.sectionHeader}>
+                <Text variant="caption" tone="textSecondary">
+                  {item.dayTitle}
+                </Text>
+              </Box>
+            )}
+
+            <LedgerRowItem row={item.row} context={rowContext} />
+          </>
+        )}
         ListHeaderComponent={listHeader}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
@@ -641,6 +692,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
+  // A date separator heading each day group in the ledger, mirroring the Home
+  // transaction list's day header (home.styles.ts `sectionHeader`): a generous
+  // top pad gives each date label clear separation above it (stacked on the
+  // content container's `spacing(2)` gap between cells), and a small bottom pad
+  // seats the day's first row close beneath the label — the same "generous top,
+  // tight bottom" rhythm Home uses.
+  sectionHeader: {
+    paddingTop: theme.spacing(3),
+    paddingBottom: theme.spacing(1),
+  },
   // A projected (post-`now`) lifecycle entry, dimmed so it reads as an estimate
   // rather than a settled statement line.
   futureRow: {
