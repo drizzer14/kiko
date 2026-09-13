@@ -4,9 +4,7 @@ export type EntityIconTileProps = {
   // The entity's resolved effective color (see `resolveEntityColor`,
   // `design-system/entity-tint.ts`) — always an already-resolved hex, never a
   // raw stored/nullable value. The tile derives its gradient from this same
-  // hex via `entityIconTileGradient`; when the squircle-gradient experiment is
-  // off, it is passed straight through to `SymbolIcon`'s own `color`, exactly
-  // as every call site did before this component existed.
+  // hex via `entityIconTileGradient`.
   color: string;
   accessibilityLabel?: string;
   // An explicit glyph size, mirroring SymbolIcon's own optional `size` (see

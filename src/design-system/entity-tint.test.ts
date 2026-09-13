@@ -1,6 +1,5 @@
 import {
   darkenHex,
-  entityCardBackground,
   entityIconTileGradient,
   isLightEntityColor,
   lightenHex,
@@ -21,55 +20,6 @@ describe('darkenHex', () => {
 
   it('is a no-op at 0%', () => {
     expect(darkenHex('#FF453A', 0)).toBe('#ff453a');
-  });
-});
-
-describe('entityCardBackground', () => {
-  // F4 device bug: the card used to darken the hue, then stamp it through
-  // `entityTintBackground` at the shared 10% `ENTITY_TINT_OPACITY` — a
-  // darkened color diluted to ~1% of the final pixel, imperceptible. The
-  // fix drops the alpha compositing entirely: a card's background is a
-  // plain OPAQUE `#RRGGBB`, not an `entityTintBackground()` rgba() string.
-  it('returns an opaque #RRGGBB, never an rgba() string', () => {
-    expect(entityCardBackground('#FF453A')).toMatch(/^#[0-9a-f]{6}$/i);
-  });
-
-  it('returns the darkened tint of the resolved hue directly, with no alpha compositing', () => {
-    expect(entityCardBackground('#FF453A')).toBe(darkenHex('#FF453A', 90));
-  });
-
-  it('differs from a plain translucent rgba() tint of the same hue', () => {
-    expect(entityCardBackground('#FF453A')).not.toBe('rgba(255, 69, 58, 0.1)');
-  });
-
-  it('reads plainly darker than the raw entity hue on every channel, for every swatch', () => {
-    const channels = (hex: string): [number, number, number] => [
-      Number.parseInt(hex.slice(1, 3), 16),
-      Number.parseInt(hex.slice(3, 5), 16),
-      Number.parseInt(hex.slice(5, 7), 16),
-    ];
-
-    for (const hex of Object.values(darkTheme.colors.entityColors)) {
-      const [cardRed, cardGreen, cardBlue] = channels(entityCardBackground(hex));
-      const [rawRed, rawGreen, rawBlue] = channels(hex);
-
-      expect(cardRed).toBeLessThanOrEqual(rawRed);
-      expect(cardGreen).toBeLessThanOrEqual(rawGreen);
-      expect(cardBlue).toBeLessThanOrEqual(rawBlue);
-    }
-  });
-
-  it('produces a distinct opaque color for every entity-color swatch in the theme', () => {
-    const { entityColors } = darkTheme.colors;
-    const cards = Object.values(entityColors).map((hex) => entityCardBackground(hex));
-
-    expect(new Set(cards).size).toBe(cards.length);
-  });
-
-  it('throws on a non-hex input, same as its building blocks', () => {
-    expect(() => entityCardBackground('not-a-hex')).toThrow(
-      'parseHex: expected a #RRGGBB hex, received "not-a-hex"',
-    );
   });
 });
 
@@ -185,9 +135,9 @@ describe('resolveEntityColor', () => {
     const resolved = resolveEntityColor(null, undefined);
 
     expect(resolved).toBe(darkTheme.colors.entityColors.gray);
-    // The fallback itself must be a valid hex `entityCardBackground` accepts,
-    // so a card's background never throws.
-    expect(() => entityCardBackground(resolved)).not.toThrow();
+    // The fallback itself must be a valid hex the entity-hue derivers accept,
+    // so an icon tile's gradient never throws.
+    expect(() => entityIconTileGradient(resolved)).not.toThrow();
   });
 
   it('falls back to the safe default swatch when the stored color is an empty string and the type default is unmapped', () => {

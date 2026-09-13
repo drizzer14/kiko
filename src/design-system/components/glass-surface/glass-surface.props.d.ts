@@ -8,9 +8,8 @@ export type GlassSurfaceProps = ViewProps & {
   padding?: number;
   radius?: GlassRadius;
   // An optional flat entity-color background for the surface: one resolved,
-  // OPAQUE `#RRGGBB` string (see `entityCardBackground` in
-  // `design-system/entity-tint.ts` — the entity hue, darkened enough to read
-  // as a card tone, with no alpha compositing on top). Rendered as a plain
+  // OPAQUE `#RRGGBB` string (an entity hue darkened enough to read as a card
+  // tone, with no alpha compositing on top). Rendered as a plain
   // absolutely-positioned `View` sibling filling the surface, BEHIND
   // `children` and clipped to the surface's own rounded corners by
   // `styles.surface`'s `overflow: hidden`. It is a normal child element, not

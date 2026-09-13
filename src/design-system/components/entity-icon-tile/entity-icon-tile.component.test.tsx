@@ -4,20 +4,12 @@ import '../../unistyles';
 import { entityIconTileGradient } from '../../entity-tint';
 import { darkTheme } from '../../theme';
 
-import EntityIconTile, { ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT } from '.';
+import EntityIconTile from '.';
 
-// This suite covers the CURRENT default,
-// `ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT === true` (the squircle-gradient
-// tile) — see that flag's own doc comment in entity-icon-tile.component.tsx
-// for how to review/revert. The `false` branch is a straight passthrough to
-// `SymbolIcon` (the exact markup every call site inlined before this
-// component existed), already covered by symbol.component.test.tsx; this
-// suite would only re-test that component's own behavior a second time.
+// The tile renders a squircle-gradient fill derived from the entity color with
+// the SF Symbol glyph on top — the single, permanent treatment every
+// account/holding/category icon uses (there is no flag-off passthrough branch).
 describe('EntityIconTile', () => {
-  it('is the squircle-gradient experiment as shipped for review', () => {
-    expect(ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT).toBe(true);
-  });
-
   it('renders the squircle gradient fill and the glyph on top', async () => {
     const { getByTestId, getByLabelText } = await render(
       <EntityIconTile name="banknote" color="#0A84FF" accessibilityLabel="Checking icon" />,

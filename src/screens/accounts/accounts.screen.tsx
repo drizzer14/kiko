@@ -15,14 +15,12 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CardContextMenu from '../../design-system/components/card-context-menu';
-import EntityIconTile, {
-  ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT,
-} from '../../design-system/components/entity-icon-tile';
+import EntityIconTile from '../../design-system/components/entity-icon-tile';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
-import { entityCardBackground, resolveEntityColor } from '../../design-system/entity-tint';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import { isSyncedAccount } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
@@ -151,19 +149,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                       testID="account-card"
                       padding={4}
                       bordered
-                      // EXPERIMENT (Item D): with the squircle-gradient icon tile
-                      // on, the card itself goes back to a neutral frosted
-                      // surface — the same `transparent` treatment every other
-                      // neutral list row/card uses — since the entity color now
-                      // lives on the icon tile instead of the whole card. Reading
-                      // the SAME flag `EntityIconTile` reads keeps the two in sync;
-                      // flip that one flag to revert both at once.
-                      tint={
-                        ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT
-                          ? undefined
-                          : entityCardBackground(color)
-                      }
-                      transparent={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT}
+                      // The card itself is a neutral frosted surface — the same
+                      // `transparent` treatment every other neutral list row/card
+                      // uses — since the entity color now lives on the icon tile
+                      // (see `EntityIconTile`) instead of the whole card.
+                      transparent
                     >
                       <Pressable
                         accessibilityRole="button"

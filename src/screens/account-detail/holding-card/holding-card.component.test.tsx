@@ -77,12 +77,11 @@ describe('HoldingCard', () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  // EXPERIMENT (Item D, 2026-09-13, squircle-gradient icon tile — see
-  // `EntityIconTile`'s `ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT` flag): with
-  // the experiment on, the holding's color drives the icon TILE's gradient
-  // fill (never the raw glyph tint, now the fixed legible `onAccent` white),
-  // and the card itself goes back to a plain neutral surface instead of an
-  // entity-colored wash — mirrors accounts.screen.test.tsx's identical pair.
+  // The squircle-gradient icon tile is the permanent treatment (see
+  // `EntityIconTile`): the holding's color drives the icon TILE's gradient
+  // fill (never the raw glyph tint, the fixed legible `onAccent` white), and
+  // the card itself is a plain neutral surface instead of an entity-colored
+  // wash — mirrors accounts.screen.test.tsx's identical pair.
   it('tints the icon glyph with the legible onAccent token, not the raw holding color', async () => {
     const { getByLabelText } = await renderCard({
       holding: holding({ color: darkTheme.colors.entityColors.violet }),

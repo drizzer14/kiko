@@ -1,13 +1,11 @@
 import { entityColorsDark } from './palette';
 
-// A subtle color-tint background: the entity's own color (one of
-// `theme.colors.entityColors`, see theme.ts) blended at a low, consistent
-// opacity, for any consumer that wants a translucent wash OVER an existing
-// surface rather than a card's own opaque fill. The account card
-// (accounts.screen) and the holding card (holding-card) do NOT paint through
-// this helper — see `entityCardBackground` below, an intentionally separate,
-// fully OPAQUE derivation, and its doc comment for why a translucent tint is
-// the wrong shape for a card background.
+// Entity-color derivations shared across the design system: resolving an
+// account/holding/category's effective hue (`resolveEntityColor`), the two
+// channel-blend helpers (`lightenHex`/`darkenHex`), the squircle icon-tile
+// gradient stops (`entityIconTileGradient`), and the WCAG glyph-contrast test
+// (`isLightEntityColor`). Every entity-hue derivation lives here, in one place,
+// per the design-system rule — never re-derived at a call site.
 
 const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 
@@ -83,9 +81,9 @@ export const resolveEntityColor = (
 };
 
 // Darkens a `#RRGGBB` hex toward black by `percent` (0-100): each channel
-// moves `percent`% of the way to 0. Used to derive a card's flat background —
-// a subtle shift toward black from the base entity hue, not a desaturated
-// pastel.
+// moves `percent`% of the way to 0. The bottom stop of the icon-tile gradient
+// (see `entityIconTileGradient` below) is derived from it — a subtle shift
+// toward black from the base entity hue, not a desaturated pastel.
 export const darkenHex = (hex: string, percent: number): string => {
   const [red, green, blue] = parseHex(hex);
   const darken = (channel: number): string =>
@@ -95,41 +93,6 @@ export const darkenHex = (hex: string, percent: number): string => {
 
   return `#${darken(red)}${darken(green)}${darken(blue)}`;
 };
-
-// DEVICE BUG (F4): a card used to look at `CARD_DARKEN_PERCENT = 10` fed
-// through `entityTintBackground` at the shared `ENTITY_TINT_OPACITY = 0.1` —
-// darkening a color that is then stamped at 10% opacity only shifts the
-// FINAL on-screen pixel by ~1% (<=2/255 per channel): imperceptible. A card
-// read as plain `theme.colors.surface` no matter which entity color it held.
-//
-// Fixed by dropping the translucency entirely for the card path: this darken
-// percent alone now has to do the FULL job of turning a bright, saturated
-// swatch (`white`, `yellow`, ...) into a card-toned color, because the result
-// is painted OPAQUE (see `entityCardBackground` below) with nothing further
-// diluting it. 90% is deliberately near-black — pulling `#FFFFFF` down to
-// `#191919` and `#FFD60A` down to `#191501`, for example — so every swatch
-// resolves into a near-black card tone that still carries just a hint of the
-// entity hue, with white body text comfortably legible on top, while staying
-// far enough apart per swatch to read as "this entity's color". Raised from
-// an initial 55% (device review: still read too light), to 70% (device
-// review: plainly darker), to 90% (device review: near-black with a hint of
-// hue, the chosen target).
-const CARD_DARKEN_PERCENT = 90;
-
-// A card's flat, OPAQUE background: the resolved entity hue darkened so white
-// body text stays legible, and used as-is — a plain `#RRGGBB`, not passed
-// through `entityTintBackground`'s alpha compositing. A card's wash is painted
-// as a `View` sibling over an already-opaque base (the flat themed surface on
-// the fallback path, the Liquid Glass material on the glass path — see
-// `GlassSurface`), so an opaque fill FULLY replaces whatever is underneath:
-// the visible result is identical on both paths and cannot be diluted by a
-// base layer it never blends with. This replaced a 45deg two-stop gradient
-// wash (design review: a plain darker solid reads calmer and is simpler to
-// reason about than a diagonal blend of two near-identical hues), then a
-// translucent flat wash (the F4 device bug above). Feed the result straight
-// to `GlassSurface`'s `tint` prop.
-export const entityCardBackground = (colorHex: string): string =>
-  darkenHex(colorHex, CARD_DARKEN_PERCENT);
 
 // Lightens a `#RRGGBB` hex toward white by `percent` (0-100): each channel
 // moves `percent`% of the way to 255. `darkenHex`'s mirror image — added
@@ -145,16 +108,13 @@ export const lightenHex = (hex: string, percent: number): string => {
   return `#${lighten(red)}${lighten(green)}${lighten(blue)}`;
 };
 
-// EXPERIMENT (Item D, 2026-09-13 design review): the two gradient stops for
-// `EntityIconTile`'s squircle-gradient treatment — see
-// `design-system/components/entity-icon-tile/`. A vertical gradient of the
-// entity's OWN hue, lighter at the top and darker at the bottom, the same
-// "one hue, several renderings" rule `entityCardBackground` follows: never a
-// second, unrelated color, always derived from `resolveEntityColor`'s result.
-// Percentages are deliberately gentle (not `CARD_DARKEN_PERCENT`'s near-black
-// 90%) — the tile is small and meant to read as a saturated, legible chip
-// behind a white glyph (the iOS Settings icon-tile look), not a near-black
-// card tone.
+// The two gradient stops for `EntityIconTile`'s squircle-gradient treatment —
+// see `design-system/components/entity-icon-tile/`. A vertical gradient of the
+// entity's OWN hue, lighter at the top and darker at the bottom, following the
+// design-system "one hue, several renderings" rule: never a second, unrelated
+// color, always derived from `resolveEntityColor`'s result. Percentages are
+// deliberately gentle — the tile is small and meant to read as a saturated,
+// legible chip behind a white glyph (the iOS Settings icon-tile look).
 const ICON_TILE_LIGHTEN_PERCENT = 15;
 const ICON_TILE_DARKEN_PERCENT = 20;
 

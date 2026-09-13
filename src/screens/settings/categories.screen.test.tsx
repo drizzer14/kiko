@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
+import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { categoryColor } from '../../statistics/category-breakdown';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -156,13 +157,28 @@ describe('CategoriesScreen', () => {
     expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
+  // The category card uses the SAME neutral frosted treatment the account and
+  // holding cards use permanently (`transparent`, no `bloom`, no entity tint):
+  // its base fills with the shared neutral `surfaceTranslucent` token, and it
+  // carries no colored wash layer — the category color lives on the row icon
+  // only, never on the card background.
+  it('renders each category card as a neutral frosted surface, no bloom and no color wash', async () => {
+    const { getAllByTestId, queryAllByTestId } = await renderScreen();
+
+    const base = getAllByTestId('category-card-base')[0];
+    expect(StyleSheet.flatten(base.props.style).backgroundColor).toBe(
+      darkTheme.colors.surfaceTranslucent,
+    );
+    expect(queryAllByTestId('category-card-wash')).toHaveLength(0);
+  });
+
   // ROOT-CAUSE REGRESSION for the flaky category-card backgrounds: an inline
   // `keyExtractor`/`renderItem` (a fresh function on every render) makes
   // `react-native-sortables`' item store (`ItemsProvider`/`createItemsStore`)
   // treat the renderer itself as changed and recompute EVERY row's node, not
   // just the row whose data actually changed — including every card's
-  // `GlassSurface`, which samples its live `bloom` glass material from the
-  // app's current visual state (see `categoryKeyExtractor`'s doc comment in
+  // `GlassSurface`, which samples its live glass material from the app's
+  // current visual state (see `categoryKeyExtractor`'s doc comment in
   // `categories.screen.tsx`). This asserts the FIX (`categoryKeyExtractor` +
   // the memoized `renderCategoryRow`) directly: the exact function references
   // `Sortable.Grid` receives must survive a re-render triggered by an

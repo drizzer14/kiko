@@ -350,13 +350,12 @@ describe('AccountsScreen', () => {
     expect(queryByLabelText('Change Cash icon')).toBeNull();
   });
 
-  // EXPERIMENT (Item D, 2026-09-13, squircle-gradient icon tile — see
-  // `EntityIconTile`'s `ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT` flag): with
-  // the experiment on, the account's color drives the icon TILE's gradient
-  // fill (never the raw glyph tint, which is now the fixed legible
-  // `onAccent` white), and the card itself goes back to a plain neutral
-  // surface instead of an entity-colored wash. See holding-card.component.test.tsx
-  // for the identical pair of tests on the holding card.
+  // The squircle-gradient icon tile is the permanent treatment (see
+  // `EntityIconTile`): the account's color drives the icon TILE's gradient
+  // fill (never the raw glyph tint, which is the fixed legible `onAccent`
+  // white), and the card itself is a plain neutral surface instead of an
+  // entity-colored wash. See holding-card.component.test.tsx for the
+  // identical pair of tests on the holding card.
   it('tints the account icon glyph with the legible onAccent token, not the raw entity color', async () => {
     setLiveData({
       accounts: [

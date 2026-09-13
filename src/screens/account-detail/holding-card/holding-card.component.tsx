@@ -7,13 +7,11 @@ import type { Currency } from '../../../currency/currency';
 import { formatMoney } from '../../../currency/format';
 import type { HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
-import EntityIconTile, {
-  ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT,
-} from '../../../design-system/components/entity-icon-tile';
+import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 import GlassSurface from '../../../design-system/components/glass-surface';
 import MoneyText from '../../../design-system/components/money-text';
 import Text from '../../../design-system/components/text';
-import { entityCardBackground, resolveEntityColor } from '../../../design-system/entity-tint';
+import { resolveEntityColor } from '../../../design-system/entity-tint';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { holdingValue } from '../../../holdings/holding-value';
@@ -90,11 +88,9 @@ const HoldingCard: FC<{
       testID="holding-card"
       padding={4}
       bordered
-      // EXPERIMENT (Item D): see the matching comment in accounts.screen.tsx —
-      // the same flag `EntityIconTile` reads keeps this card's background in
-      // sync with the icon tile's own look.
-      tint={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT ? undefined : entityCardBackground(color)}
-      transparent={ENTITY_ICON_SQUIRCLE_GRADIENT_EXPERIMENT}
+      // A neutral frosted surface, mirroring the accounts-list card — the entity
+      // color lives on the icon tile (see `EntityIconTile`), not the whole card.
+      transparent
     >
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>

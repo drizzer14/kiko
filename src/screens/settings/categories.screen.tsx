@@ -146,7 +146,7 @@ const CategoryListRow: FC<{
   };
 
   return (
-    <GlassSurface testID="category-card" padding={4} bordered transparent bloom>
+    <GlassSurface testID="category-card" padding={4} bordered transparent>
       <Box gap={2}>
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>
@@ -309,8 +309,8 @@ const CATEGORY_DRAG_ACTIVATION_MS = 600;
 // reorder, a delete — each writes the `categories` table, which re-fires this
 // screen's `useLiveQuery`). So editing ONE category's color used to force
 // every OTHER unaffected card through a full node recompute too: each
-// `GlassSurface` card here renders `bloom` (see `glass-surface.component.tsx`),
-// whose real Liquid-Glass material samples its backdrop from the app's actual
+// `GlassSurface` card here renders a real Liquid-Glass material (see
+// `glass-surface.component.tsx`) that samples its backdrop from the app's actual
 // current visual state — a card that is unnecessarily torn down and rebuilt by
 // this churn can resample a transient, not-yet-settled backdrop and paint
 // visibly wrong until something else (a drag, a remount) forces a correct
