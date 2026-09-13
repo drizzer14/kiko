@@ -118,8 +118,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // A one-shot create promise: whichever fires first (a field's own Connect or
   // the footer Save) inserts the row exactly once; every later caller reuses the
   // same promise, so a field Connect followed by Save can never produce a
-  // DUPLICATE account (Option A).
+  // DUPLICATE account (Option A). On a REJECTED create the ref is reset to null
+  // (see below) so a retry re-attempts and Save never silently no-ops.
   const cryptoAccountCreate = useRef<Promise<string> | null>(null);
+  // A render-visible mirror of "the crypto row has been (or is being) inserted",
+  // used only to DISABLE the kind switch once a source is connected — switching
+  // to bank/cash afterwards would route Save down a branch that creates a SECOND
+  // account and orphans the crypto row. It is state (not just the ref) because
+  // the disable must re-render; it follows the ref, reset to false on a failed
+  // create so the switch re-enables when no row actually exists.
+  const [cryptoRowStarted, setCryptoRowStarted] = useState(false);
 
   const ensureCryptoAccount = (): Promise<string> => {
     cryptoAccountCreate.current ??= (async () => {
@@ -133,7 +141,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         await accountsRepo.setIcon(pendingCryptoAccountId, icon);
       }
       return pendingCryptoAccountId;
-    })();
+    })().catch((error: unknown) => {
+      // A failed insert (DB locked, disk full) must not poison the session: clear
+      // the latch so a retry — or the Save fallback — re-attempts, rather than
+      // leaving the ref non-null and sending Save down the UPDATE branch, which
+      // would match no row and silently no-op while the user believes they saved
+      // (C-1). Re-throw so the caller still sees the failure.
+      cryptoAccountCreate.current = null;
+      setCryptoRowStarted(false);
+      throw error;
+    });
+    setCryptoRowStarted(true);
     return cryptoAccountCreate.current;
   };
 
@@ -141,9 +159,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log.
+  // screen, the DB, or a log. A create failure is caught here and surfaced to
+  // the field as a `false` (not-connected) result, so the field shows its
+  // "could not connect" status instead of an unhandled rejection that would
+  // leave it stuck on "checking" (C-2); the ref reset above lets the next
+  // Connect retry.
   const connectWallet = async (address: string): Promise<boolean> => {
-    await ensureCryptoAccount();
+    try {
+      await ensureCryptoAccount();
+    } catch {
+      return false;
+    }
     return syncCrypto({
       providerId: 'btc_wallet',
       targetAccountId: pendingCryptoAccountId,
@@ -152,7 +178,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   const connectBinance = async (): Promise<boolean> => {
-    await ensureCryptoAccount();
+    try {
+      await ensureCryptoAccount();
+    } catch {
+      return false;
+    }
     return syncCrypto({ providerId: 'binance', targetAccountId: pendingCryptoAccountId });
   };
 
@@ -340,7 +370,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
         {/* Kind fixes an account's structure (a cash account owns an initial
             cash holding; a bank/crypto does not), and no repo path re-shapes it,
-            so it is read-only in edit mode — shown, but not switchable. */}
+            so it is read-only in edit mode — shown, but not switchable. It also
+            locks once a crypto source has been connected (which already inserted
+            the crypto row): switching to bank/cash afterwards would make Save
+            create a SECOND account and orphan the crypto row. */}
         <ChipRow
           label={t('forms.account.kind')}
           options={kinds}
@@ -348,7 +381,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onSelect={handleSelectKind}
           labels={kindLabels}
           icons={accountKindSymbol}
-          disabled={isEdit}
+          disabled={isEdit || cryptoRowStarted}
         />
 
         {/* The currency + initial value seed the cash account's initial holding

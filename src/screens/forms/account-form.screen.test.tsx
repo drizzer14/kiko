@@ -799,6 +799,58 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
+    // C-1: a rejected insert (DB locked/disk full) must not leave the one-shot
+    // latch set — otherwise Save would take the UPDATE branch, match no row, and
+    // silently goBack while no account exists. The first create rejects; the row
+    // was never inserted, so Save must run a fresh CREATE (not a no-op update).
+    mockCreate.mockRejectedValueOnce(new Error('db locked'));
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Binance'));
+    // The field's Connect fails cleanly (no unhandled rejection); nothing saved.
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    // Save re-attempts the create because the latch was cleared — proof the ref
+    // was reset rather than pinned to the rejected promise.
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('locks the kind switch once a crypto source is connected, so Save cannot orphan the row', async () => {
+    // C-3: connecting a source inserts the crypto row. Switching to Bank/Cash
+    // afterwards would route Save to a SECOND create and orphan that row, so the
+    // kind chip is disabled once connected — the Bank press is inert and Save
+    // stays on the crypto UPDATE path.
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+    // The kind chip is now disabled; pressing Bank is a no-op.
+    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(getByText('Bank'));
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    // Still one create (crypto), no bank/cash create, and Save updated the row.
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalled();
+  });
+
   it('creates an unconnected crypto account on Save when no source was connected', async () => {
     // A crypto account is valid without a connected source (the user connects one
     // later from its detail screen). Save with no field Connect inserts the row
