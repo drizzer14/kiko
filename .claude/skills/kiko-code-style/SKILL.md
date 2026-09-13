@@ -234,13 +234,34 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 
 ## Import ordering and `import type`
 
-Import grouping and ordering is mechanized: Biome's `organizeImports`
-assist, configured in `biome.json`'s
-`assist.actions.source.organizeImports`, groups and sorts every
-import automatically. Run `npm run check:lint` rather than
-hand-ordering imports, and read that config directly for the current
-group definitions and order — don't restate them here, they'd only
-drift from the file that actually governs them.
+Import grouping and ordering is **hand-enforced, not mechanized**.
+Biome's `organizeImports` assist cannot express this project's
+convention — it forces a natural within-group sort — so
+`biome.json`'s `assist.actions.source.organizeImports.level` is set
+to `"off"`. `npm run check:lint` therefore does **not** check import
+order at all; `kiko:reviewer` must verify it by hand on every
+reviewed file.
+
+The convention (handwritten, Prettier-only exemplar:
+`~/Developer/Projects/ovpn-ui`):
+
+- Keep 3 import GROUPS in this order, each separated by a blank line:
+  (1) external packages, (2) `../**` parent-relative, (3) `./**`
+  sibling-relative.
+- WITHIN each group, sort by LENGTH ASCENDING. The sort key is the
+  length of the statement's ENDING physical line: the whole line for
+  a single-line import; the `} from '...';` closing line for a
+  wrapped/multiline import (NOT the `import {` first line, NOT the
+  flattened statement). Example from ovpn-ui: a wrapped
+  `@floating-ui/react` import sorts by its 28-char
+  `} from '@floating-ui/react';` closing line, so it lands right
+  after `import clsx from 'clsx';` (24 chars).
+- Within a group, VALUE imports come before `import type` imports
+  only as an equal-length tiebreaker — length dominates.
+- A bare side-effect import (e.g.
+  `import '../../design-system/unistyles';`) is an ordering BARRIER:
+  never move an import across it — module-initialization order must
+  be preserved.
 
 Use `import type` when the entire import is types:
 
