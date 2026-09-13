@@ -42,10 +42,11 @@ export const currencyName: Record<Currency, string> = {
   BTC: 'Bitcoin',
 };
 
-// The crypto codes. Everything else in `currencyOptions` is fiat. Item F (a cash
-// account is fiat-only) and the rate layer both read this ONE set rather than
-// re-enumerating which codes are crypto.
-export const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC']);
+// The crypto codes. Everything else in `currencyOptions` is fiat. `isCrypto`
+// (and, through it, `isFiat`/`fiatCurrencyOptions`) reads this ONE set rather
+// than re-enumerating which codes are crypto. Not exported: consumers classify
+// through the predicates, so exposing the raw Set would be dead surface.
+const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC']);
 
 export const isCrypto = (currency: Currency): boolean => cryptoCurrencies.has(currency);
 

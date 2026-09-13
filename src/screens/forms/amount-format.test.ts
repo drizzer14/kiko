@@ -124,6 +124,8 @@ describe('majorAmountText -> groupAmount -> parseAmount round-trip (exact parity
     UAH: [0, 1, 50, 99, 100, 12_345, 123_456],
     USD: [0, 1, 50, 99, 100, 250_000],
     EUR: [0, 1, 50, 99, 100, 250_000],
+    GBP: [0, 1, 50, 99, 100, 250_000],
+    CHF: [0, 1, 50, 99, 100, 250_000],
   };
 
   it.each(currencyOptions)('round-trips every sample minor-units value for %s', (currency) => {

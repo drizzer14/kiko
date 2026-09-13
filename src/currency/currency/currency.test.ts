@@ -1,10 +1,10 @@
 import {
+  currencyName,
   currencyOptions,
   fiatCurrencyOptions,
-  isCurrency,
   isCrypto,
+  isCurrency,
   isFiat,
-  currencyName,
 } from './currency';
 
 describe('currencyOptions', () => {

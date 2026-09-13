@@ -1,7 +1,14 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+import { currencyOptions } from '../currency/currency';
 import type { TrendFilter } from '../statistics/trend-filter';
+
+// The currency columns below are TS-enum-typed text columns (SQLite stores plain
+// text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
+// needs no migration). Each derives its enum from `currencyOptions` in
+// currency.ts so the persisted set can never drift from the app's supported
+// currencies — the same single-source-of-truth rule the rate layer follows.
 
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
@@ -26,7 +33,7 @@ export const holdings = sqliteTable('holdings', {
   type: text('type', {
     enum: ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'],
   }).notNull(),
-  currency: text('currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+  currency: text('currency', { enum: currencyOptions }).notNull(),
   icon: text('icon'),
   color: text('color'),
   balanceMinorUnits: integer('balance_minor_units').notNull().default(0),
@@ -125,8 +132,8 @@ export type TransactionRow = typeof transactions.$inferSelect;
 export const currencyRates = sqliteTable(
   'currency_rates',
   {
-    base: text('base', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
-    quote: text('quote', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    base: text('base', { enum: currencyOptions }).notNull(),
+    quote: text('quote', { enum: currencyOptions }).notNull(),
     rate: text('rate').notNull(),
     source: text('source', { enum: ['monobank', 'coingecko'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
@@ -141,8 +148,8 @@ export type CurrencyRateRow = typeof currencyRates.$inferSelect;
 export const currencyRateHistory = sqliteTable(
   'currency_rate_history',
   {
-    base: text('base', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
-    quote: text('quote', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    base: text('base', { enum: currencyOptions }).notNull(),
+    quote: text('quote', { enum: currencyOptions }).notNull(),
     /**
      * The rate's day, as a normalized UTC-midnight epoch value in
      * MILLISECONDS (00:00:00.000 UTC of that calendar day). Same millisecond
@@ -165,9 +172,7 @@ export type CurrencyRateHistoryRow = typeof currencyRateHistory.$inferSelect;
 
 export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
-  baseCurrency: text('base_currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] })
-    .notNull()
-    .default('UAH'),
+  baseCurrency: text('base_currency', { enum: currencyOptions }).notNull().default('UAH'),
   // SUPERSEDED (retained): the global Monobank statement CURSOR. De-globalized
   // to the per-connection `syncState` table (2026-09-11 multi-account plan);
   // migration 0028 backfills the connected account's row from it. The sync no
