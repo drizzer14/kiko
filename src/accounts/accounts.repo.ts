@@ -22,7 +22,7 @@ const nextSortOrder = async (tx: typeof database): Promise<number> => {
 };
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'institution' | 'sortOrder' | 'color'>>;
+  Partial<Pick<AccountRow, 'id' | 'institution' | 'sortOrder' | 'color'>>;
 
 type NewCashAccount = {
   name: string;
@@ -70,16 +70,20 @@ export const accountsRepo = {
   connectedQuery: (institution: SyncedInstitution = 'monobank') =>
     database.select().from(accounts).where(eq(accounts.institution, institution)),
   /**
-   * Insert a new account and resolve to its generated app id (the text UUID),
-   * so a caller can immediately act on the new row (e.g. set its icon). The
-   * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
-   * not this id, so it is not returned.
+   * Insert a new account and resolve to its app id (the text UUID), so a caller
+   * can immediately act on the new row (e.g. set its icon). The id is generated
+   * here unless the caller pre-generated one and passes it in `input.id` — the
+   * create form does this so the shared crypto sync fields (which bind to an
+   * existing account id) can key their Keychain write and connect to the future
+   * row before it is inserted. The op-sqlite insert result
+   * (rowsAffected/lastInsertRowId) is the SQLite rowid, not this id, so it is
+   * not returned.
    */
   create: (input: NewAccount): Promise<string> =>
     write(async (tx) => {
-      const accountId = id();
+      const accountId = input.id ?? id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(tx));
-      await tx.insert(accounts).values({ id: accountId, ...input, sortOrder });
+      await tx.insert(accounts).values({ ...input, id: accountId, sortOrder });
       return accountId;
     }),
   /**
