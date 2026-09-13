@@ -520,7 +520,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           onChangeName={setName}
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
-          namePlaceholder={t('forms.fields.name')}
+          namePlaceholder={t('forms.holding.namePlaceholder')}
           required
         />
 

@@ -136,9 +136,10 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 // fallback the Home and Holding-detail lists render for an empty description
 // (see `defaultTransactionDescription`). Only the polarity of the sign matters
 // to that helper, so the current `mode` maps to a representative signed value
-// (a negative for expense, non-negative otherwise). Falls back to the generic
-// "Description" word when no holding has resolved yet, so there is nothing to
-// preview. Kept module-level and pure so its branch stays out of the screen
+// (a negative for expense, non-negative otherwise). Falls back to a concrete
+// example ("Coffee") when no holding has resolved yet, so there is nothing to
+// preview — an example the user can type, not an echo of the field's own label.
+// Kept module-level and pure so its branch stays out of the screen
 // component's cognitive-complexity budget; `t` is the full `TFunction` (both
 // the fallback and the interpolated preview flow through it).
 const resolveDescriptionPlaceholder = (
@@ -148,7 +149,7 @@ const resolveDescriptionPlaceholder = (
 ): string =>
   holding !== undefined
     ? defaultTransactionDescription(holding.name, mode === 'expense' ? -1 : 0, t)
-    : t('forms.transaction.description');
+    : t('forms.transaction.descriptionPlaceholder');
 
 // Whether a money field holds a strictly positive number — the same guard every
 // `save` path applies before it writes. `parseAmount` yields NaN for a blank,

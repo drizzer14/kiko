@@ -372,7 +372,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onChangeName={setName}
           onSelectIcon={setIcon}
           onRemoveIcon={() => setIcon(null)}
-          namePlaceholder={t('forms.fields.name')}
+          namePlaceholder={t('forms.account.namePlaceholder')}
           required
         />
 
