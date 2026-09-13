@@ -146,6 +146,7 @@ export const en = {
       editTitle: 'Edit Account',
       initialValue: 'Initial value',
       kind: 'Kind',
+      nameRequiredForSync: 'Enter a name first to connect a source.',
     },
     contribution: {
       addTitle: 'Add Contribution',

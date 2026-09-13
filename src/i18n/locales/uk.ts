@@ -130,6 +130,7 @@ export const uk: typeof en = {
       editTitle: 'Редагувати рахунок',
       initialValue: 'Початкова сума',
       kind: 'Вид',
+      nameRequiredForSync: "Спочатку введіть назву, щоб під'єднати джерело.",
     },
     contribution: {
       addTitle: 'Додати внесок',

@@ -130,6 +130,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const [cryptoRowStarted, setCryptoRowStarted] = useState(false);
 
   const ensureCryptoAccount = (): Promise<string> => {
+    // Parity with the bank Save gate (`canSave = trimmedName !== ''`): the crypto
+    // form is always visible and a credential/address may be entered, but NO
+    // account row is ever created without a name. A field's own Connect tapped
+    // with an empty (whitespace-only) name rejects HERE before any insert — the
+    // field surfaces its existing "could not connect" state and the crypto block
+    // shows the "enter a name first" hint so the user understands why. The latch
+    // and the `cryptoRowStarted` kind-lock are left untouched (no row was
+    // started), so a retry after typing a name re-attempts cleanly. Save is
+    // separately blocked on `!canSave`, so this also guards the programmatic path.
+    if (!canSave) {
+      return Promise.reject(new Error('name-required'));
+    }
     cryptoAccountCreate.current ??= (async () => {
       await accountsRepo.create({
         id: pendingCryptoAccountId,
@@ -424,15 +436,28 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         )}
 
         {/* The SAME Wallet|Binance sync form the account-detail screen uses,
-            reused here rather than hand-rolled. It is gated on a non-empty name
-            because each field's own Connect inserts the account row (via
-            ensureCryptoAccount) keyed by the pre-generated id — an account must
-            have its (required) name before that row is written. */}
-        {!isEdit && kind === 'crypto' && trimmedName !== '' && (
+            reused here rather than hand-rolled. It renders the moment Crypto is
+            selected — full parity with the bank form above, with NO name gate.
+            The create invariant is enforced instead of hidden: each field's own
+            Connect inserts the account row (via ensureCryptoAccount) keyed by the
+            pre-generated id, and ensureCryptoAccount refuses to create a row while
+            `!canSave` (empty name), mirroring the bank Save gate. Until a name is
+            entered the hint below tells the user why a Connect will not persist
+            anything; a Connect tapped early just surfaces the field's "could not
+            connect" state and writes no row. */}
+        {!isEdit && kind === 'crypto' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
+
+            {!canSave && (
+              <Box testID="crypto-sync-name-hint">
+                <Text variant="caption" tone="textSecondary">
+                  {t('forms.account.nameRequiredForSync')}
+                </Text>
+              </Box>
+            )}
 
             <CryptoSyncForm
               accountId={pendingCryptoAccountId}
