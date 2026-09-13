@@ -16,5 +16,7 @@ export const currencySignSymbol: Record<Currency, string> = {
   UAH: 'hryvniasign',
   USD: 'dollarsign',
   EUR: 'eurosign',
+  GBP: 'sterlingsign',
+  CHF: 'francsign',
   BTC: 'bitcoinsign',
 };

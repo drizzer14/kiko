@@ -15,10 +15,12 @@ describe('currencySignSymbol', () => {
     }
   });
 
-  it('assigns UAH hryvniasign, USD dollarsign, EUR eurosign, BTC bitcoinsign', () => {
+  it('assigns each currency its SF Symbol currency-sign glyph', () => {
     expect(currencySignSymbol.UAH).toBe('hryvniasign');
     expect(currencySignSymbol.USD).toBe('dollarsign');
     expect(currencySignSymbol.EUR).toBe('eurosign');
+    expect(currencySignSymbol.GBP).toBe('sterlingsign');
+    expect(currencySignSymbol.CHF).toBe('francsign');
     expect(currencySignSymbol.BTC).toBe('bitcoinsign');
   });
 });
