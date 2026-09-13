@@ -186,6 +186,17 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Broker')).toBeNull();
   });
 
+  it('renders the account-type chips in the order Cash, Bank, Crypto', async () => {
+    const { getAllByText } = await renderForm();
+
+    // getAllByText returns matches in render (tree) order, and the ChipRow lays
+    // its chips out in the `kinds` array order, so this asserts the visible
+    // left-to-right order is Cash -> Bank -> Crypto.
+    const order = getAllByText(/^(Cash|Bank|Crypto)$/).map((node) => node.props.children);
+
+    expect(order).toEqual(['Cash', 'Bank', 'Crypto']);
+  });
+
   it('creates a crypto account with the crypto kind (no source connected)', async () => {
     const { getByLabelText, getByText, navigation } = await renderForm();
 

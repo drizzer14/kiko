@@ -38,7 +38,7 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 // db/schema.ts). A crypto account is created like a bank account — no initial
 // holding/currency at creation; holdings are added later — so only cash needs
 // the currency + initial-value fields below.
-const kinds = ['bank', 'cash', 'crypto'] as const;
+const kinds = ['cash', 'bank', 'crypto'] as const;
 type Kind = (typeof kinds)[number];
 
 // The kind a fresh create form starts on. Its default icon (accountKindSymbol)
