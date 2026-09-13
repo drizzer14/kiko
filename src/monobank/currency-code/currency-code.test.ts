@@ -14,4 +14,11 @@ describe('currency-code', () => {
   it('maps currencies back to codes', () => {
     expect(codeFromCurrency('UAH')).toBe(980);
   });
+
+  it('maps GBP and CHF in both directions', () => {
+    expect(currencyFromCode(826)).toBe('GBP');
+    expect(currencyFromCode(756)).toBe('CHF');
+    expect(codeFromCurrency('GBP')).toBe(826);
+    expect(codeFromCurrency('CHF')).toBe(756);
+  });
 });
