@@ -32,7 +32,8 @@ describe('refreshRates', () => {
 
     expect(captured).toHaveLength(1);
     const stored = captured[0];
-    // 4 currencies -> 12 ordered distinct pairs.
+    // The mock providers price only 4 currencies (UAH anchor + USD/EUR/BTC), so
+    // buildPairs skips the unpriced GBP/CHF and emits 4 -> 12 ordered distinct pairs.
     expect(stored).toHaveLength(12);
     expect(stored).toContainEqual({
       base: 'USD',

@@ -1,6 +1,7 @@
 import { ratesRepo } from '@kiko/rates/repo';
 
 import type { Currency } from '../../currency/currency';
+import { currencyOptions } from '../../currency/currency';
 import { fetchBTCPrice } from '../coingecko';
 import type { RateEntry } from '../conversion';
 import { fetchFiatRates } from '../monobank-rates';
@@ -9,7 +10,10 @@ import { fetchFiatRates } from '../monobank-rates';
 // often than that only re-fetches identical data.
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
-const allCurrencies: Currency[] = ['BTC', 'USD', 'EUR', 'UAH'];
+// Derived from currency.ts so the composed pair set always matches the app's
+// supported currencies. A currency with no fetched UAH price is skipped by
+// buildPairs (its price is undefined), so listing all of them here is safe.
+const allCurrencies: readonly Currency[] = currencyOptions;
 
 /** Each currency's value expressed in UAH — the pivot for composing pairs. */
 type UahPrice = Partial<Record<Currency, number>>;
