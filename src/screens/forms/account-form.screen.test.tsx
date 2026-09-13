@@ -87,6 +87,37 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
     sync: (...args: unknown[]) => mockCryptoSync(...args),
   }),
 }));
+// The crypto create form now reuses the shared Wallet|Binance sync form
+// (CryptoSyncForm). Its two leaf fields own their own inputs, validation, and
+// Keychain writes (covered by their own tests); here each collapses to one
+// pressable that fires the screen's `onConnect*` closure, so what is under test
+// is the create screen's wiring (create-first, no duplicate, secret stays in the
+// field).
+jest.mock('../account-detail/wallet-address-field', () => {
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
+      <Pressable
+        accessibilityLabel="wallet-field"
+        onPress={() => onConnect('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq')}
+      >
+        <Text>wallet field</Text>
+      </Pressable>
+    ),
+  };
+});
+jest.mock('../account-detail/binance-credentials-field', () => {
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (
+      <Pressable accessibilityLabel="binance-field" onPress={() => onConnect()}>
+        <Text>binance field</Text>
+      </Pressable>
+    ),
+  };
+});
 
 type RouteParams = { accountId?: string };
 
@@ -155,14 +186,19 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Broker')).toBeNull();
   });
 
-  it('creates a crypto account with the crypto kind', async () => {
+  it('creates a crypto account with the crypto kind (no source connected)', async () => {
     const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await fireEvent.press(getByText('Crypto'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Crypto', kind: 'crypto', color: null });
+    // The row is inserted with the screen's pre-generated id (so a field Connect
+    // could have keyed a Keychain write to it); no source was connected here.
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Crypto', kind: 'crypto', color: null }),
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -629,38 +665,103 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
-  it('saves the Binance credentials and connects when a crypto create enters both', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+  it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
+    // The crypto create form must present the SAME synchronization form as the
+    // account-detail screen: a Wallet/Binance source picker and the matching
+    // field, proving it reuses CryptoSyncForm rather than hand-rolling a second
+    // Binance-only copy. The two secure API-key/secret TextFields are gone.
+    const { getByLabelText, getByText, queryByLabelText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await fireEvent.press(getByText('Crypto'));
-    await fireEvent.changeText(getByLabelText('API key'), 'key_1');
-    await fireEvent.changeText(getByLabelText('API secret'), 'secret_1');
-    await fireEvent.press(getByText('Save'));
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockSaveCredentials).toHaveBeenCalledWith('new-account-id', {
-      apiKey: 'key_1',
-      secret: 'secret_1',
-    });
-    expect(mockCryptoSync).toHaveBeenCalledWith({
-      providerId: 'binance',
-      targetAccountId: 'new-account-id',
-    });
+    expect(getByText('Wallet')).toBeTruthy();
+    expect(getByText('Binance')).toBeTruthy();
+    // Wallet is the default source, so its field shows first.
+    expect(getByLabelText('wallet-field')).toBeTruthy();
+    expect(queryByLabelText('API key')).toBeNull();
+
+    await fireEvent.press(getByText('Binance'));
+    expect(getByLabelText('binance-field')).toBeTruthy();
+  });
+
+  it('hides the crypto sync form until the required name is entered', async () => {
+    // Each field's own Connect inserts the account row keyed by the pre-generated
+    // id, so the form is gated on a non-empty (required) name — an account must
+    // have its name before that row is written.
+    const { getByLabelText, getByText, queryByLabelText } = await renderForm();
+
+    await fireEvent.press(getByText('Crypto'));
+    expect(queryByLabelText('wallet-field')).toBeNull();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    expect(getByLabelText('wallet-field')).toBeTruthy();
+  });
+
+  it("creates the crypto account first, then runs the wallet field's connect against its id", async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Crypto', kind: 'crypto' }),
+    );
+    // The wallet address is public, so it flows through the sync (no Keychain).
+    await waitFor(() =>
+      expect(mockCryptoSync).toHaveBeenCalledWith({
+        providerId: 'btc_wallet',
+        targetAccountId: createdId,
+        address: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      }),
+    );
+  });
+
+  it("creates the crypto account first, then runs the Binance field's connect against its id", async () => {
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await waitFor(() =>
+      expect(mockCryptoSync).toHaveBeenCalledWith({
+        providerId: 'binance',
+        targetAccountId: createdId,
+      }),
+    );
+    // The secret never reaches this screen — BinanceCredentialsField owns the
+    // Keychain write — so the screen calls neither saveToken nor saveCredentials.
     expect(mockSaveToken).not.toHaveBeenCalled();
   });
 
-  it('does not save or connect a crypto create missing the secret', async () => {
+  it('does not create a DUPLICATE crypto account when a field Connect is followed by Save', async () => {
+    // Option A: the field's own Connect already inserted the row. A subsequent
+    // Save must UPDATE that same row (persisting any later name/color/icon edit),
+    // never insert a second account.
     const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await fireEvent.press(getByText('Crypto'));
-    await fireEvent.changeText(getByLabelText('API key'), 'key_1');
+    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Renamed');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockSaveCredentials).not.toHaveBeenCalled();
-    expect(mockCryptoSync).not.toHaveBeenCalled();
+    // Still exactly one create; the edited name persists through update.
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(createdId, { name: 'Renamed', color: null });
   });
 
   it('still leaves without a duplicate account when the Keychain write rejects', async () => {
@@ -698,19 +799,74 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('never writes invalid Binance credentials to the Keychain, but still creates the account', async () => {
-    mockFetchAccount.mockRejectedValue(new Error('invalid key'));
+  it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
+    // C-1: a rejected insert (DB locked/disk full) must not leave the one-shot
+    // latch set — otherwise Save would take the UPDATE branch, match no row, and
+    // silently goBack while no account exists. The first create rejects; the row
+    // was never inserted, so Save must run a fresh CREATE (not a no-op update).
+    mockCreate.mockRejectedValueOnce(new Error('db locked'));
     const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
     await fireEvent.press(getByText('Crypto'));
-    await fireEvent.changeText(getByLabelText('API key'), 'key_1');
-    await fireEvent.changeText(getByLabelText('API secret'), 'secret_1');
+    await fireEvent.press(getByText('Binance'));
+    // The field's Connect fails cleanly (no unhandled rejection); nothing saved.
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    // Save re-attempts the create because the latch was cleared — proof the ref
+    // was reset rather than pinned to the rejected promise.
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('locks the kind switch once a crypto source is connected, so Save cannot orphan the row', async () => {
+    // C-3: connecting a source inserts the crypto row. Switching to Bank/Cash
+    // afterwards would route Save to a SECOND create and orphan that row, so the
+    // kind chip is disabled once connected — the Bank press is inert and Save
+    // stays on the crypto UPDATE path.
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Binance'));
+    await fireEvent.press(getByLabelText('binance-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+    // The kind chip is now disabled; pressing Bank is a no-op.
+    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(getByText('Bank'));
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    // Still one create (crypto), no bank/cash create, and Save updated the row.
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalled();
+  });
+
+  it('creates an unconnected crypto account on Save when no source was connected', async () => {
+    // A crypto account is valid without a connected source (the user connects one
+    // later from its detail screen). Save with no field Connect inserts the row
+    // exactly once and never touches a credential write or sync. Validation of a
+    // bad credential — and the skip-the-write-but-still-create guarantee — now
+    // lives in BinanceCredentialsField's own test, not here.
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await fireEvent.press(getByText('Crypto'));
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockSaveToken).not.toHaveBeenCalled();
   });
 });

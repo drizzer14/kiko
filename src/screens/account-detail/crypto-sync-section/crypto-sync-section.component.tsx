@@ -1,6 +1,6 @@
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import type { TFunction } from 'i18next';
-import { type FC, useState } from 'react';
+import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
@@ -8,7 +8,6 @@ import { match } from 'ts-pattern';
 import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import {
   type BalanceProviderId,
-  balanceProviderIds,
   isBalanceProviderId,
   providerDisplayName,
 } from '../../../crypto-sync/provider';
@@ -18,24 +17,14 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import ChipRow from '../../forms/chip-row';
 import { styles } from '../account-detail.styles';
-import BinanceCredentialsField from '../binance-credentials-field';
+import CryptoSyncForm from '../crypto-sync-form';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
-import WalletAddressField from '../wallet-address-field';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
   holdings: HoldingRow[];
 };
-
-// A function (not a module-level constant) so its labels re-resolve against
-// the active language on every render, rather than freezing to whatever
-// language was active when this module first loaded.
-const sourceLabels = (t: TFunction): Record<BalanceProviderId, string> => ({
-  btc_wallet: providerDisplayName('btc_wallet', t),
-  binance: providerDisplayName('binance', t),
-});
 
 const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string =>
   match(providerId)
@@ -51,7 +40,6 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
   const { isSyncing, error, sync } = useCryptoSync();
-  const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
   // Multi-connection (Task 5.2): each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
   // no longer blocks connecting it here.
@@ -152,19 +140,11 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     <Box gap={3}>
       <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-      <ChipRow
-        label={t('accountDetail.sourceLabel')}
-        options={balanceProviderIds}
-        selected={source}
-        onSelect={setSource}
-        labels={sourceLabels(t)}
+      <CryptoSyncForm
+        accountId={account.id}
+        onConnectWallet={connectWallet}
+        onConnectBinance={connectBinance}
       />
-
-      {source === 'btc_wallet' && <WalletAddressField onConnect={connectWallet} />}
-
-      {source === 'binance' && (
-        <BinanceCredentialsField accountId={account.id} onConnect={connectBinance} />
-      )}
 
       {error !== undefined && (
         <Text variant="body" tone="negative">

@@ -1,7 +1,7 @@
 // src/i18n/device-language.ts
 import { NativeModules } from 'react-native';
 
-export const appLanguages = ['en', 'uk'] as const;
+export const appLanguages = ['uk', 'en'] as const;
 export type AppLanguage = (typeof appLanguages)[number];
 
 // The iOS-only, dependency-free device language read. SettingsManager is a

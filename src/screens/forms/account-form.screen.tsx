@@ -2,15 +2,14 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { useSync } from '@kiko/sync/use-sync';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { fetchAccount } from '../../crypto-sync/binance/binance.client';
-import { saveCredentials } from '../../crypto-sync/binance/binance.credentials';
 import { type Currency, currencyOptions, currencySymbol } from '../../currency/currency';
 import { currencySignSymbol } from '../../currency/currency-symbols';
 import { Money } from '../../currency/money';
 import { parseAmount } from '../../currency/parse';
+import { id } from '../../db/id';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
@@ -24,6 +23,7 @@ import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { fetchClientInfo } from '../../monobank/client';
 import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
+import CryptoSyncForm from '../account-detail/crypto-sync-form';
 import MonobankTokenInput from '../account-detail/monobank-token-input';
 
 import { groupAmount } from './amount-format';
@@ -80,12 +80,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // the picker below. Edit mode starts null and is hydrated from the stored
   // row (below), so the seed never clobbers a saved icon.
   const [icon, setIcon] = useState<string | null>(isEdit ? null : accountKindSymbol[INITIAL_KIND]);
-  // Optional sync credentials entered at CREATE time (never seeded in edit
-  // mode). A secret is write-only: it goes straight to the Keychain on save and
-  // is never read back into state — see the save flow below.
+  // Optional Monobank sync token entered at CREATE time (never seeded in edit
+  // mode). It is write-only: it goes straight to the Keychain on save and is
+  // never read back into state — see the save flow below. The crypto branch no
+  // longer holds credential state here: the shared `CryptoSyncForm` owns its own
+  // inputs and writes the Binance secret to the Keychain itself.
   const [monobankToken, setMonobankToken] = useState('');
-  const [binanceApiKey, setBinanceApiKey] = useState('');
-  const [binanceSecret, setBinanceSecret] = useState('');
   // Mirrors the icon's dirty pattern: null until the user taps a swatch. While
   // null, the effective color follows the selected kind's default
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
@@ -99,12 +99,92 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // pattern would let through as ''/undefined.
   const effectiveColor = resolveEntityColor(color, defaultAccountColor[kind]);
 
-  // The same Connect actions the account-detail screen uses. On a create with a
-  // credential entered, the account is created FIRST, then the credential is
-  // saved and the connect runs — a bad credential leaves a created-but-
-  // unconnected account the user repairs from its detail screen (Option A).
+  // The same Connect actions the account-detail screen uses. On a create the
+  // account row is created FIRST, then the credential is saved and the connect
+  // runs against its id — a bad credential leaves a created-but-unconnected
+  // account the user repairs from its detail screen (Option A). The bank path
+  // runs this on Save (connectEnteredCredentials); the crypto path runs it on the
+  // shared field's own Connect (connectWallet / connectBinance below).
   const { sync: syncMonobank } = useSync();
-  const { sync: syncBinance } = useCryptoSync();
+  const { sync: syncCrypto } = useCryptoSync();
+
+  // The crypto account's id is pre-generated once for this create session so the
+  // shared `CryptoSyncForm` fields — which bind to an EXISTING account id (a
+  // per-account Keychain item and a `sync({ targetAccountId })`) — have a stable
+  // id to key against before the row exists. The row is inserted with this exact
+  // id by `ensureCryptoAccount` on the first Connect (or on Save), so the field's
+  // Keychain write and first sync land on the row that Save then persists.
+  const pendingCryptoAccountId = useMemo(() => id(), []);
+  // A one-shot create promise: whichever fires first (a field's own Connect or
+  // the footer Save) inserts the row exactly once; every later caller reuses the
+  // same promise, so a field Connect followed by Save can never produce a
+  // DUPLICATE account (Option A). On a REJECTED create the ref is reset to null
+  // (see below) so a retry re-attempts and Save never silently no-ops.
+  const cryptoAccountCreate = useRef<Promise<string> | null>(null);
+  // A render-visible mirror of "the crypto row has been (or is being) inserted",
+  // used only to DISABLE the kind switch once a source is connected — switching
+  // to bank/cash afterwards would route Save down a branch that creates a SECOND
+  // account and orphans the crypto row. It is state (not just the ref) because
+  // the disable must re-render; it follows the ref, reset to false on a failed
+  // create so the switch re-enables when no row actually exists.
+  const [cryptoRowStarted, setCryptoRowStarted] = useState(false);
+
+  const ensureCryptoAccount = (): Promise<string> => {
+    cryptoAccountCreate.current ??= (async () => {
+      await accountsRepo.create({
+        id: pendingCryptoAccountId,
+        name: trimmedName,
+        kind: 'crypto',
+        color,
+      });
+      if (icon !== null) {
+        await accountsRepo.setIcon(pendingCryptoAccountId, icon);
+      }
+      return pendingCryptoAccountId;
+    })().catch((error: unknown) => {
+      // A failed insert (DB locked, disk full) must not poison the session: clear
+      // the latch so a retry — or the Save fallback — re-attempts, rather than
+      // leaving the ref non-null and sending Save down the UPDATE branch, which
+      // would match no row and silently no-op while the user believes they saved
+      // (C-1). Re-throw so the caller still sees the failure.
+      cryptoAccountCreate.current = null;
+      setCryptoRowStarted(false);
+      throw error;
+    });
+    setCryptoRowStarted(true);
+    return cryptoAccountCreate.current;
+  };
+
+  // Both crypto fields create the row FIRST (Option A), then run the shared sync
+  // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
+  // credential and write the Binance secret to the Keychain themselves, keyed by
+  // the pre-generated id, before calling these — the secret never reaches this
+  // screen, the DB, or a log. A create failure is caught here and surfaced to
+  // the field as a `false` (not-connected) result, so the field shows its
+  // "could not connect" status instead of an unhandled rejection that would
+  // leave it stuck on "checking" (C-2); the ref reset above lets the next
+  // Connect retry.
+  const connectWallet = async (address: string): Promise<boolean> => {
+    try {
+      await ensureCryptoAccount();
+    } catch {
+      return false;
+    }
+    return syncCrypto({
+      providerId: 'btc_wallet',
+      targetAccountId: pendingCryptoAccountId,
+      address,
+    });
+  };
+
+  const connectBinance = async (): Promise<boolean> => {
+    try {
+      await ensureCryptoAccount();
+    } catch {
+      return false;
+    }
+    return syncCrypto({ providerId: 'binance', targetAccountId: pendingCryptoAccountId });
+  };
 
   // In edit mode, load the account being edited so its fields can seed the form.
   // The query always runs (hooks can't be conditional); an empty id in create
@@ -139,20 +219,22 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const trimmedName = name.trim();
   const canSave = trimmedName !== '';
 
-  // If the user entered sync credentials on this create, VALIDATE them, then
+  // If the user entered a Monobank token on this bank create, VALIDATE it, then
   // save to the Keychain and kick off the connect. Validation-before-write is
-  // load-bearing: both the Monobank token and the Binance credential are now
-  // PER-ACCOUNT Keychain items (`saveToken(accountId, …)` /
-  // `saveCredentials(accountId, …)`), so neither can clobber another account's
-  // secret — but an unvalidated write would still store a bad pair against this
-  // new account and silently mis-report the connection. The detail-screen fields
-  // validate first for the same reason. On a rejected validation the write is
-  // SKIPPED and the Keychain is left untouched; the account is still created
-  // (Option A). This function
-  // MAY throw (validation or the Keychain write); the caller swallows it so the
-  // create never fails after the row exists. The connect is fire-and-forget
-  // (useSync / useCryptoSync fold their own errors). The secret goes ONLY to the
-  // Keychain, never to the database, holding metadata, or a log.
+  // load-bearing: the token is a PER-ACCOUNT Keychain item
+  // (`saveToken(accountId, …)`), so it can never clobber another account's
+  // secret — but an unvalidated write would still store a bad token against this
+  // new account and silently mis-report the connection. On a rejected validation
+  // the write is SKIPPED and the Keychain is left untouched; the account is still
+  // created (Option A). This function MAY throw (validation or the Keychain
+  // write); the caller swallows it so the create never fails after the row
+  // exists. The connect is fire-and-forget (useSync folds its own errors). The
+  // token goes ONLY to the Keychain, never to the database or a log.
+  //
+  // The crypto branch is gone: the shared `CryptoSyncForm` fields validate,
+  // write the Binance secret to the Keychain, and run the first sync themselves,
+  // keyed by the pre-generated id, on their OWN Connect — see connectWallet /
+  // connectBinance above.
   const connectEnteredCredentials = async (newAccountId: string): Promise<void> => {
     if (kind === 'bank' && monobankToken.trim() !== '') {
       const token = monobankToken.trim();
@@ -161,18 +243,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // Keychain item), so a second Monobank connection stores its own token.
       await saveToken(newAccountId, token);
       syncMonobank(newAccountId);
-
-      return;
-    }
-
-    if (kind === 'crypto' && binanceApiKey.trim() !== '' && binanceSecret.trim() !== '') {
-      const apiKey = binanceApiKey.trim();
-      const secret = binanceSecret.trim();
-      await fetchAccount(apiKey, secret);
-      // The pair binds to the freshly-created account's id (the per-account
-      // Keychain item), so a second Binance connection stores its own credentials.
-      await saveCredentials(newAccountId, { apiKey, secret });
-      syncBinance({ providerId: 'binance', targetAccountId: newAccountId });
     }
   };
 
@@ -212,8 +282,28 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    // Persist the color only when the user picked one (dirty); left null, the row
-    // follows its kind's default at display time, mirroring the icon fallback.
+    if (kind === 'crypto') {
+      // A field's own Connect may already have inserted the row via
+      // ensureCryptoAccount (Option A). If so, persist any name/color/icon the
+      // user edited AFTER connecting, rather than inserting a DUPLICATE account;
+      // the shared `CryptoSyncForm` already handled the credential + first sync.
+      // Otherwise this Save is the first write, so create the row now (an
+      // unconnected crypto account is valid — the user connects a source later
+      // from its detail screen).
+      if (cryptoAccountCreate.current !== null) {
+        await accountsRepo.update(pendingCryptoAccountId, { name: trimmedName, color });
+        await accountsRepo.setIcon(pendingCryptoAccountId, icon);
+      } else {
+        await ensureCryptoAccount();
+      }
+      navigation.goBack();
+
+      return;
+    }
+
+    // The bank branch. Persist the color only when the user picked one (dirty);
+    // left null, the row follows its kind's default at display time, mirroring
+    // the icon fallback.
     const newAccountId = await accountsRepo.create({ name: trimmedName, kind, color });
 
     // Persist the chosen icon on the freshly-created row, using the id the
@@ -280,7 +370,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
         {/* Kind fixes an account's structure (a cash account owns an initial
             cash holding; a bank/crypto does not), and no repo path re-shapes it,
-            so it is read-only in edit mode — shown, but not switchable. */}
+            so it is read-only in edit mode — shown, but not switchable. It also
+            locks once a crypto source has been connected (which already inserted
+            the crypto row): switching to bank/cash afterwards would make Save
+            create a SECOND account and orphan the crypto row. */}
         <ChipRow
           label={t('forms.account.kind')}
           options={kinds}
@@ -288,7 +381,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           onSelect={handleSelectKind}
           labels={kindLabels}
           icons={accountKindSymbol}
-          disabled={isEdit}
+          disabled={isEdit || cryptoRowStarted}
         />
 
         {/* The currency + initial value seed the cash account's initial holding
@@ -330,30 +423,21 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           </Box>
         )}
 
-        {!isEdit && kind === 'crypto' && (
+        {/* The SAME Wallet|Binance sync form the account-detail screen uses,
+            reused here rather than hand-rolled. It is gated on a non-empty name
+            because each field's own Connect inserts the account row (via
+            ensureCryptoAccount) keyed by the pre-generated id — an account must
+            have its (required) name before that row is written. */}
+        {!isEdit && kind === 'crypto' && trimmedName !== '' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-            <TextField
-              label={t('accountDetail.apiKeyLabel')}
-              value={binanceApiKey}
-              onChangeText={setBinanceApiKey}
-              placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <TextField
-              label={t('accountDetail.apiSecretLabel')}
-              value={binanceSecret}
-              onChangeText={setBinanceSecret}
-              placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
+            <CryptoSyncForm
+              accountId={pendingCryptoAccountId}
+              onConnectWallet={connectWallet}
+              onConnectBinance={connectBinance}
             />
           </Box>
         )}

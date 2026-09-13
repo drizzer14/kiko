@@ -113,6 +113,24 @@ describe('accountsRepo', () => {
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
 
+  it('create honors an explicitly provided id (a caller that pre-generated it)', async () => {
+    // The create form pre-generates the future crypto account's id so the shared
+    // sync fields (which bind to an existing account id) can key their Keychain
+    // write and sync to it BEFORE the row is inserted. `create` must persist that
+    // exact id and resolve to it, rather than minting a fresh one.
+    const { tx, inserts } = makeCreateTx();
+    mockTx = tx;
+
+    const result = await accountsRepo.create({
+      id: 'pre-generated-id',
+      name: 'Cold',
+      kind: 'crypto',
+    });
+
+    expect(result).toBe('pre-generated-id');
+    expect(inserts[0]).toMatchObject({ id: 'pre-generated-id' });
+  });
+
   it('create honors an explicitly provided sortOrder', async () => {
     const { tx, inserts } = makeCreateTx(4);
     mockTx = tx;
