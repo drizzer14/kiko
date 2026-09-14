@@ -761,16 +761,18 @@ describe('AccountDetailScreen', () => {
     expect(mockReorder).toHaveBeenCalledWith(['h2', 'h1']);
   });
 
-  it('replaces the swipe-to-delete row with a plain card (no SwipeableRow in the grid)', async () => {
+  it('wires a manual holding card to the shared long-press menu, not a swipe-to-delete row', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { queryByTestId, queryByLabelText } = await renderScreen();
-    // SwipeableRow renders a `*-actions` layer and an a11y "Delete" affordance;
-    // neither should exist now that the grid uses a long-press menu instead.
-    expect(queryByTestId('swipeable-row-actions')).toBeNull();
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    const { queryByTestId } = await renderScreen();
+    // The delete affordance is the shared CardContextMenu long-press — the card
+    // is wrapped in its `card-context-menu` layer and registers the hold
+    // gesture — rather than a swipe-to-delete row. `getByGestureTestId` throws
+    // when the hold gesture is absent, so reaching it asserts the affordance.
+    expect(queryByTestId('card-context-menu')).not.toBeNull();
+    expect(getByGestureTestId(HOLD_GESTURE_TEST_ID)).toBeTruthy();
   });
 
   it('renders no context menu on a synced holding (monobankId)', async () => {

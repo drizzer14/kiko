@@ -1,6 +1,7 @@
 // The pure decision + settle math behind the sheet's drag-down-to-close, kept
-// free of any gesture object so it is unit-tested with plain numbers (the same
-// split as `swipeable-row/gesture.ts`). The component wires these into a
+// free of any gesture object so it is unit-tested with plain numbers (the
+// project convention of extracting gesture decision/threshold math into pure,
+// synchronously-testable functions). The component wires these into a
 // `Gesture.Pan()` as a thin adapter.
 
 /** Fraction of the sheet's own height a downward drag must pass to dismiss on release. */
