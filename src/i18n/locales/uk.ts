@@ -192,6 +192,7 @@ export const uk: typeof en = {
       type: 'Тип',
     },
     transaction: {
+      addReturn: 'Додати повернення',
       addTitle: 'Додати транзакцію',
       amountPlaceholder: '250,00',
       apply: 'Застосувати',
@@ -211,6 +212,10 @@ export const uk: typeof en = {
       expense: 'Витрата',
       from: 'Звідки',
       income: 'Дохід',
+      removeReturn: 'Видалити повернення {{index}}',
+      returnAmount: 'Повернення {{index}}',
+      returnTo: 'Повернути до {{index}}',
+      split: 'Поділ',
       syncedNotice: 'Цю транзакцію імпортовано з підключеного рахунку, і її не можна редагувати.',
       selectHolding: 'Оберіть актив',
       title: 'Транзакція',

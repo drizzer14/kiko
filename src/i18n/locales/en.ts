@@ -210,6 +210,7 @@ export const en = {
       type: 'Type',
     },
     transaction: {
+      addReturn: 'Add return',
       addTitle: 'Add Transaction',
       amountPlaceholder: '250.00',
       apply: 'Apply',
@@ -229,6 +230,10 @@ export const en = {
       expense: 'Expense',
       from: 'From',
       income: 'Income',
+      removeReturn: 'Remove return {{index}}',
+      returnAmount: 'Return {{index}}',
+      returnTo: 'Return to {{index}}',
+      split: 'Split',
       syncedNotice: 'This transaction was imported from a connected account and cannot be edited.',
       selectHolding: 'Select holding',
       title: 'Transaction',

@@ -7,7 +7,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { type FC, type ReactElement, useEffect, useLayoutEffect, useState } from 'react';
+import { type FC, type ReactElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   canConvertToExchange,
@@ -51,6 +51,7 @@ import TimeField from './time-field';
 import CategoryField from './category-field';
 import ExchangeFields from './exchange-fields';
 import { useSubmitOnce } from './use-submit-once';
+import HoldingSelectField from './holding-select-field';
 import ConvertExchangeFields from './convert-exchange-fields';
 import { groupAmount, majorAmountText } from './amount-format';
 import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
@@ -71,7 +72,13 @@ type Sign = 'income' | 'expense';
 // income nor an expense row, so it gets its own branch through `save` (see
 // `saveExchange` below) rather than trying to force it through the signed
 // income/expense amount path.
-type FormMode = 'income' | 'expense' | 'exchange';
+type FormMode = 'income' | 'expense' | 'exchange' | 'split';
+
+// One change-return row of a split payment while it is being entered: the
+// picked holding (null until chosen) and its still-unparsed major-amount text.
+// `id` is a stable client key for the dynamic row list (mirrors the term-
+// deposit contribution rows), never persisted.
+type ChangeReturnRow = { id: number; holdingId: string | null; amount: string };
 
 // The synced-row explanatory notice, or nothing on a manual/add row. Kept
 // module-level (returns `ReactElement | null`) for the same cognitive-
@@ -172,6 +179,7 @@ const isPositiveAmountText = (text: string): boolean => parseAmount(text) > 0;
 type SaveDisabledParams = {
   converting: boolean;
   isExchange: boolean;
+  isSplit: boolean;
   isReadOnly: boolean;
   isEditing: boolean;
   amount: string;
@@ -180,6 +188,8 @@ type SaveDisabledParams = {
   destinationHoldingId: string | null;
   counterpartHoldingId: string | null;
   selectedCategory: string | null;
+  changeReturns: readonly { holdingId: string | null; amount: string }[];
+  payerHoldingId: string | undefined;
 };
 
 const isSaveDisabled = (params: SaveDisabledParams): boolean => {
@@ -193,6 +203,12 @@ const isSaveDisabled = (params: SaveDisabledParams): boolean => {
       !isPositiveAmountText(params.amount) ||
       !isPositiveAmountText(params.valueIn)
     );
+  }
+
+  // Split gates on the same invariant `saveSplit` writes: a positive payment
+  // and ≥1 distinct non-payer positive return whose sum stays below it.
+  if (params.isSplit) {
+    return !canSaveSplit(params.amount, params.changeReturns, params.payerHoldingId);
   }
 
   if (params.isReadOnly) {
@@ -240,8 +256,78 @@ const resolveModeOptions = (
   const canExchange =
     !isEditing && holding !== undefined && isExchangeCreateSourceType(holding.type);
 
-  return canExchange ? ['income', 'expense', 'exchange'] : ['income', 'expense'];
+  // Split-change is offered from the SAME liquid-source create rule as Exchange
+  // (a fresh manual create off a cash payer), so the two extra modes appear and
+  // disappear together. Split is inherently an expense (the payment is negative)
+  // and, like Exchange, never surfaces on an edit or a synced row.
+  return canExchange ? ['income', 'expense', 'exchange', 'split'] : ['income', 'expense'];
 };
+
+// Whether a split payment + its returns are writable: a positive payment, at
+// least one return, each return a positive amount on a DISTINCT holding other
+// than the payer, and Σ returns strictly less than |payment| (the net stays an
+// expense). Same-currency returns only for v1 (enforced by the picker's filter).
+// This is the ENFORCEMENT point for the distinct-holding/positive-amount
+// invariant — `recordManualWithReturns` has no runtime guard — so it is exported
+// and unit-tested directly (the picker's own filter makes a duplicate pick
+// UI-unreachable, but a future caller or refactor must still be caught here).
+export const canSaveSplit = (
+  paymentAmount: string,
+  returns: readonly { holdingId: string | null; amount: string }[],
+  payerHoldingId: string | undefined,
+): boolean => {
+  const payment = parseAmount(paymentAmount);
+
+  if (Number.isNaN(payment) || payment <= 0 || returns.length === 0) {
+    return false;
+  }
+
+  const ids = new Set<string>();
+  let sum = 0;
+
+  for (const change of returns) {
+    const value = parseAmount(change.amount);
+
+    if (change.holdingId === null || change.holdingId === payerHoldingId) {
+      return false;
+    }
+
+    if (ids.has(change.holdingId)) {
+      return false;
+    }
+
+    if (Number.isNaN(value) || value <= 0) {
+      return false;
+    }
+
+    ids.add(change.holdingId);
+    sum += value;
+  }
+
+  return sum < payment;
+};
+
+// The return-row picker's options: every OPEN holding except the payer and
+// except any holding already picked in ANOTHER row, restricted to the payer's
+// own currency (v1 keeps a split single-currency). The eligible-TYPE gate is
+// open (`() => true`) — a change return can land on any holding type — so the
+// currency + already-picked filters are the only narrowing beyond
+// `buildExchangeOptions`'s open/non-payer projection.
+const buildReturnOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
+  payerHoldingId: string | undefined,
+  payerCurrency: Currency,
+  pickedElsewhere: ReadonlySet<string>,
+): HoldingSelectOption[] =>
+  buildExchangeOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    payerHoldingId,
+    () => true,
+  ).filter((option) => option.currency === payerCurrency && !pickedElsewhere.has(option.id));
 
 // Order two holdings the way the Accounts screen shows them (F2): primary by
 // the parent account's display rank (its 0-based index in the sortOrder-ordered
@@ -515,6 +601,83 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
   );
 };
 
+// Split-change mode's dynamic section, rendered BELOW the reused Amount/
+// Description/Date/Time group (income/expense's own field group already renders
+// for split, since split is neither exchange nor converting): one row per
+// change-return — a holding picker + a payer-currency amount field + a tonal
+// Remove button — followed by an "Add return" action. Extracted to its own
+// module-level function (a props object, not a positional list) for the same
+// cognitive-complexity-budget reason as `renderFieldGroup` above.
+type SplitReturnsProps = {
+  // Whether the split section renders at all — false collapses it to null, so
+  // the screen's JSX gates on a single call (not its own `isSplit &&`), keeping
+  // that branch out of the component's cognitive-complexity budget.
+  visible: boolean;
+  returns: readonly ChangeReturnRow[];
+  buildOptions: (index: number) => HoldingSelectOption[];
+  onSelectHolding: (index: number, holdingId: string) => void;
+  onChangeAmount: (index: number, text: string) => void;
+  onRemove: (index: number) => void;
+  onAdd: () => void;
+  // The payer holding's currency glyph, shown as every return amount's suffix
+  // (v1 returns are payer-currency only).
+  suffix: string;
+  selectHoldingPlaceholder: string;
+  t: TFunction;
+};
+
+const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
+  if (!props.visible) {
+    return null;
+  }
+
+  return (
+    <>
+      {props.returns.map((row, index) => (
+        <Box key={row.id} gap={2}>
+          <HoldingSelectField
+            label={props.t('forms.transaction.returnTo', { index: index + 1 })}
+            placeholder={props.selectHoldingPlaceholder}
+            options={props.buildOptions(index)}
+            selectedId={row.holdingId}
+            onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
+            required
+          />
+
+          <TextField
+            label={props.t('forms.transaction.returnAmount', { index: index + 1 })}
+            value={row.amount}
+            onChangeText={(text) => props.onChangeAmount(index, text)}
+            keyboardType="decimal-pad"
+            placeholder={props.t('forms.transaction.amountPlaceholder')}
+            suffix={props.suffix}
+            required
+          />
+
+          <Button
+            variant="destructiveTonal"
+            size="small"
+            fullWidth={false}
+            icon="trash"
+            accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
+            onPress={() => props.onRemove(index)}
+          />
+        </Box>
+      ))}
+
+      <Button
+        variant="secondaryTonal"
+        size="small"
+        fullWidth={false}
+        icon="plus"
+        onPress={props.onAdd}
+      >
+        {props.t('forms.transaction.addReturn')}
+      </Button>
+    </>
+  );
+};
+
 // Whether the footer's Save button renders: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
 // writes the counterpart leg, never the existing row). Kept module-level and
@@ -668,6 +831,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     income: t('forms.transaction.income'),
     expense: t('forms.transaction.expense'),
     exchange: t('forms.transaction.exchange'),
+    split: t('forms.transaction.split'),
   };
   // The header's three candidate titles, and the synced-row notice — resolved
   // once per render and handed to the module-level helpers above so they stay
@@ -766,6 +930,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [description, setDescription] = useState('');
   const [mode, setMode] = useState<FormMode>('income');
   const isExchange = mode === 'exchange';
+  const isSplit = mode === 'split';
+  // The split payment's change-returns, one row per holding the change is
+  // handed back to. Starts with a single empty row so the section always shows
+  // one picker when Split is entered. `nextReturnId` hands out a stable key per
+  // appended row (the same pattern as the term-deposit contribution rows), so a
+  // removed row never reshuffles React keys onto the wrong inputs.
+  const nextReturnId = useRef(1);
+  const [changeReturns, setChangeReturns] = useState<ChangeReturnRow[]>([
+    { id: 0, holdingId: null, amount: '' },
+  ]);
   const [valueIn, setValueIn] = useState('');
   const [destinationHoldingId, setDestinationHoldingId] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
@@ -823,6 +997,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const disableSave = isSaveDisabled({
     converting,
     isExchange,
+    isSplit,
     isReadOnly,
     isEditing,
     amount,
@@ -831,6 +1006,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     destinationHoldingId,
     counterpartHoldingId,
     selectedCategory,
+    changeReturns,
+    payerHoldingId: holding?.id,
   });
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
@@ -943,6 +1120,75 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
   const overrideMessage = pendingCategory?.message ?? '';
 
+  // Append an empty return row; `nextReturnId` keeps its React key stable.
+  const addReturn = (): void => {
+    const id = nextReturnId.current++;
+
+    setChangeReturns((rows) => [...rows, { id, holdingId: null, amount: '' }]);
+  };
+
+  const removeReturn = (index: number): void => {
+    setChangeReturns((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  const selectReturnHolding = (index: number, holdingId: string): void => {
+    setChangeReturns((rows) => rows.map((row, i) => (i === index ? { ...row, holdingId } : row)));
+  };
+
+  const changeReturnAmount = (index: number, next: string): void => {
+    setChangeReturns((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, amount: groupAmount(next) } : row)),
+    );
+  };
+
+  // The return-row picker's options for a given row: every eligible payer-
+  // currency holding, minus the payer and minus every holding already picked in
+  // ANOTHER row, so two rows can never target the same holding through the UI.
+  const returnOptionsFor = (index: number): HoldingSelectOption[] => {
+    const pickedElsewhere = new Set(
+      changeReturns
+        .filter((row, i) => i !== index && row.holdingId !== null)
+        .map((row) => row.holdingId as string),
+    );
+
+    return buildReturnOptions(
+      holdings,
+      accountNameById,
+      accountOrderById,
+      holdingId,
+      currency,
+      pickedElsewhere,
+    );
+  };
+
+  // The split save path: one negative payment carrying its category on the payer,
+  // plus N positive returns on distinct other holdings, written as N+1 linked
+  // rows in one transaction via `recordManualWithReturns`. `canSaveSplit` is the
+  // guard (the repo has none), so the `as string` casts below are proven safe.
+  const saveSplit = async (): Promise<void> => {
+    if (holding === undefined || !canSaveSplit(amount, changeReturns, holding.id)) {
+      return;
+    }
+
+    const paymentMinor = Money.fromMajor(holding.currency, parseAmount(amount)).minorUnits;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: {
+        holdingId: holding.id,
+        amountMinorUnits: -paymentMinor,
+        time,
+        description,
+        category: selectedCategory,
+      },
+      returns: changeReturns.map((change) => ({
+        holdingId: change.holdingId as string,
+        amountMinorUnits: Money.fromMajor(holding.currency, parseAmount(change.amount)).minorUnits,
+      })),
+    });
+
+    navigation.goBack();
+  };
+
   // The Exchange save path: two independent legs (an outgoing amount from
   // `holding`, an incoming amount into `destination`), routed through
   // `recordExchange` in one op-sqlite transaction. Extracted out of `save` so
@@ -1042,16 +1288,34 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     return true;
   };
 
-  const save = async (): Promise<void> => {
+  // The three non-manual save modes, dispatched ahead of the income/expense
+  // path. Returns whether one of them handled the write, so `save` stays a
+  // single early-return without carrying all three branches in its own
+  // cognitive-complexity budget.
+  const dispatchSpecialSave = async (): Promise<boolean> => {
     if (converting) {
       await saveConvert();
 
-      return;
+      return true;
+    }
+
+    if (isSplit) {
+      await saveSplit();
+
+      return true;
     }
 
     if (isExchange) {
       await saveExchange();
 
+      return true;
+    }
+
+    return false;
+  };
+
+  const save = async (): Promise<void> => {
+    if (await dispatchSpecialSave()) {
       return;
     }
 
@@ -1167,6 +1431,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isReadOnly,
             time,
             onChangeTime: setTime,
+            t,
+          })}
+
+          {/* Split-change only: the dynamic return rows + "Add return" action,
+            rendered below the reused Amount/Description/Date/Time group. The
+            `visible` gate and the `.map` live in the module-level
+            `renderSplitReturns`, so this stays a single call. */}
+          {renderSplitReturns({
+            visible: isSplit,
+            returns: changeReturns,
+            buildOptions: returnOptionsFor,
+            onSelectHolding: selectReturnHolding,
+            onChangeAmount: changeReturnAmount,
+            onRemove: removeReturn,
+            onAdd: addReturn,
+            suffix: amountSuffix,
+            selectHoldingPlaceholder: t('forms.transaction.selectHolding'),
             t,
           })}
 

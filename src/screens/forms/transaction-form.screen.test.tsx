@@ -8,7 +8,7 @@ import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
-import TransactionFormScreen from './transaction-form.screen';
+import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -35,6 +35,7 @@ const collectRenderedText = (node: RenderedNode | string | null): string[] => {
 };
 
 const mockRecordManual = jest.fn();
+const mockRecordManualWithReturns = jest.fn();
 const mockRecordExchange = jest.fn();
 const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
@@ -46,6 +47,7 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
+    recordManualWithReturns: (...args: unknown[]) => mockRecordManualWithReturns(...args),
     recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
     recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
@@ -1649,5 +1651,178 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await waitFor(() => expect(mockRecordExchangeCounterpart).toHaveBeenCalled());
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+});
+
+// Fixtures for Split-change mode (Task 7): `payer` is the paying cash holding;
+// `friend-a`/`friend-b` are two OTHER open UAH holdings the change can return
+// to; `usd-cash` is a same-liquidity holding in a DIFFERENT currency, which the
+// v1 return picker must exclude (returns are payer-currency only).
+const SPLIT_HOLDINGS: Holding[] = [
+  {
+    id: 'payer',
+    currency: 'UAH',
+    balanceMinorUnits: 50_000,
+    type: 'cash',
+    name: 'Wallet UAH',
+    accountId: 'acc',
+  },
+  {
+    id: 'friend-a',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Alice',
+    accountId: 'acc',
+  },
+  {
+    id: 'friend-b',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Bob',
+    accountId: 'acc',
+  },
+  {
+    id: 'usd-cash',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'USD Cash',
+    accountId: 'acc',
+  },
+];
+
+const SPLIT_ACCOUNTS: Account[] = [{ id: 'acc', name: 'Home' }];
+
+describe('TransactionFormScreen — Split-change mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+  });
+
+  it('records a split payment with two linked returns via recordManualWithReturns', async () => {
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+    // One return row exists by default; add a second.
+    await fireEvent.press(utils.getByText('Add return'));
+
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.press(utils.getByLabelText('Return to 2'));
+    await fireEvent.press(utils.getByText('Bob'));
+
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Return 2'), '0.08');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
+    await pickCategory(utils, 'Groceries');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    await waitFor(() => expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1));
+    expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          holdingId: 'payer',
+          amountMinorUnits: -212_00,
+          category: 'groceries',
+        }),
+        returns: [
+          { holdingId: 'friend-a', amountMinorUnits: 20 },
+          { holdingId: 'friend-b', amountMinorUnits: 8 },
+        ],
+      }),
+    );
+  });
+
+  it('disables Save while the returns sum to at least the payment', async () => {
+    const utils = await renderAddFromHolding('payer');
+    const isDisabled = (): boolean | undefined =>
+      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '0.20');
+
+    // Σ returns (0.20) is not strictly less than |payment| (0.20): net zero is
+    // not an expense, so Save stays disabled.
+    expect(isDisabled()).toBe(true);
+
+    // Raising the payment above the returns makes the net an expense again.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+    expect(isDisabled()).toBe(false);
+  });
+
+  it('excludes a holding already picked in another row (and any off-currency holding) from the next picker', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByText('Add return'));
+
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+
+    // Open row 2's picker: Alice is gone (picked in row 1), Bob remains, and the
+    // USD holding never appears (returns are payer-currency only in v1).
+    await fireEvent.press(utils.getByLabelText('Return to 2'));
+    expect(utils.getByText('Bob')).toBeTruthy();
+    expect(utils.queryByText('USD Cash')).toBeNull();
+    // Alice shows exactly once — as row 1's selected trigger value, never as a
+    // row-2 option — so no two rows can target the same holding.
+    expect(utils.getAllByText('Alice')).toHaveLength(1);
+  });
+});
+
+describe('canSaveSplit', () => {
+  it('enforces a positive payment, ≥1 distinct non-payer return, and Σ returns < payment', () => {
+    // A valid split: two distinct non-payer returns summing below the payment.
+    expect(
+      canSaveSplit(
+        '212.00',
+        [
+          { holdingId: 'a', amount: '0.20' },
+          { holdingId: 'b', amount: '0.08' },
+        ],
+        'payer',
+      ),
+    ).toBe(true);
+
+    // No returns at all.
+    expect(canSaveSplit('10', [], 'payer')).toBe(false);
+    // A non-positive (or unparseable) payment.
+    expect(canSaveSplit('0', [{ holdingId: 'a', amount: '1' }], 'payer')).toBe(false);
+    expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'payer')).toBe(false);
+    // A return with no holding picked.
+    expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'payer')).toBe(false);
+    // A return that targets the payer itself.
+    expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'payer')).toBe(false);
+    // Two returns on the SAME holding (the repo has no runtime guard — this is
+    // the enforcement point).
+    expect(
+      canSaveSplit(
+        '10',
+        [
+          { holdingId: 'a', amount: '1' },
+          { holdingId: 'a', amount: '1' },
+        ],
+        'payer',
+      ),
+    ).toBe(false);
+    // A non-positive return amount.
+    expect(canSaveSplit('10', [{ holdingId: 'a', amount: '0' }], 'payer')).toBe(false);
+    // Σ returns equals the payment (net zero is not an expense).
+    expect(
+      canSaveSplit(
+        '2',
+        [
+          { holdingId: 'a', amount: '1' },
+          { holdingId: 'b', amount: '1' },
+        ],
+        'payer',
+      ),
+    ).toBe(false);
   });
 });
