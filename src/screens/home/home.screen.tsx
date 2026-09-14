@@ -41,6 +41,7 @@ import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import { transactionSpan } from '../../transactions/transaction-span';
 
+import AddTransactionFab from './add-transaction-fab';
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
 import SyncProgressBar from './sync-progress-bar';
@@ -360,6 +361,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
+  // The global-add FAB (B) opens the create form with EMPTY params — no holding
+  // fixed by navigation — so the form renders its own primary-leg holding
+  // picker. Stable across renders (closes over `navigation` alone).
+  const handleAddTransaction = useCallback((): void => {
+    navigation.navigate('TransactionForm', {});
+  }, [navigation]);
+
   // A stable `renderItem` identity is what lets the SectionList row bail-out
   // engage: the row body now lives in the memoized `TransactionRow` component,
   // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
@@ -487,6 +495,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             </Box>
           }
         />
+
+        {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
+            its scroll content, pinned bottom-right and lifted clear of the
+            floating tab bar by the same `listBottomClearance` the list uses. */}
+        <AddTransactionFab onPress={handleAddTransaction} bottomOffset={listBottomClearance} />
       </Box>
     </Screen>
   );
