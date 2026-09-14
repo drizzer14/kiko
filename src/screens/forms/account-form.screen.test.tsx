@@ -363,10 +363,11 @@ describe('AccountFormScreen', () => {
   it('resets a hand-picked icon back to the new type default when the type changes', async () => {
     const { getByLabelText, getByText } = await renderForm();
 
-    // The user overrides the default with a custom icon...
+    // The user overrides the default with a custom icon (from the Kiko Entities
+    // pool the account form now offers)...
     await fireEvent.press(getByLabelText('Change Icon'));
-    await fireEvent.press(getByLabelText('Choose icon airplane'));
-    expect(getByLabelText('Icon airplane')).toBeTruthy();
+    await fireEvent.press(getByLabelText('Choose icon giftcard'));
+    expect(getByLabelText('Icon giftcard')).toBeTruthy();
 
     // ...then switches type, which re-seeds the icon to the new type's default.
     await fireEvent.press(getByText('Crypto'));

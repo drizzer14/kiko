@@ -24,6 +24,7 @@ import type { AccountsStackParamList } from '../../navigation/types';
 import CurrencyField from '../../design-system/components/currency-field';
 import MonobankConnectField from '../account-detail/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../currency/currency';
+import { KIKO_ENTITIES_ICONS } from '../../design-system/components/icon-picker-modal/icon-pools';
 
 import ChipRow from './chip-row';
 import ColorPicker from './color-picker';
@@ -328,6 +329,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             insert, and the bank/crypto path sets it via setIcon on the returned
             id below. */}
         <HoldingIdentityField
+          icons={KIKO_ENTITIES_ICONS}
           icon={icon}
           fallbackIcon={FALLBACK_ICON}
           iconColor={effectiveColor}

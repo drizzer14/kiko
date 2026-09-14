@@ -6,6 +6,7 @@ import { Pressable } from 'react-native';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import GlassSurface from '../../../design-system/components/glass-surface';
+import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
@@ -110,6 +111,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
             the category rows above. A new category always has an icon, so no
             Remove is offered (no onRemoveIcon). */}
         <HoldingIdentityField
+          icons={KIKO_CATEGORIES_ICONS}
           captioned={false}
           icon={icon}
           fallbackIcon={icon}

@@ -1,4 +1,9 @@
 export type IconEditorProps = {
+  // The closed pool of SF Symbol names the picker offers. Forwarded verbatim to
+  // the shared IconPickerModal. IconEditor is shared by both the entity flow
+  // (account/holding forms → KIKO_ENTITIES_ICONS) and the category flow
+  // (category rows → KIKO_CATEGORIES_ICONS), so each caller selects its own pool.
+  icons: readonly string[];
   // The row's currently stored SF Symbol name, or null/undefined when the row
   // has no custom icon yet (the display falls back to `fallbackIcon`).
   icon: string | null | undefined;

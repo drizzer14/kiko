@@ -21,6 +21,7 @@ import { styles } from './holding-identity-field.styles';
 // field labels for the form treatment; a dense list row passes `false` for a
 // bare, vertically-centered pair.
 const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
+  icons,
   icon,
   fallbackIcon,
   name,
@@ -49,6 +50,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   return (
     <Box direction="row" gap={3} style={captioned ? styles.container : styles.containerBare}>
       <IconEditor
+        icons={icons}
         label={captioned ? t('forms.fields.icon') : undefined}
         iconAccessibilityLabel={iconAccessibilityLabel}
         icon={icon}

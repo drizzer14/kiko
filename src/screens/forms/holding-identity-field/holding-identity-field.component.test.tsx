@@ -5,6 +5,7 @@ import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 
 import HoldingIdentityField from '.';
+import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof HoldingIdentityField>>;
 
@@ -15,6 +16,7 @@ const setup = async (overrides: Overrides = {}) => {
 
   const utils = await render(
     <HoldingIdentityField
+      icons={KIKO_CATEGORIES_ICONS}
       icon={null}
       fallbackIcon="creditcard"
       name="My card"

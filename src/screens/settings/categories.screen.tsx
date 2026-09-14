@@ -22,6 +22,7 @@ import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import ConfirmSheet from '../../design-system/components/confirm-sheet';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
+import { KIKO_CATEGORIES_ICONS } from '../../design-system/components/icon-picker-modal/icon-pools';
 
 import AddCategoryRow from './add-category-row';
 
@@ -164,6 +165,7 @@ const CategoryListRow: FC<{
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>
             <HoldingIdentityField
+              icons={KIKO_CATEGORIES_ICONS}
               captioned={false}
               icon={category.icon}
               fallbackIcon={category.icon}

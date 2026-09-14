@@ -630,15 +630,16 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByLabelText('Change Icon'));
-    await fireEvent.press(screen.getByLabelText('Choose icon basket'));
+    // Pick from the Kiko Entities pool the holding form now offers.
+    await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
 
-    expect(screen.getByLabelText('Icon basket')).toBeTruthy();
+    expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
 
     // Once picked, the icon is dirty: switching type no longer moves it off the
     // user's choice.
     await fireEvent.press(screen.getByText('Bond'));
 
-    expect(screen.getByLabelText('Icon basket')).toBeTruthy();
+    expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
     expect(screen.queryByLabelText('Icon receipt')).toBeNull();
   });
 });

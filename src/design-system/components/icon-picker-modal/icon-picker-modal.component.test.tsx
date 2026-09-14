@@ -6,6 +6,7 @@ import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
 import '../../../i18n';
 import IconPickerModal from '.';
+import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;
 
@@ -16,6 +17,7 @@ const setup = async (overrides: Overrides = {}) => {
   const utils = await render(
     <IconPickerModal
       visible
+      icons={KIKO_CATEGORIES_ICONS}
       selectedIcon="cart"
       onSelect={onSelect}
       onDismiss={onDismiss}
@@ -26,13 +28,44 @@ const setup = async (overrides: Overrides = {}) => {
   return { onSelect, onDismiss, ...utils };
 };
 
+describe('icon pools', () => {
+  it('exposes exactly 62 Kiko Entities symbols and 73 Kiko Categories symbols', () => {
+    expect(KIKO_ENTITIES_ICONS).toHaveLength(62);
+    expect(KIKO_CATEGORIES_ICONS).toHaveLength(73);
+  });
+
+  it('keeps the two pools distinct: an entities-only symbol is not a categories one, and vice versa', () => {
+    // `dollarsign` lives only in the entities pool; `basket` only in categories.
+    // The split must not leak a symbol from one pool into the other.
+    expect(KIKO_ENTITIES_ICONS).toContain('dollarsign');
+    expect(KIKO_CATEGORIES_ICONS).not.toContain('dollarsign');
+
+    expect(KIKO_CATEGORIES_ICONS).toContain('basket');
+    expect(KIKO_ENTITIES_ICONS).not.toContain('basket');
+  });
+});
+
 describe('IconPickerModal', () => {
-  it('renders the full curated icon pool as pressable choices when visible', async () => {
+  it('renders the pool it is given as pressable choices when visible', async () => {
     const { getAllByLabelText, getByLabelText } = await setup();
 
-    // The whole 138-icon pool is offered at once inside the scrollable grid.
-    expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
+    // Every symbol in the supplied pool is offered at once inside the grid.
+    expect(getAllByLabelText(/^Choose icon /).length).toBe(KIKO_CATEGORIES_ICONS.length);
     expect(getByLabelText('Choose icon basket')).toBeTruthy();
+  });
+
+  it('renders the entities pool — an entities-only symbol, and not a categories-only one', async () => {
+    const { getByLabelText, queryByLabelText } = await setup({ icons: KIKO_ENTITIES_ICONS });
+
+    expect(getByLabelText('Choose icon dollarsign')).toBeTruthy();
+    expect(queryByLabelText('Choose icon basket')).toBeNull();
+  });
+
+  it('renders the categories pool — a categories-only symbol, and not an entities-only one', async () => {
+    const { getByLabelText, queryByLabelText } = await setup({ icons: KIKO_CATEGORIES_ICONS });
+
+    expect(getByLabelText('Choose icon basket')).toBeTruthy();
+    expect(queryByLabelText('Choose icon dollarsign')).toBeNull();
   });
 
   it('renders nothing while it is not visible', async () => {

@@ -385,19 +385,20 @@ describe('CategoriesScreen', () => {
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
 
-    // The 137-icon "Kiko" curation is offered at once.
+    // The whole Kiko Categories pool (73 symbols) is offered at once.
     expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
 
-    // A spread of finance-relevant SF Symbols is present.
+    // A spread of category-relevant SF Symbols from the Kiko Categories pool is
+    // present.
     for (const icon of [
       'cart',
       'fuelpump',
-      'dollarsign',
-      'percent',
+      'banknote',
+      'house',
       'building',
       'cup.and.saucer',
       'tshirt',
-      'receipt',
+      'gift',
     ]) {
       expect(getByLabelText(`Choose icon ${icon}`)).toBeTruthy();
     }

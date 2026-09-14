@@ -20,6 +20,7 @@ import { styles } from './icon-editor.styles';
 // offers a Remove control (via the modal's `onRemove`) whenever a custom icon is
 // currently set, which clears it back to the fallback.
 const IconEditor: FC<IconEditorProps> = ({
+  icons,
   icon,
   fallbackIcon,
   iconColor,
@@ -73,6 +74,7 @@ const IconEditor: FC<IconEditorProps> = ({
 
       <IconPickerModal
         visible={pickerOpen}
+        icons={icons}
         selectedIcon={displayIcon}
         onSelect={handleSelect}
         onRemove={removable ? handleRemove : undefined}

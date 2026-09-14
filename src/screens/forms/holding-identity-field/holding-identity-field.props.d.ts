@@ -1,4 +1,9 @@
 export type HoldingIdentityFieldProps = {
+  // The closed pool of SF Symbol names the icon picker offers, forwarded to the
+  // shared IconEditor. This field is used by both the entity forms (account /
+  // holding → KIKO_ENTITIES_ICONS) and the category rows (→ KIKO_CATEGORIES_ICONS),
+  // so each caller passes the pool that matches its flow.
+  icons: readonly string[];
   // The holding's currently stored SF Symbol name, or null when it has no
   // custom icon yet (the chip then shows `fallbackIcon`).
   icon: string | null;

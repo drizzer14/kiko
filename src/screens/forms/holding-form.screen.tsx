@@ -37,6 +37,7 @@ import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { type Currency, currencySymbol } from '../../currency/currency';
 import CurrencyField from '../../design-system/components/currency-field';
+import { KIKO_ENTITIES_ICONS } from '../../design-system/components/icon-picker-modal/icon-pools';
 
 import ChipRow from './chip-row';
 import DateField from './date-field';
@@ -513,6 +514,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     >
       <Box gap={4} testID="holding-form">
         <HoldingIdentityField
+          icons={KIKO_ENTITIES_ICONS}
           icon={icon}
           fallbackIcon={holdingTypeSymbol[type]}
           iconColor={effectiveColor}

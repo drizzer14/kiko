@@ -2,6 +2,11 @@ export type IconPickerModalProps = {
   // Whether the sheet is presented. Driven by the owning category row's picker
   // state; when false the underlying RN Modal renders nothing.
   visible: boolean;
+  // The closed pool of SF Symbol names to offer as pickable swatches. The picker
+  // is deliberately pool-driven, not hardcoded: the caller selects which pool to
+  // show — KIKO_ENTITIES_ICONS for the account/holding IconEditor, or
+  // KIKO_CATEGORIES_ICONS for the category picker (see ./icon-pools).
+  icons: readonly string[];
   // The row's current icon, highlighted in the grid so the active choice reads
   // as selected at a glance.
   selectedIcon: string;
