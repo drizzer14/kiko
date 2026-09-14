@@ -63,6 +63,13 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'distinctDescriptions',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    // Tagged for the same reason: the B empty-create default-holding seam reads
+    // the newest manual row's holding through this `['transactions']`-keyed
+    // subscription, disambiguated from the by-id and D1 ones.
+    latestManualHoldingQuery: () => ({
+      __kind: 'latestManualHolding',
+      toSQL: () => ({ sql: '', params: [] }),
+    }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -134,6 +141,7 @@ const setLiveData = (
   rates: Rate[] = [],
   overrideRules: OverrideRule[] = [],
   pastDescriptions: string[] = [],
+  latestManualHoldingId: string | null = null,
 ): void => {
   const dataByTable: Record<string, unknown[]> = {
     holdings,
@@ -145,11 +153,21 @@ const setLiveData = (
   };
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
+    const kind = (query as { __kind?: string })?.__kind;
     // The D1 distinct-descriptions subscription shares the `['transactions']`
     // key with the by-id lookup, so it is disambiguated by the tagged query
     // object the mocked repo returns.
-    if ((query as { __kind?: string })?.__kind === 'distinctDescriptions') {
+    if (kind === 'distinctDescriptions') {
       return { data: pastDescriptions.map((description) => ({ description })) };
+    }
+
+    // The B empty-create default-holding seam reads the newest manual row's
+    // holding through its own tagged `['transactions']`-keyed subscription.
+    if (kind === 'latestManualHolding') {
+      return {
+        data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
+        isLoading: false,
+      };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -175,6 +193,15 @@ const renderEdit = (transactionId: string): ReturnType<typeof render> => {
 
 const renderDuplicate = (duplicateOfTransactionId: string): ReturnType<typeof render> => {
   const route = transactionFormRoute({ duplicateOfTransactionId });
+
+  return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
+};
+
+// The B global-add entry: the create form opened with EMPTY params, so no
+// holding is fixed by navigation and the form renders its own primary-leg
+// holding picker.
+const renderEmptyCreate = (): ReturnType<typeof render> => {
+  const route = transactionFormRoute({});
 
   return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
 };
@@ -733,6 +760,143 @@ describe('TransactionFormScreen — duplicate mode (D2)', () => {
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h-btc', amountMinorUnits: -50 }),
     );
+  });
+});
+
+describe('TransactionFormScreen — empty-create / global add (B)', () => {
+  // Two eligible cash holdings on two accounts, plus a synced holding and a
+  // bond that the primary picker must EXCLUDE (the 'transaction' gate:
+  // open, non-synced, non-bond/non-deposit).
+  const HOLDINGS = [
+    {
+      id: 'h1',
+      currency: 'UAH' as const,
+      balanceMinorUnits: 0,
+      type: 'cash',
+      name: 'Wallet',
+      accountId: 'a1',
+      sortOrder: 0,
+      createdAt: 1,
+    },
+    {
+      id: 'h2',
+      currency: 'USD' as const,
+      balanceMinorUnits: 0,
+      type: 'card',
+      name: 'Card',
+      accountId: 'a2',
+      sortOrder: 0,
+      createdAt: 2,
+    },
+    {
+      id: 'h-bond',
+      currency: 'UAH' as const,
+      balanceMinorUnits: 0,
+      type: 'bond',
+      name: 'War Bond',
+      accountId: 'a1',
+      sortOrder: 1,
+      createdAt: 3,
+    },
+  ];
+  const ACCOUNTS: Account[] = [
+    { id: 'a1', name: 'Cash' },
+    { id: 'a2', name: 'Bank' },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('renders the primary-leg holding picker (no fixed holding from navigation)', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS);
+
+    const { getByLabelText } = await renderEmptyCreate();
+
+    // The shared HoldingSelectField labeled "Holding" is the primary-leg picker.
+    expect(getByLabelText('Holding')).toBeTruthy();
+  });
+
+  // The currency glyph renders as a Text inside the field's own container (a
+  // suffix slot), not as a prop — scoped to the Amount field so it can't pass by
+  // matching another leg's suffix.
+  const amountSuffixWithin = (
+    utils: Awaited<ReturnType<typeof render>>,
+  ): ReturnType<typeof within> => {
+    const field = utils.getByLabelText('Amount').parent;
+
+    if (field === null) {
+      throw new Error('Amount field has no container');
+    }
+
+    return within(field);
+  };
+
+  it("defaults the primary holding to the MOST RECENT manual row's holding", async () => {
+    // h2 (USD) is the newest manual holding, so the amount field carries the
+    // USD glyph — proving the seam derived the currency from the seeded holding.
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h2');
+
+    const utils = await renderEmptyCreate();
+
+    expect(amountSuffixWithin(utils).getByText('$')).toBeTruthy();
+  });
+
+  it('falls back to the first eligible holding when there is no manual history', async () => {
+    // No most-recent-manual holding, so the first Accounts-ordered eligible
+    // option (h1, UAH) seeds the seam — its currency glyph shows on Amount.
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], null);
+
+    const utils = await renderEmptyCreate();
+
+    expect(amountSuffixWithin(utils).getByText('₴')).toBeTruthy();
+  });
+
+  it('excludes bond holdings from the picker (the transaction gate)', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
+
+    const { getByLabelText, queryByLabelText } = await renderEmptyCreate();
+
+    // Open the picker sheet.
+    await fireEvent.press(getByLabelText('Holding'));
+
+    // The two eligible holdings are offered as option rows (each labeled
+    // "<name>, <account>"); the bond is not — the same 'transaction' gate
+    // `footerActionFor` applies.
+    expect(getByLabelText('Wallet, Cash')).toBeTruthy();
+    expect(getByLabelText('Card, Bank')).toBeTruthy();
+    expect(queryByLabelText('War Bond, Cash')).toBeNull();
+  });
+
+  it('writes a create against the PICKED holding via recordManual', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
+
+    const utils = await renderEmptyCreate();
+    const { getByLabelText, getByText } = utils;
+
+    // Re-point the primary leg to the USD card through the picker (the option
+    // row's accessibility label is "<name>, <account>").
+    await fireEvent.press(getByLabelText('Holding'));
+    await fireEvent.press(getByLabelText('Card, Bank'));
+
+    await fireEvent.changeText(getByLabelText('Amount'), '12.00');
+    await pickCategory(utils, 'Groceries');
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'h2', category: 'groceries' }),
+    );
+  });
+
+  it('surfaces the Exchange chip once a cash primary holding is active', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
+
+    const { getByText } = await renderEmptyCreate();
+
+    // A cash source enables the create-only Exchange mode (resolveModeOptions
+    // keys off the picked holding's type), so the chip appears.
+    expect(getByText('Exchange')).toBeTruthy();
   });
 });
 

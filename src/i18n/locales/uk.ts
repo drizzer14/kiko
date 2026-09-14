@@ -212,6 +212,7 @@ export const uk: typeof en = {
       exchange: 'Обмін',
       expense: 'Витрата',
       from: 'Звідки',
+      holding: 'Актив',
       income: 'Дохід',
       remove: 'Видалити',
       removeReturn: 'Видалити повернення {{index}}',
@@ -320,6 +321,7 @@ export const uk: typeof en = {
     valueLabel: 'Вартість',
   },
   home: {
+    addTransaction: 'Додати транзакцію',
     dateRangeField: {
       apply: 'Застосувати',
       clear: 'Очистити',

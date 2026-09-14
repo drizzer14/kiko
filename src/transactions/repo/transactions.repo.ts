@@ -309,6 +309,22 @@ export const transactionsRepo = {
       .from(transactions)
       .where(and(eq(transactions.source, 'manual'), ne(transactions.description, '')))
       .orderBy(desc(transactions.time)),
+  /**
+   * The holding id of the user's MOST RECENT manual transaction (a single
+   * `{ holdingId }` row, or none) — the default primary leg for the global
+   * add-transaction entry (Bundle B). `source = 'manual'` excludes bank/crypto
+   * imports (a synced holding is never a manual-create target), `time` desc
+   * makes it the newest, and `limit 1` takes just that one. The form seeds its
+   * primary-holding seam from this once, falling back to the first eligible
+   * holding when the user has no manual history yet.
+   */
+  latestManualHoldingQuery: () =>
+    database
+      .select({ holdingId: transactions.holdingId })
+      .from(transactions)
+      .where(eq(transactions.source, 'manual'))
+      .orderBy(desc(transactions.time))
+      .limit(1),
   add: (input: NewTransaction) =>
     write((tx) => tx.insert(transactions).values({ id: id(), ...input })),
   /**

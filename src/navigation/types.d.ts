@@ -16,13 +16,17 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
  * the source. The union makes the entry points mutually exclusive so a caller
  * can never pass more than one. It is registered in both the Home and Accounts
  * stacks (Home lists every transaction; Accounts reaches it from a holding), so
- * both param lists carry the same shape. (Bundle B will later add its own
- * empty-create member to this union — leave room for it, do not collide.)
+ * both param lists carry the same shape. The final member — an EMPTY object
+ * (`Record<string, never>`) — is the global-add entry (Bundle B): a create with
+ * NO holding fixed by navigation, so the form renders its own primary-leg
+ * holding picker. `Record<string, never>` admits `{}` alone, keeping every
+ * member mutually exclusive (a caller can pass exactly one id, or none at all).
  */
 export type TransactionFormParams =
   | { holdingId: string }
   | { transactionId: string }
-  | { duplicateOfTransactionId: string };
+  | { duplicateOfTransactionId: string }
+  | Record<string, never>;
 
 export type HomeStackParamList = {
   Home: undefined;

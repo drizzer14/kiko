@@ -455,6 +455,104 @@ const buildExchangeOptions = (
     }));
 };
 
+// Whether a holding TYPE takes a plain manual transaction — the same gate
+// `footerActionFor` (`holding-detail.screen.tsx`) applies for its `'transaction'`
+// action: a term_deposit takes contributions and a bond carries no manual
+// ledger, so both are excluded; everything else (cash/card/crypto_asset/jar) is
+// eligible. Mirrored here (rather than exported from that screen) so the primary
+// picker and the footer action agree without a cross-screen import.
+const isTransactionEligibleType = (type: HoldingRow['type']): boolean =>
+  type !== 'term_deposit' && type !== 'bond';
+
+// The primary-leg picker's options for the global-add (empty-create) case:
+// every OPEN, non-synced, transaction-eligible holding (mirroring the
+// `'transaction'` gate above), projected and Accounts-ordered by the shared
+// `buildExchangeOptions`. A synced holding's ledger is owned by its sync, so it
+// can never be a manual-create target — excluded here the same way
+// `buildReturnOptions` drops syncable holdings.
+const buildPrimaryOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  accountOrderById: ReadonlyMap<string, number>,
+  accountById: ReadonlyMap<string, AccountRow>,
+): HoldingSelectOption[] => {
+  const syncableIds = new Set(
+    holdings
+      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
+      .map((candidate) => candidate.id),
+  );
+
+  return buildExchangeOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    undefined,
+    isTransactionEligibleType,
+  ).filter((option) => !syncableIds.has(option.id));
+};
+
+// The id to seed the primary-holding seam with on the empty-create path, or
+// null when there is nothing to seed yet (not an empty create, already seeded/
+// picked, the query still loading, or no eligible holding at all). Prefers the
+// user's most-recent MANUAL holding when it is still eligible, else the first
+// Accounts-ordered eligible option. Gating the whole decision on
+// `primaryHoldingId === null` makes it a one-shot seed that a later live refresh
+// (or an in-progress user pick, which also makes the seam non-null) can never
+// clobber. Kept module-level and pure so the seeding effect stays a thin
+// dispatch and this branch chain stays out of the screen's cognitive-complexity
+// budget.
+const resolveDefaultPrimaryHolding = (args: {
+  isEmptyCreate: boolean;
+  primaryHoldingId: string | null;
+  latestManualLoading: boolean;
+  latestManualHoldingId: string | null;
+  options: readonly HoldingSelectOption[];
+}): string | null => {
+  const { isEmptyCreate, primaryHoldingId, latestManualLoading, latestManualHoldingId, options } =
+    args;
+
+  if (!isEmptyCreate || primaryHoldingId !== null || latestManualLoading || options.length === 0) {
+    return null;
+  }
+
+  const recentIsEligible =
+    latestManualHoldingId !== null && options.some((option) => option.id === latestManualHoldingId);
+
+  return recentIsEligible ? latestManualHoldingId : options[0].id;
+};
+
+// The primary-leg holding picker, rendered ONLY in the empty-create (global-add,
+// B) case — the one mode where no holding is fixed by navigation, so the user
+// picks the leg here (its currency/category/exchange eligibility then flow
+// automatically through the shared `primaryHoldingId` seam). Returns null on
+// every other path. Extracted to a module-level function (returns
+// `ReactElement | null`) so the screen's JSX gates on a single call rather than
+// its own `isEmptyCreate &&`, keeping that branch out of the component's
+// cognitive-complexity budget — the same shape as `renderReadOnlyNotice`.
+const renderPrimaryHoldingField = (props: {
+  visible: boolean;
+  label: string;
+  placeholder: string;
+  options: readonly HoldingSelectOption[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}): ReactElement | null => {
+  if (!props.visible) {
+    return null;
+  }
+
+  return (
+    <HoldingSelectField
+      label={props.label}
+      placeholder={props.placeholder}
+      options={props.options}
+      selectedId={props.selectedId}
+      onSelect={props.onSelect}
+      required
+    />
+  );
+};
+
 // Present a stored (signed) minor-units amount as the unsigned major string the
 // Amount input shows, pairing it with the sign chip the amount's polarity maps
 // to. Kept pure so the hydration effect below stays a one-liner.
@@ -474,11 +572,28 @@ const toAmountFields = (
 // `duplicateOfId` seeds a CREATE pre-filled from an existing manual row (D2).
 const readRouteEntry = (
   params: TransactionFormParams,
-): { editingId: string | null; duplicateOfId: string | null; holdingParamId: string | null } => ({
-  editingId: 'transactionId' in params ? params.transactionId : null,
-  duplicateOfId: 'duplicateOfTransactionId' in params ? params.duplicateOfTransactionId : null,
-  holdingParamId: 'holdingId' in params ? params.holdingId : null,
-});
+): {
+  editingId: string | null;
+  duplicateOfId: string | null;
+  holdingParamId: string | null;
+  // The empty-create (global-add, B) case: none of the three ids present, so
+  // the form fixes no holding by navigation and renders its own primary-leg
+  // picker. Derived here, in the same pure read, so the component spends no
+  // boolean chain on it.
+  isEmptyCreate: boolean;
+} => {
+  const editingId = 'transactionId' in params ? params.transactionId : null;
+  const duplicateOfId =
+    'duplicateOfTransactionId' in params ? params.duplicateOfTransactionId : null;
+  const holdingParamId = 'holdingId' in params ? params.holdingId : null;
+
+  return {
+    editingId,
+    duplicateOfId,
+    holdingParamId,
+    isEmptyCreate: editingId === null && duplicateOfId === null && holdingParamId === null,
+  };
+};
 
 // The one-shot mount seeding plan, computed by a pure module-level helper so the
 // screen's hydrate effect stays a thin dispatch (three flat `if`s) instead of
@@ -488,9 +603,15 @@ const readRouteEntry = (
 // currency scale) resolves before the amount is formatted; `seedFields` is the
 // terminal step both paths share. A `null` `time` means "leave the field at its
 // current value" — the duplicate keeps NOW, never copying the source timestamp.
+// `final` on `seedHolding` says whether seating the seam is the LAST step: the
+// duplicate path leaves it open (`false`) so its follow-up `seedFields` step
+// still runs, while the empty-create (B) default seed has nothing more to
+// hydrate, so it closes the `hydrated` latch immediately (`true`) — stopping the
+// effect from re-running every render (which otherwise raised overlapping-act
+// churn) without adding a branch to the effect.
 type HydrationPlan =
   | { kind: 'wait' }
-  | { kind: 'seedHolding'; holdingId: string }
+  | { kind: 'seedHolding'; holdingId: string; final: boolean }
   | {
       kind: 'seedFields';
       amount: string;
@@ -525,8 +646,21 @@ const resolveHydration = (args: {
   holding: HoldingRow | undefined;
   primaryHoldingId: string | null;
   currency: Currency;
+  // The empty-create (B) default holding to seat the seam with, already
+  // resolved by `resolveDefaultPrimaryHolding` (null once seeded/picked, on a
+  // non-empty-create path, or while the query is still loading). Seeds through
+  // the SAME `seedHolding` step the duplicate path uses, so the empty-create
+  // default rides the effect's own one-shot latch with no second effect.
+  defaultPrimaryHoldingId: string | null;
 }): HydrationPlan => {
-  const { existing, duplicateSource, holding, primaryHoldingId, currency } = args;
+  const {
+    existing,
+    duplicateSource,
+    holding,
+    primaryHoldingId,
+    currency,
+    defaultPrimaryHoldingId,
+  } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
   // stored timestamp so a manual row round-trips its own time.
@@ -536,15 +670,25 @@ const resolveHydration = (args: {
 
   if (duplicateSource) {
     // Duplicate step 1: seat the primary-holding seam from the source row so
-    // its holding (and currency scale) resolves on the next render.
+    // its holding (and currency scale) resolves on the next render. NOT final —
+    // step 2 (`seedFields`) still needs to run once the holding resolves.
     if (primaryHoldingId === null) {
-      return { kind: 'seedHolding', holdingId: duplicateSource.holdingId };
+      return { kind: 'seedHolding', holdingId: duplicateSource.holdingId, final: false };
     }
 
     // Duplicate step 2: seed the copied fields, dated to NOW (`time: null`).
     if (holding) {
       return seedFieldsFrom(currency, duplicateSource, null);
     }
+  }
+
+  // Empty-create (B): seat the primary seam from the most-recent-manual default
+  // (else the first eligible option). Nothing else to hydrate — the fields stay
+  // blank for a fresh add — so this is FINAL: it closes the `hydrated` latch so
+  // the effect stops re-running, and a later live refresh can never clobber the
+  // seam (the user's own pick goes straight through `setPrimaryHoldingId`).
+  if (defaultPrimaryHoldingId !== null) {
+    return { kind: 'seedHolding', holdingId: defaultPrimaryHoldingId, final: true };
   }
 
   return { kind: 'wait' };
@@ -1047,7 +1191,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // helper so the component body spends no `in`-check branch on any of them. In
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
-  const { editingId, duplicateOfId, holdingParamId } = readRouteEntry(route.params);
+  const { editingId, duplicateOfId, holdingParamId, isEmptyCreate } = readRouteEntry(route.params);
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -1105,12 +1249,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { data: rateRows } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const rateTable = buildRateTable(rateRows);
 
-  // The primary-holding seam (D2): a duplicate seeds this from the source row's
-  // holding on mount, and the holding-derived values (currency, amount suffix,
-  // category eligibility, exchange rules) all read through it. Bundle B will
-  // later render its `HoldingSelectField` picker over this SAME state — for now
-  // it is only ever seeded from the source row, never picked. Null on a plain
-  // add/edit, where `holdingParamId`/`existing` supply the holding instead.
+  // The primary-holding seam: the SINGLE holding-from-state variable both the
+  // duplicate path (D2) and the empty-create picker (B) drive. D2 seeds it from
+  // the source row on mount; B seeds it from the most-recent-manual default and
+  // then lets the user re-point it through the picker below. Every
+  // holding-derived value (currency, amount suffix, category eligibility,
+  // exchange rules) reads through it. Null on a plain add/edit, where
+  // `holdingParamId`/`existing` supply the holding instead.
   const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
@@ -1121,6 +1266,37 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // leg (plain amount, Exchange Value Out, and the convert fixed leg) all read
   // the current holding's currency.
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
+
+  // The picker's eligible options (open, non-synced, transaction-eligible),
+  // Accounts-ordered — also the fallback source when the user has no manual
+  // history to default from.
+  const primaryOptions = buildPrimaryOptions(
+    holdings,
+    accountNameById,
+    accountOrderById,
+    accountById,
+  );
+  // B's default-holding seam: the holding of the newest MANUAL row, read once so
+  // an empty create can pre-select it. `isLoading` gates the seed below so the
+  // "most recent, else first eligible" decision waits for this to settle rather
+  // than racing the fallback in before the recent holding is known.
+  const { data: latestManualRows, isLoading: latestManualLoading } = useLiveQuery(
+    transactionsRepo.latestManualHoldingQuery(),
+    ['transactions'],
+  );
+  const latestManualHoldingId = latestManualRows.at(0)?.holdingId ?? null;
+  // The one-shot default holding id to seat the seam with on the empty-create
+  // path (null otherwise, or once seeded/picked) — resolved by a pure helper so
+  // the branch chain stays out of this component's cognitive-complexity budget.
+  // The hydrate effect below feeds it to `resolveHydration`, which seeds it
+  // through the SAME `seedHolding` step the duplicate path uses.
+  const defaultPrimaryHoldingId = resolveDefaultPrimaryHolding({
+    isEmptyCreate,
+    primaryHoldingId,
+    latestManualLoading,
+    latestManualHoldingId,
+    options: primaryOptions,
+  });
 
   // A synced row of ANY source (monobank, binance, btc_wallet) is bank-owned:
   // its amount, description and time are set by the import and edits to them
@@ -1220,10 +1396,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       holding,
       primaryHoldingId,
       currency,
+      defaultPrimaryHoldingId,
     });
 
     if (plan.kind === 'seedHolding') {
       setPrimaryHoldingId(plan.holdingId);
+      // Close the latch only for a FINAL seed (empty-create): `false` is a
+      // no-op on the duplicate step (the latch is already open), so this stays
+      // a single flat statement rather than another branch.
+      setHydrated(plan.final);
 
       return;
     }
@@ -1242,7 +1423,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
       setHydrated(true);
     }
-  }, [existing, duplicateSource, holding, primaryHoldingId, hydrated, currency]);
+  }, [
+    existing,
+    duplicateSource,
+    holding,
+    primaryHoldingId,
+    hydrated,
+    currency,
+    defaultPrimaryHoldingId,
+  ]);
 
   // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
   // the MOMENT a destination is picked — an EVENT, not a derivation, so it lives
@@ -1756,6 +1945,19 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       >
         <Box gap={4} testID="transaction-form">
           {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
+
+          {/* B: the primary-leg holding picker, shown ONLY when no holding was
+            fixed by navigation (the global-add entry). It drives the shared
+            `primaryHoldingId` seam, so the currency/category/exchange derivation
+            below follows the pick automatically. Null on every other path. */}
+          {renderPrimaryHoldingField({
+            visible: isEmptyCreate,
+            label: t('forms.transaction.holding'),
+            placeholder: t('forms.transaction.selectHolding'),
+            options: primaryOptions,
+            selectedId: primaryHoldingId,
+            onSelect: setPrimaryHoldingId,
+          })}
 
           {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,

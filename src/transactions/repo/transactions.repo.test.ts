@@ -129,6 +129,21 @@ describe('transactionsRepo', () => {
     expect(params).toContain('');
   });
 
+  it('builds a most-recent-manual-holding query: source manual, time desc, single row (B)', () => {
+    const { sql, params } = transactionsRepo.latestManualHoldingQuery().toSQL();
+    const lower = sql.toLowerCase();
+
+    // The default primary-leg holding for a global add comes from the newest
+    // MANUAL transaction's holding, so the query projects only `holding_id`,
+    // filters the manual source, orders newest-first, and takes a single row.
+    expect(lower).toContain('"holding_id"');
+    expect(lower).toContain('"transactions"."source"');
+    expect(params).toContain('manual');
+    expect(lower).toContain('"transactions"."time" desc');
+    expect(lower).toContain('limit');
+    expect(params).toContain(1);
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {

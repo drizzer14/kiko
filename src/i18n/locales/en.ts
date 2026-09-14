@@ -230,6 +230,7 @@ export const en = {
       exchange: 'Exchange',
       expense: 'Expense',
       from: 'From',
+      holding: 'Holding',
       income: 'Income',
       remove: 'Remove',
       removeReturn: 'Remove return {{index}}',
@@ -341,6 +342,9 @@ export const en = {
     valueLabel: 'Value',
   },
   home: {
+    // The floating "+" action's accessibility label (the global add-transaction
+    // FAB pinned over the Home list).
+    addTransaction: 'Add transaction',
     // The shared Home/Statistics date-range sheet (see
     // src/screens/home/date-range-field) — its own literals, namespaced under
     // Home since that is where the component lives.
