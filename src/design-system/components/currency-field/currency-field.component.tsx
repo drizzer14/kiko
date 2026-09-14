@@ -104,10 +104,9 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         onDismiss={() => setOpen(false)}
         gap={2}
         scrollable={false}
+        header={<Text variant="heading">{label}</Text>}
         testID="currency-picker-sheet"
       >
-        <Text variant="heading">{label}</Text>
-
         <TextField
           value={query}
           onChangeText={setQuery}

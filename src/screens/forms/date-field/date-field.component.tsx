@@ -1,18 +1,18 @@
+import { Pressable } from 'react-native';
 import KikoCalendar from '@kiko/calendar';
 import { type FC, useState } from 'react';
-import { Pressable } from 'react-native';
-import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
+import type { DateData } from 'react-native-calendars';
 
 import { formatDate } from '../../../dates/format';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import FieldLabel from '../../../design-system/components/field-label';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import FieldLabel from '../../../design-system/components/field-label';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 
-import type { DateFieldProps } from './date-field.props';
 import { styles } from './date-field.styles';
+import type { DateFieldProps } from './date-field.props';
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -101,10 +101,9 @@ const DateField: FC<DateFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
+        header={<Text variant="heading">{label}</Text>}
         backdropTestID={backdropTestID}
       >
-        <Text variant="heading">{label}</Text>
-
         <KikoCalendar
           testID={`${label} calendar`}
           markedDates={markedDates}

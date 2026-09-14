@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 import '../../unistyles';
@@ -68,10 +68,12 @@ describe('IconPickerModal', () => {
   it('pads the sheet clear of the home indicator (bottom safe-area inset)', async () => {
     const { getByText } = await setup();
 
-    // Walk up from a known sheet child to the sheet Box itself, the same
-    // ancestor-search approach the currency-breakdown tests use, since RNTL
-    // has no direct `getByTestId` here.
-    const node = ancestorWithStyle(getByText('Choose Icon'), 'paddingBottom');
+    // Walk up from a known sheet BODY child (not the title, which now renders
+    // through the shared `header` prop, above a closer `paddingBottom` of its
+    // own — see bottom-sheet.styles.ts's `grabberRegion`) to the sheet Box
+    // itself, the same ancestor-search approach the currency-breakdown tests
+    // use, since RNTL has no direct `getByTestId` here.
+    const node = ancestorWithStyle(getByText('Cancel'), 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the shared BottomSheet's single base spacing(4) = 16 — this

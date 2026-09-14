@@ -61,8 +61,22 @@ const BACKDROP_RIM_OVERSCAN = 32;
 // scrollable body that starts only once this region ends — the enlarged
 // target can never steal a touch meant for the ScrollView below it. A sheet
 // that DOES pass a `header` (already taller than 44pt with real content) is
-// unaffected — `minHeight` is a floor, not a fixed height.
+// unaffected — `minHeight` is a floor, not a fixed height. Still needed after
+// the title migration below: a header-less sheet's region now measures
+// paddingTop(16) + pill(5) + paddingBottom(16) = 37pt, still short of 44.
 const GRABBER_REGION_MIN_HEIGHT = 44;
+
+// The ONE token controlling the gap between the grabber/title band and the
+// first row of a sheet's body, for every sheet in the app. Every sheet's own
+// inline `<Text variant="heading">` title now migrates into the `header` prop
+// (see `kiko-design-system`'s "BottomSheet header"), so this single step —
+// applied to `grabberRegion.paddingBottom` below — is what used to be the
+// generic `gap` prop's per-child spacing applied ad hoc to a title. A full
+// step more than the previous bare `theme.spacing(3)` magic number gives the
+// title clearer breathing room now that it consistently anchors the header
+// band above every sheet's content, matching `SHEET_PADDING_STEP`'s own
+// weight rather than reading as a smaller, secondary gap.
+const TITLE_TO_BODY_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({
   // Fills the modal window and pins the sheet to the bottom edge. The scrim and
@@ -152,7 +166,6 @@ export const styles = StyleSheet.create((theme) => ({
     overflow: 'hidden',
     borderTopLeftRadius: theme.radii.lg,
     borderTopRightRadius: theme.radii.lg,
-    paddingTop: theme.spacing(SHEET_PADDING_STEP),
     paddingHorizontal: theme.spacing(SHEET_PADDING_STEP),
     paddingBottom: theme.spacing(SHEET_PADDING_STEP) + bottomInset,
   }),
@@ -204,25 +217,29 @@ export const styles = StyleSheet.create((theme) => ({
   // (and ONLY here, never the scrollable body, so the drag never fights the
   // sheet's own ScrollView). Extending the header into this same region is what
   // makes a drag ANYWHERE across the header — not only on the small pill — drive
-  // the dismiss. Its bottom pad separates the region from the first content row;
-  // the sheet card's own `paddingTop` sits above it. `gap` only takes effect
-  // when a header is present (a lone grabber is a single child, so there is
-  // nothing to space). The grabber centers itself via its own `alignSelf`
-  // below rather than this region's `alignItems`, so the header stays
-  // full-width/left-aligned (the region's default `stretch`) instead of
-  // being centered with the pill. DEVICE BUG fix: `minHeight` (see
-  // `GRABBER_REGION_MIN_HEIGHT` above) floors this region at the 44pt HIG
-  // touch-target minimum — the padding+pill alone measured only ~21pt for a
-  // headerless sheet, well under it. A header-bearing sheet already clears
-  // 44pt on its own content and is unaffected; a headerless sheet now shows a
-  // little more breathing room below the pill before the body starts, which
-  // is the visible tradeoff of restoring the tap target honestly (growing the
-  // region's own claimed bounds) rather than hiding it in an invisible
-  // `hitSlop` that could reach into the scrollable body below.
+  // the dismiss. `paddingTop` is the sheet card's OWN top inset
+  // (`SHEET_PADDING_STEP`) — it used to sit on `sheet` above, OUTSIDE the
+  // GestureDetector, which left a dead, non-draggable strip between the card's
+  // rounded top edge and the grabber; moving it here instead means the entire
+  // band from the card's top edge down through the pill and (now-migrated)
+  // title is draggable. `paddingBottom` (`TITLE_TO_BODY_GAP_STEP`) is the ONE
+  // token separating the region from the first content row — every sheet's
+  // title now renders through `header`, so this single step controls
+  // title-to-body breathing room everywhere at once instead of each sheet
+  // reproducing its own gap ad hoc. `gap` only takes effect when a header is
+  // present (a lone grabber is a single child, so there is nothing to space).
+  // The grabber centers itself via its own `alignSelf` below rather than this
+  // region's `alignItems`, so the header stays full-width/left-aligned (the
+  // region's default `stretch`) instead of being centered with the pill.
+  // DEVICE BUG fix: `minHeight` (see `GRABBER_REGION_MIN_HEIGHT` above) floors
+  // this region at the 44pt HIG touch-target minimum — the padding+pill alone
+  // still falls short of it for a headerless sheet even at the larger padding
+  // steps above. A header-bearing sheet already clears 44pt on its own
+  // content and is unaffected.
   grabberRegion: {
     minHeight: GRABBER_REGION_MIN_HEIGHT,
-    paddingTop: theme.spacing(1),
-    paddingBottom: theme.spacing(3),
+    paddingTop: theme.spacing(SHEET_PADDING_STEP),
+    paddingBottom: theme.spacing(TITLE_TO_BODY_GAP_STEP),
     gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle, in the

@@ -1205,16 +1205,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
         gap={3}
+        header={
+          <Box direction="row" gap={2} style={styles.confirmHeader}>
+            {pendingCategory !== null && (
+              <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
+            )}
+
+            <Text variant="heading">{t('forms.transaction.applyCategoryToAll')}</Text>
+          </Box>
+        }
         testID="category-override-sheet"
       >
-        <Box direction="row" gap={2} style={styles.confirmHeader}>
-          {pendingCategory !== null && (
-            <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
-          )}
-
-          <Text variant="heading">{t('forms.transaction.applyCategoryToAll')}</Text>
-        </Box>
-
         <Text variant="body" tone="textSecondary">
           {overrideMessage}
         </Text>

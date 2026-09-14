@@ -1,15 +1,15 @@
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
+import { type FC, useState } from 'react';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { formatTime } from '../../../dates/format';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 
-import type { TimeFieldProps } from './time-field.props';
 import { styles } from './time-field.styles';
+import type { TimeFieldProps } from './time-field.props';
 
 // Combine the DAY (year/month/date) of the current value with the picked
 // time-of-day (hours/minutes) into a new unix-millis timestamp. Seconds and
@@ -78,10 +78,9 @@ const TimeField: FC<TimeFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
+        header={<Text variant="heading">{label}</Text>}
         backdropTestID={backdropTestID}
       >
-        <Text variant="heading">{label}</Text>
-
         <DateTimePicker
           testID={`${label} picker`}
           value={value === null ? new Date() : new Date(value)}

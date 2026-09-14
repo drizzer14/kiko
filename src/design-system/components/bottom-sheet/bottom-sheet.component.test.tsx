@@ -1,6 +1,6 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
-import { Dimensions, StyleSheet, Text } from 'react-native';
 import { State } from 'react-native-gesture-handler';
+import { Dimensions, StyleSheet, Text } from 'react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
@@ -101,8 +101,18 @@ describe('BottomSheet', () => {
     // never one without the other (dropping the inset is bug A2; the base step
     // is what the four sheets previously drifted on, 4 vs 6 vs missing).
     expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
-    expect(sheetStyle.paddingTop).toBe(SHEET_BASE_PADDING);
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
+
+    // The sheet card's own top inset no longer lives here: it moved INTO the
+    // draggable grabber region below (see the "extends the drag region up to
+    // the card's top edge" test), so the card itself carries none.
+    expect(sheetStyle.paddingTop).toBeUndefined();
+
+    // The base step that used to sit on the card now sits on the grabber
+    // region instead, so the whole band from the card's rounded top edge down
+    // through the pill is inside the one draggable hit area.
+    const grabberStyle = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-grabber`).props.style);
+    expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
   });
 
   // The sheet card's own background is a real translucent blur MATERIAL,
@@ -476,6 +486,35 @@ describe('BottomSheet', () => {
       const scrollView = getByTestId(`${HEADER_SHEET_ID}-scroll`);
       expect(within(grabberRegion).queryByTestId(`${HEADER_SHEET_ID}-scroll`)).toBeNull();
       expect(within(scrollView).getByText('sheet body')).toBeTruthy();
+    });
+
+    // The gap below a header band is a single named token (`TITLE_TO_BODY_GAP_STEP`
+    // in bottom-sheet.styles.ts), not a bare per-sheet magic number — every
+    // migrated sheet's title now reads its title-to-body breathing room from
+    // here. The region's OWN top padding is the sheet card's former base step,
+    // moved here so the draggable band reaches the card's rounded top edge
+    // instead of stopping short of it (see the "owns the bottom safe-area
+    // inset" test above, which pins the same paddingTop value on a headerless
+    // sheet).
+    it('gives the header band the single title-to-body gap token, and extends the drag region to the card top edge', async () => {
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={HEADER_SHEET_ID}
+          header={<Text>sheet header</Text>}
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      const grabberStyle = StyleSheet.flatten(
+        getByTestId(`${HEADER_SHEET_ID}-grabber`).props.style,
+      );
+
+      // theme.spacing(4) === 4 * 4 = 16.
+      expect(grabberStyle.paddingBottom).toBe(16);
+      expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
     });
 
     it('still dismisses on a drag past the threshold when a header is present', async () => {
