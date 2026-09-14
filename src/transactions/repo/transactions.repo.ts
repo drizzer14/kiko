@@ -28,7 +28,12 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
   >;
 
 type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time'> &
-  Partial<Pick<TransactionRow, 'description' | 'category' | 'exchangeCounterpartHoldingId'>>;
+  Partial<
+    Pick<
+      TransactionRow,
+      'description' | 'category' | 'exchangeCounterpartHoldingId' | 'changeGroupId'
+    >
+  >;
 
 type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
@@ -59,6 +64,18 @@ type ExchangeCounterpartInput = {
   time: number;
 };
 
+// One change-return of a split payment: a POSITIVE amount on a holding OTHER
+// than the payer. `recordManualWithReturns` writes each as its own manual row,
+// tied to the payment by a shared `changeGroupId`.
+type ChangeReturn = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits'>;
+
+type ManualWithReturnsInput = {
+  // The full payment (amount < 0), carrying its category, on the paying holding.
+  payment: ManualTransaction;
+  // Each return (amount > 0) on a DIFFERENT holding, in the payment's currency.
+  returns: ChangeReturn[];
+};
+
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
 // transaction handle. The balance base is read from the DB *inside* the same
 // transaction, never from a render snapshot, so concurrent writes cannot clobber
@@ -80,6 +97,7 @@ const recordManualTx = async (
     description,
     category,
     exchangeCounterpartHoldingId,
+    changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
   await tx.insert(transactions).values({
@@ -90,6 +108,7 @@ const recordManualTx = async (
     description: description ?? '',
     category: category ?? null,
     exchangeCounterpartHoldingId: exchangeCounterpartHoldingId ?? null,
+    changeGroupId: changeGroupId ?? null,
     source: 'manual',
   });
 
@@ -398,6 +417,33 @@ export const transactionsRepo = {
         .exhaustive();
 
       await markExistingLegTx(tx, input);
+    }),
+  /**
+   * Record a manual payment and N linked change-returns as N+1 INDEPENDENT
+   * ledger rows in ONE op-sqlite transaction, tied by a shared generated
+   * `changeGroupId`. The payment (amount < 0) lands on its own holding carrying
+   * its category; each return (amount > 0) lands on a DIFFERENT holding. Net
+   * worth nets automatically because every balance moves inside the one
+   * transaction; the spending pie nets the linked returns into the payment's
+   * category (statistics/category-breakdown). Any failure rolls back every row,
+   * so the ledger and every balance can never desync. Balances are read INSIDE
+   * the transaction, never from a render snapshot, exactly as `recordManual`
+   * does.
+   */
+  recordManualWithReturns: (input: ManualWithReturnsInput) =>
+    write(async (tx) => {
+      const changeGroupId = id();
+
+      await recordManualTx(tx, { ...input.payment, changeGroupId });
+
+      for (const change of input.returns) {
+        await recordManualTx(tx, {
+          holdingId: change.holdingId,
+          amountMinorUnits: change.amountMinorUnits,
+          time: input.payment.time,
+          changeGroupId,
+        });
+      }
     }),
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance

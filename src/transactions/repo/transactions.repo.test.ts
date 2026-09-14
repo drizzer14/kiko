@@ -1120,3 +1120,77 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('transactionsRepo.recordManualWithReturns', () => {
+  it('writes the payment + N return rows sharing ONE changeGroupId in one transaction', async () => {
+    const { tx, inserts, updates } = makeExchangeTx([
+      [{ balanceMinorUnits: 50_000 }], // payer balance read
+      [{ balanceMinorUnits: 1_000 }], // return holding B balance read
+      [{ balanceMinorUnits: 2_000 }], // return holding C balance read
+    ]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: {
+        holdingId: 'payer-1',
+        amountMinorUnits: -21_200,
+        time: 123,
+        category: 'groceries',
+      },
+      returns: [
+        { holdingId: 'hold-b', amountMinorUnits: 20 },
+        { holdingId: 'hold-c', amountMinorUnits: 8 },
+      ],
+    });
+
+    // One shared group id across all three rows.
+    const groupIds = inserts.map((row) => row.changeGroupId);
+    expect(new Set(groupIds).size).toBe(1);
+    expect(groupIds[0]).toEqual(expect.any(String));
+
+    expect(inserts).toEqual([
+      expect.objectContaining({
+        holdingId: 'payer-1',
+        amountMinorUnits: -21_200,
+        time: 123,
+        category: 'groceries',
+        source: 'manual',
+      }),
+      expect.objectContaining({
+        holdingId: 'hold-b',
+        amountMinorUnits: 20,
+        time: 123,
+        source: 'manual',
+      }),
+      expect.objectContaining({
+        holdingId: 'hold-c',
+        amountMinorUnits: 8,
+        time: 123,
+        source: 'manual',
+      }),
+    ]);
+
+    // base 50_000 - 21_200 = 28_800 (payer); 1_000 + 20 = 1_020; 2_000 + 8 = 2_008
+    expect(updates).toEqual([
+      { table: holdings, values: { balanceMinorUnits: 28_800 } },
+      { table: holdings, values: { balanceMinorUnits: 1_020 } },
+      { table: holdings, values: { balanceMinorUnits: 2_008 } },
+    ]);
+  });
+
+  it('writes only the payment row when there are no returns', async () => {
+    const { tx, inserts, updates } = makeExchangeTx([[{ balanceMinorUnits: 50_000 }]]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'payer-1', amountMinorUnits: -5_000, time: 7, category: 'transport' },
+      returns: [],
+    });
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toEqual(
+      expect.objectContaining({ holdingId: 'payer-1', amountMinorUnits: -5_000 }),
+    );
+    expect(updates).toEqual([{ table: holdings, values: { balanceMinorUnits: 45_000 } }]);
+  });
+});
