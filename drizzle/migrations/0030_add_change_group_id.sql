@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `change_group_id` text;

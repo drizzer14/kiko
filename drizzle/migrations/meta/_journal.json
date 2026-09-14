@@ -211,6 +211,13 @@
       "when": 1789125600000,
       "tag": "0029_namespace_external_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1789386262203,
+      "tag": "0030_add_change_group_id",
+      "breakpoints": true
     }
   ]
 }

@@ -106,6 +106,16 @@ export const transactions = sqliteTable(
     // is manual — a bank-owned (monobank) row is never mutated by this app, so
     // a synced debit converted into another currency still counts as spending.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
+    // Split-change grouping: a shared id across ONE manual payment row and the
+    // N return rows that distribute its change into OTHER holdings, all written
+    // atomically in one `write(...)` by `recordManualWithReturns`
+    // (transactions/repo/transactions.repo.ts). Nullable — a plain
+    // manual/exchange/synced row carries null and is unaffected. The spending
+    // pie NETS a payment's linked returns into its category so the category is
+    // not overstated by the change (statistics/category-breakdown). A column,
+    // not a reserved `category` value, for the same reason the exchange marker
+    // is: the category picker rewrites `category` and would destroy it.
+    changeGroupId: text('change_group_id'),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
