@@ -110,7 +110,11 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
                 sync(resyncRequest(connectedProvider, account.id));
               }}
               disabled={isSyncing}
-              icon="arrow.triangle.2.circlepath"
+              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
+              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
+              // `arrow.triangle.2.circlepath` on a pre-26 device for free, even
+              // through the shared Button's `icon` prop.
+              icon="arrow.trianglehead.2.clockwise.rotate.90"
             >
               {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
             </Button>
@@ -120,7 +124,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               size="small"
               fullWidth={false}
               onPress={() => confirmDisconnect(connectedProvider)}
-              icon="link.badge.plus"
+              icon="lock.open"
             >
               {t('accountDetail.disconnectAction')}
             </Button>

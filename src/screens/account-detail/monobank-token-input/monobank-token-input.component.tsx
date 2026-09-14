@@ -62,7 +62,7 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
           onPress={handlePasteToken}
           style={styles.iconButton}
         >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
+          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
     </Box>

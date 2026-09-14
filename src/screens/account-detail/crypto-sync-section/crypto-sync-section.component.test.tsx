@@ -67,7 +67,7 @@ jest.mock('../binance-credentials-field', () => {
 // either). Mock Button to record the `variant` it receives — following the
 // contribution-buttons precedent — while still rendering the label so every
 // getByText/press assertion is unaffected.
-const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+const mockButtonProps: { variant?: string; children: ReactNode; icon?: string }[] = [];
 
 jest.mock('../../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -79,8 +79,9 @@ jest.mock('../../../design-system/components/button', () => {
       children: ReactNode;
       onPress: () => void;
       disabled?: boolean;
+      icon?: string;
     }) => {
-      mockButtonProps.push({ variant: props.variant, children: props.children });
+      mockButtonProps.push({ variant: props.variant, children: props.children, icon: props.icon });
 
       return (
         <Pressable onPress={props.onPress} disabled={props.disabled}>
@@ -259,6 +260,24 @@ describe('CryptoSyncSection', () => {
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.variant).toBe('primary');
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
+  });
+
+  it('uses the Kiko UI sync glyph for Sync and the open-lock glyph for Disconnect', async () => {
+    mockButtonProps.length = 0;
+    await render(
+      <CryptoSyncSection
+        account={account({ institution: 'btc_wallet' })}
+        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
+      />,
+    );
+
+    // Sync-now takes the iOS-26 rotate glyph (the central availability map
+    // hands the iOS-16-safe fallback for free); Disconnect takes the open-lock
+    // glyph mirroring the lock used by the Connect affordance.
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(disconnectEntry?.icon).toBe('lock.open');
   });
 
   it('shows Never when a connected account has no synced holding yet', async () => {

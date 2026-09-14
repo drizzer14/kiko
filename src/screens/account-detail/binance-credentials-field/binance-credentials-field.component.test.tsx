@@ -50,6 +50,19 @@ describe('BinanceCredentialsField', () => {
     expect(getByText('Connect Binance')).toBeTruthy();
   });
 
+  it('uses the lock glyph for Connect and the Kiko UI clipboard glyph for both Paste buttons', async () => {
+    const { root } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+
+    // Connect carries the `lock` glyph; both paste buttons (key + secret) carry
+    // the Kiko UI `document.on.clipboard` spelling (SFSymbolView forwards `name`).
+    expect((root?.queryAll((node) => node.props.name === 'lock') ?? []).length).toBeGreaterThan(0);
+    expect(
+      (root?.queryAll((node) => node.props.name === 'document.on.clipboard') ?? []).length,
+    ).toBe(2);
+  });
+
   it('disables Connect until both the API key and secret are entered', async () => {
     const { getByPlaceholderText, getByRole } = await render(
       <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,

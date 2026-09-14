@@ -78,7 +78,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
           fullWidth={false}
           onPress={handleConnect}
           disabled={status.kind === 'checking' || token.trim() === ''}
-          icon="link"
+          icon="lock"
         >
           {t('accountDetail.connectMonobank')}
         </Button>

@@ -113,7 +113,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           onPress={() => handlePaste('apiKey')}
           style={styles.iconButton}
         >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
+          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
 
@@ -136,7 +136,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           onPress={() => handlePaste('secret')}
           style={styles.iconButton}
         >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
+          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
 
@@ -147,7 +147,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           fullWidth={false}
           onPress={handleConnect}
           disabled={status.kind === 'checking' || apiKey.trim() === '' || secret.trim() === ''}
-          icon="link"
+          icon="lock"
         >
           {t('accountDetail.connectBinance')}
         </Button>

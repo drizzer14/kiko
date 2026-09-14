@@ -17,7 +17,7 @@ import { styles } from './add-category-row.styles';
 
 // The default icon a new category starts with — a neutral grid glyph from the
 // curated picker pool, so the chip renders a valid symbol before the user picks.
-const DEFAULT_ICON = 'square.grid.2x2';
+const DEFAULT_ICON = 'tag';
 
 type AddCategoryRowProps = {
   // Fired the moment the collapsed row expands its form. The Categories screen

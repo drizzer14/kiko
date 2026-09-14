@@ -30,6 +30,16 @@ describe('MonobankTokenInput', () => {
     expect(getByLabelText('Paste from clipboard')).toBeTruthy();
   });
 
+  it('uses the Kiko UI clipboard glyph for the paste button', async () => {
+    const { root } = await render(<MonobankTokenInput value="" onChangeText={jest.fn()} />);
+
+    // The paste button carries the Kiko UI `document.on.clipboard` spelling
+    // (SFSymbolView forwards `name` as a host prop).
+    expect(
+      (root?.queryAll((node) => node.props.name === 'document.on.clipboard') ?? []).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('shows the controlled value in the field', async () => {
     const { getByPlaceholderText } = await render(
       <MonobankTokenInput value="controlled-token" onChangeText={jest.fn()} />,

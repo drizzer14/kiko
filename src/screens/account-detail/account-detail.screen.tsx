@@ -56,12 +56,17 @@ const actionPresentation = (
   t: TFunction,
 ): { label: string; icon: string; variant: 'primary' | 'secondaryTonal' } => {
   if (!isConnectedToMonobank) {
-    return { label: t('accountDetail.connectMonobank'), icon: 'link', variant: 'secondaryTonal' };
+    return { label: t('accountDetail.connectMonobank'), icon: 'lock', variant: 'secondaryTonal' };
   }
 
   return {
     label: isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow'),
-    icon: 'arrow.triangle.2.circlepath',
+    // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
+    // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
+    // `arrow.triangle.2.circlepath` on a pre-26 device automatically, even
+    // through the shared Button's `icon` prop, so no explicit fallback is
+    // threaded here.
+    icon: 'arrow.trianglehead.2.clockwise.rotate.90',
     variant: 'primary',
   };
 };
@@ -304,7 +309,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                   size="small"
                   fullWidth={false}
                   onPress={confirmDisconnect}
-                  icon="link.badge.plus"
+                  icon="lock.open"
                 >
                   {t('accountDetail.disconnectAction')}
                 </Button>

@@ -208,7 +208,7 @@ describe('AddCategoryRow', () => {
     // the saved row keeps its per-key palette fallback.
     expect(mockCreate).toHaveBeenCalledWith({
       title: 'Groceries',
-      icon: 'square.grid.2x2',
+      icon: 'tag',
       color: null,
     });
   });

@@ -82,7 +82,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           onPress={handlePasteAddress}
           style={styles.iconButton}
         >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
+          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
         </Pressable>
       </Box>
 
@@ -93,7 +93,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           fullWidth={false}
           onPress={handleConnect}
           disabled={status.kind === 'checking' || address.trim() === ''}
-          icon="link"
+          icon="lock"
         >
           {t('accountDetail.connectWallet')}
         </Button>

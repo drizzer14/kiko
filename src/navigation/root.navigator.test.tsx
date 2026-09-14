@@ -28,6 +28,23 @@ describe('RootNavigator', () => {
     expect(tabBar.getByText('Settings')).toBeTruthy();
   });
 
+  // The four tab SF Symbols. Home and Statistics are decided KEEPs; Accounts
+  // takes the entity.account standard (`tray`) and Settings takes `gear` under
+  // the app-wide icon rework. The mock surfaces each `tabBarIcon()`'s resolved
+  // `sfSymbol` on a `tab-icon-<name>` host element.
+  it('wires each tab to its SF Symbol (Accounts=tray, Settings=gear, Home/Statistics unchanged)', async () => {
+    const { findByTestId } = await render(
+      <NavigationContainer theme={navigationDarkTheme}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+
+    expect((await findByTestId('tab-icon-HomeTab')).props.sfSymbol).toBe('house.fill');
+    expect((await findByTestId('tab-icon-AccountsTab')).props.sfSymbol).toBe('tray');
+    expect((await findByTestId('tab-icon-StatisticsTab')).props.sfSymbol).toBe('chart.xyaxis.line');
+    expect((await findByTestId('tab-icon-SettingsTab')).props.sfSymbol).toBe('gear');
+  });
+
   // Bug B1: the native UITabBar rebuilds its styling on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
   // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,

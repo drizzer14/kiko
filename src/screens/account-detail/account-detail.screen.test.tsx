@@ -46,7 +46,7 @@ jest.mock('../../design-system/components/text', () => {
 // receives — following the contribution-buttons precedent — while still
 // rendering the label (and forwarding onPress/disabled) so every
 // getByText/press assertion in this file is unaffected.
-const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+const mockButtonProps: { variant?: string; children: ReactNode; icon?: string }[] = [];
 
 jest.mock('../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -60,8 +60,9 @@ jest.mock('../../design-system/components/button', () => {
       disabled?: boolean;
       accessibilityLabel?: string;
       testID?: string;
+      icon?: string;
     }) => {
-      mockButtonProps.push({ variant: props.variant, children: props.children });
+      mockButtonProps.push({ variant: props.variant, children: props.children, icon: props.icon });
 
       return (
         <Pressable
@@ -322,6 +323,20 @@ describe('AccountDetailScreen', () => {
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
+  it('uses the Kiko UI sync glyph for the connected Sync button and the open-lock glyph for Disconnect', async () => {
+    setLiveData({ accounts: [account({ institution: 'monobank' })] });
+
+    mockButtonProps.length = 0;
+    await renderScreen();
+
+    // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
+    // the iOS-16-safe fallback for free); Disconnect takes the open-lock glyph.
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(disconnectEntry?.icon).toBe('lock.open');
+  });
+
   it('keeps the not-yet-connected Connect action neutral (secondaryTonal), not blue', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
 
@@ -332,6 +347,16 @@ describe('AccountDetailScreen', () => {
     // so making Sync blue must NOT bleed into the Connect state.
     const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
     expect(connectEntry?.variant).toBe('secondaryTonal');
+  });
+
+  it('uses the lock glyph for the not-yet-connected Connect action', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
+
+    mockButtonProps.length = 0;
+    await renderScreen();
+
+    const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
+    expect(connectEntry?.icon).toBe('lock');
   });
 
   it('lists holdings for the account', async () => {

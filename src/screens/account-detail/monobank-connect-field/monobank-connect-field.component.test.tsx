@@ -36,6 +36,15 @@ it('disables Connect until a non-blank token is entered, then enables it', async
   expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
 });
 
+it('gives the Connect action a lock glyph', async () => {
+  const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
+
+  // The Connect affordance carries the Kiko UI `lock` glyph (the SFSymbolView
+  // forwards `name` as a host prop).
+  const glyphs = view.root?.queryAll((node) => node.props.name === 'lock') ?? [];
+  expect(glyphs.length).toBeGreaterThan(0);
+});
+
 it('validates the token, then calls onConnect and shows "Connected as {name}" on success', async () => {
   mockFetchClientInfo.mockResolvedValue({ name: 'Ada Lovelace' });
   const onConnect = jest.fn().mockResolvedValue(true);

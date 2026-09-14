@@ -3,6 +3,8 @@ import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 
+import { genericEntitySymbol } from '../holdings/entity-symbols';
+
 import AccountsStack from './accounts.stack';
 import HomeStack from './home.stack';
 import SettingsStack from './settings.stack';
@@ -65,7 +67,7 @@ const RootNavigator: FC = () => {
         component={AccountsStack}
         options={{
           title: t('accounts.title'),
-          tabBarIcon: () => ({ sfSymbol: 'wallet.pass.fill' }),
+          tabBarIcon: () => ({ sfSymbol: genericEntitySymbol.account }),
         }}
       />
       <Tabs.Screen
@@ -79,7 +81,7 @@ const RootNavigator: FC = () => {
       <Tabs.Screen
         name="SettingsTab"
         component={SettingsStack}
-        options={{ title: t('settings.title'), tabBarIcon: () => ({ sfSymbol: 'gearshape.fill' }) }}
+        options={{ title: t('settings.title'), tabBarIcon: () => ({ sfSymbol: 'gear' }) }}
       />
     </Tabs.Navigator>
   );

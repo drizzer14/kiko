@@ -108,14 +108,23 @@ describe('SettingsScreen', () => {
     expect(getByTestId('settings-row-base-currency')).toBeTruthy();
   });
 
-  it('frames the base-currency row like every other settings row, with a leading dollarsign.circle icon', async () => {
+  it('frames the base-currency row like every other settings row, with a leading hryvniasign.circle icon', async () => {
     const { root } = await renderScreen();
 
     // The row is wrapped in a SettingsRow, so it carries the same leading-icon
     // chrome as the System/Categories rows — the icon glyph is the mocked
-    // SFSymbolView, which forwards `name` as a host prop. The dollarsign.circle
+    // SFSymbolView, which forwards `name` as a host prop. The hryvniasign.circle
     // glyph is unique to the base-currency row, so a whole-tree lookup suffices.
-    const glyphs = root?.queryAll((node) => node.props.name === 'dollarsign.circle') ?? [];
+    const glyphs = root?.queryAll((node) => node.props.name === 'hryvniasign.circle') ?? [];
+    expect(glyphs.length).toBeGreaterThan(0);
+  });
+
+  it('gives the Categories row a leading tag icon', async () => {
+    const { root } = await renderScreen();
+
+    // The Categories row carries the Kiko UI `tag` glyph — the same standard the
+    // category-field placeholder and new-category default use.
+    const glyphs = root?.queryAll((node) => node.props.name === 'tag') ?? [];
     expect(glyphs.length).toBeGreaterThan(0);
   });
 

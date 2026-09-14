@@ -65,7 +65,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             inline caption so "Base Currency" is not shown twice, while the label
             still titles the picker sheet. */}
         <GlassSurface testID="settings-card-base-currency" padding={3} transparent bloom>
-          <SettingsRow icon="dollarsign.circle" label={t('settings.baseCurrency')}>
+          <SettingsRow icon="hryvniasign.circle" label={t('settings.baseCurrency')}>
             <CurrencyField
               testID="settings-row-base-currency"
               label={t('settings.baseCurrency')}
@@ -80,7 +80,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <GlassSurface testID="settings-card-categories" padding={3} transparent bloom>
           <SettingsRow
             testID="settings-row-categories"
-            icon="square.grid.2x2"
+            icon="tag"
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />
