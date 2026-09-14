@@ -1,9 +1,20 @@
-import { currencyOptions, fiatCurrencyOptions, isCrypto, isCurrency, isFiat } from './currency';
+import {
+  currencyOptions,
+  currencyScale,
+  currencySymbol,
+  fiatCurrencyOptions,
+  isCrypto,
+  isCurrency,
+  isFiat,
+} from './currency';
 
 describe('currencyOptions', () => {
-  it('opens with the originally shipped fiat set in canonical order and ends with BTC', () => {
+  it('opens with the originally shipped fiat set in canonical order', () => {
     expect(currencyOptions.slice(0, 5)).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF']);
-    expect(currencyOptions.at(-1)).toBe('BTC');
+  });
+
+  it('ends with the crypto block: BTC, ETH, USDT', () => {
+    expect(currencyOptions.slice(-3)).toEqual(['BTC', 'ETH', 'USDT']);
   });
 
   it('includes the additional Monobank-priced fiats', () => {
@@ -32,17 +43,31 @@ describe('isCurrency', () => {
 });
 
 describe('fiat / crypto classification', () => {
-  it('treats only BTC as crypto', () => {
-    expect(isCrypto('BTC')).toBe(true);
+  it('treats BTC, ETH, and USDT as crypto and everything else as fiat', () => {
+    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+      expect(isCrypto(code)).toBe(true);
+      expect(isFiat(code)).toBe(false);
+    }
     for (const code of fiatCurrencyOptions) {
       expect(isCrypto(code)).toBe(false);
       expect(isFiat(code)).toBe(true);
     }
-    expect(isFiat('BTC')).toBe(false);
   });
 
-  it('exposes the fiat subset (every option except BTC), order-preserving', () => {
-    expect([...fiatCurrencyOptions]).toEqual(currencyOptions.filter((code) => code !== 'BTC'));
-    expect(fiatCurrencyOptions).not.toContain('BTC');
+  it('exposes the fiat subset (every option except the crypto block), order-preserving', () => {
+    const cryptoBlock = new Set(['BTC', 'ETH', 'USDT']);
+    expect([...fiatCurrencyOptions]).toEqual(
+      currencyOptions.filter((code) => !cryptoBlock.has(code)),
+    );
+    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+      expect(fiatCurrencyOptions).not.toContain(code);
+    }
+  });
+
+  it('assigns a defined scale and mark to each new crypto', () => {
+    expect(currencyScale.ETH).toBe(8);
+    expect(currencyScale.USDT).toBe(2);
+    expect(currencySymbol.ETH).toBe('Ξ');
+    expect(currencySymbol.USDT).toBe('₮');
   });
 });

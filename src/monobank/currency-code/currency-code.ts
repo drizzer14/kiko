@@ -223,4 +223,6 @@ export const codeFromCurrency = (currency: Currency): number | undefined =>
     .with('YER', () => 886)
     .with('ZAR', () => 710)
     .with('BTC', () => undefined)
+    .with('ETH', () => undefined)
+    .with('USDT', () => undefined)
     .exhaustive();

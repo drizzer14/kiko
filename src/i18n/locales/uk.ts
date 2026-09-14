@@ -492,5 +492,7 @@ export const uk: typeof en = {
     YER: 'Єменський ріал',
     ZAR: 'Ренд',
     BTC: 'Біткоїн',
+    ETH: 'Ефіріум',
+    USDT: 'Тезер',
   },
 };

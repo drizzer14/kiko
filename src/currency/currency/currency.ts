@@ -9,7 +9,8 @@
  * The fiat set is exactly the currencies Monobank's public `/bank/currency`
  * feed quotes against a base leg (UAH/USD/EUR): each is reachable from every
  * base currency through the UAH-anchored cross pairs `rates/rates-refresh.ts`
- * composes, so no holding silently drops out of a net-worth total.
+ * composes, so no holding silently drops out of a net-worth total, then the
+ * crypto block last (BTC, ETH, USDT).
  */
 export const currencyOptions = [
   'UAH',
@@ -120,6 +121,8 @@ export const currencyOptions = [
   'YER',
   'ZAR',
   'BTC',
+  'ETH',
+  'USDT',
 ] as const;
 
 export type Currency = (typeof currencyOptions)[number];
@@ -233,6 +236,8 @@ export const currencyScale: Record<Currency, number> = {
   YER: 2,
   ZAR: 2,
   BTC: 8,
+  ETH: 8,
+  USDT: 2,
 };
 
 // The display symbol shown in formatted money text. A fiat with a distinct
@@ -347,13 +352,15 @@ export const currencySymbol: Record<Currency, string> = {
   YER: 'YER',
   ZAR: 'ZAR',
   BTC: '₿',
+  ETH: 'Ξ',
+  USDT: '₮',
 };
 
 // The crypto codes. Everything else in `currencyOptions` is fiat. `isCrypto`
 // (and, through it, `isFiat`/`fiatCurrencyOptions`) reads this ONE set rather
 // than re-enumerating which codes are crypto. Not exported: consumers classify
 // through the predicates, so exposing the raw Set would be dead surface.
-const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC']);
+const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC', 'ETH', 'USDT']);
 
 export const isCrypto = (currency: Currency): boolean => cryptoCurrencies.has(currency);
 

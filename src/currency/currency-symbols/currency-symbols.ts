@@ -130,4 +130,9 @@ export const currencySignSymbol: Record<Currency, string> = {
   YER: 'banknote',
   ZAR: 'banknote',
   BTC: 'bitcoinsign',
+  // ETH/USDT have no verified on-device SF Symbol currency glyph; use the safe
+  // generic `banknote` (see sf-symbols-ios27-availability). Reconciled onto the
+  // next-symbols-placeholders text-mark map at integration.
+  ETH: 'banknote',
+  USDT: 'banknote',
 };

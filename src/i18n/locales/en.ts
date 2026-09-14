@@ -539,5 +539,7 @@ export const en = {
     YER: 'Yemeni Rial',
     ZAR: 'South African Rand',
     BTC: 'Bitcoin',
+    ETH: 'Ethereum',
+    USDT: 'Tether',
   },
 };

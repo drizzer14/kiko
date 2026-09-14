@@ -33,8 +33,10 @@ describe('currency-code', () => {
     expect(codeFromCurrency('PLN')).toBe(985);
   });
 
-  it('gives BTC no ISO numeric code (crypto, not a Monobank fiat)', () => {
+  it('gives crypto currencies no ISO numeric code (BTC/ETH/USDT are not Monobank fiats)', () => {
     expect(codeFromCurrency('BTC')).toBeUndefined();
+    expect(codeFromCurrency('ETH')).toBeUndefined();
+    expect(codeFromCurrency('USDT')).toBeUndefined();
   });
 
   it('round-trips every fiat currency through both directions', () => {
