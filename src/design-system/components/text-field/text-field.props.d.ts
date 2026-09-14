@@ -42,4 +42,9 @@ export type TextFieldProps = Pick<
   // e.g. a currency not yet known) renders exactly as a plain field with no
   // trailing node.
   suffix?: string;
+  // An SF Symbol rendered inside the field, before the input, in a muted tone —
+  // the currency search box passes `magnifyingglass` so it reads as a search
+  // field. Optional and empty-safe: `undefined` (or an empty string) renders
+  // exactly as a plain field with no leading glyph.
+  leadingIcon?: string;
 };

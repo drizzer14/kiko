@@ -761,6 +761,7 @@ const StatisticsScreen: FC = () => {
             options={accountOptions}
             selected={selectedAccounts}
             onToggle={toggleFilter(setSelectedAccounts)}
+            triggerIcon="tray"
           />
 
           <DateRangeField
@@ -821,6 +822,7 @@ const StatisticsScreen: FC = () => {
                 options={categoryOptions}
                 selected={selectedCategories}
                 onToggle={toggleFilter(setSelectedCategories)}
+                triggerIcon="tag"
               />
             </Box>
 

@@ -4,6 +4,7 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
 import Text from '../text';
+import SymbolIcon from '../symbol';
 import FieldLabel from '../field-label';
 import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 
@@ -31,6 +32,7 @@ const TextField: FC<TextFieldProps> = ({
   multiline,
   secureTextEntry,
   suffix,
+  leadingIcon,
   required,
   onBlur,
 }) => {
@@ -44,6 +46,12 @@ const TextField: FC<TextFieldProps> = ({
   // An empty string (a currency not yet known) is treated the same as no
   // suffix, so those callers render exactly as a plain field.
   const hasSuffix = suffix !== undefined && suffix !== '';
+  // Same empty-safe treatment for the leading icon slot: an unset or empty
+  // `leadingIcon` renders exactly as a plain field with no leading glyph.
+  const hasLeadingIcon = leadingIcon !== undefined && leadingIcon !== '';
+  // Either inset wraps the input in a positioned container (below); a bare
+  // field with neither is returned unwrapped, unchanged.
+  const hasInset = hasSuffix || hasLeadingIcon;
 
   // Give inputs that HAVE a return key a `done` return key by default, as a
   // secondary dismiss affordance beside the accessory — but never override a
@@ -79,6 +87,7 @@ const TextField: FC<TextFieldProps> = ({
         styles.input,
         editable === false && styles.inputDisabled,
         hasSuffix && styles.inputWithSuffix,
+        hasLeadingIcon && styles.inputWithLeadingIcon,
       ]}
     />
   );
@@ -88,13 +97,25 @@ const TextField: FC<TextFieldProps> = ({
       <Box gap={1}>
         {label !== undefined && <FieldLabel label={label} required={required} />}
 
-        {hasSuffix ? (
-          <Box style={styles.suffixContainer}>
+        {hasInset ? (
+          <Box style={styles.insetContainer}>
+            {leadingIcon !== undefined && leadingIcon !== '' && (
+              // Pinned to the leading edge and vertically centered; the reserved
+              // `inputWithLeadingIcon` padding keeps the caret clear of it. The
+              // slot's `pointerEvents: 'none'` lets a tap in the leading area
+              // fall through to focus the input rather than being swallowed.
+              <Box style={styles.leadingSlot}>
+                <SymbolIcon name={leadingIcon} size={18} />
+              </Box>
+            )}
+
             {input}
 
-            <Box style={styles.suffixSlot}>
-              <Text tone="textSecondary">{suffix}</Text>
-            </Box>
+            {hasSuffix && (
+              <Box style={styles.suffixSlot}>
+                <Text tone="textSecondary">{suffix}</Text>
+              </Box>
+            )}
           </Box>
         ) : (
           input

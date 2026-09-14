@@ -45,6 +45,27 @@ afterEach(async () => {
   await setLanguage('en');
 });
 
+describe('TrendFilterField trigger icon', () => {
+  it('shows the ranking chart glyph in top mode', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+
+    expect(
+      getByTestId(TEST_ID).queryAll((node) => node.props.name === 'chart.bar.fill'),
+    ).not.toHaveLength(0);
+  });
+
+  it('shows the categories tag glyph in manual mode', async () => {
+    const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: ['groceries'] } });
+
+    expect(getByTestId(TEST_ID).queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
+    expect(
+      getByTestId(TEST_ID).queryAll((node) => node.props.name === 'chart.bar.fill'),
+    ).toHaveLength(0);
+  });
+});
+
 describe('TrendFilterField button label', () => {
   it('reads "Top N by <measure>" in top mode', async () => {
     const { getByTestId } = await renderField({

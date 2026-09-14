@@ -27,7 +27,14 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  * itself whenever its actions change on toggle, which no prop reliably prevents,
  * so a pure-JS sheet owns this behaviour instead.)
  */
-const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, testID }) => {
+const FilterMenu: FC<FilterMenuProps> = ({
+  label,
+  options,
+  selected,
+  onToggle,
+  triggerIcon = 'line.3.horizontal.decrease.circle',
+  testID,
+}) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -57,7 +64,7 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.button}>
-          <SymbolIcon name="line.3.horizontal.decrease.circle" size={18} tone="textPrimary" />
+          <SymbolIcon name={triggerIcon} size={18} tone="textPrimary" />
 
           <Text variant="body">{buttonLabel}</Text>
         </Box>

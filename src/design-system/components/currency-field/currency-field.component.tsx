@@ -162,6 +162,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
           value={query}
           onChangeText={setQuery}
           placeholder={t('forms.fields.searchCurrencyPlaceholder')}
+          leadingIcon="magnifyingglass"
           autoCapitalize="none"
           autoCorrect={false}
         />

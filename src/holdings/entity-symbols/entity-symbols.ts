@@ -35,3 +35,26 @@ export const holdingTypeSymbol: Record<HoldingType, string> = {
   cash: 'banknote',
   crypto_asset: 'bitcoinsign',
 };
+
+// The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
+// states, and section labels, NOT a per-entity user-chosen icon and NOT the
+// per-kind/type defaults above. They MUST NOT override an icon the user chose.
+// `holding` uses `text.pad.header`, an iOS-26 symbol: SymbolIcon renders its
+// `list.bullet.rectangle` fallback centrally on an older device (see
+// symbol.availability.ts). Only `account` (`tray`) has a consumer today (the
+// Accounts tab, wired in a later task); `holding`/`transaction` ship as
+// scaffolding until a generic reference is introduced.
+export const genericEntitySymbol = {
+  account: 'tray',
+  holding: 'text.pad.header',
+  transaction: 'arrow.up.arrow.down',
+} as const;
+
+// The iOS-16-safe fallback for any generic glyph that is an iOS-26 symbol,
+// exported alongside so a consumer rendering the glyph OUTSIDE SymbolIcon can
+// pass it explicitly. Only `holding` needs one today.
+export const genericEntitySymbolFallback: Partial<
+  Record<keyof typeof genericEntitySymbol, string>
+> = {
+  holding: 'list.bullet.rectangle',
+};

@@ -349,6 +349,17 @@ describe('TransactionFormScreen — add mode', () => {
     expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(false);
   });
 
+  it('renders the type-chip glyphs: income points DOWN and expense points UP', async () => {
+    const { toJSON } = await renderAdd();
+
+    // The mocked SFSymbolView forwards `name` to a host View, so each chip's
+    // glyph name shows in the tree. The up/down asymmetry is spec-mandated
+    // (money leaving vs. arriving) — do not "fix" it.
+    const tree = JSON.stringify(toJSON());
+    expect(tree).toContain('arrow.down');
+    expect(tree).toContain('arrow.up');
+  });
+
   it('treats a fresh create amount as negative (expense) without touching the chip', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
@@ -914,6 +925,19 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     // A cash source enables the create-only Exchange mode (resolveModeOptions
     // keys off the picked holding's type), so the chip appears.
     expect(getByText('Exchange')).toBeTruthy();
+  });
+
+  it('renders the Exchange and Split type-chip glyphs once the extra modes surface', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
+
+    const { toJSON } = await renderEmptyCreate();
+
+    // Exchange and Split appear together off a cash source; their glyphs render
+    // via the mocked SFSymbolView. Split's `arrow.trianglehead.branch` is an
+    // iOS-26 symbol carried through the shared SymbolIcon fallback seam.
+    const tree = JSON.stringify(toJSON());
+    expect(tree).toContain('arrow.left.arrow.right');
+    expect(tree).toContain('arrow.trianglehead.branch');
   });
 });
 

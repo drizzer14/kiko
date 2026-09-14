@@ -197,7 +197,14 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name="line.3.horizontal.decrease.circle" size={18} tone="textPrimary" />
+          {/* The trigger glyph reflects the APPLIED filter mode (the same
+              `filter.mode` the buttonLabel IIFE reads): the categories `tag` in
+              Manual mode, the ranking `chart.bar.fill` in Top mode. */}
+          <SymbolIcon
+            name={filter.mode === 'manual' ? 'tag' : 'chart.bar.fill'}
+            size={18}
+            tone="textPrimary"
+          />
 
           <Text variant="body" tone="textPrimary">
             {buttonLabel}

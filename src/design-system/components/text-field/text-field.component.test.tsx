@@ -31,6 +31,31 @@ describe('TextField', () => {
     expect(getByLabelText('Name').props.secureTextEntry).toBeUndefined();
   });
 
+  it('renders a leading SF Symbol icon before the input when leadingIcon is set', async () => {
+    const { toJSON, getByDisplayValue } = await render(
+      <TextField
+        label="Search"
+        value="usd"
+        onChangeText={jest.fn()}
+        leadingIcon="magnifyingglass"
+      />,
+    );
+
+    // The input still holds the value, and the leading glyph renders before it.
+    // The mocked SFSymbolView forwards its `name` to a host View, so the symbol
+    // name appears in the tree.
+    expect(getByDisplayValue('usd')).toBeTruthy();
+    expect(JSON.stringify(toJSON())).toContain('magnifyingglass');
+  });
+
+  it('renders no leading icon by default', async () => {
+    const { toJSON } = await render(
+      <TextField label="Name" value="Jane" onChangeText={jest.fn()} />,
+    );
+
+    expect(JSON.stringify(toJSON())).not.toContain('magnifyingglass');
+  });
+
   it('renders a trailing suffix after the input', async () => {
     const { getByText, getByDisplayValue } = await render(
       <TextField label="Amount" value="100.00" onChangeText={jest.fn()} suffix="₴" />,

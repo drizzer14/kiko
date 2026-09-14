@@ -58,6 +58,38 @@ describe('FilterMenu', () => {
     expect(getByTestId(`${TEST_ID}-option-PrivatBank`)).toBeTruthy();
   });
 
+  it('renders the default filter trigger glyph when no triggerIcon is passed', async () => {
+    const utils = await renderMenu();
+
+    // The trigger SymbolIcon (always rendered, before the sheet opens) keeps the
+    // legacy glyph as its default so any caller that passes no icon is unchanged.
+    expect(
+      utils.container.queryAll((node) => node.props.name === 'line.3.horizontal.decrease.circle')
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('renders a passed triggerIcon in place of the default', async () => {
+    const utils = await render(
+      <FilterMenu
+        label="Accounts"
+        testID={TEST_ID}
+        options={[]}
+        selected={new Set<string>()}
+        onToggle={jest.fn()}
+        triggerIcon="tray"
+      />,
+    );
+
+    expect(utils.container.queryAll((node) => node.props.name === 'tray').length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      utils.container.queryAll((node) => node.props.name === 'line.3.horizontal.decrease.circle')
+        .length,
+    ).toBe(0);
+  });
+
   it('renders an option icon tinted with its color when provided', async () => {
     const utils = await renderMenu();
 

@@ -26,6 +26,11 @@ export type FilterMenuProps = {
   selected: Set<string>;
   // Called with the tapped value (or FILTER_ALL) to toggle it in/out.
   onToggle: (value: string) => void;
+  // The SF Symbol on the trigger button. Optional — defaults to the legacy
+  // funnel glyph so a caller that passes none is unchanged. Every current site
+  // passes one to read as its dimension (account filters → `tray`, category
+  // filters → `tag`); the shared component itself hardcodes no icon.
+  triggerIcon?: string;
   // Test hook so a test can read the built actions and drive a selection.
   testID: string;
 };

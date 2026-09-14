@@ -303,6 +303,18 @@ const resolveModeOptions = (
   return canExchange ? ['income', 'expense', 'exchange', 'split'] : ['income', 'expense'];
 };
 
+// The SF Symbol shown on each transaction-type chip. Note the deliberate,
+// spec-mandated asymmetry: expense points UP and income points DOWN (money
+// leaving vs. arriving). `split`'s `arrow.trianglehead.branch` is an iOS-26
+// symbol — SymbolIcon supplies its `arrow.branch` fallback centrally, so no
+// fallback is threaded through the ChipRow here.
+const MODE_ICONS: Record<FormMode, string> = {
+  income: 'arrow.down',
+  expense: 'arrow.up',
+  exchange: 'arrow.left.arrow.right',
+  split: 'arrow.trianglehead.branch',
+};
+
 // Whether a split payment + its returns are writable: a positive payment, at
 // least one return, each return a positive amount on a DISTINCT holding, and Σ
 // returns strictly less than |payment| (the net stays an expense). The payer
@@ -1936,6 +1948,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       selected={mode}
       onSelect={setMode}
       labels={modeLabels}
+      icons={MODE_ICONS}
       disabled={isReadOnly}
     />
   );

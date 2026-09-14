@@ -32,11 +32,28 @@ export const styles = StyleSheet.create((theme) => ({
   inputWithSuffix: {
     paddingRight: theme.spacing(9),
   },
-  // Positioned parent for the absolutely-pinned suffix slot: the input keeps
-  // its full width and 44pt tap area, and the slot overlays only the reserved
-  // trailing padding.
-  suffixContainer: {
+  // Extra leading room reserved on top of `input`'s own `padding` when a
+  // leading icon renders, so the placeholder and caret never slide under the
+  // pinned glyph. Mirrors `inputWithSuffix` on the leading edge.
+  inputWithLeadingIcon: {
+    paddingLeft: theme.spacing(9),
+  },
+  // Positioned parent for the absolutely-pinned leading/suffix slots: the input
+  // keeps its full width and 44pt tap area, and a slot overlays only the
+  // reserved leading/trailing padding.
+  insetContainer: {
     position: 'relative',
+  },
+  // The leading glyph, pinned to the leading edge and vertically centered
+  // against the field's fixed height. `pointerEvents: 'none'` lets a tap in the
+  // leading area still fall through to the input rather than being swallowed.
+  leadingSlot: {
+    position: 'absolute',
+    left: theme.spacing(3),
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    pointerEvents: 'none',
   },
   // The suffix glyph, pinned to the trailing edge and vertically centered
   // against the field's fixed height. `pointerEvents: 'none'` lets a tap in the

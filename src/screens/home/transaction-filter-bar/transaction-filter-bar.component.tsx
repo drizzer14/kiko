@@ -49,6 +49,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
           options={accounts}
           selected={selectedAccount}
           onToggle={onToggleAccount}
+          triggerIcon="tray"
           testID="account-filter-menu"
         />
 
@@ -57,6 +58,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
           options={categories}
           selected={selectedCategory}
           onToggle={onToggleCategory}
+          triggerIcon="tag"
           testID="category-filter-menu"
         />
       </Box>
