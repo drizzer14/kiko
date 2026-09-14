@@ -295,6 +295,9 @@ const makeInMemoryDeps = (
         // A synced row is never an exchange leg — that marker is written only
         // by the manual Exchange/Convert paths.
         exchangeCounterpartHoldingId: null,
+        // A synced row is never part of a split-change group — that marker is
+        // written only by the manual `recordManualWithReturns` path.
+        changeGroupId: null,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
