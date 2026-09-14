@@ -90,6 +90,12 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"holdings"."type"');
   });
 
+  it('includes the change group id in the joined all-transactions projection', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('change_group_id');
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {

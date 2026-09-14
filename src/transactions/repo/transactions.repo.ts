@@ -273,6 +273,9 @@ export const transactionsRepo = {
         // it to resolve an exchange leg's label, and Statistics reads it to
         // drop both legs from the spending pie.
         exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+        // The split-change group id travels too: the spending pie nets a
+        // payment's linked returns into its category (statistics/category-breakdown).
+        changeGroupId: transactions.changeGroupId,
         category: transactions.category,
         accountId: accounts.id,
         accountName: accounts.name,
