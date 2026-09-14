@@ -12,6 +12,7 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SheetFooter from '../../../design-system/components/sheet-footer';
 
 import { boundToMove } from './nearer-bound';
 import { styles } from './date-range-field.styles';
@@ -254,7 +255,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           />
         </ScrollView>
 
-        <Box direction="row" gap={3} style={styles.actions}>
+        <SheetFooter>
           <Button variant="secondary" fullWidth={false} onPress={handleClear}>
             {t('home.dateRangeField.clear')}
           </Button>
@@ -262,7 +263,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           <Button fullWidth={false} onPress={handleApply}>
             {t('home.dateRangeField.apply')}
           </Button>
-        </Box>
+        </SheetFooter>
       </BottomSheet>
     </Box>
   );

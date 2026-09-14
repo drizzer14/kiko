@@ -15,14 +15,6 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(3),
   },
-  // The Clear/Apply action row, pushed to the trailing edge of the sheet.
-  // Rendered as a SIBLING of the sheet's own inner `ScrollView` (below), never
-  // inside it — a bottom sheet's cap (F5 fix) means the heading + calendar can
-  // scroll on a small screen, but Apply/Clear must always stay reachable, so
-  // they sit outside the scrollable region.
-  actions: {
-    justifyContent: 'flex-end',
-  },
   // The heading + calendar's own scrollable region: `BottomSheet` renders NO
   // ScrollView of its own here (`scrollable={false}`, since the Clear/Apply
   // row above needs to stay OUTSIDE any scroll region, unlike every plain

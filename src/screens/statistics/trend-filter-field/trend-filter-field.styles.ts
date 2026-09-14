@@ -47,9 +47,4 @@ export const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     gap: theme.spacing(1),
   },
-  // The Clear/Save action row, pinned to the trailing edge below the scroll
-  // region so both actions stay reachable regardless of scroll position.
-  actions: {
-    justifyContent: 'flex-end',
-  },
 }));

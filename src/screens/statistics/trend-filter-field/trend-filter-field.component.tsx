@@ -2,20 +2,21 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import OptionPills from '../../../design-system/components/option-pills';
-import SelectableRow from '../../../design-system/components/selectable-row';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 import {
   DEFAULT_TREND_FILTER,
   type TrendFilter,
   type TrendMeasure,
   type TrendMode,
 } from '../../../statistics/trend-filter';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import OptionPills from '../../../design-system/components/option-pills';
+import SheetFooter from '../../../design-system/components/sheet-footer';
 import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
+import SelectableRow from '../../../design-system/components/selectable-row';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 
 import type { TrendFilterFieldProps } from './trend-filter-field.props';
@@ -306,7 +307,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           </Box>
         )}
 
-        <Box direction="row" gap={3} style={styles.actions}>
+        <SheetFooter>
           {/* Both actions are disabled while the draft equals the applied
               filter: Clear would revert to what is already applied, and Save
               would re-persist it unchanged — neither does anything, so neither is
@@ -329,7 +330,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           >
             {t('common.save')}
           </Button>
-        </Box>
+        </SheetFooter>
       </BottomSheet>
     </Box>
   );

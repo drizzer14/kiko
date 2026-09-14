@@ -8,6 +8,7 @@ import Text from '../text';
 import Button from '../button';
 import SymbolIcon from '../symbol';
 import BottomSheet from '../bottom-sheet';
+import SheetFooter from '../sheet-footer';
 
 import { styles } from './icon-picker-modal.styles';
 import type { IconPickerModalProps } from './icon-picker-modal.props';
@@ -195,12 +196,16 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { t } = useTranslation();
 
   return (
-    // `scrollable={false}`: the Remove/Cancel actions row below must stay
-    // pinned above the grid regardless of scroll position — BottomSheet's
-    // shared ScrollView (F5 fix) would otherwise sweep it into the same
-    // scrollable region as the grid below it, along with nesting a second
-    // same-axis ScrollView around this component's own. The title itself now
-    // renders through the shared `header` prop instead (see below).
+    // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
+    // the body end regardless of scroll position — BottomSheet's shared
+    // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
+    // region as the grid above it, along with nesting a second same-axis
+    // ScrollView around this component's own. The title renders through the
+    // shared `header` prop instead (see below); the actions used to sit in a
+    // top-right row beside it (this sheet's former outlier footer pattern —
+    // see `explore-bottomsheet.md`'s action-button inventory) and now render
+    // through the shared `SheetFooter` at the body end instead, the same
+    // placement every other choice sheet uses.
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
@@ -209,25 +214,6 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
       scrollable={false}
       header={<Text variant="heading">{t('categories.chooseIconHeading')}</Text>}
     >
-      {/* The title migrated into the shared `header` prop above; these two
-          actions are the icon picker's own outlier footer pattern (see
-          `explore-bottomsheet.md`'s action-button inventory) — task C2
-          standardizes every sheet's action placement into a shared footer,
-          so this row deliberately stays here, unchanged in behavior, for
-          now. `justifyContent: 'flex-end'` (was `'space-between'` against
-          the now-removed title sibling) keeps it right-aligned on its own. */}
-      <Box direction="row" gap={2} style={styles.actionsRow}>
-        {onRemove !== undefined && (
-          <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
-            {t('forms.holding.remove')}
-          </Button>
-        )}
-
-        <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
-          {t('common.cancel')}
-        </Button>
-      </Box>
-
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         <Box direction="row" gap={2} style={styles.grid}>
           {CURATED_ICONS.map((icon) => {
@@ -265,6 +251,18 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           })}
         </Box>
       </ScrollView>
+
+      <SheetFooter>
+        {onRemove !== undefined && (
+          <Button variant="destructiveTonal" fullWidth={false} onPress={onRemove}>
+            {t('forms.holding.remove')}
+          </Button>
+        )}
+
+        <Button variant="secondary" fullWidth={false} onPress={onDismiss}>
+          {t('common.cancel')}
+        </Button>
+      </SheetFooter>
     </BottomSheet>
   );
 };

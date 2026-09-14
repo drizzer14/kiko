@@ -95,4 +95,34 @@ describe('IconPickerModal', () => {
 
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the Remove/Cancel footer after the icon grid, not beside the title (task C2)', async () => {
+    const onRemove = jest.fn();
+    const { getAllByRole } = await setup({ onRemove });
+
+    // Every icon swatch AND the footer's own Buttons share accessibilityRole
+    // "button", so their render order is the sheet's true DOM order: the
+    // footer (Remove, then Cancel) trails every grid swatch, proving the
+    // actions moved from the former top-right title row to the shared
+    // body-end SheetFooter.
+    const buttons = getAllByRole('button');
+
+    expect(buttons[buttons.length - 2]).toHaveTextContent('Remove');
+    expect(buttons[buttons.length - 1]).toHaveTextContent('Cancel');
+  });
+
+  it('sizes the Remove/Cancel footer actions the same as a regular button (50pt), not the former compact 44pt size', async () => {
+    const onRemove = jest.fn();
+    const { getByText } = await setup({ onRemove });
+
+    // Per the button-hierarchy spec, a sheet-row action MATCHES its primary
+    // sibling's size rather than shrinking to `compact` — this pins the C2 fix
+    // (the icon picker's actions used to be `size="compact"`, the app's one
+    // outlier footer at a different size than every other sheet's footer).
+    const remove = ancestorWithStyle(getByText('Remove'), 'minHeight');
+    const cancel = ancestorWithStyle(getByText('Cancel'), 'minHeight');
+
+    expect(StyleSheet.flatten(remove.props.style).minHeight).toBe(50);
+    expect(StyleSheet.flatten(cancel.props.style).minHeight).toBe(50);
+  });
 });
