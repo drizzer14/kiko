@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
@@ -52,6 +51,7 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import type { TransactionFormParams } from '../../navigation/types';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import BottomSheet from '../../design-system/components/bottom-sheet';
+import ConfirmSheet from '../../design-system/components/confirm-sheet';
 import { type Currency, currencySymbol } from '../../currency/currency';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
@@ -1070,6 +1070,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     name: string;
     category: string;
   } | null>(null);
+  // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
+  // native `Alert.alert`. Only ever set on an editable existing row (the Delete
+  // action is offered only there); a scrim/back dismiss behaves like Cancel.
+  const [deletePending, setDeletePending] = useState(false);
 
   // Seed the fields once, when BOTH the transaction and its holding have loaded
   // (the holding's currency scale is needed to render the amount). The `hydrated`
@@ -1526,28 +1530,35 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  // A manual row can be deleted; the confirm dialog guards the destructive write,
-  // and only its "Delete" button runs the removal, then returns to the list.
-  const confirmDelete = (): void => {
+  // A manual row can be deleted; the themed `ConfirmSheet` (driven by
+  // `deletePending`) guards the destructive write, replacing the old native
+  // `Alert.alert` which could not be themed. Only its destructive confirm runs
+  // the removal; Cancel and a scrim/back dismiss delete nothing.
+  const openDeleteConfirm = (): void => {
     if (editingId === null) {
       return;
     }
-    Alert.alert(
-      t('forms.transaction.deleteConfirmTitle'),
-      t('forms.transaction.deleteConfirmMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.delete'),
-          style: 'destructive',
-          onPress: async () => {
-            await transactionsRepo.remove(editingId);
-            navigation.goBack();
-          },
-        },
-      ],
-    );
+
+    setDeletePending(true);
   };
+
+  const cancelDelete = (): void => {
+    setDeletePending(false);
+  };
+
+  const removeTransaction = async (): Promise<void> => {
+    if (editingId === null) {
+      return;
+    }
+
+    await transactionsRepo.remove(editingId);
+    navigation.goBack();
+  };
+
+  // The same double-submit guard the rest of the form uses (its own instance —
+  // see the override handlers above for why each action gets a separate one),
+  // so a double-tap of the sheet's Delete never issues two removals.
+  const { onPress: onConfirmDelete } = useSubmitOnce(removeTransaction);
 
   // The transaction-TYPE selector (mode ChipRow), built here so the pure
   // `renderFieldGroup` helper stays translation-agnostic. It renders directly
@@ -1652,7 +1663,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,
-            onPressDelete: confirmDelete,
+            onPressDelete: openDeleteConfirm,
             negativeColor: theme.colors.negative,
             t,
           })}
@@ -1698,6 +1709,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {t('common.cancel')}
         </Button>
       </BottomSheet>
+
+      {/* The manual-row delete confirmation — the same shared themed
+          `ConfirmSheet` the grid-card long-press delete uses, replacing the old
+          native `Alert`. A destructive confirm + red-ghost Cancel; a scrim/back
+          dismiss behaves like Cancel. `useSubmitOnce` guards the double-remove. */}
+      <ConfirmSheet
+        visible={deletePending}
+        title={t('forms.transaction.deleteConfirmTitle')}
+        message={t('forms.transaction.deleteConfirmMessage')}
+        confirmLabel={t('common.delete')}
+        onConfirm={onConfirmDelete}
+        onCancel={cancelDelete}
+        destructive
+        confirmTestID="transaction-delete-confirm"
+      />
     </>
   );
 };

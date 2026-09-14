@@ -83,7 +83,6 @@ const mockCreate = jest.fn();
 const mockDelete = jest.fn();
 const mockReorder = jest.fn();
 const mockSetDefault = jest.fn();
-const mockOpenDeleteMenu = jest.fn();
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
@@ -104,14 +103,6 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
   },
-}));
-// The delete confirm routes through the shared native action sheet
-// (`openDeleteMenu`), unit-tested on its own; here it is mocked so the screen
-// test can assert the wiring — the category title and the delete callback —
-// without presenting a real sheet.
-jest.mock('../../design-system/grid-interaction', () => ({
-  ...jest.requireActual('../../design-system/grid-interaction'),
-  openDeleteMenu: (...args: unknown[]) => mockOpenDeleteMenu(...args),
 }));
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
@@ -522,20 +513,28 @@ describe('CategoriesScreen', () => {
     expect(mockSetDefault).toHaveBeenCalledWith('groceries');
   });
 
-  it('confirms via the native action sheet before deleting, then deletes by key on confirm', async () => {
-    const { getByLabelText } = await renderScreen();
+  it('confirms via the themed sheet before deleting, then deletes by key on confirm', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Delete Groceries'));
 
-    // The confirm sheet is opened with the category's title; nothing is deleted yet.
-    expect(mockOpenDeleteMenu).toHaveBeenCalledWith('Groceries', expect.any(Function));
+    // The themed ConfirmSheet (not a native action sheet) opens titled with the
+    // category name; nothing is deleted until its destructive confirm is pressed.
+    expect(getByText('Delete "Groceries"')).toBeTruthy();
     expect(mockDelete).not.toHaveBeenCalled();
 
-    // Confirming (invoking the callback the sheet was handed) deletes by key.
-    const onConfirm = mockOpenDeleteMenu.mock.calls[0][1] as () => void;
-    onConfirm();
+    await fireEvent.press(getByTestId('category-delete-confirm'));
 
     expect(mockDelete).toHaveBeenCalledWith('groceries');
+  });
+
+  it('deletes nothing when the themed delete confirm is dismissed via Cancel', async () => {
+    const { getByLabelText, getByText } = await renderScreen();
+
+    await fireEvent.press(getByLabelText('Delete Groceries'));
+    await fireEvent.press(getByText('Cancel'));
+
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 
   describe('reorder', () => {

@@ -1,12 +1,15 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 
 import { formatDateTime } from '../../dates/format';
-import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -696,18 +699,15 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the deep-press delete menu confirm', async () => {
+  it('deletes a manual holding via the themed deep-press delete confirm', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const sheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1));
-    await renderScreen();
+    const { getByTestId, getByText } = await renderScreen();
     // The manual holding card is wrapped in the deep-press long-press. A hold
-    // that stays still opens the destructive delete sheet; confirming its
-    // destructive index removes the holding.
+    // that stays still opens the themed ConfirmSheet (not a native
+    // ActionSheetIOS); pressing its destructive confirm removes the holding.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -715,12 +715,9 @@ describe('AccountDetailScreen', () => {
         { state: State.END },
       ]);
     });
-    expect(sheetSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ options: ['Cancel', 'Delete "Black card"'] }),
-      expect.any(Function),
-    );
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockRemove).toHaveBeenCalledWith('h1');
-    sheetSpy.mockRestore();
   });
 
   it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {

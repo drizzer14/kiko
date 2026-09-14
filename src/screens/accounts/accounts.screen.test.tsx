@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
@@ -9,7 +9,10 @@ import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
 import { darkTheme } from '../../design-system/theme';
 import { entityIconTileGradient } from '../../design-system/entity-tint';
-import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -254,15 +257,12 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the deep-press delete menu confirm', async () => {
+  it('deletes a manual account via the themed deep-press delete confirm', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    const sheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1));
-    await renderAccounts();
+    const { getByTestId, getByText } = await renderAccounts();
     // The manual card is wrapped in the deep-press long-press. A hold that stays
-    // still opens the destructive delete sheet; confirming its destructive index
-    // removes the account.
+    // still opens the themed ConfirmSheet (not a native ActionSheetIOS); pressing
+    // its destructive confirm removes the account.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -270,12 +270,9 @@ describe('AccountsScreen', () => {
         { state: State.END },
       ]);
     });
-    expect(sheetSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ options: ['Cancel', 'Delete "Cash"'] }),
-      expect.any(Function),
-    );
+    expect(getByText('Delete "Cash"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
-    sheetSpy.mockRestore();
   });
 
   it('opens the account (does not delete) on a plain tap of the card', async () => {

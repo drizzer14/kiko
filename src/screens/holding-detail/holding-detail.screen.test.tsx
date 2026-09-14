@@ -1,13 +1,16 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { formatDate } from '../../dates/format';
-import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
@@ -694,19 +697,17 @@ describe('HoldingDetailScreen', () => {
     expect(queryByTestId('swipeable-row-actions')).toBeNull();
   });
 
-  it('deletes a manual transaction via the deep-press delete menu confirm', async () => {
+  it('deletes a manual transaction via the themed deep-press delete confirm', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
     ]);
-    const sheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1));
 
-    await renderScreen();
+    const { getByTestId, getByText } = await renderScreen();
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under
-    // the max distance) opens the destructive delete sheet; confirming its
-    // destructive index removes the transaction via `transactionsRepo.remove`.
+    // the max distance) opens the themed ConfirmSheet (not a native
+    // ActionSheetIOS); pressing its destructive confirm removes the
+    // transaction via `transactionsRepo.remove`.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -715,12 +716,9 @@ describe('HoldingDetailScreen', () => {
       ]);
     });
 
-    expect(sheetSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ options: ['Cancel', 'Delete "Coffee"'] }),
-      expect.any(Function),
-    );
+    expect(getByText('Delete "Coffee"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
-    sheetSpy.mockRestore();
   });
 
   it('does not offer delete on a synced transaction row', async () => {

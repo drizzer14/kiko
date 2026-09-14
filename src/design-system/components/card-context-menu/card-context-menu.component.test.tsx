@@ -1,11 +1,15 @@
-import { openDeleteMenu } from '@kiko/design-system/grid-interaction';
-import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Pressable, Text } from 'react-native';
+import { trigger } from 'react-native-haptic-feedback';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import '../../unistyles';
 
-import CardContextMenu, { HOLD_GESTURE_TEST_ID } from './card-context-menu.component';
+import CardContextMenu, {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from './card-context-menu.component';
 
 // A GestureDetector must mount under a GestureHandlerRootView, so every render
 // goes through it (the app supplies one at its root in production).
@@ -13,23 +17,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <GestureHandlerRootView>{children}</GestureHandlerRootView>
 );
 
-// The deep-press delete menu itself (haptic + ActionSheetIOS) is unit-tested in
-// grid-interaction.test.ts; here the module is mocked so the component test can
-// assert the long-press gesture is wired to it with the card's name and delete
-// callback — without presenting a real native sheet.
-jest.mock('@kiko/design-system/grid-interaction', () => ({
-  ...jest.requireActual('@kiko/design-system/grid-interaction'),
-  openDeleteMenu: jest.fn(),
-}));
-
 describe('CardContextMenu', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('opens the deep-press delete menu with the card name on a still touch-and-hold of a deletable card', async () => {
+  it('opens the themed delete confirm (haptic, no native sheet) on a still touch-and-hold of a deletable card, routing confirm to onDelete', async () => {
     const onDelete = jest.fn();
-    await render(
+    const { getByTestId, getByText } = await render(
       <CardContextMenu name="Black card" deletable onDelete={onDelete}>
         <Text>card</Text>
       </CardContextMenu>,
@@ -37,19 +32,30 @@ describe('CardContextMenu', () => {
     );
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under the
-    // max distance) triggers the menu; movement would have failed the gesture.
-    fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-      { state: State.BEGAN },
-      { state: State.ACTIVE },
-      { state: State.END },
-    ]);
+    // max distance) triggers the confirm; movement would have failed the gesture.
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
 
-    expect(openDeleteMenu).toHaveBeenCalledWith('Black card', onDelete);
+    // The hold plays the medium-impact haptic and raises the themed confirm
+    // sheet titled `Delete "<name>"` — not a native ActionSheetIOS — and
+    // deletes nothing until its destructive confirm is pressed.
+    expect(trigger).toHaveBeenCalledWith('impactMedium');
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves a plain tap to the child card and never opens the menu', async () => {
+  it('leaves a plain tap to the child card and never opens the confirm', async () => {
     const onPress = jest.fn();
-    const { getByText } = await render(
+    const { getByText, queryByText } = await render(
       <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
         <Pressable onPress={onPress}>
           <Text>card</Text>
@@ -61,10 +67,11 @@ describe('CardContextMenu', () => {
     fireEvent.press(getByText('card'));
 
     expect(onPress).toHaveBeenCalledTimes(1);
-    expect(openDeleteMenu).not.toHaveBeenCalled();
+    expect(queryByText('Delete "Black card"')).toBeNull();
+    expect(trigger).not.toHaveBeenCalled();
   });
 
-  it('renders a synced (non-deletable) card bare, with no gesture to intercept the touch-and-hold drag', async () => {
+  it('renders a synced (non-deletable) card bare, with no gesture and no confirm sheet', async () => {
     const { queryByTestId, getByText } = await render(
       <CardContextMenu name="Synced" deletable={false} onDelete={jest.fn()}>
         <Text>card</Text>

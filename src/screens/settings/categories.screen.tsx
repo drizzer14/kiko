@@ -19,8 +19,9 @@ import type { SettingsStackParamList } from '../../navigation/types';
 import GlassSurface from '../../design-system/components/glass-surface';
 import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { onGridDragEnd } from '../../design-system/grid-interaction';
+import ConfirmSheet from '../../design-system/components/confirm-sheet';
 import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
-import { onGridDragEnd, openDeleteMenu } from '../../design-system/grid-interaction';
 
 import AddCategoryRow from './add-category-row';
 
@@ -73,8 +74,8 @@ const styles = StyleSheet.create(() => ({
 // Every other card puts an icon-only "Set as default" affordance
 // in that same header slot (a bare OUTLINE `star`, so a non-default card
 // previews what picking it will fill in). The labelled destructive delete at the
-// card's bottom (a trash icon beside a "Delete" label, confirmed via the native
-// action sheet since it moves this category's transactions to the default)
+// card's bottom (a trash icon beside a "Delete" label, confirmed via the shared
+// themed ConfirmSheet since it moves this category's transactions to the default)
 // renders on EVERY card, but is DISABLED on the default card — the default can
 // never be deleted, and the disabled control keeps the bottom row's layout
 // identical across all cards. Local title state is seeded from the row so
@@ -101,6 +102,9 @@ const CategoryListRow: FC<{
   // controlled `value` stays in sync with) the real stored text, not the
   // translated one.
   const [isEditing, setIsEditing] = useState(false);
+  // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
+  // native `ActionSheetIOS`; a scrim/back dismiss behaves like Cancel.
+  const [deletePending, setDeletePending] = useState(false);
   const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
   // The category's EFFECTIVE color: its stored hex when picked, else the
   // stable per-key palette hash — computed once and shared by the row icon
@@ -133,12 +137,21 @@ const CategoryListRow: FC<{
   };
 
   // Delete moves this category's transactions (and any name→category overrides)
-  // onto the default category, so it confirms first via the shared native
-  // destructive action sheet — the same confirm the deletable grid cards use.
-  const confirmDelete = (): void => {
-    openDeleteMenu(category.title, () => {
-      categoriesRepo.delete(category.key);
-    });
+  // onto the default category, so it confirms first via the shared, themed
+  // `ConfirmSheet` — the same destructive confirm the deletable grid cards use,
+  // replacing the old native `ActionSheetIOS`. Only its destructive confirm
+  // removes the category; Cancel and a scrim/back dismiss delete nothing.
+  const openDeleteConfirm = (): void => {
+    setDeletePending(true);
+  };
+
+  const cancelDelete = (): void => {
+    setDeletePending(false);
+  };
+
+  const removeCategory = (): void => {
+    setDeletePending(false);
+    categoriesRepo.delete(category.key);
   };
 
   const setAsDefault = (): void => {
@@ -244,7 +257,7 @@ const CategoryListRow: FC<{
             disabled={isDefault}
             icon="trash"
             accessibilityLabel={t('categories.deleteLabel', { title: category.title })}
-            onPress={confirmDelete}
+            onPress={openDeleteConfirm}
           >
             {t('common.delete')}
           </Button>
@@ -284,6 +297,21 @@ const CategoryListRow: FC<{
           </Box>
         </Box>
       </Box>
+
+      {/* The category delete confirmation — the same shared themed
+          `ConfirmSheet` the grid-card long-press delete uses (title
+          `Delete "<name>"`, a bare destructive `Delete`, no body), replacing
+          the old native `ActionSheetIOS`. A scrim/back dismiss behaves like
+          Cancel. */}
+      <ConfirmSheet
+        visible={deletePending}
+        title={t('common.deleteNamed', { name: category.title })}
+        confirmLabel={t('common.delete')}
+        onConfirm={removeCategory}
+        onCancel={cancelDelete}
+        destructive
+        confirmTestID="category-delete-confirm"
+      />
     </GlassSurface>
   );
 };

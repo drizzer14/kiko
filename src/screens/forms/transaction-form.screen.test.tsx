@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
@@ -728,18 +728,27 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByText('09:15')).toBeTruthy();
   });
 
-  it('deletes the transaction and navigates back after confirmation', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      const destructive = (buttons ?? []).find((button) => button.style === 'destructive');
-      destructive?.onPress?.();
-    });
+  it('deletes the transaction and navigates back after confirming the themed sheet', async () => {
     mockRemove.mockResolvedValue(undefined);
-    const { getByText } = await renderEdit('txn-1');
+    const { getByText, getByTestId } = await renderEdit('txn-1');
+
+    // The ghost Delete action opens the themed ConfirmSheet (not a native
+    // Alert); only its destructive confirm runs the removal, then returns.
     await fireEvent.press(getByText('Delete'));
+    await fireEvent.press(getByTestId('transaction-delete-confirm'));
+
     expect(mockRemove).toHaveBeenCalledWith('txn-1');
-    await Promise.resolve();
-    expect(navigation.goBack).toHaveBeenCalled();
-    alertSpy.mockRestore();
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  });
+
+  it('removes nothing when the themed delete confirm is dismissed via Cancel', async () => {
+    const { getByText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByText('Delete'));
+    await fireEvent.press(getByText('Cancel'));
+
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it('renders the delete action as a red ghost with a trash icon', async () => {
