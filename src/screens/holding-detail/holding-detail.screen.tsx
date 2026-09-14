@@ -28,13 +28,12 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import CardContextMenu from '../../design-system/components/card-context-menu';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import SwipeableRow from '../../design-system/components/swipeable-row';
-import { useSwipePopGuard } from '../../design-system/components/swipeable-row/use-swipe-pop-guard';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -217,15 +216,14 @@ type LedgerRowContext = {
   defaultCategoryKey: string;
   holdingName: string;
   holdingNameById: Map<string, string>;
-  onOpenChange: (open: boolean) => void;
   onPressTransaction: (transactionId: string) => void;
 };
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
 // The row UI, props, spacing, and testIDs are unchanged. A derived (computed)
-// entry is read-only; a stored transaction wraps in SwipeableRow and is
-// tappable.
+// entry is read-only; a stored transaction wraps in CardContextMenu (touch-and-
+// hold to delete) and is tappable.
 const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row, context }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -236,14 +234,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
     holdingName,
     holdingNameById,
-    onOpenChange,
     onPressTransaction,
   } = context;
 
   if (row.kind === 'derived') {
     // A computed lifecycle entry (opening/top-up, interest accrual, the
     // 18%/5% withholding lines, capitalization, or a bond
-    // purchase/coupon/redemption): read-only — no SwipeableRow, not
+    // purchase/coupon/redemption): read-only — no delete gesture, not
     // tappable — and marked "Computed" so it reads as derived, not a
     // stored transaction. A projected (future-dated) entry — an
     // upcoming accrual, coupon, or redemption — is dimmed and marked
@@ -289,19 +286,29 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
   );
 
+  // The row's human-readable description, reused as both the row label and
+  // the name the delete confirmation spells out ("Delete <description>").
+  const description = transactionRowDescription({
+    transaction: row.transaction,
+    holdingName,
+    holdingNameById,
+    t,
+  });
+
   // Every real row is tappable: it opens the shared Transaction form
   // for this id. A manual row edits; a synced (Monobank) row opens
   // read-only — the form resolves which from the transaction's own
-  // `source`, so the row only needs to pass the id. Swipe-to-delete
-  // is disabled for synced rows (their state is owned by the sync).
+  // `source`, so the row only needs to pass the id. Delete is a
+  // touch-and-hold that opens the shared card context menu (see
+  // `CardContextMenu`) with a single destructive Delete action — the
+  // same long-press pattern the account/holding cards use. A synced
+  // (Monobank) row is not deletable (its state is owned by the sync),
+  // so `CardContextMenu` renders it with no gesture at all.
   return (
-    <SwipeableRow
-      disabled={isSyncedTransaction(row.transaction)}
+    <CardContextMenu
+      name={description}
+      deletable={!isSyncedTransaction(row.transaction)}
       onDelete={() => transactionsRepo.remove(row.transaction.id)}
-      onOpenChange={onOpenChange}
-      // Match the wrapped glass card's radius (GlassSurface defaults
-      // to `md`) so the swipe reveal clips to the same corners.
-      radius={theme.radii.md}
     >
       <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
         <GlassSurface transparent bloom padding={3} testID="ledger-row">
@@ -319,14 +326,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   accessibilityLabel={category.title}
                 />
                 <Box style={styles.rowDescription}>
-                  <Text variant="body">
-                    {transactionRowDescription({
-                      transaction: row.transaction,
-                      holdingName,
-                      holdingNameById,
-                      t,
-                    })}
-                  </Text>
+                  <Text variant="body">{description}</Text>
                 </Box>
               </Box>
               <Box style={styles.rowAmount}>
@@ -346,16 +346,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
           </Box>
         </GlassSurface>
       </Pressable>
-    </SwipeableRow>
+    </CardContextMenu>
   );
 };
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { holdingId, name: initialName } = route.params;
-  // Disable this screen's native back-swipe while any transaction row is open,
-  // so a right-swipe that closes a row does not also pop the screen.
-  const onOpenChange = useSwipePopGuard(navigation);
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
@@ -571,7 +568,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     defaultCategoryKey,
     holdingName,
     holdingNameById,
-    onOpenChange,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
   };
