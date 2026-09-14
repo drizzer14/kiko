@@ -36,6 +36,19 @@ describe('formatMoney negative amounts', () => {
   it('puts the sign before a suffix-symbol amount', () => {
     expect(formatMoney(Money.fromMajor('UAH', -2500))).toBe('-2,500.00 ₴');
   });
+
+  it('puts the sign before a bare-code amount, outside the spaced code', () => {
+    expect(formatMoney(Money.fromMajor('AED', -1234.5))).toBe('-AED 1,234.50');
+  });
+});
+
+describe('formatMoney bare-code currencies', () => {
+  it('spaces a bare ISO-code mark from the amount (no conventional symbol)', () => {
+    // AED has no distinct Unicode currency symbol, so currencySymbol.AED is
+    // the bare code itself — it must read as a unit, not run into the
+    // digits, unlike a real glyph ($/€/₿), which stays tight.
+    expect(formatMoney(Money.fromMajor('AED', 1234.5))).toBe('AED 1,234.50');
+  });
 });
 
 describe('formatMoney locale grouping', () => {

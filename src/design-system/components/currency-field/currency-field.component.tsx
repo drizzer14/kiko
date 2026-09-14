@@ -9,8 +9,7 @@ import TextField from '../text-field';
 import BottomSheet from '../bottom-sheet';
 import SelectableRow from '../selectable-row';
 import FieldTrigger from '../../../screens/forms/field-trigger';
-import { currencySignSymbol } from '../../../currency/currency-symbols';
-import { type Currency, currencyOptions } from '../../../currency/currency';
+import { type Currency, currencyOptions, currencySymbol } from '../../../currency/currency';
 
 import { styles } from './currency-field.styles';
 import type { CurrencyFieldProps } from './currency-field.props';
@@ -36,9 +35,10 @@ const matches = (t: TFunction, code: Currency, query: string): boolean => {
 };
 
 // A labeled, searchable single-select currency picker: the field shows the
-// current selection (its SF Symbol sign glyph + "CODE — Name", or a
-// placeholder when none) and opens a bottom sheet with a pinned search
-// TextField above a scrollable list of `SelectableRow`s. Modeled on
+// current selection (its text currency mark — `currencySymbol`, symbol-where-
+// one-exists / ISO-code-otherwise, never a generic icon — plus "CODE —
+// Name", or a placeholder when none) and opens a bottom sheet with a pinned
+// search TextField above a scrollable list of `SelectableRow`s. Modeled on
 // CategoryField's field-plus-sheet chrome (FieldTrigger + BottomSheet + an
 // own ScrollView), with a search box added above the list so the full
 // six-currency (soon more) set stays quick to narrow by code OR name. The
@@ -89,7 +89,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         disabled={disabled}
         testID={testID}
         onPress={() => setOpen(true)}
-        icon={selected === undefined ? undefined : currencySignSymbol[selected]}
+        leadingText={selected === undefined ? undefined : currencySymbol[selected]}
         value={triggerValue}
         valueTone={selected === undefined ? 'textSecondary' : 'textPrimary'}
       />
@@ -126,7 +126,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
               selected={code === selected}
               onPress={() => handleSelect(code)}
               label={`${code} — ${currencyName(t, code)}`}
-              icon={currencySignSymbol[code]}
+              leadingText={currencySymbol[code]}
             />
           ))}
         </ScrollView>

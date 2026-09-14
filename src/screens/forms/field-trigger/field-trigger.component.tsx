@@ -17,11 +17,18 @@ import type { FieldTriggerProps } from './field-trigger.props';
 // for why they are meant to read as one family. A future field-plus-sheet
 // picker (DateField already has its own near-identical shape) should reach
 // for this too rather than re-copying it a third time.
+
+// The leading SF Symbol/text mark size, shared by both the `icon` and
+// `leadingText` paths so the two visually match (a "$"/"AED" mark should
+// read at the same size as the SF Symbol it stands in for).
+const FIELD_TRIGGER_ICON_SIZE = 18;
+
 const FieldTrigger: FC<FieldTriggerProps> = ({
   label,
   onPress,
   icon,
   iconColor,
+  leadingText,
   value,
   valueTone,
   trailing,
@@ -43,7 +50,23 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
     >
       <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
         {icon !== undefined && (
-          <SymbolIcon name={icon} size={18} tone="textSecondary" color={iconColor} />
+          <SymbolIcon
+            name={icon}
+            size={FIELD_TRIGGER_ICON_SIZE}
+            tone="textSecondary"
+            color={iconColor}
+          />
+        )}
+
+        {icon === undefined && leadingText !== undefined && (
+          <Text
+            variant="body"
+            tone="textSecondary"
+            numberOfLines={1}
+            style={[styles.leadingTextMark, { fontSize: FIELD_TRIGGER_ICON_SIZE }]}
+          >
+            {leadingText}
+          </Text>
         )}
 
         <Text variant="body" tone={valueTone}>

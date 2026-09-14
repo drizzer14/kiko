@@ -14,6 +14,12 @@ export type SelectableRowProps = {
   // switches to the always-white `onAccent` tone (the design system's
   // onAccent rule for a glyph on a filled accent surface).
   iconColor?: string;
+  // A leading TEXT mark rendered in the SAME leading slot `icon` occupies —
+  // for a glyph that has no SF Symbol representation (a currency sign or
+  // ISO code, e.g. "$", "AED"). Additive: every existing `icon` (SF Symbol)
+  // caller is unaffected. `icon` wins when both are somehow passed — the two
+  // are mutually exclusive in practice, no current caller passes both.
+  leadingText?: string;
   // Renders the fixed-width icon slot even when `icon` is absent, so a menu
   // mixing icon and icon-less rows keeps every label starting at the same
   // x-position. Defaults to `false`.

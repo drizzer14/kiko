@@ -25,4 +25,12 @@ export const styles = StyleSheet.create((theme) => ({
   fieldDisabled: {
     ...disabledFieldStyle(theme),
   },
+  // The leading TEXT mark (`leadingText`): bold enough to read as a glyph,
+  // matching the SF Symbol icon's visual weight. Sized to match `icon`'s own
+  // `FIELD_TRIGGER_ICON_SIZE` via an inline `fontSize` override at the call
+  // site — the same literal both paths share, so it lives once, next to the
+  // `SymbolIcon` call, rather than duplicated here.
+  leadingTextMark: {
+    fontWeight: '600',
+  },
 }));

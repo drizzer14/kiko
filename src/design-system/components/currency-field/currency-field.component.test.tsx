@@ -64,6 +64,28 @@ describe('CurrencyField', () => {
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
   });
 
+  it('shows the text currency mark for the trigger and each option (never a generic icon)', async () => {
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="USD"
+        onSelect={jest.fn()}
+        testID="currency-field"
+      />,
+    );
+
+    // The trigger's own leading mark ("$" for USD) — proves CurrencyField
+    // swapped from the SF Symbol `icon` path onto the text `leadingText` path.
+    expect(utils.getByText('$')).toBeTruthy();
+
+    await open(utils);
+
+    // AED has no conventional Unicode symbol, so its mark is the bare ISO
+    // code — this is exactly the case the old SF-Symbol map fell back to the
+    // generic `banknote` glyph for.
+    expect(utils.getByTestId('currency-option-AED')).toBeTruthy();
+  });
+
   it('does not open the sheet when disabled', async () => {
     const utils = await render(
       <CurrencyField

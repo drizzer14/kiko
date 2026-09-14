@@ -34,6 +34,23 @@ export const styles = StyleSheet.create((theme) => ({
     width: theme.spacing(5),
     alignItems: 'center',
   },
+  // A wider leading slot for a TEXT mark (`leadingText`): a 3-4 character
+  // currency mark ("AED", "Mex$") needs more room than the SF Symbol glyph
+  // the plain `icon` slot above is sized for. `leadingTextMark` below still
+  // shrinks to fit as a safety net for the widest marks, so this slot only
+  // needs to comfortably fit the common case, not the absolute worst case.
+  iconText: {
+    width: theme.spacing(11),
+    alignItems: 'center',
+  },
+  // The text mark itself: sized to the same visual footprint as the SF
+  // Symbol icon it stands in for (`iconSizes.body`, the icon slot's own
+  // glyph size) and bold enough to read as a glyph rather than body copy.
+  leadingTextMark: {
+    fontSize: theme.iconSizes.body,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   label: {
     flex: 1,
   },

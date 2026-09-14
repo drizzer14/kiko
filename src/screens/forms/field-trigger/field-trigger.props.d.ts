@@ -25,6 +25,11 @@ export type FieldTriggerProps = {
   // An explicit entity-color tint for the icon, overriding its default tone —
   // omitted falls back to SymbolIcon's own tone.
   iconColor?: string;
+  // A leading TEXT mark rendered in place of `icon` — for a glyph with no SF
+  // Symbol representation (a currency sign or ISO code, e.g. "$", "AED").
+  // Ignored when `icon` is also passed — the two are mutually exclusive in
+  // practice, no current caller passes both.
+  leadingText?: string;
   // The current selection's display text, or the placeholder copy when
   // nothing is selected yet — the caller resolves which.
   value: string;

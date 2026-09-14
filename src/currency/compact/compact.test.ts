@@ -59,6 +59,12 @@ describe('formatCompactMoney', () => {
     expect(formatCompactMoney(-1_500_000, 'USD', millions)).toBe('-$1.5M');
   });
 
+  it('spaces a bare-code currency mark from the compact body, matching formatMoney', () => {
+    // AED has no conventional Unicode symbol, so its mark is the bare code —
+    // it must read as a spaced unit here too, not just in formatMoney.
+    expect(formatCompactMoney(1_500_000, 'AED', millions)).toBe('AED 1.5M');
+  });
+
   it('groups compact thousands with a non-ASCII space (U+00A0) for uk-UA', () => {
     // 1,234K under en-US groups with an ASCII comma; under uk-UA the same
     // thousands unit groups with U+00A0 NO-BREAK SPACE instead (the exact

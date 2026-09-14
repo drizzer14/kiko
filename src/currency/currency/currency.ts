@@ -235,9 +235,14 @@ export const currencyScale: Record<Currency, number> = {
   BTC: 8,
 };
 
-// The display symbol shown in formatted money text. A fiat with a distinct
-// Unicode currency symbol uses it (₴, $, €, ₹, ₩, ₫ …); a fiat with no
-// distinct Unicode symbol uses its ISO letter code as the display symbol.
+// The display symbol shown in formatted money text AND — as of Item A — the
+// single source of truth for the currency MARK shown in the UI (CurrencyField's
+// leading glyph): every currency shows its own official mark, never a generic
+// icon, so a fiat with a distinct Unicode currency symbol uses it (₴, $, €, ₹,
+// ₩, ₫ …); a fiat with no distinct Unicode symbol uses its ISO letter code as
+// the display symbol/mark instead of falling back to something generic.
+// Uniqueness is not required — several currencies legitimately share a
+// conventional glyph (¥ for CNY/JPY, kr for the Nordics, ₨ for the rupees).
 export const currencySymbol: Record<Currency, string> = {
   UAH: '₴',
   USD: '$',
@@ -366,13 +371,26 @@ export const fiatCurrencyOptions: readonly Currency[] = currencyOptions.filter(i
 export const isCurrency = (value: string): value is Currency =>
   (currencyOptions as readonly string[]).includes(value);
 
-// Places the currency symbol relative to a formatted amount body: the UAH code
-// suffixes its symbol (Ukrainian convention, "2,500.00 ₴"), every other currency
-// prefixes it ("$1,234.50"). Any sign sits outside the symbol on both paths
-// ("-$1,234.50", "-2,500.00 ₴"). Shared by `formatMoney` and `formatCompactMoney`
-// so the placement rule lives in exactly one place.
+// Places the currency symbol relative to a formatted amount body, on one of
+// three paths:
+// - UAH suffixes its symbol (Ukrainian convention), "2,500.00 ₴".
+// - A currency with no distinct Unicode symbol — its `currencySymbol` entry
+//   is just its own ISO code, e.g. AED — prefixes with a SPACE, "AED 1,234.50":
+//   a bare 3-4 letter code needs the gap to read as a unit, not run into the
+//   digits the way a one-glyph symbol can.
+// - Every other currency (a real glyph like $/€/₿) prefixes TIGHT, no space,
+//   "$1,234.50".
+// Any sign sits outside the symbol on every path ("-$1,234.50",
+// "-AED 1,234.50", "-2,500.00 ₴"). Shared by `formatMoney` and
+// `formatCompactMoney` so the placement rule lives in exactly one place.
 export const applySymbolPlacement = (currency: Currency, sign: string, body: string): string => {
   const symbol = currencySymbol[currency];
 
-  return currency === 'UAH' ? `${sign}${body} ${symbol}` : `${sign}${symbol}${body}`;
+  if (currency === 'UAH') {
+    return `${sign}${body} ${symbol}`;
+  }
+
+  const isBareCode = symbol === currency;
+
+  return isBareCode ? `${sign}${symbol} ${body}` : `${sign}${symbol}${body}`;
 };
