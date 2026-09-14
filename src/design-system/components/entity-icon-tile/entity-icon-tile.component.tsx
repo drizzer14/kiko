@@ -21,17 +21,15 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // sites keep their surrounding card BACKGROUND neutral (a plain `transparent`
 // frosted surface) rather than painting it with an entity-color wash.
 //
-// The tile also carries a STATIC specular "glass edge": a thin bright rim
-// (the `tile` style's `specularRim` border, `entity-icon-tile.styles.ts`) plus
-// a subtle white highlight washed over its top portion (the second gradient/
-// `Rect` pair below, `theme.colors.specularHighlight`), imitating the light
-// an iOS app-icon's real glass material catches around its own edge. This is
-// deliberately NOT the real `@callstack/liquid-glass` — these tiles are small
-// and mount many at once (an accounts grid, a holdings list), so a live-
-// sampling glass material per tile would be neither deterministic nor cheap.
-// Both the rim and the highlight are a fixed white, never derived from the
-// tile's own entity-color gradient, so the effect reads identically across
-// every entity hue.
+// The tile also carries a thin, faint hairline border (the `tile` style's
+// `iconTileBorder` token, `entity-icon-tile.styles.ts`), imitating the plain
+// edge separator a real iOS app icon carries around its own edge. An earlier
+// version of this tile additionally washed a white specular "glass" highlight
+// sheen over its top portion — a live design review judged that gloss look
+// bad, so it was removed entirely; a native app icon has no gloss, only a
+// faint edge, and this tile now matches that restraint. The border is a
+// fixed white-based translucency, never derived from the tile's own
+// entity-color gradient, so it reads identically across every entity hue.
 
 // Every tile mounts its own separate `Svg` document, so a gradient id only
 // needs to be unique WITHIN that document (the same scoping
@@ -49,15 +47,6 @@ const GRADIENT_ID_PREFIX = 'entity-icon-tile-gradient';
 const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLabel, size }) => {
   const { theme } = useUnistyles();
   const gradientId = `${GRADIENT_ID_PREFIX}-${useId().replace(/:/g, '')}`;
-  // A second, sibling gradient sharing the same per-instance suffix as
-  // `gradientId` above (so it stays unique across many simultaneously-mounted
-  // tiles too) — the STATIC specular "glass edge" highlight, a subtle white
-  // sheen washed over the tile's top portion, fading to fully transparent
-  // toward the bottom. See `theme.colors.specularHighlight`'s own doc comment
-  // and the `tile` style's `specularRim` border for the rim half of the same
-  // effect. Deliberately a plain styled gradient, never the real
-  // `@callstack/liquid-glass` — the tiles are small and mount many at once.
-  const highlightGradientId = `${gradientId}-highlight`;
 
   const [topStop, bottomStop] = entityIconTileGradient(color);
   const tileSize = iconTileSize(theme);
@@ -97,32 +86,6 @@ const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLab
               stopColor={bottomStop}
             />
           </LinearGradient>
-
-          {/* The specular highlight's own gradient (see `highlightGradientId`'s
-          doc comment above): a single `specularHighlight` white stop at full
-          strength at the top, fading to fully transparent (`stopOpacity={0}`)
-          by the bottom — never a second color, so it reads as a sheen over
-          the entity-color fill rather than a competing tint. */}
-          <LinearGradient
-            testID="entity-icon-tile-highlight-gradient"
-            id={highlightGradientId}
-            x1="0"
-            y1="0"
-            x2="0"
-            y2="1"
-          >
-            <Stop
-              testID="entity-icon-tile-highlight-stop-top"
-              offset="0"
-              stopColor={theme.colors.specularHighlight}
-            />
-            <Stop
-              testID="entity-icon-tile-highlight-stop-bottom"
-              offset="1"
-              stopColor={theme.colors.specularHighlight}
-              stopOpacity={0}
-            />
-          </LinearGradient>
         </Defs>
 
         <Rect
@@ -134,17 +97,6 @@ const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLab
           rx={theme.radii.md}
           ry={theme.radii.md}
           fill={`url(#${gradientId})`}
-        />
-
-        <Rect
-          testID="entity-icon-tile-highlight-rect"
-          x="0"
-          y="0"
-          width={tileSize}
-          height={tileSize}
-          rx={theme.radii.md}
-          ry={theme.radii.md}
-          fill={`url(#${highlightGradientId})`}
         />
       </Svg>
 

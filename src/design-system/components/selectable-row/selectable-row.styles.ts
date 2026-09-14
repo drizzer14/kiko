@@ -43,11 +43,18 @@ export const styles = StyleSheet.create((theme) => ({
     width: theme.spacing(11),
     alignItems: 'center',
   },
-  // The text mark itself: sized to the same visual footprint as the SF
-  // Symbol icon it stands in for (`iconSizes.body`, the icon slot's own
-  // glyph size) and bold enough to read as a glyph rather than body copy.
+  // The text mark itself: it renders through the same `variant="body"` Text
+  // as the row's own label (see `selectable-row.component.tsx`), so it must
+  // match the LABEL's text size, not the SF Symbol glyph footprint an
+  // earlier version sized it to (`theme.iconSizes.body` — an icon size,
+  // wrong scale for a text mark sitting beside body text). Leaving `fontSize`
+  // unset lets the mark inherit `theme.typography.body`'s size straight from
+  // the `variant` prop, the same way the label does; only the weight/
+  // alignment are overridden here, bold enough to read as a glyph-like mark
+  // rather than plain body copy. `adjustsFontSizeToFit` +
+  // `minimumFontScale={0.6}` (set on the `Text` itself) remain the shrink
+  // safety net for the widest marks (e.g. "Mex$").
   leadingTextMark: {
-    fontSize: theme.iconSizes.body,
     fontWeight: '600',
     textAlign: 'center',
   },

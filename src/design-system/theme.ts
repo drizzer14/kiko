@@ -140,28 +140,21 @@ export const darkTheme = {
     // keeping a `textPrimary` (white) label legible on it.
     neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
-    // A thin, bright white rim — the STATIC specular "glass edge" border on a
-    // squircle icon tile (`EntityIconTile`), imitating the thin light rim an
-    // iOS app icon's real glass material catches around its own edge. This is
-    // NOT the real `@callstack/liquid-glass` (the tiles are small and mount
-    // many-at-once in a grid, so a live-sampling material per tile would be
-    // neither deterministic nor cheap) — a plain, always-on translucent-white
-    // border reads the same way on every entity hue, since it never derives
-    // from the tile's own color the way `entityIconTileGradient`'s fill stops
-    // do. Distinct from the neutral gray `border` separator token above: that
-    // one is a flat hairline for a card edge (`GlassSurface`'s `bordered`
-    // prop); this is a brighter, white-based rim specifically meant to read
-    // as a specular highlight, not a plain divider.
-    specularRim: 'rgba(255,255,255,0.45)',
-    // The `specularRim`'s sibling: a subtle white sheen washed over the TOP
-    // portion of the same tile (see `EntityIconTile`'s highlight gradient),
-    // fading to fully transparent toward the bottom — the second half of the
-    // "thin light rim plus a subtle highlight" glass-edge look. Kept as its
-    // own token (not reused from `specularRim`) so the rim and the highlight
-    // can be tuned to different strengths independently; today the highlight
-    // is deliberately fainter than the rim; it is a soft wash across a whole
-    // corner, not a hairline edge.
-    specularHighlight: 'rgba(255,255,255,0.30)',
+    // A thin, faint translucent-white hairline border on a squircle icon
+    // tile (`EntityIconTile`) — a plain native iOS app-icon edge separator,
+    // not a specular/gloss effect. Real iOS app icons carry only a subtle
+    // ~1px edge, no gloss sheen; a review of an earlier, brighter
+    // (0.45-alpha) "glass edge" rim plus a white highlight sheen judged the
+    // gloss look bad, so the highlight gradient was removed entirely and
+    // this border was dimmed to 0.12 alpha to match that native restraint.
+    // Always a fixed white-based translucency, never derived from the
+    // tile's own color the way `entityIconTileGradient`'s fill stops are, so
+    // it reads identically on every entity hue. Distinct from the neutral
+    // gray `border` separator token above: that one is a flat hairline for
+    // a card edge (`GlassSurface`'s `bordered` prop); this is a
+    // white-based hairline specifically for a squircle icon tile's own
+    // edge.
+    iconTileBorder: 'rgba(255,255,255,0.12)',
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet). NOT the opaque `background` token: a modal
     // scrim reads as a frosted dim over whatever screen is behind it — real
