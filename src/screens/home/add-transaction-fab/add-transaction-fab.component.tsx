@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 
 import SymbolIcon from '../../../design-system/components/symbol';
+import GlassSurface from '../../../design-system/components/glass-surface';
 
 import { styles } from './add-transaction-fab.styles';
 import type { AddTransactionFabProps } from './add-transaction-fab.props';
@@ -12,9 +13,13 @@ import type { AddTransactionFabProps } from './add-transaction-fab.props';
 // the global way to add a manual transaction from anywhere, opening the shared
 // create form with NO holding fixed (the form then shows its own primary-leg
 // holding picker). It sits OUTSIDE the list's scroll content and lifts itself
-// above the floating tab bar via the list's own `bottomOffset`. A plain accent
-// circle with a white glyph; navigation is injected through `onPress` so the
-// component stays presentational and decoupled from any stack's param typing.
+// above the floating tab bar via the list's own `bottomOffset`. The visible
+// circle is the shared design-system `GlassSurface` (neutral `transparent`
+// variant — real Liquid Glass on iOS 26, a themed translucent fallback
+// otherwise), never a hand-rolled glass effect or a flat accent fill; the
+// Pressable stays the positioned, sized touch target and navigation is
+// injected through `onPress` so the component stays presentational and
+// decoupled from any stack's param typing.
 const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottomOffset }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -31,7 +36,20 @@ const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottomOffset }
       onPress={onPress}
       style={({ pressed }) => [fabStyle, pressed && styles.pressed]}
     >
-      <SymbolIcon name="plus" size={theme.iconSizes.title} tone="onAccent" />
+      <GlassSurface
+        testID="add-transaction-fab-glass"
+        radius="full"
+        transparent
+        style={styles.glass}
+      >
+        {/* `textPrimary` (white): a translucent glass background samples
+        whatever sits behind it, so its effective tone varies with scroll
+        content — a fixed white glyph is the one choice that stays legible
+        (and WCAG-AA-safe) against every backdrop the live glass can show,
+        unlike a semi-transparent `textSecondary` or a hue-dependent tinted
+        glyph. */}
+        <SymbolIcon name="plus" size={theme.iconSizes.title} tone="textPrimary" />
+      </GlassSurface>
     </Pressable>
   );
 };
