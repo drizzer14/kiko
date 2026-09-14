@@ -114,11 +114,14 @@ const CATEGORIES: Category[] = [
   { key: 'dining', title: 'Dining', icon: 'fork.knife' },
 ];
 
+type Rate = { base: string; quote: string; rate: string };
+
 const setLiveData = (
   holdings: Holding[],
   transaction?: Transaction,
   categories: Category[] = CATEGORIES,
   accounts: Account[] = [],
+  rates: Rate[] = [],
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
     if (tables[0] === 'holdings') {
@@ -132,6 +135,9 @@ const setLiveData = (
     }
     if (tables[0] === 'accounts') {
       return { data: accounts };
+    }
+    if (tables[0] === 'currency_rates') {
+      return { data: rates };
     }
 
     return { data: [] };
@@ -1824,5 +1830,75 @@ describe('canSaveSplit', () => {
         'payer',
       ),
     ).toBe(false);
+  });
+});
+
+// Fixtures for Feature 1 convert prefill (Task 8): a SYNCED monobank USD card
+// withdrawal (`w1`, -20.00 USD) and a UAH cash destination to convert into.
+const PREFILL_HOLDINGS: Holding[] = [
+  {
+    id: 'card-usd',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'card',
+    name: 'Card USD',
+    accountId: 'acc',
+  },
+  {
+    id: 'cash-uah',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash UAH',
+    accountId: 'acc',
+  },
+];
+
+const PREFILL_ACCOUNTS: Account[] = [{ id: 'acc', name: 'Home' }];
+
+const PREFILL_TXN: Transaction = {
+  id: 'w1',
+  holdingId: 'card-usd',
+  amountMinorUnits: -20_00,
+  time: 42,
+  description: 'ATM withdrawal',
+  source: 'monobank',
+};
+
+describe('TransactionFormScreen — convert counterpart prefill', () => {
+  const renderConvert = (rates: Rate[]): ReturnType<typeof render> => {
+    setLiveData(PREFILL_HOLDINGS, PREFILL_TXN, CATEGORIES, PREFILL_ACCOUNTS, rates);
+    const route = transactionFormRoute({ transactionId: 'w1' });
+
+    return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('prefills the counterpart amount from the latest cached rate on picking a destination', async () => {
+    const utils = await renderConvert([{ base: 'USD', quote: 'UAH', rate: '41.5' }]);
+
+    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash UAH'));
+
+    // 20.00 USD × 41.5 = 830.00 UAH, shown as the grouped major string "830".
+    await waitFor(() => expect(utils.getByLabelText('Value In').props.value).toBe('830'));
+    // The synced bank row is never mutated by a form-field prefill.
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('leaves the counterpart amount blank when no rate for the pair is cached', async () => {
+    const utils = await renderConvert([]);
+
+    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash UAH'));
+
+    // No USD:UAH rate → seedCounterpartMinorUnits returns null → the field stays
+    // blank and editable rather than being overwritten.
+    expect(utils.getByLabelText('Value In').props.value).toBe('');
   });
 });

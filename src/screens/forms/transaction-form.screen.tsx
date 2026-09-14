@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import type { TFunction } from 'i18next';
+import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
@@ -32,6 +33,7 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import { buildRateTable } from '../../rates/net-worth-view';
 import SymbolIcon from '../../design-system/components/symbol';
 import TextField from '../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
@@ -42,6 +44,7 @@ import { resolveEntityColor } from '../../design-system/entity-tint';
 import BottomSheet from '../../design-system/components/bottom-sheet';
 import { type Currency, currencySymbol } from '../../currency/currency';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
 import { defaultTransactionDescription } from '../../transactions/default-description';
 
@@ -882,6 +885,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     color: resolveCategoryColor(category.color, category.key),
   }));
 
+  // Feature 1 (convert prefill): the latest cached FX rates, parsed into a
+  // numeric table so a picked convert counterpart's amount can be seeded from
+  // the withdrawal magnitude. A missing pair seeds null, leaving the field blank.
+  const { data: rateRows } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
+  const rateTable = buildRateTable(rateRows);
+
   const holdingId =
     existing?.holdingId ?? ('holdingId' in route.params ? route.params.holdingId : undefined);
   const holding = holdings.find((candidate) => candidate.id === holdingId);
@@ -981,6 +990,38 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setHydrated(true);
     }
   }, [existing, holding, hydrated, currency]);
+
+  // Feature 1: seed the counterpart (cash) amount from the latest cached rate the
+  // moment a destination is picked on an expense-sourced convert (a card->cash
+  // withdrawal). Same currency -> 1:1; a missing rate leaves the field blank and
+  // editable (`seedCounterpartMinorUnits` returns null). The synced bank row is
+  // never touched — this only fills a form field. Keyed on the picked counterpart
+  // ALONE so a later manual edit is preserved until the destination changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(deliberate re-seed key) the effect must fire ONLY when the picked destination changes; existing/currency/holdings/rateTable are read through the closure on purpose. rateTable (buildRateTable) is a fresh object every render, so listing the full set would re-seed on every keystroke and clobber the user's manual edit to the counterpart amount.
+  useEffect(() => {
+    if (!convertView.eligible || convertView.direction !== 'record-destination' || !existing) {
+      return;
+    }
+
+    const counterpart = holdings.find((candidate) => candidate.id === counterpartHoldingId);
+
+    if (counterpart === undefined) {
+      return;
+    }
+
+    const seeded = seedCounterpartMinorUnits({
+      sourceAmountMinorUnits: existing.amountMinorUnits,
+      sourceCurrency: currency,
+      counterpartCurrency: counterpart.currency,
+      rateTable,
+    });
+
+    if (seeded === null) {
+      return;
+    }
+
+    setCounterpartAmount(groupAmount(majorAmountText(counterpart.currency, seeded)));
+  }, [counterpartHoldingId]);
 
   // The row's category at open, keyed the same way, so an edit is detectable.
   // Derived (not stored) so it always reflects the persisted value even before
