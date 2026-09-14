@@ -479,7 +479,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         onChangeText={props.onChangeAmount}
         editable={!props.isReadOnly}
         keyboardType="decimal-pad"
-        placeholder="0.00"
+        placeholder={props.t('forms.transaction.amountPlaceholder')}
         suffix={props.amountSuffix}
         // A read-only (synced) row's amount never gates save, so it carries no
         // required marker; a manual add/edit always needs a positive amount.
@@ -1205,16 +1205,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
         gap={3}
+        header={
+          <Box direction="row" gap={2} style={styles.confirmHeader}>
+            {pendingCategory !== null && (
+              <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
+            )}
+
+            <Text variant="heading">{t('forms.transaction.applyCategoryToAll')}</Text>
+          </Box>
+        }
         testID="category-override-sheet"
       >
-        <Box direction="row" gap={2} style={styles.confirmHeader}>
-          {pendingCategory !== null && (
-            <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
-          )}
-
-          <Text variant="heading">{t('forms.transaction.applyCategoryToAll')}</Text>
-        </Box>
-
         <Text variant="body" tone="textSecondary">
           {overrideMessage}
         </Text>

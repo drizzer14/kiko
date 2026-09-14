@@ -182,12 +182,18 @@ describe('HoldingFormScreen term deposit', () => {
     // A holding may legitimately be in a crypto currency, so — unlike the cash
     // account form — the holding currency picker keeps the FULL set: opening the
     // field offers both fiat (UAH) and crypto (BTC).
-    const { getByTestId } = await renderScreen();
+    const { getByTestId, getByPlaceholderText } = await renderScreen();
 
     await fireEvent.press(getByTestId('holding-currency-field'));
 
-    expect(getByTestId('currency-option-BTC')).toBeTruthy();
+    // UAH is the first option, so it renders eagerly — a fiat is offered.
     expect(getByTestId('currency-option-UAH')).toBeTruthy();
+
+    // BTC is the last currency, so the virtualized list does not mount it
+    // eagerly; search for it (as currency-field.component.test.tsx does) to
+    // prove the holding picker still offers crypto.
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
+    expect(getByTestId('currency-option-BTC')).toBeTruthy();
   });
 
   it('does not render the opening Balance input for a term deposit', async () => {

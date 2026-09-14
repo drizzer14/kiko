@@ -1,15 +1,15 @@
-import { type ReactElement, useState } from 'react';
 import { Pressable } from 'react-native';
+import { type ReactElement, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 import FieldTrigger from '../field-trigger';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 
-import type { HoldingSelectFieldProps } from './holding-select-field.props';
 import { styles } from './holding-select-field.styles';
+import type { HoldingSelectFieldProps } from './holding-select-field.props';
 
 // A labeled single-select holding picker for the Exchange "To" field: the
 // field shows the current selection (its SF Symbol + name, or a placeholder
@@ -69,9 +69,12 @@ const HoldingSelectField = ({
         }
       />
 
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={2}>
-        <Text variant="heading">{label}</Text>
-
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={2}
+        header={<Text variant="heading">{label}</Text>}
+      >
         {options.map((option) => {
           const isSelected = option.id === selectedId;
 

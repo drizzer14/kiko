@@ -3,14 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import BottomSheet from '../bottom-sheet';
 import Box from '../box';
+import Text from '../text';
 import Button from '../button';
 import SymbolIcon from '../symbol';
-import Text from '../text';
+import BottomSheet from '../bottom-sheet';
+import SheetFooter from '../sheet-footer';
 
-import type { IconPickerModalProps } from './icon-picker-modal.props';
 import { styles } from './icon-picker-modal.styles';
+import type { IconPickerModalProps } from './icon-picker-modal.props';
 
 // A fixed, curated set of SF Symbol names offered by the icon picker. Editing
 // an icon is deliberately a pick from this closed list rather than free text:
@@ -195,34 +196,24 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { t } = useTranslation();
 
   return (
-    // `scrollable={false}`: the Remove/Cancel header below must stay pinned
-    // above the grid regardless of scroll position — BottomSheet's shared
-    // ScrollView (F5 fix) would otherwise sweep the header into the same
-    // scrollable region as the grid below it, along with nesting a second
-    // same-axis ScrollView around this component's own.
+    // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
+    // the body end regardless of scroll position — BottomSheet's shared
+    // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
+    // region as the grid above it, along with nesting a second same-axis
+    // ScrollView around this component's own. The title renders through the
+    // shared `header` prop instead (see below); the actions used to sit in a
+    // top-right row beside it (this sheet's former outlier footer pattern —
+    // see `explore-bottomsheet.md`'s action-button inventory) and now render
+    // through the shared `SheetFooter` at the body end instead, the same
+    // placement every other choice sheet uses.
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
       animationType="slide"
       backdropAccessibilityLabel={t('categories.dismissIconPicker')}
       scrollable={false}
+      header={<Text variant="heading">{t('categories.chooseIconHeading')}</Text>}
     >
-      <Box direction="row" gap={3} style={styles.header}>
-        <Text variant="heading">{t('categories.chooseIconHeading')}</Text>
-
-        <Box direction="row" gap={2}>
-          {onRemove !== undefined && (
-            <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
-              {t('forms.holding.remove')}
-            </Button>
-          )}
-
-          <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
-            {t('common.cancel')}
-          </Button>
-        </Box>
-      </Box>
-
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         <Box direction="row" gap={2} style={styles.grid}>
           {CURATED_ICONS.map((icon) => {
@@ -260,6 +251,18 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           })}
         </Box>
       </ScrollView>
+
+      <SheetFooter>
+        {onRemove !== undefined && (
+          <Button variant="destructiveTonal" fullWidth={false} onPress={onRemove}>
+            {t('forms.holding.remove')}
+          </Button>
+        )}
+
+        <Button variant="secondary" fullWidth={false} onPress={onDismiss}>
+          {t('common.cancel')}
+        </Button>
+      </SheetFooter>
     </BottomSheet>
   );
 };

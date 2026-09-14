@@ -2,11 +2,11 @@ import type { FC } from 'react';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import SymbolIcon from '../symbol';
 import Text from '../text';
+import SymbolIcon from '../symbol';
 
-import type { SelectableRowProps } from './selectable-row.props';
 import { styles } from './selectable-row.styles';
+import type { SelectableRowProps } from './selectable-row.props';
 
 // The shared single-select row style: a 44pt-minimum tap target that fills
 // with the accent background when selected (the OptionPills/ChipRow selection
@@ -19,6 +19,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
   label,
   icon,
   iconColor,
+  leadingText,
   reserveIconSlot = false,
   accessibilityRole = 'button',
   accessibilityLabel,
@@ -26,7 +27,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
   testID,
 }) => {
   const { theme } = useUnistyles();
-  const showIconSlot = icon != null || reserveIconSlot;
+  const showIconSlot = icon !== undefined || leadingText !== undefined || reserveIconSlot;
 
   return (
     <Pressable
@@ -46,13 +47,26 @@ const SelectableRow: FC<SelectableRowProps> = ({
         </View>
 
         {showIconSlot && (
-          <View style={styles.icon}>
-            {icon != null && (
+          <View style={leadingText !== undefined ? styles.iconText : styles.icon}>
+            {icon !== undefined && (
               <SymbolIcon
                 name={icon}
                 size={theme.iconSizes.body}
                 {...(selected ? { tone: 'onAccent' as const } : { color: iconColor })}
               />
+            )}
+
+            {icon === undefined && leadingText !== undefined && (
+              <Text
+                variant="body"
+                tone={selected ? 'onAccent' : 'textSecondary'}
+                style={styles.leadingTextMark}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {leadingText}
+              </Text>
             )}
           </View>
         )}

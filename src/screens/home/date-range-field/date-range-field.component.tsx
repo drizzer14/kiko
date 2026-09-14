@@ -1,21 +1,22 @@
-import KikoCalendar from '@kiko/calendar';
 import type { TFunction } from 'i18next';
+import KikoCalendar from '@kiko/calendar';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
-import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
+import type { DateData } from 'react-native-calendars';
 
 import { formatDate } from '../../../dates/format';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SheetFooter from '../../../design-system/components/sheet-footer';
 
-import type { DateRangeFieldProps } from './date-range-field.props';
-import { styles } from './date-range-field.styles';
 import { boundToMove } from './nearer-bound';
+import { styles } from './date-range-field.styles';
+import type { DateRangeFieldProps } from './date-range-field.props';
 
 // A single period-marking entry for one calendar day. `color` fills the day;
 // `startingDay`/`endingDay` round the span's two ends. `selected: true` is
@@ -225,14 +226,18 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           this sheet owns its own inner ScrollView around just the heading +
           calendar rather than the shared one BottomSheet would otherwise wrap
           ALL of children in. */}
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4} scrollable={false}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={4}
+        scrollable={false}
+        header={<Text variant="heading">{t('home.dateRangeField.heading')}</Text>}
+      >
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text variant="heading">{t('home.dateRangeField.heading')}</Text>
-
           <KikoCalendar
             testID="date-range-calendar"
             markingType="period"
@@ -250,7 +255,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           />
         </ScrollView>
 
-        <Box direction="row" gap={3} style={styles.actions}>
+        <SheetFooter>
           <Button variant="secondary" fullWidth={false} onPress={handleClear}>
             {t('home.dateRangeField.clear')}
           </Button>
@@ -258,7 +263,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           <Button fullWidth={false} onPress={handleApply}>
             {t('home.dateRangeField.apply')}
           </Button>
-        </Box>
+        </SheetFooter>
       </BottomSheet>
     </Box>
   );

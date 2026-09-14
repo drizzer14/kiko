@@ -92,7 +92,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           value={amount}
           onChangeText={(text) => setAmount(groupAmount(text))}
           keyboardType="decimal-pad"
-          placeholder="0.00"
+          placeholder={t('forms.contribution.amountPlaceholder')}
           suffix={currencySymbol[currency]}
           required
         />

@@ -1,15 +1,15 @@
-import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, type ScrollViewInstance } from 'react-native';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import Box from '../../../design-system/components/box';
-import SelectableRow from '../../../design-system/components/selectable-row';
-import Text from '../../../design-system/components/text';
 import FieldTrigger from '../field-trigger';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SelectableRow from '../../../design-system/components/selectable-row';
 
-import type { CategoryFieldProps } from './category-field.props';
 import { styles } from './category-field.styles';
+import type { CategoryFieldProps } from './category-field.props';
 
 // The glyph shown in the field before any category is picked — a neutral tag
 // placeholder, tinted secondary to read as "empty" like the DateField's own
@@ -108,10 +108,9 @@ const CategoryField = ({
         onDismiss={() => setOpen(false)}
         gap={2}
         scrollable={false}
+        header={<Text variant="heading">{label}</Text>}
         testID="category-picker-sheet"
       >
-        <Text variant="heading">{label}</Text>
-
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}

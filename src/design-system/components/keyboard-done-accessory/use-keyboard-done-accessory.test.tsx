@@ -28,6 +28,12 @@ describe('useKeyboardDoneAccessory', () => {
     expect(getByLabelText('Field').props.inputAccessoryViewID).toBeDefined();
   });
 
+  it('exposes Done as an accessible button (the styled Pressable toolbar action)', async () => {
+    const { getByRole } = await render(<Host />);
+
+    expect(getByRole('button', { name: 'Done' })).toBeTruthy();
+  });
+
   it('dismisses the keyboard when Done is pressed', async () => {
     const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
 

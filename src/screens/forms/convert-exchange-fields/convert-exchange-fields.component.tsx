@@ -60,7 +60,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         value={counterpartAmount}
         onChangeText={onChangeCounterpartAmount}
         keyboardType="decimal-pad"
-        placeholder="0.00"
+        placeholder={t('forms.transaction.convertAmountPlaceholder')}
         suffix={counterpartSuffix}
         required
       />

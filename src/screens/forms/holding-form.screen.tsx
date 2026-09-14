@@ -560,7 +560,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             value={openingBalance}
             onChangeText={(text) => setOpeningBalance(groupAmount(text))}
             keyboardType="decimal-pad"
-            placeholder="0.00"
+            placeholder={t('forms.holding.balancePlaceholder')}
             suffix={currencySymbol[currency]}
           />
         )}
@@ -593,7 +593,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                       value={contribution.amount}
                       onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
                       keyboardType="decimal-pad"
-                      placeholder="0.00"
+                      placeholder={t('forms.holding.contributionPlaceholder')}
                       suffix={currencySymbol[currency]}
                       required
                     />
@@ -645,7 +645,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={annualRate}
               onChangeText={setAnnualRate}
               keyboardType="decimal-pad"
-              placeholder="0"
+              placeholder={t('forms.holding.annualRatePlaceholder')}
               required
             />
 
@@ -654,7 +654,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={termMonths}
               onChangeText={setTermMonths}
               keyboardType="number-pad"
-              placeholder="0"
+              placeholder={t('forms.holding.termMonthsPlaceholder')}
               required
             />
 
@@ -685,7 +685,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={quantity}
               onChangeText={(text) => setQuantity(groupAmount(text))}
               keyboardType="number-pad"
-              placeholder="0"
+              placeholder={t('forms.holding.quantityPlaceholder')}
               required
             />
 
@@ -694,7 +694,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={faceValue}
               onChangeText={(text) => setFaceValue(groupAmount(text))}
               keyboardType="decimal-pad"
-              placeholder="0.00"
+              placeholder={t('forms.holding.faceValuePlaceholder')}
               suffix={currencySymbol[currency]}
               required
             />
@@ -704,7 +704,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               value={couponPct}
               onChangeText={setCouponPct}
               keyboardType="decimal-pad"
-              placeholder="0"
+              placeholder={t('forms.holding.couponPlaceholder')}
               required
             />
 
