@@ -1,10 +1,13 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import type { ComponentProps, ReactNode } from 'react';
+import { ActionSheetIOS, StyleSheet } from 'react-native';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { formatDate } from '../../dates/format';
+import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
@@ -13,6 +16,13 @@ import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support
 import HoldingDetailScreen from './holding-detail.screen';
 
 type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
+
+// A row's delete menu is a react-native-gesture-handler long-press (via the
+// shared CardContextMenu), so the screen must mount under a
+// GestureHandlerRootView (the app supplies one at its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // The Text primitive's tone -> color mapping lives inside a unistyles variant
 // that the project Jest mock strips before a test can inspect it, so a money
@@ -226,6 +236,7 @@ const renderScreen = () =>
       navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
       route={route}
     />,
+    { wrapper: gestureRootWrapper },
   );
 
 describe('HoldingDetailScreen', () => {
@@ -666,24 +677,50 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { transactionId: 'txn-7' });
   });
 
-  it('deletes a manual transaction via the swipe action', async () => {
+  it('wires a manual transaction row to the shared long-press context menu, not a swipe-to-delete row', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
     ]);
 
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      const destructive = (buttons ?? []).find((button) => button.style === 'destructive');
-      destructive?.onPress?.();
+    const { queryByTestId } = await renderScreen();
+
+    // The delete affordance is the shared CardContextMenu long-press — the row
+    // is wrapped in its `card-context-menu` layer and registers the hold
+    // gesture — rather than the old SwipeableRow's `*-actions` layer.
+    // `getByGestureTestId` throws when the hold gesture is absent, so reaching
+    // it asserts the affordance.
+    expect(queryByTestId('card-context-menu')).not.toBeNull();
+    expect(getByGestureTestId(HOLD_GESTURE_TEST_ID)).toBeTruthy();
+    expect(queryByTestId('swipeable-row-actions')).toBeNull();
+  });
+
+  it('deletes a manual transaction via the deep-press delete menu confirm', async () => {
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+    const sheetSpy = jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1));
+
+    await renderScreen();
+
+    // A hold that reaches ACTIVE (stayed still past the min duration, under
+    // the max distance) opens the destructive delete sheet; confirming its
+    // destructive index removes the transaction via `transactionsRepo.remove`.
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
 
-    const { getByLabelText } = await renderScreen();
-
-    // The delete action is a11y-hidden on a closed row, so it must be queried
-    // with hidden elements included.
-    await fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
-
+    expect(sheetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ options: ['Cancel', 'Delete "Coffee"'] }),
+      expect.any(Function),
+    );
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
-    alertSpy.mockRestore();
+    sheetSpy.mockRestore();
   });
 
   it('does not offer delete on a synced transaction row', async () => {
@@ -697,9 +734,11 @@ describe('HoldingDetailScreen', () => {
       },
     ]);
 
-    const { queryByLabelText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // A synced (Monobank) row is not deletable, so CardContextMenu renders it
+    // bare — no card-context-menu wrapper and no hold gesture to intercept it.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
   it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {
@@ -720,13 +759,14 @@ describe('HoldingDetailScreen', () => {
     expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
   });
 
-  it('renders derived rows read-only: no swipe-delete and not tappable to the form', async () => {
+  it('renders derived rows read-only: no context menu and not tappable to the form', async () => {
     seed(depositHolding);
 
-    const { getByText, queryByLabelText } = await renderScreen();
+    const { getByText, queryByTestId } = await renderScreen();
 
-    // A derived-only deposit (no real transactions) offers no delete action at all.
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // A derived-only deposit (no real transactions) offers no delete action at
+    // all — no row is wrapped in the shared CardContextMenu.
+    expect(queryByTestId('card-context-menu')).toBeNull();
     // Pressing a derived row's label opens no transaction form.
     await fireEvent.press(getByText('Opening deposit'));
     expect(navigation.navigate).not.toHaveBeenCalled();
@@ -743,13 +783,15 @@ describe('HoldingDetailScreen', () => {
       },
     ]);
 
-    const { getByText, getByLabelText } = await renderScreen();
+    const { getByText, getAllByTestId } = await renderScreen();
 
     // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
     expect(getByText('Opening deposit')).toBeTruthy();
-    // Only the real row is deletable; the derived rows expose no delete action.
-    expect(getByLabelText('Delete', { includeHiddenElements: true })).toBeTruthy();
+    // Only the real row is deletable; the derived rows expose no delete
+    // action, so exactly one card-context-menu wrapper renders for the whole
+    // ledger.
+    expect(getAllByTestId('card-context-menu')).toHaveLength(1);
   });
 
   it('colors a deposit tax row red and an interest accrual green in the ledger', async () => {
