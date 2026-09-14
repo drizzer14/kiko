@@ -847,23 +847,20 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
 
   if (props.isExchange) {
     return (
-      <>
-        <ExchangeFields
-          valueOut={props.amount}
-          onChangeValueOut={props.onChangeAmount}
-          valueOutSuffix={props.amountSuffix}
-          destinationOptions={props.destinationOptions}
-          destinationHoldingId={props.destinationHoldingId}
-          onSelectDestination={props.onSelectDestination}
-          valueIn={props.valueIn}
-          onChangeValueIn={props.onChangeValueIn}
-          valueInSuffix={props.valueInSuffix}
-          time={props.time}
-          onChangeTime={props.onChangeTime}
-        />
-
-        {props.modeChipRow}
-      </>
+      <ExchangeFields
+        valueOut={props.amount}
+        onChangeValueOut={props.onChangeAmount}
+        valueOutSuffix={props.amountSuffix}
+        destinationOptions={props.destinationOptions}
+        destinationHoldingId={props.destinationHoldingId}
+        onSelectDestination={props.onSelectDestination}
+        valueIn={props.valueIn}
+        onChangeValueIn={props.onChangeValueIn}
+        valueInSuffix={props.valueInSuffix}
+        time={props.time}
+        onChangeTime={props.onChangeTime}
+        modeChipRow={props.modeChipRow}
+      />
     );
   }
 

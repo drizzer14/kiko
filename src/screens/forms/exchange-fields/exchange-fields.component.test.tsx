@@ -1,3 +1,4 @@
+import { Text } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 
 import '../../../design-system/unistyles';
@@ -6,6 +7,23 @@ import { i18n } from '../../../i18n';
 import ExchangeFields from './exchange-fields.component';
 
 const noop = (): void => {};
+
+// A react-test-renderer JSON node's `children` mixes further nodes and raw text
+// leaves; walking only `children` reconstructs the screen-reading order of
+// every rendered label/text leaf, so a slot's position can be asserted without
+// depending on internal DOM structure.
+type RenderedNode = { children: (RenderedNode | string)[] | null };
+
+const collectRenderedText = (node: RenderedNode | string | null): string[] => {
+  if (node === null) {
+    return [];
+  }
+  if (typeof node === 'string') {
+    return [node];
+  }
+
+  return (node.children ?? []).flatMap(collectRenderedText);
+};
 
 const setup = async (overrides: Partial<Parameters<typeof ExchangeFields>[0]> = {}) =>
   render(
@@ -33,6 +51,24 @@ describe('ExchangeFields', () => {
     expect(getByLabelText('To')).toBeTruthy();
     expect(getByLabelText('Value In')).toBeTruthy();
     expect(getByLabelText('Date')).toBeTruthy();
+  });
+
+  it('renders the modeChipRow slot between the Value In field and the Date field when provided', async () => {
+    const { toJSON } = await setup({ modeChipRow: <Text>MODE_CHIP</Text> });
+
+    const rendered = collectRenderedText(toJSON() as unknown as RenderedNode);
+    const order = ['Value In', 'MODE_CHIP', 'Date', 'Time'].map((label) => rendered.indexOf(label));
+
+    for (const index of order) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('renders no slot content in that position when modeChipRow is omitted', async () => {
+    const { queryByText } = await setup();
+
+    expect(queryByText('MODE_CHIP')).toBeNull();
   });
 
   it('shows each leg its own currency glyph as a suffix', async () => {

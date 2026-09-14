@@ -1,3 +1,5 @@
+import type { ReactElement } from 'react';
+
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 export type ExchangeFieldsProps = {
@@ -20,4 +22,8 @@ export type ExchangeFieldsProps = {
   // The transaction's date (unix-millis, local midnight once picked).
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The transaction-TYPE selector (mode ChipRow), rendered directly under the
+  // Value In (second) input, between it and the Date field. Optional so the
+  // component stays general; rendered only when provided.
+  modeChipRow?: ReactElement;
 };

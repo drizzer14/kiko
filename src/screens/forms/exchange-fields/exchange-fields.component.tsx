@@ -30,6 +30,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   valueInSuffix,
   time,
   onChangeTime,
+  modeChipRow,
 }) => {
   const { t } = useTranslation();
 
@@ -63,6 +64,11 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         suffix={valueInSuffix}
         required
       />
+
+      {/* The transaction-TYPE selector sits directly under the Value In (second)
+        input, between it and the Date field. Rendered only when the screen
+        passes it. */}
+      {modeChipRow}
 
       <DateField label={t('forms.fields.date')} value={time} onChange={onChangeTime} />
 

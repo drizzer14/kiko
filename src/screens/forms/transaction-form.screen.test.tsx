@@ -1586,6 +1586,23 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(queryByText('Monobank Jar')).toBeNull();
   });
 
+  it('renders the mode row directly under the Value In (second) input, above Date, in Exchange mode', async () => {
+    const utils = await renderAddFromHolding('cash-1');
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    const rendered = collectRenderedText(utils.toJSON());
+    // The transaction-TYPE selector must sit directly UNDER the second input
+    // (Value In), between it and Date — never dropped to the form bottom below
+    // Date/Time. 'Income' is the mode ChipRow's first chip, so it stands in for
+    // the row's position: Value In, then the mode row, then Date.
+    const order = ['Value In', 'Income', 'Date', 'Time'].map((label) => rendered.indexOf(label));
+
+    for (const index of order) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
   it('hides the category picker in Exchange mode', async () => {
     const { getByText, queryByLabelText } = await renderAddFromHolding('cash-1');
     // Category field is visible in income/expense mode.
