@@ -3,8 +3,8 @@ import {
   type NavigationProp,
   type ParamListBase,
 } from '@react-navigation/native';
-import { act, renderHook } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { act, renderHook } from '@testing-library/react-native';
 
 import { useFocusRefreshedNow } from './use-focus-refreshed-now';
 

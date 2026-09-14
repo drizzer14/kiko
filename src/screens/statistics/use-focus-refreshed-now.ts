@@ -1,5 +1,5 @@
-import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 
 /**
  * A `now` timestamp that is stable across renders but REFRESHES every time the
