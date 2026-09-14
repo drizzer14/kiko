@@ -1414,6 +1414,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setMode(plan.sign);
       setDescription(plan.description);
       setSelectedCategory(plan.category);
+      // A seeded non-null category counts as a user pick, so a later
+      // description blur (A1's `reseatCategoryFromName`) can never clobber it.
+      // This matters for the DUPLICATE path (`isEditing` is false there): the
+      // "duplicate a row, tweak the note" flow must keep the copied category
+      // when the retyped description matches no name rule. The edit path already
+      // guards its stored category via `isEditing`, so this is a harmless no-op
+      // there; the empty-create/fixed-holding paths seed a null category, so
+      // `userPickedCategory` stays false and A1's normal create-blur auto-seat
+      // is unaffected.
+      if (plan.category !== null) {
+        setUserPickedCategory(true);
+      }
 
       // A null `time` keeps the field at NOW — the duplicate never copies the
       // source timestamp; the edit path carries the stored time.

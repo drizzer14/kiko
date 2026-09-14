@@ -761,6 +761,23 @@ describe('TransactionFormScreen — duplicate mode (D2)', () => {
       expect.objectContaining({ holdingId: 'h-btc', amountMinorUnits: -50 }),
     );
   });
+
+  it('preserves the seeded category when the pre-filled description is edited to a no-rule name and blurs', async () => {
+    // The classic "duplicate this row, tweak the note" flow: the source seeds
+    // Groceries, then the user retypes the description to a name matching NO
+    // rule and blurs. A duplicate-seeded category is treated as a user pick, so
+    // the blur (A1) must NOT clear it — the category stays and Save stays on.
+    const utils = await renderDuplicate('txn-src');
+    const { getByLabelText, getByText } = utils;
+
+    await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
+    await fireEvent(getByLabelText('Description'), 'blur');
+
+    // The seeded Groceries category survives the blur (chip still shown)...
+    expect(getByText('Groceries')).toBeTruthy();
+    // ...and Save stays enabled (a create needs a category).
+    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+  });
 });
 
 describe('TransactionFormScreen — empty-create / global add (B)', () => {
