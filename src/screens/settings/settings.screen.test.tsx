@@ -176,12 +176,16 @@ describe('SettingsScreen', () => {
   });
 
   it('offers a fiat-only base-currency picker (no crypto selectable as base)', async () => {
-    const { getByTestId, queryByTestId } = await renderScreen();
+    const { getByPlaceholderText, getByTestId, queryByTestId } = await renderScreen();
 
     // The base currency now uses the shared searchable CurrencyField: tapping its
     // trigger opens the picker sheet, whose options are restricted to fiat — BTC
     // (crypto) is never offered as a base currency, but the fiat codes are.
     await fireEvent.press(getByTestId('settings-row-base-currency'));
+    // Narrow by search: unfiltered, USD sorts alphabetically by its localized
+    // name ("US Dollar") well outside the FlatList's virtualized initial window
+    // (`initialNumToRender={15}`).
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'USD');
 
     expect(getByTestId('currency-option-USD')).toBeTruthy();
     expect(queryByTestId('currency-option-BTC')).toBeNull();
@@ -197,10 +201,14 @@ describe('SettingsScreen', () => {
   });
 
   it('calls setBaseCurrency when a currency option is pressed', async () => {
-    const { getByTestId } = await renderScreen();
+    const { getByPlaceholderText, getByTestId } = await renderScreen();
 
     // Open the CurrencyField sheet, then pick a currency row.
     await fireEvent.press(getByTestId('settings-row-base-currency'));
+    // Narrow by search: unfiltered, USD sorts alphabetically by its localized
+    // name ("US Dollar") well outside the FlatList's virtualized initial window
+    // (`initialNumToRender={15}`).
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'USD');
     await fireEvent.press(getByTestId('currency-option-USD'));
 
     expect(mockSetBaseCurrency).toHaveBeenCalledWith('USD');

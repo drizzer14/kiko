@@ -422,12 +422,17 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a cash account atomically with the initial value', async () => {
-    const { getByLabelText, getByText, getByTestId, navigation } = await renderForm();
+    const { getByLabelText, getByPlaceholderText, getByText, getByTestId, navigation } =
+      await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await fireEvent.press(getByText('Cash'));
     await fireEvent.changeText(getByLabelText('Initial value'), '250.50');
     await fireEvent.press(getByTestId('account-currency-field'));
+    // Narrow by search: unfiltered, EUR sorts alphabetically by its localized
+    // name ("Euro") outside the FlatList's virtualized initial window
+    // (`initialNumToRender={15}`).
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'EUR');
     await fireEvent.press(getByTestId('currency-option-EUR'));
     await fireEvent.press(getByText('Save'));
 
@@ -447,12 +452,22 @@ describe('AccountFormScreen', () => {
   });
 
   it('offers only fiat currencies for a cash account (no BTC)', async () => {
-    const { getByLabelText, getByText, getByTestId, queryByTestId } = await renderForm();
+    const { getByLabelText, getByPlaceholderText, getByText, getByTestId, queryByTestId } =
+      await renderForm();
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
     await fireEvent.press(getByText('Cash'));
     await fireEvent.press(getByTestId('account-currency-field'));
+    // Narrow by search: unfiltered, USD ("US Dollar") and GBP ("British Pound
+    // Sterling") both sort alphabetically by localized name outside the
+    // FlatList's virtualized initial window (`initialNumToRender={15}`), and
+    // no single query matches both, so search for each in turn.
+    const search = getByPlaceholderText('Search by code or name');
 
+    await fireEvent.changeText(search, 'USD');
     expect(getByTestId('currency-option-USD')).toBeTruthy();
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
+
+    await fireEvent.changeText(search, 'GBP');
     expect(getByTestId('currency-option-GBP')).toBeTruthy();
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
