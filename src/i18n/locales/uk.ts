@@ -253,6 +253,7 @@ export const uk: typeof en = {
     connectMonobank: 'Підключити Monobank',
     connectWallet: 'Підключити гаманець',
     couldNotConnectBinance: 'Не вдалося підключити Binance',
+    couldNotConnectMonobank: 'Не вдалося підключити Monobank',
     couldNotConnectWallet: 'Не вдалося підключити гаманець',
     couldNotSaveCredentials: 'Не вдалося зберегти облікові дані',
     couldNotSaveToken: 'Не вдалося зберегти токен',

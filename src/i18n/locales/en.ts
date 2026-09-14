@@ -271,6 +271,7 @@ export const en = {
     connectMonobank: 'Connect Monobank',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
+    couldNotConnectMonobank: 'Could not connect Monobank',
     couldNotConnectWallet: 'Could not connect wallet',
     couldNotSaveCredentials: 'Could not save credentials',
     couldNotSaveToken: 'Could not save token',
