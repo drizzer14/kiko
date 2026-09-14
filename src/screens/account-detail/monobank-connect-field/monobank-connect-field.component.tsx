@@ -1,13 +1,13 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import { fetchClientInfo } from '../../../monobank/client';
-import { styles } from '../account-detail.styles';
-import MonobankTokenInput from '../monobank-token-input';
-import type { SyncStatus } from '../sync-status-line';
 import SyncStatusLine from '../sync-status-line';
+import { styles } from '../account-detail.styles';
+import type { SyncStatus } from '../sync-status-line';
+import Box from '../../../design-system/components/box';
+import MonobankTokenInput from '../monobank-token-input';
+import { fetchClientInfo } from '../../../monobank/client';
+import Button from '../../../design-system/components/button';
 
 type MonobankConnectFieldProps = {
   // Runs the connect: store the validated token to the Keychain (keyed by the
@@ -50,11 +50,20 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
       }
 
       const connected = await onConnect(trimmed);
-      setStatus(
-        connected
-          ? { kind: 'success', message: t('accountDetail.connectedAs', { name: clientName }) }
-          : { kind: 'saveError', message: t('accountDetail.couldNotConnectMonobank') },
-      );
+      if (connected) {
+        // SECURITY: drop the raw token from state once connected so the bank
+        // secret is not parked in the React tree (matches MonobankTokenField).
+        setToken('');
+        setStatus({
+          kind: 'success',
+          message: t('accountDetail.connectedAs', { name: clientName }),
+        });
+
+        return;
+      }
+
+      // On failure the user keeps the entered token to retry, so it stays in state.
+      setStatus({ kind: 'saveError', message: t('accountDetail.couldNotConnectMonobank') });
     })();
   };
 

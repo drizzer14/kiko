@@ -28,9 +28,12 @@ const pressConnect = async (view: View): Promise<void> => {
   });
 };
 
-it('disables Connect until a non-blank token is entered', async () => {
+it('disables Connect until a non-blank token is entered, then enables it', async () => {
   const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
-  expect(view.getByText(connectLabel).parent?.props.accessibilityState.disabled).toBe(true);
+  expect(view.getByRole('button', { name: connectLabel })).toBeDisabled();
+
+  await type(view, 'tok-123');
+  expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
 });
 
 it('validates the token, then calls onConnect and shows "Connected as {name}" on success', async () => {
