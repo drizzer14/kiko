@@ -61,7 +61,7 @@ const composeTable = async () => {
   const captured: { base: string; quote: string; rate: string }[][] = [];
   const deps: RefreshDeps = {
     fetchFiatRates: () => fetchFiatRates(makeFetch(feed)),
-    fetchBTCPrice: async () => [],
+    fetchCryptoPrices: async () => [],
     upsertMany: async (rates) => {
       captured.push(rates);
     },

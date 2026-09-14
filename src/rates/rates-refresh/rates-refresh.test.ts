@@ -16,7 +16,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
   const captured: StoredRate[][] = [];
   const deps: RefreshDeps = {
     fetchFiatRates: async () => fiat,
-    fetchBTCPrice: async () => btc,
+    fetchCryptoPrices: async () => btc,
     upsertMany: async (rates: StoredRate[]) => {
       captured.push(rates);
     },
@@ -107,7 +107,7 @@ describe('refreshRates', () => {
 
   it('still stores fiat pairs when the BTC provider rejects', async () => {
     const { deps, captured } = makeDeps({
-      fetchBTCPrice: () => Promise.reject(new Error('429')),
+      fetchCryptoPrices: () => Promise.reject(new Error('429')),
     });
 
     await refreshRates(deps);
@@ -122,7 +122,7 @@ describe('refreshRates', () => {
   it('does not reject when both providers fail', async () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: () => Promise.reject(new Error('offline')),
-      fetchBTCPrice: () => Promise.reject(new Error('429')),
+      fetchCryptoPrices: () => Promise.reject(new Error('429')),
     });
 
     await expect(refreshRates(deps)).resolves.toBeUndefined();
@@ -161,7 +161,7 @@ describe('refreshRates', () => {
     ];
     const { deps, captured } = makeDeps({
       fetchFiatRates: async () => gbpChfFiat,
-      fetchBTCPrice: async () => [],
+      fetchCryptoPrices: async () => [],
     });
 
     await refreshRates(deps);

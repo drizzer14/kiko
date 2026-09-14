@@ -1,10 +1,10 @@
 import { ratesRepo } from '@kiko/rates/repo';
 
-import type { Currency } from '../../currency/currency';
-import { currencyOptions } from '../../currency/currency';
-import { fetchBTCPrice } from '../coingecko';
 import type { RateEntry } from '../conversion';
+import { fetchCryptoPrices } from '../coingecko';
 import { fetchFiatRates } from '../monobank-rates';
+import type { Currency } from '../../currency/currency';
+import { currencyOptions, isCrypto } from '../../currency/currency';
 
 // Monobank's `/bank/currency` is cached upstream ~5 minutes, so refreshing more
 // often than that only re-fetches identical data.
@@ -28,7 +28,7 @@ type StoredRate = {
 
 export type RefreshDeps = {
   fetchFiatRates?: () => Promise<RateEntry[]>;
-  fetchBTCPrice?: () => Promise<RateEntry[]>;
+  fetchCryptoPrices?: () => Promise<RateEntry[]>;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
   lastRefreshAt?: number | null;
@@ -36,9 +36,11 @@ export type RefreshDeps = {
 
 /**
  * Express each currency in UAH. Fiat entries anchor USD/EUR to UAH directly;
- * BTC is anchored through its USD price so BTC pairs stay consistent with fiat.
+ * every crypto is anchored through its USD price so crypto pairs stay consistent
+ * with fiat. A crypto with no USD anchor (no fiat USD price this run) is simply
+ * left unpriced, so `buildPairs` skips it rather than composing a false rate.
  */
-const buildUahPrice = (fiat: RateEntry[], btc: RateEntry[]): UahPrice => {
+const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   const price: UahPrice = { UAH: 1 };
   for (const entry of fiat) {
     if (entry.quote === 'UAH') {
@@ -48,16 +50,18 @@ const buildUahPrice = (fiat: RateEntry[], btc: RateEntry[]): UahPrice => {
     }
   }
   const usdPrice = price.USD;
-  for (const entry of btc) {
-    if (entry.base === 'BTC' && entry.quote === 'USD' && usdPrice !== undefined) {
-      price.BTC = entry.rate * usdPrice;
+  if (usdPrice !== undefined) {
+    for (const entry of crypto) {
+      if (entry.quote === 'USD' && isCrypto(entry.base)) {
+        price[entry.base] = entry.rate * usdPrice;
+      }
     }
   }
   return price;
 };
 
 const pairSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
-  base === 'BTC' || quote === 'BTC' ? 'coingecko' : 'monobank';
+  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'monobank';
 
 /**
  * Compose every ordered distinct pair from the UAH-anchored prices. A rate is
@@ -97,7 +101,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
     return;
   }
   const loadFiat = deps.fetchFiatRates ?? (() => fetchFiatRates());
-  const loadBTC = deps.fetchBTCPrice ?? (() => fetchBTCPrice());
+  const loadCrypto = deps.fetchCryptoPrices ?? (() => fetchCryptoPrices());
   const upsertMany = deps.upsertMany ?? ratesRepo.upsertMany;
 
   // Settle the two providers independently, exactly as `runBackfill` does
@@ -107,10 +111,10 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
   // `useSyncAction` — so a Monobank import that fully succeeded was reported
   // to the user as a failed sync. Whichever provider survives still
   // contributes its anchors.
-  const [fiatResult, btcResult] = await Promise.allSettled([loadFiat(), loadBTC()]);
+  const [fiatResult, cryptoResult] = await Promise.allSettled([loadFiat(), loadCrypto()]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
-  const btc = btcResult.status === 'fulfilled' ? btcResult.value : [];
-  const pairs = buildPairs(buildUahPrice(fiat, btc), at);
+  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
+  const pairs = buildPairs(buildUahPrice(fiat, crypto), at);
 
   if (pairs.length > 0) {
     await upsertMany(pairs);
