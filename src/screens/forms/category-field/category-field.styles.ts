@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create((theme) => ({
+export const styles = StyleSheet.create((_theme) => ({
   // The tappable field's own bordered-chip style now lives in the shared
   // `FieldTrigger` (see field-trigger.styles.ts) — this file no longer needs
   // its own copy.
