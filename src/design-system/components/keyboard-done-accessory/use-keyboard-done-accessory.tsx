@@ -1,8 +1,9 @@
-import { type ReactElement, useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, InputAccessoryView, Keyboard, Platform } from 'react-native';
+import { type ReactElement, useId } from 'react';
+import { InputAccessoryView, Keyboard, Platform, Pressable } from 'react-native';
 
 import Box from '../box';
+import Text from '../text';
 
 import { styles } from './keyboard-done-accessory.styles';
 
@@ -18,12 +19,15 @@ type KeyboardDoneAccessory = {
 
 // The single source of the native "Done" keyboard accessory shared by every
 // Kiko input (the shared TextField and the holding/account/category name
-// field). On iOS it shows a plain react-native core `<Button>` — the default
-// system look, no custom styling — above the keyboard that dismisses it via
-// `Keyboard.dismiss()`, so the whole app presents one identical Done on EVERY
-// input, text and numeric alike. `useId()` gives each caller its own accessory
-// id so a screen with several fields never shares (and iOS never flags a
-// duplicate) `nativeID`. Off iOS it returns no id and no element.
+// field). On iOS it renders a real input-accessory TOOLBAR above the keyboard:
+// an elevated bar (top hairline separator + `surfaceHigh` fill, styled in
+// keyboard-done-accessory.styles) with a trailing `Pressable` Done — accent,
+// semibold — that dismisses via `Keyboard.dismiss()`, so the whole app presents
+// one identical Done on EVERY input, text and numeric alike. RN's core
+// `<Button>` (used before) cannot carry a background/weight, hence the
+// `Pressable` + DS `Text`. `useId()` gives each caller its own accessory id so
+// a screen with several fields never shares (and iOS never flags a duplicate)
+// `nativeID`. Off iOS it returns no id and no element.
 export const useKeyboardDoneAccessory = (): KeyboardDoneAccessory => {
   const { t } = useTranslation();
   const accessoryViewID = useId();
@@ -37,7 +41,15 @@ export const useKeyboardDoneAccessory = (): KeyboardDoneAccessory => {
     accessory: (
       <InputAccessoryView nativeID={accessoryViewID}>
         <Box style={styles.accessoryContainer}>
-          <Button title={t('common.done')} onPress={Keyboard.dismiss} />
+          <Pressable
+            accessibilityRole="button"
+            onPress={Keyboard.dismiss}
+            style={styles.doneButton}
+          >
+            <Text tone="accent" style={styles.doneLabel}>
+              {t('common.done')}
+            </Text>
+          </Pressable>
         </Box>
       </InputAccessoryView>
     ),
