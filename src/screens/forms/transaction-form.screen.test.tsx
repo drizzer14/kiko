@@ -56,6 +56,13 @@ jest.mock('@kiko/transactions/repo', () => ({
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
+    // Tagged so the `useLiveQuery` mock can tell this `['transactions']`-keyed
+    // subscription apart from the by-id one and serve the D1 past-descriptions
+    // list to it.
+    distinctDescriptionsQuery: () => ({
+      __kind: 'distinctDescriptions',
+      toSQL: () => ({ sql: '', params: [] }),
+    }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -126,28 +133,26 @@ const setLiveData = (
   accounts: Account[] = [],
   rates: Rate[] = [],
   overrideRules: OverrideRule[] = [],
+  pastDescriptions: string[] = [],
 ): void => {
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
-    if (tables[0] === 'holdings') {
-      return { data: holdings };
-    }
-    if (tables[0] === 'transactions') {
-      return { data: transaction ? [transaction] : [] };
-    }
-    if (tables[0] === 'categories') {
-      return { data: categories };
-    }
-    if (tables[0] === 'accounts') {
-      return { data: accounts };
-    }
-    if (tables[0] === 'currency_rates') {
-      return { data: rates };
-    }
-    if (tables[0] === 'category_overrides') {
-      return { data: overrideRules };
+  const dataByTable: Record<string, unknown[]> = {
+    holdings,
+    transactions: transaction ? [transaction] : [],
+    categories,
+    accounts,
+    currency_rates: rates,
+    category_overrides: overrideRules,
+  };
+
+  mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
+    // The D1 distinct-descriptions subscription shares the `['transactions']`
+    // key with the by-id lookup, so it is disambiguated by the tagged query
+    // object the mocked repo returns.
+    if ((query as { __kind?: string })?.__kind === 'distinctDescriptions') {
+      return { data: pastDescriptions.map((description) => ({ description })) };
     }
 
-    return { data: [] };
+    return { data: dataByTable[tables[0]] ?? [] };
   });
 };
 
@@ -520,6 +525,81 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     await fireEvent(getByLabelText('Description'), 'blur');
 
     expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+  });
+});
+
+describe('TransactionFormScreen — description suggestions (D1)', () => {
+  // One name rule ("coffee" -> Dining) plus a pool of past MANUAL descriptions,
+  // so a tapped suggestion can be shown to BOTH fill the field and re-seat A1's
+  // rule category through the ONE shared description-handling surface.
+  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+  const PAST = ['Coffee', 'Groceries run'];
+
+  const seed = (transaction?: Transaction): void =>
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      transaction,
+      CATEGORIES,
+      [],
+      [],
+      [COFFEE_RULE],
+      PAST,
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seed();
+  });
+
+  it('surfaces a matching past description as the user types on create', async () => {
+    const { getByLabelText, getByText } = await renderAdd();
+
+    await fireEvent.changeText(getByLabelText('Description'), 'Cof');
+
+    // The past "Coffee" row is offered as a tappable suggestion chip.
+    expect(getByText('Coffee')).toBeTruthy();
+  });
+
+  it('offers no suggestion when the typed value matches no past description', async () => {
+    const { getByLabelText, queryByText } = await renderAdd();
+
+    await fireEvent.changeText(getByLabelText('Description'), 'Zzz');
+
+    expect(queryByText('Coffee')).toBeNull();
+  });
+
+  it('fills the description and re-seats the rule category when a suggestion is tapped', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Cof');
+
+    // Tapping the suggestion fills the field verbatim AND re-fires A1's rule
+    // lookup (coffee -> dining) through the same shared handler, so Save writes
+    // both without a manual category pick.
+    await fireEvent.press(getByText('Coffee'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+    );
+  });
+
+  it('does not surface suggestions on an edit', async () => {
+    seed({
+      id: 't1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 0,
+      description: 'Cof',
+      source: 'manual',
+    });
+
+    const { queryByText } = await renderEdit('t1');
+
+    // An edit already has its description, so the suggestion row never shows —
+    // even though the hydrated "Cof" would otherwise match the past "Coffee".
+    expect(queryByText('Coffee')).toBeNull();
   });
 });
 

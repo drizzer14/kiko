@@ -102,6 +102,33 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"transactions"."source"');
   });
 
+  it('builds a DISTINCT manual-descriptions query ordered newest-first (D1 autocomplete)', () => {
+    const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
+    const lower = sql.toLowerCase();
+
+    // DISTINCT so a repeated merchant name is offered once, projecting only the
+    // description column the suggestion row consumes.
+    expect(lower).toContain('select distinct');
+    expect(lower).toContain('"description"');
+    // Newest-first (recency, not frequency): ordered by the transaction time,
+    // descending.
+    expect(lower).toContain('order by');
+    expect(lower).toContain('"transactions"."time" desc');
+  });
+
+  it('restricts the distinct-descriptions query to MANUAL rows with a non-empty description', () => {
+    const { sql, params } = transactionsRepo.distinctDescriptionsQuery().toSQL();
+
+    // Synced/bank descriptions are excluded — only the user's own manual rows
+    // seed the suggestion list.
+    expect(sql).toContain('"transactions"."source"');
+    expect(params).toContain('manual');
+    // The empty-description rows (a blank manual row, a description-less
+    // exchange leg) are filtered out in SQL via `<> ''`.
+    expect(sql).toContain('<>');
+    expect(params).toContain('');
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {

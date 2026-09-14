@@ -1,6 +1,6 @@
 import type { Repository } from '@kiko/db/repository';
 import { appendDepositContributionTx } from '@kiko/holdings/repo';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
 import { database, write } from '../../db/client';
@@ -291,6 +291,23 @@ export const transactionsRepo = {
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+      .orderBy(desc(transactions.time)),
+  /**
+   * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
+   * first — the source of the create-form's inline description suggestions (D1).
+   * The `source = 'manual'` filter EXCLUDES synced/bank descriptions (a Monobank
+   * merchant name is not a manual entry the user re-types), and `<> ''` drops the
+   * blank rows (a description-less exchange leg, a blank manual entry). Ordering
+   * by `time` desc makes the ranking RECENCY, not frequency — the most recently
+   * used names bubble up. The final capping and the fuzzy, case-insensitive
+   * match against what the user is typing happen in JS (`normalizeTransactionName`),
+   * never in SQL, since SQLite's `lower()` is ASCII-only.
+   */
+  distinctDescriptionsQuery: () =>
+    database
+      .selectDistinct({ description: transactions.description })
+      .from(transactions)
+      .where(and(eq(transactions.source, 'manual'), ne(transactions.description, '')))
       .orderBy(desc(transactions.time)),
   add: (input: NewTransaction) =>
     write((tx) => tx.insert(transactions).values({ id: id(), ...input })),

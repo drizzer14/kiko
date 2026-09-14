@@ -66,6 +66,7 @@ import ExchangeFields from './exchange-fields';
 import { useSubmitOnce } from './use-submit-once';
 import HoldingSelectField from './holding-select-field';
 import ConvertExchangeFields from './convert-exchange-fields';
+import DescriptionSuggestions from './description-suggestions';
 import { groupAmount, majorAmountText } from './amount-format';
 import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
 
@@ -580,6 +581,11 @@ type FieldGroupProps = {
   // (which stays a bare setter) so the lookup never runs on a keystroke.
   onBlurDescription: () => void;
   descriptionPlaceholder: string;
+  // The D1 inline suggestion row, rendered directly under the description field.
+  // Null on an edit (an edit already has its description) or whenever there is
+  // nothing to suggest — the component hides itself, so this is `ReactElement |
+  // null` rather than a boolean gate here.
+  descriptionSuggestions: ReactElement | null;
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
@@ -662,6 +668,11 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         editable={!props.isReadOnly}
         placeholder={props.descriptionPlaceholder}
       />
+
+      {/* D1: the inline tap-to-fill suggestion row, directly under the
+        description field. It hides itself when there is nothing to offer, so it
+        is rendered unconditionally here. */}
+      {props.descriptionSuggestions}
 
       <DateField
         label={props.t('forms.fields.date')}
@@ -974,6 +985,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
   );
+  // D1: the distinct past MANUAL descriptions (newest-first), reduced to a plain
+  // string list the inline suggestion row matches against as the user types.
+  // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
+  // create's suggestions.
+  const { data: pastDescriptionRows } = useLiveQuery(transactionsRepo.distinctDescriptionsQuery(), [
+    'transactions',
+  ]);
+  // Create-only (D1-Q3): an edit already has its description, so the pool is
+  // emptied on an edit and the suggestion row hides itself. Gating here (in this
+  // memo's own scope) rather than with a ternary at the render site keeps the
+  // screen component's cognitive-complexity budget intact.
+  const pastDescriptions = useMemo(
+    () => (editingId != null ? [] : pastDescriptionRows.map((row) => row.description)),
+    [editingId, pastDescriptionRows],
+  );
   const categoryOptions = categories.map((category) => ({
     key: category.key,
     title: categoryByKey.get(category.key)?.title ?? category.title,
@@ -1166,20 +1192,37 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     setUserPickedCategory(true);
   };
 
-  // A1: when the description SETTLES (blur, never a keystroke) and the user has
-  // not explicitly picked a category, pre-select the category the existing name
-  // rules map that name to. A settled name matching no rule yields null, which
-  // clears any prior auto-pick so Save's create-time category requirement
-  // re-engages honestly. Only fires on a create — an edit hydrates its own
-  // stored category and must not be re-derived from the name. Kept a SINGLE
-  // handler (not a stack of independent effects) so a later feature can extend
-  // it composably.
-  const onDescriptionBlur = (): void => {
+  // A1's category auto-pick, factored into ONE surface both the description
+  // blur AND the D1 suggestion tap route through, so the two never stack a
+  // second independent description effect. Given a settled name and no explicit
+  // user pick, pre-select the category the existing name rules map that name to;
+  // a name matching no rule yields null, which clears any prior auto-pick so
+  // Save's create-time category requirement re-engages honestly. Only fires on a
+  // create — an edit hydrates its own stored category and must not be re-derived
+  // from the name. Takes the name explicitly (not the `description` state) so the
+  // suggestion tap can seat from the just-picked value before its `setDescription`
+  // has flushed.
+  const reseatCategoryFromName = (name: string): void => {
     if (userPickedCategory || isEditing) {
       return;
     }
 
-    setSelectedCategory(ruleCategoryFor(description, categoryByNormalizedName));
+    setSelectedCategory(ruleCategoryFor(name, categoryByNormalizedName));
+  };
+
+  // A1: when the description SETTLES (blur, never a keystroke), re-seat the
+  // category from the current field value through the shared surface above.
+  const onDescriptionBlur = (): void => {
+    reseatCategoryFromName(description);
+  };
+
+  // D1: tapping an inline suggestion fills the description verbatim AND re-fires
+  // A1's rule lookup on that same value, so picking a known merchant name seats
+  // its category exactly as a blur would — ONE coherent description-handling
+  // surface, not two competing effects.
+  const pickSuggestion = (suggestion: string): void => {
+    setDescription(suggestion);
+    reseatCategoryFromName(suggestion);
   };
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
@@ -1624,6 +1667,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             description,
             onChangeDescription: setDescription,
             onBlurDescription: onDescriptionBlur,
+            // D1: the inline suggestion row. Its pool is already empty on an
+            // edit (see the `pastDescriptions` memo), and the component itself
+            // hides when there is no match or the field already equals a
+            // suggestion, so it is passed unconditionally here.
+            descriptionSuggestions: (
+              <DescriptionSuggestions
+                descriptions={pastDescriptions}
+                value={description}
+                onPick={pickSuggestion}
+              />
+            ),
             descriptionPlaceholder,
             isReadOnly,
             time,
