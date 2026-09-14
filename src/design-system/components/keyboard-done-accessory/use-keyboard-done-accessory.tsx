@@ -3,8 +3,8 @@ import { type ReactElement, useId } from 'react';
 import { InputAccessoryView, Keyboard, Platform, Pressable } from 'react-native';
 
 import Box from '../box';
-import GlassSurface from '../glass-surface';
 import Text from '../text';
+import GlassSurface from '../glass-surface';
 
 import { styles } from './keyboard-done-accessory.styles';
 

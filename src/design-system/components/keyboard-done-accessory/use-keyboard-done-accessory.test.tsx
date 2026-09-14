@@ -119,8 +119,8 @@ describe('useKeyboardDoneAccessory', () => {
     expect(glassBaseStyle.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
     expect(glassBaseStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
 
-    // Pushed past the container's own top edge by the SAME radius its
-    // bottom corners round to (`ACCESSORY_BOTTOM_RADIUS`), so its top two
+    // Pushed past the container's own top edge by the SAME radius
+    // (`theme.radii.lg`) its bottom corners round to, so its top two
     // corners round outside the visible, clipped area and only the bottom
     // two (matching the container's own) stay visible.
     expect(glassStyle.top).toBe(-darkTheme.radii.lg);
