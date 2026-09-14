@@ -65,6 +65,18 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
+// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
+// the same real-context requirement as the hook above; a standalone screen
+// render has none, so stand it in with a `useState`-seeded read — a `Date.now()`
+// taken once at mount and held STABLE across re-renders, the same behavior the
+// screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
+// event, so the value never needs to change mid-test).
+jest.mock('./use-focus-refreshed-now', () => {
+  const { useState } = jest.requireActual('react');
+
+  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+});
+
 type Account = {
   id: string;
   name: string;

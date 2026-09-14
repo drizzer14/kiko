@@ -68,6 +68,7 @@ import NetWorthLine from './net-worth-line';
 import PieChart from './pie-chart';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
+import { useFocusRefreshedNow } from './use-focus-refreshed-now';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -183,10 +184,12 @@ const StatisticsScreen: FC = () => {
   // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
-  // `now` is fixed at mount: the default date-range seed below, the default
-  // line window, the backfill's "today", and every memo below key on it, and a
-  // fresh `Date.now()` each render would defeat that memoization.
-  const now = useMemo(() => Date.now(), []);
+  // `now` is seeded at mount and REFRESHED on every screen focus (see
+  // useFocusRefreshedNow): the default date-range seed, the default line window,
+  // the backfill's "today", and every memo below key on it, and it stays stable
+  // across renders so a fresh `Date.now()` each render never defeats that
+  // memoization — only a re-focus advances it.
+  const now = useFocusRefreshedNow();
 
   // The date-range bounds default to the last 30 days on mount; a user pick
   // can still set either to null (open-ended) via the date-range field.
