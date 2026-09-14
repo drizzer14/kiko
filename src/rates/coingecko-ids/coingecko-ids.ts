@@ -12,5 +12,5 @@ export const cryptoCoinGeckoId: Record<'BTC' | 'ETH' | 'USDT', string> = {
   USDT: 'tether',
 };
 
-/** The comma-joined CoinGecko id list for a `simple/price`/`market_chart` request. */
+/** The comma-joined CoinGecko id list for a `simple/price` request. */
 export const coinGeckoIds = (): string => Object.values(cryptoCoinGeckoId).join(',');

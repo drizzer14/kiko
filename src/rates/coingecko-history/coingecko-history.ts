@@ -1,8 +1,8 @@
 import { guard } from 'fnts';
 
 import { cryptoCoinGeckoId } from '../coingecko-ids';
-import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import type { Currency } from '../../currency/currency';
+import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**
  * CoinGecko's `market_chart` returns a full daily price series in ONE call per
@@ -80,7 +80,7 @@ export const fetchCryptoHistory = async (
   const fulfilled = results.filter(
     (r): r is PromiseFulfilledResult<HistoryRateEntry[]> => r.status === 'fulfilled',
   );
-  if (fulfilled.length === 0 && results.length > 0) {
+  if (fulfilled.length === 0) {
     throw new Error('CoinGecko history request failed for every coin');
   }
 
