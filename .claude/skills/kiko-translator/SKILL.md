@@ -1,6 +1,6 @@
 ---
 name: kiko-translator
-description: Invoke when touching any user-facing string, a catalogue in src/i18n/locales, a t() call, the language setting, the widget's strings, or anything rendered before the navigator (MigrationsGate, LockGate). Read before adding a string, a screen, or a widget label.
+description: Invoke when touching any user-facing string, a catalogue in src/i18n/locales, a t() call, the language setting, or anything rendered before the navigator (MigrationsGate, LockGate). Read before adding a string or a screen.
 ---
 
 # Kiko translator
@@ -17,12 +17,12 @@ current state of the files below before assuming a fix has landed.
 A transaction/holding row stores data, never a rendered label. The
 exchange-leg bug (T-6) is the cautionary case:
 `recordExchange`/`recordExchangeCounterpart` in
-`src/transactions/transactions.repo.ts` write a literal English
+`src/transactions/` write a literal English
 `description` (`` `Exchange to ${name}` ``) straight into the row — a
 later language switch can never fix a row already written that way.
 The correct pattern already exists in the codebase for this exact
-shape: `src/transactions/default-description.ts`
-(`defaultTransactionDescription`) takes a `TFunction` and resolves the
+shape: `defaultTransactionDescription`
+(`src/transactions/`) takes a `TFunction` and resolves the
 label on every call, re-evaluating against whatever language is active
 now. Give a structural marker (a category key or a shared correlation
 id) to anything that today gets its "what is this row" answer baked
@@ -69,10 +69,10 @@ merge, not before.
 
 ## Language must be resolved before the first gate paints
 
-`MigrationsGate` and `LockGate` (`src/migration/migrations.gate.tsx`,
+`MigrationsGate` and `LockGate` (`src/migration/`,
 `src/auth/lock-gate/lock-gate.component.tsx`) render **before**
 `AppRoot` — which is the only place `useSyncLanguageWithSettings`
-(`src/i18n/use-sync-language-with-settings.ts`) mounts today. A device
+(`src/i18n/`) mounts today. A device
 set to `en` with a persisted `settings.language` of `uk` and app-lock
 on sees "Preparing database…" then an English lock screen, and only
 gets Ukrainian after unlock (T-25). The fix resolves the persisted
@@ -85,40 +85,23 @@ pre-`AppRoot` screen.
 
 ## Ukrainian is sentence case — no blanket `textTransform`
 
-`src/design-system/components/button/button.styles.ts` forces
-`textTransform: 'capitalize'` on every `Button` label. Ukrainian UI
-copy is written sentence-case (e.g. `uk.ts`'s "Додати рахунок"), and
-title-casing it ("Додати Рахунок") reads wrong (T-41). Do not add a
-new blanket `textTransform` anywhere in the design system; if one is
-ever reintroduced, it must be gated on the active language, not
-applied unconditionally.
-
-## The widget shows the in-app language, not the device language
-
-The widget process cannot run `i18next` (see `kiko-widget`'s
-"separate process" constraint), so its localized labels have to be
-carried inside the snapshot the app writes rather than resolved
-in-process. `NetWorthSnapshot` gaining label fields resolved with
-`i18n.t` at build time in `src/widget/net-worth-snapshot.ts`'s
-`buildNetWorthSnapshot`, so the widget always shows whatever language
-is active *in the app* rather than the device's own language setting,
-lands with the 2026-09-06 bug-hunt branch (T-24) — check that file's
-current fields before assuming it's already wired in. Once it is, a
-language-only settings change becomes a reason to re-write the
-snapshot on its own: `src/widget/use-net-worth-widget.ts`'s `writeNow`
-depending on the active/persisted language, so switching language
-doesn't leave the widget's formatted strings on the old locale until
-some other table changes triggers a write, is the T-43 fix and also
-lands with that branch. Read both files for the current dependency
-list rather than assuming either is already wired in.
+`Button` labels carry no style-layer `textTransform`; casing comes
+entirely from each catalogue. Ukrainian UI copy is written
+sentence-case (e.g. `uk.ts`'s "Додати рахунок"), and English `Button`
+copy is written sentence case too, so neither needs — and must never
+regain — a blanket transform (title-casing Ukrainian, e.g. "Додати
+Рахунок", reads wrong; this was T-41). See the "Button" section in
+the kiko-design-system skill for the mechanism and the current
+non-transform contract; this skill only owns getting the catalogue
+strings correctly cased in the first place — never rely on a style to
+fix up a wrongly-cased string.
 
 ## Number and currency formatting follows the active locale
 
-`src/currency/format.ts`'s `formatMoney` takes a BCP-47 locale
-parameter; callers get it from `src/i18n/active-locale.ts`
-(`activeLocale()`), which maps the active i18next language to the
-locale `Number.prototype.toLocaleString` needs for correct thousands/
-decimal punctuation (`uk-UA` groups `1 234,56`; `en-US` groups
-`1,234.56`). Never hardcode a locale string at a `formatMoney` call
-site — always go through `activeLocale()` so a language switch changes
-number formatting everywhere at once, including the widget snapshot.
+`formatMoney` (`src/currency/`) takes a BCP-47 locale parameter;
+callers get it from `activeLocale()` (`src/i18n/`), which maps the
+active i18next language to the locale `Number.prototype.toLocaleString`
+needs for correct thousands/decimal punctuation (`uk-UA` groups
+`1 234,56`; `en-US` groups `1,234.56`). Never hardcode a locale string
+at a `formatMoney` call site — always go through `activeLocale()` so a
+language switch changes number formatting everywhere at once.

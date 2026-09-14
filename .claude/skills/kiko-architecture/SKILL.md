@@ -37,7 +37,7 @@ collection" sections). This skill summarizes the settled contract.
   it never reads `when` to decide what to apply. So journal `when`
   order is NOT load-bearing: a non-monotonic `when` across worktrees is
   harmless (main itself carries a pre-existing 0006/0007 `when`
-  disorder). `src/migration/migrations.gate.tsx` owns the launch UI: a loading
+  disorder). `MigrationsGate` (`src/migration/`) owns the launch UI: a loading
   state until migrations succeed and an error state if they fail —
   never proceed past a failed migration.
 
@@ -111,25 +111,25 @@ The sync pipeline is deliberately functional, not OOP — see
    `lastSyncAt` only, not the token.
 2. `GET /personal/client-info` with header `X-Token`; map each bank
    account and jar to a Holding under one `monobank` Account. On a
-   Connect, `runSync` (`src/monobank/sync.ts`) marks the target
+   Connect, `runSync` (`src/monobank/`) marks the target
    account `institution: 'monobank'` only AFTER this call resolves —
    `resolveMonobankAccountId` (read-only: validates the
    one-connection-per-institution invariant) runs first, then
    `fetchClientInfo`, then `markMonobankAccount` writes the mark. A
    wrong token, an offline device or a 429 must never leave the
-   account half-connected; mirrors `crypto-sync/sync.ts`'s
+   account half-connected; mirrors `src/crypto-sync/`'s
    `runBalanceSync` ordering. `runSync` does not create the settings
    row itself — the single settings row is guaranteed to exist by the
-   app-boot migrations gate (`src/migration/migrations.gate.tsx`) before any
+   app-boot migrations gate (`src/migration/`) before any
    sync can run.
 3. `GET /personal/statement/{account}/{from}/{to}` per holding;
    import each item as a Transaction, UPSERTED on
    `(source, externalId)` — where `externalId` is NAMESPACED per
    connection as `` `${accountId}:${statementId}` `` (`mapStatementItem`,
-   `src/monobank/sync.ts`), because the `(source, external_id)` unique
+   `src/monobank/`), because the `(source, external_id)` unique
    index is GLOBAL and now shared across MULTIPLE connections per
    provider (see "Namespaced synced externalId" below) — by
-   `addManyDedup` (`src/transactions/transactions.repo.ts`). Two
+   `addManyDedup` (`src/transactions/`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
    - Re-syncing an existing external id **refreshes** the row's
@@ -148,7 +148,7 @@ The sync pipeline is deliberately functional, not OOP — see
 
    Respect the API's per-request constraints — a 31-day-max statement
    window and at most 500 items per response — by paging the window
-   (see `fetchAllStatements` in `src/monobank/sync.ts` for the paging
+   (see `fetchAllStatements` in `src/monobank/` for the paging
    shape). The rate limit is *not* handled here — see "The rate limit
    is per TOKEN" below.
 4. Map Monobank's ISO 4217 numeric currency codes to the app's
@@ -157,7 +157,7 @@ The sync pipeline is deliberately functional, not OOP — see
    conversion needed there.
 
    A card/jar whose currency code `currencyFromCode` cannot map is
-   SILENTLY SKIPPED (`upsertAllHoldings` in `src/monobank/sync.ts`)
+   SILENTLY SKIPPED (`upsertAllHoldings` in `src/monobank/`)
    rather than thrown — the mapper still throws for every OTHER
    caller, but `upsertAllHoldings` checks `currencyFromCode` first and
    skips an unrepresentable account/jar instead of calling the mapper.
@@ -179,7 +179,7 @@ The sync pipeline is deliberately functional, not OOP — see
    `fnts` composition: map each fetched item to a row, fold duplicate
    conflict keys, hand the batch to the repository's upsert. The
    `pipe` that used to live here was removed with the JS-side dedup
-   filter it wrapped (see step 3) — read `src/monobank/sync.ts` end
+   filter it wrapped (see step 3) — read `src/monobank/` end
    to end for the current shape rather than assuming a composition
    chain.
 
@@ -189,7 +189,7 @@ a verified schema.
 
 ### Balance-diff skip
 
-`runSyncInner` (`src/monobank/sync.ts`) no longer fetches every
+`runSyncInner` (`src/monobank/`) no longer fetches every
 card's statements on every run — a multi-card account synced over
 minutes under the per-invocation gate alone. It now SKIPS the
 statement fetch for a card whose `/personal/client-info` balance is
@@ -221,7 +221,7 @@ a restated list:
 - A card carrying an outstanding `hold: true` transaction is ALWAYS
   fetched (a same-amount hold->settled refresh doesn't move the
   balance) — the set comes from `holdingIdsWithHoldQuery`
-  (`src/transactions/transactions.repo.ts`).
+  (`src/transactions/`).
 - The first-ever sync fetches every card (`shouldFullFetch`).
 
 Safety net: a new `settings.lastFullSyncAt` column (migration
@@ -265,7 +265,7 @@ missing-today-transaction bug where a monthly-updating card that is
 LATE in client-info order dropped a real transaction:
 
 - **Changed-first queue order** (`orderStatementQueue`,
-  `src/monobank/sync.ts`). `runSyncInner` STABLE-sorts the accounts
+  `src/monobank/`). `runSyncInner` STABLE-sorts the accounts
   before the loop into three groups: (0) a card whose /client-info
   balance differs from its PRIOR STORED balance
   (`priorHoldingByMonobankId`, captured BEFORE the up-front upsert),
@@ -278,7 +278,7 @@ LATE in client-info order dropped a real transaction:
   build, so it cannot discriminate there, whereas the stored display
   balance still moves. This changes only the ORDER; `isBalanceDiffSkip`
   still decides WHICH cards are fetched, unchanged, inside the loop.
-- **Per-card from-window** (`fromSecondsForCard`, `src/monobank/sync.ts`).
+- **Per-card from-window** (`fromSecondsForCard`, `src/monobank/`).
   The from-cursor is now computed PER CARD, not once for the whole run.
   A card whose marker is NULL or BEHIND its /client-info balance
   (unimported activity, or the recovery build) — or any card on a full
@@ -315,7 +315,7 @@ the outstanding-hold case in "Balance-diff skip" above — while
 failure, as long as it was a full fetch. A card is dropped from the set
 the moment it succeeds, and the set is pruned to ids still present in
 client-info (so a removed card is not force-fetched forever). Read
-`nextFailedSet` and `isBalanceDiffSkip` (`src/monobank/sync.ts`) for
+`nextFailedSet` and `isBalanceDiffSkip` (`src/monobank/`) for
 the exact set algebra rather than a restated one here.
 
 This is a genuine divergence, not a relaxation of the existing
@@ -326,7 +326,7 @@ re-derived from that un-advanced cursor and re-covered idempotently
 (the `(source, external_id)` upsert). Only the full-fetch MARKER now
 graduates early — the thing that was starving, not the thing that
 protects against data loss. Read the end-of-run sequence in
-`runSyncInner` (`src/monobank/sync.ts`) for the exact ordering: the
+`runSyncInner` (`src/monobank/`) for the exact ordering: the
 failed-set persist and the `lastFullSyncAt` stamp both happen BEFORE
 the partial-failure throw.
 
@@ -343,13 +343,13 @@ above.
 
 Monobank's personal API allows one request per interval **per
 token**, so the throttle cannot live inside any single request
-helper. `src/monobank/throttle.ts` owns it: `createRequestGate`
+helper. The throttle module (`src/monobank/`) owns it: `createRequestGate`
 returns a one-slot gate whose `wait()` resolves immediately the first
 time and thereafter only once the interval has elapsed since the
-previous resolution. Read that file for the interval and the gate's
+previous resolution. Read that module for the interval and the gate's
 exact semantics rather than trusting a number restated here.
 
-`runSync` (`src/monobank/sync.ts`) creates **exactly one** gate per
+`runSync` (`src/monobank/`) creates **exactly one** gate per
 invocation and threads it through **every** request that invocation
 makes — `fetchClientInfo` first, then each card's statement pages via
 `importAccount` -> `fetchAllStatements`. A gate scoped any narrower
@@ -370,12 +370,12 @@ The per-invocation gate above paces requests **within** one run. It is
 NOT enough on its own: the rate limit is per token, and all three sync
 entry points drive the same connected token —
 
-- `useAutoSync` (`src/sync/use-auto-sync.ts`) on app open,
-- `useSyncAll` (`src/sync/use-sync-all.ts`) on pull-to-refresh,
-- `useSync` (`src/sync/use-sync.ts`) on the manual button —
+- `useAutoSync` (`src/sync/`) on app open,
+- `useSyncAll` (`src/sync/`) on pull-to-refresh,
+- `useSync` (`src/sync/`) on the manual button —
 
 `useAutoSync` and `useSyncAll` share ONE fan-out job builder
-(`syncJobsFor`, `src/sync/sync-jobs.ts`), so the app-open sync drives
+(`syncJobsFor`, `src/sync/`), so the app-open sync drives
 EXACTLY the pull-to-refresh set — the connected Monobank account (only
 when a token is stored) PLUS every connected crypto account — under
 `Promise.allSettled`. So a crypto balance + Binance transaction import
@@ -387,7 +387,7 @@ determinate progress bar.
 so two of them firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
 sync). `runSync` therefore holds a **module-level single-flight lock**
-(`inFlightSync` in `src/monobank/sync.ts`): while a run is in flight,
+(`inFlightSync` in `src/monobank/`): while a run is in flight,
 every new trigger JOINS (awaits) the in-flight promise and observes its
 result rather than starting a second run; the lock releases the instant
 the run settles (success OR failure). Read `runSync`/`runSyncInner` for
@@ -404,7 +404,7 @@ the same connected token gets exactly the result it would have computed.
 
 ### Three sync signals; the spinner is DECOUPLED from the whole run
 
-`src/monobank/sync-status.ts` holds THREE separate module-level stores.
+The sync-status module (`src/monobank/`) holds THREE separate module-level stores.
 Do NOT collapse them — each drives a different affordance:
 
 1. `isSyncing` (`useSyncStatus`/`setSyncing`) — the WHOLE-run "a sync is
@@ -440,7 +440,7 @@ Do NOT collapse them — each drives a different affordance:
    `endProgressSession()` (first begin resets, last end clears), calls
    `registerWork(holdings, work)` up front, then `commitWork(units)` as it
    fetches and `commitHolding(count)` as each holding finishes — see
-   `src/monobank/sync-status.ts`. A path that registers ZERO work publishes
+   `src/monobank/`. A path that registers ZERO work publishes
    nothing, so the bar never appears for a run that fetches nothing (the no-op
    guard, spanning the fan-out). There is NO whole-app `countActiveHoldings`
    denominator any more — `total` is the syncing holdings only.
@@ -467,7 +467,7 @@ Do NOT collapse them — each drives a different affordance:
    is a plain imperative signal (no React hook): the pull path reads it
    inside an event handler, not during render.
 
-Read `runSync`/`runSyncInner` (`src/monobank/sync.ts`) for the exact
+Read `runSync`/`runSyncInner` (`src/monobank/`) for the exact
 call sites rather than restating the lines here.
 
 The custom `SyncingIndicator` component was REMOVED. There are now TWO
@@ -505,7 +505,7 @@ re-drive:
 - The flag clears on the FIRST of `fastPhaseDone` OR the run settling
   (`onRefresh`'s `.finally`). The settle path is the fallback for a
   fan-out with NO Monobank job (a crypto-only account, or no syncable
-  account — see `src/sync/use-sync-all.ts`), which fires no
+  account — see `useSyncAll`, `src/sync/`), which fires no
   `fastPhaseDone`, so the spinner can never hang. A pull that JOINS a run
   whose fast phase already committed clears immediately.
 - The `fastPhaseDone` signal is read only inside the pull handler, so an
@@ -570,7 +570,7 @@ steps are the kind of thing that changes as the rollout progresses:
   `executeRawAsync` shape landmine — read that file's comment on
   `DrizzleOPSQLiteClient`/`wrapClientForDrizzle` before touching the
   read path.
-- `src/migration/migrations.gate.tsx` — the launch sequencing: `initDatabase()`
+- `MigrationsGate` (`src/migration/`) — the launch sequencing: `initDatabase()`
   -> `runMigrations()` -> `settingsRepo.ensure()` -> the module-level
   `applyPersistedLanguage()` helper (reads `settings.language` through
   the repo and calls `i18n.changeLanguage`, swallowing a failure — a
@@ -597,21 +597,21 @@ count as spending on the category chart. Two files own this, read
 them directly rather than restating their exact MCC/matching logic
 here:
 
-- `src/statistics/transfer-exclusion.ts` — the MCC/description-based
+- the transfer-exclusion module (`src/statistics/`) — the MCC/description-based
   rule (own-IBAN-aware; backed by `transactions.counterIban` and
   `settings.defaultCategoryKey`).
-- `src/statistics/internal-transfers.ts` — the matched-pair fallback
+- the internal-transfers module (`src/statistics/`) — the matched-pair fallback
   for transfers the MCC rule can't see (paired by amount/time/holding).
-- `src/statistics/exchange-exclusion.ts` — the Exchange/Convert rule,
+- the exchange-exclusion module (`src/statistics/`) — the Exchange/Convert rule,
   keyed on the structural marker column
   `transactions.exchangeCounterpartHoldingId` (see `src/db/schema.ts`
   and `recordExchange` / `recordExchangeCounterpart` in
-  `src/transactions/transactions.repo.ts`, which write it on both legs).
+  `src/transactions/`, which write it on both legs).
   It catches what the other two structurally cannot: a cross-currency
   pair, and the single debit leg of an exchange into a term deposit.
   The legs persist no description — the label is resolved at render time
-  through `t` (`src/transactions/exchange-description.ts`, applied by
-  `src/transactions/row-description.ts`), so a marker column and a
+  through `t` (`exchangeLegDescription`, `src/transactions/`), applied by
+  `transactionRowDescription` (`src/transactions/`), so a marker column and a
   persisted sentence are not interchangeable here. See `kiko-domain`.
 
 ## Binance exchange sync — every wallet, three holdings (Spot / Funding / Earn)
@@ -712,7 +712,7 @@ than restated here:
 - **Per-invocation pacing gate.** A first sync fans out many 89-day
   windows × two endpoints; fired back-to-back they trip a Binance
   weight-429. `runSync` builds ONE `createRequestGate` (the same helper
-  Monobank uses, `src/monobank/throttle.ts`) from the injected
+  Monobank uses, `src/monobank/`) from the injected
   `now`/`sleep` and threads it through EVERY deposit/withdraw page
   request, spacing them by `BINANCE_REQUEST_INTERVAL_MS` (small — a
   background import, not Monobank's 60s). `sleep` is a `BinanceTxSyncDeps`
@@ -758,7 +758,7 @@ every provider. The multi-account plan lets a user connect more than one
 Monobank and more than one Binance account, so a SYNCED row's `externalId` is
 namespaced by its holding's account id: `` `${accountId}:${sourceId}` `` —
 `` `${accountId}:${statementId}` `` for Monobank (`mapStatementItem`,
-`src/monobank/sync.ts`) and `` `${accountId}:deposit:<id>` `` /
+`src/monobank/`) and `` `${accountId}:deposit:<id>` `` /
 `` `${accountId}:withdraw:<id>` `` for Binance
 (`src/crypto-sync/binance/binance.transactions.ts`). Without the prefix, two
 Binance connections — whose deposit/withdrawal record ids are only PER-ACCOUNT

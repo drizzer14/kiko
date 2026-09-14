@@ -64,8 +64,8 @@ this, and none is planned. A syntactically faithful rule (flag every
 arrow whose concise body contains `&&`/`||`/`?:`) was tried during
 review and matched 62 arrows against the ~15 actually worth
 converting, with identical shapes intentionally treated oppositely
-(`isSyncedAccount` in `src/holdings/deletable.ts` was converted to a
-block body; `isBalanceProviderId` in `src/crypto-sync/provider.ts`
+(`isSyncedAccount` in `src/holdings/` was converted to a
+block body; `isBalanceProviderId` in `src/crypto-sync/`
 stayed concise) — no low-false-positive syntactic rule exists, so
 this stays a human/agent judgment call, applied in code and in
 review.
@@ -304,7 +304,7 @@ const maskedPan = holding.metadata.maskedPan; // wrong
 external wire/API payload keeps that payload's own casing on purpose,
 even where it disagrees with the acronym rule above. `maskedPan` and
 `counterIban` (`src/db/schema.ts`, `src/monobank/monobank.types.d.ts`,
-`src/monobank/sync.ts`) are the standing example: those are the
+`src/monobank/`) are the standing example: those are the
 literal Monobank API JSON field names, not names chosen in application
 code, so they stay lower-`an`/lower-`iban` rather than becoming
 `maskedPAN`/`counterIBAN`. This is an intentional, allowed exception,
@@ -350,7 +350,7 @@ the domain's own glyph map (see `kiko-domain`'s "Entity glyphs" rule).
   siblings) are components, just named for what React Navigation calls
   them rather than generically.
 - A gate component: `<name>.gate.tsx` — an early-return guard component
-  such as `src/migration/migrations.gate.tsx` (the lock gate).
+  such as `migrations.gate.tsx` (`src/migration/`, the lock gate).
 
 `.stack.tsx` and `.gate.tsx` are **component-bearing suffixes**,
 admitted alongside `.component.tsx` and `.screen.tsx`: a file under

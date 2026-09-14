@@ -5,8 +5,8 @@ description: Invoke when touching a Gesture/GestureDetector, react-native-sortab
 
 # Kiko gesture and animation conventions
 
-Source files: `src/screens/grid-interaction.ts`,
-`src/screens/card-context-menu.component.tsx`,
+Source files: `src/design-system/` (grid-interaction),
+`src/design-system/components/` (card-context-menu),
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
 `src/screens/settings/categories.screen.tsx`,
@@ -18,7 +18,7 @@ Source files: `src/screens/grid-interaction.ts`,
 A grid card carries two gestures that both begin from a touch-and-hold, and
 they must never both fire on one hold:
 
-- `CardContextMenu` (`card-context-menu.component.tsx`) wraps a deletable
+- `CardContextMenu` (`src/design-system/components/`) wraps a deletable
   card in a `react-native-gesture-handler` `Gesture.LongPress()`. Read its
   own `HOLD_DURATION_MS` and `HOLD_MAX_DISTANCE` constants in that file
   before touching either arbitration boundary — do not hardcode their
@@ -31,7 +31,7 @@ opens the delete menu (`maxDistance` not exceeded); a hold that **moves**
 past `maxDistance` fails the long-press gesture, freeing the finger for the
 enclosing sortables drag-to-reorder; a quick tap satisfies neither gesture
 and falls through to the card's own `onPress` (open detail). See
-`grid-interaction.ts`'s `onGridDragEnd` doc comment for the drag side of
+`onGridDragEnd`'s doc comment (`src/design-system/`) for the drag side of
 this: `react-native-sortables` fires `onDragEnd` on every release
 (`fromIndex === toIndex` means "held in place, not a reorder" — persist
 nothing) — only `fromIndex !== toIndex` persists a new order.
@@ -42,12 +42,12 @@ used to say.
 
 ## `runOnJS(true)` for non-worklet callbacks
 
-`openDeleteMenu` (`grid-interaction.ts`) calls `ActionSheetIOS` and the
+`openDeleteMenu` (`src/design-system/`) calls `ActionSheetIOS` and the
 `react-native-haptic-feedback` bridge — neither is a worklet. Any
 `Gesture...` callback that reaches a non-worklet API (`ActionSheetIOS`,
 haptics, `Alert`, navigation, a repo write) must be created with
 `.runOnJS(true)` on the gesture, exactly like
-`Gesture.LongPress().runOnJS(true)` in `card-context-menu.component.tsx`.
+`Gesture.LongPress().runOnJS(true)` in `CardContextMenu` (`src/design-system/components/`).
 Without it the callback runs on the UI thread and calling a non-worklet
 JS API from there throws or silently no-ops.
 
@@ -69,7 +69,7 @@ the card up too far) and `autoScrollActivationOffset={75}`.
 - **Single-item `sortEnabled` guard**: `sortEnabled={items.length > 1}`.
   With exactly one item there is nothing to reorder against, and leaving
   sort enabled invites a spurious drag interaction on the lone card.
-- **`onDragEnd` always routes through `onGridDragEnd`** (`grid-interaction.ts`)
+- **`onDragEnd` always routes through `onGridDragEnd`** (`src/design-system/`)
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.
 - **A grid whose cards contain a live text input needs a longer
