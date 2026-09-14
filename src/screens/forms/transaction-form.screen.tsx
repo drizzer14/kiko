@@ -948,7 +948,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<FormMode>('income');
+  const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
   // The split payment's change-returns, one row per holding the change is

@@ -227,10 +227,12 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
+    // Create defaults to the Expense chip (see "defaults to expense" tests
+    // below), so an untouched chip writes a negative amount.
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({
         holdingId: 'h1',
-        amountMinorUnits: 1234,
+        amountMinorUnits: -1234,
         description: 'Coffee',
       }),
     );
@@ -294,12 +296,23 @@ describe('TransactionFormScreen — add mode', () => {
     );
   });
 
-  it('shows the income/expense sign as a shared chip row with income selected by default', async () => {
+  it('shows the income/expense sign as a shared chip row with expense selected by default', async () => {
     const { getByRole } = await renderAdd();
-    // The hand-rolled Pressable toggle is now the shared ChipRow; income is the
-    // default selection and expense is not.
-    expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(true);
-    expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(false);
+    // The hand-rolled Pressable toggle is now the shared ChipRow; expense is the
+    // default selection (most manual entries are spending) and income is not.
+    expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(true);
+    expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(false);
+  });
+
+  it('treats a fresh create amount as negative (expense) without touching the chip', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '10.00');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -1000 }),
+    );
   });
 
   it('backdates a manual transaction to the picked day, keeping the default time-of-day', async () => {
@@ -330,9 +343,10 @@ describe('TransactionFormScreen — add mode', () => {
     expect(getByLabelText('Amount').props.value).toBe('1 000 000');
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
-    // The grouped string round-trips through parseAmount: 1,000,000.00 UAH.
+    // The grouped string round-trips through parseAmount: 1,000,000.00 UAH,
+    // negated by the Expense default.
     expect(mockRecordManual).toHaveBeenCalledWith(
-      expect.objectContaining({ amountMinorUnits: 100_000_000 }),
+      expect.objectContaining({ amountMinorUnits: -100_000_000 }),
     );
   });
 
@@ -504,6 +518,23 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByLabelText('Description').props.value).toBe('Coffee');
     // A negative stored amount pre-selects the Expense sign.
     expect(getByLabelText('Amount').props.editable).not.toBe(false);
+  });
+
+  it('opens an income row on the Income chip, not the create-mode Expense default', async () => {
+    // Regression guard for the A2 default flip: the hydrate effect's
+    // `setMode(fields.sign)` must still win for an existing positive
+    // (income) row, even though a fresh create now defaults to Expense.
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-income',
+      holdingId: 'h1',
+      amountMinorUnits: 1234,
+      time: 42,
+      description: 'Salary',
+      source: 'manual',
+    });
+    const { getByRole } = await renderEdit('txn-income');
+    expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(true);
+    expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(false);
   });
 
   it('hydrates a 50-satoshi BTC transaction to 0.0000005, not 57', async () => {
