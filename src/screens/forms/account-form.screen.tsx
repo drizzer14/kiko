@@ -17,7 +17,7 @@ import Screen from '../../design-system/components/screen';
 import Divider from '../../design-system/components/divider';
 import CryptoSyncForm from '../account-detail/crypto-sync-form';
 import TextField from '../../design-system/components/text-field';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { accountKindSymbol, genericEntitySymbol } from '../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../navigation/types';
@@ -47,10 +47,12 @@ type Kind = (typeof kinds)[number];
 const INITIAL_KIND: Kind = 'bank';
 
 // Neutral placeholder glyph shown in the create form's icon chip until the user
-// picks one. The persisted default (a kind-derived icon) is applied by the
-// account list rows when the stored icon is null; here the account has no kind
-// context worth deriving from yet, so a neutral swatch reads as "unset".
-const FALLBACK_ICON = 'square.grid.2x2';
+// picks one (and the glyph a cleared icon falls back to). The persisted default
+// (a kind-derived icon) is applied by the account list rows when the stored icon
+// is null; here the account has no kind context worth deriving from yet, so the
+// generic account reference (`tray`) reads as "unset" — never the retired
+// `square.grid.2x2`, per the icon rework's generic-account decision (§2.1).
+const FALLBACK_ICON = genericEntitySymbol.account;
 
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same

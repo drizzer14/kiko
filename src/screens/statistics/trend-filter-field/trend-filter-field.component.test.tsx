@@ -321,6 +321,22 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
+  it('renders each mode pill with its decided glyph (Top -> chart.bar.fill, Manual -> tag)', async () => {
+    const { getByTestId } = await renderField();
+    await press(getByTestId(TEST_ID));
+
+    // The Mode OptionPills carry a leading glyph per option (infra item I4):
+    // Top ranks -> chart.bar.fill, Manual pins categories -> tag. Both pills are
+    // rendered at once (only the selected one fills), so both glyphs appear
+    // inside the selection group.
+    const selection = getByTestId(`${TEST_ID}-group-selection`);
+    const topPill = within(selection).getByText('Top').parent;
+    const manualPill = within(selection).getByText('Manual').parent;
+
+    expect(topPill?.queryAll((node) => node.props.name === 'chart.bar.fill')).not.toHaveLength(0);
+    expect(manualPill?.queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
+  });
+
   it('renders the Top mode option before Manual in the selection group', async () => {
     const { getByTestId } = await renderField();
     await press(getByTestId(TEST_ID));

@@ -2,7 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import '../../design-system/unistyles';
 import { darkTheme } from '../../design-system/theme';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { accountKindSymbol, genericEntitySymbol } from '../../holdings/entity-symbols';
 import { i18n } from '../../i18n';
 import {
   asNavigationProp,
@@ -385,6 +385,19 @@ describe('AccountFormScreen', () => {
     );
     const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
     expect(mockSetIcon).toHaveBeenCalledWith(createdId, accountKindSymbol.bank);
+  });
+
+  it('falls the account icon field back to the generic tray glyph once the icon is removed', async () => {
+    // Clearing the icon (Change Icon -> Remove) drops the field to its generic
+    // fallback. The icon rework decided that generic account glyph is `tray`
+    // (genericEntitySymbol.account), never the retired `square.grid.2x2` — the
+    // "never keep the old icon" rule.
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByText('Remove'));
+
+    expect(getByLabelText(`Icon ${genericEntitySymbol.account}`)).toBeTruthy();
   });
 
   it('does not set an icon when the user removes the default before saving', async () => {

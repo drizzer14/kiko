@@ -242,6 +242,10 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             selected={draft.mode}
             onSelect={setMode}
             label={(mode) => t(`statistics.trendFilter.${mode}`)}
+            // The Mode pills carry a leading glyph per option (infra item I4):
+            // Top ranks by measure -> chart.bar.fill, Manual pins categories ->
+            // tag (the app-wide categories glyph). Amount/Measure stay text-only.
+            icon={(mode) => (mode === 'manual' ? 'tag' : 'chart.bar.fill')}
             columns={2}
             labelVariant="caption"
           />
