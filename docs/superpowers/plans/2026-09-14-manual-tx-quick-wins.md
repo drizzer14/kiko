@@ -1,6 +1,6 @@
 # Manual Transaction Quick Wins — Design & Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task, AFTER the user has approved the open product decisions below and AFTER the round-3 track (`next-exchange-split-plan`) has landed. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. All 18 product decisions are LOCKED (see the "Open decisions summary (ALL LOCKED)" table). Implementation runs AFTER the round-3 track (`next-exchange-split-plan`) has landed. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Four small usability bundles for the manual transaction flow — category/default quick wins, a global add-transaction entry, delete-UX consistency, and faster repeat entry.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **This is PLAN ONLY until approved.** Do not implement any bundle until the user approves the "Open decisions summary" at the end.
+- **This document is a plan; product decisions are now LOCKED** (see the "Open decisions summary (ALL LOCKED)" table). No app source has been written yet — implementation begins only after round-3 lands.
 - **Sequencing:** implementation runs AFTER `next-exchange-split-plan` (round-3) lands its transaction-form work (split-change + exchange-prefill). Round-3 edits the SAME three files several bundles touch: `src/screens/forms/transaction-form.screen.tsx`, `src/transactions/repo/transactions.repo.ts`, `src/screens/home/home.screen.tsx`. Every REBASE NOTE below flags a shared surface to re-anchor after round-3.
 - **Every write goes through `db.transaction()`** via `write(...)` in a repo module (`kiko-architecture`). No write outside a repo.
 - **Read functions return a Drizzle query builder**, never executed data — the caller passes it into `useLiveQuery` (`kiko-architecture`).
@@ -28,15 +28,15 @@
 
 | Bundle | Touches shared file | Why it overlaps round-3 |
 |---|---|---|
-| A1 category prefill | `transaction-form.screen.tsx` (description handler + hydrate); NEW read query added to `category-overrides.repo.ts` (NOT `transactions.repo.ts`) | round-3 rewrites form state/prefill |
+| A1 category prefill | `transaction-form.screen.tsx` (description BLUR handler + hydrate); NEW `allQuery` on `category-overrides.repo.ts` (NOT `transactions.repo.ts`); NEW optional `onBlur` on shared `TextField` | round-3 rewrites form state/prefill |
 | A2 default mode | `transaction-form.screen.tsx:767` | round-3 may touch mode state |
 | B global entry | `transaction-form.screen.tsx` (holding picker + new param), `navigation/types.d.ts`, `home.screen.tsx` (FAB) | round-3 edits form + home |
 | C1 Home long-press delete | `home.screen.tsx` (thread delete), `transaction-row.component.tsx`, `transactions.repo.ts` (add `source` to projection) | round-3 edits home + repo |
 | C2 themed confirm | `grid-interaction.ts`, `card-context-menu.component.tsx`, `transaction-form.screen.tsx` (replace `Alert.alert`) | round-3 edits form |
 | D1 description autocomplete | `transaction-form.screen.tsx`, `transactions.repo.ts` (distinct-descriptions query) | round-3 edits form + repo |
-| D2 duplicate/repeat | `transactions.repo.ts` (recent query), surface TBD by decision | round-3 edits repo |
+| D2 duplicate only | `transaction-form.screen.tsx` (duplicate prefill), `navigation/types.d.ts`, `card-context-menu.component.tsx` (`onDuplicate`) | round-3 edits form |
 
-Recommended landing order to minimise churn: **A2 → A1 → C2 → C1 → D1 → D2 → B** (B is largest and depends on the picker plumbing A/D touch; C2 lands before C1 because C1's Home menu should already route through the themed confirm).
+Landing order (LOCKED): **A2 → A1 → C2 → C1 → D1 → D2 → B** (B is largest and depends on the picker plumbing A/D touch; C2 lands before C1 because C1's Home menu must already route through the themed confirm; D2 is duplicate-only and hosts its menu action on C2's refactored `CardContextMenu`, so it follows C2/D1). Repeat-last is dropped, so there is no separate repeat-last step in this order.
 
 ---
 
@@ -75,31 +75,37 @@ Recommended landing order to minimise churn: **A2 → A1 → C2 → C1 → D1 �
      categoryByNormalizedName: ReadonlyMap<string, string>,
    ): string | null => { /* normalizeTransactionName → map.get → ?? null */ };
    ```
-4. **WHERE the lookup fires — recommended: on description CHANGE, gated by "no explicit pick yet".** Wrap the description handler:
+4. **WHERE the lookup fires — LOCKED: on description BLUR, gated by "no explicit pick yet".** The lookup runs when the description field loses focus (the user finished typing the merchant name), NOT on every keystroke. It NEVER overwrites an explicit user pick.
+   - `TextField` (`text-field.props.d.ts`) currently `Pick`s only `placeholder | keyboardType | returnKeyType | autoCapitalize | autoCorrect | multiline | secureTextEntry` from `TextInputProps` — it does NOT expose a blur callback. So this bundle adds an optional `onBlur?: () => void` (or `onEndEditing`) passthrough to `TextFieldProps`, spread onto the underlying `TextInput` per the "widen from the underlying component's props, place explicit props after the spread" rule (`kiko-design-system`). This is an additive design-system change; every existing `TextField` caller is unaffected (the prop is optional).
+   - Wire the description field's blur:
    ```ts
-   onChangeDescription: (text) => {
-     setDescription(text);
+   // onChangeText stays a bare setter (no lookup on keystroke):
+   onChangeDescription: (text) => setDescription(text),
+   // the lookup fires on blur only:
+   onBlurDescription: () => {
      if (!userPickedCategory && !isEditing) {
-       const ruleCategory = ruleCategoryFor(text, categoryByNormalizedName);
-       setSelectedCategory(ruleCategory); // null clears the auto-pick when the name no longer matches
+       const ruleCategory = ruleCategoryFor(description, categoryByNormalizedName);
+       setSelectedCategory(ruleCategory); // null clears the auto-pick when the name matches no rule
      }
    }
    ```
-   Introduce a `userPickedCategory` boolean state (set `true` inside `onSelectCategory`), so the auto-pick NEVER overwrites an explicit user choice — the interaction rule the task calls out. On-change (not blur) is recommended because `TextField` wraps RN `TextInput` and blur/`onEndEditing` plumbing is not currently exposed through the design-system prop set (`text-field.props.d.ts`), whereas `onChangeText` already is; on-change also gives live feedback as the user types a known merchant.
+   Introduce a `userPickedCategory` boolean state (set `true` inside `onSelectCategory`), so the auto-pick NEVER overwrites an explicit user choice — the locked interaction rule. Blur (not keystroke) avoids re-running the lookup on every character and only acts once the name is settled; a settled name that matches no rule clears any prior auto-pick, so Save's create-time category requirement re-engages honestly.
 5. **Interaction with the required-category rule:** the auto-pick satisfies `isSaveDisabled`'s create-time category requirement (`transaction-form.screen.tsx:206`) for free — the user can still override via the picker (which flips `userPickedCategory`). Clearing the description back to a non-matching string re-nulls the auto-pick (never a stale category), which correctly re-disables Save until the user picks or re-types a known name.
 6. The row still carries its own category through `recordManual` (unchanged) — this bundle only pre-fills the picker; it does NOT change `recordManualTx`. The propagation sheet (`resolveCategoryOverrideRequest`) is unaffected: an auto-pick that equals no change won't trip `categoryChanged` because `originalCategoryKey` is null on create and `categoryChanged` only compares on the picked value; confirm the create path still does not raise the propagation sheet (it currently only raises when `categoryChanged && name non-blank`, and create carries its category via `recordManual` — see `save`, `transaction-form.screen.tsx:1045-1091`).
 
 **REBASE NOTES.**
-- **`transaction-form.screen.tsx`** — round-3 rewrites the form's state/prefill. Re-anchor: the new `useLiveQuery(categoryOverridesRepo.allQuery())` subscription (near the other `useLiveQuery` calls ~lines 686-712), the `userPickedCategory` state (near line 781), the wrapped `onChangeDescription` (currently line 1165), and `onSelectCategory` (currently `setSelectedCategory`, line 1187). If round-3 adds its own description-driven prefill, MERGE the two handlers rather than stacking two `setSelectedCategory` calls.
+- **`transaction-form.screen.tsx`** — round-3 rewrites the form's state/prefill. Re-anchor: the new `useLiveQuery(categoryOverridesRepo.allQuery())` subscription (near the other `useLiveQuery` calls ~lines 686-712), the `userPickedCategory` state (near line 781), the description field's new `onBlur` wiring inside the income/expense field group (currently `renderFieldGroup`'s description `TextField`, lines 489-495 / prop wiring 1164-1166), and `onSelectCategory` (currently `setSelectedCategory`, line 1187). If round-3 adds its own description-driven prefill, MERGE the two handlers rather than stacking two `setSelectedCategory` calls.
+- **`text-field.props.d.ts` / `text-field.component.tsx`** — NOT round-3 files; the optional `onBlur` passthrough should apply cleanly. Its component test is separate.
 - **`category-overrides.repo.ts`** — NOT a round-3 file; the `allQuery` addition should apply cleanly. Its test file is separate.
 
 **Open PRODUCT decisions.**
-- **A1-Q1 (RECOMMENDED: on-change, auto-clear):** Fire the rule lookup on every description CHANGE and auto-clear the pick when the name stops matching — vs. fire once on blur / vs. fill-once-and-never-clear. Recommended keeps the picker honest as the user edits and needs no new TextField plumbing.
-- **A1-Q2 (RECOMMENDED: yes):** Should the auto-pick be silent (no visual "auto-selected" hint)? Recommended silent — it just seats the picker's selection like any pick; a hint chip is extra surface for a quick win.
+- **A1-Q1 (LOCKED: on BLUR, never overwrite an explicit pick):** The rule lookup fires when the description field loses focus, not on keystroke, and never overwrites an explicit user pick. This requires adding an optional `onBlur` passthrough to the shared `TextField` (see Design step 4).
+- **A1-Q2 (LOCKED: silent auto-pick):** The auto-pick is silent — it seats the picker's selection like any pick, with no "auto-selected" hint chip.
 
 **Test surface (qa writes later).**
 - `category-overrides.repo.test.ts` — `allQuery` returns a builder whose SQL targets `category_overrides` (mirrors the `holdings.repo.test.ts` `toSQL()` assertions).
-- `transaction-form.screen.test.tsx` — typing a description that matches an existing rule pre-selects that category on a create; an explicit picker choice is NOT overwritten by a later matching keystroke; clearing to a non-matching name re-nulls the pick and re-disables Save. (RNTL, existing suite pattern.)
+- `text-field.component.test.tsx` — the new optional `onBlur` fires on the underlying `TextInput` blur and is a no-op when omitted.
+- `transaction-form.screen.test.tsx` — blurring a description that matches an existing rule pre-selects that category on a create; an explicit picker choice is NOT overwritten by a later matching blur; blurring a non-matching name re-nulls the pick and re-disables Save. (RNTL, existing suite pattern.)
 
 ---
 
@@ -117,7 +123,7 @@ No other change. Edit hydration (`setMode(fields.sign)`, line 801) still wins fo
 - **`transaction-form.screen.tsx:767`** — round-3 may relocate or restructure the mode state (e.g. a split-change variant). Re-anchor the single-word `'income'` → `'expense'` change to whatever initializes create-mode sign after round-3. If round-3 introduces a derived initial mode, set its create-default to expense there instead.
 
 **Open PRODUCT decisions.**
-- **A2-Q1 (RECOMMENDED: expense):** Default a fresh manual transaction to expense (matches the task and the reality that most hand-entered rows are spending) — vs. keep income. Straightforward; recommended expense.
+- **A2-Q1 (LOCKED: expense):** A fresh manual transaction defaults to the expense chip (a negative amount), overriding the current `'income'` default at line 767.
 
 **Test surface.**
 - `transaction-form.screen.test.tsx` — a fresh create (holdingId param, no transactionId) opens with the expense chip selected and the amount treated as negative on save; an edit still opens on the stored row's sign.
@@ -153,14 +159,15 @@ No other change. Edit hydration (`setMode(fields.sign)`, line 801) still wins fo
 - **`home.screen.tsx`** — round-3 edits Home. The FAB is an additive sibling of the `SectionList` inside `home-content` (line 401-471); re-anchor its placement into round-3's final Home JSX, keeping it OUTSIDE the scroll content and clearing `listBottomClearance`.
 
 **Open PRODUCT decisions.**
-- **B-Q1 (RECOMMENDED: FAB on Home):** Where does the global entry live — a floating "+" FAB over the Home list (recommended), a Home header "+" (requires enabling Home's hidden header), or a Home net-worth-card action row? Recommended FAB: no header re-plumbing, always reachable, standard iOS quick-add.
-- **B-Q2 (RECOMMENDED: most-recent-manual, else first eligible):** How is the default primary holding chosen — the holding of the user's most recent manual transaction (recommended), the first holding in Accounts order, or no default (force a pick)? Recommended most-recent matches "repeat entry" ergonomics.
-- **B-Q3 (RECOMMENDED: eligible manual holdings only):** Should the primary picker list ALL open non-synced non-bond holdings (recommended — a manual row only makes sense there, matching `footerActionFor`), or every holding including synced (which would then no-op)? Recommended: eligible only.
-- **B-Q4 (RECOMMENDED: reuse `HoldingSelectField`):** Confirm reuse of the existing `HoldingSelectField` picker rather than a new primary-holding component. Recommended reuse — it already carries account-name captions and the accent-selected row.
+- **B-Q1 (LOCKED: FAB on Home):** The global entry is a floating "+" FAB over the Home list, navigating `TransactionForm` with empty params. No Home-header re-plumbing; always reachable.
+- **B-Q2 (LOCKED: most-recent-manual, else first eligible):** The default primary-leg holding is the holding of the user's MOST RECENT manual transaction, resolved by a Bundle-B-owned single-row read query (`{ holdingId }`, `source = 'manual'`, ordered `time desc`, `limit 1` — this query is NOT shared with the dropped repeat-last work), falling back to the first holding in the picker's Accounts-ordered eligible list when there is no manual history. Seeded once behind a hydrate latch so a live refresh cannot clobber an in-progress pick.
+- **B-Q3 (LOCKED: eligible manual holdings only):** The primary picker lists only open, non-synced, non-bond holdings (the `'transaction'`-eligible set matching `footerActionFor`), never synced holdings.
+- **B-Q4 (LOCKED: reuse `HoldingSelectField`):** The existing `HoldingSelectField` picker is reused for the primary leg — it already carries account-name captions and the accent-selected row.
 
 **Test surface.**
-- `navigation` type-level: covered by `check:typecheck` (the widened union must still make the three shapes mutually exclusive at call sites).
-- `transaction-form.screen.test.tsx` — opening with empty params renders the primary-leg picker, seeds the default holding, and a create writes against the picked holding; picking a cash holding surfaces the Exchange chip.
+- `navigation` type-level: covered by `check:typecheck` (the widened union must still make the shapes mutually exclusive at call sites).
+- `transactions.repo.test.ts` — the Bundle-B most-recent-manual-holding query filters `source = 'manual'`, orders `time desc`, and limits to 1.
+- `transaction-form.screen.test.tsx` — opening with empty params renders the primary-leg picker, seeds the default holding (most-recent-manual, else first eligible), and a create writes against the picked holding; picking a cash holding surfaces the Exchange chip.
 - `add-transaction-fab.component.test.tsx` — the FAB renders and navigates `TransactionForm` with empty params (RNTL, mock navigation).
 - Maestro (qa, later): a global add flow — FAB → pick holding → enter amount → save → row appears on Home. Note the Maestro BottomSheet dismiss caveat (point-tap `50%,15%`, per memory) for the picker sheet.
 
@@ -237,9 +244,9 @@ No other change. Edit hydration (`setMode(fields.sign)`, line 801) still wins fo
 - **`grid-interaction.ts` / `card-context-menu.component.tsx`** — NOT round-3 files; should apply cleanly. But note the blast radius: this refactor changes the delete UX for account cards, holding cards, the accounts grid, and holding-detail rows simultaneously (all `CardContextMenu` consumers). That is the intended consistency, but every one of those screens' tests that asserts `ActionSheetIOS` (`account-detail.screen.test.tsx`, `holding-detail.screen.test.tsx`, `accounts.screen.test.tsx`) must be updated to assert the themed sheet instead.
 
 **Open PRODUCT decisions.**
-- **C2-Q1 (RECOMMENDED: yes, theme all long-press deletes):** Refactoring `CardContextMenu` themes the delete confirm for ALL its consumers (account/holding cards + grids + holding-detail + Home), not only Home. Recommended: yes — that IS the "delete UX consistency" the bundle asks for, and leaving account/holding cards on `ActionSheetIOS` would re-introduce the exact inconsistency being removed. If the user wants to scope narrower, say so.
-- **C2-Q2 (RECOMMENDED: `Delete "<name>"` title, no body):** Confirm copy — reuse `common.deleteNamed` as the sheet title with a bare `Delete` confirm and no body message (recommended, matches the current ActionSheet's single named destructive row) vs. a two-line title+message like the transaction form's current `deleteConfirmTitle`/`deleteConfirmMessage` (`en.ts:223-224`). Recommended the named single line for the card menus; the transaction form can pass its existing title+message through the same `ConfirmSheet`.
-- **C2-Q3 (RECOMMENDED: state-in-`CardContextMenu`):** Put the `ConfirmSheet` state inside `CardContextMenu` (recommended — self-contained, no per-screen wiring) vs. an app-level imperative confirm service. Recommended in-component; simplest and matches the existing per-screen sheet pattern.
+- **C2-Q1 (LOCKED: yes — theme all long-press deletes, app-wide):** Refactoring `CardContextMenu` themes the delete confirm for ALL its consumers (account/holding cards + accounts/holdings grids + holding-detail + the new Home rows), not only Home. The user ACCEPTS this app-wide theming AND the resulting update to the three screens' `ActionSheetIOS`-asserting tests (`account-detail.screen.test.tsx`, `holding-detail.screen.test.tsx`, `accounts.screen.test.tsx`) — see the test surface below.
+- **C2-Q2 (LOCKED: `Delete "<name>"` title, no body):** The card menus reuse `common.deleteNamed` as the sheet title with a bare `Delete` confirm and no body. The transaction form passes its existing `deleteConfirmTitle`/`deleteConfirmMessage` (`en.ts:223-224`) through the same `ConfirmSheet`.
+- **C2-Q3 (LOCKED: state-in-`CardContextMenu`):** The `ConfirmSheet` state lives inside `CardContextMenu` — self-contained, no per-screen wiring, matching the existing per-screen sheet pattern.
 
 **Test surface.**
 - `confirm-sheet.component.test.tsx` — renders when `visible`; confirm calls `onConfirm`; scrim/cancel calls `onCancel`; destructive uses the destructive Button variant. (Hermetic RNTL, modeled on `bottom-sheet` tests.)
@@ -277,9 +284,9 @@ No other change. Edit hydration (`setMode(fields.sign)`, line 801) still wins fo
 - **`transaction-form.screen.tsx`** — round-3 rewrites the field group; the suggestion row and the wrapped description handler must land in round-3's final income/expense group, MERGED with A1's description handler (both react to description change — combine into one handler, don't stack).
 
 **Open PRODUCT decisions.**
-- **D1-Q1 (RECOMMENDED: inline suggestion row, tap-to-fill):** A tappable suggestion row under the field (recommended) vs. a native keyboard autocomplete (not available through the current `TextField` prop set without new plumbing). Recommended the inline row — themable, testable, no native dependency.
-- **D1-Q2 (RECOMMENDED: manual descriptions, newest-first, top 5):** Source = distinct MANUAL descriptions newest-first, capped at 5 matches (recommended) vs. include synced descriptions (noisier, many bank merchant strings) vs. frequency-ranked. Recommended manual + recency for a quick win; frequency ranking is a later refinement.
-- **D1-Q3 (RECOMMENDED: create only):** Show suggestions on create only (recommended) vs. also on edit. Recommended create-only — edit already has a description.
+- **D1-Q1 (LOCKED: inline suggestion row, tap-to-fill):** A tappable suggestion row under the description field fills the field on tap; not a native keyboard autocomplete.
+- **D1-Q2 (LOCKED: distinct manual descriptions, newest-first, top 5 — recency):** The autocomplete DATA SOURCE is distinct MANUAL transaction descriptions, ordered newest-first (recency, not frequency), capped at 5 matches. Synced/bank descriptions are excluded. Frequency ranking is an explicit later refinement, out of scope here.
+- **D1-Q3 (LOCKED: create only):** Suggestions show on create only; an edit already has its description.
 
 **Test surface.**
 - `transactions.repo.test.ts` — `distinctDescriptionsQuery` SQL is distinct + ordered by `time desc`.
@@ -288,72 +295,68 @@ No other change. Edit hydration (`setMode(fields.sign)`, line 801) still wins fo
 
 ---
 
-### D2 — Duplicate / repeat-last transaction action
+### D2 — Duplicate this transaction (duplicate ONLY)
 
-**Current state.** No duplicate or repeat affordance exists. `transactionsRepo` has `listAllQuery`, `listByHoldingQuery`, `listAllWithContextQuery`, `getByIdQuery` — none scoped to "recent manual for repeat". `recordManual` (`transactions.repo.ts:278`) is the create path a repeat would re-invoke.
+**Scope (LOCKED):** Bundle D2 is DUPLICATE-ONLY. Repeat-last is DROPPED per the user's deviation — there is no global "repeat last" button, no recency read query for a repeat mode, and no repeat-last step anywhere in this plan.
+
+**Current state.** No duplicate affordance exists. `recordManual` (`transactions.repo.ts:278`) is the create path a duplicate re-invokes. `getByIdQuery` (`transactions.repo.ts:216`) already returns a single row by id — enough to seed a duplicate; no new "recent"/"frequent" query is needed for duplicate-only.
 
 **Design.**
-1. **Data source — recommended: recency (most-recent manual transaction), not frequency.** A "repeat last" is deterministic and cheap; frequency requires ranking and a "frequent" definition the user must reason about. Add a read query returning the most recent manual transaction(s):
-   ```ts
-   recentManualQuery: (limit = 5) =>
-     database.select().from(transactions)
-       .where(eq(transactions.source, 'manual'))
-       .orderBy(desc(transactions.time))
-       .limit(limit),
-   ```
-2. **Which action — recommended: DUPLICATE from an existing row (a per-row action), not a global "repeat last" button.** Duplicate is discoverable in context and unambiguous (you duplicate the row you're looking at); a global "repeat last" is a hidden mode. Recommended: add a "Duplicate" action to the transaction row's existing long-press menu (now the themed `ConfirmSheet`/context menu from C2). Selecting Duplicate opens the create form pre-filled from that row's amount/description/category/holding, dated to now — the user confirms/edits and saves. This reuses the whole create path (no new write path) and composes with A1/D1.
-   - Mechanically: extend `CardContextMenu` (or a sibling menu action) with an optional `onDuplicate`, and on the transaction rows pass a handler that navigates `TransactionForm` with a new prefill param, OR seeds the form via route params. Simplest: a new create param `{ duplicateOfTransactionId: string }` that the form reads to seed amount/description/category/holding on mount (guarded by the hydrate latch). Decide param-vs-store at implementation; param is preferred (stateless, deep-link-safe).
-3. **Surface for the pre-fill:** the existing create form with the primary-leg picker from Bundle B seeded to the source row's holding.
+1. **Duplicate from an existing row, via the row's long-press context menu (now the themed menu from C2).** Selecting Duplicate opens the create form pre-filled from that row's amount, description, category, and holding, dated to NOW — the user confirms/edits and saves a NEW row. This reuses the whole create path (no new write path) and composes with A1 and D1.
+2. **Mechanics — LOCKED: prefill via a route param.** Add a create param `{ duplicateOfTransactionId: string }` to `TransactionFormParams`. The form reads it, loads the source row through the existing `getByIdQuery`, and seeds amount/description/category/holding on mount (guarded by the same hydrate latch the edit path uses, so a live refresh cannot clobber an in-progress edit). Stateless and deep-link-safe — no shared store.
+3. **Menu wiring.** Extend `CardContextMenu` (from C2) with an optional `onDuplicate` action alongside the destructive Delete, so a manual row's long-press offers both "Duplicate" and "Delete"; the transaction rows pass a handler that navigates `TransactionForm` with `{ duplicateOfTransactionId: <row id> }`. A synced row is not duplicated into a manual create here (out of scope) — offer Duplicate only for manual, deletable rows, or gate it on the same manual check.
+4. **Surface for the pre-fill:** the existing create form with the primary-leg picker from Bundle B seeded to the source row's holding.
 
 **REBASE NOTES.**
-- **`transactions.repo.ts`** — round-3 file; `recentManualQuery` is additive, re-anchor.
-- **`transaction-form.screen.tsx`** — a `duplicateOf` prefill path must merge with round-3's prefill/hydrate rewrite; do NOT add a second independent hydrate effect — extend round-3's final one.
-- **`navigation/types.d.ts`** — the duplicate param joins the `TransactionFormParams` union alongside Bundle B's empty-create shape; keep the union members mutually exclusive.
-- Depends on **Bundle B** (the primary-leg picker) and **Bundle C2** (the themed menu that hosts the Duplicate action). Sequence D2 last.
+- **`transaction-form.screen.tsx`** — the `duplicateOf` prefill path must MERGE with round-3's prefill/hydrate rewrite; do NOT add a second independent hydrate effect — extend round-3's final one.
+- **`navigation/types.d.ts`** — the `{ duplicateOfTransactionId }` param joins the `TransactionFormParams` union alongside Bundle B's empty-create shape; keep the union members mutually exclusive.
+- **`card-context-menu.component.tsx`** — the optional `onDuplicate` action is additive on top of C2's refactor; land C2 first.
+- Depends on **Bundle B** (the primary-leg picker for the seeded holding) and **Bundle C2** (the themed menu that hosts the Duplicate action). Sequence D2 last.
 
 **Open PRODUCT decisions.**
-- **D2-Q1 (RECOMMENDED: duplicate-from-row):** Duplicate a specific row via its context menu (recommended) vs. a global "repeat last" button vs. both. Recommended duplicate-from-row: discoverable, unambiguous, reuses the create form.
-- **D2-Q2 (RECOMMENDED: recency):** Underlying data = most-recent manual (recency, recommended) vs. most-frequent (needs a frequency definition + ranking). Recommended recency for a quick win.
-- **D2-Q3 (RECOMMENDED: prefill via route param):** Seed the duplicate through a `{ duplicateOfTransactionId }` route param (recommended, stateless) vs. a shared store. Recommended param.
-- **D2-Q4 (RECOMMENDED: date = now):** A duplicate dates to now (recommended) vs. copies the original's date. Recommended now — a repeat is a new event today.
+- **D2-Q1 (LOCKED: duplicate only):** Duplicate a specific row via its context menu. Repeat-last is DROPPED (user deviation).
+- **D2-Q3 (LOCKED: prefill via route param):** Seed the duplicate through a `{ duplicateOfTransactionId }` route param — stateless, no shared store.
+- **D2-Q4 (LOCKED: date = now):** A duplicate dates to now — it is a new event today, not a copy of the original's timestamp.
 
 **Test surface.**
-- `transactions.repo.test.ts` — `recentManualQuery` filters `source = 'manual'`, orders `time desc`, honors `limit`.
 - `transaction-form.screen.test.tsx` — opening with `{ duplicateOfTransactionId }` seeds amount/description/category/holding from the source row, dated to now, and saves a NEW row (no edit of the source).
-- `card-context-menu.component.test.tsx` (or the transaction row test) — the Duplicate action navigates with the duplicate param.
+- `card-context-menu.component.test.tsx` (or the transaction row test) — the Duplicate action navigates with the duplicate param; a synced/non-manual row does not offer Duplicate.
 - Maestro (later): long-press a Home row → Duplicate → save → a second row appears.
 
 ---
 
 ## Self-review
 
-- **Spec coverage:** A1 (category prefill via new `categoryOverridesRepo.allQuery` + form handler), A2 (default mode expense), B (new create param + primary picker + FAB + default holding), C1 (`source` in projection + `CardContextMenu` on Home), C2 (`ConfirmSheet` + `CardContextMenu` refactor + form `Alert` swap), D1 (`distinctDescriptionsQuery` + suggestion row), D2 (`recentManualQuery` + duplicate-from-row prefill). All four bundles' sub-items have a task home.
+- **Spec coverage:** A1 (category prefill via new `categoryOverridesRepo.allQuery` + form description BLUR handler + optional `TextField.onBlur`), A2 (default mode expense), B (new create param + primary picker + FAB + most-recent-manual default holding query), C1 (`source` in projection + `CardContextMenu` on Home), C2 (`ConfirmSheet` + `CardContextMenu` refactor + form `Alert` swap, app-wide), D1 (`distinctDescriptionsQuery` + suggestion row, recency top-5), D2 (duplicate-only prefill via `getByIdQuery` + `{ duplicateOfTransactionId }` route param + `CardContextMenu` `onDuplicate` action; repeat-last dropped). All four bundles' sub-items have a task home.
 - **No shipped-feature re-proposals:** keyboard Done, amount grouping, locale-tolerant parse, description placeholder preview, category→all-same-name propagation, convert-to-exchange, and double-submit guards are all pre-existing and are only REFERENCED (e.g. `useSubmitOnce`, `groupAmount`, `resolveCategoryOverrideRequest`, `resolveDescriptionPlaceholder`), never re-designed.
 - **Type consistency:** `HoldingSelectOption`/`HoldingSelectFieldProps` reused verbatim; `HomeTransactionRow` stays query-derived (so adding `source` needs no manual type edit); `TransactionFormParams` union members named consistently across `navigation/types.d.ts` and the form.
 - **Anchors re-read on 2026-09-14.** Round-3 will shift the three shared files; every REBASE NOTE names the file and the likely merge.
 
-## Open decisions summary (for user approval)
+## Open decisions summary (ALL LOCKED)
 
-| ID | Decision | Recommended |
-|---|---|---|
-| A1-Q1 | When the category rule lookup fires | On description change, auto-clear when name stops matching |
-| A1-Q2 | Show an "auto-selected" hint? | No — silently seat the pick |
-| A2-Q1 | Default create mode | Expense |
-| B-Q1 | Global entry placement | Floating "+" FAB on Home |
-| B-Q2 | Default primary holding | Most recent manual tx's holding, else first eligible |
-| B-Q3 | Primary picker option set | Eligible manual holdings only (open, non-synced, non-bond) |
-| B-Q4 | Reuse `HoldingSelectField`? | Yes |
-| C2-Q1 | Theme ALL `CardContextMenu` deletes (cards + grids + holding-detail + Home)? | Yes — that is the consistency win |
-| C2-Q2 | Card-menu confirm copy | `Delete "<name>"` title, bare `Delete`, no body |
-| C2-Q3 | Where the confirm state lives | Inside `CardContextMenu` |
-| D1-Q1 | Autocomplete surface | Inline tappable suggestion row |
-| D1-Q2 | Suggestion source/ranking | Distinct manual descriptions, newest-first, top 5 |
-| D1-Q3 | Show on edit too? | Create only |
-| D2-Q1 | Duplicate vs repeat-last | Duplicate-from-row (context menu) |
-| D2-Q2 | Recent vs frequent | Recency |
-| D2-Q3 | Prefill mechanism | `{ duplicateOfTransactionId }` route param |
-| D2-Q4 | Duplicate date | Now |
+Every row below is LOCKED. Two rows deviate from the plan's original recommendation, marked "(deviation)": A1-Q1 (blur, not on-change) and the D2 bundle (duplicate only, repeat-last dropped).
 
-## Execution handoff (after approval + after round-3 lands)
+| ID | Decision | Locked resolution | Status |
+|---|---|---|---|
+| A1-Q1 | When the category rule lookup fires | On description BLUR; never overwrite an explicit user pick (adds optional `onBlur` to `TextField`) — *(deviation)* | LOCKED |
+| A1-Q2 | Show an "auto-selected" hint? | No — silently seat the pick | LOCKED |
+| A2-Q1 | Default create mode | Expense | LOCKED |
+| B-Q1 | Global entry placement | Floating "+" FAB on Home | LOCKED |
+| B-Q2 | Default primary-leg holding | Most recent manual tx's holding, else first eligible | LOCKED |
+| B-Q3 | Primary picker option set | Eligible manual holdings only (open, non-synced, non-bond) | LOCKED |
+| B-Q4 | Reuse `HoldingSelectField` for the primary leg? | Yes | LOCKED |
+| C1-Q1 | Home rows must know synced-vs-manual | Add `source` to `listAllWithContextQuery` | LOCKED |
+| C2-Q1 | Theme ALL `CardContextMenu` deletes app-wide (cards + grids + holding-detail + Home)? | Yes — user accepts app-wide theming + the 3 flipped ActionSheet tests | LOCKED |
+| C2-Q2 | Card-menu confirm copy | `Delete "<name>"` title, bare `Delete`, no body | LOCKED |
+| C2-Q3 | Where the confirm state lives | Inside `CardContextMenu` | LOCKED |
+| D1-Q1 | Autocomplete surface | Inline tappable suggestion row | LOCKED |
+| D1-Q2 | Autocomplete data source | Distinct manual descriptions, newest-first, top 5 (recency, not frequency) | LOCKED |
+| D1-Q3 | Show on edit too? | Create only | LOCKED |
+| D2-Q1 | Duplicate vs repeat-last | Duplicate ONLY — repeat-last dropped — *(deviation)* | LOCKED |
+| D2-Q2 | Duplicate data source | The specific row via `getByIdQuery`; no recency/frequency source (repeat-last dropped) | LOCKED |
+| D2-Q3 | Duplicate prefill mechanism | `{ duplicateOfTransactionId }` route param | LOCKED |
+| D2-Q4 | Duplicate date | Now | LOCKED |
 
-Recommended landing order: **A2 → A1 → C2 → C1 → D1 → D2 → B**. Each bundle is an independently reviewable, independently testable unit ending in a `make gate` checkpoint; run `make jest` (full) before green and `make deep` once after the last bundle lands. Dispatch per-task via superpowers:subagent-driven-development, re-anchoring every REBASE NOTE against the round-3 final form first.
+## Execution handoff (after round-3 lands)
+
+All decisions are LOCKED; implementation may proceed once `next-exchange-split-plan` (round-3) has landed. Landing order (LOCKED): **A2 → A1 → C2 → C1 → D1 → D2 → B** — repeat-last is dropped, so there is no repeat-last step. Each bundle is an independently reviewable, independently testable unit ending in a `make gate` checkpoint; run `make jest` (full) before green and `make deep` once after the last bundle lands. Dispatch per-task via superpowers:subagent-driven-development, re-anchoring every REBASE NOTE against the round-3 final form first.
