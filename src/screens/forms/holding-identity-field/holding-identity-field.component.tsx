@@ -41,8 +41,10 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   const { t } = useTranslation();
   const nameLabel = t('forms.fields.name');
   // The same native Done keyboard accessory every other Kiko input carries, so
-  // this name field dismisses the keyboard identically.
-  const { inputAccessoryViewID, accessory } = useKeyboardDoneAccessory();
+  // this name field dismisses the keyboard identically. `keyboardAppearance`
+  // keeps the system keyboard's own chrome matching the accessory bar's fill
+  // (see the hook's own doc comment).
+  const { inputAccessoryViewID, accessory, keyboardAppearance } = useKeyboardDoneAccessory();
 
   return (
     <Box direction="row" gap={3} style={captioned ? styles.container : styles.containerBare}>
@@ -70,6 +72,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
           placeholderTextColor={theme.colors.textSecondary}
           returnKeyType="done"
           inputAccessoryViewID={inputAccessoryViewID}
+          keyboardAppearance={keyboardAppearance}
           style={styles.nameField}
         />
       </Box>

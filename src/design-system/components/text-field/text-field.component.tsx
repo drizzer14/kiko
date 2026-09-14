@@ -36,8 +36,10 @@ const TextField: FC<TextFieldProps> = ({
   const { theme } = useUnistyles();
   // The native Done keyboard accessory, shared with every other Kiko input.
   // Unconditional on iOS (text and numeric alike); `inputAccessoryViewID` is
-  // this field's own id (or `undefined` off iOS).
-  const { inputAccessoryViewID, accessory } = useKeyboardDoneAccessory();
+  // this field's own id (or `undefined` off iOS). `keyboardAppearance` keeps
+  // the SYSTEM keyboard's own chrome matching this same hook's accessory bar
+  // fill (see the hook's own doc comment).
+  const { inputAccessoryViewID, accessory, keyboardAppearance } = useKeyboardDoneAccessory();
   // An empty string (a currency not yet known) is treated the same as no
   // suffix, so those callers render exactly as a plain field.
   const hasSuffix = suffix !== undefined && suffix !== '';
@@ -64,6 +66,7 @@ const TextField: FC<TextFieldProps> = ({
       keyboardType={keyboardType}
       returnKeyType={resolvedReturnKeyType}
       inputAccessoryViewID={inputAccessoryViewID}
+      keyboardAppearance={keyboardAppearance}
       editable={editable}
       accessibilityLabel={accessibilityLabel}
       autoCapitalize={autoCapitalize}

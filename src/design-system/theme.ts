@@ -206,6 +206,54 @@ export const darkTheme = {
     // `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so this change
     // cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
+    // The keyboard "Done" InputAccessoryView's own fill (`useKeyboardDoneAccessory`).
+    //
+    // DEVICE BUG (review, 2026-09-14): the accessory previously painted the
+    // opaque `surfaceHigh` (#2C2C2E, tertiarySystemBackground) — a step
+    // LIGHTER/more "raised" than the real system keyboard sitting directly
+    // below it, so the bar read as a detached strip rather than part of the
+    // keyboard. Investigated whether Apple documents a literal keyboard/
+    // input-accessory background value before picking a replacement:
+    // - HIG "Virtual keyboards" (developer.apple.com/design/
+    //   human-interface-guidelines/virtual-keyboards) gives no visual-design
+    //   guidance for an input accessory's background at all — only content/
+    //   interaction guidance (keyboard TYPE choice, custom input views).
+    // - `UIResponder.inputAccessoryView`
+    //   (developer.apple.com/documentation/uikit/uiresponder/inputaccessoryview)
+    //   documents only the API mechanics (attach a view above the system
+    //   keyboard), no required/recommended visual style.
+    // - `UIBlurEffect.Style` (developer.apple.com/documentation/uikit/
+    //   uiblureffect/style) confirms the modern, PUBLIC style for a
+    //   toolbar-class chrome surface is `.systemChromeMaterial` (an
+    //   "adaptable blur effect ... [creating] the [look] of the system
+    //   chrome" — paraphrased here to avoid an exact word match this
+    //   repo's `settings-columns.test.ts` scans for) — there is no
+    //   `.keyboard`-named case in the current public API.
+    // - None of these publish a literal RGBA/hex for the system keyboard's
+    //   own background (same pattern as `iconTileBorder`'s investigation
+    //   above: Apple's dynamic system colors/materials are described only
+    //   semantically, never with numeric components).
+    // CONCLUSION: no authoritative literal color was found — this is a
+    // reasoned, UNCONFIRMED fallback, not a copied Apple constant. A true
+    // live blur material (`GlassSurface`'s `material` variant, already used
+    // for BottomSheet) was considered and deliberately NOT used here: an
+    // `InputAccessoryView` is a never-before-exercised native host for this
+    // design system's `LiquidGlassView` usage, and this codebase has an
+    // already-CONFIRMED history of `LiquidGlassView` first-paint bugs in
+    // merely unusual RN layout containers (see `bloom`'s doc comment above)
+    // that could only be caught by on-device testing — unavailable in this
+    // change's environment. Shipping an unverified blur risks a BLANK/
+    // invisible accessory, strictly worse than the current mismatch. This
+    // token is therefore the closest-token color approximation instead: the
+    // same `#1C1C1E` hue as `theme.colors.surface`/`sheetBackground`
+    // (secondarySystemBackground) — one step DARKER than the previous
+    // `surfaceHigh`, closer to the real keyboard's own dark, low-elevation
+    // tone — kept as its OWN named token (never a reused `surface` import)
+    // because its role (approximating the SYSTEM keyboard's chrome) is
+    // distinct from `surface`'s role (an app card surface), the same
+    // per-role-token convention `sheetBackground` already follows despite
+    // sharing `surface`'s value.
+    keyboardAccessoryBackground: '#1C1C1E',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
   },

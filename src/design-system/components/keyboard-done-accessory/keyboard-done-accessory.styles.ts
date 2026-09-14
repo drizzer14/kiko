@@ -1,16 +1,30 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The toolbar's minimum height (and the Done button's tap target) — the iOS HIG
-// 44pt minimum touch target, so the accessory reads as a real keyboard bar
-// rather than a floating button and stays comfortably tappable.
+// The toolbar's minimum height (and the Done button's tap target). No Apple
+// doc gives a literal point value for a `UIToolbar`/input-accessory bar's
+// height (`UIToolbar`'s own doc only names "standard-height"/"compact-height"
+// style variants, no number — see `keyboardAccessoryBackground`'s doc comment
+// in `theme.ts` for the full research writeup this component shares).
+// 44 is kept: it is both the iOS HIG minimum touch target AND the
+// long-established standard iPhone toolbar/nav-bar height, so it satisfies
+// the touch-target requirement and reads as a standard-height bar even
+// without a literal Apple citation for the second claim.
 const TOOLBAR_MIN_HEIGHT = 44;
 
 export const styles = StyleSheet.create((theme) => ({
-  // The InputAccessoryView host, styled as a real iOS input-accessory toolbar:
-  // an elevated `surfaceHigh` fill that reads as part of the keyboard (distinct
-  // from the app's black background and #1C1C1E cards behind it), a top hairline
-  // `border` separator that divides it from app content, and enough
-  // padding/height (>= 44) to read as a bar. The Done button stays trailing
+  // The InputAccessoryView host, styled as a real iOS input-accessory toolbar
+  // so it reads as PART OF the keyboard directly below it, not a detached
+  // strip: `keyboardAccessoryBackground` (its own doc comment in `theme.ts`
+  // has the full investigation — a reasoned color approximation of the
+  // system keyboard's own tone, since a live blur material could not be
+  // verified safely in this native host) for the fill, and the existing
+  // neutral `border` separator token (the same hairline `GlassSurface`'s
+  // `bordered` prop uses) as a top hairline dividing it from app content —
+  // Apple's own `separator`/`opaqueSeparator` system colors are exactly this
+  // "thin border/divider line" role (see `theme.ts`), so reusing this
+  // existing token rather than inventing a new one is itself the
+  // HIG-grounded choice here. Height/padding hold the 44pt bar (see
+  // `TOOLBAR_MIN_HEIGHT` above). The Done button stays trailing
   // (`alignItems: 'flex-end'`, the original placement), vertically centered.
   accessoryContainer: {
     minHeight: TOOLBAR_MIN_HEIGHT,
@@ -18,7 +32,7 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
     paddingVertical: theme.spacing(1),
     paddingHorizontal: theme.spacing(4),
-    backgroundColor: theme.colors.surfaceHigh,
+    backgroundColor: theme.colors.keyboardAccessoryBackground,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.border,
   },
