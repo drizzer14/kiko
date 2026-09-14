@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../unistyles';
 
 import { darkTheme } from '../../theme';
@@ -83,6 +84,28 @@ describe('EntityIconTile', () => {
     expect(firstGradient.props.id).not.toBe(secondGradient.props.id);
     expect(firstRect.props.fill).toBe(`url(#${firstGradient.props.id})`);
     expect(secondRect.props.fill).toBe(`url(#${secondGradient.props.id})`);
+  });
+
+  // Gap (review, 2026-09-14): the static specular "glass edge" — the
+  // highlight gradient's stops and the tile's rim border — carries its own
+  // theme tokens, but neither was asserted anywhere, so either could silently
+  // regress. Mirrors the sibling color gradient's own stop assertions above.
+  it("derives the highlight gradient's two stops from the specularHighlight token, fading to transparent", async () => {
+    const { getByTestId } = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
+
+    const topStop = getByTestId('entity-icon-tile-highlight-stop-top');
+    const bottomStop = getByTestId('entity-icon-tile-highlight-stop-bottom');
+
+    expect(topStop.props.stopColor).toBe(darkTheme.colors.specularHighlight);
+    expect(bottomStop.props.stopColor).toBe(darkTheme.colors.specularHighlight);
+    expect(bottomStop.props.stopOpacity).toBe(0);
+  });
+
+  it('carries the specularRim border color on the tile', async () => {
+    const { getByTestId } = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
+
+    const flat = StyleSheet.flatten(getByTestId('entity-icon-tile').props.style);
+    expect(flat.borderColor).toBe(darkTheme.colors.specularRim);
   });
 
   it('passes an explicit size through to the glyph', async () => {
