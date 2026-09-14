@@ -107,7 +107,7 @@ export const sumReturnsByGroup = (
   const returnsByGroup = new Map<string, number>();
 
   for (const transaction of transactions) {
-    if (transaction.changeGroupId !== null && transaction.amountMinorUnits > 0) {
+    if (transaction.changeGroupId != null && transaction.amountMinorUnits > 0) {
       const running = returnsByGroup.get(transaction.changeGroupId) ?? 0;
       returnsByGroup.set(transaction.changeGroupId, running + transaction.amountMinorUnits);
     }
@@ -117,15 +117,15 @@ export const sumReturnsByGroup = (
 };
 
 // A payment's spend magnitude (positive minor units) after subtracting its own
-// group's summed positive returns. A non-split row (`changeGroupId === null`)
-// nets nothing, so its magnitude is the bare `-amountMinorUnits`. Shared shape
-// with category-trend's own netting.
+// group's summed positive returns. A non-split row (`changeGroupId` nullish —
+// `null` or `undefined`) nets nothing, so its magnitude is the bare
+// `-amountMinorUnits`. Shared shape with category-trend's own netting.
 export const netMagnitudeOf = (
   transaction: Pick<BreakdownTransaction, 'changeGroupId' | 'amountMinorUnits'>,
   returnsByGroup: ReadonlyMap<string, number>,
 ): number => {
   const returned =
-    transaction.changeGroupId !== null ? (returnsByGroup.get(transaction.changeGroupId) ?? 0) : 0;
+    transaction.changeGroupId != null ? (returnsByGroup.get(transaction.changeGroupId) ?? 0) : 0;
 
   return -transaction.amountMinorUnits - returned;
 };
