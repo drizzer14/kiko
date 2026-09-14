@@ -193,6 +193,7 @@ type SaveDisabledParams = {
   selectedCategory: string | null;
   changeReturns: readonly { holdingId: string | null; amount: string }[];
   payerHoldingId: string | undefined;
+  currency: Currency;
 };
 
 const isSaveDisabled = (params: SaveDisabledParams): boolean => {
@@ -209,9 +210,14 @@ const isSaveDisabled = (params: SaveDisabledParams): boolean => {
   }
 
   // Split gates on the same invariant `saveSplit` writes: a positive payment
-  // and ≥1 distinct non-payer positive return whose sum stays below it.
+  // and ≥1 distinct non-payer positive return whose sum stays below it, PLUS a
+  // category — a split expense's netted magnitude lands in the spending pie, so
+  // it must be categorised like any other create expense.
   if (params.isSplit) {
-    return !canSaveSplit(params.amount, params.changeReturns, params.payerHoldingId);
+    return (
+      params.selectedCategory === null ||
+      !canSaveSplit(params.amount, params.changeReturns, params.payerHoldingId, params.currency)
+    );
   }
 
   if (params.isReadOnly) {
@@ -278,6 +284,7 @@ export const canSaveSplit = (
   paymentAmount: string,
   returns: readonly { holdingId: string | null; amount: string }[],
   payerHoldingId: string | undefined,
+  currency: Currency,
 ): boolean => {
   const payment = parseAmount(paymentAmount);
 
@@ -285,8 +292,12 @@ export const canSaveSplit = (
     return false;
   }
 
+  // Compare Σ returns against the payment in INTEGER minor units, via the exact
+  // same conversion the write uses (`Money.fromMajor`), so a boundary case can
+  // never disagree with what `saveSplit` records because of float-major math.
+  const paymentMinor = Money.fromMajor(currency, payment).minorUnits;
   const ids = new Set<string>();
-  let sum = 0;
+  let sumMinor = 0;
 
   for (const change of returns) {
     const value = parseAmount(change.amount);
@@ -304,10 +315,10 @@ export const canSaveSplit = (
     }
 
     ids.add(change.holdingId);
-    sum += value;
+    sumMinor += Money.fromMajor(currency, value).minorUnits;
   }
 
-  return sum < payment;
+  return sumMinor < paymentMinor;
 };
 
 // The return-row picker's options: every OPEN holding except the payer and
@@ -1053,6 +1064,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     changeReturns,
     payerHoldingId: holding?.id,
+    currency,
   });
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
@@ -1211,7 +1223,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // rows in one transaction via `recordManualWithReturns`. `canSaveSplit` is the
   // guard (the repo has none), so the `as string` casts below are proven safe.
   const saveSplit = async (): Promise<void> => {
-    if (holding === undefined || !canSaveSplit(amount, changeReturns, holding.id)) {
+    if (
+      holding === undefined ||
+      !canSaveSplit(amount, changeReturns, holding.id, holding.currency)
+    ) {
       return;
     }
 

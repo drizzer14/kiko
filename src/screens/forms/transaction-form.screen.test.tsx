@@ -1752,6 +1752,9 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    // A split expense needs a category too (its netted magnitude lands in the
+    // spending pie), so pick one up front — this test isolates the Σ-boundary.
+    await pickCategory(utils, 'Groceries');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '0.20');
 
     // Σ returns (0.20) is not strictly less than |payment| (0.20): net zero is
@@ -1760,6 +1763,25 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     // Raising the payment above the returns makes the net an expense again.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+    expect(isDisabled()).toBe(false);
+  });
+
+  it('keeps Save disabled for an otherwise-valid split until a category is picked', async () => {
+    const utils = await renderAddFromHolding('payer');
+    const isDisabled = (): boolean | undefined =>
+      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    // A valid payment + return but no category: a split expense's netted
+    // magnitude appears in the spending pie, so it must be categorised.
+    expect(isDisabled()).toBe(true);
+
+    await pickCategory(utils, 'Groceries');
     expect(isDisabled()).toBe(false);
   });
 
@@ -1793,18 +1815,19 @@ describe('canSaveSplit', () => {
           { holdingId: 'b', amount: '0.08' },
         ],
         'payer',
+        'UAH',
       ),
     ).toBe(true);
 
     // No returns at all.
-    expect(canSaveSplit('10', [], 'payer')).toBe(false);
+    expect(canSaveSplit('10', [], 'payer', 'UAH')).toBe(false);
     // A non-positive (or unparseable) payment.
-    expect(canSaveSplit('0', [{ holdingId: 'a', amount: '1' }], 'payer')).toBe(false);
-    expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'payer')).toBe(false);
+    expect(canSaveSplit('0', [{ holdingId: 'a', amount: '1' }], 'payer', 'UAH')).toBe(false);
+    expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'payer', 'UAH')).toBe(false);
     // A return with no holding picked.
-    expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'payer')).toBe(false);
+    expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'payer', 'UAH')).toBe(false);
     // A return that targets the payer itself.
-    expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'payer')).toBe(false);
+    expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'payer', 'UAH')).toBe(false);
     // Two returns on the SAME holding (the repo has no runtime guard — this is
     // the enforcement point).
     expect(
@@ -1815,10 +1838,11 @@ describe('canSaveSplit', () => {
           { holdingId: 'a', amount: '1' },
         ],
         'payer',
+        'UAH',
       ),
     ).toBe(false);
     // A non-positive return amount.
-    expect(canSaveSplit('10', [{ holdingId: 'a', amount: '0' }], 'payer')).toBe(false);
+    expect(canSaveSplit('10', [{ holdingId: 'a', amount: '0' }], 'payer', 'UAH')).toBe(false);
     // Σ returns equals the payment (net zero is not an expense).
     expect(
       canSaveSplit(
@@ -1828,8 +1852,23 @@ describe('canSaveSplit', () => {
           { holdingId: 'b', amount: '1' },
         ],
         'payer',
+        'UAH',
       ),
     ).toBe(false);
+    // Validated in INTEGER minor units, not float-major: 0.10 + 0.20 = 30 minor
+    // units, strictly below 0.31 = 31 minor units, so the sub-unit boundary holds
+    // exactly rather than through fragile float arithmetic.
+    expect(
+      canSaveSplit(
+        '0.31',
+        [
+          { holdingId: 'a', amount: '0.10' },
+          { holdingId: 'b', amount: '0.20' },
+        ],
+        'payer',
+        'UAH',
+      ),
+    ).toBe(true);
   });
 });
 
