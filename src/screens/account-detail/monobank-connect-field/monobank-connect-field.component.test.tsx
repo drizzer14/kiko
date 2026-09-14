@@ -53,6 +53,9 @@ it('validates the token, then calls onConnect and shows "Connected as {name}" on
       view.getByText(i18n.t('accountDetail.connectedAs', { name: 'Ada Lovelace' })),
     ).toBeTruthy(),
   );
+  // SECURITY: the raw token is dropped from state once connected, so it is not
+  // parked in the React tree — the field goes back to its blank display value.
+  expect(view.getByDisplayValue('')).toBeTruthy();
 });
 
 it('shows invalidToken and never calls onConnect when validation throws', async () => {
@@ -65,6 +68,9 @@ it('shows invalidToken and never calls onConnect when validation throws', async 
 
   await waitFor(() => expect(view.getByText(i18n.t('accountDetail.invalidToken'))).toBeTruthy());
   expect(onConnect).not.toHaveBeenCalled();
+  // Unlike the success path, an invalid token is kept in the field so the user
+  // can correct and retry it, rather than retyping it from scratch.
+  expect(view.getByDisplayValue('bad')).toBeTruthy();
 });
 
 it('shows couldNotConnectMonobank when a valid token fails to store/sync', async () => {
@@ -78,4 +84,31 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync', async
   await waitFor(() =>
     expect(view.getByText(i18n.t('accountDetail.couldNotConnectMonobank'))).toBeTruthy(),
   );
+  // A save/sync failure also keeps the validated token in the field so the user
+  // can retry the connect without retyping it.
+  expect(view.getByDisplayValue('tok')).toBeTruthy();
+});
+
+it('disables Connect while validation is in flight, even with a filled token', async () => {
+  let resolveFetch: (info: { name: string }) => void = () => {};
+  mockFetchClientInfo.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+  );
+  const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
+
+  await type(view, 'tok-123');
+  expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
+
+  await pressConnect(view);
+
+  // Validation is still pending (fetchClientInfo has not resolved), so the
+  // "checking" status must disable the button even though the token is filled.
+  expect(view.getByRole('button', { name: connectLabel })).toBeDisabled();
+
+  await act(async () => {
+    resolveFetch({ name: 'Ada' });
+  });
 });

@@ -120,14 +120,29 @@ jest.mock('../account-detail/binance-credentials-field', () => {
 // the screen's `connectMonobank` closure with a token, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
 jest.mock('../account-detail/monobank-connect-field', () => {
+  const { useState } = require('react');
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
-    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (
-      <Pressable accessibilityLabel="monobank-field" onPress={() => onConnect('tok-123')}>
-        <Text>monobank field</Text>
-      </Pressable>
-    ),
+    // Unlike the wallet/binance mocks above, this one also surfaces the boolean
+    // `connectMonobank` resolves to (via a testID) — proving the screen's
+    // create -> saveToken -> sync chain actually propagates the sync outcome
+    // back to the caller, rather than a mutant swallowing it (e.g. hard-coding
+    // `true` or losing a rejection inside the try/catch).
+    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => {
+      const [result, setResult] = useState('');
+      return (
+        <Pressable
+          accessibilityLabel="monobank-field"
+          onPress={() => {
+            onConnect('tok-123').then((connected: boolean) => setResult(String(connected)));
+          }}
+        >
+          <Text>monobank field</Text>
+          <Text testID="monobank-connect-result">{result}</Text>
+        </Pressable>
+      );
+    },
   };
 });
 
@@ -686,6 +701,71 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockSaveToken).toHaveBeenCalledWith(createdId, 'tok-123');
     expect(mockMonobankSync).toHaveBeenCalledWith(createdId);
     expect(mockSaveCredentials).not.toHaveBeenCalled();
+    // connectMonobank must resolve to the sync's own outcome, not a hard-coded
+    // `true` — proves `return syncMonobank(...)` actually propagates.
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('true'),
+    );
+  });
+
+  it('resolves connectMonobank to false when the sync itself fails (no thrown error)', async () => {
+    // A sync that resolves false (not a rejection) is a distinct outcome from a
+    // thrown create/saveToken error below: the token was stored fine, but the
+    // sync did not succeed. The result must still propagate as false.
+    mockMonobankSync.mockResolvedValue(false);
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
+    expect(mockSaveToken).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
+    );
+  });
+
+  it('does not save a token or sync when the bank row create rejects', async () => {
+    // Mirrors the crypto create-reject coverage (C-1) for the bank-specific
+    // connectMonobank closure: a failed create must short-circuit BEFORE
+    // saveToken/sync ever run, and connectMonobank must resolve to false (its
+    // own try/catch), not throw or resolve true.
+    mockCreate.mockRejectedValueOnce(new Error('db locked'));
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
+    );
+    // No row was actually inserted (the create latch was reset), so the kind
+    // switch must not lock.
+    expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('does not sync when saving the token to the Keychain fails', async () => {
+    // Unique to the bank flow (crypto has no saveToken step): the row IS
+    // created successfully, but the Keychain write throws. connectMonobank's
+    // own try/catch must still resolve false and must never call syncMonobank.
+    mockSaveToken.mockRejectedValueOnce(new Error('keychain write failed'));
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockSaveToken).toHaveBeenCalledTimes(1));
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
+    );
+    // Unlike a create failure, the row itself was created before saveToken
+    // threw, so the kind switch stays locked — the latch was never reset.
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(true);
   });
 
   it('connect then Save updates the same row — never a duplicate account', async () => {
@@ -737,6 +817,20 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() =>
       expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(true),
     );
+  });
+
+  it('shows an "enter a name first" hint on the bank form while the name is empty', async () => {
+    // Parity with the crypto form's own name-required hint: the bank block
+    // renders it only while `!canSave`, and it disappears the moment a name is
+    // entered — mirrors ensureAccount's own name gate (a Connect tapped before
+    // a name is entered would otherwise fail with no visible explanation).
+    const view = await renderForm();
+
+    expect(view.queryByTestId('monobank-connect-name-hint')).toBeTruthy();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+
+    expect(view.queryByTestId('monobank-connect-name-hint')).toBeNull();
   });
 
   it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
