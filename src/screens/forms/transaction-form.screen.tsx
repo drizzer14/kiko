@@ -41,12 +41,14 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import Divider from '../../design-system/components/divider';
 import { buildRateTable } from '../../rates/net-worth-view';
 import SymbolIcon from '../../design-system/components/symbol';
 import TextField from '../../design-system/components/text-field';
+import { isSyncedHolding } from '../../holdings/deletable';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import type { HoldingRow, TransactionRow } from '../../db/schema';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import type { TransactionFormParams } from '../../navigation/types';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import BottomSheet from '../../design-system/components/bottom-sheet';
@@ -159,14 +161,21 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 // preview — an example the user can type, not an echo of the field's own label.
 // Kept module-level and pure so its branch stays out of the screen
 // component's cognitive-complexity budget; `t` is the full `TFunction` (both
-// the fallback and the interpolated preview flow through it).
+// the fallback and the interpolated preview flow through it). Both `expense`
+// and `split` are expenses (a split's payment is negative), so each maps to a
+// negative representative value and previews the expense-style fallback; only a
+// plain income maps to non-negative.
 const resolveDescriptionPlaceholder = (
   holding: Pick<HoldingRow, 'name'> | undefined,
   mode: FormMode,
   t: TFunction,
 ): string =>
   holding !== undefined
-    ? defaultTransactionDescription(holding.name, mode === 'expense' ? -1 : 0, t)
+    ? defaultTransactionDescription(
+        holding.name,
+        mode === 'expense' || mode === 'split' ? -1 : 0,
+        t,
+      )
     : t('forms.transaction.descriptionPlaceholder');
 
 // Whether a money field holds a strictly positive number — the same guard every
@@ -214,7 +223,6 @@ type SaveDisabledParams = {
   counterpartHoldingId: string | null;
   selectedCategory: string | null;
   changeReturns: readonly { holdingId: string | null; amount: string }[];
-  payerHoldingId: string | undefined;
   currency: Currency;
 };
 
@@ -238,7 +246,7 @@ const isSaveDisabled = (params: SaveDisabledParams): boolean => {
   if (params.isSplit) {
     return (
       params.selectedCategory === null ||
-      !canSaveSplit(params.amount, params.changeReturns, params.payerHoldingId, params.currency)
+      !canSaveSplit(params.amount, params.changeReturns, params.currency)
     );
   }
 
@@ -295,17 +303,19 @@ const resolveModeOptions = (
 };
 
 // Whether a split payment + its returns are writable: a positive payment, at
-// least one return, each return a positive amount on a DISTINCT holding other
-// than the payer, and Σ returns strictly less than |payment| (the net stays an
-// expense). Same-currency returns only for v1 (enforced by the picker's filter).
-// This is the ENFORCEMENT point for the distinct-holding/positive-amount
-// invariant — `recordManualWithReturns` has no runtime guard — so it is exported
-// and unit-tested directly (the picker's own filter makes a duplicate pick
-// UI-unreachable, but a future caller or refactor must still be caught here).
+// least one return, each return a positive amount on a DISTINCT holding, and Σ
+// returns strictly less than |payment| (the net stays an expense). The payer
+// holding IS an allowed return target (item 2): its balance nets the payment and
+// the return with no double-count, so a return on the payer is valid — which is
+// why the guard no longer takes a `payerHoldingId` to exclude. Same-currency
+// returns only for v1 (enforced by the picker's filter). This is the ENFORCEMENT
+// point for the distinct-holding/positive-amount invariant —
+// `recordManualWithReturns` has no runtime guard — so it is exported and unit-
+// tested directly (the picker's own filter makes a duplicate pick UI-unreachable,
+// but a future caller or refactor must still be caught here).
 export const canSaveSplit = (
   paymentAmount: string,
   returns: readonly { holdingId: string | null; amount: string }[],
-  payerHoldingId: string | undefined,
   currency: Currency,
 ): boolean => {
   const payment = parseAmount(paymentAmount);
@@ -321,10 +331,12 @@ export const canSaveSplit = (
   const ids = new Set<string>();
   let sumMinor = 0;
 
+  // The payer is no longer rejected here (item 2) — only a null pick and a
+  // duplicate holding are.
   for (const change of returns) {
     const value = parseAmount(change.amount);
 
-    if (change.holdingId === null || change.holdingId === payerHoldingId) {
+    if (change.holdingId === null) {
       return false;
     }
 
@@ -343,27 +355,44 @@ export const canSaveSplit = (
   return sumMinor < paymentMinor;
 };
 
-// The return-row picker's options: every OPEN holding except the payer and
-// except any holding already picked in ANOTHER row, restricted to the payer's
-// own currency (v1 keeps a split single-currency). The eligible-TYPE gate is
-// open (`() => true`) — a change return can land on any holding type — so the
-// currency + already-picked filters are the only narrowing beyond
-// `buildExchangeOptions`'s open/non-payer projection.
+// The return-row picker's options: every OPEN holding in the payer's own
+// currency (v1 keeps a split single-currency), except any holding already
+// picked in ANOTHER row and except a synced/syncable holding (item 6 — a sync
+// owns that holding's balance, so it can never be a return target). The payer
+// holding IS an allowed return target (item 2): the net stays an expense and
+// the balance nets on the payer with no double-count, so nothing is excluded by
+// id here (`undefined` keeps `buildExchangeOptions` from dropping the payer).
+// The eligible-TYPE gate is open (`() => true`) — a change return can land on
+// any holding type. Whether a holding is synced is the shared `isSyncedHolding`
+// predicate (its account is connected to a sync AND it carries that source's
+// metadata key), mirrored here rather than reinvented.
 const buildReturnOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
   accountOrderById: ReadonlyMap<string, number>,
-  payerHoldingId: string | undefined,
+  accountById: ReadonlyMap<string, AccountRow>,
   payerCurrency: Currency,
   pickedElsewhere: ReadonlySet<string>,
-): HoldingSelectOption[] =>
-  buildExchangeOptions(
+): HoldingSelectOption[] => {
+  const syncableIds = new Set(
+    holdings
+      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
+      .map((candidate) => candidate.id),
+  );
+
+  return buildExchangeOptions(
     holdings,
     accountNameById,
     accountOrderById,
-    payerHoldingId,
+    undefined,
     () => true,
-  ).filter((option) => option.currency === payerCurrency && !pickedElsewhere.has(option.id));
+  ).filter(
+    (option) =>
+      option.currency === payerCurrency &&
+      !pickedElsewhere.has(option.id) &&
+      !syncableIds.has(option.id),
+  );
+};
 
 // Order two holdings the way the Accounts screen shows them (F2): primary by
 // the parent account's display rank (its 0-based index in the sortOrder-ordered
@@ -554,6 +583,11 @@ type FieldGroupProps = {
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The transaction-TYPE selector (mode ChipRow), rendered directly UNDER the
+  // amount/value input (item 5) — built in the component so this pure helper
+  // stays translation-agnostic. Not shown while converting (a convert has no
+  // mode toggle), so the converting branch never renders it.
+  modeChipRow: ReactElement;
   t: TFunction;
 };
 
@@ -581,19 +615,23 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
 
   if (props.isExchange) {
     return (
-      <ExchangeFields
-        valueOut={props.amount}
-        onChangeValueOut={props.onChangeAmount}
-        valueOutSuffix={props.amountSuffix}
-        destinationOptions={props.destinationOptions}
-        destinationHoldingId={props.destinationHoldingId}
-        onSelectDestination={props.onSelectDestination}
-        valueIn={props.valueIn}
-        onChangeValueIn={props.onChangeValueIn}
-        valueInSuffix={props.valueInSuffix}
-        time={props.time}
-        onChangeTime={props.onChangeTime}
-      />
+      <>
+        <ExchangeFields
+          valueOut={props.amount}
+          onChangeValueOut={props.onChangeAmount}
+          valueOutSuffix={props.amountSuffix}
+          destinationOptions={props.destinationOptions}
+          destinationHoldingId={props.destinationHoldingId}
+          onSelectDestination={props.onSelectDestination}
+          valueIn={props.valueIn}
+          onChangeValueIn={props.onChangeValueIn}
+          valueInSuffix={props.valueInSuffix}
+          time={props.time}
+          onChangeTime={props.onChangeTime}
+        />
+
+        {props.modeChipRow}
+      </>
     );
   }
 
@@ -611,6 +649,10 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         // required marker; a manual add/edit always needs a positive amount.
         required={!props.isReadOnly}
       />
+
+      {/* The transaction-TYPE selector sits directly under the amount input
+        (item 5), between Amount and Description. */}
+      {props.modeChipRow}
 
       <TextField
         label={props.t('forms.transaction.description')}
@@ -674,6 +716,13 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
 
   return (
     <>
+      {/* A divider + title-case section heading mark where the change-returns
+        list begins (item 4), the same shared Divider + `variant="heading"` Text
+        the term-deposit contributions section uses. */}
+      <Divider testID="returns-divider" />
+
+      <Text variant="heading">{props.t('forms.transaction.returnsHeading')}</Text>
+
       {props.returns.map((row, index) => (
         <Box key={row.id} gap={2}>
           <HoldingSelectField
@@ -695,6 +744,10 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
             required
           />
 
+          {/* The delete-return control reuses the SAME shared Button the deposit
+            (term-deposit contributions) form uses for its remove action — a
+            destructiveTonal small button WITH a text label — rather than the
+            hand-rolled icon-only button it was before (item 3). */}
           <Button
             variant="destructiveTonal"
             size="small"
@@ -702,7 +755,9 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
             icon="trash"
             accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
             onPress={() => props.onRemove(index)}
-          />
+          >
+            {props.t('forms.transaction.remove')}
+          </Button>
         </Box>
       ))}
 
@@ -739,10 +794,6 @@ const showsSaveButton = (
 // out of the screen component's own branch count.
 type ModeAndActionsProps = {
   converting: boolean;
-  modeOptions: readonly FormMode[];
-  mode: FormMode;
-  onSelectMode: (mode: FormMode) => void;
-  modeLabels: Record<FormMode, string>;
   isReadOnly: boolean;
   isExchange: boolean;
   categoryOptions: { key: string; title: string; icon: string; color: string }[];
@@ -765,19 +816,11 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
 
   return (
     <>
-      {/* The form's mode as a shared chip row: income/expense always, plus
-        Exchange when the source is cash/card and this is a fresh add (see
-        `resolveModeOptions`). On a read-only (synced) row the row is
-        `disabled`: presses are inert AND the chips dim, matching how the
-        other fields render locked, so a synced transaction's bank-owned
-        sign cannot be toggled here. */}
-      <ChipRow
-        options={props.modeOptions}
-        selected={props.mode}
-        onSelect={props.onSelectMode}
-        labels={props.modeLabels}
-        disabled={props.isReadOnly}
-      />
+      {/* The mode ChipRow no longer lives here: it renders directly under the
+        amount/value input inside `renderFieldGroup` (item 5). This helper now
+        owns only the category picker, the "Convert to exchange" action, and the
+        Delete button — everything below the field group except while
+        converting. */}
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
@@ -895,6 +938,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // query.
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const accountNameById = new Map(accounts.map((account) => [account.id, account.name]));
+  // The full account rows keyed by id, so the return picker can ask
+  // `isSyncedHolding` whether a candidate's account is connected to a sync
+  // (item 6) — the name/order maps above drop the `institution` that check needs.
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
   // The account display rank (F2): `accountsRepo.listQuery` is already ordered
   // by the drag-and-drop `sortOrder`, so each account's index IS its rank on
   // the Accounts screen. The picker groups its holdings under their account in
@@ -1105,7 +1152,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     counterpartHoldingId,
     selectedCategory,
     changeReturns,
-    payerHoldingId: holding?.id,
     currency,
   });
 
@@ -1264,8 +1310,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // The return-row picker's options for a given row: every eligible payer-
-  // currency holding, minus the payer and minus every holding already picked in
-  // ANOTHER row, so two rows can never target the same holding through the UI.
+  // currency holding (the payer itself included — item 2), minus every holding
+  // already picked in ANOTHER row, so two rows can never target the same holding
+  // through the UI, and minus any synced/syncable holding (item 6).
   const returnOptionsFor = (index: number): HoldingSelectOption[] => {
     const pickedElsewhere = new Set(
       changeReturns
@@ -1277,7 +1324,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       holdings,
       accountNameById,
       accountOrderById,
-      holdingId,
+      accountById,
       currency,
       pickedElsewhere,
     );
@@ -1288,10 +1335,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // rows in one transaction via `recordManualWithReturns`. `canSaveSplit` is the
   // guard (the repo has none), so the `as string` casts below are proven safe.
   const saveSplit = async (): Promise<void> => {
-    if (
-      holding === undefined ||
-      !canSaveSplit(amount, changeReturns, holding.id, holding.currency)
-    ) {
+    if (holding === undefined || !canSaveSplit(amount, changeReturns, holding.currency)) {
       return;
     }
 
@@ -1505,6 +1549,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     );
   };
 
+  // The transaction-TYPE selector (mode ChipRow), built here so the pure
+  // `renderFieldGroup` helper stays translation-agnostic. It renders directly
+  // under the amount/value input (item 5). On a read-only (synced) row the row
+  // is `disabled`: presses are inert AND the chips dim, matching how the other
+  // fields render locked, so a synced transaction's bank-owned sign cannot be
+  // toggled here.
+  const modeChipRow = (
+    <ChipRow
+      options={modeOptions}
+      selected={mode}
+      onSelect={setMode}
+      labels={modeLabels}
+      disabled={isReadOnly}
+    />
+  );
+
   return (
     <>
       <Screen
@@ -1557,6 +1617,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isReadOnly,
             time,
             onChangeTime: setTime,
+            modeChipRow,
             t,
           })}
 
@@ -1583,10 +1644,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             live in the module-level `renderModeAndActions` (see above). */}
           {renderModeAndActions({
             converting,
-            modeOptions,
-            mode,
-            onSelectMode: setMode,
-            modeLabels,
             isReadOnly,
             isExchange,
             categoryOptions,

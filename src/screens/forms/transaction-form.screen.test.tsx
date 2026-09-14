@@ -95,8 +95,9 @@ type Holding = {
   accountId?: string;
   sortOrder?: number;
   createdAt?: number;
+  metadata?: unknown;
 };
-type Account = { id: string; name: string };
+type Account = { id: string; name: string; institution?: string | null };
 type Category = { key: string; title: string; icon: string };
 type Transaction = {
   id: string;
@@ -440,10 +441,12 @@ describe('TransactionFormScreen — add mode', () => {
     expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
   });
 
-  it('keeps the income/expense field order: Amount, Description, Date, Time, mode row, Category', async () => {
+  it('renders the mode row directly under Amount: Amount, mode row, Description, Date, Time, Category (item 5)', async () => {
     const utils = await renderAdd();
     const rendered = collectRenderedText(utils.toJSON());
-    const order = ['Amount', 'Description', 'Date', 'Time', 'Income', 'Category'].map((label) =>
+    // The transaction-TYPE selector now sits directly UNDER the amount input
+    // (item 5), so the mode chip 'Income' falls between Amount and Description.
+    const order = ['Amount', 'Income', 'Description', 'Date', 'Time', 'Category'].map((label) =>
       rendered.indexOf(label),
     );
 
@@ -1804,6 +1807,22 @@ const SPLIT_HOLDINGS: Holding[] = [
 
 const SPLIT_ACCOUNTS: Account[] = [{ id: 'acc', name: 'Home' }];
 
+// A synced, same-currency, open holding: its account is connected to a sync
+// (Binance) AND it carries that source's metadata key, so `isSyncedHolding` is
+// true and the return picker must exclude it (item 6), even though currency and
+// open-status would otherwise qualify it.
+const SPLIT_SYNCED_HOLDING: Holding = {
+  id: 'synced-uah',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'cash',
+  name: 'Synced Wallet',
+  accountId: 'sync-acc',
+  metadata: { binanceAsset: 'BTC' },
+};
+
+const SPLIT_SYNCED_ACCOUNT: Account = { id: 'sync-acc', name: 'Binance', institution: 'binance' };
+
 describe('TransactionFormScreen — Split-change mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1905,10 +1924,72 @@ describe('TransactionFormScreen — Split-change mode', () => {
     // row-2 option — so no two rows can target the same holding.
     expect(utils.getAllByText('Alice')).toHaveLength(1);
   });
+
+  it('previews an EXPENSE-style description placeholder in split mode (item 1)', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+
+    // A split is an expense, so its blank-description preview must read as the
+    // expense fallback ("<holding> expense"), never the income one.
+    const description = utils.getByLabelText('Description');
+    expect(description.props.placeholder).toBe('Wallet UAH expense');
+    expect(description.props.placeholder).not.toBe('Wallet UAH income');
+  });
+
+  it('allows the payer holding itself as a return target (item 2)', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+
+    // The payer ("Wallet UAH") is now offered as a valid return target.
+    expect(utils.getByText('Wallet UAH')).toBeTruthy();
+  });
+
+  it('excludes a synced/syncable holding from the return picker (item 6)', async () => {
+    setLiveData([...SPLIT_HOLDINGS, SPLIT_SYNCED_HOLDING], undefined, CATEGORIES, [
+      ...SPLIT_ACCOUNTS,
+      SPLIT_SYNCED_ACCOUNT,
+    ]);
+
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+
+    // A same-currency, open, non-payer holding still qualifies...
+    expect(utils.getByText('Alice')).toBeTruthy();
+    // ...but a synced/syncable holding never appears (its balance is sync-owned).
+    expect(utils.queryByText('Synced Wallet')).toBeNull();
+  });
+
+  it('renders the return-row delete control with a text label and removes the row (item 3)', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+    await fireEvent.press(utils.getByText('Add return'));
+
+    // The delete control now carries the shared button's TEXT label (not the old
+    // icon-only button): one per row.
+    expect(utils.getAllByText('Remove').length).toBeGreaterThanOrEqual(2);
+
+    // Pressing the second row's delete removes that row.
+    await fireEvent.press(utils.getByLabelText('Remove return 2'));
+    expect(utils.queryByLabelText('Return to 2')).toBeNull();
+  });
+
+  it('renders a divider and a section heading above the returns list (item 4)', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await fireEvent.press(utils.getByText('Split'));
+
+    expect(utils.getByTestId('returns-divider')).toBeTruthy();
+    expect(utils.getByText('Change Returns')).toBeTruthy();
+
+    // The heading precedes the first return row in reading order.
+    const rendered = collectRenderedText(utils.toJSON());
+    expect(rendered.indexOf('Change Returns')).toBeLessThan(rendered.indexOf('Return to 1'));
+  });
 });
 
 describe('canSaveSplit', () => {
-  it('enforces a positive payment, ≥1 distinct non-payer return, and Σ returns < payment', () => {
+  it('enforces a positive payment, ≥1 distinct return (payer allowed), and Σ returns < payment', () => {
     // A valid split: two distinct non-payer returns summing below the payment.
     expect(
       canSaveSplit(
@@ -1917,20 +1998,21 @@ describe('canSaveSplit', () => {
           { holdingId: 'a', amount: '0.20' },
           { holdingId: 'b', amount: '0.08' },
         ],
-        'payer',
         'UAH',
       ),
     ).toBe(true);
 
     // No returns at all.
-    expect(canSaveSplit('10', [], 'payer', 'UAH')).toBe(false);
+    expect(canSaveSplit('10', [], 'UAH')).toBe(false);
     // A non-positive (or unparseable) payment.
-    expect(canSaveSplit('0', [{ holdingId: 'a', amount: '1' }], 'payer', 'UAH')).toBe(false);
-    expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'payer', 'UAH')).toBe(false);
+    expect(canSaveSplit('0', [{ holdingId: 'a', amount: '1' }], 'UAH')).toBe(false);
+    expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'UAH')).toBe(false);
     // A return with no holding picked.
-    expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'payer', 'UAH')).toBe(false);
-    // A return that targets the payer itself.
-    expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'payer', 'UAH')).toBe(false);
+    expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'UAH')).toBe(false);
+    // A return that targets the payer itself is NOW allowed (item 2): the net is
+    // still an expense (return < payment) and the balance nets on the payer with
+    // no double-count, so a payer return is a valid split.
+    expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'UAH')).toBe(true);
     // Two returns on the SAME holding (the repo has no runtime guard — this is
     // the enforcement point).
     expect(
@@ -1940,12 +2022,11 @@ describe('canSaveSplit', () => {
           { holdingId: 'a', amount: '1' },
           { holdingId: 'a', amount: '1' },
         ],
-        'payer',
         'UAH',
       ),
     ).toBe(false);
     // A non-positive return amount.
-    expect(canSaveSplit('10', [{ holdingId: 'a', amount: '0' }], 'payer', 'UAH')).toBe(false);
+    expect(canSaveSplit('10', [{ holdingId: 'a', amount: '0' }], 'UAH')).toBe(false);
     // Σ returns equals the payment (net zero is not an expense).
     expect(
       canSaveSplit(
@@ -1954,7 +2035,6 @@ describe('canSaveSplit', () => {
           { holdingId: 'a', amount: '1' },
           { holdingId: 'b', amount: '1' },
         ],
-        'payer',
         'UAH',
       ),
     ).toBe(false);
@@ -1968,7 +2048,6 @@ describe('canSaveSplit', () => {
           { holdingId: 'a', amount: '0.10' },
           { holdingId: 'b', amount: '0.20' },
         ],
-        'payer',
         'UAH',
       ),
     ).toBe(true);
