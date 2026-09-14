@@ -1,5 +1,4 @@
 import { render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
 import '../../unistyles';
 
 import { darkTheme } from '../../theme';
@@ -84,30 +83,6 @@ describe('EntityIconTile', () => {
     expect(firstGradient.props.id).not.toBe(secondGradient.props.id);
     expect(firstRect.props.fill).toBe(`url(#${firstGradient.props.id})`);
     expect(secondRect.props.fill).toBe(`url(#${secondGradient.props.id})`);
-  });
-
-  // Gap (review, 2026-09-14): the tile's hairline rim border carries its own
-  // theme token, but it was not asserted anywhere, so it could silently
-  // regress. Mirrors the sibling color gradient's own stop assertions above.
-  it('carries the iconTileBorder border color on the tile', async () => {
-    const { getByTestId } = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
-
-    const flat = StyleSheet.flatten(getByTestId('entity-icon-tile').props.style);
-    expect(flat.borderColor).toBe(darkTheme.colors.iconTileBorder);
-  });
-
-  // DEVICE BUG (review, 2026-09-14): the single white 0.12-alpha hairline
-  // above was confirmed invisible on device, and a white-only ring can never
-  // read against a light entity tint anyway. A second, inner dark ring
-  // (`iconTileBorderShadow`) was added specifically to keep the edge visible
-  // there — this pins its own border color so a future edit cannot silently
-  // drop the light-tile case back to the original, invisible single-ring
-  // treatment.
-  it('carries the iconTileBorderShadow border color on the inner edge ring', async () => {
-    const { getByTestId } = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
-
-    const flat = StyleSheet.flatten(getByTestId('entity-icon-tile-edge-shadow').props.style);
-    expect(flat.borderColor).toBe(darkTheme.colors.iconTileBorderShadow);
   });
 
   it('passes an explicit size through to the glyph', async () => {

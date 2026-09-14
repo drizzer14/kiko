@@ -140,53 +140,6 @@ export const darkTheme = {
     // keeping a `textPrimary` (white) label legible on it.
     neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
-    // A thin, translucent-WHITE hairline — the OUTER ring of the squircle
-    // icon tile's (`EntityIconTile`) two-ring edge treatment.
-    //
-    // DEVICE BUG (review, 2026-09-14): the original single 0.12-alpha value
-    // was confirmed INVISIBLE on device. Investigated whether Apple
-    // documents a specific numeric "app icon edge" treatment before picking
-    // a replacement value: Apple's current App Icons HIG page
-    // (developer.apple.com/design/human-interface-guidelines/app-icons)
-    // explicitly says the system generates an icon's highlight/shadow
-    // dynamically via Liquid Glass and to NOT hand-add "specular
-    // highlights ... beveled edges" — i.e. Apple does not publish, and
-    // actively discourages, a fixed custom edge stroke for an actual
-    // Home Screen app icon. That page is about the app's OWN Home Screen
-    // icon (Icon Composer layers), not an in-app UI element like this tile,
-    // so it does not directly apply here, but it also means there is no
-    // literal Apple-published "app-icon edge" hex/alpha to copy. Apple's
-    // `UIColor.separator`/`opaqueSeparator` (developer.apple.com/
-    // documentation/uikit/uicolor/separator) is the closest documented
-    // native hairline concept, but Apple deliberately does not publish its
-    // literal RGBA components either — it is described only as "partially
-    // transparent... adapts to the underlying trait environment," i.e. a
-    // DIFFERENT fixed value in light vs. dark context, never one flat color
-    // meant to read against both. CONCLUSION: no authoritative source
-    // confirms a single numeric hairline value that is guaranteed legible
-    // against both light AND dark fills — the reasoned fallback here
-    // (unconfirmed against an Apple spec, a deliberate design-system
-    // choice) is a TWO-RING edge, mirroring the classic native
-    // highlight+shadow bevel: this WHITE ring (bumped to 0.32 alpha, up
-    // from the invisible 0.12) reads against dark/mid entity tints, paired
-    // with `iconTileBorderShadow` below (a dark ring one hairline further
-    // in) which reads against light entity tints — together hue/lightness-
-    // independent across the whole entity palette. Always a fixed
-    // white-based translucency, never derived from the tile's own color the
-    // way `entityIconTileGradient`'s fill stops are. Distinct from the
-    // neutral gray `border` separator token above: that one is a flat
-    // hairline for a card edge (`GlassSurface`'s `bordered` prop); this
-    // pair is specifically for a squircle icon tile's own edge.
-    iconTileBorder: 'rgba(255,255,255,0.32)',
-    // A thin, translucent-BLACK hairline — the INNER ring of the squircle
-    // icon tile's two-ring edge treatment, inset by exactly one hairline
-    // width from `iconTileBorder` above. Provides the contrast component
-    // `iconTileBorder`'s white ring cannot: on a LIGHT entity tint (e.g.
-    // `entityColors.white`/`yellow`), a translucent white ring nearly
-    // vanishes, so this darker inner ring is what keeps the edge visible
-    // there. See `iconTileBorder`'s own doc comment above for the full
-    // investigation and reasoning; read together, never alone.
-    iconTileBorderShadow: 'rgba(0,0,0,0.35)',
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet). NOT the opaque `background` token: a modal
     // scrim reads as a frosted dim over whatever screen is behind it — real
