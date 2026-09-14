@@ -5,11 +5,17 @@ import { type FC, useEffect, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';
+import {
+  type Currency,
+  currencyOptions,
+  currencySymbol,
+  isCrypto,
+  isFiat,
+} from '../../../currency/currency';
 import TextField from '../text-field';
 import BottomSheet from '../bottom-sheet';
 import SelectableRow from '../selectable-row';
 import FieldTrigger from '../../../screens/forms/field-trigger';
-import { type Currency, currencyOptions, currencySymbol } from '../../../currency/currency';
 
 import { styles } from './currency-field.styles';
 import type { CurrencyFieldProps } from './currency-field.props';
@@ -34,6 +40,44 @@ const matches = (t: TFunction, code: Currency, query: string): boolean => {
   );
 };
 
+// Orders currency codes by their LOCALIZED name in the active language,
+// case- and accent-insensitively (`sensitivity: 'base'`), so the list reads
+// alphabetically in whatever language the app is showing rather than by ISO
+// code. Curried so it can be handed straight to `Array.prototype.sort`.
+const byLocalizedName =
+  (t: TFunction, language: string) =>
+  (a: Currency, b: Currency): number =>
+    currencyName(t, a).localeCompare(currencyName(t, b), language, { sensitivity: 'base' });
+
+// UAH pins to the TOP of the fiat list, ahead of the alphabetical order — but
+// only when the list is not being searched (see `visibleCurrencies`).
+const pinUahFirst = (fiat: readonly Currency[]): Currency[] => {
+  const others = fiat.filter((code) => code !== 'UAH');
+
+  return fiat.includes('UAH') ? ['UAH', ...others] : [...others];
+};
+
+// The rows to render: fiat first (alphabetical by localized name, with UAH
+// pinned to the top only while the search box is empty), then the crypto set
+// (BTC/ETH/USDT — classified through the domain's `isCrypto`, never a local
+// code check) as a separate group, also alphabetical by localized name, after
+// all fiats. Filtering by the search query happens first, so a search reorders
+// only what it matched.
+const visibleCurrencies = (
+  options: readonly Currency[],
+  t: TFunction,
+  language: string,
+  query: string,
+): Currency[] => {
+  const compare = byLocalizedName(t, language);
+  const matched = options.filter((code) => matches(t, code, query));
+  const fiat = matched.filter(isFiat).sort(compare);
+  const crypto = matched.filter(isCrypto).sort(compare);
+  const orderedFiat = query.trim() === '' ? pinUahFirst(fiat) : fiat;
+
+  return [...orderedFiat, ...crypto];
+};
+
 // A labeled, searchable single-select currency picker: the field shows the
 // current selection (its text currency mark — `currencySymbol`, symbol-where-
 // one-exists / ISO-code-otherwise, never a generic icon — plus "CODE —
@@ -56,7 +100,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   hideLabel,
   testID,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -68,7 +112,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     }
   }, [open]);
 
-  const visible = options.filter((code) => matches(t, code, query));
+  const visible = visibleCurrencies(options, t, i18n.language, query);
 
   const handleSelect = (code: Currency): void => {
     onSelect(code);
@@ -126,7 +170,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
               accessibilityLabel={`${code} ${currencyName(t, code)}`}
               selected={code === selected}
               onPress={() => handleSelect(code)}
-              label={`${code} — ${currencyName(t, code)}`}
+              label={currencyName(t, code)}
               leadingText={currencySymbol[code]}
             />
           )}
