@@ -479,7 +479,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         onChangeText={props.onChangeAmount}
         editable={!props.isReadOnly}
         keyboardType="decimal-pad"
-        placeholder="0.00"
+        placeholder={props.t('forms.transaction.amountPlaceholder')}
         suffix={props.amountSuffix}
         // A read-only (synced) row's amount never gates save, so it carries no
         // required marker; a manual add/edit always needs a positive amount.

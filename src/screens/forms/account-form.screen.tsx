@@ -415,7 +415,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               value={initialValue}
               onChangeText={(text) => setInitialValue(groupAmount(text))}
               keyboardType="decimal-pad"
-              placeholder="0.00"
+              placeholder={t('forms.account.initialValuePlaceholder')}
               suffix={currencySymbol[currency]}
             />
           </>

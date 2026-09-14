@@ -40,7 +40,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         value={valueOut}
         onChangeText={onChangeValueOut}
         keyboardType="decimal-pad"
-        placeholder="0.00"
+        placeholder={t('forms.transaction.valueOutPlaceholder')}
         suffix={valueOutSuffix}
         required
       />
@@ -59,7 +59,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         value={valueIn}
         onChangeText={onChangeValueIn}
         keyboardType="decimal-pad"
-        placeholder="0.00"
+        placeholder={t('forms.transaction.valueInPlaceholder')}
         suffix={valueInSuffix}
         required
       />
