@@ -1,1 +1,1 @@
-export { default } from './glass-surface.component';
+export { default, StableSurface } from './glass-surface.component';

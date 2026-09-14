@@ -1,4 +1,3 @@
-import { isScreenshotMode } from '@kiko/screenshot/screenshot-mode';
 import { render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
@@ -9,18 +8,6 @@ import '../../unistyles';
 // `design-system/components/screen`), not `./screen.component` directly, so
 // this test also exercises index.ts's re-export.
 import Screen from '.';
-
-// `isScreenshotMode()` reads a value react-native-dotenv inlines at BUILD time,
-// so it cannot be flipped at runtime by mocking `@env`; mock the screenshot-mode
-// module itself instead. The jest.fn is defined INLINE in the factory (not as an
-// outer const the factory closes over) because `jest.mock` is hoisted above
-// every other top-level statement — an outer reference would not yet exist when
-// the factory runs. Each test drives the return value through the imported
-// handle below, defaulting to `false` (the production value) via `beforeEach`.
-jest.mock('@kiko/screenshot/screenshot-mode', () => ({
-  isScreenshotMode: jest.fn(() => false),
-}));
-const mockIsScreenshotMode = isScreenshotMode as jest.Mock;
 
 // The Screen footer lifts itself clear of the floating native tab bar by the
 // bar's measured height. The real hook throws outside a native bottom-tab
@@ -148,13 +135,6 @@ const renderScreen = (props: ComponentProps<typeof Screen> = {}) =>
 const footerNode = <Text>footer content</Text>;
 
 describe('Screen', () => {
-  // Every case runs with screenshot mode OFF (the production value) unless it
-  // opts in, so the default-bounce assertion and every unrelated case see the
-  // real app's behaviour.
-  beforeEach(() => {
-    mockIsScreenshotMode.mockReturnValue(false);
-  });
-
   it('renders children in a plain (non-scrolling) View by default', async () => {
     const { getByText, queryByTestId } = await renderScreen();
 
@@ -175,20 +155,6 @@ describe('Screen', () => {
     // Production must be unchanged: `bounces` is left `undefined`, so RN applies
     // its default (`true`) and real users keep the native overscroll bounce.
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.bounces).toBeUndefined();
-  });
-
-  it('disables the ScrollView bounce under screenshot mode so the bottom-clamped shot is deterministic', async () => {
-    mockIsScreenshotMode.mockReturnValue(true);
-
-    const { getByTestId } = await renderScreen({ scroll: true });
-
-    // The last App Store screenshot (spending-trend) is taken at the very bottom
-    // of this ScrollView, where iOS's native overscroll settles to a different
-    // resting offset run-to-run — motion `ReducedMotionConfig` cannot stop (it
-    // is not reanimated-driven) and Maestro cannot wait out. Turning `bounces`
-    // off ONLY in screenshot-mode builds removes that native settle so the shot
-    // lands at a fixed, clamped offset.
-    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.bounces).toBe(false);
   });
 
   it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {

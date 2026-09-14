@@ -1,4 +1,4 @@
-import { isScreenshotMode } from '@kiko/screenshot/screenshot-mode';
+import { SCREENSHOT_MODE } from '@env';
 import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
@@ -65,14 +65,13 @@ const Screen: FC<ScreenProps> = ({
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
-          // Screenshot-mode ONLY: turn off the native iOS overscroll bounce so
-          // the App Store spending-trend shot — taken at the very bottom of this
-          // ScrollView — lands at a fixed, bottom-clamped offset instead of
-          // catching iOS's run-to-run bounce settle (native motion, so neither
-          // `ReducedMotionConfig` nor Maestro's `waitForAnimationToEnd` can gate
-          // it). `undefined` keeps RN's default (`true`), so real users are
-          // unaffected. Gated on the build-time `isScreenshotMode()` dead branch.
-          bounces={isScreenshotMode() ? false : undefined}
+          // Screenshot-mode ONLY: turn off the native iOS overscroll bounce so a
+          // bottom-clamped App Store shot lands at a fixed offset. `SCREENSHOT_MODE`
+          // is inlined by react-native-dotenv at build time; the committed `.env`
+          // has no such key, so a production build inlines `undefined`, this folds
+          // to `bounces={undefined}` (RN default `true`, real users unaffected),
+          // and no screenshot code reaches the Release bundle.
+          bounces={SCREENSHOT_MODE === 'true' ? false : undefined}
           contentInsetAdjustmentBehavior="automatic"
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`

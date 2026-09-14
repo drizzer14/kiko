@@ -7,7 +7,6 @@ import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
-import { isScreenshotMode } from '../../screenshot/screenshot-mode';
 import type { AuthResult } from '../biometrics';
 import { useAppLock } from '../use-app-lock';
 
@@ -50,7 +49,7 @@ const unlockLabel = (
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
-  const { isReady, isLocked, unlock } = useAppLock();
+  const { isReady, isLocked, unlock, promptOnMount } = useAppLock();
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
   const attemptUnlock = useCallback((): void => {
@@ -64,19 +63,18 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
       return;
     }
 
-    // Screenshot mode ONLY: render the locked screen but do NOT auto-invoke the
-    // biometric sheet on mount. The screenshot simulator has no enrolled
-    // biometrics, so the system dialog would block Maestro from capturing the
-    // lock screen (and a biometric Keychain read can SIGABRT there). The manual
-    // Unlock button still calls `attemptUnlock`. `isScreenshotMode()` is inlined
-    // `false` in every real build, so the production cold-launch prompt is
-    // unchanged.
-    if (isScreenshotMode()) {
+    // `promptOnMount` is true in every real build, so production auto-invokes the
+    // biometric/passcode sheet on cold launch exactly as before. It is false only
+    // in a screenshot-capture build (see `useAppLock`), where auto-invoking would
+    // block Maestro on a system dialog (or SIGABRT on a Keychain read with no
+    // enrolled biometrics) while the lock frame is captured. The manual Unlock
+    // button below still calls `attemptUnlock` in every build.
+    if (!promptOnMount) {
       return;
     }
 
     attemptUnlock();
-  }, [isLocked, attemptUnlock]);
+  }, [isLocked, attemptUnlock, promptOnMount]);
 
   if (!isReady) {
     return <Box style={styles.fill} />;

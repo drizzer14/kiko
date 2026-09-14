@@ -1,3 +1,4 @@
+import { SCREENSHOT_MODE } from '@env';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +15,8 @@ type AppLock = {
   isReady: boolean;
   isLocked: boolean;
   unlock: () => Promise<AuthResult>;
+  // True in every real build; false ONLY in a screenshot-capture build, so LockGate does not auto-invoke the biometric sheet during Maestro capture. Build-time constant (react-native-dotenv inlines SCREENSHOT_MODE), stripped from Release.
+  promptOnMount: boolean;
 };
 
 /**
@@ -71,5 +74,10 @@ export const useAppLock = (): AppLock => {
     isReady: !APP_LOCK_ENABLED || locked !== undefined,
     isLocked: lockEnabled && locked === true,
     unlock,
+    // `SCREENSHOT_MODE` is inlined by react-native-dotenv at build time
+    // (babel.config.js). The committed `.env` has no such key, so a production
+    // build inlines `undefined` and this folds to a constant `true` — the
+    // screenshot suppression is stripped from the Release binary.
+    promptOnMount: SCREENSHOT_MODE !== 'true',
   };
 };
