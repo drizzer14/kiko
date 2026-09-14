@@ -95,6 +95,21 @@ describe('composeHistoryRows', () => {
     });
   });
 
+  it('prices ETH through USD and composes a convertible ETH:UAH history row', () => {
+    const withEth: HistoryRateEntry[] = [
+      { base: 'USD', quote: 'UAH', day: day(0), rate: 40, source: 'nbu' },
+      { base: 'ETH', quote: 'USD', day: day(0), rate: 3_200, source: 'coingecko' },
+    ];
+    const rows = composeHistoryRows(withEth, [day(0)]);
+    expect(rows).toContainEqual({
+      base: 'ETH',
+      quote: 'UAH',
+      day: day(0),
+      rate: '128000',
+      source: 'coingecko',
+    });
+  });
+
   it('stores every rate as a string, never a float', () => {
     for (const row of composeHistoryRows(anchors, [day(0)])) {
       expect(typeof row.rate).toBe('string');
@@ -137,7 +152,7 @@ describe('runBackfill', () => {
         nbuCalls.push([start, end]);
         return nbu;
       },
-      fetchBTCHistory: async (days) => {
+      fetchCryptoHistory: async (days) => {
         btcCalls.push(days);
         return btc;
       },
@@ -178,7 +193,7 @@ describe('runBackfill', () => {
     // already returned. The composed rows carry the fiat cross pairs; BTC pairs
     // are simply absent for that pass.
     const { deps, captured } = makeDeps({
-      fetchBTCHistory: async () => {
+      fetchCryptoHistory: async () => {
         throw new Error('CoinGecko request failed: 401');
       },
     });
@@ -220,7 +235,7 @@ describe('runBackfill', () => {
       lastBackfilledDay: day(0),
       today: day(2),
       fetchNbuHistory: async () => [],
-      fetchBTCHistory: async () => [],
+      fetchCryptoHistory: async () => [],
     });
 
     const status: BackfillStatus = await runBackfill(deps);
