@@ -1,6 +1,6 @@
 import { Pressable } from 'react-native';
-import { useTranslation } from 'react-i18next';
 import { type FC, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 
 import SymbolIcon from '../../../design-system/components/symbol';
