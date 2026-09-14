@@ -38,6 +38,9 @@
 - `src/holdings/exchange-prefill/exchange-prefill.test.ts` — unit test for the seed helper (Task 5).
 - `src/holdings/exchange-prefill/index.ts` — barrel re-export (Task 5).
 - `src/transactions/repo/money-path.test.ts` — the money-path build-6 guard test (Task 6).
+- `src/screens/statistics/use-focus-refreshed-now.ts` — the `useFocusRefreshedNow` hook (Task 9 F2).
+- `src/screens/statistics/use-focus-refreshed-now.test.tsx` — unit test for the focus-refresh hook (Task 9 F2).
+- `src/statistics/chart-balance-consistency.test.ts` — the balance-consistency invariant guard the by-type bar + account-contribution pie rely on (Task 9 F3).
 
 **Modified:**
 - `src/db/schema.ts` — add `changeGroupId: text('change_group_id')` to the `transactions` table (Task 1).
@@ -51,6 +54,9 @@
 - `src/transactions/repo/transactions.repo.ts` (`listAllWithContextQuery`) + `src/screens/statistics/statistics.screen.tsx` (BOTH pie projections — `breakdownTransactions` and `rangeFilteredBreakdownTransactions`) — thread `changeGroupId` through to the pie (Task 4).
 - `src/screens/statistics/statistics.screen.tsx` (`trendTransactions` projection) — thread `changeGroupId` through to the trend line + ranking (Task 3b).
 - `src/screens/forms/transaction-form.screen.tsx` — split-change UI + `saveSplit` (Task 7, HOLD); Feature 1 rate live query + prefill effect (Task 8, HOLD).
+- `src/rates/history-backfill/history-backfill.ts` — add the pure `planBackfillRun` re-run planner (Task 9 F1). Auto-re-exported by the `export *` barrel `src/rates/history-backfill/index.ts`.
+- `src/rates/history-backfill/history-backfill.test.ts` — add the `planBackfillRun` unit tests (Task 9 F1).
+- `src/screens/statistics/statistics.screen.tsx` — re-run the backfill when the span extends earlier (Task 9 F1); refresh `now` on focus via `useFocusRefreshedNow` (Task 9 F2). This is IN ADDITION to the `changeGroupId` threading Tasks 3b/4 already do to this file.
 
 ---
 
@@ -1294,6 +1300,476 @@ Then run `npm run check:all`, and `npm run check:deep` once more before declarin
 
 ---
 
+### Task 9: Chart-reactivity fixes (net-worth backfill re-run, focus-refreshed now, balance-consistency guard)
+
+**Part of the pure-logic / no-form batch (NOT a HOLD form task); commit SEPARATELY from the feature commits for a clean review.** It edits `statistics.screen.tsx`, so it MUST run AFTER the stats trio (Tasks 3/3b/4) to build on their threaded `changeGroupId` field, never before. It does NOT touch the HELD `transaction-form.screen.tsx`, so it has no dependency on the UI-tweaks track that gates Tasks 7/8 — it can land any time after Task 4.
+
+This task closes a chart live-sync audit that found two real gaps (F1, F2), one latent risk to guard (F3), and one item confirmed already-correct (F4):
+
+- **F4 (confirmed, NO code):** `recordManualWithReturns` (Task 2) performs exactly ONE `write(...)` wrapping the payment insert + all return inserts + every balance update, so op-sqlite fires its reactive live-query callback ONCE and all charts (net worth, by-type bar, both pies, the trend line) refresh together in a single re-render. Verified against the real `transactions.repo.ts` (`recordManualWithReturns` is a single `write(async (tx) => { ... })` doing `recordManualTx` for the payment and each return inside the one transaction). No step needed — this audit item is closed.
+
+Each of F1/F2/F3 gets its OWN commit (three commits, all separate from the feature commits), each followed by `npm run check:all`.
+
+**Line-number note (verified against the real file):** `backfillStartedRef` is at `statistics.screen.tsx:274` and its effect at `:280-308` (accurate); `now` is defined at `:188`, used for the default `rangeTo` at `:263` and the backfill's `today` at `:293` (accurate). The three "value now" chart points the audit cited as `:322/:340/:352` are actually at `:321` (`buildTypeBreakdown` `now`), `:339` (`buildNetWorthSeries` `today: now`), and `:351` (`buildAccountContribution` `now`) — a 1-line drift; corrected here.
+
+---
+
+#### F1 [Medium — real fix]: re-run the net-worth backfill when the span extends earlier
+
+**Problem (grounded in the real code):** the historical-rate backfill runs at most once per mount. The boolean `backfillStartedRef` (`statistics.screen.tsx:274`) is set `true` on first run and the effect (`:280-308`) never resets it, so adding an older-dated transaction while the screen is alive extends the line's span earlier (via `spanStart = earliestTime ?? now`, `:247`) but the early segment stays valued on missing rate history. Worse, a naive ref-reset alone would NOT fix it: `runBackfill`/`missingDays` (`src/rates/history-backfill/history-backfill.ts`) resume FORWARD from the single newest stored day (`deriveLastBackfilledDay`), so with a non-null `lastBackfilledDay` they compute days only ABOVE it and structurally cannot see a gap that opens up BELOW it. The re-run must therefore also recompute the whole span from the new, earlier `spanStart` (i.e. resume from `null`, whose idempotent upserts skip the already-stored newer days).
+
+**Chosen approach:** extract a small pure planner helper, `planBackfillRun`, into `history-backfill.ts` (unit-testable, next to `missingDays`), and drive the effect off it — a hybrid of "re-key on the span" + "reset the guard", but computed in one pure decision. Replace the boolean `backfillStartedRef` with a ref holding the `spanStart` the last run covered; the planner decides whether to run and from where.
+
+**Files:**
+- Modify: `src/rates/history-backfill/history-backfill.ts` (add `planBackfillRun` near `missingDays`, ~line 70)
+- Modify: `src/rates/history-backfill/history-backfill.test.ts` (append a `describe('planBackfillRun', ...)`; add `planBackfillRun` to the import block)
+- Modify: `src/screens/statistics/statistics.screen.tsx` (the ref at `:274`, the effect at `:280-308`, and the `history-backfill` import at `:27-32`)
+
+**Interfaces:**
+- Consumes: `missingDays`, `runBackfill`, `deriveLastBackfilledDay` (existing, `history-backfill.ts`); the screen's `spanStart` (`:247`), `lastBackfilledDay` (`:267`), `now`, `transactions.length`.
+- Produces: `planBackfillRun(spanStart: number, ranForSpanStart: number | null, lastBackfilledDay: number | null): { run: boolean; resumeFrom: number | null }` — `run: true` on the first run (`ranForSpanStart === null`) or when `spanStart` moved strictly earlier than a prior run covered; `resumeFrom` is the incremental `lastBackfilledDay` on a first forward run and `null` on an earlier-extension re-run.
+
+- [ ] **Step 1: Write the failing test**
+
+Add `planBackfillRun` to the import block at the top of `src/rates/history-backfill/history-backfill.test.ts` (alongside `missingDays`), then append:
+
+```ts
+describe('planBackfillRun', () => {
+  it('runs from the incremental resume cursor on the first run', () => {
+    expect(planBackfillRun(day(0), null, day(2))).toEqual({ run: true, resumeFrom: day(2) });
+  });
+
+  it('re-runs from null (the whole span) when the span extends EARLIER mid-session', () => {
+    // A prior run already covered from day(5); an older transaction drops
+    // spanStart to day(0). Resuming forward from the newest stored day cannot
+    // see the gap below it, so the re-run must recompute the full span.
+    expect(planBackfillRun(day(0), day(5), day(9))).toEqual({ run: true, resumeFrom: null });
+  });
+
+  it('does not re-run when the span is unchanged or moves later', () => {
+    expect(planBackfillRun(day(5), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
+    expect(planBackfillRun(day(7), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
+  });
+
+  it('the earlier-extension re-run actually reaches the freshly-opened earlier days', () => {
+    // Proving the fix end-to-end: with resumeFrom null, missingDays spans the
+    // FULL range from the new earlier spanStart — the earlier gap the forward
+    // cursor skipped is now covered.
+    const { resumeFrom } = planBackfillRun(day(0), day(5), day(9));
+
+    expect(missingDays(day(0), resumeFrom, day(2))).toEqual([day(0), day(1), day(2)]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx jest src/rates/history-backfill/history-backfill.test.ts -t planBackfillRun`
+Expected: FAIL — `planBackfillRun` is not exported.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `src/rates/history-backfill/history-backfill.ts`, add after `missingDays` (~line 70):
+
+```ts
+/**
+ * Decide whether the incremental backfill must (re)run for `spanStart`, and from
+ * where. It runs when it has never run (`ranForSpanStart === null`) or when
+ * `spanStart` has moved strictly EARLIER than a prior run covered — an older
+ * transaction appeared mid-session, opening a gap BELOW the newest stored day.
+ * On that earlier-extension case it resumes from `null` so `missingDays`
+ * recomputes the WHOLE span from `spanStart` (the idempotent upsert skips the
+ * already-stored newer days); `missingDays`' forward cursor resumes ABOVE the
+ * newest stored day and structurally cannot see the freshly-opened earlier gap
+ * otherwise. A first, forward run keeps the incremental `lastBackfilledDay`
+ * resume so it fetches only the new days.
+ */
+export const planBackfillRun = (
+  spanStart: number,
+  ranForSpanStart: number | null,
+  lastBackfilledDay: number | null,
+): { run: boolean; resumeFrom: number | null } => {
+  if (ranForSpanStart === null) {
+    return { run: true, resumeFrom: lastBackfilledDay };
+  }
+
+  if (spanStart < ranForSpanStart) {
+    return { run: true, resumeFrom: null };
+  }
+
+  return { run: false, resumeFrom: null };
+};
+```
+
+Then, in `src/screens/statistics/statistics.screen.tsx`, add `planBackfillRun,` to the `../../rates/history-backfill` import block (`:27-32`, after `missingDays,`), replace the ref at `:274`:
+
+```ts
+  const backfillRanForSpanRef = useRef<number | null>(null);
+```
+
+and replace the whole effect (`:280-308`) with one driven off `planBackfillRun`:
+
+```ts
+  useEffect(() => {
+    if (transactions.length === 0) {
+      return;
+    }
+
+    const { run, resumeFrom } = planBackfillRun(
+      spanStart,
+      backfillRanForSpanRef.current,
+      lastBackfilledDay,
+    );
+
+    if (!run) {
+      return;
+    }
+
+    // Mark this span covered BEFORE the async run so the write's own re-render
+    // (which advances lastBackfilledDay) does not re-enter for the same span.
+    backfillRanForSpanRef.current = spanStart;
+
+    if (missingDays(spanStart, resumeFrom, now).length === 0) {
+      setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
+
+      return;
+    }
+
+    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
+    let cancelled = false;
+    runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now })
+      .then((status) => {
+        if (!cancelled) {
+          setBackfillStatus(status);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [transactions.length, spanStart, lastBackfilledDay, now]);
+```
+
+Update the effect's leading comment (`:269-273`) so it no longer says "at most once per mount" — it now also re-runs when the span extends earlier.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx jest src/rates/history-backfill/history-backfill.test.ts`
+Expected: PASS (the new `planBackfillRun` cases and every existing `missingDays`/`runBackfill` case). Then `npm run check:typecheck` to confirm the screen's ref/effect still type-checks.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/rates/history-backfill/history-backfill.ts src/rates/history-backfill/history-backfill.test.ts src/screens/statistics/statistics.screen.tsx
+git commit -m "fix(statistics): re-run net-worth backfill when the span extends earlier"
+```
+
+Then run `npm run check:all`.
+
+---
+
+#### F2 [Low — real fix]: refresh `now` on screen focus
+
+**Problem (grounded in the real code):** `now` is frozen at mount — `const now = useMemo(() => Date.now(), [])` (`statistics.screen.tsx:188`) — and drives the default `rangeTo` (`:263`), the three "value now" chart points (`:321` by-type bar, `:339` net-worth rightmost, `:351` account pie), and the backfill's `today` (`:293`). In a long-lived session a just-added today/now row can fall outside the window or be valued stale until the screen remounts.
+
+**Chosen mechanism:** `useFocusEffect` from `@react-navigation/native` (already a dependency — `@react-navigation/native@^7.3.17`, imported across `src/navigation/*`). There is no existing screen that refreshes state on focus to copy verbatim (grep found only `navigation.addListener('transitionEnd', ...)` in `holding-card.component.tsx:77` and the `blur`/`resetTabStackOnBlur` listener wiring), so this uses the canonical React Navigation API for exactly this purpose rather than a hand-rolled `addListener('focus', ...)`. Wrapped in a small colocated hook so it is unit-testable off the real `NavigationContext`, the same way `use-scroll-to-top-on-tab-press.test.tsx` drives its navigator through the real contexts.
+
+**Files:**
+- Create: `src/screens/statistics/use-focus-refreshed-now.ts`
+- Create: `src/screens/statistics/use-focus-refreshed-now.test.tsx`
+- Modify: `src/screens/statistics/statistics.screen.tsx` (replace the `now` `useMemo` at `:188` and its comment at `:185-188`; add the import)
+
+**Interfaces:**
+- Consumes: `useFocusEffect` (`@react-navigation/native`); `useCallback`, `useState` (`react`).
+- Produces: `useFocusRefreshedNow(): number` — a `now` timestamp stable across renders (so the downstream memos keyed on it are not defeated) that re-reads `Date.now()` on every screen focus.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/screens/statistics/use-focus-refreshed-now.test.tsx` (modeled on `src/navigation/use-scroll-to-top-on-tab-press.test.tsx`'s real-`NavigationContext` render):
+
+```tsx
+import { NavigationContext, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import { act, renderHook } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
+
+import { useFocusRefreshedNow } from './use-focus-refreshed-now';
+
+// A minimal fake navigation that reports itself focused and lets a test fire the
+// `focus` event `useFocusEffect` subscribes to — the same real-context approach
+// use-scroll-to-top-on-tab-press.test.tsx drives its tabPress through.
+const makeNavigation = (): {
+  navigation: NavigationProp<ParamListBase>;
+  fireFocus: () => void;
+} => {
+  const focusListeners = new Set<() => void>();
+
+  const navigation = {
+    isFocused: () => true,
+    addListener: (event: string, cb: () => void) => {
+      if (event === 'focus') {
+        focusListeners.add(cb);
+      }
+
+      return () => focusListeners.delete(cb);
+    },
+  } as unknown as NavigationProp<ParamListBase>;
+
+  return { navigation, fireFocus: () => focusListeners.forEach((cb) => cb()) };
+};
+
+describe('useFocusRefreshedNow', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('seeds now at mount and re-reads the clock on every focus', () => {
+    let clock = 1_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+
+    const { navigation, fireFocus } = makeNavigation();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>
+    );
+    const { result } = renderHook(() => useFocusRefreshedNow(), { wrapper });
+
+    expect(result.current).toBe(1_000);
+
+    clock = 5_000;
+    act(() => {
+      fireFocus();
+    });
+
+    expect(result.current).toBe(5_000);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx jest src/screens/statistics/use-focus-refreshed-now.test.tsx`
+Expected: FAIL — module `./use-focus-refreshed-now` does not exist.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `src/screens/statistics/use-focus-refreshed-now.ts`:
+
+```ts
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useState } from 'react';
+
+/**
+ * A `now` timestamp that is stable across renders but REFRESHES every time the
+ * screen regains focus. The Statistics screen keys its default range end, its
+ * three "value now" chart points, and the backfill's "today" on this value; a
+ * plain `useMemo(() => Date.now(), [])` froze it at mount, so in a long-lived
+ * session a just-added today/now row could fall outside the window or be valued
+ * stale. Refreshing on focus (never per-render — that would defeat the
+ * downstream memos keyed on it) keeps those current.
+ */
+export const useFocusRefreshedNow = (): number => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useFocusEffect(
+    useCallback(() => {
+      setNow(Date.now());
+    }, []),
+  );
+
+  return now;
+};
+```
+
+Then in `src/screens/statistics/statistics.screen.tsx`, replace the `now` `useMemo` (`:188`) with the hook, and update the comment (`:185-188`) so it says `now` is refreshed on focus (not frozen at mount) but still stable across renders:
+
+```ts
+  // `now` is seeded at mount and REFRESHED on every screen focus (see
+  // useFocusRefreshedNow): the default date-range seed, the default line window,
+  // the backfill's "today", and every memo below key on it, and it stays stable
+  // across renders so a fresh `Date.now()` each render never defeats that
+  // memoization — only a re-focus advances it.
+  const now = useFocusRefreshedNow();
+```
+
+Add the import (external group, alongside the other `@kiko`/library imports; and the parent-relative hook import in the sibling `./` group):
+
+```ts
+import { useFocusRefreshedNow } from './use-focus-refreshed-now';
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx jest src/screens/statistics/use-focus-refreshed-now.test.tsx`
+Expected: PASS. Then `npm run check:typecheck` to confirm the screen still type-checks with `now` sourced from the hook (it stays a `number`, so every downstream memo is unaffected).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/screens/statistics/use-focus-refreshed-now.ts src/screens/statistics/use-focus-refreshed-now.test.tsx src/screens/statistics/statistics.screen.tsx
+git commit -m "fix(statistics): refresh now on screen focus so live chart windows stay current"
+```
+
+Then run `npm run check:all`.
+
+---
+
+#### F3 [Low/latent — GUARD ONLY, do NOT refactor]: balance-consistency invariant guard
+
+**Problem (grounded in the real code):** the by-type bar (`src/statistics/type-breakdown/type-breakdown.ts` — `buildTypeBreakdown` reads `holding.balanceMinorUnits` via `holdingValue`) and the account-contribution pie (`src/statistics/account-contribution/account-contribution.ts:58` — `guardedNetWorth` over holding balances) are reactive to transactions only TRANSITIVELY, through the holding balance, never the `transactions` table. This is currently SAFE: every real money-moving write updates the balance in the same `write(...)` (`recordManualTx` does the insert AND the balance read-modify-write; `recordManual`, `recordExchange`, `recordExchangeCounterpart`, and `recordManualWithReturns` all route through it). The one balance-less inserter — `transactionsRepo.add` (`transactions.repo.ts:269-270`, a bare `insert` with NO balance update) — was verified to have NO non-test caller (grep found only unrelated `Set.add` matches). **Do NOT change these charts to derive-from-ledger.** Instead, lock the invariant with a lightweight guard so a future balance-less writer can never silently drift the type/contribution charts.
+
+**Files:**
+- Create: `src/statistics/chart-balance-consistency.test.ts`
+
+**Interfaces:**
+- Consumes: `transactionsRepo.recordManual` (existing), `transactionsRepo.recordManualWithReturns` (Task 2); the `holdings` schema object; the `write(...)` seam (mocked). No new production symbols.
+
+This test drives the REAL money-moving writers through the same fast `write(...)`-mock + fake-tx-handle seam as `transactions.repo.test.ts`'s `makeExchangeTx` and `money-path.test.ts` (Task 6), and asserts every `transactions` insert is accompanied by a matching `holdings` balance update in the one captured call sequence — no simulator.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/statistics/chart-balance-consistency.test.ts`:
+
+```ts
+// Chart-reactivity invariant guard (audit F3): the by-type bar
+// (statistics/type-breakdown) and the account-contribution pie
+// (statistics/account-contribution) read each holding's stored BALANCE, never
+// the transactions table — so they refresh after a transaction ONLY because the
+// same write updates the balance. This guard proves every money-moving writer
+// pairs each transaction insert with a matching holding balance update inside
+// the one write(...), so a future balance-less writer can never silently desync
+// those charts. Modeled on transactions.repo.test.ts's makeExchangeTx seam.
+let mockTx: unknown;
+jest.mock('../db/client', () => {
+  const actual = jest.requireActual('../db/client');
+  return {
+    ...actual,
+    write: (work: (db: unknown) => unknown) => work(mockTx),
+  };
+});
+
+import { holdings } from '../db/schema';
+import { transactionsRepo } from '../transactions/repo/transactions.repo';
+
+// A fake tx handle capturing inserts + balance updates in call order, answering
+// both the chained `.where(...).limit(1)` and the bare `await where(...)`
+// conventions — same shape as transactions.repo.test.ts's makeExchangeTx.
+const makeTx = (
+  selectQueue: unknown[][],
+): {
+  tx: unknown;
+  inserts: Record<string, unknown>[];
+  updates: { table: unknown; values: Record<string, unknown> }[];
+} => {
+  const inserts: Record<string, unknown>[] = [];
+  const updates: { table: unknown; values: Record<string, unknown> }[] = [];
+  const queue = [...selectQueue];
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          const rows = queue.shift() ?? [];
+          return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        inserts.push(values);
+        return Promise.resolve();
+      },
+    }),
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        updates.push({ table, values });
+        return { where: () => Promise.resolve() };
+      },
+    }),
+  };
+
+  return { tx, inserts, updates };
+};
+
+describe('chart balance-consistency invariant', () => {
+  it('recordManual pairs its single transaction insert with a holding balance update', async () => {
+    const { tx, inserts, updates } = makeTx([[{ balanceMinorUnits: 5_000 }]]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManual({
+      holdingId: 'h-1',
+      amountMinorUnits: -1_200,
+      time: 1,
+      category: 'groceries',
+    });
+
+    const balanceUpdates = updates.filter((update) => update.table === holdings);
+
+    expect(inserts).toHaveLength(1);
+    expect(balanceUpdates).toHaveLength(1);
+    // base 5_000 - 1_200 = 3_800: the insert never lands without its balance move.
+    expect(balanceUpdates[0].values).toEqual({ balanceMinorUnits: 3_800 });
+  });
+
+  it('recordManualWithReturns pairs EVERY inserted row with its own holding balance update', async () => {
+    const { tx, inserts, updates } = makeTx([
+      [{ balanceMinorUnits: 50_000 }], // payer read
+      [{ balanceMinorUnits: 1_000 }], // return B read
+      [{ balanceMinorUnits: 2_000 }], // return C read
+    ]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'payer-1', amountMinorUnits: -21_200, time: 1, category: 'groceries' },
+      returns: [
+        { holdingId: 'hold-b', amountMinorUnits: 20 },
+        { holdingId: 'hold-c', amountMinorUnits: 8 },
+      ],
+    });
+
+    const balanceUpdates = updates.filter((update) => update.table === holdings);
+
+    // One transaction insert AND one holding balance update per money movement —
+    // the payment plus each return. Never an insert without its balance move, so
+    // the type/contribution charts (which read balance, not ledger) stay in sync.
+    expect(inserts).toHaveLength(3);
+    expect(balanceUpdates).toHaveLength(3);
+    expect(balanceUpdates.map((update) => update.values)).toEqual([
+      { balanceMinorUnits: 28_800 }, // 50_000 - 21_200
+      { balanceMinorUnits: 1_020 }, // 1_000 + 20
+      { balanceMinorUnits: 2_008 }, // 2_000 + 8
+    ]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails/passes**
+
+Run: `npx jest src/statistics/chart-balance-consistency.test.ts`
+Expected: PASS on first run IF Task 2 is complete (this guard exercises already-shipped logic — `recordManual` existed pre-plan, `recordManualWithReturns` from Task 2). If `recordManualWithReturns` is missing, it FAILS with a missing-symbol error — that is the guard confirming its dependency, and confirms Task 9 is correctly ordered after Task 2. There is no red-then-green cycle here; this is a pure invariant guard over existing code (same class as Task 6).
+
+- [ ] **Step 3: Write minimal implementation**
+
+None — pure guard test. If an assertion ever fails, fix the PRODUCTION writer to pair its insert with a balance update (never weaken the assertion).
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx jest src/statistics/chart-balance-consistency.test.ts`
+Expected: PASS (both cases).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/statistics/chart-balance-consistency.test.ts
+git commit -m "test(statistics): guard the balance-consistency invariant the type/contribution charts rely on"
+```
+
+Then run `npm run check:all`.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage.**
@@ -1301,7 +1777,8 @@ Then run `npm run check:all`, and `npm run check:deep` once more before declarin
 - §3 Feature 2: Task 1 (`changeGroupId` + migration), Task 2 (`recordManualWithReturns`), Task 3 (pie netting), Task 3b (trend netting), Task 4 (query/pie-screen wiring), Task 7 (form). F2-1 linked+netting = Tasks 1-4 + 3b. F2-2 validation (`>0` and `Σ<|payment|`) → `canSaveSplit` (Task 7). F2-3 distinct open holding except payer → `canSaveSplit` + picker filter (Task 7). F2-4 dynamic rows → Task 7. F2-5 separate linked rows → Task 2. F2-6/F2-7 netting now covers BOTH statistics call sites — the pie (`buildCategoryBreakdown`, Task 3) AND the category trend line + Top-N ranking (`accumulateSpend`, Task 3b), each netting a payment's linked returns out of its category spend magnitude. F2-8 same currency v1 → picker filter (Task 7); exchange+split deferred per Global Constraints. F2-9 gate on manual expense create → `resolveModeOptions` + `!isReadOnly`/`!isEditing` (Task 7).
 - §6 harness checkpoints: `check:all` per task, `check:deep` after Task 6 and Task 8; migration via drizzle-kit + biome (Task 1).
 - Mandatory money-path guard: Task 6 (four seams — net worth, pie netting, trend netting, convert prefill).
+- Chart-reactivity audit (Task 9): F1 net-worth backfill re-runs when the span extends earlier (`planBackfillRun`); F2 `now` refreshes on focus (`useFocusRefreshedNow`); F3 balance-consistency invariant guarded (every money-moving writer pairs each insert with a balance update); F4 confirmed already-correct (`recordManualWithReturns` is one `write(...)`, one reactive callback, all charts refresh together — no code). Task 9 is SEPARATE-COMMIT (three commits: F1, F2, F3), NO-FORM (it never touches the HELD `transaction-form.screen.tsx`), and MUST run AFTER the stats trio (Tasks 3/3b/4) because F1/F2 edit `statistics.screen.tsx` and build on their threaded `changeGroupId`; it has no dependency on the UI-tweaks track gating Tasks 7/8.
 
-**2. Placeholder scan.** No "TBD"/"add validation"/"similar to Task N"/"handle edge cases". Every code step carries real code; the one cross-reference ("modeled on makeExchangeTx") reproduces the fake-tx builder in full in Task 6 rather than pointing at it.
+**2. Placeholder scan.** No "TBD"/"add validation"/"similar to Task N"/"handle edge cases". Every code step carries real code; the one cross-reference ("modeled on makeExchangeTx") reproduces the fake-tx builder in full in Tasks 6 and 9 F3 rather than pointing at it.
 
 **3. Type consistency.** `changeGroupId` (camelCase field, `change_group_id` column) is used identically in Tasks 1-4 and 3b. `recordManualWithReturns`/`ManualWithReturnsInput`/`ChangeReturn` match between Task 2 (definition) and Tasks 6/7 (callers). `seedCounterpartMinorUnits`'s signature (returns `number | null`) matches between Task 5 and its callers in Tasks 6/8. `BreakdownTransaction.changeGroupId` (Task 3) is consumed by Tasks 3b/4/6. Task 3 makes `changeGroupId` a REQUIRED field of `BreakdownTransaction`, so EVERY screen projection that builds a `BreakdownTransaction`/`TrendTransaction` must carry it or typecheck fails on the missing property: both pie memos `breakdownTransactions` and `rangeFilteredBreakdownTransactions` (Task 4) and the trend memo `trendTransactions` (Task 3b). `category-trend.ts` needs NO new type — `TrendTransaction = BreakdownTransaction & { time }` (`category-trend.ts:38`) inherits `changeGroupId` from Task 3; Task 3b is a netting-only edit to the shared `accumulateSpend`, so both `buildCategoryTrend` and `buildCategoryMeasures` net without a second change.
