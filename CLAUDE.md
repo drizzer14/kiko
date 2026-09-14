@@ -513,7 +513,7 @@ verified usage, not dead weight:
   fixture or starts matching its negative one.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
-  two NON-LOGIC categories are excluded from the set of files Stryker
+  four NON-LOGIC categories are excluded from the set of files Stryker
   mutates, in both run modes (the whole-project fallback array and the
   diff-scoped changed-file filter). (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
@@ -523,14 +523,48 @@ verified usage, not dead weight:
   under Jest, so string/casing coverage is unaffected — only the mutation
   report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
   erased at compile time, so Stryker generates no runtime mutants from
-  them; excluding them only trims the mutate-list. Nothing else is
-  excluded: `src/design-system/palette.ts`, `theme.ts`, `entity-tint.ts`,
-  every `*.styles.ts`, `src/i18n/index.ts`, the mixed const+function
-  modules, and the barrels all stay IN scope. `drizzle/migrations/**` is
-  already outside the `.ts/.tsx` mutate scope and needs no pattern. See
-  the `mutate` array in `stryker.conf.json` and the changed-file `grep
-  -Ev` filter in `scripts/checks/mutation.sh` for the exact patterns
-  (not restated here so they cannot drift).
+  them; excluding them only trims the mutate-list. (3) **barrels
+  (`**/index.ts`)** — pure re-export modules (`export ... from './x'`)
+  whose only mutable token is the module-path string; no branch, no
+  arithmetic, no logic, and no test imports the excluded barrels
+  directly. The SOLE non-barrel `index.ts` is `src/i18n/index.ts` (an
+  `i18next.init(...)` side-effect module with config booleans/strings),
+  so it is RE-INCLUDED (`**/i18n/index.ts`, a positive pattern after the
+  negation). (4) **pure-static styles (`**/*.styles.ts`)** — pure
+  `StyleSheet.create` objects (string/number/object-literal tokens only,
+  no conditionals or arithmetic); no test imports any `.styles` file, so
+  their mutants are pure denominator noise. The two logic-bearing styles
+  are RE-INCLUDED (positive patterns after the negation):
+  `**/bottom-sheet.styles.ts` (runtime style functions with real `+`
+  arithmetic, covered by `bottom-sheet.component.test.tsx`) and
+  `**/entity-icon-tile.styles.ts` (exports the `iconTileSize` helper
+  function). The mechanism is PURELY glob-based, not logic-based: the
+  drop is by PATTERN — EVERY `**/index.ts` and EVERY `**/*.styles.ts`
+  is negated — and ONLY the three named files above
+  (`src/i18n/index.ts`, `bottom-sheet.styles.ts`,
+  `entity-icon-tile.styles.ts`) are re-included, BY NAME. So the files
+  that stay in scope (`src/design-system/palette.ts`, `theme.ts`,
+  `entity-tint.ts`, the mixed const+function modules,
+  `drizzle/migrations/**`, and every other non-`.styles`, non-barrel
+  source) stay in scope simply because they never match the `index.ts`
+  or `*.styles.ts` globs — NOT because any logic test spared them.
+  MAINTENANCE: a NEW logic-bearing barrel or `*.styles.ts` will be
+  SILENTLY dropped (its mutants lost) unless it is added to the
+  re-include list in BOTH `stryker.conf.json` `mutate[]` AND the `grep`
+  in `scripts/checks/mutation.sh` — the two must stay in sync.
+  `drizzle/migrations/**` is
+  already outside the `.ts/.tsx` mutate scope and needs no pattern.
+  Order matters: each re-include is a positive pattern placed AFTER its
+  negation (config patterns apply in array order; a later positive
+  re-enables a file a prior `!`-negation disabled — `project-reader.js`).
+  NOTE: the CLI `--mutate` REPLACES the config `mutate[]` wholesale
+  (`deepMerge` replaces arrays, `deep-merge.js:13`), so on the
+  diff-scoped run the config negations do NOT apply — which is why these
+  same excludes/re-includes are mirrored in `mutation.sh`'s own `grep`
+  filter, not only in `stryker.conf.json`. See the `mutate` array in
+  `stryker.conf.json` and the changed-file `grep` filter in
+  `scripts/checks/mutation.sh` for the exact patterns and re-includes
+  (not restated in full here so they cannot drift).
 - **Stryker sandbox exclusions (`stryker.conf.json` `ignorePatterns`)**:
   Stryker copies every non-ignored project file into a temp sandbox before
   each run (verified in `@stryker-mutator/core` 8.7.1
