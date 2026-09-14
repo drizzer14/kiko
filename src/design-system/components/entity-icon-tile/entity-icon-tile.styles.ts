@@ -25,11 +25,13 @@ export const styles = StyleSheet.create((theme) => ({
   // rounded corners. `theme.radii.md` is the closest token on the shared
   // radius scale to the iOS continuous-corner "squircle" proportion at this
   // tile size — never an invented radius value. The hairline `borderWidth` +
-  // `iconTileBorder` token is a plain native iOS app-icon edge separator
-  // (see the token's own doc comment in `theme.ts`): a thin, faint
-  // translucent-white hairline, not a specular/gloss effect — it reads
-  // identically regardless of the tile's own entity-color gradient
-  // underneath, unlike `GlassSurface`'s neutral-gray `border` token.
+  // `iconTileBorder` token is the OUTER ring of the tile's two-ring edge
+  // treatment (see the token's own doc comment in `theme.ts` for the full
+  // investigation and reasoning): a thin, translucent-white hairline that
+  // reads against dark/mid entity tints, paired with `edgeShadow` below
+  // (the inner ring) which reads against light entity tints — together
+  // hue/lightness-independent, unlike `GlassSurface`'s neutral-gray
+  // `border` token.
   tile: {
     width: iconTileSize(theme),
     height: iconTileSize(theme),
@@ -39,6 +41,22 @@ export const styles = StyleSheet.create((theme) => ({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The INNER ring of the tile's two-ring edge: a translucent-black hairline
+  // inset by exactly one `hairlineWidth` from the tile's own outer white
+  // ring above, so the two sit concentrically, one hairline apart. Drawn as
+  // an absolutely-positioned, non-interactive sibling on top of the gradient
+  // fill and glyph — it paints only its own ring (no fill), so it never
+  // obscures the glyph centered away from the edge.
+  edgeShadow: {
+    position: 'absolute',
+    top: StyleSheet.hairlineWidth,
+    left: StyleSheet.hairlineWidth,
+    right: StyleSheet.hairlineWidth,
+    bottom: StyleSheet.hairlineWidth,
+    borderRadius: Math.max(theme.radii.md - StyleSheet.hairlineWidth, 0),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.iconTileBorderShadow,
   },
   // The gradient `Svg` sits UNDER the glyph as an absolutely-positioned
   // sibling filling the tile, the same layering shape `GlassSurface`'s own

@@ -21,15 +21,30 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // sites keep their surrounding card BACKGROUND neutral (a plain `transparent`
 // frosted surface) rather than painting it with an entity-color wash.
 //
-// The tile also carries a thin, faint hairline border (the `tile` style's
-// `iconTileBorder` token, `entity-icon-tile.styles.ts`), imitating the plain
-// edge separator a real iOS app icon carries around its own edge. An earlier
-// version of this tile additionally washed a white specular "glass" highlight
-// sheen over its top portion — a live design review judged that gloss look
-// bad, so it was removed entirely; a native app icon has no gloss, only a
-// faint edge, and this tile now matches that restraint. The border is a
-// fixed white-based translucency, never derived from the tile's own
-// entity-color gradient, so it reads identically across every entity hue.
+// The tile also carries a two-ring hairline edge (the `tile` style's
+// `iconTileBorder` outer ring plus the `edgeShadow` style's
+// `iconTileBorderShadow` inner ring, one hairline apart — see both tokens'
+// doc comments in `theme.ts` and the styles' own comments in
+// `entity-icon-tile.styles.ts`). An earlier single-ring, white-only 0.12-alpha
+// version was confirmed invisible on device; a white-only hairline can only
+// ever read against a dark/mid tile, never a light one, so a second, darker
+// ring was added specifically to cover the light-tile case a single flat
+// color cannot. Investigated (2026-09-14) whether Apple publishes a specific
+// numeric "app icon edge" spec to copy instead of a reasoned guess: it does
+// not — Apple's App Icons HIG explicitly tells you NOT to hand-add a border/
+// bevel to an actual Home Screen icon (the system generates highlight/shadow
+// dynamically via Liquid Glass), and its documented `separator`/
+// `opaqueSeparator` system colors are described only as adaptive/context-
+// dependent, never given literal RGBA values. Neither is a literal spec for
+// this in-app tile, so the two-ring treatment here is a deliberate
+// design-system fallback, not a copied Apple constant — see `theme.ts` for
+// the full writeup. An earlier version of this tile additionally washed a
+// white specular "glass" highlight sheen over its top portion — a live
+// design review judged that gloss look bad, so it was removed entirely; a
+// native app icon has no gloss, only a faint edge, and this tile matches
+// that restraint. Both rings are fixed white/black-based translucencies,
+// never derived from the tile's own entity-color gradient, so the edge reads
+// identically across every entity hue.
 
 // Every tile mounts its own separate `Svg` document, so a gradient id only
 // needs to be unique WITHIN that document (the same scoping
@@ -106,6 +121,8 @@ const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLab
         color={glyphTintColor}
         accessibilityLabel={accessibilityLabel}
       />
+
+      <View testID="entity-icon-tile-edge-shadow" style={styles.edgeShadow} pointerEvents="none" />
     </View>
   );
 };

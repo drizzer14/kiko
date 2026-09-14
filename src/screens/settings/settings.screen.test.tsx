@@ -92,9 +92,15 @@ describe('SettingsScreen', () => {
     expect(queryByText('Settings')).toBeNull();
   });
 
+  // DEVICE BUG (review, 2026-09-14): CurrencyField's own trigger no longer
+  // shows the ISO code at all (see `currency-field.component.tsx`'s
+  // `triggerValue`) — it shows the localized NAME only, matching the option
+  // rows. This used to match the bare "UAH" substring inside the old
+  // "UAH — Ukrainian Hryvnia" trigger value; assert the localized name
+  // instead, the same fix already made to CurrencyField's own tests.
   it('shows the current base currency', async () => {
     const { getByText } = await renderScreen();
-    expect(getByText(/UAH/)).toBeTruthy();
+    expect(getByText('Ukrainian Hryvnia')).toBeTruthy();
   });
 
   it('renders the base-currency entry as a single full-width settings row, not a bare boxed card', async () => {

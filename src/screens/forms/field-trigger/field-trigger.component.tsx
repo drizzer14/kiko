@@ -61,7 +61,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
               variant="body"
               tone="textSecondary"
               numberOfLines={1}
-              style={[styles.leadingTextMark, { fontSize: theme.iconSizes.body }]}
+              style={styles.leadingTextMark}
             >
               {leadingText}
             </Text>

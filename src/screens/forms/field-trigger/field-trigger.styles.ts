@@ -25,13 +25,17 @@ export const styles = StyleSheet.create((theme) => ({
   fieldDisabled: {
     ...disabledFieldStyle(theme),
   },
-  // The leading TEXT mark (`leadingText`): bold enough to read as a glyph,
-  // matching the SF Symbol icon's visual weight. Sized to the shared
-  // `theme.iconSizes.body` token via an inline `fontSize` override at the
-  // call site (the same token the `icon` path's `SymbolIcon` size uses, and
-  // the same one SelectableRow's own `leadingTextMark` uses), so the mark
-  // reads at one consistent size everywhere it appears — never a hardcoded
-  // literal.
+  // The leading TEXT mark (`leadingText`, e.g. a currency symbol): renders
+  // through the same `variant="body"` Text as the trigger's own `value` (see
+  // `field-trigger.component.tsx`), so it must match the VALUE's text size,
+  // not the SF Symbol icon's glyph footprint an earlier version sized it to
+  // (an inline `fontSize: theme.iconSizes.body` override — an icon size,
+  // wrong scale for a text mark sitting beside body text; the same device
+  // bug SelectableRow's own `leadingTextMark` was fixed for). Leaving
+  // `fontSize` unset lets the mark inherit `theme.typography.body`'s size
+  // straight from the `variant` prop, the same way `value` does; only the
+  // weight is overridden here, bold enough to read as a glyph-like mark
+  // rather than plain body copy.
   leadingTextMark: {
     fontWeight: '600',
   },

@@ -80,8 +80,9 @@ const visibleCurrencies = (
 
 // A labeled, searchable single-select currency picker: the field shows the
 // current selection (its text currency mark — `currencySymbol`, symbol-where-
-// one-exists / ISO-code-otherwise, never a generic icon — plus "CODE —
-// Name", or a placeholder when none) and opens a bottom sheet with a pinned
+// one-exists / ISO-code-otherwise, never a generic icon — plus its localized
+// NAME only, matching the option rows below; no ISO code in the displayed
+// value), or a placeholder when none, and opens a bottom sheet with a pinned
 // search TextField above a virtualized list of `SelectableRow`s. Modeled on
 // CategoryField's field-plus-sheet chrome (FieldTrigger + BottomSheet + an
 // own list), with a search box added above the list so the full
@@ -119,10 +120,15 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     setOpen(false);
   };
 
+  // The trigger's value mirrors the option rows exactly: the currency NAME
+  // only, no ISO code — `SelectableRow`'s own row shows `currencyName(t,
+  // code)` as its `label` with the mark carried separately via
+  // `leadingText`, never a "CODE — Name" compound string. This used to read
+  // `"${selected} — ${currencyName(t, selected)}"`, which duplicated the
+  // ISO code redundantly (the same mark/code pairing already sits in
+  // `leadingText` below).
   const triggerValue =
-    selected === undefined
-      ? t('forms.fields.selectCurrency')
-      : `${selected} — ${currencyName(t, selected)}`;
+    selected === undefined ? t('forms.fields.selectCurrency') : currencyName(t, selected);
 
   return (
     <Box gap={1}>

@@ -225,6 +225,24 @@ describe('CurrencyField', () => {
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
   });
 
+  // DEVICE BUG (review, 2026-09-14): the trigger's own displayed value used
+  // to read "CODE — Name" (e.g. "USD — US Dollar"), duplicating the ISO code
+  // that already sits in the trigger's separate `leadingText` mark. The
+  // trigger must mirror the option rows exactly: the localized NAME only.
+  it('does not show the ISO code in the trigger value, only the localized name', async () => {
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="USD"
+        onSelect={jest.fn()}
+        testID="currency-field"
+      />,
+    );
+
+    expect(utils.getByText('US Dollar')).toBeTruthy();
+    expect(utils.queryByText('USD — US Dollar')).toBeNull();
+  });
+
   it('does not show the ISO code in the visible row label', async () => {
     const utils = await render(
       <CurrencyField
