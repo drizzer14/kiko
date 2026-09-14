@@ -12,11 +12,11 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { buildCategoryTrend } from '../../statistics/category-trend';
-import { buildCategoryBreakdown } from '../../statistics/category-breakdown';
-import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import { holdings, transactions } from '../../db/schema';
+import { buildCategoryTrend } from '../../statistics/category-trend';
+import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
+import { buildCategoryBreakdown } from '../../statistics/category-breakdown';
+import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 
 import { transactionsRepo } from './transactions.repo';
 
@@ -80,26 +80,12 @@ describe('Money-path guard: split-change + convert prefill', () => {
 
     // Apply the captured balance writes back onto the holdings and sum net worth
     // in UAH (base == each holding's currency, so no rate needed).
-    const finalBalances = [
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: updates[0].values.balanceMinorUnits as number,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: updates[1].values.balanceMinorUnits as number,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: updates[2].values.balanceMinorUnits as number,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const finalBalances = updates.map((update) => ({
+      currency: 'UAH' as const,
+      balanceMinorUnits: update.values.balanceMinorUnits as number,
+      type: 'cash' as const,
+      metadata: null,
+    }));
     const openingNet = 500_00 + 10_00 + 20_00;
     const net = guardedNetWorth(finalBalances, 'UAH', {}, 1);
 
