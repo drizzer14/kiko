@@ -183,6 +183,150 @@ describe('seed-category-colors migration', () => {
   });
 });
 
+// A hermetic applier for a single guarded `SET \`icon\`` UPDATE, driven by the
+// values parsed out of the REAL migration SQL (never a hand-typed copy): it
+// reads the new value, the guard column/value, and the guard icon straight from
+// the file, so it proves the shipped guard converges the seeded/created default
+// AND leaves a user-picked icon untouched. Returns the resulting icon for a row.
+const applyGuardedIconUpdate = (
+  sql: string,
+  row: { column: string; columnValue: string; icon: string },
+): string => {
+  const match = sql.match(
+    /UPDATE `[a-z_]+` SET `icon` = '([^']+)' WHERE `([a-z_]+)` = '([^']+)' AND `icon` = '([^']+)'/,
+  );
+  if (match === null) {
+    throw new Error('No guarded icon UPDATE found in migration SQL');
+  }
+  const [, nextIcon, guardColumn, guardColumnValue, guardIcon] = match;
+  const matches =
+    row.column === guardColumn && row.columnValue === guardColumnValue && row.icon === guardIcon;
+
+  return matches ? nextIcon : row.icon;
+};
+
+// M1: the icon rework changes exactly ONE seeded category default — Health from
+// `cross.case` to `cross`. Categories are seeded as DB rows (0002), so an
+// existing install stores `cross.case` and needs a guarded data migration to
+// converge, same class/shape as 0017's transport `car`->`bus` refinement.
+describe('health-category-icon migration (M1)', () => {
+  const sql = (): string =>
+    readFileSync(join(migrationsDir, '0031_icon_health_category.sql'), 'utf8');
+
+  it('refines the health icon from cross.case to cross, guarded on the seeded value', () => {
+    expect(sql()).toMatch(
+      /UPDATE `categories` SET `icon` = 'cross' WHERE `key` = 'health' AND `icon` = 'cross\.case'/,
+    );
+  });
+
+  it('touches ONLY the categories table icon — no schema change, no other column, no other row', () => {
+    const body = sql();
+
+    expect(body).not.toContain('ALTER TABLE');
+    expect(body).not.toContain('CREATE TABLE');
+    expect(body).not.toContain('DROP');
+    expect(body).not.toContain('SET `color`');
+    // The only UPDATE targets health; no other category key is written.
+    expect((body.match(/UPDATE `categories`/g) ?? []).length).toBe(1);
+  });
+
+  it('converges a seeded Health row to cross while preserving a user-picked icon', () => {
+    const body = sql();
+
+    // A still-default seeded Health row moves to the new glyph...
+    expect(
+      applyGuardedIconUpdate(body, { column: 'key', columnValue: 'health', icon: 'cross.case' }),
+    ).toBe('cross');
+    // ...a Health row the user re-iconed is left untouched (guard misses)...
+    expect(
+      applyGuardedIconUpdate(body, { column: 'key', columnValue: 'health', icon: 'heart' }),
+    ).toBe('heart');
+    // ...and re-running the migration is a no-op (the row is already `cross`).
+    expect(
+      applyGuardedIconUpdate(body, { column: 'key', columnValue: 'health', icon: 'cross' }),
+    ).toBe('cross');
+  });
+
+  it('registers the migration under the journal idx the runner resolves it by', () => {
+    const journal = JSON.parse(readFileSync(join(migrationsDir, 'meta/_journal.json'), 'utf8')) as {
+      entries: { idx: number; when: number; tag: string }[];
+    };
+    const entry = journal.entries.find(
+      (candidate) => candidate.tag === '0031_icon_health_category',
+    );
+    const index = readFileSync(join(migrationsDir, 'migrations.js'), 'utf8');
+
+    expect(entry?.idx).toBe(31);
+    expect(readdirSync(migrationsDir)).toContain('0031_icon_health_category.sql');
+    expect(index).toContain("import m0031 from './0031_icon_health_category.sql';");
+    expect(index).toMatch(/\bm0031,/);
+  });
+});
+
+// M2: the crypto ACCOUNT default changes from `bitcoinsign` to
+// `bitcoinsign.circle`. The account form PERSISTS the kind default at create
+// time (never null on create), so existing un-customized crypto accounts store
+// `bitcoinsign` and need a guarded data migration — unlike the holding defaults,
+// which are null-until-picked render-time fallbacks and need no migration.
+describe('crypto-account-icon migration (M2)', () => {
+  const sql = (): string =>
+    readFileSync(join(migrationsDir, '0032_icon_crypto_account.sql'), 'utf8');
+
+  it('refines the crypto account icon to bitcoinsign.circle, guarded on the created default', () => {
+    expect(sql()).toMatch(
+      /UPDATE `accounts` SET `icon` = 'bitcoinsign\.circle' WHERE `kind` = 'crypto' AND `icon` = 'bitcoinsign'/,
+    );
+  });
+
+  it('touches ONLY the accounts table icon — no schema change, no other column', () => {
+    const body = sql();
+
+    expect(body).not.toContain('ALTER TABLE');
+    expect(body).not.toContain('CREATE TABLE');
+    expect(body).not.toContain('DROP');
+    expect(body).not.toContain('SET `kind`');
+    expect((body.match(/UPDATE `accounts`/g) ?? []).length).toBe(1);
+  });
+
+  it('converges a crypto account default while preserving a user-picked or non-crypto icon', () => {
+    const body = sql();
+
+    // An un-customized crypto account moves to the new glyph...
+    expect(
+      applyGuardedIconUpdate(body, { column: 'kind', columnValue: 'crypto', icon: 'bitcoinsign' }),
+    ).toBe('bitcoinsign.circle');
+    // ...a crypto account the user re-iconed is untouched...
+    expect(
+      applyGuardedIconUpdate(body, { column: 'kind', columnValue: 'crypto', icon: 'wallet.pass' }),
+    ).toBe('wallet.pass');
+    // ...a non-crypto account that happens to hold `bitcoinsign` is untouched...
+    expect(
+      applyGuardedIconUpdate(body, { column: 'kind', columnValue: 'bank', icon: 'bitcoinsign' }),
+    ).toBe('bitcoinsign');
+    // ...and re-running is a no-op (already `bitcoinsign.circle`).
+    expect(
+      applyGuardedIconUpdate(body, {
+        column: 'kind',
+        columnValue: 'crypto',
+        icon: 'bitcoinsign.circle',
+      }),
+    ).toBe('bitcoinsign.circle');
+  });
+
+  it('registers the migration under the journal idx the runner resolves it by', () => {
+    const journal = JSON.parse(readFileSync(join(migrationsDir, 'meta/_journal.json'), 'utf8')) as {
+      entries: { idx: number; when: number; tag: string }[];
+    };
+    const entry = journal.entries.find((candidate) => candidate.tag === '0032_icon_crypto_account');
+    const index = readFileSync(join(migrationsDir, 'migrations.js'), 'utf8');
+
+    expect(entry?.idx).toBe(32);
+    expect(readdirSync(migrationsDir)).toContain('0032_icon_crypto_account.sql');
+    expect(index).toContain("import m0032 from './0032_icon_crypto_account.sql';");
+    expect(index).toMatch(/\bm0032,/);
+  });
+});
+
 // The registration invariant every migration must hold, asserted over the WHOLE
 // journal rather than over whichever migration happened to be newest when the
 // assertion was written (a per-migration "must be last" check goes stale the

@@ -28,10 +28,10 @@ describe('accountKindSymbol', () => {
     }
   });
 
-  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign', () => {
+  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign.circle', () => {
     expect(accountKindSymbol.bank).toBe('building.columns.fill');
     expect(accountKindSymbol.cash).toBe('banknote');
-    expect(accountKindSymbol.crypto).toBe('bitcoinsign');
+    expect(accountKindSymbol.crypto).toBe('bitcoinsign.circle');
   });
 });
 
@@ -44,13 +44,13 @@ describe('holdingTypeSymbol', () => {
     }
   });
 
-  it('assigns card creditcard, term_deposit calendar, bond receipt, jar archivebox, cash banknote, crypto_asset bitcoinsign', () => {
+  it('assigns card creditcard, term_deposit calendar, bond receipt, jar rectangle.portrait, cash banknote, crypto_asset bitcoinsign.circle', () => {
     expect(holdingTypeSymbol.card).toBe('creditcard');
     expect(holdingTypeSymbol.term_deposit).toBe('calendar');
     expect(holdingTypeSymbol.bond).toBe('receipt');
-    expect(holdingTypeSymbol.jar).toBe('archivebox');
+    expect(holdingTypeSymbol.jar).toBe('rectangle.portrait');
     expect(holdingTypeSymbol.cash).toBe('banknote');
-    expect(holdingTypeSymbol.crypto_asset).toBe('bitcoinsign');
+    expect(holdingTypeSymbol.crypto_asset).toBe('bitcoinsign.circle');
   });
 });
 

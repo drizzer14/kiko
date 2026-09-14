@@ -678,7 +678,7 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     // The default type is `card`, which a crypto account forbids, so the form
     // resets to the first allowed type (crypto_asset) — proven by the shown
     // default icon following to the crypto_asset glyph.
-    expect(screen.getByLabelText('Icon bitcoinsign')).toBeTruthy();
+    expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
   });
 });
 

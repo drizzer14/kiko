@@ -10,30 +10,35 @@ import type { HoldingType } from '../holding-type';
 
 type AccountKind = AccountRow['kind'];
 
-// bank -> building.columns.fill, cash -> banknote, crypto -> bitcoinsign.
-// Typed over the full `AccountKind` union, so adding an account kind is a
-// compile error here until its default symbol is supplied. `bank` is the
-// filled classic bank-with-columns glyph (SF Symbols iOS 14), confirmed to
-// paint on this device; `building.classical.columns.fill` is an
+// bank -> building.columns.fill, cash -> banknote, crypto ->
+// bitcoinsign.circle. Typed over the full `AccountKind` union, so adding an
+// account kind is a compile error here until its default symbol is supplied.
+// `bank` is the filled classic bank-with-columns glyph (SF Symbols iOS 14),
+// confirmed to paint on this device; `building.classical.columns.fill` is an
 // iOS-27-only SF Symbol confirmed invisible on this device, so it is not
-// used here.
+// used here. The crypto ACCOUNT default is persisted at create time, so its
+// change to `bitcoinsign.circle` ships alongside migration
+// 0032_icon_crypto_account, which refines un-customized existing rows.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
   cash: 'banknote',
-  crypto: 'bitcoinsign',
+  crypto: 'bitcoinsign.circle',
 };
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
-// archivebox, cash -> banknote, crypto_asset -> bitcoinsign. Typed over the
-// full `HoldingType` union for the same exhaustiveness guarantee as the
-// account map above.
+// rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle.
+// Typed over the full `HoldingType` union for the same exhaustiveness
+// guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
+// defaults are pure render-time fallbacks (holdings persist a null icon until
+// the user picks one), so these changes update every un-customized holding
+// with NO data migration — unlike the crypto ACCOUNT default above.
 export const holdingTypeSymbol: Record<HoldingType, string> = {
   card: 'creditcard',
   term_deposit: 'calendar',
   bond: 'receipt',
-  jar: 'archivebox',
+  jar: 'rectangle.portrait',
   cash: 'banknote',
-  crypto_asset: 'bitcoinsign',
+  crypto_asset: 'bitcoinsign.circle',
 };
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty

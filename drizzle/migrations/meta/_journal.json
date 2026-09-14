@@ -218,6 +218,20 @@
       "when": 1789386262203,
       "tag": "0030_add_change_group_id",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1789386262204,
+      "tag": "0031_icon_health_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1789386262205,
+      "tag": "0032_icon_crypto_account",
+      "breakpoints": true
     }
   ]
 }
