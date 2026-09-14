@@ -96,6 +96,12 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('change_group_id');
   });
 
+  it('includes the source in the joined all-transactions projection, so Home can tell a synced row from a manual one', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('"transactions"."source"');
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {

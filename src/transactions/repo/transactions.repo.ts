@@ -276,6 +276,10 @@ export const transactionsRepo = {
         // The split-change group id travels too: the spending pie nets a
         // payment's linked returns into its category (statistics/category-breakdown).
         changeGroupId: transactions.changeGroupId,
+        // Home reads the source to tell a synced (Monobank/crypto) row from a
+        // manual one (`isSyncedTransaction`), gating its long-press delete —
+        // only a manual row is deletable.
+        source: transactions.source,
         category: transactions.category,
         accountId: accounts.id,
         accountName: accounts.name,
