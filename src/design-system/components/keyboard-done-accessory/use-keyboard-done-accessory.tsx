@@ -20,43 +20,48 @@ type KeyboardDoneAccessory = {
   // dark-only (see the `kiko-design-system` skill's "Dark-only theme"
   // section) — there is no light theme to ever match — so this is always
   // the literal `'dark'`, never left to the OS default, which keeps the
-  // system keyboard's OWN chrome (key caps, QuickType bar) visually
-  // consistent with `accessory`'s `keyboardAccessoryBackground` fill
-  // (`theme.ts`) rather than the two drifting independently. Returned from
-  // this SAME hook (not a separate constant each caller re-imports) so an
-  // input can never render the accessory without also matching its own
-  // keyboard's visual style. `undefined` off iOS, mirroring
-  // `inputAccessoryViewID` above.
+  // system keyboard's OWN chrome (key caps, QuickType bar) on the same dark
+  // styling `accessory`'s glass pill is designed against, rather than the
+  // two drifting independently. Returned from this SAME hook (not a
+  // separate constant each caller re-imports) so an input can never render
+  // the accessory without also matching its own keyboard's visual style.
+  // `undefined` off iOS, mirroring `inputAccessoryViewID` above.
   keyboardAppearance: 'dark' | undefined;
 };
 
 // The single source of the native "Done" keyboard accessory shared by every
 // Kiko input (the shared TextField and the holding/account/category name
-// field). On iOS it renders a real input-accessory TOOLBAR above the keyboard:
-// a bar that reads as PART OF the keyboard directly below it, with a
-// trailing `Pressable` Done — accent, semibold — that dismisses via
+// field). On iOS it renders a real input-accessory view above the keyboard:
+// a COMPACT, floating, pill-shaped glass Done button — not a full-width bar
+// — right-aligned with a gap above the keyboard, that dismisses via
 // `Keyboard.dismiss()`, so the whole app presents one identical Done on EVERY
-// input, text and numeric alike. RN's core `<Button>` (used before) cannot
-// carry a background/weight, hence the `Pressable` + DS `Text`. `useId()`
-// gives each caller its own accessory id so a screen with several fields
-// never shares (and iOS never flags a duplicate) `nativeID`. The returned
-// `keyboardAppearance` (see its own doc comment above) keeps the SYSTEM
-// keyboard's chrome matching this bar's fill — pass it straight to the same
-// input's `keyboardAppearance` prop. Off iOS it returns no id, no element, and
-// no keyboardAppearance.
+// input, text and numeric alike. RN's core `<Button>` cannot carry a
+// background/weight, hence the `Pressable` + DS `Text` + `GlassSurface`.
+// `useId()` gives each caller its own accessory id so a screen with several
+// fields never shares (and iOS never flags a duplicate) `nativeID`. The
+// returned `keyboardAppearance` (see its own doc comment above) keeps the
+// system keyboard on the same dark styling this accessory is designed
+// against — pass it straight to the same input's `keyboardAppearance` prop.
+// Off iOS it returns no id, no element, and no keyboardAppearance.
 //
-// MATERIAL + GEOMETRY (review, 2026-09-14, addendum): the bar's background is
-// now a real Liquid Glass `GlassSurface material` overlay
-// (`styles.accessoryGlass`), per Apple's own HIG "Virtual keyboards" guidance
-// to apply Liquid Glass to a view containing controls placed above the
-// keyboard — see `keyboard-done-accessory.styles.ts`'s `accessoryContainer`
-// doc comment for the full citation, the solid-fallback layering that
-// guards against a blank first paint in this still-novel `InputAccessoryView`
-// native host, and the bottom-corner-radius fix for the gap a flat rectangle
-// otherwise leaves against the keyboard's own rounded top corners. Paint
-// order in the JSX below matters: `accessoryGlass` renders FIRST (behind, on
-// top of the container's own solid `backgroundColor`), the Done `Pressable`
-// SECOND (always on top of both).
+// REDESIGN (2026-09-14): this used to be a full-width bar flush against the
+// keyboard, with a solid fill, a top hairline, and bottom corners rounded to
+// tuck against the keyboard's own curve (see git history — commits
+// ed4cceb/5aa3fda/0faaab3 — for that bar's layering and its now-removed
+// `keyboardAccessoryBackground` fill token). It is now a compact pill that
+// sizes to fit its own label (`styles.doneButton`'s padding, no stretch to
+// full width), floats clear of the keyboard with a padding-driven gap
+// (`styles.accessoryContainer`), and carries a white (`textPrimary`) label —
+// see `keyboard-done-accessory.styles.ts` for the full geometry writeup.
+// `GlassSurface`'s `material` variant (the same one `BottomSheet` uses for
+// its own card) is still the Liquid Glass response to Apple's HIG "Virtual
+// keyboards" guidance ("apply Liquid Glass to the view that contains your
+// controls" above the keyboard) — only the shape and fill it paints changed,
+// from a full-width bar to a small capsule (`radius="full"`), with a
+// `bordered` hairline edge for legibility since the pill has no opaque/
+// pinned backdrop of its own. Paint order in the JSX below matters:
+// `doneGlass` renders FIRST (behind, filling the Pressable's own bounds),
+// the Done label SECOND (always on top).
 export const useKeyboardDoneAccessory = (): KeyboardDoneAccessory => {
   const { t } = useTranslation();
   const accessoryViewID = useId();
@@ -71,19 +76,20 @@ export const useKeyboardDoneAccessory = (): KeyboardDoneAccessory => {
     accessory: (
       <InputAccessoryView nativeID={accessoryViewID}>
         <Box testID="keyboard-done-accessory" style={styles.accessoryContainer}>
-          <GlassSurface
-            material
-            radius="lg"
-            style={styles.accessoryGlass}
-            testID="keyboard-done-accessory-glass"
-          />
-
           <Pressable
             accessibilityRole="button"
             onPress={Keyboard.dismiss}
             style={styles.doneButton}
           >
-            <Text tone="accent" style={styles.doneLabel}>
+            <GlassSurface
+              material
+              bordered
+              radius="full"
+              style={styles.doneGlass}
+              testID="keyboard-done-accessory-glass"
+            />
+
+            <Text tone="textPrimary" style={styles.doneLabel}>
               {t('common.done')}
             </Text>
           </Pressable>

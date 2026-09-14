@@ -16,7 +16,15 @@
 import { chartSeriesDark, entityColorsDark } from './palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
-const radii = { sm: 6, md: 10, lg: 16 } as const;
+// `full` is a capsule/pill sentinel, not a fourth point value in the sm/md/lg
+// progression: it is set well past any control's half-height (the point past
+// which a corner radius stops changing the silhouette), so both iOS's native
+// corner-radius clamping (a `UIView`/Liquid Glass layer) and React Native's
+// Yoga layout clamp it down to exactly half the control's shorter dimension —
+// a true capsule at ANY height, with no need to know or match that height
+// here. `GlassSurface`'s `radius="full"` (the keyboard Done accessory pill,
+// `use-keyboard-done-accessory.tsx`) is the first consumer.
+const radii = { sm: 6, md: 10, lg: 16, full: 999 } as const;
 const typography = {
   // One step above `title` — a hero numeral (e.g. Home's net-worth
   // balance), styled at the same weight but larger, for the one or two
@@ -159,48 +167,6 @@ export const darkTheme = {
     // `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so this change
     // cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
-    // The keyboard "Done" InputAccessoryView's SOLID FALLBACK fill
-    // (`useKeyboardDoneAccessory`) — the base layer painted BEHIND the real
-    // Liquid Glass overlay (`GlassSurface material`, `accessoryGlass` in
-    // `keyboard-done-accessory.styles.ts`), not the bar's only fill anymore.
-    //
-    // DEVICE BUG (review, 2026-09-14): the accessory previously painted the
-    // opaque `surfaceHigh` (#2C2C2E, tertiarySystemBackground) — a step
-    // LIGHTER/more "raised" than the real system keyboard sitting directly
-    // below it, so the bar read as a detached strip rather than part of the
-    // keyboard. This token was introduced as a closer flat-color
-    // approximation of the keyboard's own tone (`#1C1C1E`, the same hue as
-    // `surface`/`sheetBackground`), deliberately NOT paired with a live blur
-    // at the time: an `InputAccessoryView` was a never-before-exercised host
-    // for this design system's `LiquidGlassView` usage, and shipping an
-    // unverified glass risked a BLANK accessory, worse than the flat-color
-    // mismatch — see git history (commit ed4cceb) for that original,
-    // color-only investigation.
-    //
-    // MATERIAL (addendum, 2026-09-14, same-day on-device review): a real
-    // blur now IS used. Apple's HIG "Virtual keyboards" page
-    // (developer.apple.com/design/human-interface-guidelines/
-    // virtual-keyboards, "Place custom controls above the keyboard
-    // thoughtfully", updated June 9, 2025) gives EXPLICIT, on-topic guidance
-    // this token's original investigation did not have: "If other views in
-    // your app use Liquid Glass, or if your view looks out of place above
-    // the keyboard, apply Liquid Glass to the view that contains your
-    // controls to maintain consistency." This supersedes the earlier
-    // color-only conclusion. The FIRST-PAINT risk that blocked glass before
-    // is now handled differently, not ignored: this token stays as the
-    // accessory container's own `backgroundColor` — a plain RN fill, always
-    // painted immediately regardless of native glass timing — sitting
-    // BEHIND the new `GlassSurface material` overlay, so a late/blank glass
-    // paint in this host can never leave the bar blank; the solid shows
-    // through underneath it. Kept as its OWN named token (never a reused
-    // `surface` import) because its role (the accessory's solid safety-net
-    // fill) is distinct from `surface`'s role (an app card surface), the
-    // same per-role-token convention `sheetBackground` already follows
-    // despite sharing `surface`'s value. See
-    // `keyboard-done-accessory.styles.ts`'s `accessoryContainer` doc comment
-    // for the full layering writeup, including the bottom-corner-radius fix
-    // for the keyboard's own rounded top corners.
-    keyboardAccessoryBackground: '#1C1C1E',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
   },

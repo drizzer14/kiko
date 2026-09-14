@@ -1,133 +1,70 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-// The toolbar's minimum height (and the Done button's tap target). No Apple
-// doc gives a literal point value for a `UIToolbar`/input-accessory bar's
-// height (`UIToolbar`'s own doc only names "standard-height"/"compact-height"
-// style variants, no number — see `keyboardAccessoryBackground`'s doc comment
-// in `theme.ts` for the full research writeup this component shares).
-// 44 is kept: it is both the iOS HIG minimum touch target AND the
-// long-established standard iPhone toolbar/nav-bar height, so it satisfies
-// the touch-target requirement and reads as a standard-height bar even
-// without a literal Apple citation for the second claim.
-const TOOLBAR_MIN_HEIGHT = 44;
+// The Done pill's minimum height (and tap target) — the iOS HIG 44pt minimum
+// touch target (`kiko-design-system`'s "Touch targets" HIG axis), the same
+// floor `button.styles.ts`'s `COMPACT_MIN_HEIGHT` and `bottom-sheet.styles.ts`'s
+// `GRABBER_REGION_MIN_HEIGHT` restore for their own controls.
+const DONE_PILL_MIN_SIZE = 44;
 
 export const styles = StyleSheet.create((theme) => ({
-  // The InputAccessoryView host, styled as a real iOS input-accessory toolbar
-  // so it reads as PART OF the keyboard directly below it, not a detached
-  // strip.
-  //
-  // MATERIAL (review, 2026-09-14, addendum to the 2026-09-14 fix): the
-  // accessory previously painted only the flat `keyboardAccessoryBackground`
-  // color approximation, because a live blur material could not be verified
-  // safely in this native host at the time (see that token's own doc comment
-  // in `theme.ts` for the original investigation). Apple's HIG "Virtual
-  // keyboards" page (developer.apple.com/design/human-interface-guidelines/
-  // virtual-keyboards, "Place custom controls above the keyboard
-  // thoughtfully", updated June 9, 2025) now gives EXPLICIT guidance for
-  // exactly this control: "If other views in your app use Liquid Glass, or
-  // if your view looks out of place above the keyboard, apply Liquid Glass
-  // to the view that contains your controls to maintain consistency." This
-  // is the authoritative source `keyboardAccessoryBackground`'s ORIGINAL
-  // investigation (see that token's own doc comment in `theme.ts`) found
-  // lacking — a literal, on-topic recommendation, not a paraphrased adjacent
-  // API. `accessoryGlass` below (a `GlassSurface material` overlay) is the
-  // real Liquid Glass response to that guidance.
-  //
-  // SOLID FALLBACK (the blank-first-paint risk flagged in review):
-  // `keyboardAccessoryBackground` stays as THIS View's own `backgroundColor`
-  // — a plain RN background, always painted immediately by the host,
-  // regardless of native glass timing — so it is the base layer BEHIND
-  // `accessoryGlass`, never removed. If the glass overlay renders correctly
-  // it visually replaces this fill; if it is ever blank/late/fails to paint
-  // in this still-novel `InputAccessoryView` host, this solid fill keeps
-  // showing through underneath it — the bar can never render blank. See
-  // `use-keyboard-done-accessory.tsx`'s own doc comment for the full layering
-  // order.
-  //
-  // GEOMETRY (addendum, 2026-09-14, on-device review): a flat rectangular
-  // bar sitting flush above the real system keyboard left a visible gap at
-  // its own two bottom corners, because the keyboard's own top edge is
-  // rounded (Liquid Glass; see "Adopting Liquid Glass",
-  // developer.apple.com/documentation/technologyoverviews/
-  // adopting-liquid-glass, "Controls": "the shape of the hardware informs
-  // the curvature of controls... many controls adopt rounder forms", and
-  // "Consider aligning the shape of controls with other rounded elements...
-  // using rounded shapes that are concentric to their containers"), so a
-  // square-cornered bar does not fully cover the corner region right above
-  // it. Apple publishes no literal keyboard corner-radius point value (the
-  // same "described only qualitatively, never numerically" pattern as
-  // `keyboardAccessoryBackground`'s own original investigation, see
-  // `theme.ts`) — the reasoned fix, following the SAME strategy
-  // `BottomSheet`'s own `BACKDROP_RIM_OVERSCAN` already uses for an
-  // analogous Liquid-Glass/native-geometry mismatch (extend past the exact
-  // boundary rather than guess a precise native number), is to round this
-  // bar's own BOTTOM two corners to `theme.radii.lg` — the SAME token
-  // `BottomSheet`'s own Liquid-Glass sheet card already rounds its top
-  // corners to (`bottom-sheet.styles.ts`'s `sheet`/`glassFill`), generous
-  // enough that the bar's silhouette curves in ahead of the keyboard's own
-  // corner, so no gap can open between them regardless of the keyboard's
-  // exact curve. The TOP edge stays square (it borders app content, not the
-  // keyboard, via the hairline `border` below) — only the bottom two
-  // corners round. `overflow: 'hidden'` clips BOTH the solid fill and
-  // `accessoryGlass` (below) to this same rounded silhouette, so the two
-  // layers can never show mismatched corners.
-  //
-  // Height/padding hold the 44pt bar (see `TOOLBAR_MIN_HEIGHT` above). The
-  // Done button stays trailing (`alignItems: 'flex-end'`, the original
-  // placement), vertically centered, and renders as a later sibling so it
-  // always paints on top of the glass/solid layers.
+  // The InputAccessoryView host. REDESIGN (2026-09-14): this used to be a
+  // full-width, flush toolbar bar with its own solid fill, top hairline, and
+  // bottom-rounded corners tucked against the keyboard's own curve (see git
+  // history — commits ed4cceb/5aa3fda/0faaab3 — for that bar's now-removed
+  // layering). It is now fully TRANSPARENT — no fill, no border, no corner
+  // geometry of its own — and exists only to position the compact Done pill
+  // below: full width so the pill can right-align within it
+  // (`alignItems: 'flex-end'`), with `paddingBottom` holding the pill clear of
+  // the keyboard's own top edge (the floating gap) and `paddingHorizontal`
+  // matching the app's standard edge inset so the pill lines up with content
+  // above it.
   accessoryContainer: {
-    minHeight: TOOLBAR_MIN_HEIGHT,
     alignItems: 'flex-end',
-    justifyContent: 'center',
-    paddingVertical: theme.spacing(1),
     paddingHorizontal: theme.spacing(4),
-    backgroundColor: theme.colors.keyboardAccessoryBackground,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.colors.border,
-    borderBottomLeftRadius: theme.radii.lg,
-    borderBottomRightRadius: theme.radii.lg,
-    overflow: 'hidden',
+    paddingVertical: theme.spacing(2),
   },
-  // The live Liquid Glass overlay, an absolutely-positioned sibling painted
-  // OVER the container's own solid `backgroundColor` (see
-  // `accessoryContainer`'s doc comment above) and UNDER the Done button.
-  // `GlassSurface`'s `material` variant is the live-blur variant (no
-  // color-pinning backdrop, so it samples real content behind the bar on the
-  // glass path; a translucent, never-opaque fallback fill elsewhere) — the
-  // same variant `BottomSheet` already uses for its own card background.
-  // `radius="lg"` matches `accessoryContainer`'s own `theme.radii.lg` above,
-  // and this layer is pushed `theme.radii.lg` PAST the container's own TOP
-  // edge — mirroring `bottom-sheet.styles.ts`'s `glassFill` (which extends
-  // PAST the sheet card's bottom edge for the reverse reason): `GlassSurface`
-  // exposes only a single ALL-corner radius, so sizing this layer to match
-  // the container exactly would round its TOP two corners too, which must
-  // stay square. Extending it upward by the radius pushes where its
-  // rounding starts curving inward up past the container's own top edge,
-  // where `accessoryContainer`'s `overflow: 'hidden'` clips it away — what's
-  // left visible is a square top and correctly bottom-rounded corners,
-  // aligned with the container's own `borderBottomLeftRadius`/
-  // `borderBottomRightRadius` since both read the same token.
-  accessoryGlass: {
+  // The Done pill itself: a `Pressable` sized to hug its own label (intrinsic
+  // width) rather than stretching full width, with comfortable horizontal
+  // padding and the 44pt HIG floor on height (see `DONE_PILL_MIN_SIZE`) — no
+  // separate `minWidth` floor: the label is always `t('common.done')`, and
+  // `theme.spacing(5)` horizontal padding on both sides already pushes the
+  // pill past 44pt wide, so a width floor could never bind. `doneGlass`
+  // (below) is an absolutely-positioned sibling filling these exact bounds,
+  // so this View's own padding/minHeight — not `doneGlass` — is what
+  // determines the pill's final size; the label centers inside it above the
+  // glass.
+  doneButton: {
+    minHeight: DONE_PILL_MIN_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing(5),
+  },
+  // The live Liquid Glass fill: an absolutely-positioned sibling painted
+  // BEHIND the Done label, sized to match `doneButton`'s own rendered bounds
+  // exactly (no extension past any edge — unlike the old bar, this pill has
+  // no keyboard-curve mismatch to route around, since it floats clear of the
+  // keyboard entirely). `GlassSurface`'s `material` variant is the same
+  // live-blur variant `BottomSheet` uses for its own card background (no
+  // color-pinning backdrop, so it samples the real content behind the pill on
+  // the glass path; a translucent, never-opaque fallback fill elsewhere).
+  // `radius="full"` (see its own doc in `glass-surface.props.d.ts`) rounds
+  // this into a true capsule at whatever height the pill resolves to.
+  doneGlass: {
     position: 'absolute',
-    top: -theme.radii.lg,
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
   },
-  // The trailing Done control. RN's core `<Button>` cannot carry a
-  // background/weight/layout, so it is a `Pressable` + DS `Text`; this keeps a
-  // >= 44pt tap target even though the label alone is short.
-  doneButton: {
-    minWidth: TOOLBAR_MIN_HEIGHT,
-    minHeight: TOOLBAR_MIN_HEIGHT,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  // The Done label: accent (systemBlue) link tone via the DS `Text` `tone`, and
-  // a semibold weight here so it reads as iOS's emphasized Done action. Only the
-  // weight is a style override; the color stays the authoritative `accent` tone
-  // token (Text excludes `color` from its style prop by design).
+  // The Done label: white (`textPrimary` — pure white on this dark theme, see
+  // its own doc in `theme.ts`), replacing the earlier blue `accent` tone now
+  // that Done is a neutral glass pill rather than a tinted link-style action.
+  // `textPrimary`, not `onAccent`: this pill carries no filled accent/
+  // destructive background (`onAccent` is reserved for text on THAT kind of
+  // fill, per `kiko-design-system`'s "The `onAccent` rule") — it is a neutral
+  // translucent glass surface, the same class of surface the settings/system
+  // cards already pair with `textPrimary` labels. Semibold here so Done still
+  // reads as the keyboard's emphasized action.
   doneLabel: {
     fontWeight: '600',
   },

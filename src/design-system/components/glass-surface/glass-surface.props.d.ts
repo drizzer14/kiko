@@ -1,7 +1,13 @@
 import type { ReactNode } from 'react';
 import type { ViewProps } from 'react-native';
 
-type GlassRadius = 'md' | 'lg';
+// `full` is the capsule/pill sentinel (`theme.radii.full`, see its own doc
+// comment in `theme.ts`) — a value set well past any control's half-height,
+// so iOS's native corner-radius clamping (the real `LiquidGlassView` path)
+// and Yoga's own clamping (the flat fallback `View` path) both round it down
+// to exactly half the control's shorter dimension, a true capsule at ANY
+// height. The keyboard Done accessory pill is the first consumer.
+type GlassRadius = 'md' | 'lg' | 'full';
 
 export type GlassSurfaceProps = ViewProps & {
   children?: ReactNode;
