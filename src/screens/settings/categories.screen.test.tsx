@@ -323,7 +323,7 @@ describe('CategoriesScreen', () => {
     // with no swatch tapped the color persists as null (the "not picked" state).
     expect(mockCreate).toHaveBeenCalledWith({
       title: 'Travel',
-      icon: 'square.grid.2x2',
+      icon: 'tag',
       color: null,
     });
     // The form collapses (clears) on a successful add.
