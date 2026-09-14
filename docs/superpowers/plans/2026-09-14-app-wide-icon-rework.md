@@ -1,6 +1,8 @@
 # App-Wide SF Symbol Icon Rework Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **This plan is a MAPPING REFERENCE + infrastructure spec — implementation is BLOCKED (see the Sequencing section). Do NOT begin coding until the shared-file worktree lands.**
+**Status: COMPLETE — ready to implement once `next-bank-connect` lands.** Every icon mapping is DECIDED, every gap is RESOLVED, and no AWAITING/UNRESOLVED marker remains. The only remaining precondition is the shared-file sequencing block (§5) — the parallel `next-bank-connect` worktree must integrate onto `next` first.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **This plan is a MAPPING REFERENCE + infrastructure spec — implementation is BLOCKED only by the Sequencing section (§5). Do NOT begin coding until the shared-file worktree lands; every icon decision itself is final.**
 
 **Goal:** Replace every SF Symbol icon literal in the app with an intended NEW icon, driven by a finalized known mapping, and report every call site the mapping does not cover as an explicit GAP with an UNRESOLVED candidate.
 
@@ -54,7 +56,7 @@
 | `arrow.left.arrow.right` | transfers | |
 | `square.grid.2x2` | other | |
 
-All render sites are dynamic via `category.icon`. A NEW default changes the seed AND must ship as a migration that updates existing untouched-default rows (out of scope for the icon strings themselves; note it for the executor).
+All render sites are dynamic via `category.icon`. The ONLY category default that changes is Health (`cross.case`→`cross`, §3.0.4); it changes the seed AND ships as a guarded migration that updates existing untouched-default rows — see §4.1 M1. The other 9 category defaults are unchanged.
 
 ### 1.3 Tab bar — `src/navigation/root.navigator.tsx`
 
@@ -222,19 +224,19 @@ The per-KIND account/holding type-defaults are DECIDED, not pending. User rule: 
 | :35 | `holdingTypeSymbol.cash` | `banknote` | `banknote` | **UNCHANGED** |
 | :36 | `holdingTypeSymbol.crypto_asset` | `bitcoinsign` | `bitcoinsign.circle` | **CHANGE** |
 
-Three type-default changes total: `bank`/`cash`/`card`/`term_deposit`/`bond`/(holding)`cash` stay unchanged; `jar` → `rectangle.portrait`; both crypto defaults (`crypto`, `crypto_asset`) → `bitcoinsign.circle`.
+Three type-default changes total: `bank`/`cash`/`card`/`term_deposit`/`bond`/(holding)`cash` stay unchanged; `jar` → `rectangle.portrait`; both crypto defaults (`crypto`, `crypto_asset`) → `bitcoinsign.circle`. **Migration split (verified — see §4.1):** only the crypto ACCOUNT default (`accountKindSymbol.crypto`) needs a data migration (M2), because the account form persists the kind default at create time. The `jar` and `crypto_asset` HOLDING defaults are pure render-time fallbacks (holdings persist a null icon until the user picks one), so the code-constant change here updates every un-customized holding with NO migration.
 
 ---
 
 ## 3. GAPS (every call site NOT covered by §2)
 
-**Rule reminder:** each NORMAL-gap row gets a PROPOSED candidate marked **UNRESOLVED**. None is the old icon. A human resolves each before implementation; the existing glyph may be re-affirmed by a human but is NOT auto-kept.
+**Rule reminder (methodology):** each NORMAL-gap row originally got a PROPOSED candidate marked **UNRESOLVED**, never an auto-kept old icon — a human had to resolve each before implementation. **That process is now COMPLETE:** every gap below is RESOLVED (a user-finalized decision, including deliberate KEEPs where the user re-affirmed the current glyph). No row remains UNRESOLVED.
 
-**Two icon COLLECTIONS resolved two whole gap areas — RESOLVED (§3.0), no UNRESOLVED candidates needed for them.** Each is a COLLECTION OF STANDARD SF SYMBOLS (not custom-drawn glyphs), exported from the SF Symbols app library as a JSON `symbols` array. Both files have now been read directly and their full symbol lists are embedded below (§3.0). Every OTHER uncovered icon stays a normal UNRESOLVED gap (§3.4 onward). Inside the resolved area, the seeded-category default mapping is now PARTLY DECIDED (7 of 10 decided, 3 AWAITING-USER-REPLACEMENT — §3.0.4) and iOS-availability verification stays open (§3.0.5).
+**Two icon COLLECTIONS resolved two whole gap areas — RESOLVED (§3.0), no UNRESOLVED candidates needed for them.** Each is a COLLECTION OF STANDARD SF SYMBOLS (not custom-drawn glyphs), exported from the SF Symbols app library as a JSON `symbols` array. Both files have now been read directly and their full symbol lists are embedded below (§3.0). Every OTHER uncovered icon is now RESOLVED (§3.4 onward) — the user supplied final replacements for the last open sites. Inside the resolved area, the seeded-category default mapping is now FULLY DECIDED (all 10 decided — §3.0.4; only Health changes) and iOS-availability verification stays open (§3.0.5) as the sole remaining ops/user verification task.
 
 ### 3.0 RESOLVED — the icon-picker pools + the UI-chrome pool (was PENDING-COLLECTION)
 
-**RESOLVED.** Three SF Symbols app library collection files were exported by the user and read directly (each file is a JSON object with a `symbols` array). They resolve the two picker-pool gap areas AND the 46 small-UI gaps (§3.4–§3.8). The old "shared pool" design question is DECIDED: the single shared 138-entry `CURATED_ICONS` pool is **REPLACED by TWO distinct picker pools**, and the scattered UI literals draw from a third **UI-chrome** pool.
+**RESOLVED.** Three SF Symbols app library collection files were exported by the user and read directly (each file is a JSON object with a `symbols` array). They resolve the two picker-pool gap areas AND the 46 small-UI gaps (§3.4–§3.8); the handful of sites the collections did not cover have since been resolved by explicit user replacements (§3.6/§3.8/§3.0.4 — all KEEP the current glyph except Health). The old "shared pool" design question is DECIDED: the single shared 138-entry `CURATED_ICONS` pool is **REPLACED by TWO distinct picker pools**, and the scattered UI literals draw from a third **UI-chrome** pool.
 
 - **Kiko Entities — 62 symbols.** The account/holding icon-PICKER pool, consumed by the IconEditor (`icon-editor.component.tsx:67`, opened from the account form and the holding form). Does NOT include the per-KIND type-defaults — those stay DECIDED in §2.4.
 - **Kiko Categories — 73 symbols.** The category-picker pool (`icon-picker-modal.component.tsx:32-181`), REPLACING the old shared 138-entry `CURATED_ICONS` pool in its entirety.
@@ -242,7 +244,7 @@ Three type-default changes total: `bank`/`cash`/`card`/`term_deposit`/`bond`/(ho
 
 > **Source:** the two collections named "Kiko" (older 145-symbol draft) and any other collection are IGNORED. Only Kiko Entities, Kiko Categories, and Kiko UI govern this rework. The collection JSON carries NO iOS-availability metadata (§3.0.5).
 
-Inside this resolved area: the per-default seeded-category mapping is PARTLY DECIDED (§3.0.4 — 7 decided, 3 AWAITING-USER-REPLACEMENT), and iOS-availability verification stays OPEN (§3.0.5, needs ops/user verification).
+Inside this resolved area: the per-default seeded-category mapping is FULLY DECIDED (§3.0.4 — all 10 decided; only Health changes, cross.case→cross), and iOS-availability verification stays OPEN (§3.0.5, needs ops/user verification) as the only remaining non-blocking verification.
 
 #### 3.0.1 Kiko Entities pool (62) — account/holding IconEditor
 
@@ -352,9 +354,9 @@ The **8 `custom:UUID`** entries are NOT to be custom-rendered — each is exactl
 | `transaction.income` | `arrow.down` | §2.1 |
 | `transaction.split` | `arrow.trianglehead.branch` (fallbackName `arrow.branch`) | §2.1 (iOS-26) |
 
-#### 3.0.4 SUB-GAP (PARTLY DECIDED) — seeded-category DEFAULT mapping
+#### 3.0.4 SUB-GAP (FULLY DECIDED) — seeded-category DEFAULT mapping
 
-The Kiko Categories pool (§3.0.2) is a set of picker OPTIONS, NOT per-category default assignments. The 10 seeded category defaults live in `src/db/__fixtures__/seeded-categories.ts` (`SEEDED_CATEGORIES`), cross-checked against `drizzle/migrations/0002_seed_categories.sql` (seeds `transport` as `car`) and `0017_default_category_colors.sql` (refines `transport` `car`→`bus`). State per row: **6 DECIDED-KEEP** (already in the pool), **1 DECIDED-KEEP out-of-pool** (`other`→`square.grid.2x2`, stays, NO migration), and **3 AWAITING-USER-REPLACEMENT** (`bolt`/`cross.case`/`arrow.left.arrow.right` — the current icons are NOT in the pool; the coordinator has sent these three to the user by their current names, and the earlier `house`/`cross`/`repeat` candidates are DROPPED).
+The Kiko Categories pool (§3.0.2) is a set of picker OPTIONS, NOT per-category default assignments. The 10 seeded category defaults live in `src/db/__fixtures__/seeded-categories.ts` (`SEEDED_CATEGORIES`), cross-checked against `drizzle/migrations/0002_seed_categories.sql` (seeds `transport` as `car`) and `0017_default_category_colors.sql` (refines `transport` `car`→`bus`). State per row (user-finalized): **9 DECIDED-KEEP** (the current glyph stays) and **1 DECIDED-CHANGE** (`health` `cross.case`→`cross`). The three previously-open rows are now settled: Utilities KEEPS `bolt`, Transfers KEEPS `arrow.left.arrow.right`, and Health CHANGES to `cross` (the only seeded-default change in the whole rework). "In pool?" is informational only — a KEEP does not require the glyph to be in the Kiko Categories picker pool (the pool governs USER-selectable options, not the seeded default a row ships with).
 
 | Category | Current icon | In pool? | Decision | Note |
 |---|---|---|---|---|
@@ -362,16 +364,19 @@ The Kiko Categories pool (§3.0.2) is a set of picker OPTIONS, NOT per-category 
 | Dining | `fork.knife` | yes | **DECIDED → `fork.knife`** | keep — in pool |
 | Transport | `bus` | yes | **DECIDED → `bus`** | keep — in pool |
 | Shopping | `bag` | yes | **DECIDED → `bag`** | keep — in pool |
-| Utilities | `bolt` | **no** | **AWAITING-USER-REPLACEMENT** | current `bolt` is out-of-pool; sent to the user by its current name. Earlier `house` candidate DROPPED. Do not keep `bolt`, do not invent one. |
+| Utilities | `bolt` | no | **DECIDED → `bolt` (stays)** | user-finalized KEEP; out-of-pool is fine for a seeded default. Earlier `house` candidate DROPPED. NO migration. |
 | Entertainment | `gamecontroller` | yes | **DECIDED → `gamecontroller`** | keep — in pool |
-| Health | `cross.case` | **no** | **AWAITING-USER-REPLACEMENT** | current `cross.case` is out-of-pool; sent to the user by its current name. Earlier `cross` candidate DROPPED. Do not keep `cross.case`, do not invent one. |
+| Health | `cross.case` | no | **DECIDED → `cross` (CHANGE)** | user-finalized change. `cross` IS in the Kiko Categories pool (§3.0.2). **Needs a guarded data migration** (see "Data migrations required" below) — categories are seeded as DB rows. |
 | Cash | `banknote` | yes | **DECIDED → `banknote`** | keep — in pool |
-| Transfers | `arrow.left.arrow.right` | **no** | **AWAITING-USER-REPLACEMENT** | current `arrow.left.arrow.right` is out-of-pool; sent to the user by its current name. Earlier `repeat` candidate DROPPED. Do not keep the old icon, do not invent one. |
-| Other | `square.grid.2x2` | **no** | **DECIDED → `square.grid.2x2` (stays)** | the earlier tension is RESOLVED: `other` keeps `square.grid.2x2` (out-of-pool, per §2.2), NO data migration. The pool's `xmark.triangle.circle.square` alternative is DROPPED. |
+| Transfers | `arrow.left.arrow.right` | no | **DECIDED → `arrow.left.arrow.right` (stays)** | user-finalized KEEP; out-of-pool is fine for a seeded default. Earlier `repeat` candidate DROPPED. NO migration. |
+| Other | `square.grid.2x2` | no | **DECIDED → `square.grid.2x2` (stays)** | `other` keeps `square.grid.2x2` (out-of-pool, per §2.2), NO data migration. The pool's `xmark.triangle.circle.square` alternative is DROPPED. |
 
-Each of the 3 AWAITING-USER-REPLACEMENT defaults, once the user supplies a replacement, needs a data migration that updates existing untouched-default rows (`icon = '<old>'` guard, same shape as `0017`), out of scope for the icon strings themselves — note it for the executor. The 6 DECIDED-KEEP rows and `other`→`square.grid.2x2` need NO migration (unchanged).
+Only Health changes, and it needs a guarded data migration (`WHERE key = 'health' AND icon = 'cross.case'`, same shape as `0017`) to update existing untouched-default rows — see "Data migrations required" below. The other 9 rows are unchanged and need NO migration.
 
-#### 3.0.5 SUB-GAP (STILL OPEN) — iOS-availability — needs verification against SF Symbols app / Apple docs
+#### 3.0.5 SUB-GAP (OPEN — NON-BLOCKING ops/user verification) — iOS-availability against SF Symbols app / Apple docs
+
+This is the ONLY open item in the spec, and it does NOT gate any icon DECISION or the COMPLETE status: every icon is chosen; this task only decides whether a chosen symbol ALSO needs a `fallbackName` (via the I1 seam). It is an implementation-time ops/user verification, run alongside coding, not a blocker on the plan.
+
 
 App min iOS is **16**. `SFSymbolView` renders `systemName` only; a symbol whose minimum iOS is above 16 renders BLANK on an older device and MUST route through the I1 `fallbackName` seam (§4). **The collection JSON carries NO availability metadata**, and this session has no reliable Apple-docs source to confirm exact minimums — so the lists below are NOT asserted as safe. Ops/user MUST verify each flagged symbol in the SF Symbols app (which shows the introduced-in version per symbol) or Apple's SF Symbols docs before shipping, and add a `fallbackName` for any that is >iOS 16.
 
@@ -394,7 +399,7 @@ No symbol in any of the three pools was found to be a "2026-release"-named glyph
 
 ### 3.4 Tab bar — `root.navigator.tsx`
 
-Candidates now drawn from the **Kiko UI** pool (§3.0.3). Each row is either DECIDED, a pool-confirmed unchanged glyph, or AWAITING-USER-REPLACEMENT (the user is choosing the replacement by the site's current icon name).
+Candidates now drawn from the **Kiko UI** pool (§3.0.3). Every row is either DECIDED or a pool-confirmed unchanged glyph — none is open.
 
 | Line | Current | Tab | Kiko UI candidate |
 |---|---|---|---|
@@ -431,9 +436,9 @@ Candidates now drawn from the **Kiko UI** pool (§3.0.3). Each row is either DEC
 | `binance-credentials-field.component.tsx:116` | `doc.on.clipboard` | paste key | **DECIDED → `document.on.clipboard`** (Kiko UI pool spelling) |
 | `binance-credentials-field.component.tsx:139` | `doc.on.clipboard` | paste secret | **DECIDED → `document.on.clipboard`** (Kiko UI pool spelling) |
 | `monobank-token-input.component.tsx:65` | `doc.on.clipboard` | paste token | **DECIDED → `document.on.clipboard`** (Kiko UI pool spelling) |
-| `monobank-token-field.component.tsx:123` | `checkmark.circle` | Save token | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`checkmark.circle`); replacement pending. The earlier `→ checkmark` proposal is REVERTED. Do not keep the old icon, do not invent one. |
-| `sync-status-line.component.tsx:30` | `checkmark.circle` | success | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`checkmark.circle`); replacement pending. The earlier `→ checkmark` proposal is REVERTED. Do not keep the old icon, do not invent one. |
-| `sync-status-line.component.tsx:45` | `xmark.circle` | error | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`xmark.circle`); replacement pending. Do not keep the old icon, do not invent one. |
+| `monobank-token-field.component.tsx:123` | `checkmark.circle` | Save token | **RESOLVED → `checkmark.circle` (KEEP, no change)** — user-finalized. Same glyph as the sync-success marker below (both are "success" affordances). No edit at this site. |
+| `sync-status-line.component.tsx:30` | `checkmark.circle` | success | **RESOLVED → `checkmark.circle` (KEEP, no change)** — user-finalized. No edit at this site. |
+| `sync-status-line.component.tsx:45` | `xmark.circle` | error | **RESOLVED → `xmark.circle` (KEEP, no change)** — user-finalized. No edit at this site. |
 
 ### 3.7 Calendar / date / time
 
@@ -454,39 +459,56 @@ Candidates now drawn from the **Kiko UI** pool (§3.0.3). Each row is either DEC
 | `selectable-row.component.tsx:45` | `checkmark` | selected marker | `checkmark` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `holding-select-field.component.tsx:115` | `checkmark` | selected marker | `checkmark` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `edit-header-button.component.tsx:25` | `pencil` | Edit nav button | `pencil` — Kiko UI (unchanged glyph, pool-confirmed) |
-| `card-context-menu.component.tsx:168` | `doc.on.doc` | Duplicate | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`doc.on.doc`); replacement pending. Do not keep the old icon, do not invent one. |
+| `card-context-menu.component.tsx:168` | `doc.on.doc` | Duplicate | **RESOLVED → `doc.on.doc` (KEEP, no change)** — user-finalized. No edit at this site. |
 | `card-context-menu.component.tsx:175` | `trash` | Delete | `trash` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `transaction-form.screen.tsx:992` | `trash` | remove return row | `trash` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `transaction-form.screen.tsx:1005` | `plus` | add return row | `plus` — Kiko UI (unchanged glyph, pool-confirmed) |
-| `transaction-form.screen.tsx:1088` | `arrow.left.arrow.right` | convert to exchange | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`arrow.left.arrow.right`); replacement pending. This is the convert-to-exchange ACTION site and collides with the Exchange TYPE glyph (`transaction.exchange`→`arrow.left.arrow.right`, §2.1), so it needs its own distinct glyph. Do not keep the old icon, do not invent one. |
+| `transaction-form.screen.tsx:1088` | `arrow.left.arrow.right` | convert to exchange | **RESOLVED → `arrow.left.arrow.right` (KEEP)** — user-finalized as an INTENTIONAL reuse of the Exchange TYPE glyph (`transaction.exchange`→`arrow.left.arrow.right`, §2.1). This is BY DESIGN, not a collision: the "convert to exchange" action deliberately shares the Exchange type's glyph so the action reads as "make this an exchange". No distinct glyph is wanted; no edit at this site. |
 | `transaction-form.screen.tsx:1101` | `trash` | delete tx | `trash` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `holding-form.screen.tsx:614` | `trash` | remove contribution | `trash` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `holding-form.screen.tsx:632` | `plus` | add contribution | `plus` — Kiko UI (unchanged glyph, pool-confirmed) |
 | `add-transaction-fab.component.tsx:34` | `plus` | global FAB | `plus` — Kiko UI (unchanged glyph, pool-confirmed; confirm FAB weight on-device) |
-| `filter-menu.component.tsx:60` | `line.3.horizontal.decrease.circle` | Home filter trigger | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`line.3.horizontal.decrease.circle`); replacement pending. Do not keep the old icon, do not invent one. |
-| `trend-filter-field.component.tsx:200` | `line.3.horizontal.decrease.circle` | trend filter trigger | **AWAITING-USER-REPLACEMENT** — sent to the user by its current name (`line.3.horizontal.decrease.circle`); replacement pending. Do not keep the old icon, do not invent one. |
+| `filter-menu.component.tsx:60` | `line.3.horizontal.decrease.circle` | filter trigger (shared FilterMenu) | **RESOLVED → prop-driven (`tray` for the Home accounts filter only)** — user-finalized. `FilterMenu` is a SHARED component with 4 render sites (see below); do NOT hardcode `tray` inside it. Add a `triggerIcon?` prop that DEFAULTS to `line.3.horizontal.decrease.circle` (so the other 3 sites are unchanged), and pass `triggerIcon="tray"` from ONLY the Home accounts-filter render site. Infra item I6 (§4). |
+| `trend-filter-field.component.tsx:200` | `line.3.horizontal.decrease.circle` | trend filter trigger | **RESOLVED → dynamic per APPLIED mode** — user-finalized. The trigger icon reflects the applied `filter.mode`: `chart.bar.fill` when Top mode is applied, `tag` (the categories glyph) when Manual mode. A small inline conditional at line 200 keyed on the existing `filter.mode` prop (the same `filter.mode` the `buttonLabel` IIFE already reads at :143–154). Infra item I7 (§4). |
 
-### 3.8.1 Kiko UI coverage summary
+### 3.8.1 FilterMenu render sites (for the I6 prop change)
 
-**Newly DECIDED (this revision) — 4 items, no longer open:**
+`FilterMenu` (`src/screens/home/filter-menu/filter-menu.component.tsx`) is a SHARED, generic component — its props are `label` / `options` / `selected` / `onToggle` / `testID` (`filter-menu.props.d.ts:19`), none icon-specific, and its trigger glyph is hardcoded at `:60`. Grepping the tree for every render site (`<FilterMenu`) finds **4 usages across 2 files**:
+
+| # | Render site | testID | Filters | Gets `triggerIcon`? |
+|---|---|---|---|---|
+| 1 | `transaction-filter-bar.component.tsx:47` (Home, via `TransactionFilterBar` at `home.screen.tsx:455`) | `account-filter-menu` | account NAMES (`home.filterAccounts`) | **YES → `tray`** (the accounts filter) |
+| 2 | `transaction-filter-bar.component.tsx:55` (Home) | `category-filter-menu` | categories (`home.filterCategories`) | no — default |
+| 3 | `statistics.screen.tsx:758` | `statistics-account-filter` | account NAMES (`statistics.filterAccounts`) | no — default |
+| 4 | `statistics.screen.tsx:818` | `statistics-category-filter` | categories (`statistics.filterCategories`) | no — default |
+
+Per the user's decision, ONLY render site #1 (the Home accounts filter) passes `triggerIcon="tray"`. Sites #2–#4 keep the default `line.3.horizontal.decrease.circle`. (Note for the executor/user: site #3 is ALSO an accounts filter and could take `tray` too if desired later, but the finalized decision is Home-only — leave #3 on the default unless the user extends it. `transaction-filter-bar.component.tsx` is a thin wrapper rendering both Home menus; it must forward `triggerIcon` to its Home-accounts `FilterMenu` only.)
+
+### 3.8.2 Kiko UI coverage summary
+
+**DECIDED — all §3.4–§3.8 sites resolved. Highlights:**
 - `root.navigator.tsx:68` (Accounts tab) → **`tray`** (§2.1 `entity.account` standard; replaces the earlier `building.classical.columns.fill` candidate).
 - `add-category-row.component.tsx:19` (new-category `DEFAULT_ICON`) → **`tag`** (resolves the `tag` vs `square.grid.2x2` tension).
 - The 4 paste sites (`wallet-address-field.component.tsx:85`, `binance-credentials-field.component.tsx:116` and `:139`, `monobank-token-input.component.tsx:65`) → **`document.on.clipboard`** (Kiko UI pool spelling).
-- `other` built-in category default (§3.0.4) → **`square.grid.2x2`** stays, NO migration (resolves the out-of-pool tension).
+- `other` built-in category default (§3.0.4) → **`square.grid.2x2`** stays, NO migration.
 
-**AWAITING-USER-REPLACEMENT gap sites (the coordinator sent each to the user by its CURRENT icon name; the user's replacement is pending — NOT the old icon, NOT an invented one):**
-- `sync-status-line.component.tsx:45` — sync-error (current `xmark.circle`).
-- `sync-status-line.component.tsx:30` and `monobank-token-field.component.tsx:123` — sync-success / Save token (current `checkmark.circle`; the earlier `→ checkmark` proposal was reverted).
-- `card-context-menu.component.tsx:168` — Duplicate (current `doc.on.doc`).
-- `transaction-form.screen.tsx:1088` — convert-to-exchange ACTION (current `arrow.left.arrow.right`; collides with the Exchange type glyph).
-- `filter-menu.component.tsx:60` and `trend-filter-field.component.tsx:200` — Home filter + trend filter triggers (current `line.3.horizontal.decrease.circle`).
-- §3.0.4 seeded defaults: Utilities (current `bolt`), Health (current `cross.case`), Transfers (current `arrow.left.arrow.right`).
+**User-finalized KEEP (current glyph stays, no edit at the site):**
+- `sync-status-line.component.tsx:45` — sync-error → `xmark.circle` (KEEP).
+- `sync-status-line.component.tsx:30` and `monobank-token-field.component.tsx:123` — sync-success / Save token → `checkmark.circle` (KEEP; the earlier `→ checkmark` proposal was reverted).
+- `card-context-menu.component.tsx:168` — Duplicate → `doc.on.doc` (KEEP).
+- `transaction-form.screen.tsx:1088` — convert-to-exchange ACTION → `arrow.left.arrow.right` (KEEP, INTENTIONAL reuse of the Exchange type glyph — by design, §3.8).
+- §3.0.4 seeded defaults: Utilities → `bolt` (KEEP), Transfers → `arrow.left.arrow.right` (KEEP).
+
+**User-finalized CHANGE / behavior:**
+- Health category default → `cross` (the only seeded-default change; needs a data migration — see "Data migrations required").
+- `filter-menu.component.tsx:60` — Home accounts-filter trigger → `tray` via the new I6 prop; other 3 FilterMenu sites keep the default (§3.8.1).
+- `trend-filter-field.component.tsx:200` — trend trigger → dynamic per applied mode (`chart.bar.fill` / `tag`), I7.
 
 **Kiko UI standard symbols NOT consumed by any §3 UI-gap row:** these back the §2.2 finalized swaps or the §2.4 defaults instead, so they are used by the rework overall, just not by a §3.4–§3.8 gap:
 - `gear` (§2.2 Settings tab), `gearshape` (§2.2 System row), `magnifyingglass` (§2.2 search / I2), `lock` (§2.2 Connect), `lock.open` (§2.2 Disconnect), `hryvniasign.circle` (§2.2 Base Currency), `chart.bar.fill` (§2.3 trend-filter Top mode), `banknote` (§2.4 cash defaults / Kiko Categories cash), `square.grid.2x2` (§2.2 `other` category).
 - `building.classical.columns.fill` is now ORPHANED: it was only the soft Accounts-tab candidate, and the Accounts tab is DECIDED → `tray`. It maps to nothing in this rework — flag for the user in case a different site wants it, otherwise it is simply unused.
 
-The coordinator should surface the user's replacements for the AWAITING-USER-REPLACEMENT set above as they arrive; every other §3.4–§3.8 site is DECIDED or a pool-confirmed unchanged glyph.
+Every §3.4–§3.8 site is now DECIDED, a user-finalized KEEP, or a pool-confirmed unchanged glyph. No AWAITING/UNRESOLVED marker remains anywhere in §3.
 
 ### 3.9 Dynamic pass-throughs (NOT gaps, NOT covered — no literal to change)
 
@@ -503,8 +525,25 @@ These render whatever data/map supplies and change automatically when their sour
 | I3 | Pass an `icons` map to the transaction-type `ChipRow` at `transaction-form.screen.tsx:1936` (income/expense/exchange/split). No ChipRow change — `icons` prop already exists (`chip-row.props.d.ts:19`). | `transaction-form.screen.tsx:1936` | Net-new type-chip glyphs. |
 | I4 | Pass the OptionPills `icon` render-prop for trend-filter Mode (Top→`chart.bar.fill`, Manual→`tag`). No OptionPills change — render-prop already exists. | `trend-filter-field.component.tsx:233-267` | Net-new pill glyphs. |
 | I5 | Add generic entity symbols for `holding` (`text.pad.header`) and `transaction` (`arrow.up.arrow.down`) to `entity-symbols.ts` (or a sibling generic map). No consumer today — ships as scaffolding; wire when a generic empty-state/section-label reference is introduced. | `entity-symbols.ts` | `entity.holding`/`entity.transaction` have no existing call site. |
+| I6 | Add an optional `triggerIcon?: string` prop to the shared `FilterMenu` (defaulting to the current `line.3.horizontal.decrease.circle`), rendered by the trigger `SymbolIcon` at `filter-menu.component.tsx:60` (`name={triggerIcon}`). Thread it through `TransactionFilterBar` (add a matching prop or hardcode per-menu) so ONLY the Home accounts-filter `FilterMenu` (`transaction-filter-bar.component.tsx:47`) passes `triggerIcon="tray"`; the Home categories filter (`:55`) and both Statistics filters (`statistics.screen.tsx:758`/`:818`) keep the default. See §3.8.1 for the full render-site list. | `filter-menu.props.d.ts`, `filter-menu.component.tsx:60`, `transaction-filter-bar.component.tsx:47` (+ tests) | The default filter glyph stays everywhere except the Home accounts filter, which reads as an accounts filter → `tray`. Do NOT hardcode `tray` inside the shared component. |
+| I7 | Make the trend-filter trigger icon at `trend-filter-field.component.tsx:200` DYNAMIC on the applied `filter.mode`: `name={filter.mode === 'manual' ? 'tag' : 'chart.bar.fill'}`. `filter` is already a prop (`TrendFilterFieldProps.filter: TrendFilter`, with `mode: 'top' | 'manual'`), read at `:143–154` by `buttonLabel` — no new state, no plumbing. | `trend-filter-field.component.tsx:200` (+ test) | The trigger reflects the applied mode: Top→`chart.bar.fill`, Manual→`tag` (categories glyph). |
 
-Note: I1 blocks any use of `text.pad.header` / `arrow.trianglehead.branch` — sequence it FIRST among infra items.
+Note: I1 blocks any use of `text.pad.header` / `arrow.trianglehead.branch` — sequence it FIRST among infra items. I6/I7 are independent of I1 and of each other.
+
+### 4.1 Data migrations required
+
+Only ONE data migration is needed in the entire rework — the Health category default. The jar/crypto entity-default changes (§2.4) split by table: the crypto **account** default persists at create time and needs a migration; the jar and crypto **holding** defaults are pure render-time fallbacks and need NONE. Each migration is hand-authored (data-only, no schema change, no meta snapshot — same shape as `0017_default_category_colors.sql`) and guarded so it only touches rows that still hold the seeded/created default, preserving any icon a user picked themselves.
+
+| # | What changes | Guard (WHERE) | New value | Why a migration IS needed (evidence) |
+|---|---|---|---|---|
+| M1 | Health category default | `key = 'health' AND icon = 'cross.case'` | `cross` | Categories are SEEDED as DB rows (`0002_seed_categories.sql` inserts `('health', 'Health', 'cross.case')`), so existing installs store `icon = 'cross.case'` in the `categories` table. Changing the seed alone does not touch already-seeded rows. Same class as `0017`'s `transport` `car`→`bus`. |
+| M2 | Crypto ACCOUNT default | `kind = 'crypto' AND icon = 'bitcoinsign'` | `bitcoinsign.circle` | The account form PERSISTS the kind-default icon at create time — NOT a render-time fallback. `account-form.screen.tsx:82` seeds `icon` state to `accountKindSymbol[INITIAL_KIND]` (never null on create), `:349` re-sets it to `accountKindSymbol[nextKind]` on kind change, and `:152–153` / `:323–324` persist it via `accountsRepo.setIcon(...)` (`if (icon !== null)`). So an un-customized crypto account stores `icon = 'bitcoinsign'`; changing the code constant alone would leave those rows on the old glyph. |
+
+**NO migration needed (verified pure render-time fallbacks — the code-constant change in §2.4 alone updates every un-customized entity):**
+- **Jar holding default** (`holdingTypeSymbol.jar` `archivebox`→`rectangle.portrait`): the holding form starts `icon` state at `null` on create (`holding-form.screen.tsx:213`) and only persists it when non-null (`:496–497` `if (icon !== null) holdingsRepo.setIcon(...)`), so an un-customized jar stores `icon = null`. Every render site resolves `holding.icon ?? holdingTypeSymbol[holding.type]` (`holding-card.component.tsx:98`, `holding-detail.screen.tsx:72`, `transaction-form.screen.tsx:451`), so changing the constant updates them all at render time.
+- **Crypto_asset holding default** (`holdingTypeSymbol.crypto_asset` `bitcoinsign`→`bitcoinsign.circle`): identical mechanism — holdings persist `null` when un-customized (`holding-form.screen.tsx:213`/`:496–497`) and render through the same `?? holdingTypeSymbol[...]` fallback. No stored `bitcoinsign` to migrate.
+
+**Discrepancy with the coordinator's assumption, flagged:** the coordinator expected THREE migrations (Health + jar + crypto account&holding). The code shows only TWO: Health (M1) and the crypto ACCOUNT default (M2). Jar and the crypto HOLDING default are computed render-time fallbacks (`entity.icon ?? map[type]` with a null-until-picked create path), so they are updated by the §2.4 code-constant change alone with NO data migration. The asymmetry is real and rooted in the two forms differing: the ACCOUNT form seeds+persists the kind default at create, while the HOLDING form leaves the icon null until the user picks one.
 
 ---
 
@@ -518,18 +557,20 @@ Shared files and the inventory rows sitting in them:
 |---|---|
 | `account-form.screen.tsx` | `:53` `FALLBACK_ICON` (§2.1 → `tray`), `:395` ChipRow `icons=accountKindSymbol` (dynamic, §3.9) |
 | `account-detail.screen.tsx` | `:59` Connect→`lock`, `:64` Sync (gap §3.6), `:83` identity fallback (dynamic §3.9), `:267` last-synced (gap §3.6), `:307` Disconnect→`lock.open` |
-| `transaction-form.screen.tsx` | `:1936` type chip icons (I3/§2.3), `:992` remove-return (gap), `:1005` add-return (gap), `:1088` convert-to-exchange (gap), `:1101` delete-tx (gap) |
+| `transaction-form.screen.tsx` | `:1936` type chip icons (I3/§2.3 — the only edit here); `:992` remove-return, `:1005` add-return, `:1088` convert-to-exchange, `:1101` delete-tx are all user-finalized KEEPs (unchanged glyph → no edit) |
 | `text-field.component.tsx` | Infra I2 (new leading-icon slot) |
 
-**Order once unblocked:** (1) rebase this worktree onto integrated `next`; (2) infra I1 → I2 → I3/I4/I5; (3) central maps (`entity-symbols.ts` account-type set, resolved holding-type gaps, DB category seeds + migration); (4) the resolved per-call-site literals, grouped by area, one area per task; (5) `npm run check:all` at each task checkpoint, `npm run check:deep` before done. Every **UNRESOLVED** candidate in §3 must be resolved by a human before its row is coded — an unresolved row is NOT ready to implement.
+**Order once unblocked:** (1) rebase this worktree onto integrated `next`; (2) infra I1 → I2 → I3/I4/I5, then I6/I7 (independent of I1); (3) central maps (`entity-symbols.ts` account-type set → `bitcoinsign.circle`/`rectangle.portrait`, DB category seed for Health → `cross`) plus the two data migrations M1 (Health) and M2 (crypto account) from §4.1; (4) the resolved per-call-site literals, grouped by area, one area per task (skipping every user-finalized KEEP site — those need no edit); (5) `npm run check:all` at each task checkpoint, `npm run check:deep` before done. Every icon decision in §2/§3 is now DECIDED — no row is left UNRESOLVED, so no per-row human gate remains before coding; the only precondition is the shared-file integration above. The one open non-blocking task is §3.0.5 iOS-availability verification (ops/user), which adds a `fallbackName` to any pool symbol found to be >iOS 16.
 
 ---
 
 ## 6. Self-review
 
-- **Coverage:** Every inventory row in §1 is classified — §2 (covered/net-new/decided type-defaults), §3.0 (RESOLVED pools: Kiko Entities 62 / Kiko Categories 73 / Kiko UI 39=31+8), §3.4–§3.8 (UI gaps now DECIDED, pool-confirmed unchanged, or AWAITING-USER-REPLACEMENT), or §3.9 (dynamic pass-through). No row is left as keep-the-old-icon.
+- **Spec COMPLETE — every gap RESOLVED.** No AWAITING-USER-REPLACEMENT and no UNRESOLVED marker remains anywhere in the document. The only open item is the non-blocking §3.0.5 iOS-availability verification (ops/user), which does not gate any icon DECISION — it only decides whether a decided symbol also needs a `fallbackName`.
+- **Coverage:** Every inventory row in §1 is classified — §2 (covered/net-new/decided type-defaults), §3.0 (RESOLVED pools: Kiko Entities 62 / Kiko Categories 73 / Kiko UI 39=31+8), §3.4–§3.8 (UI sites now DECIDED, user-finalized KEEP, or pool-confirmed unchanged), or §3.9 (dynamic pass-through). No row is left as an open "keep-the-old-icon?" question; every KEEP is a deliberate, user-finalized decision.
 - **Pools RESOLVED:** the three collection files were read directly and their full symbol lists are embedded (§3.0.1/§3.0.2/§3.0.3). The old shared 138-entry `CURATED_ICONS` is REPLACED by two picker pools (Entities → IconEditor, Categories → category picker). The 8 Kiko UI `custom:UUID` entries re-confirm §2 entity/transaction glyphs (not double-counted, not unknown); the effective UI-gap candidate set is the 31 standard Kiko UI symbols.
-- **UI gaps:** every §3.4–§3.8 site is now DECIDED, a pool-confirmed unchanged glyph, or AWAITING-USER-REPLACEMENT. This revision newly DECIDED 4 items (Accounts tab→`tray`, new-category default→`tag`, the 4 paste sites→`document.on.clipboard`, `other`→`square.grid.2x2` stays). The AWAITING-USER-REPLACEMENT set (sync-error, sync-success/Save token, Duplicate, convert-to-exchange action, two filter triggers) was sent to the user by each site's CURRENT icon name; no earlier candidate is kept, no icon is invented (§3.8.1).
-- **Seeded-category defaults PARTLY DECIDED, iOS-availability STILL OPEN:** (a) §3.0.4 is now 7 DECIDED (Groceries/Dining/Transport/Shopping/Entertainment/Cash keep-in-pool, plus `other`→`square.grid.2x2` stays with NO migration) and 3 AWAITING-USER-REPLACEMENT (Utilities `bolt`, Health `cross.case`, Transfers `arrow.left.arrow.right` — earlier house/cross/repeat candidates dropped); (b) iOS-availability is unverified (§3.0.5) — the collection JSON carries no availability metadata, so newer symbols need SF-Symbols-app/Apple-docs verification and a `fallbackName` if >iOS 16.
-- **iOS floor:** three iOS-26 symbols now routed through I1 `fallbackName` — `text.pad.header`→`list.bullet.rectangle`, `arrow.trianglehead.branch`→`arrow.branch`, and the new sync-now `arrow.trianglehead.2.clockwise.rotate.90`→`arrow.triangle.2.circlepath`.
-- **Tensions RESOLVED this revision:** `add-category-row` default → `tag` (was `tag` vs `square.grid.2x2`, §3.5); `other` category → `square.grid.2x2` stays, no migration (was vs pool's `xmark.triangle.circle.square`, §3.0.4); Accounts tab → `tray` (the soft `building.classical.columns.fill` candidate is dropped and now orphaned, §3.8.1); Settings TAB (`root.navigator:82`) → `gear` while the System row (`settings.screen:53`) stays `gearshape`, per the user's "gear = settings navigation, gearshape = system settings" rule (§2.2/§3.4); the `link.badge.plus` Disconnect mismatch is resolved by disconnect → `lock.open`, which replaces it (§2.2). **No tensions remain flagged.**
+- **The 8 final user resolutions applied:** sync-error `xmark.circle` (KEEP), sync-success/Save token `checkmark.circle` at both sites (KEEP), Duplicate `doc.on.doc` (KEEP), convert-to-exchange action `arrow.left.arrow.right` (KEEP — intentional reuse of the Exchange type glyph, by design), Home accounts-filter trigger → `tray` via the shared-safe I6 prop, trend-filter trigger → dynamic per applied mode (I7), Utilities `bolt` (KEEP), Health `cross.case`→`cross` (CHANGE + migration M1), Transfers `arrow.left.arrow.right` (KEEP).
+- **Seeded-category defaults FULLY DECIDED:** §3.0.4 is now 10/10 decided — 9 KEEP (Groceries/Dining/Transport/Shopping/Utilities/Entertainment/Cash/Transfers/Other) and 1 CHANGE (Health→`cross`, the sole seeded-default change and the sole category migration).
+- **Data migrations verified (§4.1):** exactly TWO — M1 Health category (`WHERE key='health' AND icon='cross.case'` → `cross`) and M2 crypto ACCOUNT default (`WHERE kind='crypto' AND icon='bitcoinsign'` → `bitcoinsign.circle`). Jar and crypto_asset HOLDING defaults need NO migration (pure render-time `entity.icon ?? map[type]` fallbacks with a null-until-picked create path). This corrects the coordinator's three-migration assumption to two, with file:line evidence.
+- **iOS floor:** three iOS-26 symbols routed through I1 `fallbackName` — `text.pad.header`→`list.bullet.rectangle`, `arrow.trianglehead.branch`→`arrow.branch`, and the sync-now `arrow.trianglehead.2.clockwise.rotate.90`→`arrow.triangle.2.circlepath`. Broader pool availability stays §3.0.5 (non-blocking).
+- **Tensions RESOLVED — none remain:** `add-category-row` default → `tag` (§3.5); `other` category → `square.grid.2x2` stays, no migration (§3.0.4); Accounts tab → `tray` (soft `building.classical.columns.fill` candidate dropped/orphaned, §3.8.2); Settings TAB → `gear` while the System row stays `gearshape` (§2.2/§3.4); the `link.badge.plus` Disconnect mismatch resolved by disconnect → `lock.open` (§2.2); convert-to-exchange re-uses the Exchange glyph BY DESIGN, not a collision (§3.8). **No tensions remain flagged. Spec COMPLETE — ready to implement once `next-bank-connect` lands.**
