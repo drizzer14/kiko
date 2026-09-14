@@ -27,7 +27,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
   testID,
 }) => {
   const { theme } = useUnistyles();
-  const showIconSlot = icon != null || leadingText != null || reserveIconSlot;
+  const showIconSlot = icon !== undefined || leadingText !== undefined || reserveIconSlot;
 
   return (
     <Pressable
@@ -47,8 +47,8 @@ const SelectableRow: FC<SelectableRowProps> = ({
         </View>
 
         {showIconSlot && (
-          <View style={leadingText != null ? styles.iconText : styles.icon}>
-            {icon != null && (
+          <View style={leadingText !== undefined ? styles.iconText : styles.icon}>
+            {icon !== undefined && (
               <SymbolIcon
                 name={icon}
                 size={theme.iconSizes.body}
@@ -56,7 +56,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
               />
             )}
 
-            {icon == null && leadingText != null && (
+            {icon === undefined && leadingText !== undefined && (
               <Text
                 variant="body"
                 tone={selected ? 'onAccent' : 'textSecondary'}

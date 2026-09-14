@@ -26,10 +26,12 @@ export const styles = StyleSheet.create((theme) => ({
     ...disabledFieldStyle(theme),
   },
   // The leading TEXT mark (`leadingText`): bold enough to read as a glyph,
-  // matching the SF Symbol icon's visual weight. Sized to match `icon`'s own
-  // `FIELD_TRIGGER_ICON_SIZE` via an inline `fontSize` override at the call
-  // site — the same literal both paths share, so it lives once, next to the
-  // `SymbolIcon` call, rather than duplicated here.
+  // matching the SF Symbol icon's visual weight. Sized to the shared
+  // `theme.iconSizes.body` token via an inline `fontSize` override at the
+  // call site (the same token the `icon` path's `SymbolIcon` size uses, and
+  // the same one SelectableRow's own `leadingTextMark` uses), so the mark
+  // reads at one consistent size everywhere it appears — never a hardcoded
+  // literal.
   leadingTextMark: {
     fontWeight: '600',
   },

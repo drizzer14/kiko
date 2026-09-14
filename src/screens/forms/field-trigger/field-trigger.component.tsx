@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
@@ -17,12 +18,6 @@ import type { FieldTriggerProps } from './field-trigger.props';
 // for why they are meant to read as one family. A future field-plus-sheet
 // picker (DateField already has its own near-identical shape) should reach
 // for this too rather than re-copying it a third time.
-
-// The leading SF Symbol/text mark size, shared by both the `icon` and
-// `leadingText` paths so the two visually match (a "$"/"AED" mark should
-// read at the same size as the SF Symbol it stands in for).
-const FIELD_TRIGGER_ICON_SIZE = 18;
-
 const FieldTrigger: FC<FieldTriggerProps> = ({
   label,
   onPress,
@@ -36,47 +31,51 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   disabled = false,
   hideLabel = false,
   testID,
-}) => (
-  <Box gap={1}>
-    {!hideLabel && <FieldLabel label={label} required={required} />}
+}) => {
+  const { theme } = useUnistyles();
 
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      testID={testID}
-    >
-      <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
-        {icon !== undefined && (
-          <SymbolIcon
-            name={icon}
-            size={FIELD_TRIGGER_ICON_SIZE}
-            tone="textSecondary"
-            color={iconColor}
-          />
-        )}
+  return (
+    <Box gap={1}>
+      {!hideLabel && <FieldLabel label={label} required={required} />}
 
-        {icon === undefined && leadingText !== undefined && (
-          <Text
-            variant="body"
-            tone="textSecondary"
-            numberOfLines={1}
-            style={[styles.leadingTextMark, { fontSize: FIELD_TRIGGER_ICON_SIZE }]}
-          >
-            {leadingText}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        onPress={onPress}
+        testID={testID}
+      >
+        <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
+          {icon !== undefined && (
+            <SymbolIcon
+              name={icon}
+              size={theme.iconSizes.body}
+              tone="textSecondary"
+              color={iconColor}
+            />
+          )}
+
+          {icon === undefined && leadingText !== undefined && (
+            <Text
+              variant="body"
+              tone="textSecondary"
+              numberOfLines={1}
+              style={[styles.leadingTextMark, { fontSize: theme.iconSizes.body }]}
+            >
+              {leadingText}
+            </Text>
+          )}
+
+          <Text variant="body" tone={valueTone}>
+            {value}
           </Text>
-        )}
 
-        <Text variant="body" tone={valueTone}>
-          {value}
-        </Text>
-
-        {trailing}
-      </Box>
-    </Pressable>
-  </Box>
-);
+          {trailing}
+        </Box>
+      </Pressable>
+    </Box>
+  );
+};
 
 export default FieldTrigger;
