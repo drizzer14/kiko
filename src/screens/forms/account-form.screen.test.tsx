@@ -42,7 +42,6 @@ const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
-const mockFetchClientInfo = jest.fn();
 const mockFetchAccount = jest.fn();
 
 // The account the edit-mode form loads through useLiveQuery. `mock`-prefixed so
@@ -66,9 +65,6 @@ jest.mock('../../monobank/token', () => ({
 }));
 jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
-}));
-jest.mock('../../monobank/client', () => ({
-  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
 jest.mock('../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
@@ -668,7 +664,6 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockCryptoSync.mockResolvedValue(true);
     // Validation resolves by default (a valid credential); a test that needs an
     // invalid one rejects these explicitly.
-    mockFetchClientInfo.mockResolvedValue({ name: 'Test' });
     mockFetchAccount.mockResolvedValue({});
   });
 
