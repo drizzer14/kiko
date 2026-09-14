@@ -928,7 +928,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('retries the crypto create after an empty-name reject, once a valid name is entered', async () => {
-    // The empty-name reject inside ensureCryptoAccount must leave no poisoned
+    // The empty-name reject inside ensureAccount must leave no poisoned
     // latch behind: a first Connect with no name creates nothing, and a SECOND
     // Connect on the same field — after typing a valid name — must still succeed,
     // creating the account exactly once and running its sync.
