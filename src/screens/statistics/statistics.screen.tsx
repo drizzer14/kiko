@@ -28,6 +28,7 @@ import {
   type BackfillStatus,
   deriveLastBackfilledDay,
   missingDays,
+  planBackfillRun,
   runBackfill,
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
@@ -267,30 +268,48 @@ const StatisticsScreen: FC = () => {
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
 
   // Drive the incremental, non-blocking backfill and surface its status to the
-  // line. It runs at most once per mount, only when there is a bounded span
-  // (transactions exist) with days still to fill; the ref guards against the
-  // re-render the backfill's own writes trigger (which advance `lastBackfilledDay`
-  // and would otherwise re-enter). The bar and pie never wait on this.
-  const backfillStartedRef = useRef(false);
+  // line. It runs when there is a bounded span (transactions exist) with days
+  // still to fill, AND re-runs when an older-dated transaction extends the span
+  // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
+  // earlier extension so `missingDays` recomputes the whole span — the forward
+  // resume cursor cannot see a gap that opens below the newest stored day). The
+  // ref holds the `spanStart` the last run covered, so the re-render the
+  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
+  // re-enter for the same span. The bar and pie never wait on this.
+  const backfillRanForSpanRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
     state: 'idle',
     lastDay: null,
   });
 
   useEffect(() => {
-    if (backfillStartedRef.current || transactions.length === 0) {
+    if (transactions.length === 0) {
       return;
     }
-    if (missingDays(spanStart, lastBackfilledDay, now).length === 0) {
+
+    const { run, resumeFrom } = planBackfillRun(
+      spanStart,
+      backfillRanForSpanRef.current,
+      lastBackfilledDay,
+    );
+
+    if (!run) {
+      return;
+    }
+
+    // Mark this span covered BEFORE the async run so the write's own re-render
+    // (which advances lastBackfilledDay) does not re-enter for the same span.
+    backfillRanForSpanRef.current = spanStart;
+
+    if (missingDays(spanStart, resumeFrom, now).length === 0) {
       setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
 
       return;
     }
 
-    backfillStartedRef.current = true;
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     let cancelled = false;
-    runBackfill({ earliestDay: spanStart, lastBackfilledDay, today: now })
+    runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now })
       .then((status) => {
         if (!cancelled) {
           setBackfillStatus(status);

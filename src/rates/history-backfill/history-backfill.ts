@@ -69,6 +69,34 @@ export const missingDays = (
   return days;
 };
 
+/**
+ * Decide whether the incremental backfill must (re)run for `spanStart`, and from
+ * where. It runs when it has never run (`ranForSpanStart === null`) or when
+ * `spanStart` has moved strictly EARLIER than a prior run covered — an older
+ * transaction appeared mid-session, opening a gap BELOW the newest stored day.
+ * On that earlier-extension case it resumes from `null` so `missingDays`
+ * recomputes the WHOLE span from `spanStart` (the idempotent upsert skips the
+ * already-stored newer days); `missingDays`' forward cursor resumes ABOVE the
+ * newest stored day and structurally cannot see the freshly-opened earlier gap
+ * otherwise. A first, forward run keeps the incremental `lastBackfilledDay`
+ * resume so it fetches only the new days.
+ */
+export const planBackfillRun = (
+  spanStart: number,
+  ranForSpanStart: number | null,
+  lastBackfilledDay: number | null,
+): { run: boolean; resumeFrom: number | null } => {
+  if (ranForSpanStart === null) {
+    return { run: true, resumeFrom: lastBackfilledDay };
+  }
+
+  if (spanStart < ranForSpanStart) {
+    return { run: true, resumeFrom: null };
+  }
+
+  return { run: false, resumeFrom: null };
+};
+
 /** Choose the stored source for a composed pair — crypto legs come from CoinGecko. */
 const pairSource = (base: Currency, quote: Currency): NewHistoryRow['source'] =>
   isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'nbu';

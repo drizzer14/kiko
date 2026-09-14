@@ -6,6 +6,7 @@ import {
   composeHistoryRows,
   deriveLastBackfilledDay,
   missingDays,
+  planBackfillRun,
   runBackfill,
 } from './history-backfill';
 
@@ -44,6 +45,33 @@ describe('deriveLastBackfilledDay', () => {
 
   it('returns null when there is no history yet', () => {
     expect(deriveLastBackfilledDay([])).toBeNull();
+  });
+});
+
+describe('planBackfillRun', () => {
+  it('runs from the incremental resume cursor on the first run', () => {
+    expect(planBackfillRun(day(0), null, day(2))).toEqual({ run: true, resumeFrom: day(2) });
+  });
+
+  it('re-runs from null (the whole span) when the span extends EARLIER mid-session', () => {
+    // A prior run already covered from day(5); an older transaction drops
+    // spanStart to day(0). Resuming forward from the newest stored day cannot
+    // see the gap below it, so the re-run must recompute the full span.
+    expect(planBackfillRun(day(0), day(5), day(9))).toEqual({ run: true, resumeFrom: null });
+  });
+
+  it('does not re-run when the span is unchanged or moves later', () => {
+    expect(planBackfillRun(day(5), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
+    expect(planBackfillRun(day(7), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
+  });
+
+  it('the earlier-extension re-run actually reaches the freshly-opened earlier days', () => {
+    // Proving the fix end-to-end: with resumeFrom null, missingDays spans the
+    // FULL range from the new earlier spanStart — the earlier gap the forward
+    // cursor skipped is now covered.
+    const { resumeFrom } = planBackfillRun(day(0), day(5), day(9));
+
+    expect(missingDays(day(0), resumeFrom, day(2))).toEqual([day(0), day(1), day(2)]);
   });
 });
 
