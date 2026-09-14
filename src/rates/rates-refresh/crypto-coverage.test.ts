@@ -1,9 +1,9 @@
-import { codeFromCurrency } from '../../monobank/currency-code';
-import { fetchFiatRates } from '../monobank-rates';
-import { type RefreshDeps, refreshRates } from '../rates-refresh';
 import type { RateEntry } from '../conversion';
-import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
+import { fetchFiatRates } from '../monobank-rates';
+import { codeFromCurrency } from '../../monobank/currency-code';
+import { type RefreshDeps, refreshRates } from '../rates-refresh';
 import { type Currency, currencyOptions, isCurrency, isFiat } from '../../currency/currency';
+import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
 
 // Every crypto MUST reach every base leg by a live cross-rate, or a holding in it
 // silently drops from the net-worth total everywhere except the chart — the
