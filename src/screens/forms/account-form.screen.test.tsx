@@ -118,6 +118,22 @@ jest.mock('../account-detail/binance-credentials-field', () => {
     ),
   };
 });
+// The bank create form now offers the SAME explicit-Connect pattern as crypto,
+// through MonobankConnectField. It owns its own token input, live validation, and
+// status (covered by its own test); here it collapses to one pressable that fires
+// the screen's `connectMonobank` closure with a token, so what is under test is
+// the create screen's wiring (create-first, no duplicate, secret via the closure).
+jest.mock('../account-detail/monobank-connect-field', () => {
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (
+      <Pressable accessibilityLabel="monobank-field" onPress={() => onConnect('tok-123')}>
+        <Text>monobank field</Text>
+      </Pressable>
+    ),
+  };
+});
 
 type RouteParams = { accountId?: string };
 
@@ -261,45 +277,14 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Bank'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
+    // The bank row now shares the crypto create path: it is inserted with the
+    // screen's pre-generated id (so a field Connect could have keyed a Keychain
+    // write to it), not a repo-assigned one.
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+    );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
-  });
-
-  it('reuses the syncable Monobank token entry (API link + paste icon) on the create form', async () => {
-    // The bank create form must offer the SAME token-entry surface as the
-    // account-detail edit screen: the "Open api.monobank.ua" link and the
-    // paste-from-clipboard icon button, proving both consume the shared input
-    // rather than the old stripped-down bare TextField.
-    const { getByText, getByLabelText } = await renderForm();
-
-    // Default create mode is a bank account, so the entry surface is present.
-    expect(getByText('Open api.monobank.ua')).toBeTruthy();
-    expect(getByLabelText('Paste from clipboard')).toBeTruthy();
-  });
-
-  it('omits the Disconnect action from the bank create form', async () => {
-    // Disconnect is an edit-surface-only concern: on a fresh create there is
-    // nothing connected to disconnect, so the shared input must not carry it.
-    const { queryByText } = await renderForm();
-
-    expect(queryByText('Disconnect')).toBeNull();
-    expect(queryByText('Disconnect Monobank')).toBeNull();
-  });
-
-  it('fills the create-form token field from the clipboard via the shared paste icon', async () => {
-    const Clipboard = require('@react-native-clipboard/clipboard');
-    Clipboard.getString.mockResolvedValue('  pasted-token\n');
-
-    const { getByLabelText, findByDisplayValue } = await renderForm();
-
-    await act(async () => {
-      await fireEvent.press(getByLabelText('Paste from clipboard'));
-    });
-
-    // The pasted value is trimmed before it reaches the field, mirroring the
-    // edit surface's paste behavior.
-    expect(await findByDisplayValue('pasted-token')).toBeTruthy();
   });
 
   it('keeps the icon field visible after selecting the Cash kind', async () => {
@@ -334,8 +319,12 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
-    expect(mockSetIcon).toHaveBeenCalledWith('new-account-id', 'banknote');
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+    );
+    // The icon is set on the same pre-generated id the row was created with.
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    expect(mockSetIcon).toHaveBeenCalledWith(createdId, 'banknote');
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -379,8 +368,11 @@ describe('AccountFormScreen', () => {
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
-    expect(mockSetIcon).toHaveBeenCalledWith('new-account-id', accountKindSymbol.bank);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+    );
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    expect(mockSetIcon).toHaveBeenCalledWith(createdId, accountKindSymbol.bank);
   });
 
   it('does not set an icon when the user removes the default before saving', async () => {
@@ -393,7 +385,9 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Remove'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({ name: 'My Bank', kind: 'bank', color: null });
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+    );
     expect(mockSetIcon).not.toHaveBeenCalled();
   });
 
@@ -516,11 +510,13 @@ describe('AccountFormScreen color follows kind until dirty', () => {
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith({
-      name: 'My Bank',
-      kind: 'bank',
-      color: entityColors.violet,
-    });
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'My Bank',
+        kind: 'bank',
+        color: entityColors.violet,
+      }),
+    );
   });
 
   it('persists the manually picked color on a cash account', async () => {
@@ -676,31 +672,76 @@ describe('AccountFormScreen — sync credentials on create', () => {
     mockFetchAccount.mockResolvedValue({});
   });
 
-  it('saves the Monobank token and connects when a bank create enters one', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+  it('connect creates the bank row once, saves the token to the Keychain, and syncs it', async () => {
+    // The field's own Connect (mocked to fire with a token) drives the screen's
+    // connectMonobank closure: create the row FIRST, store the secret keyed by
+    // that pre-generated id, then start the first sync (Global Constraint 2 order).
+    mockMonobankSync.mockResolvedValue(true);
+    const view = await renderForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(getByText('Bank'));
-    await fireEvent.changeText(getByLabelText('Token'), 'tok_123');
-    await fireEvent.press(getByText('Save'));
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    // The token binds to the freshly-created account's id (per-account item).
-    expect(mockSaveToken).toHaveBeenCalledWith('new-account-id', 'tok_123');
-    expect(mockMonobankSync).toHaveBeenCalledWith('new-account-id');
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'bank', name: 'My Bank' }),
+    );
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    expect(mockSaveToken).toHaveBeenCalledWith(createdId, 'tok-123');
+    expect(mockMonobankSync).toHaveBeenCalledWith(createdId);
     expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 
-  it('creates a bank account with no token without saving or connecting', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+  it('connect then Save updates the same row — never a duplicate account', async () => {
+    // Option A: the field's Connect already inserted the row. A later Save must
+    // UPDATE that same row (persisting any name edit after connecting), never
+    // insert a second account.
+    mockMonobankSync.mockResolvedValue(true);
+    const view = await renderForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(getByText('Bank'));
-    await fireEvent.press(getByText('Save'));
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(1); // still one — Save took the update branch
+    expect(mockUpdate).toHaveBeenCalledWith(
+      (mockCreate.mock.calls[0][0] as { id: string }).id,
+      expect.objectContaining({ name: 'My Bank' }),
+    );
+  });
+
+  it('Save with no connect creates the bank row and stores no token', async () => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Plain Bank');
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'bank', name: 'Plain Bank' }),
+    );
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
+  });
+
+  it('connecting a bank source locks the kind switch', async () => {
+    // Connecting inserts the bank row via the shared latch; switching to crypto
+    // afterwards would route Save to a SECOND create and orphan the bank row, so
+    // the kind chip is disabled once connected.
+    mockMonobankSync.mockResolvedValue(true);
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() =>
+      expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(true),
+    );
   });
 
   it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
@@ -891,41 +932,6 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // Still exactly one create; the edited name persists through update.
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockUpdate).toHaveBeenCalledWith(createdId, { name: 'Renamed', color: null });
-  });
-
-  it('still leaves without a duplicate account when the Keychain write rejects', async () => {
-    // Validation passes but the Keychain write fails after the row already
-    // exists: save() must not reject (which would skip goBack and let a second
-    // Save press create a DUPLICATE) — it swallows and leaves.
-    mockSaveToken.mockRejectedValue(new Error('keychain failure'));
-    const { getByLabelText, getByText, navigation } = await renderForm();
-
-    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(getByText('Bank'));
-    await fireEvent.changeText(getByLabelText('Token'), 'tok_123');
-    await fireEvent.press(getByText('Save'));
-
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    // The account was created exactly once; the rejected write did not re-arm
-    // Save into a second create.
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-  });
-
-  it('never writes an invalid Monobank token to the Keychain, but still creates the account', async () => {
-    // Validation rejects (a bad token). The write is SKIPPED so a previously
-    // stored valid token in the single global Keychain slot is not clobbered.
-    mockFetchClientInfo.mockRejectedValue(new Error('invalid token'));
-    const { getByLabelText, getByText, navigation } = await renderForm();
-
-    await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(getByText('Bank'));
-    await fireEvent.changeText(getByLabelText('Token'), 'bad_token');
-    await fireEvent.press(getByText('Save'));
-
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockSaveToken).not.toHaveBeenCalled();
-    expect(mockMonobankSync).not.toHaveBeenCalled();
-    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
   it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
