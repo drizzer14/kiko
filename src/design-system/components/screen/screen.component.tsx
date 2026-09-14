@@ -74,6 +74,14 @@ const Screen: FC<ScreenProps> = ({
           // unaffected. Gated on the build-time `isScreenshotMode()` dead branch.
           bounces={isScreenshotMode() ? false : undefined}
           contentInsetAdjustmentBehavior="automatic"
+          // iOS-only: when the keyboard changes size, iOS adjusts this scroll
+          // view's contentInset/scrollIndicatorInsets and scrolls the first
+          // responder above the keyboard — the shared, app-wide auto-scroll so
+          // a focused input never hides behind the keyboard. The iOS Done
+          // accessory's height is part of the native keyboard frame, so this
+          // one inset clears BOTH the keyboard and the accessory (no
+          // hand-rolled accessory-height math). Harmlessly ignored on Android.
+          automaticallyAdjustKeyboardInsets={true}
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`
           // top edge — would be clamped away and the collapsed large title would

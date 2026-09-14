@@ -169,6 +169,17 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
+  it('adjusts the ScrollView content inset for the keyboard so a focused input scrolls clear of it (and the Done accessory)', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true });
+
+    // iOS-only UIScrollView prop: when the keyboard changes size, iOS adjusts
+    // this scroll view's contentInset/scrollIndicatorInsets and scrolls the
+    // first responder above the keyboard. The Done accessory's height is part
+    // of the native keyboard frame on iOS, so this clears both at once — the
+    // whole shared auto-scroll-to-focus feature. Harmlessly ignored on Android.
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
+  });
+
   it('leaves the ScrollView bounce at the RN default outside screenshot mode (real users keep it)', async () => {
     const { getByTestId } = await renderScreen({ scroll: true });
 
