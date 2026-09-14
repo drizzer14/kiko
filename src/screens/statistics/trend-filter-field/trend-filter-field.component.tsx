@@ -19,8 +19,8 @@ import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
 import SelectableRow from '../../../design-system/components/selectable-row';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 
-import type { TrendFilterFieldProps } from './trend-filter-field.props';
 import { styles } from './trend-filter-field.styles';
+import type { TrendFilterFieldProps } from './trend-filter-field.props';
 
 const MODES: readonly TrendMode[] = ['top', 'manual'];
 const AMOUNTS: readonly number[] = [1, 2, 3, 4, 5];

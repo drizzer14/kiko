@@ -2,8 +2,8 @@ import type { FC } from 'react';
 
 import Box from '../box';
 
-import type { SheetFooterProps } from './sheet-footer.props';
 import { styles } from './sheet-footer.styles';
+import type { SheetFooterProps } from './sheet-footer.props';
 
 /**
  * The one shared CHOICE-sheet footer: a horizontal action row pinned to the

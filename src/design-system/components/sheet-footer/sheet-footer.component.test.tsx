@@ -2,8 +2,8 @@ import { render } from '@testing-library/react-native';
 import { StyleSheet, Text as RNText } from 'react-native';
 
 import '../../unistyles';
-import { darkTheme } from '../../theme';
 import Text from '../text';
+import { darkTheme } from '../../theme';
 
 import SheetFooter from '.';
 
