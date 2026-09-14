@@ -24,11 +24,20 @@ export const styles = StyleSheet.create((theme) => ({
   // nothing (the gradient fill, a mis-measured child) ever paints past the
   // rounded corners. `theme.radii.md` is the closest token on the shared
   // radius scale to the iOS continuous-corner "squircle" proportion at this
-  // tile size — never an invented radius value.
+  // tile size — never an invented radius value. The hairline `borderWidth` +
+  // `specularRim` token is the STATIC glass-edge border (see the token's own
+  // doc comment in `theme.ts`): a thin, bright white rim imitating the
+  // specular edge a real iOS app-icon glass material catches, deliberately a
+  // plain styled border rather than the real `@callstack/liquid-glass` (see
+  // the design-system skill's "Glass border on entity icon tiles" note) — it
+  // reads identically regardless of the tile's own entity-color gradient
+  // underneath, unlike `GlassSurface`'s neutral-gray `border` token.
   tile: {
     width: iconTileSize(theme),
     height: iconTileSize(theme),
     borderRadius: theme.radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.specularRim,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
