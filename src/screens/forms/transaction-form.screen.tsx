@@ -991,19 +991,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
   }, [existing, holding, hydrated, currency]);
 
-  // Feature 1: seed the counterpart (cash) amount from the latest cached rate the
-  // moment a destination is picked on an expense-sourced convert (a card->cash
-  // withdrawal). Same currency -> 1:1; a missing rate leaves the field blank and
-  // editable (`seedCounterpartMinorUnits` returns null). The synced bank row is
-  // never touched — this only fills a form field. Keyed on the picked counterpart
-  // ALONE so a later manual edit is preserved until the destination changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(deliberate re-seed key) the effect must fire ONLY when the picked destination changes; existing/currency/holdings/rateTable are read through the closure on purpose. rateTable (buildRateTable) is a fresh object every render, so listing the full set would re-seed on every keystroke and clobber the user's manual edit to the counterpart amount.
-  useEffect(() => {
+  // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
+  // the MOMENT a destination is picked — an EVENT, not a derivation, so it lives
+  // in the pick handler rather than an effect (no re-seed-every-render clobber,
+  // no exhaustive-deps override). Only on an expense-sourced convert (a card->cash
+  // withdrawal): same currency -> 1:1; a missing rate
+  // (`seedCounterpartMinorUnits` returns null) leaves the field AS IS, so a later
+  // manual edit is preserved and a blank stays blank. Reads the just-picked `id`
+  // (not the still-stale `counterpartHoldingId` state). The synced bank row is
+  // never touched — this only fills a form field.
+  const selectCounterpart = (id: string): void => {
+    setCounterpartHoldingId(id);
+
     if (!convertView.eligible || convertView.direction !== 'record-destination' || !existing) {
       return;
     }
 
-    const counterpart = holdings.find((candidate) => candidate.id === counterpartHoldingId);
+    const counterpart = holdings.find((candidate) => candidate.id === id);
 
     if (counterpart === undefined) {
       return;
@@ -1021,7 +1025,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
 
     setCounterpartAmount(groupAmount(majorAmountText(counterpart.currency, seeded)));
-  }, [counterpartHoldingId]);
+  };
 
   // The row's category at open, keyed the same way, so an edit is detectable.
   // Derived (not stored) so it always reflects the persisted value even before
@@ -1449,7 +1453,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             converting,
             convertView,
             counterpartHoldingId,
-            onSelectCounterpart: setCounterpartHoldingId,
+            onSelectCounterpart: selectCounterpart,
             counterpartAmount,
             onChangeCounterpartAmount: (text) => setCounterpartAmount(groupAmount(text)),
             isExchange,
