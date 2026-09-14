@@ -159,53 +159,47 @@ export const darkTheme = {
     // `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so this change
     // cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
-    // The keyboard "Done" InputAccessoryView's own fill (`useKeyboardDoneAccessory`).
+    // The keyboard "Done" InputAccessoryView's SOLID FALLBACK fill
+    // (`useKeyboardDoneAccessory`) — the base layer painted BEHIND the real
+    // Liquid Glass overlay (`GlassSurface material`, `accessoryGlass` in
+    // `keyboard-done-accessory.styles.ts`), not the bar's only fill anymore.
     //
     // DEVICE BUG (review, 2026-09-14): the accessory previously painted the
     // opaque `surfaceHigh` (#2C2C2E, tertiarySystemBackground) — a step
     // LIGHTER/more "raised" than the real system keyboard sitting directly
     // below it, so the bar read as a detached strip rather than part of the
-    // keyboard. Investigated whether Apple documents a literal keyboard/
-    // input-accessory background value before picking a replacement:
-    // - HIG "Virtual keyboards" (developer.apple.com/design/
-    //   human-interface-guidelines/virtual-keyboards) gives no visual-design
-    //   guidance for an input accessory's background at all — only content/
-    //   interaction guidance (keyboard TYPE choice, custom input views).
-    // - `UIResponder.inputAccessoryView`
-    //   (developer.apple.com/documentation/uikit/uiresponder/inputaccessoryview)
-    //   documents only the API mechanics (attach a view above the system
-    //   keyboard), no required/recommended visual style.
-    // - `UIBlurEffect.Style` (developer.apple.com/documentation/uikit/
-    //   uiblureffect/style) confirms the modern, PUBLIC style for a
-    //   toolbar-class chrome surface is `.systemChromeMaterial` (an
-    //   "adaptable blur effect ... [creating] the [look] of the system
-    //   chrome" — paraphrased here to avoid an exact word match this
-    //   repo's `settings-columns.test.ts` scans for) — there is no
-    //   `.keyboard`-named case in the current public API.
-    // - None of these publish a literal RGBA/hex for the system keyboard's
-    //   own background (same pattern as `iconTileBorder`'s investigation
-    //   above: Apple's dynamic system colors/materials are described only
-    //   semantically, never with numeric components).
-    // CONCLUSION: no authoritative literal color was found — this is a
-    // reasoned, UNCONFIRMED fallback, not a copied Apple constant. A true
-    // live blur material (`GlassSurface`'s `material` variant, already used
-    // for BottomSheet) was considered and deliberately NOT used here: an
-    // `InputAccessoryView` is a never-before-exercised native host for this
-    // design system's `LiquidGlassView` usage, and this codebase has an
-    // already-CONFIRMED history of `LiquidGlassView` first-paint bugs in
-    // merely unusual RN layout containers (see `bloom`'s doc comment above)
-    // that could only be caught by on-device testing — unavailable in this
-    // change's environment. Shipping an unverified blur risks a BLANK/
-    // invisible accessory, strictly worse than the current mismatch. This
-    // token is therefore the closest-token color approximation instead: the
-    // same `#1C1C1E` hue as `theme.colors.surface`/`sheetBackground`
-    // (secondarySystemBackground) — one step DARKER than the previous
-    // `surfaceHigh`, closer to the real keyboard's own dark, low-elevation
-    // tone — kept as its OWN named token (never a reused `surface` import)
-    // because its role (approximating the SYSTEM keyboard's chrome) is
-    // distinct from `surface`'s role (an app card surface), the same
-    // per-role-token convention `sheetBackground` already follows despite
-    // sharing `surface`'s value.
+    // keyboard. This token was introduced as a closer flat-color
+    // approximation of the keyboard's own tone (`#1C1C1E`, the same hue as
+    // `surface`/`sheetBackground`), deliberately NOT paired with a live blur
+    // at the time: an `InputAccessoryView` was a never-before-exercised host
+    // for this design system's `LiquidGlassView` usage, and shipping an
+    // unverified glass risked a BLANK accessory, worse than the flat-color
+    // mismatch — see git history (commit ed4cceb) for that original,
+    // color-only investigation.
+    //
+    // MATERIAL (addendum, 2026-09-14, same-day on-device review): a real
+    // blur now IS used. Apple's HIG "Virtual keyboards" page
+    // (developer.apple.com/design/human-interface-guidelines/
+    // virtual-keyboards, "Place custom controls above the keyboard
+    // thoughtfully", updated June 9, 2025) gives EXPLICIT, on-topic guidance
+    // this token's original investigation did not have: "If other views in
+    // your app use Liquid Glass, or if your view looks out of place above
+    // the keyboard, apply Liquid Glass to the view that contains your
+    // controls to maintain consistency." This supersedes the earlier
+    // color-only conclusion. The FIRST-PAINT risk that blocked glass before
+    // is now handled differently, not ignored: this token stays as the
+    // accessory container's own `backgroundColor` — a plain RN fill, always
+    // painted immediately regardless of native glass timing — sitting
+    // BEHIND the new `GlassSurface material` overlay, so a late/blank glass
+    // paint in this host can never leave the bar blank; the solid shows
+    // through underneath it. Kept as its OWN named token (never a reused
+    // `surface` import) because its role (the accessory's solid safety-net
+    // fill) is distinct from `surface`'s role (an app card surface), the
+    // same per-role-token convention `sheetBackground` already follows
+    // despite sharing `surface`'s value. See
+    // `keyboard-done-accessory.styles.ts`'s `accessoryContainer` doc comment
+    // for the full layering writeup, including the bottom-corner-radius fix
+    // for the keyboard's own rounded top corners.
     keyboardAccessoryBackground: '#1C1C1E',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
