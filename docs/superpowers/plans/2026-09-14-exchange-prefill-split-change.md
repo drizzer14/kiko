@@ -4,7 +4,7 @@
 
 **Goal:** Seed the Convert flow's counterpart amount from the latest cached rate when recording a card→cash withdrawal (Feature 1), and let a manual expense distribute its change across other holdings as atomic, linked return rows that the spending pie nets (Feature 2).
 
-**Architecture:** Feature 1 reuses the existing Convert path (`recordExchangeCounterpart`) untouched and adds ONE pure prefill helper plus a form effect that seeds `counterpartAmount` — the synced bank row is never mutated. Feature 2 adds a nullable `changeGroupId` column, a new atomic repo method `recordManualWithReturns` (payment + N returns in one `write(...)`, same shape as `recordExchange`), a netting tweak in `buildCategoryBreakdown` so a payment's linked returns reduce its category magnitude, and a dynamic-rows form path. A single money-path guard test (modeled on `crypto-coverage.test.ts`) drives the real logic through fast seams to prove net worth and the pie stay correct.
+**Architecture:** Feature 1 reuses the existing Convert path (`recordExchangeCounterpart`) untouched and adds ONE pure prefill helper plus a form effect that seeds `counterpartAmount` — the synced bank row is never mutated. Feature 2 adds a nullable `changeGroupId` column, a new atomic repo method `recordManualWithReturns` (payment + N returns in one `write(...)`, same shape as `recordExchange`), a netting tweak in BOTH `buildCategoryBreakdown` (the pie) and the trend's shared `accumulateSpend` (the line + Top-N ranking) so a payment's linked returns reduce its category magnitude at every spending call site, and a dynamic-rows form path. A single money-path guard test (modeled on `crypto-coverage.test.ts`) drives the real logic through fast seams to prove net worth and the pie stay correct.
 
 **Tech Stack:** TypeScript, React Native, op-sqlite + Drizzle ORM (`driver: 'expo'`), Jest + React Native Testing Library, ts-pattern, the `Money` value object, Biome.
 
@@ -22,7 +22,7 @@
 - Feature 1 linking is Approach A (Convert-from-detail + prefill) ONLY — auto-suggest (Approach C) is OUT of v1 scope; do NOT plan it.
 - A `changeGroupId` schema change requires a Drizzle migration generated per kiko-architecture: `npx drizzle-kit generate --name add_change_group_id` (writes `.sql` + `meta/NNNN_snapshot.json` + journal entry AND rewrites `drizzle/migrations/migrations.js` wholesale), then `npx biome check --write` over the generated artifacts.
 - Import ordering is hand-enforced length-sort within 3 groups (external / `../**` parent / `./**` sibling), sorted by the ending physical line length ascending; `import type` for type-only imports; blank line before every `return`/`if`/`for`/`while`/`switch` (kiko-code-style).
-- Netting is scoped to the spending PIE (`buildCategoryBreakdown`) for v1 per the locked default. The trend line (`src/statistics/category-trend/category-trend.ts`) is a DIFFERENT call site that would still overstate by the change; netting it is a documented v1 follow-up, NOT in this plan.
+- Netting applies to BOTH statistics call sites in v1 per the locked user decision: the spending PIE (`buildCategoryBreakdown`, Task 3) AND the category TREND line + Top-N ranking (`src/statistics/category-trend/category-trend.ts`'s shared `accumulateSpend`, Task 3b). A payment's linked positive returns reduce its category magnitude identically in both, so neither overstates the category by the change. The trend is NOT a follow-up.
 - The transaction form (`src/screens/forms/transaction-form.screen.tsx`) is a HOLD zone — a UI-tweaks track overlaps it. Tasks 7 and 8 (form edits) are PLAN-ONLY: implement them only after the overlapping track lands and the coordinator clears the file.
 - Gate on the harness: run `npm run check:all` after each task's commit; run `npm run check:deep` (mutation + osv-scanner) once before declaring the feature done. Never weaken a check to get green.
 
@@ -46,7 +46,10 @@
 - `src/transactions/repo/transactions.repo.test.ts` — tests for `recordManualWithReturns` (Task 2).
 - `src/statistics/category-breakdown/category-breakdown.ts` — add `changeGroupId` to `BreakdownTransaction`; net linked returns into the payment's category magnitude (Task 3).
 - `src/statistics/category-breakdown/category-breakdown.test.ts` — add `changeGroupId: null` default to the `tx` fixture; add the netting test (Task 3).
-- `src/transactions/repo/transactions.repo.ts` (`listAllWithContextQuery`) + `src/screens/statistics/statistics.screen.tsx` (`breakdownTransactions` projection) — thread `changeGroupId` through to the pie (Task 4).
+- `src/statistics/category-trend/category-trend.ts` — add per-group return sums in the shared `accumulateSpend`; net a payment's linked returns out of its trend/ranking spend magnitude (Task 3b). No new type — `TrendTransaction` inherits `changeGroupId` from `BreakdownTransaction` (Task 3).
+- `src/statistics/category-trend/category-trend.test.ts` — add `changeGroupId: null` default to the `tx` fixture; add the trend netting test (Task 3b).
+- `src/transactions/repo/transactions.repo.ts` (`listAllWithContextQuery`) + `src/screens/statistics/statistics.screen.tsx` (BOTH pie projections — `breakdownTransactions` and `rangeFilteredBreakdownTransactions`) — thread `changeGroupId` through to the pie (Task 4).
+- `src/screens/statistics/statistics.screen.tsx` (`trendTransactions` projection) — thread `changeGroupId` through to the trend line + ranking (Task 3b).
 - `src/screens/forms/transaction-form.screen.tsx` — split-change UI + `saveSplit` (Task 7, HOLD); Feature 1 rate live query + prefill effect (Task 8, HOLD).
 
 ---
@@ -512,6 +515,132 @@ Then run `npm run check:all`.
 
 ---
 
+### Task 3b: `buildCategoryTrend` nets linked change-returns
+
+**Files:**
+- Modify: `src/statistics/category-trend/category-trend.ts` (`accumulateSpend` — add the per-group return sums before the loop ~line 111; net the `spend` computation ~lines 136-140)
+- Modify: `src/screens/statistics/statistics.screen.tsx` (`trendTransactions` projection memo ~lines 448-462) — thread `changeGroupId` into the trend's OWN screen projection
+- Test: `src/statistics/category-trend/category-trend.test.ts` (`tx` fixture ~lines 23-34; add one netting test)
+
+**Interfaces:**
+- Consumes: `BreakdownTransaction['changeGroupId']` (`string | null`, added by Task 3). `category-trend.ts` needs NO new type — its input `TrendTransaction = BreakdownTransaction & { time: number }` (`category-trend.ts:38`) already inherits `changeGroupId` from Task 3's `BreakdownTransaction`. So this task NETS only; it does NOT define a new type.
+- Produces: the shared `accumulateSpend` (used by BOTH `buildCategoryTrend` — the line — AND `buildCategoryMeasures` — the Top-N ranking) subtracts a payment's linked positive returns from its per-day and total spend magnitude, so a category's trend value for the affected period is `|payment| − Σreturns`, never the bare `|payment|`. `trendTransactions` (`statistics.screen.tsx`) now carries `changeGroupId` into both trend builders.
+- Cross-task note: category-trend consumes a SEPARATE screen projection (`trendTransactions`, `statistics.screen.tsx:448-462`) from the pie's (`breakdownTransactions`/`rangeFilteredBreakdownTransactions`, `:405-442`). Task 4 threads the query column + the pie projections; THIS task threads the trend projection. Because Task 3 makes `changeGroupId` a REQUIRED field of `BreakdownTransaction`, all three projection memos must carry it or typecheck fails — Task 4 owns the two pie memos, this task owns `trendTransactions`.
+
+- [ ] **Step 1: Write the failing test**
+
+First add `changeGroupId: null` to the `tx` fixture defaults in `category-trend.test.ts` (after `exchangeCounterpartHoldingId: null,`) so existing rows are unaffected:
+
+```ts
+const tx = (over: Partial<TrendTransaction>): TrendTransaction => ({
+  id: 'tx',
+  category: 'groceries',
+  amountMinorUnits: -10_00,
+  mcc: null,
+  counterIban: null,
+  description: '',
+  exchangeCounterpartHoldingId: null,
+  changeGroupId: null,
+  currency: 'UAH' as BreakdownTransaction['currency'],
+  time: NOW,
+  ...over,
+});
+```
+
+Then add the netting test inside `describe('buildCategoryTrend', ...)`:
+
+```ts
+  it("nets a split payment's linked change-returns into its trend line (not overstated by the change)", () => {
+    const series = buildTrend([
+      tx({ id: 'pay', category: 'groceries', amountMinorUnits: -212_00, time: NOW, changeGroupId: 'grp-1' }),
+      tx({ id: 'r1', category: null, amountMinorUnits: 20, time: NOW, changeGroupId: 'grp-1' }),
+      tx({ id: 'r2', category: null, amountMinorUnits: 8, time: NOW, changeGroupId: 'grp-1' }),
+    ]);
+    const nonZero = series[0].points.filter((point) => point.amount !== 0);
+
+    // −212_00 payment, +20 and +8 returns → the day bucket shows the NET 211_72
+    // (211.72 in base MAJOR units), not the bare 212_00. The positive returns are
+    // already skipped as income and only reduce the payment's magnitude.
+    expect(series.map((entry) => entry.key)).toEqual(['groceries']);
+    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 211.72 }]);
+  });
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx jest src/statistics/category-trend/category-trend.test.ts -t "nets a split"`
+Expected: FAIL — the trend day bucket reads `212` (returns not netted); the added `changeGroupId: 'grp-1'` payment magnitude is not reduced.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `src/statistics/category-trend/category-trend.ts`, inside `accumulateSpend`, immediately after `const totals = new Map<string, TrendAccumulator>();` (line 111) and before the main `for` loop, build the per-group return sums (mirrors Task 3's `buildCategoryBreakdown`):
+
+```ts
+  // Sum the POSITIVE change-returns per group so a split payment's trend value is
+  // netted by its change (design F2-7), exactly as buildCategoryBreakdown nets
+  // the pie. Returns share the payment's currency AND time for v1, so a payment
+  // and its returns always land in the same day bucket — summing raw minor units
+  // in the payment's own currency here is safe.
+  const returnsByGroup = new Map<string, number>();
+
+  for (const transaction of transactions) {
+    if (transaction.changeGroupId !== null && transaction.amountMinorUnits > 0) {
+      const running = returnsByGroup.get(transaction.changeGroupId) ?? 0;
+      returnsByGroup.set(transaction.changeGroupId, running + transaction.amountMinorUnits);
+    }
+  }
+```
+
+Then, inside the main `for` loop, replace the `spend` computation. The current code (lines 136-140) is:
+
+```ts
+    const spend = convert(
+      Money.of(transaction.currency, -transaction.amountMinorUnits),
+      baseCurrency,
+      rateTable,
+    ).minorUnits;
+```
+
+Replace it with a netted magnitude (compute the magnitude first, and skip a payment whose returns fully cancel it):
+
+```ts
+    const returned =
+      transaction.changeGroupId !== null
+        ? (returnsByGroup.get(transaction.changeGroupId) ?? 0)
+        : 0;
+    const netMagnitude = -transaction.amountMinorUnits - returned;
+
+    if (netMagnitude <= 0) {
+      continue;
+    }
+
+    const spend = convert(
+      Money.of(transaction.currency, netMagnitude),
+      baseCurrency,
+      rateTable,
+    ).minorUnits;
+```
+
+(The positive return rows are already skipped by the existing `if (transaction.amountMinorUnits >= 0) continue;` guard at line 114, so they never form their own line — they only reduce the payment's magnitude here. Because the fix lives in the shared `accumulateSpend`, both `buildCategoryTrend` and `buildCategoryMeasures` net automatically — no second edit.)
+
+Then thread the value through the screen: in `src/screens/statistics/statistics.screen.tsx`, in the `trendTransactions` memo (~lines 448-462), add `changeGroupId: transaction.changeGroupId,` to the mapped object, alongside `exchangeCounterpartHoldingId`, so the real group id reaches `buildCategoryTrend`/`buildCategoryMeasures`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx jest src/statistics/category-trend/category-trend.test.ts`
+Expected: PASS (the new netting test and every existing test, since a non-split row has `changeGroupId: null` and `returned` is `0`). Then run `npm run check:typecheck` to confirm the `trendTransactions` projection now satisfies `TrendTransaction` (whose `changeGroupId` is required after Task 3).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/statistics/category-trend/category-trend.ts src/statistics/category-trend/category-trend.test.ts src/screens/statistics/statistics.screen.tsx
+git commit -m "feat(statistics): net split-change returns into the category trend line"
+```
+
+Then run `npm run check:all`.
+
+---
+
 ### Task 4: Thread `changeGroupId` from the DB query to the pie
 
 **Files:**
@@ -555,7 +684,7 @@ In `src/transactions/repo/transactions.repo.ts`, inside the `listAllWithContextQ
         category: transactions.category,
 ```
 
-In `src/screens/statistics/statistics.screen.tsx`, find the `breakdownTransactions` memo (the one that maps `transactions` — the `listAllWithContextQuery` live-query data — into `BreakdownTransaction[]`, near the `exchangeExcludedTxIds(breakdownTransactions)` usage at line 500). Add `changeGroupId: transaction.changeGroupId` to the mapped object so it reaches `buildCategoryBreakdown`. (The exact object literal lives in that memo; add the one field alongside `exchangeCounterpartHoldingId`.)
+In `src/screens/statistics/statistics.screen.tsx`, find the `breakdownTransactions` memo (the one that maps `transactions` — the `listAllWithContextQuery` live-query data — into `BreakdownTransaction[]`, near the `exchangeExcludedTxIds(breakdownTransactions)` usage at line 500). Add `changeGroupId: transaction.changeGroupId` to the mapped object so it reaches `buildCategoryBreakdown`. (The exact object literal lives in that memo; add the one field alongside `exchangeCounterpartHoldingId`.) Because Task 3 makes `changeGroupId` a REQUIRED field of `BreakdownTransaction`, add the same field to BOTH pie projection memos that build `BreakdownTransaction[]` — `breakdownTransactions` (~line 405) AND `rangeFilteredBreakdownTransactions` (~line 427) — or typecheck fails on the missing property. (The trend's own `trendTransactions` memo, ~line 448, is threaded in Task 3b.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -705,10 +834,10 @@ Then run `npm run check:all`.
 - Create: `src/transactions/repo/money-path.test.ts`
 
 **Interfaces:**
-- Consumes: `transactionsRepo.recordManualWithReturns` (Task 2), `transactionsRepo.recordExchangeCounterpart` (existing); `buildCategoryBreakdown` (Task 3); `seedCounterpartMinorUnits` (Task 5); `guardedNetWorth`/`buildRateTable` (`src/rates/net-worth-view`); the `holdings`/`transactions` schema objects.
+- Consumes: `transactionsRepo.recordManualWithReturns` (Task 2), `transactionsRepo.recordExchangeCounterpart` (existing); `buildCategoryBreakdown` (Task 3); `buildCategoryTrend` (Task 3b); `seedCounterpartMinorUnits` (Task 5); `guardedNetWorth`/`buildRateTable` (`src/rates/net-worth-view`); the `holdings`/`transactions` schema objects.
 - Produces: a regression guard (no new production symbols).
 
-This test models `src/rates/rates-refresh/crypto-coverage.test.ts` — it drives the REAL logic through fast seams (the `write(...)` mock + fake tx handle for the repo methods, and the pure `buildCategoryBreakdown`/`seedCounterpartMinorUnits` functions), no simulator.
+This test models `src/rates/rates-refresh/crypto-coverage.test.ts` — it drives the REAL logic through fast seams (the `write(...)` mock + fake tx handle for the repo methods, and the pure `buildCategoryBreakdown`/`buildCategoryTrend`/`seedCounterpartMinorUnits` functions), no simulator.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -729,6 +858,7 @@ jest.mock('../../db/client', () => {
   };
 });
 
+import { buildCategoryTrend } from '../../statistics/category-trend';
 import { buildCategoryBreakdown } from '../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
@@ -874,22 +1004,55 @@ describe('Money-path guard: split-change + convert prefill', () => {
     expect(updates.every((update) => update.table !== transactions)).toBe(true);
     expect(updates.some((update) => update.table === holdings)).toBe(true);
   });
+
+  it('nets the linked returns in the category trend line (period not overstated by the change)', () => {
+    // A fixed "today" so the 30-day window is deterministic; the split payment
+    // and its two returns all fall on this same UTC day.
+    const now = Date.UTC(2025, 2, 31, 12, 0, 0);
+    const base = {
+      mcc: null,
+      counterIban: null,
+      description: '',
+      exchangeCounterpartHoldingId: null,
+      currency: 'UAH' as const,
+    };
+    const series = buildCategoryTrend({
+      transactions: [
+        { ...base, id: 'pay', category: 'groceries', amountMinorUnits: -212_00, changeGroupId: 'grp-1', time: now },
+        { ...base, id: 'r1', category: null, amountMinorUnits: 20, changeGroupId: 'grp-1', time: now },
+        { ...base, id: 'r2', category: null, amountMinorUnits: 8, changeGroupId: 'grp-1', time: now },
+      ],
+      categoryDisplay: new Map(),
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'groceries',
+      now,
+    });
+
+    // The affected day's trend value is the NET |payment| − Σreturns = 211_72
+    // (211.72 in base MAJOR units), not the bare 212_00 — the trend nets exactly
+    // like the pie (same shared accumulateSpend).
+    expect(series).toHaveLength(1);
+    const nonZero = series[0].points.filter((point) => point.amount !== 0);
+
+    expect(nonZero).toEqual([{ t: Date.UTC(2025, 2, 31), amount: 211.72 }]);
+  });
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx jest src/transactions/repo/money-path.test.ts`
-Expected: PASS if Tasks 2/3/5 are complete — but run it now to confirm it exercises the real code. If any dependency task is incomplete it FAILS with a missing symbol; that is the guard doing its job. (This task is authored AFTER Tasks 2, 3, and 5, so it should pass on first green run.)
+Expected: PASS if Tasks 2/3/3b/5 are complete — but run it now to confirm it exercises the real code. If any dependency task is incomplete it FAILS with a missing symbol; that is the guard doing its job. (This task is authored AFTER Tasks 2, 3, 3b, and 5, so it should pass on first green run.)
 
 - [ ] **Step 3: Write minimal implementation**
 
-None — this is a pure guard test over already-implemented logic. If any assertion fails, fix the PRODUCTION code in the owning task (2/3/5), never the assertion.
+None — this is a pure guard test over already-implemented logic. If any assertion fails, fix the PRODUCTION code in the owning task (2/3/3b/5), never the assertion.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx jest src/transactions/repo/money-path.test.ts`
-Expected: PASS (all three cases).
+Expected: PASS (all four cases).
 
 - [ ] **Step 5: Commit**
 
@@ -1135,10 +1298,10 @@ Then run `npm run check:all`, and `npm run check:deep` once more before declarin
 
 **1. Spec coverage.**
 - §2 Feature 1 (Approach A convert + prefill): Task 5 (helper), Task 8 (form wiring), guard case 3 (Task 6). F1-2 latest cached rate → `ratesRepo.allQuery`/`buildRateTable` (Task 8). F1-3 same-currency 1:1 → Task 5 test. F1-4 missing rate blank → Task 5 `null` + Task 8 early return. F1-5 direct prefill, no rate field → Task 8 seeds `counterpartAmount` only. F1-6 bank row unmarked → guard case 3 asserts `transactions` never written; Approach C explicitly excluded per Global Constraints.
-- §3 Feature 2: Task 1 (`changeGroupId` + migration), Task 2 (`recordManualWithReturns`), Task 3 (pie netting), Task 4 (query/screen wiring), Task 7 (form). F2-1 linked+netting = Tasks 1-4. F2-2 validation (`>0` and `Σ<|payment|`) → `canSaveSplit` (Task 7). F2-3 distinct open holding except payer → `canSaveSplit` + picker filter (Task 7). F2-4 dynamic rows → Task 7. F2-5 separate linked rows → Task 2. F2-6/F2-7 netting → Task 3. F2-8 same currency v1 → picker filter (Task 7); exchange+split deferred per Global Constraints. F2-9 gate on manual expense create → `resolveModeOptions` + `!isReadOnly`/`!isEditing` (Task 7).
+- §3 Feature 2: Task 1 (`changeGroupId` + migration), Task 2 (`recordManualWithReturns`), Task 3 (pie netting), Task 3b (trend netting), Task 4 (query/pie-screen wiring), Task 7 (form). F2-1 linked+netting = Tasks 1-4 + 3b. F2-2 validation (`>0` and `Σ<|payment|`) → `canSaveSplit` (Task 7). F2-3 distinct open holding except payer → `canSaveSplit` + picker filter (Task 7). F2-4 dynamic rows → Task 7. F2-5 separate linked rows → Task 2. F2-6/F2-7 netting now covers BOTH statistics call sites — the pie (`buildCategoryBreakdown`, Task 3) AND the category trend line + Top-N ranking (`accumulateSpend`, Task 3b), each netting a payment's linked returns out of its category spend magnitude. F2-8 same currency v1 → picker filter (Task 7); exchange+split deferred per Global Constraints. F2-9 gate on manual expense create → `resolveModeOptions` + `!isReadOnly`/`!isEditing` (Task 7).
 - §6 harness checkpoints: `check:all` per task, `check:deep` after Task 6 and Task 8; migration via drizzle-kit + biome (Task 1).
-- Mandatory money-path guard: Task 6 (all three required assertions).
+- Mandatory money-path guard: Task 6 (four seams — net worth, pie netting, trend netting, convert prefill).
 
 **2. Placeholder scan.** No "TBD"/"add validation"/"similar to Task N"/"handle edge cases". Every code step carries real code; the one cross-reference ("modeled on makeExchangeTx") reproduces the fake-tx builder in full in Task 6 rather than pointing at it.
 
-**3. Type consistency.** `changeGroupId` (camelCase field, `change_group_id` column) is used identically in Tasks 1-4. `recordManualWithReturns`/`ManualWithReturnsInput`/`ChangeReturn` match between Task 2 (definition) and Tasks 6/7 (callers). `seedCounterpartMinorUnits`'s signature (returns `number | null`) matches between Task 5 and its callers in Tasks 6/8. `BreakdownTransaction.changeGroupId` (Task 3) is consumed by Tasks 4/6.
+**3. Type consistency.** `changeGroupId` (camelCase field, `change_group_id` column) is used identically in Tasks 1-4 and 3b. `recordManualWithReturns`/`ManualWithReturnsInput`/`ChangeReturn` match between Task 2 (definition) and Tasks 6/7 (callers). `seedCounterpartMinorUnits`'s signature (returns `number | null`) matches between Task 5 and its callers in Tasks 6/8. `BreakdownTransaction.changeGroupId` (Task 3) is consumed by Tasks 3b/4/6. Task 3 makes `changeGroupId` a REQUIRED field of `BreakdownTransaction`, so EVERY screen projection that builds a `BreakdownTransaction`/`TrendTransaction` must carry it or typecheck fails on the missing property: both pie memos `breakdownTransactions` and `rangeFilteredBreakdownTransactions` (Task 4) and the trend memo `trendTransactions` (Task 3b). `category-trend.ts` needs NO new type — `TrendTransaction = BreakdownTransaction & { time }` (`category-trend.ts:38`) inherits `changeGroupId` from Task 3; Task 3b is a netting-only edit to the shared `accumulateSpend`, so both `buildCategoryTrend` and `buildCategoryMeasures` net without a second change.
