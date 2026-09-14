@@ -1,11 +1,19 @@
 import type { Repository } from '@kiko/db/repository';
 import { inArray, sql } from 'drizzle-orm';
 
-import { write } from '../../db/client';
+import { database, write } from '../../db/client';
 import { categoryOverrides, transactions } from '../../db/schema';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
 
 export const categoryOverridesRepo = {
+  /**
+   * Every name→category rule as a reactive Drizzle builder (never executed
+   * data), handed to useLiveQuery so a caller can build an in-JS lookup map and
+   * pre-select a transaction's category from the typed description. Matching is
+   * done in JS through `normalizeTransactionName` (never SQL — Cyrillic/
+   * whitespace variants must match), so the query itself is a plain full select.
+   */
+  allQuery: () => database.select().from(categoryOverrides),
   /**
    * Upsert a name→category rule AND rewrite every existing same-name transaction
    * to the new category, all in ONE op-sqlite transaction so a partial failure

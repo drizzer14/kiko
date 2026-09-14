@@ -8,7 +8,15 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { type FC, type ReactElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type FC,
+  type ReactElement,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   canConvertToExchange,
@@ -166,6 +174,20 @@ const resolveDescriptionPlaceholder = (
 // whitespace, or junk field, and `NaN > 0` is false, so one comparison covers
 // every rejected case (the same idiom as `contribution-form`'s `canSave`).
 const isPositiveAmountText = (text: string): boolean => parseAmount(text) > 0;
+
+// The rule-matched category for a typed description, or null when no rule
+// matches or the normalized name is blank. Matching is JS-normalized (never
+// SQL), the same normalize-then-match the sync insert path uses. Kept module-
+// level and pure so the description-blur branch stays out of the screen
+// component's cognitive-complexity budget.
+const ruleCategoryFor = (
+  description: string,
+  categoryByNormalizedName: ReadonlyMap<string, string>,
+): string | null => {
+  const key = normalizeTransactionName(description);
+
+  return key === '' ? null : (categoryByNormalizedName.get(key) ?? null);
+};
 
 // Whether the footer's Save button is disabled, per mode — each branch mirrors
 // exactly what that mode's `save` path validates before it writes:
@@ -524,6 +546,10 @@ type FieldGroupProps = {
   counterpartSuffix: string;
   description: string;
   onChangeDescription: (text: string) => void;
+  // Fires when the description field loses focus — the A1 category auto-pick
+  // (see `onDescriptionBlur` in the screen). Kept off `onChangeDescription`
+  // (which stays a bare setter) so the lookup never runs on a keystroke.
+  onBlurDescription: () => void;
   descriptionPlaceholder: string;
   isReadOnly: boolean;
   time: number;
@@ -590,6 +616,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         label={props.t('forms.transaction.description')}
         value={props.description}
         onChangeText={props.onChangeDescription}
+        onBlur={props.onBlurDescription}
         editable={!props.isReadOnly}
         placeholder={props.descriptionPlaceholder}
       />
@@ -889,6 +916,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // display title through the same map every screen uses.
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const categoryByKey = buildCategoryDisplayMap(categories);
+  // The name→category rules (A1): subscribed once and reduced to a normalized-
+  // name lookup map, so a create can pre-select a category from the settled
+  // description on blur. Matching is JS-normalized (never SQL), mirroring the
+  // sync insert path — see `ruleCategoryFor` and the description blur handler.
+  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
+    'category_overrides',
+  ]);
+  const categoryByNormalizedName = useMemo(
+    () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
+    [overrideRules],
+  );
   const categoryOptions = categories.map((category) => ({
     key: category.key,
     title: categoryByKey.get(category.key)?.title ?? category.title,
@@ -973,6 +1011,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // category yet. Editing it ALWAYS propagates to every same-name transaction
   // via the override rule — there is no single-row-only category edit.
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // Whether the user has explicitly picked a category through the picker. Gates
+  // the description-blur auto-pick (A1): once the user chooses, a later matching
+  // blur must never overwrite that choice.
+  const [userPickedCategory, setUserPickedCategory] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   // The pending category-override confirmation. Non-null while the themed
   // confirm modal is up (carrying the affected name + picked category key);
@@ -1066,6 +1108,29 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     payerHoldingId: holding?.id,
     currency,
   });
+
+  // An explicit category pick: record the choice AND flag it, so a later
+  // description blur (the A1 auto-pick) never overwrites what the user chose.
+  const selectCategory = (key: string): void => {
+    setSelectedCategory(key);
+    setUserPickedCategory(true);
+  };
+
+  // A1: when the description SETTLES (blur, never a keystroke) and the user has
+  // not explicitly picked a category, pre-select the category the existing name
+  // rules map that name to. A settled name matching no rule yields null, which
+  // clears any prior auto-pick so Save's create-time category requirement
+  // re-engages honestly. Only fires on a create — an edit hydrates its own
+  // stored category and must not be re-derived from the name. Kept a SINGLE
+  // handler (not a stack of independent effects) so a later feature can extend
+  // it composably.
+  const onDescriptionBlur = (): void => {
+    if (userPickedCategory || isEditing) {
+      return;
+    }
+
+    setSelectedCategory(ruleCategoryFor(description, categoryByNormalizedName));
+  };
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
   useLayoutEffect(() => {
@@ -1487,6 +1552,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             counterpartSuffix: holdingSuffix(holdings, counterpartHoldingId),
             description,
             onChangeDescription: setDescription,
+            onBlurDescription: onDescriptionBlur,
             descriptionPlaceholder,
             isReadOnly,
             time,
@@ -1525,7 +1591,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isExchange,
             categoryOptions,
             selectedCategory,
-            onSelectCategory: setSelectedCategory,
+            onSelectCategory: selectCategory,
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,

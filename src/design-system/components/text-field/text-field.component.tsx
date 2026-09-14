@@ -32,6 +32,7 @@ const TextField: FC<TextFieldProps> = ({
   secureTextEntry,
   suffix,
   required,
+  onBlur,
 }) => {
   const { theme } = useUnistyles();
   // The native Done keyboard accessory, shared with every other Kiko input.
@@ -61,6 +62,7 @@ const TextField: FC<TextFieldProps> = ({
     <TextInput
       value={value}
       onChangeText={onChangeText}
+      onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.textSecondary}
       keyboardType={keyboardType}

@@ -76,6 +76,7 @@ jest.mock('@kiko/categories/repo', () => ({
 jest.mock('@kiko/categories/category-overrides-repo', () => ({
   categoryOverridesRepo: {
     upsertCategoryOverride: (...args: unknown[]) => mockUpsertCategoryOverride(...args),
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('../../db/use-live-query', () => ({
@@ -115,6 +116,7 @@ const CATEGORIES: Category[] = [
 ];
 
 type Rate = { base: string; quote: string; rate: string };
+type OverrideRule = { normalizedName: string; category: string };
 
 const setLiveData = (
   holdings: Holding[],
@@ -122,6 +124,7 @@ const setLiveData = (
   categories: Category[] = CATEGORIES,
   accounts: Account[] = [],
   rates: Rate[] = [],
+  overrideRules: OverrideRule[] = [],
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => {
     if (tables[0] === 'holdings') {
@@ -138,6 +141,9 @@ const setLiveData = (
     }
     if (tables[0] === 'currency_rates') {
       return { data: rates };
+    }
+    if (tables[0] === 'category_overrides') {
+      return { data: overrideRules };
     }
 
     return { data: [] };
@@ -445,6 +451,72 @@ describe('TransactionFormScreen — add mode', () => {
       expect(index).toBeGreaterThan(-1);
     }
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+});
+
+describe('TransactionFormScreen — category pre-select from name rules (A1)', () => {
+  // A single rule mapping the normalized description "coffee" to the Dining
+  // category, so a create whose description settles to "Coffee" auto-picks it.
+  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [COFFEE_RULE],
+    );
+  });
+
+  it('pre-selects the matching rule category when the description blurs on a create', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    // The lookup fires on BLUR, not on keystroke, and satisfies the create-time
+    // category requirement without a manual pick.
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+    );
+  });
+
+  it('does not overwrite an explicit picker choice with a later matching blur', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    // Explicit pick first, then a description that WOULD match a different rule.
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.press(getByText('Save'));
+
+    // The user's Groceries pick is preserved — the blur never clobbers it.
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Coffee', category: 'groceries' }),
+    );
+  });
+
+  it('re-nulls the auto-pick and re-disables Save when the name settles to a non-match', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText, getByText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    // The auto-pick enabled Save (create needs a category).
+    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+
+    // A name matching no rule clears the auto-pick, so Save's create-time
+    // category requirement re-engages honestly.
+    await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
+    await fireEvent(getByLabelText('Description'), 'blur');
+
+    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
   });
 });
 

@@ -133,6 +133,31 @@ describe('TextField', () => {
     expect(getByLabelText('Search').props.returnKeyType).toBe('search');
   });
 
+  it('forwards the optional onBlur onto the underlying input and fires it on blur', async () => {
+    const onBlur = jest.fn();
+    const { getByLabelText } = await render(
+      <TextField label="Name" value="Jane" onChangeText={jest.fn()} onBlur={onBlur} />,
+    );
+
+    // Assert on the HOST input's own prop, not fireEvent(el, 'blur'): RNTL's
+    // fireEvent walks up the fiber tree and would invoke TextField's OWN prop
+    // even if it never reached the TextInput, masking a missing passthrough.
+    const input = getByLabelText('Name');
+    expect(input.props.onBlur).toBeDefined();
+    input.props.onBlur();
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the underlying input without an onBlur when omitted', async () => {
+    const { getByLabelText } = await render(
+      <TextField label="Name" value="Jane" onChangeText={jest.fn()} />,
+    );
+
+    // The passthrough is optional, so an unspecified onBlur is undefined on the
+    // input — every existing caller stays unaffected.
+    expect(getByLabelText('Name').props.onBlur).toBeUndefined();
+  });
+
   it('leaves a return-keyless numeric field without a returnKeyType default', async () => {
     const { getByLabelText } = await render(
       <TextField label="Amount" value="1" onChangeText={jest.fn()} keyboardType="decimal-pad" />,

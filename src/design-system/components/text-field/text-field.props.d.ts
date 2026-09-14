@@ -14,6 +14,11 @@ export type TextFieldProps = Pick<
   // Masks the input (a secret like the Monobank token). Off by default, so an
   // ordinary field is never masked unless the caller opts in.
   | 'secureTextEntry'
+  // Optional. Fires when the field loses focus — used where a lookup should run
+  // only once the user has settled the value (e.g. pre-selecting a transaction
+  // category from a matched description on blur), never on every keystroke.
+  // Omitted by default, so an ordinary field carries no blur behavior.
+  | 'onBlur'
 > & {
   // Optional. When omitted, no caption renders above the input — used where a
   // surrounding heading already names the field (e.g. the CurrencyField search
