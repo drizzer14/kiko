@@ -468,6 +468,88 @@ const toAmountFields = (
   };
 };
 
+// The three mutually-exclusive entry ids read once from the route params, so
+// the component body spends no `in`-check branch on any of them (the union
+// keeps at most one non-null). `holdingParamId` is the plain-add holding;
+// `duplicateOfId` seeds a CREATE pre-filled from an existing manual row (D2).
+const readRouteEntry = (
+  params: TransactionFormParams,
+): { editingId: string | null; duplicateOfId: string | null; holdingParamId: string | null } => ({
+  editingId: 'transactionId' in params ? params.transactionId : null,
+  duplicateOfId: 'duplicateOfTransactionId' in params ? params.duplicateOfTransactionId : null,
+  holdingParamId: 'holdingId' in params ? params.holdingId : null,
+});
+
+// The one-shot mount seeding plan, computed by a pure module-level helper so the
+// screen's hydrate effect stays a thin dispatch (three flat `if`s) instead of
+// carrying the edit-vs-duplicate branching in its own cognitive-complexity
+// budget. `seedHolding` is the duplicate path's FIRST step — it seats the
+// `primaryHoldingId` seam from the source row so the holding (hence its
+// currency scale) resolves before the amount is formatted; `seedFields` is the
+// terminal step both paths share. A `null` `time` means "leave the field at its
+// current value" — the duplicate keeps NOW, never copying the source timestamp.
+type HydrationPlan =
+  | { kind: 'wait' }
+  | { kind: 'seedHolding'; holdingId: string }
+  | {
+      kind: 'seedFields';
+      amount: string;
+      sign: Sign;
+      description: string;
+      category: string | null;
+      time: number | null;
+    };
+
+const seedFieldsFrom = (
+  currency: Currency,
+  row: Pick<TransactionRow, 'amountMinorUnits' | 'description' | 'category'>,
+  time: number | null,
+): HydrationPlan => {
+  const fields = toAmountFields(currency, row.amountMinorUnits);
+
+  return {
+    kind: 'seedFields',
+    amount: groupAmount(fields.amount),
+    sign: fields.sign,
+    description: row.description,
+    // Lowercase the stored value to a slug key — the same normalization the
+    // display resolver applies — so it lines up with the picker's option keys.
+    category: row.category ? row.category.toLowerCase() : null,
+    time,
+  };
+};
+
+const resolveHydration = (args: {
+  existing: TransactionRow | undefined;
+  duplicateSource: TransactionRow | undefined;
+  holding: HoldingRow | undefined;
+  primaryHoldingId: string | null;
+  currency: Currency;
+}): HydrationPlan => {
+  const { existing, duplicateSource, holding, primaryHoldingId, currency } = args;
+
+  // Edit: seed once both the row and its holding have loaded, carrying the
+  // stored timestamp so a manual row round-trips its own time.
+  if (existing && holding) {
+    return seedFieldsFrom(currency, existing, existing.time);
+  }
+
+  if (duplicateSource) {
+    // Duplicate step 1: seat the primary-holding seam from the source row so
+    // its holding (and currency scale) resolves on the next render.
+    if (primaryHoldingId === null) {
+      return { kind: 'seedHolding', holdingId: duplicateSource.holdingId };
+    }
+
+    // Duplicate step 2: seed the copied fields, dated to NOW (`time: null`).
+    if (holding) {
+      return seedFieldsFrom(currency, duplicateSource, null);
+    }
+  }
+
+  return { kind: 'wait' };
+};
+
 // Convert-mode's derived view: eligibility, direction, the counterpart picker
 // options, the read-only fixed side's display value, and the direction-
 // dependent labels — bundled into one object so the component body spends a
@@ -959,15 +1041,25 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // this same order (see `compareByAccountThenHolding`).
   const accountOrderById = new Map(accounts.map((account, index) => [account.id, index]));
 
-  // Two entry points: `holdingId` = add a new manual row; `transactionId` = open
-  // an existing one. In add mode the by-id query runs against an empty id and
-  // returns nothing, keeping the hook order stable without a conditional call.
-  const editingId = 'transactionId' in route.params ? route.params.transactionId : null;
+  // Three entry points: `holdingId` = add a new manual row; `transactionId` =
+  // open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
+  // CREATE form pre-filled FROM an existing manual row (D2). Read once by a pure
+  // helper so the component body spends no `in`-check branch on any of them. In
+  // add mode the by-id query runs against an empty id and returns nothing,
+  // keeping the hook order stable without a conditional call.
+  const { editingId, duplicateOfId, holdingParamId } = readRouteEntry(route.params);
+  // ONE by-id subscription serves both the edit source and the duplicate source
+  // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
-    transactionsRepo.getByIdQuery(editingId ?? ''),
+    transactionsRepo.getByIdQuery(editingId ?? duplicateOfId ?? ''),
     ['transactions'],
   );
+  // `existing` stays the EDIT concept only, so `isEditing`/`isReadOnly`/convert
+  // all behave unchanged; a duplicate is a CREATE, so its source is read into a
+  // SEPARATE `duplicateSource` that seeds the fields on mount but never marks
+  // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
+  const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
@@ -1013,8 +1105,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { data: rateRows } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const rateTable = buildRateTable(rateRows);
 
-  const holdingId =
-    existing?.holdingId ?? ('holdingId' in route.params ? route.params.holdingId : undefined);
+  // The primary-holding seam (D2): a duplicate seeds this from the source row's
+  // holding on mount, and the holding-derived values (currency, amount suffix,
+  // category eligibility, exchange rules) all read through it. Bundle B will
+  // later render its `HoldingSelectField` picker over this SAME state — for now
+  // it is only ever seeded from the source row, never picked. Null on a plain
+  // add/edit, where `holdingParamId`/`existing` supply the holding instead.
+  const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
+  const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   // Each money field's trailing currency glyph, keyed off the holding that owns
@@ -1101,25 +1199,50 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // action is offered only there); a scrim/back dismiss behaves like Cancel.
   const [deletePending, setDeletePending] = useState(false);
 
-  // Seed the fields once, when BOTH the transaction and its holding have loaded
-  // (the holding's currency scale is needed to render the amount). The `hydrated`
-  // latch keeps a later live-query refresh from clobbering in-progress edits.
+  // Seed the fields once, when the source row (edit OR duplicate) and its
+  // holding have loaded (the holding's currency scale is needed to render the
+  // amount). The `hydrated` latch keeps a later live-query refresh from
+  // clobbering in-progress edits. The edit-vs-duplicate decision lives in the
+  // pure `resolveHydration` helper, so this effect stays a thin dispatch — a
+  // duplicate first seats the `primaryHoldingId` seam (`seedHolding`), then, on
+  // the next render once its holding resolves, seeds the copied fields
+  // (`seedFields`) dated to NOW. Edit never reaches Exchange (`canExchange` is
+  // `false` whenever `isEditing` is `true`), so hydrating straight to the
+  // income/expense sign is safe for both paths.
   useEffect(() => {
-    if (existing && holding && !hydrated) {
-      const fields = toAmountFields(currency, existing.amountMinorUnits);
-      setAmount(groupAmount(fields.amount));
-      // Edit never reaches Exchange (`canExchange` is `false` whenever
-      // `isEditing` is `true`), so hydrating straight to the income/expense
-      // sign is safe here.
-      setMode(fields.sign);
-      setDescription(existing.description);
-      setTime(existing.time);
-      // Lowercase the stored value to a slug key — the same normalization the
-      // display resolver applies — so it lines up with the picker's option keys.
-      setSelectedCategory(existing.category ? existing.category.toLowerCase() : null);
+    if (hydrated) {
+      return;
+    }
+
+    const plan = resolveHydration({
+      existing,
+      duplicateSource,
+      holding,
+      primaryHoldingId,
+      currency,
+    });
+
+    if (plan.kind === 'seedHolding') {
+      setPrimaryHoldingId(plan.holdingId);
+
+      return;
+    }
+
+    if (plan.kind === 'seedFields') {
+      setAmount(plan.amount);
+      setMode(plan.sign);
+      setDescription(plan.description);
+      setSelectedCategory(plan.category);
+
+      // A null `time` keeps the field at NOW — the duplicate never copies the
+      // source timestamp; the edit path carries the stored time.
+      if (plan.time !== null) {
+        setTime(plan.time);
+      }
+
       setHydrated(true);
     }
-  }, [existing, holding, hydrated, currency]);
+  }, [existing, duplicateSource, holding, primaryHoldingId, hydrated, currency]);
 
   // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
   // the MOMENT a destination is picked — an EVENT, not a derivation, so it lives

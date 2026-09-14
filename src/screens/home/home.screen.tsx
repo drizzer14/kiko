@@ -349,6 +349,17 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
+  // Duplicating a row opens the create form pre-filled from it (D2), stateless
+  // via the `duplicateOfTransactionId` route param. Stable across renders (it
+  // closes over `navigation` alone), like `handleRowPress`, so the memoized
+  // rows never re-render on a new handler identity.
+  const handleRowDuplicate = useCallback(
+    (transactionId: string): void => {
+      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId });
+    },
+    [navigation],
+  );
+
   // A stable `renderItem` identity is what lets the SectionList row bail-out
   // engage: the row body now lives in the memoized `TransactionRow` component,
   // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
@@ -363,10 +374,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           holdingNameById={holdingNameById}
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
+          onDuplicate={handleRowDuplicate}
         />
       );
     },
-    [categoryByKey, defaultCategoryKey, holdingNameById, categoryKeyForRow, handleRowPress],
+    [
+      categoryByKey,
+      defaultCategoryKey,
+      holdingNameById,
+      categoryKeyForRow,
+      handleRowPress,
+      handleRowDuplicate,
+    ],
   );
 
   const renderDayHeader = useCallback(

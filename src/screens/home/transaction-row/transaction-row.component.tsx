@@ -27,9 +27,11 @@ const TransactionRow: FC<TransactionRowProps> = ({
   holdingNameById,
   categoryKeyForRow,
   onPress,
+  onDuplicate,
 }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const isSynced = isSyncedTransaction(item);
 
   const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
   const description = transactionRowDescription({
@@ -76,8 +78,12 @@ const TransactionRow: FC<TransactionRowProps> = ({
   return (
     <CardContextMenu
       name={description}
-      deletable={!isSyncedTransaction(item)}
+      deletable={!isSynced}
       onDelete={() => transactionsRepo.remove(item.id)}
+      // A synced row is not duplicable — pass no handler so its long-press keeps
+      // offering nothing (it already renders bare). A manual row's Duplicate
+      // opens the create form pre-filled from this row (D2).
+      onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
     >
       <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
         <GlassSurface

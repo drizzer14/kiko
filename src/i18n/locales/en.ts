@@ -31,6 +31,7 @@ export const en = {
     clear: 'Clear',
     cancel: 'Cancel',
     delete: 'Delete',
+    duplicate: 'Duplicate',
     deleteNamed: 'Delete "{{name}}"',
     done: 'Done',
     edit: 'Edit',

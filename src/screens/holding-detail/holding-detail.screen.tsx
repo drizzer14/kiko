@@ -217,6 +217,10 @@ type LedgerRowContext = {
   holdingName: string;
   holdingNameById: Map<string, string>;
   onPressTransaction: (transactionId: string) => void;
+  // Duplicate this ledger row into a pre-filled create form (D2). Passed for
+  // manual rows only (a synced row is not duplicable), stateless via the
+  // `duplicateOfTransactionId` route param.
+  onDuplicateTransaction: (transactionId: string) => void;
 };
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
@@ -235,6 +239,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     holdingName,
     holdingNameById,
     onPressTransaction,
+    onDuplicateTransaction,
   } = context;
 
   if (row.kind === 'derived') {
@@ -309,6 +314,14 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       name={description}
       deletable={!isSyncedTransaction(row.transaction)}
       onDelete={() => transactionsRepo.remove(row.transaction.id)}
+      // A synced row is not duplicable — pass no handler so its long-press keeps
+      // offering nothing (it already renders bare). A manual row's Duplicate
+      // opens the create form pre-filled from this row (D2).
+      onDuplicate={
+        isSyncedTransaction(row.transaction)
+          ? undefined
+          : () => onDuplicateTransaction(row.transaction.id)
+      }
     >
       <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
         <GlassSurface transparent bloom padding={3} testID="ledger-row">
@@ -570,6 +583,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holdingNameById,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
+    onDuplicateTransaction: (transactionId) =>
+      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
   };
 
   return (

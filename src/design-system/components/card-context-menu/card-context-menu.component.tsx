@@ -1,9 +1,13 @@
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
 import { type FC, type ReactNode, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
+import Text from '../text';
+import Button from '../button';
+import BottomSheet from '../bottom-sheet';
 import ConfirmSheet from '../confirm-sheet';
 
 // The gesture's jest test id, exported so the component test can look the
@@ -14,6 +18,13 @@ export const HOLD_GESTURE_TEST_ID = 'card-context-menu-hold';
 // drive the themed delete confirm to completion (every card grid routes its
 // delete through here, so they share one selector).
 export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
+
+// The action-list buttons' jest test ids, exported so a consumer's test can
+// drive the Duplicate/Delete CHOICE that a hold opens once `onDuplicate` is
+// wired. Only present when `onDuplicate` is provided (a delete-only card never
+// renders the action list — it opens the confirm directly).
+export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
+export const DELETE_ACTION_TEST_ID = 'card-context-menu-delete-action';
 
 // A touch-and-hold must stay still for this long to open the delete confirm —
 // long enough that a scroll or a drag-to-reorder (which both move the finger)
@@ -65,27 +76,71 @@ const CardContextMenu: FC<{
   name: string;
   deletable: boolean;
   onDelete: () => void;
+  // An optional "duplicate this entity" action. When provided, a hold opens a
+  // themed CHOICE (Duplicate + Delete) instead of the delete confirm directly;
+  // when omitted, the hold keeps its original delete-only behavior byte-for-
+  // behavior. Only the transaction rows (Home + the holding-detail ledger) pass
+  // it, for manual rows only — the account/holding cards and grids never do.
+  onDuplicate?: () => void;
   children: ReactNode;
-}> = ({ name, deletable, onDelete, children }) => {
+}> = ({ name, deletable, onDelete, onDuplicate, children }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  // The Duplicate/Delete action list's visibility, separate from the delete
+  // confirm's: a hold opens THIS when a duplicate action exists, and choosing
+  // Delete from it hands off to the confirm sheet below.
+  const [actionsVisible, setActionsVisible] = useState(false);
 
-  if (!deletable) {
+  const canDuplicate = onDuplicate !== undefined;
+
+  // A card with NEITHER a delete nor a duplicate action renders bare — no
+  // gesture, no sheet — leaving the touch-and-hold free for an enclosing
+  // sortables drag to claim (a synced row keeps its reorder this way).
+  if (!deletable && !canDuplicate) {
     return <>{children}</>;
   }
 
-  const holdToDelete = Gesture.LongPress()
+  // A hold offers the action-list CHOICE only when a duplicate action exists;
+  // otherwise it keeps the original behavior and opens the delete confirm
+  // straight away, so every delete-only consumer is unchanged.
+  const holdToActivate = Gesture.LongPress()
     .minDuration(HOLD_DURATION_MS)
     .maxDistance(HOLD_MAX_DISTANCE)
     .runOnJS(true)
     .withTestId(HOLD_GESTURE_TEST_ID)
     .onStart(() => {
       trigger('impactMedium');
+
+      if (canDuplicate) {
+        setActionsVisible(true);
+
+        return;
+      }
+
       setConfirmVisible(true);
     });
 
   const cancelDelete = (): void => {
     setConfirmVisible(false);
+  };
+
+  const dismissActions = (): void => {
+    setActionsVisible(false);
+  };
+
+  // Duplicate closes the action list first, THEN runs the handler (which
+  // typically navigates away), keeping the setState off a soon-unmounted node.
+  const runDuplicate = (): void => {
+    setActionsVisible(false);
+    onDuplicate?.();
+  };
+
+  // Delete from the action list hands off to the SAME named confirm sheet the
+  // delete-only path uses: close the list, open the confirm.
+  const chooseDelete = (): void => {
+    setActionsVisible(false);
+    setConfirmVisible(true);
   };
 
   // Close first, THEN delete: `onDelete` typically removes this card from its
@@ -98,9 +153,38 @@ const CardContextMenu: FC<{
 
   return (
     <>
-      <GestureDetector gesture={holdToDelete}>
+      <GestureDetector gesture={holdToActivate}>
         <View testID="card-context-menu">{children}</View>
       </GestureDetector>
+
+      {canDuplicate && (
+        <BottomSheet
+          visible={actionsVisible}
+          onDismiss={dismissActions}
+          gap={3}
+          header={<Text variant="heading">{name}</Text>}
+          testID="card-context-menu-actions"
+        >
+          <Button icon="doc.on.doc" onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
+            {t('common.duplicate')}
+          </Button>
+
+          {deletable && (
+            <Button
+              variant="destructive"
+              icon="trash"
+              onPress={chooseDelete}
+              testID={DELETE_ACTION_TEST_ID}
+            >
+              {t('common.delete')}
+            </Button>
+          )}
+
+          <Button variant="ghost" textColor={theme.colors.negative} onPress={dismissActions}>
+            {t('common.cancel')}
+          </Button>
+        </BottomSheet>
+      )}
 
       <ConfirmSheet
         visible={confirmVisible}

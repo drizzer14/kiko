@@ -173,6 +173,12 @@ const renderEdit = (transactionId: string): ReturnType<typeof render> => {
   return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
 };
 
+const renderDuplicate = (duplicateOfTransactionId: string): ReturnType<typeof render> => {
+  const route = transactionFormRoute({ duplicateOfTransactionId });
+
+  return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
+};
+
 // Drive the DateField calendar: open the "Date" sheet, then fire the mocked
 // calendar's day-press for the given local day, so a test can backdate a row.
 const pickDate = async (
@@ -646,6 +652,87 @@ describe('TransactionFormScreen — localization', () => {
     expect(getByLabelText('Куди')).toBeTruthy();
     expect(getByLabelText('Отримано')).toBeTruthy();
     expect(getByText('Зберегти')).toBeTruthy();
+  });
+});
+
+describe('TransactionFormScreen — duplicate mode (D2)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash' }], {
+      id: 'txn-src',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      category: 'groceries',
+      source: 'manual',
+    });
+  });
+
+  it('opens the CREATE form (title "Add Transaction"), not an edit of the source', async () => {
+    await renderDuplicate('txn-src');
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Transaction' });
+  });
+
+  it('seeds amount, description, and category from the source row', async () => {
+    const { getByLabelText, getByText } = await renderDuplicate('txn-src');
+
+    expect(getByLabelText('Amount').props.value).toBe('12.34');
+    expect(getByLabelText('Description').props.value).toBe('Coffee');
+    // The source's category seeds the picker, so Save is enabled immediately
+    // (a create requires a category) — the picked title shows on the field.
+    expect(getByText('Groceries')).toBeTruthy();
+  });
+
+  it('writes a NEW row via recordManual, dated to NOW (never the source time), leaving the source untouched', async () => {
+    const before = Date.now();
+    const { getByText } = await renderDuplicate('txn-src');
+
+    await fireEvent.press(getByText('Save'));
+
+    // A duplicate re-invokes the create path (recordManual), never the edit
+    // (update) or delete (remove) paths, so the source row is left intact.
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        description: 'Coffee',
+        category: 'groceries',
+      }),
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
+
+    // Dated to NOW: the write's time is a fresh timestamp, not the source's 42.
+    const { time } = mockRecordManual.mock.calls[0][0] as { time: number };
+    expect(time).not.toBe(42);
+    expect(time).toBeGreaterThanOrEqual(before);
+  });
+
+  it('seeds the holding (and thus the amount currency) from the source row via the primary-holding seam', async () => {
+    // A BTC source proves the holding seam drives the currency scale: the same
+    // -50 minor units that would render as "57" under a mis-scaled currency
+    // renders 0.0000005 only when the holding — hence BTC's 8dp scale — is
+    // correctly seeded from the source row.
+    setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
+      id: 'txn-btc',
+      holdingId: 'h-btc',
+      amountMinorUnits: -50,
+      time: 42,
+      description: 'Sats',
+      category: 'groceries',
+      source: 'manual',
+    });
+
+    const { getByLabelText, getByText } = await renderDuplicate('txn-btc');
+
+    expect(getByLabelText('Amount').props.value).toBe('0.0000005');
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'h-btc', amountMinorUnits: -50 }),
+    );
   });
 });
 

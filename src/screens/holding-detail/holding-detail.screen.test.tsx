@@ -8,7 +8,9 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { formatDate } from '../../dates/format';
 import {
+  DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
+  DUPLICATE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
@@ -705,9 +707,9 @@ describe('HoldingDetailScreen', () => {
     const { getByTestId, getByText } = await renderScreen();
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under
-    // the max distance) opens the themed ConfirmSheet (not a native
-    // ActionSheetIOS); pressing its destructive confirm removes the
-    // transaction via `transactionsRepo.remove`.
+    // the max distance) opens the Duplicate/Delete choice; choosing Delete
+    // hands off to the themed ConfirmSheet (not a native ActionSheetIOS), whose
+    // destructive confirm removes the transaction via `transactionsRepo.remove`.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -716,9 +718,41 @@ describe('HoldingDetailScreen', () => {
       ]);
     });
 
+    await act(async () => {
+      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
     expect(getByText('Delete "Coffee"')).toBeTruthy();
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
+  });
+
+  it('duplicates a manual transaction row to a pre-filled create form (D2)', async () => {
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByTestId } = await renderScreen();
+
+    // A hold opens the Duplicate/Delete choice; Duplicate navigates to the
+    // shared form with the `duplicateOfTransactionId` param, never editing or
+    // removing the source row.
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
+
+    await act(async () => {
+      fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+      duplicateOfTransactionId: 'txn-9',
+    });
+    expect(transactionsRepo.remove).not.toHaveBeenCalled();
   });
 
   it('does not offer delete on a synced transaction row', async () => {

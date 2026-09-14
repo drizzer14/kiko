@@ -22,6 +22,7 @@ export const uk: typeof en = {
     clear: 'Очистити',
     cancel: 'Скасувати',
     delete: 'Видалити',
+    duplicate: 'Дублювати',
     deleteNamed: 'Видалити «{{name}}»',
     done: 'Готово',
     edit: 'Редагувати',

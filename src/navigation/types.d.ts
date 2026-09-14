@@ -7,15 +7,22 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
  * `CompositeScreenProps` with `TabParamList` and the nested screen params.
  */
 /**
- * The Transaction form is reached two ways: with a `holdingId` to ADD a new
- * manual transaction to that holding, or with a `transactionId` to open an
- * existing transaction — editable when it is manual, read-only when it was
- * imported from Monobank. The union makes the two entry points mutually
- * exclusive so a caller can never pass both or neither. It is registered in
- * both the Home and Accounts stacks (Home lists every transaction; Accounts
- * reaches it from a holding), so both param lists carry the same shape.
+ * The Transaction form is reached three ways: with a `holdingId` to ADD a new
+ * manual transaction to that holding, with a `transactionId` to open an
+ * existing transaction (editable when it is manual, read-only when it was
+ * imported from Monobank), or with a `duplicateOfTransactionId` to open the
+ * CREATE form pre-filled from an existing manual row (its amount, description,
+ * category, and holding), dated to now — a new row on save, never an edit of
+ * the source. The union makes the entry points mutually exclusive so a caller
+ * can never pass more than one. It is registered in both the Home and Accounts
+ * stacks (Home lists every transaction; Accounts reaches it from a holding), so
+ * both param lists carry the same shape. (Bundle B will later add its own
+ * empty-create member to this union — leave room for it, do not collide.)
  */
-export type TransactionFormParams = { holdingId: string } | { transactionId: string };
+export type TransactionFormParams =
+  | { holdingId: string }
+  | { transactionId: string }
+  | { duplicateOfTransactionId: string };
 
 export type HomeStackParamList = {
   Home: undefined;
