@@ -28,6 +28,7 @@ const tx = (over: Partial<TrendTransaction>): TrendTransaction => ({
   counterIban: null,
   description: '',
   exchangeCounterpartHoldingId: null,
+  changeGroupId: null,
   currency: 'UAH' as BreakdownTransaction['currency'],
   time: NOW,
   ...over,
@@ -69,6 +70,27 @@ describe('buildCategoryTrend', () => {
 
     expect(series[0].key).toBe('groceries');
     expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 30 }]);
+  });
+
+  it("nets a split payment's linked change-returns into its trend line (not overstated by the change)", () => {
+    const series = buildTrend([
+      tx({
+        id: 'pay',
+        category: 'groceries',
+        amountMinorUnits: -212_00,
+        time: NOW,
+        changeGroupId: 'grp-1',
+      }),
+      tx({ id: 'r1', category: null, amountMinorUnits: 20, time: NOW, changeGroupId: 'grp-1' }),
+      tx({ id: 'r2', category: null, amountMinorUnits: 8, time: NOW, changeGroupId: 'grp-1' }),
+    ]);
+    const nonZero = series[0].points.filter((point) => point.amount !== 0);
+
+    // −212_00 payment, +20 and +8 returns → the day bucket shows the NET 211_72
+    // (211.72 in base MAJOR units), not the bare 212_00. The positive returns are
+    // already skipped as income and only reduce the payment's magnitude.
+    expect(series.map((entry) => entry.key)).toEqual(['groceries']);
+    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 211.72 }]);
   });
 
   it('resolves each series title and color from the category display', () => {

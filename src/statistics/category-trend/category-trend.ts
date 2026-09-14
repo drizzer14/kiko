@@ -3,7 +3,12 @@ import type { Currency } from '../../currency/currency';
 import { Money, toMajor } from '../../currency/money';
 import { convert, type RateTable } from '../../rates/conversion';
 import { canConvert } from '../../rates/net-worth-view';
-import { type BreakdownTransaction, resolveCategoryColor } from '../category-breakdown';
+import {
+  type BreakdownTransaction,
+  netMagnitudeOf,
+  resolveCategoryColor,
+  sumReturnsByGroup,
+} from '../category-breakdown';
 
 /**
  * One point on a category's spending line: `amount` is that category's total
@@ -59,6 +64,12 @@ const dayBucket = (time: number): number => {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 };
 
+// Whether a day bucket falls within the inclusive [startDay, endDay] window.
+// Extracted so the accumulation loop reads one predicate rather than a two-sided
+// range comparison inline.
+const isInWindow = (day: number, startDay: number, endDay: number): boolean =>
+  day >= startDay && day <= endDay;
+
 // The fixed last-30-days window as an ordered set of UTC-day instants, ending on
 // the day `now` falls in and reaching back TREND_WINDOW_DAYS - 1 days — so a
 // series carries a point at every day even where a category had no spend, and
@@ -109,6 +120,12 @@ const accumulateSpend = (input: {
     endDay,
   } = input;
   const totals = new Map<string, TrendAccumulator>();
+  // Sum the POSITIVE change-returns per group so a split payment's trend value is
+  // netted by its change (design F2-7), exactly as buildCategoryBreakdown nets
+  // the pie. Returns share the payment's currency AND time for v1, so a payment
+  // and its returns always land in the same day bucket — netting raw minor units
+  // in the payment's own currency here is safe. Shares the pie's own helpers.
+  const returnsByGroup = sumReturnsByGroup(transactions);
 
   for (const transaction of transactions) {
     if (transaction.amountMinorUnits >= 0) {
@@ -129,12 +146,18 @@ const accumulateSpend = (input: {
     // Drop any expense whose day falls outside the fixed last-30-days window;
     // it must not affect a series' points NOR its sort total.
     const day = dayBucket(transaction.time);
-    if (day < startDay || day > endDay) {
+    if (!isInWindow(day, startDay, endDay)) {
+      continue;
+    }
+
+    const netMagnitude = netMagnitudeOf(transaction, returnsByGroup);
+
+    if (netMagnitude <= 0) {
       continue;
     }
 
     const spend = convert(
-      Money.of(transaction.currency, -transaction.amountMinorUnits),
+      Money.of(transaction.currency, netMagnitude),
       baseCurrency,
       rateTable,
     ).minorUnits;
