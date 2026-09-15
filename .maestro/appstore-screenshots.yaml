@@ -129,10 +129,13 @@ appId: com.dmytro-vasylkivskyi.kiko
 # MIDDLE of the Home screen instead of the tab and never navigated anywhere
 # (a real, observed failure — every other tab's localized text is ALSO
 # ambiguous for the same reason: on-screen content can repeat a tab's title).
-# Icon ids, confirmed from the dump: Home = house.fill, Accounts =
-# wallet.pass.fill, Statistics = chart.xyaxis.line, Settings = gearshape.fill.
+# Icon ids, confirmed from the dump: Home = house.fill, Accounts = tray,
+# Statistics = chart.xyaxis.line, Settings = gear. Accounts and Settings
+# changed in the 1.1 icon overhaul (commit 54d58ca): Accounts was
+# wallet.pass.fill (now genericEntitySymbol.account = tray), Settings was
+# gearshape.fill (now gear).
 - tapOn:
-    id: "wallet.pass.fill"
+    id: "tray"
 - assertVisible:
     id: "accounts-grid"
 - takeScreenshot: 03-accounts-grid
@@ -272,7 +275,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # ---------------------------------------------------------------------------
 # Tab bar icon id, not text — see the comment above the Accounts tap.
 - tapOn:
-    id: "gearshape.fill"
+    id: "gear"
 - assertVisible:
     id: "settings-card-system"
 - takeScreenshot: 09-settings-main
