@@ -94,7 +94,7 @@ beforeEach(() => {
 });
 
 describe('HoldingFormScreen contribution button variants', () => {
-  it('hands the Add contribution button the blue primary treatment at the small size', async () => {
+  it('hands the Add contribution button the faint secondaryTonal treatment at the small size', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -102,12 +102,13 @@ describe('HoldingFormScreen contribution button variants', () => {
     const addEntries = mockButtonProps.filter((entry) => entry.children === 'Add contribution');
 
     expect(addEntries.length).toBeGreaterThan(0);
-    // The inline Add is the affirmative "add another contribution" action, so it
-    // takes the solid blue `primary` accent fill (on-device review: the faint
-    // secondaryTonal tint read too weak for the primary add affordance). It
-    // stays the shorter `small` inline size with its leading plus glyph.
+    // secondaryTonal is the canonical per-row Add variant across the app (see
+    // the matching "Add Return" control in transaction-form.screen.tsx) —
+    // `primary` is reserved for a screen-level call to action, not a per-row
+    // add control. It stays the shorter `small` inline size with its leading
+    // plus glyph.
     for (const entry of addEntries) {
-      expect(entry.variant).toBe('primary');
+      expect(entry.variant).toBe('secondaryTonal');
       expect(entry.size).toBe('small');
       expect(entry.icon).toBe('plus');
     }

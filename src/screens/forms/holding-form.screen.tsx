@@ -1,6 +1,8 @@
 import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import type { ScrollViewInstance } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -237,6 +239,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [typeOptions, type]);
 
+  // The scroll-mode ScrollView's ref, so adding a contribution can bring the
+  // newly appended row into view.
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+
   // term deposit state
   const nextContributionId = useRef(1);
   const [contributions, setContributions] = useState<Contribution[]>([
@@ -321,6 +327,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const addContribution = (): void => {
     const id = nextContributionId.current++;
     setContributions((rows) => [...rows, { id, amount: '', date: null, saved: false }]);
+
+    // The new row's fields are only measured after this render commits, so
+    // defer the scroll to the next frame — otherwise `scrollToEnd` targets the
+    // pre-add (shorter) content size and stops short of the freshly added
+    // contribution. Same deferred-RAF pattern as the categories screen's
+    // `scrollToAddCategoryForm`.
+    requestAnimationFrame(() => {
+      scrollableRef.current?.scrollToEnd({ animated: true });
+    });
   };
 
   const removeContribution = (index: number): void => {
@@ -506,6 +521,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Button onPress={onSave} disabled={!isValid || isSubmitting}>
           {t('common.save')}
@@ -628,7 +644,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               </Box>
 
               <Button
-                variant="primary"
+                variant="secondaryTonal"
                 size="small"
                 fullWidth={false}
                 icon="plus"

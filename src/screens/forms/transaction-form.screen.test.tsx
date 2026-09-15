@@ -5,9 +5,16 @@ import { StyleSheet } from 'react-native';
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
+// ONLY `useAnimatedRef` — see the module for the full rationale.
+import { mockReanimatedScrollToEnd } from '../../test-support/mock-reanimated-scroll-to-end';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
+
+const mockScrollToEnd = jest.fn();
+
+jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd));
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -2447,6 +2454,25 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.getByLabelText('Remove return 1')).toBeTruthy();
     expect(utils.getByLabelText('Remove return 2')).toBeTruthy();
     expect(utils.getAllByText('Remove')).toHaveLength(2);
+  });
+
+  it('scrolls the ScrollView to the newly added return when Add return is pressed', async () => {
+    // The scroll is deferred to the next frame so the just-added row is
+    // measured first; run that frame synchronously to assert the effect (same
+    // pattern as the categories screen's own deferred scroll-to-form test).
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    mockScrollToEnd.mockClear();
+    await fireEvent.press(utils.getByText('Add return'));
+
+    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
+
+    rafSpy.mockRestore();
   });
 
   it('renders a divider and a section heading above the returns list (item 4)', async () => {

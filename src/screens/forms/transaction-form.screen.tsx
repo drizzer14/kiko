@@ -3,6 +3,8 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
+import type { ScrollViewInstance } from 'react-native';
+import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -1323,6 +1325,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
+  // The scroll-mode ScrollView's ref, so adding a split return can bring the
+  // newly appended row into view.
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   // The split payment's change-returns, one row per holding the change is
   // handed back to. Starts with a single empty row so the section always shows
   // one picker when Split is entered. `nextReturnId` hands out a stable key per
@@ -1646,6 +1651,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     const id = nextReturnId.current++;
 
     setChangeReturns((rows) => [...rows, { id, holdingId: null, amount: '' }]);
+
+    // The new row's fields are only measured after this render commits, so
+    // defer the scroll to the next frame — otherwise `scrollToEnd` targets the
+    // pre-add (shorter) content size and stops short of the freshly added
+    // return. Same deferred-RAF pattern as the categories screen's
+    // `scrollToAddCategoryForm`.
+    requestAnimationFrame(() => {
+      scrollableRef.current?.scrollToEnd({ animated: true });
+    });
   };
 
   const removeReturn = (index: number): void => {
@@ -1903,6 +1917,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     <>
       <Screen
         scroll
+        scrollableRef={scrollableRef}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Button onPress={onSave} disabled={disableSave || isSubmitting}>
