@@ -3,15 +3,15 @@ import { type FC, useRef, useState } from 'react';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { Pressable, type TextInputInstance } from 'react-native';
 
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import GlassSurface from '../../../design-system/components/glass-surface';
-import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
-import ColorPicker from '../../forms/color-picker';
-import HoldingIdentityField from '../../forms/holding-identity-field';
+import Box from '../../../../design-system/components/box';
+import Button from '../../../../design-system/components/button';
+import GlassSurface from '../../../../design-system/components/glass-surface';
+import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
+import SymbolIcon from '../../../../design-system/components/symbol';
+import Text from '../../../../design-system/components/text';
+import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
+import ColorPicker from '../../../forms/color-picker';
+import HoldingIdentityField from '../../../forms/holding-identity-field';
 
 import { styles } from './add-category-row.styles';
 

@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountsScreen from '../screens/accounts/accounts.screen';
-import AccountFormScreen from '../screens/forms/account-form.screen';
-import ContributionFormScreen from '../screens/forms/contribution-form.screen';
-import HoldingFormScreen from '../screens/forms/holding-form.screen';
-import TransactionFormScreen from '../screens/forms/transaction-form.screen';
+import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
+import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
+import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
+import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';

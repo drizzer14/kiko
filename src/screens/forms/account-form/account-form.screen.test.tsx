@@ -1,15 +1,15 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import '../../design-system/unistyles';
-import { darkTheme } from '../../design-system/theme';
-import { accountKindSymbol, genericEntitySymbol } from '../../holdings/entity-symbols';
-import { i18n } from '../../i18n';
+import '../../../design-system/unistyles';
+import { darkTheme } from '../../../design-system/theme';
+import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
+import { i18n } from '../../../i18n';
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
-} from '../../test-support/navigation-props';
+} from '../../../test-support/navigation-props';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -48,7 +48,7 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -60,13 +60,13 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     update: (...args: unknown[]) => mockUpdate(...args),
   },
 }));
-jest.mock('../../monobank/token', () => ({
+jest.mock('../../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
 }));
-jest.mock('../../crypto-sync/binance/binance.client', () => ({
+jest.mock('../../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
 jest.mock('@kiko/sync/use-sync', () => ({
@@ -89,7 +89,7 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
 // field).
-jest.mock('../account-detail/wallet-address-field', () => {
+jest.mock('../../account-detail/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
@@ -103,7 +103,7 @@ jest.mock('../account-detail/wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../account-detail/binance-credentials-field', () => {
+jest.mock('../../account-detail/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
@@ -119,7 +119,7 @@ jest.mock('../account-detail/binance-credentials-field', () => {
 // status (covered by its own test); here it collapses to one pressable that fires
 // the screen's `connectMonobank` closure with a token, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
-jest.mock('../account-detail/monobank-connect-field', () => {
+jest.mock('../../account-detail/monobank-connect-field', () => {
   const { useState } = require('react');
   const { Pressable, Text } = require('react-native');
   return {

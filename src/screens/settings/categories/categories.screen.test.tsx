@@ -1,16 +1,20 @@
 import type { ComponentProps } from 'react';
 import { StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../design-system/unistyles';
+import '../../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { i18n } from '../../i18n';
-import { darkTheme } from '../../design-system/theme';
-import { categoryColor } from '../../statistics/category-breakdown';
+import { i18n } from '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
+import { categoryColor } from '../../../statistics/category-breakdown';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../test-support/mock-reanimated-scroll-to-end';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 
@@ -92,7 +96,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
   },
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
     keys?.[0] === 'settings' ? { data: mockSettingsRows } : { data: mockLiveQueryData },
 }));

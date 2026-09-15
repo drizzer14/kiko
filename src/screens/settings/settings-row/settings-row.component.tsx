@@ -4,7 +4,7 @@ import { Pressable } from 'react-native';
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
-import { styles } from '../settings.styles';
+import { styles } from '../settings/settings.styles';
 
 import type { SettingsRowProps } from './settings-row.props';
 

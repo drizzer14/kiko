@@ -1,10 +1,14 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
-import '../../design-system/unistyles';
-import { darkTheme } from '../../design-system/theme';
-import { i18n } from '../../i18n';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import '../../../design-system/unistyles';
+import { darkTheme } from '../../../design-system/theme';
+import { i18n } from '../../../i18n';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import SystemScreen from './system.screen';
 
@@ -23,7 +27,7 @@ const renderScreen = () =>
 // APP_LOCK_ENABLED pinned ON so the Face ID (App Lock) card mounts — matching
 // the app-lock test setup relocated from the main Settings screen. The
 // flag-off / card-hidden path is covered in system.screen.app-lock.test.tsx.
-jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
+jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
 
 const mockSetLanguage = jest.fn();
 const mockSetLockEnabled = jest.fn();
@@ -40,7 +44,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setLockEnabled: (...args: unknown[]) => mockSetLockEnabled(...args),
   },
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData }),
 }));
 

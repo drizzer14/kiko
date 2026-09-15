@@ -8,21 +8,21 @@ import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import ColorPicker from '../forms/color-picker';
-import type { CategoryRow } from '../../db/schema';
-import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import HoldingIdentityField from '../forms/holding-identity-field';
-import type { SettingsStackParamList } from '../../navigation/types';
-import GlassSurface from '../../design-system/components/glass-surface';
-import { DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { onGridDragEnd } from '../../design-system/grid-interaction';
-import ConfirmSheet from '../../design-system/components/confirm-sheet';
-import { resolveDefaultCategoryTitle } from '../../i18n/default-category-title';
-import { KIKO_CATEGORIES_ICONS } from '../../design-system/components/icon-picker-modal/icon-pools';
+import ColorPicker from '../../forms/color-picker';
+import type { CategoryRow } from '../../../db/schema';
+import Box from '../../../design-system/components/box';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import HoldingIdentityField from '../../forms/holding-identity-field';
+import type { SettingsStackParamList } from '../../../navigation/types';
+import GlassSurface from '../../../design-system/components/glass-surface';
+import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
+import { resolveCategoryColor } from '../../../statistics/category-breakdown';
+import { onGridDragEnd } from '../../../design-system/grid-interaction';
+import ConfirmSheet from '../../../design-system/components/confirm-sheet';
+import { resolveDefaultCategoryTitle } from '../../../i18n/default-category-title';
+import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import AddCategoryRow from './add-category-row';
 

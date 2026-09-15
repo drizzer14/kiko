@@ -1,9 +1,13 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
-import '../../design-system/unistyles';
-import '../../i18n';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import '../../../design-system/unistyles';
+import '../../../i18n';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -23,7 +27,7 @@ const mockButtonProps: {
   accessibilityLabel?: string;
 }[] = [];
 
-jest.mock('../../design-system/components/button', () => {
+jest.mock('../../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {
@@ -63,7 +67,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   // A bank account, so the create form defaults to a term deposit and renders
   // the contributions block with its Add/Remove controls.
   useLiveQuery: (_query: unknown, keys: string[]) =>

@@ -1,10 +1,10 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, TextInput } from 'react-native';
-import '../../../design-system/unistyles';
-import '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-import { resolveCategoryColor } from '../../../statistics/category-breakdown';
+import '../../../../design-system/unistyles';
+import '../../../../i18n';
+import { darkTheme } from '../../../../design-system/theme';
+import { resolveCategoryColor } from '../../../../statistics/category-breakdown';
 
 import AddCategoryRow from './add-category-row.component';
 
@@ -23,7 +23,7 @@ jest.mock('@kiko/categories/repo', () => ({
 // through a testID so the collapsed label's tone is assertable; children still
 // render as plain text, so every getByText/getByLabelText query is unaffected.
 // Button uses react-native's own Text, so its labels are untouched by this.
-jest.mock('../../../design-system/components/text', () => {
+jest.mock('../../../../design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

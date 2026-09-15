@@ -1,12 +1,12 @@
 import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
 import { render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import '../../../i18n';
+import '../../../../design-system/unistyles';
+import '../../../../i18n';
 
 import AppLockSetting from './app-lock-setting.component';
 
 // T-15 regression: proves the fix end to end, through the REAL
-// `../../../auth/biometrics.isSensorAvailable` (only the native module itself
+// `../../../../auth/biometrics.isSensorAvailable` (only the native module itself
 // is mocked, unlike `app-lock-setting.component.test.tsx`, which mocks the
 // wrapper directly). `AppLockSetting`'s `isSensorAvailable().then(...)`
 // (app-lock-setting.component.tsx) has no `.catch` by design — the wrapper is

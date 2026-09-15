@@ -1,11 +1,15 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import '../../design-system/unistyles';
-import '../../i18n';
+import '../../../design-system/unistyles';
+import '../../../i18n';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../test-support/mock-reanimated-scroll-to-end';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -23,7 +27,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   // A bank account, so the create form defaults to a term deposit and renders
   // the contributions block with its Add/Remove controls.
   useLiveQuery: (_query: unknown, keys: string[]) =>

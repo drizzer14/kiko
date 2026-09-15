@@ -2,13 +2,17 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 
-import type { TransactionFormParams } from '../../navigation/types';
-import '../../design-system/unistyles';
-import { i18n } from '../../i18n';
+import type { TransactionFormParams } from '../../../navigation/types';
+import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '../../test-support/mock-reanimated-scroll-to-end';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 
@@ -99,7 +103,7 @@ jest.mock('@kiko/categories/category-overrides-repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 

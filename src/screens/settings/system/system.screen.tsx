@@ -3,17 +3,17 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { APP_LOCK_ENABLED } from '../../db/db-config';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import GlassSurface from '../../design-system/components/glass-surface';
-import LanguageSwitch from '../../design-system/components/language-switch';
-import Screen from '../../design-system/components/screen';
-import { type AppLanguage, deviceLanguage } from '../../i18n';
-import type { SettingsStackParamList } from '../../navigation/types';
+import { APP_LOCK_ENABLED } from '../../../db/db-config';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Box from '../../../design-system/components/box';
+import GlassSurface from '../../../design-system/components/glass-surface';
+import LanguageSwitch from '../../../design-system/components/language-switch';
+import Screen from '../../../design-system/components/screen';
+import { type AppLanguage, deviceLanguage } from '../../../i18n';
+import type { SettingsStackParamList } from '../../../navigation/types';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
-import SettingsRow from './settings-row';
+import SettingsRow from '../settings-row';
 
 type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'>;
 

@@ -4,19 +4,19 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 
-import { type Currency, currencySymbol } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import { parseAmount } from '../../currency/parse';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import TextField from '../../design-system/components/text-field';
-import type { AccountsStackParamList } from '../../navigation/types';
+import { type Currency, currencySymbol } from '../../../currency/currency';
+import { Money } from '../../../currency/money';
+import { parseAmount } from '../../../currency/parse';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Box from '../../../design-system/components/box';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import TextField from '../../../design-system/components/text-field';
+import type { AccountsStackParamList } from '../../../navigation/types';
 
-import { groupAmount } from './amount-format';
-import DateField from './date-field';
-import { useSubmitOnce } from './use-submit-once';
+import DateField from '../date-field';
+import { groupAmount } from '../amount-format/amount-format';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,

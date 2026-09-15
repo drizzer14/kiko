@@ -1,14 +1,14 @@
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import '../../design-system/unistyles';
-import { i18n } from '../../i18n';
-import pkg from '../../../package.json';
+import '../../../design-system/unistyles';
+import { i18n } from '../../../i18n';
+import pkg from '../../../../package.json';
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
-} from '../../test-support/navigation-props';
+} from '../../../test-support/navigation-props';
 
 import SettingsScreen from './settings.screen';
 
@@ -35,7 +35,7 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
 // never renders it regardless of the flag. This suite pins APP_LOCK_ENABLED OFF
 // and asserts the card is absent here; the visible/hidden App Lock paths now
 // live in system.screen.test.tsx and system.screen.app-lock-off.test.tsx.
-jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
+jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
@@ -46,7 +46,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
   },
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData }),
 }));
 
@@ -54,7 +54,7 @@ jest.mock('../../db/use-live-query', () => ({
 // a standalone screen render lacks; stand it in with a spy so this test can
 // assert the screen hands it the scroll view's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('../../../navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));

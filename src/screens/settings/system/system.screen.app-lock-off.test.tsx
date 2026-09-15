@@ -1,7 +1,11 @@
 import { render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import '../../design-system/unistyles';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import '../../../design-system/unistyles';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import SystemScreen from './system.screen';
 
@@ -20,7 +24,7 @@ const renderScreen = () =>
 // APP_LOCK_ENABLED pinned OFF: the Face ID (App Lock) card is hidden, so a safe
 // build without the biometrics pod shows no non-functional toggle. The
 // visible-card path is covered in system.screen.test.tsx.
-jest.mock('../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
+jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
 
 const mockLiveQueryData = [{ baseCurrency: 'UAH', lockEnabled: false }];
 
@@ -31,7 +35,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setLockEnabled: jest.fn(),
   },
 }));
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockLiveQueryData }),
 }));
 

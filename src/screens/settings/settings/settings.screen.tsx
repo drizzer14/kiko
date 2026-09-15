@@ -7,18 +7,18 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import pkg from '../../../package.json';
-import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
-import Text from '../../design-system/components/text';
-import Screen from '../../design-system/components/screen';
-import type { SettingsStackParamList } from '../../navigation/types';
-import GlassSurface from '../../design-system/components/glass-surface';
-import CurrencyField from '../../design-system/components/currency-field';
-import { type Currency, fiatCurrencyOptions } from '../../currency/currency';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import pkg from '../../../../package.json';
+import Box from '../../../design-system/components/box';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Text from '../../../design-system/components/text';
+import Screen from '../../../design-system/components/screen';
+import type { SettingsStackParamList } from '../../../navigation/types';
+import GlassSurface from '../../../design-system/components/glass-surface';
+import CurrencyField from '../../../design-system/components/currency-field';
+import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
+import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
 
-import SettingsRow from './settings-row';
+import SettingsRow from '../settings-row';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
 

@@ -12,7 +12,7 @@ import {
   type HoldingType,
   holdingTypes,
   holdingTypesForAccountKind,
-} from '../../holdings/holding-type';
+} from '../../../holdings/holding-type';
 import {
   asBondMeta,
   asTermDepositMeta,
@@ -20,33 +20,33 @@ import {
   type BondMeta,
   type CompoundingFrequency,
   type TermDepositMeta,
-} from '../../holdings/holding-metadata';
-import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
-import { parseAmount } from '../../currency/parse';
-import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
-import Text from '../../design-system/components/text';
-import Button from '../../design-system/components/button';
-import Screen from '../../design-system/components/screen';
-import Switch from '../../design-system/components/switch';
-import { isSyncedHolding } from '../../holdings/deletable';
-import Divider from '../../design-system/components/divider';
-import TextField from '../../design-system/components/text-field';
-import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { defaultHoldingColor } from '../../holdings/entity-colors';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import type { AccountsStackParamList } from '../../navigation/types';
-import { type Currency, currencySymbol } from '../../currency/currency';
-import CurrencyField from '../../design-system/components/currency-field';
-import { KIKO_ENTITIES_ICONS } from '../../design-system/components/icon-picker-modal/icon-pools';
+} from '../../../holdings/holding-metadata';
+import { Money } from '../../../currency/money';
+import type { HoldingRow } from '../../../db/schema';
+import { parseAmount } from '../../../currency/parse';
+import Box from '../../../design-system/components/box';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import Switch from '../../../design-system/components/switch';
+import { isSyncedHolding } from '../../../holdings/deletable';
+import Divider from '../../../design-system/components/divider';
+import TextField from '../../../design-system/components/text-field';
+import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
+import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import { resolveEntityColor } from '../../../design-system/entity-tint';
+import type { AccountsStackParamList } from '../../../navigation/types';
+import { type Currency, currencySymbol } from '../../../currency/currency';
+import CurrencyField from '../../../design-system/components/currency-field';
+import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
-import ChipRow from './chip-row';
-import DateField from './date-field';
-import ColorPicker from './color-picker';
-import { useSubmitOnce } from './use-submit-once';
-import HoldingIdentityField from './holding-identity-field';
-import { groupAmount, majorAmountText } from './amount-format';
+import ChipRow from '../chip-row';
+import DateField from '../date-field';
+import ColorPicker from '../color-picker';
+import HoldingIdentityField from '../holding-identity-field';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 

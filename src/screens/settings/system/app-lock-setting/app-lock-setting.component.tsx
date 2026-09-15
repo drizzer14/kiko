@@ -3,11 +3,11 @@ import { type FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
-import { isSensorAvailable, type SensorStatus } from '../../../auth/biometrics';
-import GlassSurface from '../../../design-system/components/glass-surface';
-import Switch from '../../../design-system/components/switch';
-import Text from '../../../design-system/components/text';
-import SettingsRow from '../settings-row';
+import { isSensorAvailable, type SensorStatus } from '../../../../auth/biometrics';
+import GlassSurface from '../../../../design-system/components/glass-surface';
+import Switch from '../../../../design-system/components/switch';
+import Text from '../../../../design-system/components/text';
+import SettingsRow from '../../settings-row';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 

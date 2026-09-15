@@ -1,11 +1,15 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import '../../design-system/unistyles';
+import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import { darkTheme } from '../../design-system/theme';
-import { i18n } from '../../i18n';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { darkTheme } from '../../../design-system/theme';
+import { i18n } from '../../../i18n';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -55,7 +59,7 @@ let mockAccountInstitution: string | null = null;
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   // Key on the subscribed table: the holdings query drives edit-mode hydration,
   // the accounts query drives the allowed-type filter and the sync gate.
   useLiveQuery: (_query: unknown, keys: string[]) =>

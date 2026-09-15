@@ -1,11 +1,15 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
-import '../../design-system/unistyles';
+import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import { i18n } from '../../i18n';
-import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
+import { i18n } from '../../../i18n';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+} from '../../../test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
 
@@ -13,7 +17,7 @@ type ContributionFormProps = ComponentProps<typeof ContributionFormScreen>;
 
 const mockUseLiveQuery = jest.fn();
 
-jest.mock('../../db/use-live-query', () => ({
+jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 jest.mock('@kiko/holdings/repo', () => ({
