@@ -52,6 +52,11 @@ export const en = {
     },
     baseCurrency: 'Base Currency',
     categories: 'Categories',
+    footer: {
+      appName: 'Kiko',
+      copyrightHolder: 'Dmytro Vasylkivskyi',
+      privacyPolicy: 'Privacy Policy',
+    },
     language: 'Language',
     system: 'System',
     title: 'Settings',

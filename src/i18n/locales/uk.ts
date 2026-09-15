@@ -44,6 +44,11 @@ export const uk: typeof en = {
     },
     baseCurrency: 'Основна валюта',
     categories: 'Категорії',
+    footer: {
+      appName: 'Кіко',
+      copyrightHolder: 'Дмитро Васильківський',
+      privacyPolicy: 'Політика конфіденційності',
+    },
     language: 'Мова',
     system: 'Системні',
     title: 'Налаштування',

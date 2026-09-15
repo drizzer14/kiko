@@ -1,12 +1,16 @@
 import type { FC } from 'react';
+import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
-import type { ScrollViewInstance } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import pkg from '../../../package.json';
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
+import Text from '../../design-system/components/text';
 import Screen from '../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../navigation/types';
 import GlassSurface from '../../design-system/components/glass-surface';
@@ -18,6 +22,30 @@ import SettingsRow from './settings-row';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
 
+const PRIVACY_POLICY_URL_EN = 'https://drizzer14.github.io/kiko/en.html';
+const PRIVACY_POLICY_URL_UK = 'https://drizzer14.github.io/kiko';
+
+// The privacy-policy link opens the page matching the CURRENT app language,
+// not the device locale — mirrors `activeLocale()`'s uk/otherwise shape
+// (`src/i18n/active-locale/active-locale.ts`).
+const resolvePrivacyPolicyUrl = (language: string): string =>
+  match(language)
+    .with('uk', () => PRIVACY_POLICY_URL_UK)
+    .otherwise(() => PRIVACY_POLICY_URL_EN);
+
+const styles = StyleSheet.create((theme) => ({
+  // Separates the footer from the cards Box above with a token gap, rather
+  // than a raw pixel margin.
+  footer: {
+    marginTop: theme.spacing(4),
+  },
+  // Matches `monobank-token-input.component.tsx`'s `linkPressable`: the
+  // tappable link hugs its own text width instead of stretching full-width.
+  footerLink: {
+    alignSelf: 'flex-start',
+  },
+}));
+
 const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
@@ -27,13 +55,17 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
 
   const handleSelectCurrency = (currency: Currency): void => {
     settingsRepo.setBaseCurrency(currency);
+  };
+
+  const handleOpenPrivacyPolicy = (): void => {
+    Linking.openURL(resolvePrivacyPolicyUrl(i18n.language));
   };
 
   return (
@@ -85,6 +117,30 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Categories')}
           />
         </GlassSurface>
+      </Box>
+
+      {/* App Store compliance footer: app name + version, copyright, and a
+          Privacy Policy link — a sibling of the cards Box, not a fourth card,
+          so it reads as page chrome rather than another setting. */}
+      <Box gap={1} style={styles.footer}>
+        <Text variant="caption" tone="textSecondary">
+          {`${t('settings.footer.appName')} v${pkg.version}`}
+        </Text>
+
+        <Text variant="caption" tone="textSecondary">
+          {`© ${new Date().getFullYear()} ${t('settings.footer.copyrightHolder')}`}
+        </Text>
+
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={t('settings.footer.privacyPolicy')}
+          onPress={handleOpenPrivacyPolicy}
+          style={styles.footerLink}
+        >
+          <Text variant="caption" tone="accent">
+            {t('settings.footer.privacyPolicy')}
+          </Text>
+        </Pressable>
       </Box>
     </Screen>
   );

@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
+import pkg from '../../../package.json';
 import {
   asNavigationProp,
   asRouteProp,
@@ -12,6 +13,13 @@ import {
 import SettingsScreen from './settings.screen';
 
 type SettingsProps = ComponentProps<typeof SettingsScreen>;
+
+const mockOpenURL = jest.fn();
+
+jest.mock('react-native/Libraries/Linking/Linking', () => ({
+  __esModule: true,
+  default: { openURL: (...args: unknown[]) => mockOpenURL(...args) },
+}));
 
 // The screen takes both React Navigation props; only `navigation` is read, so a
 // test that asserts on a navigate passes its own spy and the rest default.
@@ -254,6 +262,35 @@ describe('SettingsScreen', () => {
   });
 });
 
+// The App Store compliance footer: app name + version (read from
+// package.json, never hardcoded), copyright, and a Privacy Policy link that
+// opens the page matching the current app language.
+describe('SettingsScreen — footer', () => {
+  beforeEach(() => {
+    mockOpenURL.mockClear();
+  });
+
+  it('renders the app name and the version read from package.json', async () => {
+    const { getByText } = await renderScreen();
+
+    expect(getByText(`Kiko v${pkg.version}`)).toBeTruthy();
+  });
+
+  it('renders the copyright line with the current year', async () => {
+    const { getByText } = await renderScreen();
+
+    expect(getByText(`© ${new Date().getFullYear()} Dmytro Vasylkivskyi`)).toBeTruthy();
+  });
+
+  it('renders a Privacy Policy link that opens the English page under en', async () => {
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Privacy Policy'));
+
+    expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
+  });
+});
+
 describe('SettingsScreen — localization', () => {
   afterEach(async () => {
     await act(async () => {
@@ -279,5 +316,20 @@ describe('SettingsScreen — localization', () => {
 
     expect(getByText('Основна валюта')).toBeTruthy();
     expect(getByText('Системні')).toBeTruthy();
+  });
+
+  it('renders the Ukrainian footer strings and opens the Ukrainian Privacy Policy page under uk', async () => {
+    mockOpenURL.mockClear();
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+    const { getByText } = await renderScreen();
+
+    expect(getByText(`Кіко v${pkg.version}`)).toBeTruthy();
+    expect(getByText(`© ${new Date().getFullYear()} Дмитро Васильківський`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Політика конфіденційності'));
+
+    expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko');
   });
 });
