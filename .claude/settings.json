@@ -1,5 +1,15 @@
 {
   "enabledPlugins": {
     "kiko@kiko-marketplace": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run screenshots:*)",
+      "Bash(npm install)",
+      "Bash(npm ci)"
+    ]
   }
 }
