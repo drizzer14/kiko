@@ -49,9 +49,9 @@ const SystemScreen: FC<SystemScreenProps> = () => {
           </SettingsRow>
         </GlassSurface>
 
-        {/* Gated behind APP_LOCK_ENABLED (default OFF): a safe build without the
-            biometrics pod shows no non-functional App Lock toggle. When the flag
-            is flipped on for the supervised device step, the card appears. */}
+        {/* Gated behind APP_LOCK_ENABLED (a build-time kill switch, hardcoded on):
+            flipping it off is the escape hatch for a build without the
+            biometrics pod, so it shows no non-functional App Lock toggle. */}
         {APP_LOCK_ENABLED && (
           <AppLockSetting
             lockEnabled={settings?.lockEnabled ?? false}

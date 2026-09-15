@@ -399,9 +399,6 @@ export const uk: typeof en = {
       showAll: 'Показати всі',
       showLess: 'Згорнути',
     },
-    swipeableRow: {
-      confirmMessage: 'Це неможливо скасувати.',
-    },
   },
   migrations: {
     error: 'Помилка міграції: {{message}}',

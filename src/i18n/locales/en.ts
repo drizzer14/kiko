@@ -443,9 +443,6 @@ export const en = {
       showAll: 'Show all',
       showLess: 'Show less',
     },
-    swipeableRow: {
-      confirmMessage: 'This cannot be undone.',
-    },
   },
   // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very
   // first paint, before the navigator mounts, so it is keyed here rather than
