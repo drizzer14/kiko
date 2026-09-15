@@ -236,6 +236,18 @@ const pickCategory = async (
   await fireEvent.press(utils.getByText(title));
 };
 
+// ModeSelectField defers its actual `onSelect` call to the next frame (see
+// that component's own comment): picking a type closes its sheet immediately,
+// but the mode change itself lands a frame later, so the two never share a
+// commit. Every test that presses a type-sheet option — through `pickType`
+// below or directly, for an assertion that needs the picked mode itself (not
+// just the sheet closing) — must flush that deferred frame first.
+const flushDeferredModeSelect = async (): Promise<void> => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
+
 // Pick a transaction type from the TYPE select field's bottom sheet: tap the
 // field (labeled "Type") to open the sheet, then tap the option row. Like the
 // category picker, each option is only mounted once the sheet opens (the type
@@ -249,6 +261,7 @@ const pickType = async (
 ): Promise<void> => {
   await fireEvent.press(utils.getByLabelText('Type'));
   await fireEvent.press(utils.getByTestId(`transaction-type-option-${mode}`));
+  await flushDeferredModeSelect();
 };
 
 describe('TransactionFormScreen — add mode', () => {
@@ -715,6 +728,7 @@ describe('TransactionFormScreen — localization', () => {
     // open it, then pick the Exchange ('Обмін') option row.
     await fireEvent.press(getByLabelText('Тип'));
     await fireEvent.press(getByText('Обмін'));
+    await flushDeferredModeSelect();
 
     expect(getByLabelText('Віддано')).toBeTruthy();
     expect(getByLabelText('Куди')).toBeTruthy();
@@ -1621,6 +1635,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
     await fireEvent.press(getByLabelText('To'));
 
     // Another cash holding is listed; the source itself, a closed cash
@@ -1660,6 +1675,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
     expect(queryByLabelText('Category')).toBeNull();
   });
 
@@ -1674,6 +1690,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
 
@@ -1739,6 +1756,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
 
     await fireEvent.changeText(getByLabelText('Value Out'), '100');
     await fireEvent.press(getByLabelText('To'));
@@ -1836,6 +1854,7 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
 
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
     await fireEvent.press(getByLabelText('To'));
 
     // Another cash holding is offered, with its account name shown (rendered
@@ -1854,6 +1873,7 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
 
     await fireEvent.changeText(getByLabelText('Value Out'), '100');
     await fireEvent.press(getByLabelText('To'));
@@ -2417,6 +2437,27 @@ describe('TransactionFormScreen — Split-change mode', () => {
     // The heading precedes the first return row in reading order.
     const rendered = collectRenderedText(utils.toJSON());
     expect(rendered.indexOf('Change Returns')).toBeLessThan(rendered.indexOf('Return to 1'));
+  });
+
+  it('switches from Split to another type without throwing (crash regression)', async () => {
+    // Reproduces the reported crash: Split mounts `renderSplitReturns`, which
+    // renders its own nested BottomSheet (the return-row holding picker) —
+    // still mounted, even while closed. Picking a different type used to
+    // unmount that nested BottomSheet's native Modal in the SAME commit as
+    // this type-select sheet dismissing its own Modal, crashing on device
+    // (see mode-select-field.component.tsx). Jest cannot reproduce the native
+    // crash itself, so this asserts the RTL-level contract: the flow
+    // completes without throwing, the split-only UI unmounts, and the new
+    // mode is applied.
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    expect(utils.getByTestId('returns-divider')).toBeTruthy();
+
+    await pickType(utils, 'expense');
+
+    expect(utils.queryByTestId('returns-divider')).toBeNull();
+    expect(utils.getByTestId('transaction-type-field')).toHaveTextContent('Expense');
   });
 });
 

@@ -29,9 +29,18 @@ const ModeSelectField = ({
 }: ModeSelectFieldProps): ReactElement | null => {
   const [open, setOpen] = useState(false);
 
+  // Closing the sheet and applying the mode change used to run in the SAME
+  // synchronous commit: `onSelect` can unmount a nested BottomSheet elsewhere
+  // in the form (the split-return row picker, when leaving split), while
+  // `setOpen(false)` dismisses THIS sheet's own native Modal — two
+  // overlapping native modal teardowns in one commit crash on device. Closing
+  // first, then deferring `onSelect` to the next frame, keeps the two
+  // teardowns in separate commits.
   const handleSelect = (mode: FormMode): void => {
-    onSelect(mode);
     setOpen(false);
+    requestAnimationFrame(() => {
+      onSelect(mode);
+    });
   };
 
   if (!visible) {
