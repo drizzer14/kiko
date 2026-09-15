@@ -698,10 +698,10 @@ gap — it does not do the task itself.
 
 | Agent | Role | model | effort | Spawn command |
 |---|---|---|---|---|
-| developer | Writes all TypeScript/React Native code | opus | high | `claude --agent developer --effort high` |
-| planner | Writes implementation plans from a spec or feature request | opus | high | `claude --agent planner --effort high` |
-| debugger | Isolates faults, writes no code | opus | high | `claude --agent debugger --effort high` |
-| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
+| developer | Writes all TypeScript/React Native code | sonnet | high | `claude --agent developer --effort high` |
+| planner | Writes implementation plans from a spec or feature request | sonnet | high | `claude --agent planner --effort high` |
+| debugger | Isolates faults, writes no code | sonnet | high | `claude --agent debugger --effort high` |
+| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | sonnet | high | `claude --agent reviewer --effort high` |
 | qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | high | `claude --agent qa --effort high` |
 | designer | Owns theme tokens and shared styled components | sonnet | high | `claude --agent designer --effort high` |
 | explorer | Read-only codebase search | sonnet | medium | `claude --agent explorer --effort medium` |
@@ -709,7 +709,7 @@ gap — it does not do the task itself.
 | scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
 | ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
 | pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | medium | `claude --agent pm --effort medium` |
-| auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | opus | high | `claude --agent auditor --effort high` |
+| auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | sonnet | high | `claude --agent auditor --effort high` |
 
 Agent frontmatter sets only `model` (there is no per-agent effort
 field); the coordinator applies the recorded effort with `--effort`
