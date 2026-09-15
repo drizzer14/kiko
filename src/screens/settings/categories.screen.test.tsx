@@ -1,35 +1,23 @@
-import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet, TextInput } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { i18n } from '../../i18n';
 import { darkTheme } from '../../design-system/theme';
 import { categoryColor } from '../../statistics/category-breakdown';
+// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
+// ONLY `useAnimatedRef` — see the module for the full rationale.
+import { mockReanimatedScrollToEnd } from '../../test-support/mock-reanimated-scroll-to-end';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 
 const mockScrollToEnd = jest.fn();
 
-// Override ONLY `useAnimatedRef` for this file so the animated ref the Screen
-// hands its ScrollView exposes a spy-able `scrollToEnd` (the shared stub returns
-// `{ current: null }`, which the optional chain would swallow). Everything else
-// delegates to the shared reanimated stub (`jest/reanimated-mock`) so the rest
-// of its surface — the shared values / animated style / animated `View` the
-// transitively-imported `BottomSheet` uses, and the `default.createAnimatedComponent`
-// gesture-handler's detector reads at import — stays intact. A function ref
-// keeps its `.current` when React attaches the host node.
-jest.mock('react-native-reanimated', () => {
-  const stub = require('../../../jest/reanimated-mock');
-  return new Proxy(stub, {
-    get: (target, prop) =>
-      prop === 'useAnimatedRef'
-        ? () => Object.assign(() => undefined, { current: { scrollToEnd: mockScrollToEnd } })
-        : target[prop],
-  });
-});
+// A function ref keeps its `.current` when React attaches the host node.
+jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd));
 
 // Override the shared `react-native-sortables` mock (`jest/setup.js`) for this
 // file only, so the identity-churn regression test below can inspect the exact
@@ -285,14 +273,21 @@ describe('CategoriesScreen', () => {
     expect(getByLabelText('Name')).toBeTruthy();
   });
 
-  it('auto-focuses the name field when the add-category form is revealed', async () => {
+  it('focuses the name field when the add-category form is revealed, without native autoFocus', async () => {
+    const focusSpy = jest.spyOn(TextInput.prototype, 'focus');
+
     const { getByLabelText } = await renderScreen();
 
     await fireEvent.press(getByLabelText('Add category'));
 
-    // The freshly mounted name field grabs focus on mount, so the keyboard opens
-    // straight onto it.
-    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+    // The name field never sets native autoFocus (it would race the sibling
+    // keyboard InputAccessoryView's registration) — AddCategoryRow instead
+    // focuses it imperatively, deferred to the next frame; wait for that frame
+    // to elapse.
+    expect(getByLabelText('Name').props.autoFocus).toBeUndefined();
+    await waitFor(() => expect(focusSpy).toHaveBeenCalled());
+
+    focusSpy.mockRestore();
   });
 
   it('scrolls the ScrollView to the newly revealed form when the add row expands', async () => {

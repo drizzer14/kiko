@@ -34,7 +34,7 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   onEndEditingName,
   onFocus,
   namePlaceholder,
-  autoFocus = false,
+  nameInputRef,
   captioned = true,
   required,
 }) => {
@@ -64,8 +64,8 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
         {captioned && <FieldLabel label={nameLabel} required={required} />}
 
         <TextInput
+          ref={nameInputRef}
           accessibilityLabel={nameAccessibilityLabel ?? nameLabel}
-          autoFocus={autoFocus}
           value={name}
           onChangeText={onChangeName}
           onEndEditing={onEndEditingName}

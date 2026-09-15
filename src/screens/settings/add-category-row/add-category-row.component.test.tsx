@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TextInput } from 'react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
@@ -108,14 +108,27 @@ describe('AddCategoryRow', () => {
     expect(getByLabelText('Name')).toBeTruthy();
   });
 
-  it('auto-focuses the name input on the freshly revealed form', async () => {
+  it('focuses the name input on the freshly revealed form, deferred to the next frame', async () => {
+    // The focus is deferred to the next frame (real requestAnimationFrame, not
+    // mocked) so the freshly mounted field — and its sibling keyboard
+    // InputAccessoryView — commit first; waitFor lets that frame elapse before
+    // asserting.
+    const focusSpy = jest.spyOn(TextInput.prototype, 'focus');
+
+    const { getByLabelText } = await render(<AddCategoryRow />);
+
+    await fireEvent.press(getByLabelText('Add category'));
+    await waitFor(() => expect(focusSpy).toHaveBeenCalled());
+
+    focusSpy.mockRestore();
+  });
+
+  it('does not set native autoFocus on the name input (it would race the keyboard accessory)', async () => {
     const { getByLabelText } = await render(<AddCategoryRow />);
 
     await fireEvent.press(getByLabelText('Add category'));
 
-    // The name field mounts only on expand, so autoFocus fires exactly when the
-    // row opens — the keyboard lands on it without a second tap.
-    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+    expect(getByLabelText('Name').props.autoFocus).toBeUndefined();
   });
 
   it('labels the icon chip and color picker from the localization catalog when expanded', async () => {

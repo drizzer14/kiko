@@ -1,7 +1,7 @@
-import { categoriesRepo } from '@kiko/categories/repo';
-import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
+import { type FC, useRef, useState } from 'react';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { Pressable, type TextInputInstance } from 'react-native';
 
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
@@ -41,6 +41,10 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
   // persists as null so the row falls back to the stable per-key palette hash,
   // mirroring accounts/holdings' nullable color.
   const [color, setColor] = useState<string | null>(null);
+  // The name field's ref, so expanding the form can focus it imperatively
+  // instead of relying on the native `autoFocus` prop — see
+  // HoldingIdentityField's `nameInputRef` doc comment for why.
+  const nameInputRef = useRef<TextInputInstance | null>(null);
 
   const trimmedName = name.trim();
   // Save enables the moment a non-empty (non-whitespace) name is entered.
@@ -76,6 +80,19 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
     collapse();
   };
 
+  // Focus the name field once it mounts. Deferred to the next frame so the
+  // sibling keyboard InputAccessoryView (mounted in the same commit as this
+  // field) has registered before `.focus()` fires `becomeFirstResponder` — iOS
+  // captures `inputAccessoryView` at that exact moment, so a same-commit native
+  // `autoFocus` would race it and open the keyboard with no Done accessory.
+  // Same deferred-RAF pattern as the categories screen's own
+  // `scrollToAddCategoryForm`.
+  const focusNameField = (): void => {
+    requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+    });
+  };
+
   if (!expanded) {
     return (
       // The collapsed affordance is its own card too — the same GlassSurface
@@ -88,6 +105,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           accessibilityLabel={t('categories.addCategory')}
           onPress={() => {
             setExpanded(true);
+            focusNameField();
             onExpand?.();
           }}
         >
@@ -124,10 +142,10 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           name={name}
           onChangeName={setName}
           namePlaceholder={t('categories.namePlaceholder')}
-          // The field mounts only once the form expands, so focusing it on mount
-          // fires exactly when the row opens — the keyboard lands straight on the
-          // name input without a second tap.
-          autoFocus
+          // The field mounts only once the form expands; `focusNameField` above
+          // focuses it imperatively once mounted, deferred to the next frame, so
+          // the keyboard accessory has registered before focus lands.
+          nameInputRef={nameInputRef}
         />
 
         {/* value is the resolved DISPLAY color (previewColor), so a swatch is

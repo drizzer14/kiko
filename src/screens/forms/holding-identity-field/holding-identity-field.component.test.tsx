@@ -121,17 +121,24 @@ describe('HoldingIdentityField', () => {
     expect(getByLabelText('Change Groceries icon')).toBeTruthy();
   });
 
-  it('leaves the name field un-focused by default', async () => {
+  it('leaves the name field un-focused by default (no native autoFocus)', async () => {
     const { getByLabelText } = await setup();
 
-    // No caller opted into autoFocus, so the field must not grab focus on mount.
-    expect(getByLabelText('Name').props.autoFocus).toBe(false);
+    // The field never sets native autoFocus: it races the sibling
+    // InputAccessoryView's registration (see nameInputRef's doc comment). A
+    // caller that needs focus-on-mount uses nameInputRef + an imperative
+    // `.focus()` instead.
+    expect(getByLabelText('Name').props.autoFocus).toBeUndefined();
   });
 
-  it('forwards autoFocus to the name input so an on-demand field focuses on mount', async () => {
-    const { getByLabelText } = await setup({ autoFocus: true });
+  it('forwards nameInputRef to the inner TextInput so a caller can focus it imperatively', async () => {
+    const nameInputRef: ComponentProps<typeof HoldingIdentityField>['nameInputRef'] = {
+      current: null,
+    };
+    await setup({ nameInputRef });
 
-    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+    expect(nameInputRef.current).not.toBeNull();
+    expect(typeof nameInputRef.current?.focus).toBe('function');
   });
 
   it('suppresses the icon Remove control when no onRemoveIcon handler is given', async () => {

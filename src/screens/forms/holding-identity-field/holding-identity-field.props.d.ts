@@ -1,3 +1,6 @@
+import type { RefObject } from 'react';
+import type { TextInputInstance } from 'react-native';
+
 export type HoldingIdentityFieldProps = {
   // The closed pool of SF Symbol names the icon picker offers, forwarded to the
   // shared IconEditor. This field is used by both the entity forms (account /
@@ -45,12 +48,16 @@ export type HoldingIdentityFieldProps = {
   onFocus?: () => void;
   // Optional placeholder shown while the name is empty.
   namePlaceholder?: string;
-  // Focus the name input as soon as it mounts. A caller that reveals this field
-  // on demand (the inline "Add category" row, which only mounts the field once
-  // its form expands) passes `true` so the keyboard opens straight onto the
-  // name field without a second tap. Forwarded to the inner TextInput's
-  // `autoFocus`; omit it (the default) for an always-mounted field.
-  autoFocus?: boolean;
+  // A ref to the inner name TextInput, forwarded to its `ref`. A caller that
+  // reveals this field on demand (the inline "Add category" row, which only
+  // mounts the field once its form expands) uses this to call `.focus()`
+  // imperatively, deferred to the next frame, once the sibling keyboard
+  // accessory has registered. Native `autoFocus` is deliberately NOT used for
+  // this: it fires `becomeFirstResponder` in the same commit the sibling
+  // InputAccessoryView's native content view mounts, and iOS captures
+  // `inputAccessoryView` at that exact moment — before the accessory has
+  // registered — so the keyboard opens with no Done accessory attached.
+  nameInputRef?: RefObject<TextInputInstance | null>;
   // Whether to render the "Icon"/"Name" field captions above the two controls
   // (defaults to true, the form treatment). A dense list row (a category row)
   // passes `false` for a bare, caption-free icon+name pair, vertically centered
