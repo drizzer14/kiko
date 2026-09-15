@@ -62,10 +62,10 @@
 #                                         changed the row's category
 # r08-r11 are all captured from ONE visit to the transaction edit form
 # (r07's screen): each sheet is a full-screen Modal that would otherwise cover
-# the tab bar, so every open sheet is dismissed first — either a backdrop tap
-# (`transaction-date-backdrop` / `transaction-time-backdrop`) or a row pick
-# that itself closes the sheet (`category-option-groceries`) — before the flow
-# ever taps a tab icon again.
+# the tab bar, so every open sheet is dismissed first — either a scrim
+# point-tap (`point: "50%,15%"`, above the bottom-anchored sheet card) or a
+# row pick that itself closes the sheet (`category-option-groceries`) —
+# before the flow ever taps a tab icon again.
 #
 # NOT included (investigated, not deterministically reachable as a distinct
 # state — see this repo's screenshot-harness handoff notes): a "Settings >
