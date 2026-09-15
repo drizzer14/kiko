@@ -66,6 +66,14 @@ describe('Symbol', () => {
     expect(getByLabelText('Favorite').props.tintColor).toBe('#FFD60A');
   });
 
+  it('tints the glyph with the accent tone', async () => {
+    const { getByLabelText } = await render(
+      <SymbolIcon name="heart.fill" tone="accent" accessibilityLabel="Favorite" />,
+    );
+
+    expect(getByLabelText('Favorite').props.tintColor).toBe(darkTheme.colors.accent);
+  });
+
   it('normalizes an rgba() color to hex for the native tintColor', async () => {
     const { getByLabelText } = await render(
       <SymbolIcon name="heart.fill" color="rgba(255,214,10,1)" accessibilityLabel="Favorite" />,

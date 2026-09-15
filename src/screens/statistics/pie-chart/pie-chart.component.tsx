@@ -1,6 +1,7 @@
 import { type FC, memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 import { Path, Svg } from 'react-native-svg';
 
 import type { Currency } from '../../../currency/currency';
@@ -8,6 +9,7 @@ import { Money } from '../../../currency/money';
 import Box from '../../../design-system/components/box';
 import MoneyText from '../../../design-system/components/money-text';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
 import type { AccountSlice } from '../../../statistics/account-contribution';
 
 import { styles } from './pie-chart.styles';
@@ -187,6 +189,7 @@ const PieChart: FC<PieChartProps> = ({
   centerTotal,
   legendMinShare,
 }) => {
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [legendExpanded, setLegendExpanded] = useState(false);
 
@@ -266,11 +269,20 @@ const PieChart: FC<PieChartProps> = ({
             onPress={() => setLegendExpanded((expanded) => !expanded)}
             style={styles.legendToggle}
           >
-            <Text variant="caption" tone="accent">
-              {legendExpanded
-                ? t('components.pieChart.showLess')
-                : t('components.pieChart.showAll')}
-            </Text>
+            <Box direction="row" gap={1} style={styles.legendToggleContent}>
+              <Text variant="caption" tone="accent">
+                {legendExpanded
+                  ? t('components.pieChart.showLess')
+                  : t('components.pieChart.showAll')}
+              </Text>
+
+              <SymbolIcon
+                testID={`${testID}-legend-toggle-chevron`}
+                name={legendExpanded ? 'chevron.up' : 'chevron.down'}
+                tone="accent"
+                size={theme.iconSizes.caption}
+              />
+            </Box>
           </Pressable>
         )}
       </Box>

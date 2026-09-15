@@ -17,6 +17,7 @@ const SymbolIcon: FC<SymbolProps> = ({
   tone = 'textSecondary',
   color,
   accessibilityLabel,
+  testID,
 }) => {
   const { theme } = useUnistyles();
   // The default is the `body` icon-size token (see theme.ts), not a literal:
@@ -46,6 +47,7 @@ const SymbolIcon: FC<SymbolProps> = ({
       // nothing throws and the view is still there, just uncolored.
       tintColor={toSFSymbolTintColor(color ?? theme.colors[tone])}
       accessibilityLabel={accessibilityLabel}
+      testID={testID}
       // Fabric gives an SFSymbolView no intrinsic size, so with no explicit
       // frame Yoga lays it out at 0x0 and the glyph never paints. `size` is
       // a runtime prop, so this stays a plain inline object rather than a
