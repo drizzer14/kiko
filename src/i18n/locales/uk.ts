@@ -204,8 +204,6 @@ export const uk: typeof en = {
       category: 'Категорія',
       convertAmountPlaceholder: '100,00',
       convertToExchange: 'Зробити обміном',
-      deleteConfirmMessage: 'Цю транзакцію буде остаточно видалено.',
-      deleteConfirmTitle: 'Видалити транзакцію',
       description: 'Опис',
       descriptionPlaceholder: 'Кава',
       editTitle: 'Редагувати транзакцію',

@@ -51,7 +51,6 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import type { TransactionFormParams } from '../../navigation/types';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import BottomSheet from '../../design-system/components/bottom-sheet';
-import ConfirmSheet from '../../design-system/components/confirm-sheet';
 import { type Currency, currencySymbol } from '../../currency/currency';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
@@ -1023,14 +1022,15 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
-// The category picker, "Convert to exchange" action, and Delete button:
-// everything below the main field group EXCEPT while converting (a convert has
-// no category and no delete — just the convert group and Save). The
-// transaction-TYPE selector is NOT here; it renders above the field group,
-// under the Holding select. Extracted to its own module-level function for the
-// same cognitive-complexity-budget reason as `renderFieldGroup` above: several
-// independent `&&`-gated conditions, kept out of the screen component's own
-// branch count.
+// The category picker and "Convert to exchange" action: everything below the
+// main field group EXCEPT while converting (a convert has no category — just
+// the convert group and Save). Deleting a transaction is offered only through
+// the row's touch-and-hold context menu (`CardContextMenu`), not from this
+// form. The transaction-TYPE selector is NOT here; it renders above the field
+// group, under the Holding select. Extracted to its own module-level function
+// for the same cognitive-complexity-budget reason as `renderFieldGroup`
+// above: several independent `&&`-gated conditions, kept out of the screen
+// component's own branch count.
 type ModeAndActionsProps = {
   converting: boolean;
   isReadOnly: boolean;
@@ -1041,10 +1041,6 @@ type ModeAndActionsProps = {
   convertEligible: boolean;
   onPressConvert: () => void;
   isEditing: boolean;
-  onPressDelete: () => void;
-  // The red-ghost delete label/icon color (`theme.colors.negative`), threaded
-  // in because this is a module-level helper with no Unistyles hook of its own.
-  negativeColor: string;
   t: TFunction;
 };
 
@@ -1057,9 +1053,9 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
     <>
       {/* The transaction-TYPE selector does not live here: it renders as a
         select field directly under the Holding select, above the field group.
-        This helper owns only the category picker, the "Convert to exchange"
-        action, and the Delete button — everything below the field group except
-        while converting. */}
+        This helper owns only the category picker and the "Convert to
+        exchange" action — everything below the field group except while
+        converting. */}
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
@@ -1091,19 +1087,6 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
           onPress={props.onPressConvert}
         >
           {props.t('forms.transaction.convertToExchange')}
-        </Button>
-      )}
-
-      {props.isEditing && !props.isReadOnly && (
-        <Button
-          variant="ghost"
-          textColor={props.negativeColor}
-          size="compact"
-          fullWidth={false}
-          icon="trash"
-          onPress={props.onPressDelete}
-        >
-          {props.t('common.delete')}
         </Button>
       )}
     </>
@@ -1372,11 +1355,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     name: string;
     category: string;
   } | null>(null);
-  // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
-  // native `Alert.alert`. Only ever set on an editable existing row (the Delete
-  // action is offered only there); a scrim/back dismiss behaves like Cancel.
-  const [deletePending, setDeletePending] = useState(false);
-
   // Seed the fields once, when the source row (edit OR duplicate) and its
   // holding have loaded (the holding's currency scale is needed to render the
   // amount). The `hydrated` latch keeps a later live-query refresh from
@@ -1899,36 +1877,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  // A manual row can be deleted; the themed `ConfirmSheet` (driven by
-  // `deletePending`) guards the destructive write, replacing the old native
-  // `Alert.alert` which could not be themed. Only its destructive confirm runs
-  // the removal; Cancel and a scrim/back dismiss delete nothing.
-  const openDeleteConfirm = (): void => {
-    if (editingId === null) {
-      return;
-    }
-
-    setDeletePending(true);
-  };
-
-  const cancelDelete = (): void => {
-    setDeletePending(false);
-  };
-
-  const removeTransaction = async (): Promise<void> => {
-    if (editingId === null) {
-      return;
-    }
-
-    await transactionsRepo.remove(editingId);
-    navigation.goBack();
-  };
-
-  // The same double-submit guard the rest of the form uses (its own instance —
-  // see the override handlers above for why each action gets a separate one),
-  // so a double-tap of the sheet's Delete never issues two removals.
-  const { onPress: onConfirmDelete } = useSubmitOnce(removeTransaction);
-
   // The transaction-TYPE selector, built here so the label/mode copy stays with
   // the component's live translations. It renders directly UNDER the Holding
   // select field (not while converting, which has no mode toggle). Uses the
@@ -2051,9 +1999,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             t,
           })}
 
-          {/* The mode chip row, category picker, "Convert to exchange" action,
-            and Delete button — everything below the main field group EXCEPT
-            while converting. The `!converting` gate and every `&&`-conditional
+          {/* The mode chip row, category picker, and "Convert to exchange"
+            action — everything below the main field group EXCEPT while
+            converting. The `!converting` gate and every `&&`-conditional
             live in the module-level `renderModeAndActions` (see above). */}
           {renderModeAndActions({
             converting,
@@ -2065,8 +2013,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,
-            onPressDelete: openDeleteConfirm,
-            negativeColor: theme.colors.negative,
             t,
           })}
         </Box>
@@ -2111,21 +2057,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           {t('common.cancel')}
         </Button>
       </BottomSheet>
-
-      {/* The manual-row delete confirmation — the same shared themed
-          `ConfirmSheet` the grid-card long-press delete uses, replacing the old
-          native `Alert`. A destructive confirm + red-ghost Cancel; a scrim/back
-          dismiss behaves like Cancel. `useSubmitOnce` guards the double-remove. */}
-      <ConfirmSheet
-        visible={deletePending}
-        title={t('forms.transaction.deleteConfirmTitle')}
-        message={t('forms.transaction.deleteConfirmMessage')}
-        confirmLabel={t('common.delete')}
-        onConfirm={onConfirmDelete}
-        onCancel={cancelDelete}
-        destructive
-        confirmTestID="transaction-delete-confirm"
-      />
     </>
   );
 };

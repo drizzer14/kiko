@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react';
-import { Pressable, Text } from 'react-native';
+import {
+  createGestureController,
+  fireGestureHandler,
+  getByGestureTestId,
+} from 'react-native-gesture-handler/jest-utils';
 import { trigger } from 'react-native-haptic-feedback';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
-import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../unistyles';
 
 import CardContextMenu, {
@@ -147,5 +151,60 @@ describe('CardContextMenu', () => {
 
     expect(queryByTestId('card-context-menu')).toBeNull();
     expect(getByText('card')).toBeTruthy();
+  });
+
+  it('lifts a liftOnHold card to ~1.03 once the hold activates, then settles back to 1 on release', async () => {
+    const { getByTestId, getByText } = await render(
+      <CardContextMenu name="Coffee" deletable onDelete={jest.fn()} liftOnHold>
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper },
+    );
+    const scaleOf = (): number | undefined =>
+      StyleSheet.flatten(getByTestId('card-context-menu').props.style).transform?.[0]?.scale;
+
+    // At rest, before any hold, the card sits at its identity scale.
+    expect(scaleOf()).toBe(1);
+
+    const hold = createGestureController(HOLD_GESTURE_TEST_ID);
+
+    // A hold that reaches ACTIVE (the same transition that plays the haptic
+    // and opens the confirm) lifts the card.
+    await act(async () => {
+      hold.begin();
+      hold.activate();
+    });
+
+    expect(scaleOf()).toBeCloseTo(1.03);
+
+    // `onFinalize` fires on release and resets the shared value immediately,
+    // but this stub's `useAnimatedStyle` only recomputes the style on a React
+    // re-render (real Reanimated instead binds it live on the UI thread) —
+    // dismissing the confirm via Cancel forces that re-render, so it doubles
+    // as the read point proving the reset actually happened. Both are awaited
+    // inside `act` so the resulting state update actually commits before the
+    // assertion reads the tree.
+    await act(async () => {
+      hold.end();
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Cancel'));
+    });
+
+    expect(scaleOf()).toBe(1);
+  });
+
+  it('never lifts a card when liftOnHold is omitted (the account/holding grid path)', async () => {
+    const { getByTestId } = await render(
+      <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper },
+    );
+
+    // No `liftOnHold` means the plain (non-`Animated`) `View` renders, with no
+    // `style` prop at all — proving the account/holding path is byte-for-byte
+    // unchanged, not merely animated with a no-op scale.
+    expect(getByTestId('card-context-menu').props.style).toBeUndefined();
   });
 });

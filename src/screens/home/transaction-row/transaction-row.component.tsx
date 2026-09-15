@@ -75,6 +75,13 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // synced row (throws) and reverses the balance in one transaction; a synced
   // (Monobank/crypto) row is not deletable, so `CardContextMenu` renders it
   // bare — no gesture at all.
+  //
+  // This is a PLAIN list row (no `react-native-sortables` grid), unlike the
+  // account/holding cards, so it gets no free scale-up lift from a grid's own
+  // `activeItemScale`. `liftOnHold` opts this one usage into the identical
+  // `CardContextMenu`-driven lift instead, matching the account/holding feel
+  // on a long press — see that prop's own doc comment for why the account/
+  // holding cards must never pass it.
   return (
     <CardContextMenu
       name={description}
@@ -84,6 +91,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
       // offering nothing (it already renders bare). A manual row's Duplicate
       // opens the create form pre-filled from this row (D2).
       onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
+      liftOnHold
     >
       <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
         <GlassSurface

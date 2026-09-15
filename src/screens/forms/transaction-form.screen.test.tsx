@@ -4,7 +4,6 @@ import { StyleSheet } from 'react-native';
 
 import type { TransactionFormParams } from '../../navigation/types';
 import '../../design-system/unistyles';
-import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
@@ -1139,38 +1138,15 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByText('09:15')).toBeTruthy();
   });
 
-  it('deletes the transaction and navigates back after confirming the themed sheet', async () => {
-    mockRemove.mockResolvedValue(undefined);
-    const { getByText, getByTestId } = await renderEdit('txn-1');
+  // Deleting a manual transaction is no longer offered from this form — the
+  // row's touch-and-hold context menu (`CardContextMenu`) is the only delete
+  // entry point now, so the form itself never renders a Delete action or a
+  // delete confirm sheet.
+  it('offers no Delete action, even on an editable manual transaction', async () => {
+    const { queryByText } = await renderEdit('txn-1');
 
-    // The ghost Delete action opens the themed ConfirmSheet (not a native
-    // Alert); only its destructive confirm runs the removal, then returns.
-    await fireEvent.press(getByText('Delete'));
-    await fireEvent.press(getByTestId('transaction-delete-confirm'));
-
-    expect(mockRemove).toHaveBeenCalledWith('txn-1');
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-  });
-
-  it('removes nothing when the themed delete confirm is dismissed via Cancel', async () => {
-    const { getByText } = await renderEdit('txn-1');
-
-    await fireEvent.press(getByText('Delete'));
-    await fireEvent.press(getByText('Cancel'));
-
+    expect(queryByText('Delete')).toBeNull();
     expect(mockRemove).not.toHaveBeenCalled();
-    expect(navigation.goBack).not.toHaveBeenCalled();
-  });
-
-  it('renders the delete action as a red ghost with a trash icon', async () => {
-    const { getByText, toJSON } = await renderEdit('txn-1');
-
-    // Red-ghost treatment: the label is the negative (red) tone, not the white
-    // onAccent a solid `destructive` fill would give it (item 5 / Task 2.1).
-    const deleteLabel = getByText('Delete');
-    expect(StyleSheet.flatten(deleteLabel.props.style).color).toBe(darkTheme.colors.negative);
-    // A leading `trash` SF Symbol is present on the button (item 6 / Task 2.2).
-    expect(JSON.stringify(toJSON())).toContain('trash');
   });
 });
 

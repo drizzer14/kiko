@@ -1,7 +1,12 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
+import {
+  createGestureController,
+  fireGestureHandler,
+  getByGestureTestId,
+} from 'react-native-gesture-handler/jest-utils';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
-import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../../design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
@@ -143,5 +148,39 @@ describe('TransactionRow', () => {
     fireEvent.press(getByText('Coffee'));
 
     expect(onPress).toHaveBeenCalledWith('txn-1');
+  });
+
+  it('lifts the row to ~1.03 while a hold is active — the same feel the account/holding sortable grids get for free', async () => {
+    const { getByTestId, getByText } = await renderRow(baseItem);
+    const scaleOf = (): number | undefined =>
+      StyleSheet.flatten(getByTestId('card-context-menu').props.style).transform?.[0]?.scale;
+
+    // A plain (non-sortable) list row gets no lift from a grid's own
+    // `activeItemScale`, so `liftOnHold` is this row's OWN opt-in — proven
+    // here by wiring the real `TransactionRow`, not just `CardContextMenu`
+    // in isolation.
+    expect(scaleOf()).toBe(1);
+
+    const hold = createGestureController(HOLD_GESTURE_TEST_ID);
+
+    await act(async () => {
+      hold.begin();
+      hold.activate();
+    });
+
+    expect(scaleOf()).toBeCloseTo(1.03);
+
+    // `onFinalize` resets the shared value immediately, but this stub's
+    // `useAnimatedStyle` only recomputes the style on a React re-render —
+    // dismissing the Duplicate/Delete action list via Cancel forces that
+    // re-render, so it doubles as the read point proving the reset happened.
+    await act(async () => {
+      hold.end();
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Cancel'));
+    });
+
+    expect(scaleOf()).toBe(1);
   });
 });

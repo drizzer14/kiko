@@ -4,6 +4,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
 import { type FC, type ReactNode, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import Text from '../text';
 import Button from '../button';
@@ -35,6 +36,17 @@ const HOLD_DURATION_MS = 450;
 // CANCELS the long-press, so the finger is free to start the sortables
 // drag-to-reorder instead of opening the confirm.
 const HOLD_MAX_DISTANCE = 10;
+
+// The `liftOnHold` scale, matched to the SAME `activeItemScale={1.03}` the
+// account/holding sortable grids already apply on their own long-press-to-
+// drag activation (`accounts.screen.tsx`, `account-detail.screen.tsx`) — a
+// barely-there lift, not the library's own bolder `1.1` default. A plain
+// (non-sortable) list card, which gets no such lift from a grid, opts into
+// the identical feel here instead. `HOLD_LIFT_DURATION_MS` matches
+// `react-native-sortables`' own `activationAnimationDuration` default (300ms,
+// its `constants/props.js`), so the two lifts settle at the same pace.
+const HOLD_LIFT_SCALE = 1.03;
+const HOLD_LIFT_DURATION_MS = 300;
 
 /**
  * Wraps a grid card in a self-contained "deep-press (haptic)" delete confirm.
@@ -82,8 +94,17 @@ const CardContextMenu: FC<{
   // behavior. Only the transaction rows (Home + the holding-detail ledger) pass
   // it, for manual rows only — the account/holding cards and grids never do.
   onDuplicate?: () => void;
+  // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
+  // list, matching the barely-there `activeItemScale={1.03}` lift the
+  // account/holding sortable grids already get for free from
+  // `react-native-sortables`' own drag-activation animation. Defaults to
+  // `false`/omitted, which renders the plain (non-`Animated`) `View` byte-
+  // for-byte as before — an account/holding card must NEVER pass this, since
+  // its grid already lifts the card itself; a second, competing scale here
+  // would double-animate it. Only the Home transaction row passes it today.
+  liftOnHold?: boolean;
   children: ReactNode;
-}> = ({ name, deletable, onDelete, onDuplicate, children }) => {
+}> = ({ name, deletable, onDelete, onDuplicate, liftOnHold = false, children }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -91,6 +112,13 @@ const CardContextMenu: FC<{
   // confirm's: a hold opens THIS when a duplicate action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
   const [actionsVisible, setActionsVisible] = useState(false);
+  // The `liftOnHold` scale, driven straight from the JS thread (the whole
+  // gesture already runs `.runOnJS(true)` for the haptic/state calls below,
+  // so a shared-value write here needs no worklet). Unconditionally created
+  // (rules of hooks) but only ever animated away from `1` when `liftOnHold`
+  // is true.
+  const liftScale = useSharedValue(1);
+  const liftStyle = useAnimatedStyle(() => ({ transform: [{ scale: liftScale.value }] }));
 
   const canDuplicate = onDuplicate !== undefined;
 
@@ -103,7 +131,11 @@ const CardContextMenu: FC<{
 
   // A hold offers the action-list CHOICE only when a duplicate action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
-  // straight away, so every delete-only consumer is unchanged.
+  // straight away, so every delete-only consumer is unchanged. `liftOnHold`
+  // additionally scales the card up on `onStart` and eases it back to 1 on
+  // `onFinalize` — which fires on every release, success or failure, so a
+  // hold that ends without opening anything (there is none today, but a
+  // future short-circuit could add one) still always settles back to rest.
   const holdToActivate = Gesture.LongPress()
     .minDuration(HOLD_DURATION_MS)
     .maxDistance(HOLD_MAX_DISTANCE)
@@ -112,6 +144,10 @@ const CardContextMenu: FC<{
     .onStart(() => {
       trigger('impactMedium');
 
+      if (liftOnHold) {
+        liftScale.value = withTiming(HOLD_LIFT_SCALE, { duration: HOLD_LIFT_DURATION_MS });
+      }
+
       if (canDuplicate) {
         setActionsVisible(true);
 
@@ -119,6 +155,11 @@ const CardContextMenu: FC<{
       }
 
       setConfirmVisible(true);
+    })
+    .onFinalize(() => {
+      if (liftOnHold) {
+        liftScale.value = withTiming(1, { duration: HOLD_LIFT_DURATION_MS });
+      }
     });
 
   const cancelDelete = (): void => {
@@ -154,7 +195,13 @@ const CardContextMenu: FC<{
   return (
     <>
       <GestureDetector gesture={holdToActivate}>
-        <View testID="card-context-menu">{children}</View>
+        {liftOnHold ? (
+          <Animated.View testID="card-context-menu" style={liftStyle}>
+            {children}
+          </Animated.View>
+        ) : (
+          <View testID="card-context-menu">{children}</View>
+        )}
       </GestureDetector>
 
       {canDuplicate && (
@@ -165,17 +212,12 @@ const CardContextMenu: FC<{
           header={<Text variant="heading">{name}</Text>}
           testID="card-context-menu-actions"
         >
-          <Button icon="doc.on.doc" onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
+          <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
             {t('common.duplicate')}
           </Button>
 
           {deletable && (
-            <Button
-              variant="destructive"
-              icon="trash"
-              onPress={chooseDelete}
-              testID={DELETE_ACTION_TEST_ID}
-            >
+            <Button variant="destructive" onPress={chooseDelete} testID={DELETE_ACTION_TEST_ID}>
               {t('common.delete')}
             </Button>
           )}

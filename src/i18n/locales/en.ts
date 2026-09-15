@@ -222,8 +222,6 @@ export const en = {
       category: 'Category',
       convertAmountPlaceholder: '100.00',
       convertToExchange: 'Convert to exchange',
-      deleteConfirmMessage: 'This transaction will be permanently removed.',
-      deleteConfirmTitle: 'Delete Transaction',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
       editTitle: 'Edit Transaction',
