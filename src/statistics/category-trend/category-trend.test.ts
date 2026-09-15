@@ -10,15 +10,15 @@ const DISPLAY = buildCategoryDisplayMap([
   { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
 ]);
 
-// A fixed "today" reference, so every window is deterministic. The builder
-// buckets by UTC day and spans the last 30 days ending on this instant.
+// A fixed "today" reference, so every range is deterministic.
 const NOW = Date.UTC(2025, 2, 31, 12, 0, 0); // 2025-03-31, midday UTC
 const dayMs = 86_400_000;
-const dayBucketOf = (t: number): number => {
-  const d = new Date(t);
 
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-};
+// The default test range: 3 days back from NOW to NOW, daily buckets — 4
+// bucket instants (NOW-3d, NOW-2d, NOW-1d, NOW), all evenly spaced since the
+// span is an exact multiple of a day.
+const DEFAULT_RANGE = { from: NOW - 3 * dayMs, to: NOW };
+const DEFAULT_BUCKET_DAYS = 1;
 
 const tx = (over: Partial<TrendTransaction>): TrendTransaction => ({
   id: 'tx',
@@ -44,24 +44,25 @@ const buildTrend = (
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
-    now: NOW,
+    range: DEFAULT_RANGE,
+    bucketDays: DEFAULT_BUCKET_DAYS,
     ...extra,
   });
 
 describe('buildCategoryTrend', () => {
-  it('emits exactly 30 daily buckets ending on now, ascending', () => {
+  it('emits one bucket per day across the given range, ascending, closing on `to`', () => {
     const series = buildTrend([tx({ time: NOW, amountMinorUnits: -10_00 })]);
     const points = series[0].points;
 
-    expect(points).toHaveLength(30);
-    expect(points[29].t).toBe(dayBucketOf(NOW));
-    expect(points[0].t).toBe(dayBucketOf(NOW) - 29 * dayMs);
+    expect(points).toHaveLength(4);
+    expect(points[0].t).toBe(DEFAULT_RANGE.from);
+    expect(points[3].t).toBe(DEFAULT_RANGE.to);
     for (let i = 1; i < points.length; i += 1) {
       expect(points[i].t - points[i - 1].t).toBe(dayMs);
     }
   });
 
-  it('buckets a same-day expense into that UTC day and no other, summing in major units', () => {
+  it('buckets a same-day expense into that bucket and no other, summing in major units', () => {
     const series = buildTrend([
       tx({ id: 'a', category: 'groceries', amountMinorUnits: -25_00, time: NOW }),
       tx({ id: 'b', category: 'groceries', amountMinorUnits: -5_00, time: NOW }),
@@ -69,7 +70,17 @@ describe('buildCategoryTrend', () => {
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
     expect(series[0].key).toBe('groceries');
-    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 30 }]);
+    expect(nonZero).toEqual([{ t: NOW, amount: 30 }]);
+  });
+
+  it('buckets a mid-day (non-boundary) expense into the bucket period that CONTAINS it, not the next one', () => {
+    // Halfway through the period [NOW-2d, NOW-1d) — must land in the NOW-2d
+    // bucket, not be pushed forward into NOW-1d.
+    const midDay = NOW - 2 * dayMs + 12 * 60 * 60 * 1000;
+    const series = buildTrend([tx({ id: 'a', time: midDay, amountMinorUnits: -15_00 })]);
+    const nonZero = series[0].points.filter((point) => point.amount !== 0);
+
+    expect(nonZero).toEqual([{ t: NOW - 2 * dayMs, amount: 15 }]);
   });
 
   it("nets a split payment's linked change-returns into its trend line (not overstated by the change)", () => {
@@ -86,11 +97,11 @@ describe('buildCategoryTrend', () => {
     ]);
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
-    // −212_00 payment, +20 and +8 returns → the day bucket shows the NET 211_72
+    // −212_00 payment, +20 and +8 returns → the bucket shows the NET 211_72
     // (211.72 in base MAJOR units), not the bare 212_00. The positive returns are
     // already skipped as income and only reduce the payment's magnitude.
     expect(series.map((entry) => entry.key)).toEqual(['groceries']);
-    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 211.72 }]);
+    expect(nonZero).toEqual([{ t: NOW, amount: 211.72 }]);
   });
 
   it('resolves each series title and color from the category display', () => {
@@ -120,7 +131,7 @@ describe('buildCategoryTrend', () => {
     );
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
-    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 30 }]);
+    expect(nonZero).toEqual([{ t: NOW, amount: 30 }]);
   });
 
   it('drops a transaction whose currency has no rate to the base', () => {
@@ -142,7 +153,7 @@ describe('buildCategoryTrend', () => {
 
     expect(series).toHaveLength(1);
     expect(series[0].key).toBe('other');
-    expect(nonZero).toEqual([{ t: dayBucketOf(NOW), amount: 50 }]);
+    expect(nonZero).toEqual([{ t: NOW, amount: 50 }]);
   });
 
   it('drops categories listed in excludedCategories', () => {
@@ -157,8 +168,7 @@ describe('buildCategoryTrend', () => {
     expect(series.map((entry) => entry.key)).toEqual(['groceries']);
   });
 
-  it('zero-fills gap days so every series shares one ordered set of 30 X positions', () => {
-    const day0 = dayBucketOf(NOW);
+  it('zero-fills gap buckets so every series shares one ordered set of bucket X positions', () => {
     const series = buildTrend([
       tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00, time: NOW }),
       tx({ id: 'b', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 2 * dayMs }),
@@ -168,24 +178,19 @@ describe('buildCategoryTrend', () => {
     const groceries = series.find((entry) => entry.key === 'groceries');
     const transport = series.find((entry) => entry.key === 'transport');
 
-    // Both series span the identical 30-day window at identical X positions.
-    expect(groceries?.points).toHaveLength(30);
+    // Both series span the identical bucket set at identical X positions.
+    expect(groceries?.points).toHaveLength(4);
     expect(transport?.points.map((point) => point.t)).toEqual(
       groceries?.points.map((point) => point.t),
     );
-    // The last three days carry the spend; every gap day reads 0, not a hole.
-    const grLast3 = groceries?.points.slice(27).map((point) => point.amount);
-    const trLast3 = transport?.points.slice(27).map((point) => point.amount);
-    expect(grLast3).toEqual([10, 0, 30]);
-    expect(trLast3).toEqual([0, 20, 0]);
-    // A day with no spend on either series is present and zero.
-    expect(groceries?.points[0]).toEqual({ t: day0 - 29 * dayMs, amount: 0 });
+    expect(groceries?.points.map((point) => point.amount)).toEqual([0, 10, 0, 30]);
+    expect(transport?.points.map((point) => point.amount)).toEqual([0, 0, 20, 0]);
   });
 
-  it('drops expenses older than the 30-day window (no bucket, no total)', () => {
+  it('drops expenses whose time falls outside [range.from, range.to]', () => {
     const old = tx({
       id: 'old',
-      time: NOW - 40 * dayMs,
+      time: DEFAULT_RANGE.from - 40 * dayMs,
       amountMinorUnits: -99_00,
       category: 'transport',
     });
@@ -201,19 +206,26 @@ describe('buildCategoryTrend', () => {
     expect(series.map((entry) => entry.key)).toEqual(['groceries']);
   });
 
-  it('drops an expense dated in the future (after now)', () => {
+  it('drops an expense dated after `range.to`', () => {
     const series = buildTrend([
-      tx({ id: 'future', time: NOW + dayMs, amountMinorUnits: -50_00, category: 'transport' }),
+      tx({
+        id: 'future',
+        time: DEFAULT_RANGE.to + dayMs,
+        amountMinorUnits: -50_00,
+        category: 'transport',
+      }),
       tx({ id: 'in-window', time: NOW, amountMinorUnits: -10_00, category: 'groceries' }),
     ]);
 
     expect(series.map((entry) => entry.key)).toEqual(['groceries']);
   });
 
-  it('keeps the window fixed even when the only expense is far in the past', () => {
-    const series = buildTrend([tx({ time: NOW - 100 * dayMs, amountMinorUnits: -5_00 })]);
+  it('keeps the range fixed even when the only expense is before `range.from`', () => {
+    const series = buildTrend([
+      tx({ time: DEFAULT_RANGE.from - 100 * dayMs, amountMinorUnits: -5_00 }),
+    ]);
 
-    // The only expense is outside the window, so no series survives.
+    // The only expense is outside the range, so no series survives.
     expect(series).toEqual([]);
   });
 
@@ -229,6 +241,26 @@ describe('buildCategoryTrend', () => {
   it('returns an empty array for empty input', () => {
     expect(buildTrend([])).toEqual([]);
   });
+
+  it('buckets weekly once the range crosses the coarsening threshold, sharing 7-day-spaced X positions', () => {
+    const range = { from: NOW - 14 * dayMs, to: NOW };
+    const series = buildTrend(
+      [
+        tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00, time: NOW }),
+        tx({ id: 'b', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 10 * dayMs }),
+      ],
+      { range, bucketDays: 7 },
+    );
+    const points = series[0].points;
+
+    expect(points).toHaveLength(3);
+    expect(points.map((point) => point.t)).toEqual([range.from, range.from + 7 * dayMs, range.to]);
+    // NOW - 10d (range.from + 4d) is a MID-PERIOD instant inside the first
+    // weekly period [range.from, range.from + 7d) — it stays in the range.from
+    // bucket rather than being shifted into the next one; the same-day expense
+    // lands in the final bucket (range.to).
+    expect(points.map((point) => point.amount)).toEqual([10, 0, 30]);
+  });
 });
 
 const buildMeasures = (
@@ -240,12 +272,13 @@ const buildMeasures = (
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
-    now: NOW,
+    range: DEFAULT_RANGE,
+    bucketDays: DEFAULT_BUCKET_DAYS,
     ...extra,
   });
 
 describe('buildCategoryMeasures', () => {
-  it('reports the total spend (base minor units) per category over the window', () => {
+  it('reports the total spend (base minor units) per category over the range', () => {
     const measures = buildMeasures([
       tx({ id: 'a', category: 'groceries', amountMinorUnits: -25_00, time: NOW }),
       tx({ id: 'b', category: 'groceries', amountMinorUnits: -5_00, time: NOW }),
@@ -268,12 +301,17 @@ describe('buildCategoryMeasures', () => {
     expect(transport?.count).toBe(1);
   });
 
-  it('excludes income, out-of-window, and excluded-id rows from the count and total', () => {
+  it('excludes income, out-of-range, and excluded-id rows from the count and total', () => {
     const measures = buildMeasures(
       [
         tx({ id: 'keep', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
         tx({ id: 'income', category: 'groceries', amountMinorUnits: 50_00, time: NOW }),
-        tx({ id: 'old', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 40 * dayMs }),
+        tx({
+          id: 'old',
+          category: 'groceries',
+          amountMinorUnits: -10_00,
+          time: DEFAULT_RANGE.from - 40 * dayMs,
+        }),
         tx({ id: 'drop', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
       ],
       { excludedTransactionIds: new Set(['drop']) },
@@ -282,8 +320,8 @@ describe('buildCategoryMeasures', () => {
     expect(measures[0]).toMatchObject({ key: 'groceries', count: 1, total: 10_00 });
   });
 
-  it('reports a positive rising slope for spend that climbs across the window', () => {
-    // Spend on the last three days: rising 10, 20, 30 (major units).
+  it('reports a positive rising slope for spend that climbs across the range', () => {
+    // Spend on the last three buckets: rising 10, 20, 30 (major units).
     const measures = buildMeasures([
       tx({ id: 'a', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 2 * dayMs }),
       tx({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - dayMs }),
@@ -293,13 +331,18 @@ describe('buildCategoryMeasures', () => {
     expect(measures[0].risingSlope).toBeGreaterThan(0);
   });
 
-  it('reports a negative rising slope for spend concentrated at the window start', () => {
-    // Spend sits at the earliest window days (low x) and stops, so the daily
-    // regression trends downward across the 30 points.
+  it('reports a negative rising slope for spend concentrated at the range start', () => {
+    // Spend sits at the earliest range buckets (low x) and stops, so the
+    // per-bucket regression trends downward across the range.
     const measures = buildMeasures([
-      tx({ id: 'a', category: 'groceries', amountMinorUnits: -30_00, time: NOW - 29 * dayMs }),
-      tx({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - 28 * dayMs }),
-      tx({ id: 'c', category: 'groceries', amountMinorUnits: -10_00, time: NOW - 27 * dayMs }),
+      tx({
+        id: 'a',
+        category: 'groceries',
+        amountMinorUnits: -30_00,
+        time: DEFAULT_RANGE.from,
+      }),
+      tx({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - 2 * dayMs }),
+      tx({ id: 'c', category: 'groceries', amountMinorUnits: -10_00, time: NOW - dayMs }),
     ]);
 
     expect(measures[0].risingSlope).toBeLessThan(0);

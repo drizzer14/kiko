@@ -466,9 +466,10 @@ const StatisticsScreen: FC = () => {
   );
 
   // The spending-trend builder needs everything the breakdown does PLUS each
-  // row's `time`, so it can bucket the expense into its UTC-day within the last
-  // 30 days. Built separately from `breakdownTransactions` (which carries no
-  // time) so neither memo has to change shape for the other.
+  // row's `time`, so it can bucket the expense into the active
+  // rangeFrom/rangeTo window the same way the net-worth line does. Built
+  // separately from `breakdownTransactions` (which carries no time) so neither
+  // memo has to change shape for the other.
   const trendTransactions = useMemo<TrendTransaction[]>(
     () =>
       transactionsWithCurrency.map((transaction) => ({
@@ -655,9 +656,9 @@ const StatisticsScreen: FC = () => {
     return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
   }, [settingsRows, categories]);
 
-  // The per-category ranking measures over the fixed 30-day trend window — the
-  // universe both the Top-N ranking and the exclusion set below are computed
-  // from (NOT the range-scoped `allCategorySlices`, whose window differs).
+  // The per-category ranking measures over the SAME range/bucket set the
+  // trend line and the net-worth line both use — the universe both the Top-N
+  // ranking and the exclusion set below are computed from.
   const trendMeasures = useMemo(
     () =>
       buildCategoryMeasures({
@@ -665,10 +666,19 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        now,
+        range: { from: rangeFrom, to: rangeTo },
+        bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedTransactionIds,
       }),
-    [trendTransactions, rateTable, baseCurrency, defaultCategoryKey, now, excludedTransactionIds],
+    [
+      trendTransactions,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      rangeFrom,
+      rangeTo,
+      excludedTransactionIds,
+    ],
   );
 
   // The category keys the chart draws: the explicit manual keys, or the live
@@ -698,6 +708,9 @@ const StatisticsScreen: FC = () => {
     );
   }, [trendMeasures, trendSelectedKeys]);
 
+  // The chart's own bucket set is the SAME range/bucketDays the net-worth line
+  // plots, so both charts share one X-axis convention (see `buildNetWorthSeries`
+  // above).
   const trendSeries = useMemo(
     () =>
       buildCategoryTrend({
@@ -706,7 +719,8 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        now,
+        range: { from: rangeFrom, to: rangeTo },
+        bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
       }),
@@ -716,7 +730,8 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      now,
+      rangeFrom,
+      rangeTo,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
     ],

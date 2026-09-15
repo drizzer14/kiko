@@ -167,9 +167,10 @@ describe('Money-path guard: split-change + convert prefill', () => {
   });
 
   it('nets the linked returns in the category trend line (period not overstated by the change)', () => {
-    // A fixed "today" so the 30-day window is deterministic; the split payment
-    // and its two returns all fall on this same UTC day.
+    // A fixed "today" so the range is deterministic; the split payment and its
+    // two returns all fall on this same day bucket.
     const now = Date.UTC(2025, 2, 31, 12, 0, 0);
+    const dayMs = 86_400_000;
     const base = {
       mcc: null,
       counterIban: null,
@@ -208,7 +209,8 @@ describe('Money-path guard: split-change + convert prefill', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'groceries',
-      now,
+      range: { from: now - 3 * dayMs, to: now },
+      bucketDays: 1,
     });
 
     // The affected day's trend value is the NET |payment| − Σreturns = 211_72
@@ -217,6 +219,6 @@ describe('Money-path guard: split-change + convert prefill', () => {
     expect(series).toHaveLength(1);
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
-    expect(nonZero).toEqual([{ t: Date.UTC(2025, 2, 31), amount: 211.72 }]);
+    expect(nonZero).toEqual([{ t: now, amount: 211.72 }]);
   });
 });

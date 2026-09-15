@@ -14,9 +14,11 @@ import { styles } from './category-trend-line.styles';
 
 /**
  * The per-category spending trend: one line per category, each point that
- * category's total EXPENSE inside one UTC-day bucket (per-period spend, not
+ * category's total EXPENSE inside one bucket period (per-period spend, not
  * cumulative), in the base currency's MAJOR units. Every series shares one set
- * of day buckets over the last 30 days on the X axis and a common Y scale rooted
+ * of buckets on the X axis — spanning the SAME Statistics date-range picker
+ * window the net-worth line plots, daily under ~180 days and weekly beyond
+ * (see `bucketDaysForSpan`/`buildCategoryTrend`) — and a common Y scale rooted
  * at 0. A legend below the plot pairs each line's color with its category title.
  * Renders an empty state when `series` is empty.
  */
