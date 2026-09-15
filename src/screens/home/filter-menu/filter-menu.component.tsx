@@ -1,6 +1,7 @@
 import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
@@ -35,6 +36,7 @@ const FilterMenu: FC<FilterMenuProps> = ({
   triggerIcon = 'line.3.horizontal.decrease.circle',
   testID,
 }) => {
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -64,7 +66,7 @@ const FilterMenu: FC<FilterMenuProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.button}>
-          <SymbolIcon name={triggerIcon} size={18} tone="textPrimary" />
+          <SymbolIcon name={triggerIcon} size={theme.iconSizes.body} tone="textPrimary" />
 
           <Text variant="body">{buttonLabel}</Text>
         </Box>

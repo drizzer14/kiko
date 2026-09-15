@@ -206,7 +206,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         onPress={openModal}
       >
         <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name="calendar" size={18} tone="textPrimary" />
+          <SymbolIcon name="calendar" size={theme.iconSizes.body} tone="textPrimary" />
 
           <Text variant="body" tone="textPrimary">
             {fieldLabel}

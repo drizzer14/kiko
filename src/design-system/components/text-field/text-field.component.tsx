@@ -105,7 +105,7 @@ const TextField: FC<TextFieldProps> = ({
               // slot's `pointerEvents: 'none'` lets a tap in the leading area
               // fall through to focus the input rather than being swallowed.
               <Box style={styles.leadingSlot}>
-                <SymbolIcon name={leadingIcon} size={18} />
+                <SymbolIcon name={leadingIcon} size={theme.iconSizes.body} />
               </Box>
             )}
 

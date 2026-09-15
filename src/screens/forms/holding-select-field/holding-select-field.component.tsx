@@ -96,9 +96,9 @@ const HoldingSelectField = ({
                 // below — `textPrimary` flips to black on the light theme and
                 // would vanish there. SymbolIcon's `color` overrides `tone`,
                 // so it must be omitted here.
-                <SymbolIcon name={option.icon} size={18} tone="onAccent" />
+                <SymbolIcon name={option.icon} size={theme.iconSizes.body} tone="onAccent" />
               ) : (
-                <SymbolIcon name={option.icon} size={18} color={option.color} />
+                <SymbolIcon name={option.icon} size={theme.iconSizes.body} color={option.color} />
               )}
 
               <Box style={styles.optionText}>
@@ -112,7 +112,7 @@ const HoldingSelectField = ({
 
               {isSelected && (
                 <Box style={styles.checkmark}>
-                  <SymbolIcon name="checkmark" size={16} tone="onAccent" />
+                  <SymbolIcon name="checkmark" size={theme.iconSizes.caption} tone="onAccent" />
                 </Box>
               )}
             </Pressable>

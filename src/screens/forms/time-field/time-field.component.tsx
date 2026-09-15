@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
+import { useUnistyles } from 'react-native-unistyles';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { formatTime } from '../../../dates/format';
@@ -40,6 +41,7 @@ const TimeField: FC<TimeFieldProps> = ({
   disabled = false,
   testID,
 }) => {
+  const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
   const handleChange = (_event: DateTimePickerEvent, picked?: Date): void => {
@@ -65,7 +67,7 @@ const TimeField: FC<TimeFieldProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
-          <SymbolIcon name="clock" size={18} tone="textSecondary" />
+          <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
             {value === null ? (placeholder ?? label) : formatTime(value)}
