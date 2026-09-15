@@ -2440,15 +2440,17 @@ describe('TransactionFormScreen — Split-change mode', () => {
   });
 
   it('switches from Split to another type without throwing (crash regression)', async () => {
-    // Reproduces the reported crash: Split mounts `renderSplitReturns`, which
-    // renders its own nested BottomSheet (the return-row holding picker) —
-    // still mounted, even while closed. Picking a different type used to
-    // unmount that nested BottomSheet's native Modal in the SAME commit as
-    // this type-select sheet dismissing its own Modal, crashing on device
-    // (see mode-select-field.component.tsx). Jest cannot reproduce the native
-    // crash itself, so this asserts the RTL-level contract: the flow
-    // completes without throwing, the split-only UI unmounts, and the new
-    // mode is applied.
+    // The reported crash's actual root cause: the transaction-type select
+    // trigger renders ONE persistent `<SymbolIcon>` whose `fallbackName` prop
+    // toggled from a string (Split's mapped fallback) to `undefined` on
+    // leaving Split — an UPDATE, not a fresh mount, which Fabric serializes
+    // as native `null`, and the native SFSymbolView binding throws on `null`
+    // (see symbol.availability.ts's `effectiveFallbackName` doc comment).
+    // Jest cannot reproduce that native host-function throw itself (the real
+    // regression coverage for the invariant that caused it lives in
+    // symbol.availability.test.ts), so this asserts the RTL-level contract
+    // instead: the flow completes without throwing, the split-only UI
+    // unmounts, and the new mode is applied.
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
 

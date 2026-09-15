@@ -23,13 +23,20 @@ const IOS26_MAJOR = 26;
 export const currentOsMajor = (): number => Number.parseInt(String(Platform.Version), 10);
 
 // The fallback SF Symbol to actually hand the native view's `fallbackName`
-// prop: the caller's explicit fallback, else the central iOS-26 mapping. This
-// is the RUNTIME net — the native side substitutes it for any name the OS
-// cannot resolve, covering symbols whose minimum iOS is unverified (§3.0.5).
-export const effectiveFallbackName = (
-  name: string,
-  fallbackName: string | undefined,
-): string | undefined => fallbackName ?? IOS26_SYMBOL_FALLBACKS[name];
+// prop: the caller's explicit fallback, else the central iOS-26 mapping, else
+// the symbol's OWN name. This is the RUNTIME net — the native side
+// substitutes it for any name the OS cannot resolve, covering symbols whose
+// minimum iOS is unverified (§3.0.5). The final `?? name` fallback is load-
+// bearing, not cosmetic: `SymbolIcon` renders ONE persistent native
+// `<SFSymbolView>` per call site (e.g. the transaction-type select trigger),
+// so a prop change across renders is a Fabric UPDATE, not a fresh mount, and
+// an updated prop that becomes `undefined` serializes to native `null`. The
+// native Nitro binding for `fallbackName` requires a `String` and throws on
+// `null` — crashing the app in Release (no redbox to catch it there). Always
+// returning a string here, never `undefined`, keeps `fallbackName` a STABLE
+// string across every update so it can never hit that native null path.
+export const effectiveFallbackName = (name: string, fallbackName: string | undefined): string =>
+  fallbackName ?? IOS26_SYMBOL_FALLBACKS[name] ?? name;
 
 // Resolve the SF Symbol name to render. For one of the KNOWN iOS-26 symbols on
 // a device below iOS 26, the fallback (explicit, else central-map) is returned
@@ -44,7 +51,7 @@ export const resolveSymbolName = (
 ): string => {
   const fallback = effectiveFallbackName(name, fallbackName);
 
-  if (fallback !== undefined && name in IOS26_SYMBOL_FALLBACKS && osMajor < IOS26_MAJOR) {
+  if (name in IOS26_SYMBOL_FALLBACKS && osMajor < IOS26_MAJOR) {
     return fallback;
   }
 
