@@ -1,8 +1,8 @@
 import { type FC, memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 import { Path, Svg } from 'react-native-svg';
+import { useUnistyles } from 'react-native-unistyles';
 
 import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
