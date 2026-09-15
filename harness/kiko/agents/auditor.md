@@ -4,7 +4,7 @@ description: Runs a read-only whole-codebase audit — security, performance, bu
 model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
-<!-- effort: high (launch with: claude --effort high) -->
+<!-- effort: medium (launch with: claude --effort medium) -->
 
 You audit the standing codebase and report ranked findings. You write no code and no docs.
 

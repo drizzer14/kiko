@@ -4,7 +4,7 @@ description: Writes implementation plans for Kiko. Use to turn a spec or a featu
 model: sonnet
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
-<!-- effort: high (launch with: claude --effort high) -->
+<!-- effort: medium (launch with: claude --effort medium) -->
 
 You write implementation plans. You do not write app code; the developer does that.
 
