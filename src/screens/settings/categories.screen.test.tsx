@@ -385,7 +385,7 @@ describe('CategoriesScreen', () => {
 
     await fireEvent.press(getByLabelText('Change Groceries icon'));
 
-    // The whole Kiko Categories pool (73 symbols) is offered at once.
+    // The whole Kiko Categories pool (76 symbols) is offered at once.
     expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
 
     // A spread of category-relevant SF Symbols from the Kiko Categories pool is

@@ -242,17 +242,25 @@ export const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(TITLE_TO_BODY_GAP_STEP),
     gap: theme.spacing(3),
   },
-  // The grabber pill itself: the standard iOS ~36x5pt rounded handle, in the
-  // muted separator gray so it reads as a subtle affordance on the sheet
-  // surface rather than a hard line. `alignSelf: 'center'` keeps it centered
-  // now that its region no longer sets `alignItems: 'center'` (so an optional
-  // header sibling can stay left-aligned).
+  // The grabber pill itself: the standard iOS ~36x5pt rounded handle.
+  // DEVICE BUG fix (live review): `theme.colors.border` (#38383A, the hairline
+  // separator gray) read almost invisible against the sheet's own dark glass
+  // background — both are near-black, so the drag affordance nearly
+  // disappeared instead of reading clearly. `textSecondary` (the iOS
+  // secondaryLabel translucency, ~6:1 contrast over true-black per
+  // `docs/design/2026-09-10-ios-hig-audit.md`'s "Secondary text contrast"
+  // finding) is the same lighter gray `OptionPills`' unselected label already
+  // uses for a legible-but-subordinate tone, so the pill now reads as a clear
+  // affordance without competing with the sheet's primary content.
+  // `alignSelf: 'center'` keeps it centered now that its region no longer
+  // sets `alignItems: 'center'` (so an optional header sibling can stay
+  // left-aligned).
   grabber: {
     alignSelf: 'center',
     width: 36,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: theme.colors.border,
+    backgroundColor: theme.colors.textSecondary,
   },
   // The vertical gap between the sheet's own top-level children (the
   // call-site's `gap` prop, in theme.spacing steps), applied to the

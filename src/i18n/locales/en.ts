@@ -242,6 +242,7 @@ export const en = {
       selectHolding: 'Select holding',
       title: 'Transaction',
       to: 'To',
+      type: 'Type',
       valueIn: 'Value In',
       valueInPlaceholder: '100.00',
       valueOut: 'Value Out',

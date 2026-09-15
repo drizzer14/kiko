@@ -237,6 +237,21 @@ const pickCategory = async (
   await fireEvent.press(utils.getByText(title));
 };
 
+// Pick a transaction type from the TYPE select field's bottom sheet: tap the
+// field (labeled "Type") to open the sheet, then tap the option row. Like the
+// category picker, each option is only mounted once the sheet opens (the type
+// selector is now a select field, not an inline chip row). `mode` is the
+// underlying FormMode value; each row carries a stable
+// `transaction-type-option-<mode>` testID so the tap never collides with the
+// trigger's own selected-value text.
+const pickType = async (
+  utils: Awaited<ReturnType<typeof render>>,
+  mode: 'income' | 'expense' | 'exchange' | 'split',
+): Promise<void> => {
+  await fireEvent.press(utils.getByLabelText('Type'));
+  await fireEvent.press(utils.getByTestId(`transaction-type-option-${mode}`));
+};
+
 describe('TransactionFormScreen — add mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -333,7 +348,7 @@ describe('TransactionFormScreen — add mode', () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '10.00');
-    await fireEvent.press(getByText('Expense'));
+    await pickType(utils, 'expense');
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -341,26 +356,31 @@ describe('TransactionFormScreen — add mode', () => {
     );
   });
 
-  it('shows the income/expense sign as a shared chip row with expense selected by default', async () => {
-    const { getByRole } = await renderAdd();
-    // The hand-rolled Pressable toggle is now the shared ChipRow; expense is the
-    // default selection (most manual entries are spending) and income is not.
+  it('shows the income/expense type in the select sheet with expense selected by default', async () => {
+    const utils = await renderAdd();
+    const { getByRole } = utils;
+    // The type selector is now a select field opening a bottom sheet of option
+    // rows; expense is the default selection (most manual entries are spending)
+    // and income is not. The option rows only mount once the sheet opens.
+    await fireEvent.press(utils.getByLabelText('Type'));
     expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(true);
     expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(false);
   });
 
-  it('renders the type-chip glyphs: income points DOWN and expense points UP', async () => {
-    const { toJSON } = await renderAdd();
+  it('renders the type glyphs: income points DOWN and expense points UP', async () => {
+    const utils = await renderAdd();
 
-    // The mocked SFSymbolView forwards `name` to a host View, so each chip's
-    // glyph name shows in the tree. The up/down asymmetry is spec-mandated
-    // (money leaving vs. arriving) — do not "fix" it.
-    const tree = JSON.stringify(toJSON());
+    // Open the type sheet so both option rows mount. The mocked SFSymbolView
+    // forwards `name` to a host View, so each row's glyph name shows in the
+    // tree. The up/down asymmetry is spec-mandated (money leaving vs. arriving)
+    // — do not "fix" it.
+    await fireEvent.press(utils.getByLabelText('Type'));
+    const tree = JSON.stringify(utils.toJSON());
     expect(tree).toContain('arrow.down');
     expect(tree).toContain('arrow.up');
   });
 
-  it('treats a fresh create amount as negative (expense) without touching the chip', async () => {
+  it('treats a fresh create amount as negative (expense) without touching the type field', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '10.00');
@@ -435,7 +455,7 @@ describe('TransactionFormScreen — add mode', () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0.01');
-    await fireEvent.press(getByText('Expense'));
+    await pickType(utils, 'expense');
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -490,12 +510,14 @@ describe('TransactionFormScreen — add mode', () => {
     expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
   });
 
-  it('renders the mode row directly under Amount: Amount, mode row, Description, Date, Time, Category (item 5)', async () => {
+  it('renders the type selector directly under the Holding select, above Amount: Type, Amount, Description, Date, Time, Category', async () => {
     const utils = await renderAdd();
     const rendered = collectRenderedText(utils.toJSON());
-    // The transaction-TYPE selector now sits directly UNDER the amount input
-    // (item 5), so the mode chip 'Income' falls between Amount and Description.
-    const order = ['Amount', 'Income', 'Description', 'Date', 'Time', 'Category'].map((label) =>
+    // The transaction-TYPE selector is now a select field rendered directly
+    // UNDER the Holding select (absent here — renderAdd fixes the holding by
+    // navigation), so its 'Type' caption leads the field group: above Amount,
+    // Description, Date, Time, and the Category picker.
+    const order = ['Type', 'Amount', 'Description', 'Date', 'Time', 'Category'].map((label) =>
       rendered.indexOf(label),
     );
 
@@ -664,12 +686,18 @@ describe('TransactionFormScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByLabelText, getByText, queryByText } = await renderAdd();
+    const { getByLabelText, getByText, getAllByText, queryByText } = await renderAdd();
 
     expect(getByLabelText('Сума')).toBeTruthy();
     expect(getByLabelText('Опис')).toBeTruthy();
+    // The type selector is a select field labeled 'Тип' from the uk catalog;
+    // its option labels only mount once the sheet opens. 'Дохід' (income) is a
+    // sheet option only; 'Витрата' (expense, the default) shows on BOTH the
+    // trigger and its sheet row, so it matches more than once.
+    expect(getByLabelText('Тип')).toBeTruthy();
+    await fireEvent.press(getByLabelText('Тип'));
     expect(getByText('Дохід')).toBeTruthy();
-    expect(getByText('Витрата')).toBeTruthy();
+    expect(getAllByText('Витрата').length).toBeGreaterThan(0);
     expect(getByLabelText('Категорія')).toBeTruthy();
     expect(queryByText('Amount')).toBeNull();
   });
@@ -684,6 +712,9 @@ describe('TransactionFormScreen — localization', () => {
     });
 
     const { getByLabelText, getByText } = await renderAddFromHolding('cash-1');
+    // The type selector is a select field labeled 'Тип' from the uk catalog;
+    // open it, then pick the Exchange ('Обмін') option row.
+    await fireEvent.press(getByLabelText('Тип'));
     await fireEvent.press(getByText('Обмін'));
 
     expect(getByLabelText('Віддано')).toBeTruthy();
@@ -917,25 +948,29 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     );
   });
 
-  it('surfaces the Exchange chip once a cash primary holding is active', async () => {
+  it('surfaces the Exchange type option once a cash primary holding is active', async () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 
-    const { getByText } = await renderEmptyCreate();
+    const utils = await renderEmptyCreate();
 
     // A cash source enables the create-only Exchange mode (resolveModeOptions
-    // keys off the picked holding's type), so the chip appears.
-    expect(getByText('Exchange')).toBeTruthy();
+    // keys off the picked holding's type), so the option appears in the type
+    // select sheet once it is opened.
+    await fireEvent.press(utils.getByLabelText('Type'));
+    expect(utils.getByText('Exchange')).toBeTruthy();
   });
 
-  it('renders the Exchange and Split type-chip glyphs once the extra modes surface', async () => {
+  it('renders the Exchange and Split type glyphs once the extra modes surface', async () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 
-    const { toJSON } = await renderEmptyCreate();
+    const utils = await renderEmptyCreate();
 
-    // Exchange and Split appear together off a cash source; their glyphs render
-    // via the mocked SFSymbolView. Split's `arrow.trianglehead.branch` is an
-    // iOS-26 symbol carried through the shared SymbolIcon fallback seam.
-    const tree = JSON.stringify(toJSON());
+    // Exchange and Split appear together off a cash source; open the type sheet
+    // so their option rows mount, then their glyphs render via the mocked
+    // SFSymbolView. Split's `arrow.trianglehead.branch` is an iOS-26 symbol
+    // carried through the shared SymbolIcon fallback seam.
+    await fireEvent.press(utils.getByLabelText('Type'));
+    const tree = JSON.stringify(utils.toJSON());
     expect(tree).toContain('arrow.left.arrow.right');
     expect(tree).toContain('arrow.trianglehead.branch');
   });
@@ -967,7 +1002,7 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByLabelText('Amount').props.editable).not.toBe(false);
   });
 
-  it('opens an income row on the Income chip, not the create-mode Expense default', async () => {
+  it('opens an income row selected in the type sheet, not the create-mode Expense default', async () => {
     // Regression guard for the A2 default flip: the hydrate effect's
     // `setMode(fields.sign)` must still win for an existing positive
     // (income) row, even though a fresh create now defaults to Expense.
@@ -979,7 +1014,11 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
       description: 'Salary',
       source: 'manual',
     });
-    const { getByRole } = await renderEdit('txn-income');
+    const utils = await renderEdit('txn-income');
+    // Open the type sheet so its option rows mount, then assert the hydrated
+    // selection landed on Income (not the create default of Expense).
+    await fireEvent.press(utils.getByLabelText('Type'));
+    const { getByRole } = utils;
     expect(getByRole('button', { name: 'Income' }).props.accessibilityState.selected).toBe(true);
     expect(getByRole('button', { name: 'Expense' }).props.accessibilityState.selected).toBe(false);
   });
@@ -1573,10 +1612,14 @@ describe('TransactionFormScreen — Exchange mode', () => {
   });
 
   it('offers Exchange only when the source holding is cash (not bond)', async () => {
+    // Exchange is now a type-sheet option, not an inline chip: open the type
+    // field before asserting whether the option is offered.
     const cash = await renderAddFromHolding('cash-1');
+    await fireEvent.press(cash.getByLabelText('Type'));
     expect(cash.queryByText('Exchange')).toBeTruthy();
 
     const bond = await renderAddFromHolding('bond-1');
+    await fireEvent.press(bond.getByLabelText('Type'));
     expect(bond.queryByText('Exchange')).toBeNull();
   });
 
@@ -1590,13 +1633,17 @@ describe('TransactionFormScreen — Exchange mode', () => {
       source: 'manual',
     });
 
-    const { queryByText } = await renderEdit('txn-1');
-    expect(queryByText('Exchange')).toBeNull();
+    const utils = await renderEdit('txn-1');
+    // Open the type sheet: an edit only offers income/expense, so Exchange must
+    // not appear as an option there.
+    await fireEvent.press(utils.getByLabelText('Type'));
+    expect(utils.queryByText('Exchange')).toBeNull();
   });
 
   it('lists open, non-source cash holdings in the destination select', async () => {
     const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
 
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
 
@@ -1610,16 +1657,19 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(queryByText('Monobank Jar')).toBeNull();
   });
 
-  it('renders the mode row directly under the Value In (second) input, above Date, in Exchange mode', async () => {
+  it('renders the type selector above the Exchange field group, not dropped below Date/Time', async () => {
     const utils = await renderAddFromHolding('cash-1');
-    await fireEvent.press(utils.getByText('Exchange'));
+    await pickType(utils, 'exchange');
 
     const rendered = collectRenderedText(utils.toJSON());
-    // The transaction-TYPE selector must sit directly UNDER the second input
-    // (Value In), between it and Date — never dropped to the form bottom below
-    // Date/Time. 'Income' is the mode ChipRow's first chip, so it stands in for
-    // the row's position: Value In, then the mode row, then Date.
-    const order = ['Value In', 'Income', 'Date', 'Time'].map((label) => rendered.indexOf(label));
+    // The transaction-TYPE selector sits at the TOP of the form (directly under
+    // the Holding select, absent here since the holding is fixed by navigation)
+    // — ABOVE the entire Exchange field group (Value Out, Value In, Date),
+    // never dropped to the form bottom below Date/Time. Its 'Type' caption
+    // stands in for the field's position.
+    const order = ['Type', 'Value Out', 'Value In', 'Date', 'Time'].map((label) =>
+      rendered.indexOf(label),
+    );
 
     for (const index of order) {
       expect(index).toBeGreaterThan(-1);
@@ -1628,10 +1678,11 @@ describe('TransactionFormScreen — Exchange mode', () => {
   });
 
   it('hides the category picker in Exchange mode', async () => {
-    const { getByText, queryByLabelText } = await renderAddFromHolding('cash-1');
+    const { getByText, getByLabelText, queryByLabelText } = await renderAddFromHolding('cash-1');
     // Category field is visible in income/expense mode.
     expect(queryByLabelText('Category')).toBeTruthy();
 
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
     expect(queryByLabelText('Category')).toBeNull();
   });
@@ -1645,6 +1696,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     ['negative Value In', '100', '-5'],
   ])('rejects %s: recordExchange is not called', async (_case, valueOut, valueIn) => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
@@ -1664,7 +1716,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     const utils = await renderAddFromHolding('cash-1');
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
-    await fireEvent.press(utils.getByText('Exchange'));
+    await pickType(utils, 'exchange');
 
     // Nothing filled yet.
     expect(isSaveDisabled()).toBe(true);
@@ -1685,7 +1737,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
   it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
     const utils = await renderAddFromHolding('cash-1');
-    await fireEvent.press(utils.getByText('Exchange'));
+    await pickType(utils, 'exchange');
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
@@ -1709,6 +1761,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
   it('saves an exchange with correct minor units and holding ids', async () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
 
     await fireEvent.changeText(getByLabelText('Value Out'), '100');
@@ -1792,16 +1845,20 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
   });
 
   it('offers Exchange from a cash source but NOT from a card source', async () => {
+    // Exchange is a type-sheet option, so open the type field before asserting.
     const cash = await renderAddFromHolding('cash-1');
+    await fireEvent.press(cash.getByLabelText('Type'));
     expect(cash.queryByText('Exchange')).toBeTruthy();
 
     const card = await renderAddFromHolding('card-1');
+    await fireEvent.press(card.getByLabelText('Type'));
     expect(card.queryByText('Exchange')).toBeNull();
   });
 
   it('lists only cash destinations (card/crypto/term_deposit excluded) and shows account names', async () => {
     const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
 
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
 
@@ -1819,6 +1876,7 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
 
   it('saves a cash->cash exchange with correct minor units and holding ids', async () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+    await fireEvent.press(getByLabelText('Type'));
     await fireEvent.press(getByText('Exchange'));
 
     await fireEvent.changeText(getByLabelText('Value Out'), '100');
@@ -1895,7 +1953,7 @@ describe('TransactionFormScreen — From/To picker order', () => {
 
   it('orders the destination picker by the Accounts screen order (account, then holding)', async () => {
     const utils = await renderAddFromHolding('src');
-    await fireEvent.press(utils.getByText('Exchange'));
+    await pickType(utils, 'exchange');
     await fireEvent.press(utils.getByLabelText('To'));
 
     const rendered = collectRenderedText(utils.toJSON());
@@ -2231,7 +2289,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     mockRecordManualWithReturns.mockResolvedValue(undefined);
 
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     // One return row exists by default; add a second.
     await fireEvent.press(utils.getByText('Add return'));
 
@@ -2268,7 +2326,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     const isDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
@@ -2291,7 +2349,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     const isDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
@@ -2307,7 +2365,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('excludes a holding already picked in another row (and any off-currency holding) from the next picker', async () => {
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByText('Add return'));
 
     await fireEvent.press(utils.getByLabelText('Return to 1'));
@@ -2325,7 +2383,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('previews an EXPENSE-style description placeholder in split mode (item 1)', async () => {
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
 
     // A split is an expense, so its blank-description preview must read as the
     // expense fallback ("<holding> expense"), never the income one.
@@ -2336,7 +2394,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('allows the payer holding itself as a return target (item 2)', async () => {
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
 
     // The payer ("Wallet UAH") is now offered as a valid return target.
@@ -2350,7 +2408,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     ]);
 
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
 
     // A same-currency, open, non-payer holding still qualifies...
@@ -2361,7 +2419,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('renders the return-row delete control with a text label and removes the row (item 3)', async () => {
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
     await fireEvent.press(utils.getByText('Add return'));
 
     // The delete control now carries the shared button's TEXT label (not the old
@@ -2375,7 +2433,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   it('renders a divider and a section heading above the returns list (item 4)', async () => {
     const utils = await renderAddFromHolding('payer');
-    await fireEvent.press(utils.getByText('Split'));
+    await pickType(utils, 'split');
 
     expect(utils.getByTestId('returns-divider')).toBeTruthy();
     expect(utils.getByText('Change Returns')).toBeTruthy();

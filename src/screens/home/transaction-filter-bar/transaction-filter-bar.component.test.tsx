@@ -252,9 +252,9 @@ describe('TransactionFilterBar', () => {
       expect(onApplyDates).toHaveBeenCalledWith(SPAN_START, SPAN_END);
     });
 
-    it('moves only the bound nearer to a pick, leaving the other unchanged', async () => {
+    it('resets to a fresh single-date selection when a pick lands on a complete range', async () => {
       const onApplyDates = jest.fn();
-      // Seed an active range so the pick has a known [from, to] to act on.
+      // Seed a complete active range; on open it becomes the draft [from, to].
       const queries = await renderBar({
         dateFrom: new Date(2026, 0, 10),
         dateTo: new Date(2026, 0, 20),
@@ -264,14 +264,38 @@ describe('TransactionFilterBar', () => {
       await act(async () => {
         fireEvent.press(queries.getByLabelText('Date range'));
       });
-      // Jan 12 is nearer the `from` bound (Jan 10) than the `to` bound (Jan 20),
-      // so only `from` moves; `to` stays on Jan 20.
+      // A pick on an already-complete range RESETS: it discards both former
+      // bounds and starts over at the pick as a lone single-date selection
+      // (from === to === the pick) — it does NOT move whichever bound was nearer.
       await pressDay(queries, new Date(2026, 0, 12));
       await act(async () => {
         fireEvent.press(queries.getByText('Apply'));
       });
 
-      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 12), new Date(2026, 0, 20));
+      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 12), new Date(2026, 0, 12));
+    });
+
+    it('sets the other bound on the next pick, ordered so from precedes to', async () => {
+      const onApplyDates = jest.fn();
+      const queries = await renderBar({
+        dateFrom: new Date(2026, 0, 10),
+        dateTo: new Date(2026, 0, 20),
+        onApplyDates,
+      });
+
+      await act(async () => {
+        fireEvent.press(queries.getByLabelText('Date range'));
+      });
+      // The first pick resets to a lone start (Jan 12). The second pick becomes
+      // the other bound, ordered so from <= to: picking an EARLIER day (Jan 8)
+      // makes Jan 8 the `from` and the earlier lone start Jan 12 the `to`.
+      await pressDay(queries, new Date(2026, 0, 12));
+      await pressDay(queries, new Date(2026, 0, 8));
+      await act(async () => {
+        fireEvent.press(queries.getByText('Apply'));
+      });
+
+      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 8), new Date(2026, 0, 12));
     });
 
     it('applies an open-ended start as a same-day range when Apply is pressed', async () => {

@@ -58,16 +58,17 @@ import { seedCounterpartMinorUnits } from '../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
 import { defaultTransactionDescription } from '../../transactions/default-description';
 
-import ChipRow from './chip-row';
 import DateField from './date-field';
 import TimeField from './time-field';
 import CategoryField from './category-field';
 import ExchangeFields from './exchange-fields';
 import { useSubmitOnce } from './use-submit-once';
+import ModeSelectField from './mode-select-field';
 import HoldingSelectField from './holding-select-field';
 import ConvertExchangeFields from './convert-exchange-fields';
 import DescriptionSuggestions from './description-suggestions';
 import { groupAmount, majorAmountText } from './amount-format';
+import type { FormMode } from './mode-select-field/mode-select-field.props';
 import type { HoldingSelectOption } from './holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -82,11 +83,11 @@ type TransactionFormScreenProps = {
 
 type Sign = 'income' | 'expense';
 
-// The form's own mode is a superset of `Sign`: an Exchange is neither an
-// income nor an expense row, so it gets its own branch through `save` (see
-// `saveExchange` below) rather than trying to force it through the signed
-// income/expense amount path.
-type FormMode = 'income' | 'expense' | 'exchange' | 'split';
+// The form's own mode (`FormMode`, imported from the mode-select-field the
+// screen renders) is a superset of `Sign`: an Exchange is neither an income nor
+// an expense row, so it gets its own branch through `save` (see `saveExchange`
+// below) rather than trying to force it through the signed income/expense
+// amount path.
 
 // One change-return row of a split payment while it is being entered: the
 // picked holding (null until chosen) and its still-unparsed major-amount text.
@@ -303,11 +304,12 @@ const resolveModeOptions = (
   return canExchange ? ['income', 'expense', 'exchange', 'split'] : ['income', 'expense'];
 };
 
-// The SF Symbol shown on each transaction-type chip. Note the deliberate,
-// spec-mandated asymmetry: expense points UP and income points DOWN (money
-// leaving vs. arriving). `split`'s `arrow.trianglehead.branch` is an iOS-26
-// symbol — SymbolIcon supplies its `arrow.branch` fallback centrally, so no
-// fallback is threaded through the ChipRow here.
+// The SF Symbol shown for each transaction type (the select trigger's glyph
+// and each sheet row's leading icon). Note the deliberate, spec-mandated
+// asymmetry: expense points UP and income points DOWN (money leaving vs.
+// arriving). `split`'s `arrow.trianglehead.branch` is an iOS-26 symbol —
+// SymbolIcon supplies its `arrow.branch` fallback centrally, so no fallback is
+// threaded through the select here.
 const MODE_ICONS: Record<FormMode, string> = {
   income: 'arrow.down',
   expense: 'arrow.up',
@@ -827,11 +829,6 @@ type FieldGroupProps = {
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
-  // The transaction-TYPE selector (mode ChipRow), rendered directly UNDER the
-  // amount/value input (item 5) — built in the component so this pure helper
-  // stays translation-agnostic. Not shown while converting (a convert has no
-  // mode toggle), so the converting branch never renders it.
-  modeChipRow: ReactElement;
   t: TFunction;
 };
 
@@ -871,7 +868,6 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         valueInSuffix={props.valueInSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
-        modeChipRow={props.modeChipRow}
       />
     );
   }
@@ -890,10 +886,6 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         // required marker; a manual add/edit always needs a positive amount.
         required={!props.isReadOnly}
       />
-
-      {/* The transaction-TYPE selector sits directly under the amount input
-        (item 5), between Amount and Description. */}
-      {props.modeChipRow}
 
       <TextField
         label={props.t('forms.transaction.description')}
@@ -1031,13 +1023,14 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
-// The mode chip row, category picker, "Convert to exchange" action, and
-// Delete button: everything below the main field group EXCEPT while
-// converting (a convert has no mode toggle, no category, and no delete —
-// just the convert group and Save). Extracted to its own module-level
-// function for the same cognitive-complexity-budget reason as
-// `renderFieldGroup` above: several independent `&&`-gated conditions, kept
-// out of the screen component's own branch count.
+// The category picker, "Convert to exchange" action, and Delete button:
+// everything below the main field group EXCEPT while converting (a convert has
+// no category and no delete — just the convert group and Save). The
+// transaction-TYPE selector is NOT here; it renders above the field group,
+// under the Holding select. Extracted to its own module-level function for the
+// same cognitive-complexity-budget reason as `renderFieldGroup` above: several
+// independent `&&`-gated conditions, kept out of the screen component's own
+// branch count.
 type ModeAndActionsProps = {
   converting: boolean;
   isReadOnly: boolean;
@@ -1062,11 +1055,11 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
 
   return (
     <>
-      {/* The mode ChipRow no longer lives here: it renders directly under the
-        amount/value input inside `renderFieldGroup` (item 5). This helper now
-        owns only the category picker, the "Convert to exchange" action, and the
-        Delete button — everything below the field group except while
-        converting. */}
+      {/* The transaction-TYPE selector does not live here: it renders as a
+        select field directly under the Holding select, above the field group.
+        This helper owns only the category picker, the "Convert to exchange"
+        action, and the Delete button — everything below the field group except
+        while converting. */}
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
@@ -1936,14 +1929,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // so a double-tap of the sheet's Delete never issues two removals.
   const { onPress: onConfirmDelete } = useSubmitOnce(removeTransaction);
 
-  // The transaction-TYPE selector (mode ChipRow), built here so the pure
-  // `renderFieldGroup` helper stays translation-agnostic. It renders directly
-  // under the amount/value input (item 5). On a read-only (synced) row the row
-  // is `disabled`: presses are inert AND the chips dim, matching how the other
-  // fields render locked, so a synced transaction's bank-owned sign cannot be
-  // toggled here.
-  const modeChipRow = (
-    <ChipRow
+  // The transaction-TYPE selector, built here so the label/mode copy stays with
+  // the component's live translations. It renders directly UNDER the Holding
+  // select field (not while converting, which has no mode toggle). Uses the
+  // transaction-scoped `forms.transaction.type` ("Type") label, decoupled from
+  // the holding form's own `forms.holding.type`. On a read-only (synced) row the
+  // field is `disabled`: the trigger is inert and dims like every other locked
+  // field, so a synced transaction's bank-owned sign cannot be toggled here.
+  const typeSelectField = (
+    <ModeSelectField
+      visible={!converting}
+      label={t('forms.transaction.type')}
       options={modeOptions}
       selected={mode}
       onSelect={setMode}
@@ -1980,6 +1976,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             selectedId: primaryHoldingId,
             onSelect: setPrimaryHoldingId,
           })}
+
+          {/* The transaction-TYPE selector, directly under the Holding select.
+            Built with `visible={!converting}` (a convert has no mode toggle),
+            so it is rendered unconditionally here — the field itself carries
+            both that gate and the read-only dimming for a synced row. */}
+          {typeSelectField}
 
           {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,
@@ -2029,7 +2031,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isReadOnly,
             time,
             onChangeTime: setTime,
-            modeChipRow,
             t,
           })}
 

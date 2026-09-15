@@ -14,7 +14,6 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import SheetFooter from '../../../design-system/components/sheet-footer';
 
-import { boundToMove } from './nearer-bound';
 import { styles } from './date-range-field.styles';
 import type { DateRangeFieldProps } from './date-range-field.props';
 
@@ -159,11 +158,6 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
     setOpen(true);
   };
 
-  // A pick moves only the bound nearer to it (by absolute time distance) and
-  // leaves the other bound unchanged, so the range extends or shrinks from the
-  // side closest to the pick rather than resetting the whole selection. The
-  // "which bound moves" decision is the pure `boundToMove` (see nearer-bound.ts);
-  // a valid from <= to range can never invert under it.
   const handleDayPress = (day: DateData): void => {
     const picked = new Date(day.year, day.month - 1, day.day);
 
@@ -173,19 +167,19 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
       return;
     }
 
-    const bound = boundToMove(
-      draftFrom?.getTime() ?? null,
-      draftTo?.getTime() ?? null,
-      picked.getTime(),
-    );
-
-    if (bound === 'from') {
+    // A pick RESETS the range: if there is no start yet, or a complete range
+    // already exists, start a fresh single-date selection at the pick. If only
+    // a start is set, the pick becomes the other bound, ordered so from <= to.
+    if (draftFrom === null || draftTo !== null) {
       setDraftFrom(picked);
+      setDraftTo(null);
 
       return;
     }
 
-    setDraftTo(picked);
+    const pickedIsEarlier = picked.getTime() < draftFrom.getTime();
+    setDraftFrom(pickedIsEarlier ? picked : draftFrom);
+    setDraftTo(pickedIsEarlier ? draftFrom : picked);
   };
 
   // Commit the currently-shown selection directly — a lone start becomes a

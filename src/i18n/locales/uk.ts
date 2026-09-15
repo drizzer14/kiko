@@ -224,6 +224,7 @@ export const uk: typeof en = {
       selectHolding: 'Оберіть актив',
       title: 'Транзакція',
       to: 'Куди',
+      type: 'Тип',
       valueIn: 'Отримано',
       valueInPlaceholder: '100,00',
       valueOut: 'Віддано',

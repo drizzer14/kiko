@@ -86,8 +86,8 @@ const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise
 };
 
 // Like pickAndApply, but seeds an ACTIVE range first (dateFrom/dateTo) so the
-// nearer-bound behavior can be exercised against a known [from, to] rather than
-// the full-span default.
+// reset behavior can be exercised against a known [from, to] rather than the
+// full-span default.
 const pickRangeAndApply = async (
   dateFrom: Date,
   dateTo: Date,
@@ -153,9 +153,10 @@ describe('DateRangeField selectable bounds', () => {
     const earliest = new Date(2000, 0, 1);
     const latest = new Date(2000, 5, 15);
 
-    // The full span [earliest, latest] seeds the draft; today is far past both,
-    // so it moves the nearer `to` bound. A honoured tap proves today is
-    // selectable (the ceiling is inclusive).
+    // The full span [earliest, latest] seeds the draft; a tap on today resets
+    // the range to a fresh single-date selection at today, so the applied `to`
+    // becomes today. A honoured tap proves today is selectable (the ceiling is
+    // inclusive).
     const [, to] = await pickAndApply(earliest, latest, [today]);
 
     expect(ymd(to)).toEqual(ymd(today));
@@ -167,8 +168,8 @@ describe('DateRangeField selectable bounds', () => {
     const future = dayOffset(today, 30);
 
     // A future tap is ignored, so the seeded full span applies unchanged. Were
-    // it honoured it would have moved the nearer `to` bound to the future day,
-    // so the applied `to` staying on `latest` proves rejection.
+    // it honoured it would have reset the range to the future day, so the
+    // applied `to` staying on `latest` proves rejection.
     const [, to] = await pickAndApply(earliest, latest, [future]);
 
     expect(ymd(to)).toEqual(ymd(latest));
@@ -180,48 +181,58 @@ describe('DateRangeField selectable bounds', () => {
     const tooEarly = new Date(2000, 0, 1);
 
     // A pre-earliest tap is ignored, so the seeded full span applies unchanged.
-    // Were it honoured it would have moved the nearer `from` bound to 2000, so
-    // the applied `from` staying on `earliest` proves rejection.
+    // Were it honoured it would have reset the range to 2000, so the applied
+    // `from` staying on `earliest` proves rejection.
     const [from] = await pickAndApply(earliest, latest, [tooEarly]);
 
     expect(ymd(from)).toEqual(ymd(earliest));
   });
 });
 
-describe('DateRangeField nearer-bound picking', () => {
+describe('DateRangeField reset picking', () => {
   const activeFrom = new Date(2020, 2, 1);
   const activeTo = new Date(2020, 8, 1);
   const earliest = new Date(2020, 0, 1);
   const latest = new Date();
 
-  it('moves only the "from" bound when the pick is nearer to it', async () => {
-    const nearFrom = new Date(2020, 2, 10);
+  it('resets to a fresh single-date selection when a complete range exists', async () => {
+    const pick = new Date(2020, 5, 15);
 
-    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [nearFrom]);
+    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [pick]);
 
-    expect(ymd(from)).toEqual(ymd(nearFrom));
-    // The other bound is untouched: the range shrinks from the near side only.
-    expect(ymd(to)).toEqual(ymd(activeTo));
+    // The seeded [from, to] is complete, so the first pick discards it and
+    // starts over at the pick; Apply commits the lone start as a same-day range.
+    expect(ymd(from)).toEqual(ymd(pick));
+    expect(ymd(to)).toEqual(ymd(pick));
   });
 
-  it('moves only the "to" bound when the pick is nearer to it', async () => {
-    const nearTo = new Date(2020, 7, 20);
+  it('sets the second pick as the other bound, ordered from <= to (later second)', async () => {
+    const first = new Date(2020, 4, 10);
+    const second = new Date(2020, 6, 20);
 
-    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [nearTo]);
+    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [
+      first,
+      second,
+    ]);
 
-    expect(ymd(from)).toEqual(ymd(activeFrom));
-    expect(ymd(to)).toEqual(ymd(nearTo));
+    // The first pick resets to a lone start; the later second pick becomes `to`.
+    expect(ymd(from)).toEqual(ymd(first));
+    expect(ymd(to)).toEqual(ymd(second));
   });
 
-  it('extends the "to" bound when the pick is outside and above the range', async () => {
-    const above = new Date(2020, 10, 1);
+  it('orders from <= to when the second pick is earlier than the first', async () => {
+    const first = new Date(2020, 6, 20);
+    const second = new Date(2020, 4, 10);
 
-    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [above]);
+    const [from, to] = await pickRangeAndApply(activeFrom, activeTo, earliest, latest, [
+      first,
+      second,
+    ]);
 
-    // The nearer bound (`to`) moves to the pick, extending the range; `from`
-    // stays put.
-    expect(ymd(from)).toEqual(ymd(activeFrom));
-    expect(ymd(to)).toEqual(ymd(above));
+    // The earlier second pick becomes `from` and the first pick becomes `to`,
+    // so the applied range is ordered from <= to regardless of tap order.
+    expect(ymd(from)).toEqual(ymd(second));
+    expect(ymd(to)).toEqual(ymd(first));
   });
 });
 

@@ -7,6 +7,7 @@ import '../../unistyles';
 import '../../../i18n';
 import IconPickerModal from '.';
 import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';
+import { SEEDED_CATEGORIES } from '../../../db/__fixtures__/seeded-categories';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;
 
@@ -29,9 +30,19 @@ const setup = async (overrides: Overrides = {}) => {
 };
 
 describe('icon pools', () => {
-  it('exposes exactly 62 Kiko Entities symbols and 73 Kiko Categories symbols', () => {
+  it('exposes exactly 62 Kiko Entities symbols and 76 Kiko Categories symbols', () => {
     expect(KIKO_ENTITIES_ICONS).toHaveLength(62);
-    expect(KIKO_CATEGORIES_ICONS).toHaveLength(73);
+    expect(KIKO_CATEGORIES_ICONS).toHaveLength(76);
+  });
+
+  it('includes every seeded category default so each is selectable in the picker', () => {
+    // The seeded-category default icons must all be members of the categories
+    // pool so a user can re-pick any default. Sourced from the SEEDED_CATEGORIES
+    // fixture (the single source of truth) rather than a hardcoded copy, so the
+    // assertion cannot drift when a default icon changes.
+    for (const icon of SEEDED_CATEGORIES.map((category) => category.icon)) {
+      expect(KIKO_CATEGORIES_ICONS).toContain(icon);
+    }
   });
 
   it('keeps the two pools distinct: an entities-only symbol is not a categories one, and vice versa', () => {

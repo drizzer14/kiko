@@ -86,19 +86,22 @@ export const KIKO_ENTITIES_ICONS = [
   'yensign',
 ] as const;
 
-// §3.0.2 Kiko Categories pool (73) — the category picker pool. A pool of OPTIONS
-// only: the per-default seeded-category assignments are a SEPARATE decision, and
-// a seeded default (e.g. Utilities `bolt`, Other `square.grid.2x2`, Transfers
-// `arrow.left.arrow.right`) is intentionally NOT required to be a member here.
+// §3.0.2 Kiko Categories pool (76) — the category picker pool. Every seeded
+// category default IS a member of this pool, so each of the 10 default icons
+// (e.g. Utilities `bolt`, Other `square.grid.2x2`, Transfers
+// `arrow.left.arrow.right`) is selectable in the picker.
 export const KIKO_CATEGORIES_ICONS = [
   'airplane',
   'antenna.radiowaves.left.and.right',
+  'arrow.left.arrow.right',
+  'arrow.up.arrow.down',
   'bag',
   'banknote',
   'basket',
   'bed.double',
   'bicycle',
   'bird',
+  'bolt',
   'book',
   'brain',
   'briefcase',
@@ -145,12 +148,12 @@ export const KIKO_CATEGORIES_ICONS = [
   'pawprint',
   'phone',
   'pianokeys',
-  'pizza.slice',
   'popcorn',
   'repeat',
   'shippingbox',
   'shoe',
   'smartphone',
+  'square.grid.2x2',
   'staroflife',
   'stethoscope',
   'stroller',
