@@ -322,6 +322,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
           ? undefined
           : () => onDuplicateTransaction(row.transaction.id)
       }
+      liftOnHold
     >
       <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
         <GlassSurface transparent bloom padding={3} testID="ledger-row">
