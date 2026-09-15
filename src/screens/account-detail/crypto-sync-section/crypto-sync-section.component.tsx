@@ -1,6 +1,7 @@
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import type { TFunction } from 'i18next';
 import type { FC } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
@@ -15,6 +16,7 @@ import { resyncRequest } from '../../../crypto-sync/resync-request';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
+import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { styles } from '../account-detail.styles';
@@ -46,6 +48,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   const connectedProvider = isBalanceProviderId(account.institution)
     ? account.institution
     : undefined;
+  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
+  // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
+  const [disconnectPending, setDisconnectPending] = useState(false);
 
   const connectWallet = (address: string): Promise<boolean> =>
     sync({ providerId: 'btc_wallet', targetAccountId: account.id, address });
@@ -61,21 +66,17 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     }
   };
 
-  const confirmDisconnect = (providerId: BalanceProviderId): void => {
-    Alert.alert(
-      t('accountDetail.disconnectProvider', { provider: providerDisplayName(providerId, t) }),
-      disconnectMessage(providerId, t),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('accountDetail.disconnectAction'),
-          style: 'destructive',
-          onPress: () => {
-            runDisconnect(providerId);
-          },
-        },
-      ],
-    );
+  const confirmDisconnect = (): void => {
+    setDisconnectPending(true);
+  };
+
+  const cancelDisconnect = (): void => {
+    setDisconnectPending(false);
+  };
+
+  const disconnect = (providerId: BalanceProviderId): void => {
+    setDisconnectPending(false);
+    runDisconnect(providerId);
   };
 
   if (connectedProvider !== undefined) {
@@ -123,7 +124,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               variant="secondaryTonal"
               size="small"
               fullWidth={false}
-              onPress={() => confirmDisconnect(connectedProvider)}
+              onPress={confirmDisconnect}
               icon="lock.open"
             >
               {t('accountDetail.disconnectAction')}
@@ -136,6 +137,22 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             {error}
           </Text>
         )}
+
+        {/* The crypto provider Disconnect confirmation — the same shared themed
+            `ConfirmSheet` the grid-card long-press delete uses, replacing the old
+            native `Alert.alert`. A scrim/back dismiss behaves like Cancel. */}
+        <ConfirmSheet
+          visible={disconnectPending}
+          title={t('accountDetail.disconnectProvider', {
+            provider: providerDisplayName(connectedProvider, t),
+          })}
+          message={disconnectMessage(connectedProvider, t)}
+          confirmLabel={t('accountDetail.disconnectAction')}
+          onConfirm={() => disconnect(connectedProvider)}
+          onCancel={cancelDisconnect}
+          destructive
+          confirmTestID="crypto-disconnect-confirm"
+        />
       </Box>
     );
   }

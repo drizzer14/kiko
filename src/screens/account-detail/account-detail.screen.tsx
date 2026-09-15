@@ -20,6 +20,7 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import CardContextMenu from '../../design-system/components/card-context-menu';
+import ConfirmSheet from '../../design-system/components/confirm-sheet';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import Screen from '../../design-system/components/screen';
@@ -154,6 +155,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   const { isSyncing, error, sync } = useSync();
   const [tokenMessage, setTokenMessage] = useState<string | undefined>();
+  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
+  // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
+  const [disconnectPending, setDisconnectPending] = useState(false);
   // Guards a fast double-tap: the button is disabled only on `isSyncing`, which
   // is still false during the `readToken(accountId)` await below, so a second press
   // could fire `sync` again before the first resolves.
@@ -194,20 +198,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   };
 
   const confirmDisconnect = (): void => {
-    Alert.alert(
-      t('accountDetail.disconnectMonobank'),
-      t('accountDetail.disconnectMonobankMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('accountDetail.disconnectAction'),
-          style: 'destructive',
-          onPress: () => {
-            runDisconnect();
-          },
-        },
-      ],
-    );
+    setDisconnectPending(true);
+  };
+
+  const cancelDisconnect = (): void => {
+    setDisconnectPending(false);
+  };
+
+  const disconnect = (): void => {
+    setDisconnectPending(false);
+    runDisconnect();
   };
 
   const {
@@ -386,6 +386,20 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             />
           </Box>
         </Box>
+
+        {/* The Monobank Disconnect confirmation — the same shared themed
+            `ConfirmSheet` the grid-card long-press delete uses, replacing the
+            old native `Alert.alert`. A scrim/back dismiss behaves like Cancel. */}
+        <ConfirmSheet
+          visible={disconnectPending}
+          title={t('accountDetail.disconnectMonobank')}
+          message={t('accountDetail.disconnectMonobankMessage')}
+          confirmLabel={t('accountDetail.disconnectAction')}
+          onConfirm={disconnect}
+          onCancel={cancelDisconnect}
+          destructive
+          confirmTestID="monobank-disconnect-confirm"
+        />
       </Box>
     </Screen>
   );

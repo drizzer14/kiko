@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
@@ -865,21 +865,31 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
-  it('offers a Disconnect action on a connected account and confirms before disconnecting', async () => {
+  it('offers a Disconnect action on a connected account and confirms via the themed sheet before disconnecting', async () => {
     mockDisconnect.mockResolvedValue(undefined);
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'monobank' })],
+      holdings: [],
     });
+    const { getByText, getByTestId } = await renderScreen();
+    await fireEvent.press(getByText('Disconnect'));
+    // The themed ConfirmSheet (not a native Alert.alert) opens before the
+    // connection + token are cleared.
+    expect(getByText('Disconnect Monobank')).toBeTruthy();
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    await fireEvent.press(getByTestId('monobank-disconnect-confirm'));
+    await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
+  });
+
+  it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: 'monobank' })],
       holdings: [],
     });
     const { getByText } = await renderScreen();
     await fireEvent.press(getByText('Disconnect'));
-    // The action confirms (an Alert) before it clears the connection + token.
-    expect(alertSpy).toHaveBeenCalled();
-    await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
-    alertSpy.mockRestore();
+    await fireEvent.press(getByText('Cancel'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
   });
 
   it('does not offer Disconnect on an account that is not connected', async () => {
