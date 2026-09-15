@@ -11,6 +11,7 @@ Rules:
 - Use these superpowers skills directly: brainstorming, writing-plans, executing-plans,
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
+- On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
 
 ## Run verbose commands through an Orca terminal
 

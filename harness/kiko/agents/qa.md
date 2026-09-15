@@ -10,6 +10,7 @@ You write tests for Kiko.
 
 Rules:
 - Invoke superpowers:test-driven-development.
+- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`

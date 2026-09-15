@@ -20,6 +20,15 @@ cd "$ROOT" || exit 2
 # standalone stage-1 lint below is an intentional, cheap early fail-fast: it
 # catches a format/lint error in seconds, before spending minutes on the full
 # jest suite and the rest of the gate.
+#
+# Stage 3 (check:all) also overlaps several checks that the Stop and
+# SubagentStop medium tier runs (dup, knip, deps, typecheck, and more). Do NOT
+# mistake that overlap for a bug and remove the stage — without stage 3, a
+# `make verify` run that did not also fire the hooks would skip the gate
+# entirely. The overlap does not REDO work across repeated sequential runs,
+# because every check records a fingerprint of its own inputs on a PASS and
+# skips the next identical run (the dedup helpers in scripts/checks/_lib.sh).
+# That fingerprint dedup addresses repeat work only, not concurrency.
 run_stage() {
   local num="$1" name="$2"
   shift 2
