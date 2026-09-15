@@ -72,11 +72,13 @@ describe('effectiveFallbackName', () => {
   // native SFSymbolView binding requires `fallbackName` to be a `String` —
   // handing it `null` throws `Exception in HostFunction:
   // NitroSfsymbols.fallbackName: Value is null, expected a String` and
-  // crashes the app in Release (no redbox to catch it). Only three of the
-  // four transaction MODE_ICONS values are in the central iOS-26 fallback
-  // map (`split`'s `arrow.trianglehead.branch`); switching away from Split to
-  // `income`/`expense`/`exchange` used to toggle `fallbackName` from a string
-  // to `undefined` on the SAME instance — exactly the crashing transition.
+  // crashes the app in Release (no redbox to catch it). Only one of the four
+  // transaction MODE_ICONS values is in the central iOS-26 fallback map
+  // (`split`'s `arrow.trianglehead.branch`); the other three
+  // (`income`/`expense`/`exchange`) have no map entry and used to resolve to
+  // `undefined`, toggling `fallbackName` from a string to `undefined` on the
+  // SAME instance when switching away from Split — exactly the crashing
+  // transition.
   // `effectiveFallbackName` must NEVER return `undefined`, for any name, so
   // the native prop is always a stable string across every update.
   it('never returns undefined, for any transaction MODE_ICONS value (crash regression)', () => {
