@@ -351,6 +351,67 @@ describe('Screen', () => {
     expect(scrollContentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
   });
 
+  it('grows the scroll content container so a fillHeight spacer child can push bottom-anchored content down', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true, fillHeight: true });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    // Without `flexGrow: 1` a ScrollView's content container sizes to its
+    // content, never the viewport, so a `flex: 1` spacer among the children
+    // (e.g. Settings' bottom-anchored About footer) would collapse to 0
+    // height instead of actually pushing trailing content to the bottom.
+    expect(scrollContentStyle.flexGrow).toBe(1);
+  });
+
+  it('reserves the floating tab-bar clearance on fillHeight scroll content, like a true-bottom-edge content container', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true, fillHeight: true });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    // Bottom-anchored fillHeight content reaches the screen's true bottom
+    // edge exactly like the plain branch's `content` does, so it needs the
+    // same `FOOTER_GAP + BOTTOM_CLEARANCE` reservation or it lands hidden
+    // behind the floating glass tab bar.
+    expect(scrollContentStyle.paddingBottom).toBe(FOOTER_GAP + BOTTOM_CLEARANCE);
+  });
+
+  it('leaves the scroll content container unchanged when fillHeight is not set', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    // The opt-in must not leak into every other `scroll` screen: no flexGrow,
+    // and the base bottom padding unchanged from before `fillHeight` existed.
+    expect(scrollContentStyle.flexGrow).toBeUndefined();
+    expect(scrollContentStyle.paddingBottom).toBe(CONTENT_BASE_PADDING);
+  });
+
+  it('lets the pinned footer slot own the clearance when both fillHeight and footer are set, instead of doubling the gap', async () => {
+    const { getByTestId } = await renderScreen({
+      scroll: true,
+      fillHeight: true,
+      footer: footerNode,
+    });
+
+    const scrollContentStyle = StyleSheet.flatten(
+      getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+    );
+
+    // A screen that opts into both props at once must not reserve the
+    // `FOOTER_GAP + BOTTOM_CLEARANCE` gap twice — once here AND once in the
+    // pinned `footer` slot. `hasFooter` wins: the scroll content's own bottom
+    // padding drops to 0, exactly like the plain footer-only case, while
+    // `flexGrow` still applies so the spacer inside still grows.
+    expect(scrollContentStyle.paddingBottom).toBe(0);
+    expect(scrollContentStyle.flexGrow).toBe(1);
+  });
+
   it('renders no hairline divider above the footer', async () => {
     const { getByTestId } = await renderScreen({ scroll: true, footer: footerNode });
 

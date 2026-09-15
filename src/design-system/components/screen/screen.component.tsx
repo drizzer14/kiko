@@ -24,6 +24,7 @@ const Screen: FC<ScreenProps> = ({
   bleedBottom = false,
   bleedTop = false,
   scrollableRef,
+  fillHeight = false,
 }) => {
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
@@ -105,7 +106,11 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent(footer !== undefined)}
+          contentContainerStyle={styles.scrollContent(
+            footer !== undefined,
+            fillHeight,
+            bottomClearance,
+          )}
         >
           {children}
         </ScrollView>

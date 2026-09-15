@@ -58,4 +58,20 @@ export type ScreenProps = {
   // its own clearance. Only meaningful in the plain (non-scroll) branch; ignored
   // in `scroll` mode (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;
+  // Opt-in for a `scroll`-mode screen whose trailing content must sit pinned
+  // to the screen's true bottom edge WHEN the content is shorter than the
+  // viewport, yet still scroll normally with the rest of the content when it
+  // overflows — the iOS Settings "About" footer pattern (app name/version,
+  // copyright, links), which is page CONTENT that scrolls away, not a pinned
+  // `footer` action button that must always stay reachable (use `footer` for
+  // that instead). A ScrollView's content container otherwise sizes to its
+  // content, never the viewport, so a `flex: 1` spacer placed among the
+  // children collapses to 0 height; `fillHeight` gives the content container
+  // `flexGrow: 1` so that spacer can actually push trailing content down, and
+  // reserves the same floating-tab-bar `bottomClearance` the plain branch's
+  // `content` reserves for ITS true bottom edge, so the bottom-anchored
+  // content does not land hidden behind the tab bar. Defaults to `false`,
+  // preserving today's `scrollContent` styling for every other `scroll`
+  // screen; only meaningful in `scroll` mode.
+  fillHeight?: boolean;
 };

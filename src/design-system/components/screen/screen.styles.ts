@@ -48,22 +48,54 @@ export const styles = StyleSheet.create((theme) => ({
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
   }),
-  // The scroll-mode content container: no `flex: 1` (a ScrollView's content
-  // container sizes to its content, not the viewport), same base padding as
-  // the non-scroll `content` above. When a `footer` sits below it (outside
-  // the ScrollView, as a sibling — see `screen.component.tsx`), this
-  // container drops its own bottom padding so the footer's own
-  // `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the ONE gap above
-  // the footer button, instead of both adding `theme.spacing(FOOTER_GAP_STEP)`
-  // back to back — the doubled, disproportionate gap feedback flagged on a
-  // short unscrolled form (e.g. deposit-edit), since the two views are
-  // adjacent siblings with no shared box to collapse the stacked padding.
-  // With no `footer`, this container legitimately owns the scroll content's
-  // own trailing edge, so it keeps the base bottom padding.
-  scrollContent: (hasFooter: boolean) => ({
-    padding: theme.spacing(4),
-    paddingBottom: hasFooter ? 0 : theme.spacing(4),
-  }),
+  // The scroll-mode content container: no `flex: 1` by default (a
+  // ScrollView's content container sizes to its content, not the viewport),
+  // same base padding as the non-scroll `content` above. When a `footer` sits
+  // below it (outside the ScrollView, as a sibling — see
+  // `screen.component.tsx`), this container drops its own bottom padding so
+  // the footer's own `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the
+  // ONE gap above the footer button, instead of both adding
+  // `theme.spacing(FOOTER_GAP_STEP)` back to back — the doubled,
+  // disproportionate gap feedback flagged on a short unscrolled form (e.g.
+  // deposit-edit), since the two views are adjacent siblings with no shared
+  // box to collapse the stacked padding. With no `footer`, this container
+  // legitimately owns the scroll content's own trailing edge, so it keeps the
+  // base bottom padding.
+  //
+  // `fillHeight` (e.g. Settings' bottom-anchored About footer) is the one
+  // opt-in exception: it gives the container `flexGrow: 1` so a `flex: 1`
+  // spacer child among the scroll content can actually push trailing content
+  // down to fill a short viewport (without it the spacer collapses to 0
+  // height, since the container never grows past its content). Bottom-pinned
+  // content then needs the SAME `bottomClearance` reservation the plain
+  // branch's `content` above gives its own true-bottom edge, or it lands
+  // hidden behind the floating glass tab bar — mirrored here rather than
+  // reused because that branch's padding is unconditional flex-column
+  // padding, not a ScrollView content-container padding. `hasFooter` ALWAYS
+  // wins over `fillHeight` for the bottom padding: the pinned footer slot
+  // already owns the clearance/gap below it, so stacking `fillHeight`'s own
+  // reservation on top would double the gap the `hasFooter` branch exists to
+  // prevent — a screen that passes both `footer` and `fillHeight` still gets
+  // the doubled-gap fix, not a footgun. `flexGrow: 1` itself still applies
+  // whenever `fillHeight` is set, independent of `hasFooter` — growing the
+  // container is orthogonal to who owns the bottom padding. Every other
+  // `scroll` screen leaves `fillHeight` unset, so this branch never changes
+  // their styling.
+  scrollContent: (hasFooter: boolean, fillHeight: boolean, bottomClearance: number) => {
+    let paddingBottom = theme.spacing(4);
+
+    if (hasFooter) {
+      paddingBottom = 0;
+    } else if (fillHeight) {
+      paddingBottom = theme.spacing(FOOTER_GAP_STEP) + bottomClearance;
+    }
+
+    return {
+      padding: theme.spacing(4),
+      paddingBottom,
+      ...(fillHeight && { flexGrow: 1 }),
+    };
+  },
   // The pinned footer slot: sits outside the scrollable surface (a
   // `ScrollView` in scroll mode, a sibling `View` in plain mode — see
   // `screen.component.tsx`), inside the bottom safe-area edge, in both

@@ -33,16 +33,24 @@ const resolvePrivacyPolicyUrl = (language: string): string =>
     .with('uk', () => PRIVACY_POLICY_URL_UK)
     .otherwise(() => PRIVACY_POLICY_URL_EN);
 
-const styles = StyleSheet.create((theme) => ({
-  // Separates the footer from the cards Box above with a token gap, rather
-  // than a raw pixel margin.
-  footer: {
-    marginTop: theme.spacing(4),
+const styles = StyleSheet.create(() => ({
+  // Pushes the footer down to the bottom of the scroll content on a short
+  // page, mirroring the iOS Settings "About" footer — `Screen`'s
+  // `fillHeight` opt-in makes this `flex: 1` spacer actually grow rather
+  // than collapse to 0 height.
+  spacer: {
+    flex: 1,
   },
-  // Matches `monobank-token-input.component.tsx`'s `linkPressable`: the
-  // tappable link hugs its own text width instead of stretching full-width.
-  footerLink: {
-    alignSelf: 'flex-start',
+  // Centers the whole footer block (app name/version, copyright, Privacy
+  // Policy link) horizontally, per review feedback — the flex spacer above
+  // provides the vertical separation now, so this Box no longer needs its
+  // own top margin.
+  footer: {
+    alignItems: 'center',
+  },
+  // Centers each footer line's text within the now-centered footer Box.
+  footerText: {
+    textAlign: 'center',
   },
 }));
 
@@ -69,7 +77,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <Screen scroll scrollableRef={scrollRef}>
+    <Screen scroll scrollableRef={scrollRef} fillHeight>
       {/* Each setting is its own GlassSurface card, mirroring the Accounts
           list — the Box gap gives the vertical space between cards. For now,
           if more settings appear that belong together they can be grouped back
@@ -119,15 +127,17 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         </GlassSurface>
       </Box>
 
+      <Box style={styles.spacer} />
+
       {/* App Store compliance footer: app name + version, copyright, and a
           Privacy Policy link — a sibling of the cards Box, not a fourth card,
           so it reads as page chrome rather than another setting. */}
       <Box gap={1} style={styles.footer}>
-        <Text variant="caption" tone="textSecondary">
+        <Text variant="caption" tone="textSecondary" style={styles.footerText}>
           {`${t('settings.footer.appName')} v${pkg.version}`}
         </Text>
 
-        <Text variant="caption" tone="textSecondary">
+        <Text variant="caption" tone="textSecondary" style={styles.footerText}>
           {`© ${new Date().getFullYear()} ${t('settings.footer.copyrightHolder')}`}
         </Text>
 
@@ -135,9 +145,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           accessibilityRole="link"
           accessibilityLabel={t('settings.footer.privacyPolicy')}
           onPress={handleOpenPrivacyPolicy}
-          style={styles.footerLink}
         >
-          <Text variant="caption" tone="accent">
+          <Text variant="caption" tone="accent" style={styles.footerText}>
             {t('settings.footer.privacyPolicy')}
           </Text>
         </Pressable>
