@@ -16,6 +16,16 @@ that check the app, not the app's own code style (see
 `ls scripts/checks/` before assuming a given wrapper already exists on
 the branch you're on.
 
+The root `Makefile`'s `verify` target (`make verify`, wrapping
+`scripts/checks/verify.sh`) is the single end-of-work command for the
+developer/qa agents: it runs lint, then the full Jest suite, then
+`check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
+stopping at the first failing stage rather than always running all
+three. Read `verify.sh` directly for the exact stage commands rather
+than restating them here; a new harness check that belongs in the
+fast+medium gate is picked up by `make verify` automatically through
+`check:all`, with no `Makefile` change needed.
+
 ## The wrapper contract
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
@@ -42,15 +52,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
-  `${KIKO_MUTATION_BASE:-main}` (tests and fixtures — `*.test.ts(x)`,
-  `__tests__/`, `rules/fixtures/` — excluded to match the config's mutate
-  excludes), passed to Stryker as an explicit `--mutate` list that
-  overrides the whole-tree glob. An empty changed set exits 0 (nothing to
-  mutate). `KIKO_MUTATION_FULL=1` forces the whole project, and an
-  unresolvable merge-base also falls back to the whole project — the gate
-  never silently mutates nothing. This keeps the manual `check:deep`
-  cheap; the diff logic is tested hermetically (a throwaway git repo, the
-  real script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
+  `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as an explicit
+  `--mutate` list that overrides the whole-tree glob — and this
+  `--mutate` list REPLACES the config's own `mutate[]` excludes
+  wholesale, so the script's own filtering is the only thing excluding
+  tests/fixtures/low-logic files on a diff-scoped run. Do not restate
+  that exclusion set here — it drifts; read `scripts/checks/mutation.sh`
+  directly for the current filter (both the path-pattern exclusion and
+  the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
+  "Documented exceptions" for the mutate-set and sandbox exclusions this
+  mirrors. An empty changed set exits 0 (nothing to mutate).
+  `KIKO_MUTATION_FULL=1` forces the whole project, and an unresolvable
+  merge-base also falls back to the whole project — the gate never
+  silently mutates nothing. This keeps the manual `check:deep` cheap;
+  the diff logic is tested hermetically (a throwaway git repo, the real
+  script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   per-mutant-rate ETA, so nobody polls the run — its exit code stays the only

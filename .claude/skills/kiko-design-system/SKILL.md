@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, SwipeableRow, Switch, TextField, CurrencyBreakdown, CurrencySwitch, OptionPills), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, CurrencyBreakdown, CurrencyField, CurrencySwitch, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -182,6 +182,18 @@ new component can land between reviews of this skill:
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
+  A `scroll`-mode screen also takes a `fillHeight` prop (default
+  `false`) for content — such as Settings' bottom-anchored About
+  footer (app name/version, copyright, links) — that must sit pinned
+  to the screen's true bottom edge when shorter than the viewport, yet
+  still scroll normally once it overflows: it grows the ScrollView's
+  content container (`flexGrow: 1`) so a `flex: 1` spacer among the
+  children can push trailing content down, and reserves the same
+  floating-tab-bar clearance the plain branch already reserves. This is
+  page CONTENT that scrolls away, not a pinned always-reachable action
+  — use the existing `footer` slot for that instead; read
+  `screen.props.d.ts`'s `fillHeight` doc comment for the exact
+  interaction with `footer` if both are ever passed together.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
@@ -234,7 +246,7 @@ new component can land between reviews of this skill:
   — the categories screen's move-to-top/move-to-bottom reorder actions
   (`variant="ghost"` + `size="small"`) and its "Set as default" star
   (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
-  categories.screen.tsx`) both build an icon-only control this way, plus
+  categories/`) both build an icon-only control this way, plus
   `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
   (There is no separate `IconButton` primitive; the old one at
   `src/design-system/components/icon-button/` was deleted when its only
@@ -262,6 +274,20 @@ new component can land between reviews of this skill:
   `button.component.tsx` directly for the current height/hitSlop
   values rather than trusting a copy of the numbers here if they ever
   drift.
+
+  **The paste-icon-only ghost Button convention.** A field that reads
+  the system clipboard (the Monobank token entry, both legs of the
+  Binance API key/secret entry, the crypto wallet-address field —
+  `src/screens/account-detail/monobank-token-input/`,
+  `binance-credentials-field/`, `wallet-address-field/`) pairs its
+  `TextField` with an icon-only trailing `Button`:
+  `variant="ghost"`, `size="small"`, `fullWidth={false}`,
+  `icon="document.on.clipboard"`, `textColor={theme.colors.textSecondary}`,
+  and a translated `accessibilityLabel` (VoiceOver has no label text to
+  read otherwise, per the icon-only rule above). This is a repeated
+  `Button` usage pattern at each call site, not a separate shared
+  component — a new paste affordance follows the same prop set rather
+  than inventing its own.
 - **GlassSurface** — the shared card-grouping surface: real Liquid
   Glass on iOS 26+, a themed flat fallback everywhere else, an
   optional `bordered` edge, and neutral/tinted variants of the
@@ -277,13 +303,12 @@ new component can land between reviews of this skill:
   over it. The `transparent`-vs-`tint` split is the rule for a new
   surface: a neutral card (settings, a chart, a summary, a list row)
   reads well as a frosted panel and takes `transparent`; an entity card
-  (account, holding) keeps its opaque `tint`. A list row that is also a
-  `SwipeableRow` child (the holding-detail ledger) takes `transparent`
-  too — `SwipeableRow` is built for a translucent card (it ramps the
-  delete action in off the live `translateX`, so nothing bleeds through
-  a closed glass row); pass the card's radius to `SwipeableRow`'s
-  `radius` prop so the reveal clips to the same corners (GlassSurface
-  defaults to `md`). Neither prop keeps the fully-live see-through material (no
+  (account, holding) keeps its opaque `tint`. A list row wrapped in
+  `CardContextMenu` (the holding-detail ledger's manual-transaction
+  rows — see `CardContextMenu` below) takes `transparent bloom` too;
+  there is no swipe-reveal layer to clip a radius around any more — the
+  app's one swipe-to-delete row, `SwipeableRow`, was removed in favor of
+  the touch-and-hold context menu. Neither prop keeps the fully-live see-through material (no
   backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
   surface whose backdrop is STATIC while shown (BottomSheet is the first
   consumer): it keeps the fully-live see-through glass on the glass path
@@ -415,12 +440,38 @@ new component can land between reviews of this skill:
   fix can never bleed into the scrollable body that starts only once the
   region ends — see "Touch targets" under the standing HIG reference
   above for the general rule this follows.
+- **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
+  the themed confirm-or-cancel `BottomSheet`: a title, an optional
+  body `message` (omitted for a bare title-only confirm), a `confirmLabel`,
+  and `onConfirm`/`onCancel` — Cancel AND a scrim/back dismiss both run
+  `onCancel`, a dismiss behaves like Cancel. An optional `destructive`
+  flag switches the confirm button to the `destructive` Button variant
+  (a red fill) instead of the accent `primary` one. This is the one
+  confirm surface in the app — a delete/destructive confirmation routes
+  through it rather than a native `ActionSheetIOS` or a hand-rolled
+  `Modal`.
+- **CardContextMenu** (`src/design-system/components/card-context-menu/`)
+  — wraps a grid/list card in a touch-and-hold delete (and, when an
+  `onDuplicate` handler is passed, Duplicate/Delete choice) menu: a
+  `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
+  still hold, while a hold that MOVES fails the gesture so an enclosing
+  `react-native-sortables` drag can still claim it — see `kiko-gestures`
+  for the full arbitration. A non-deletable, non-duplicable entity (a
+  synced account/holding) renders with no gesture at all, `<>{children}</>`,
+  so a synced card stays reorderable. This replaced the app's earlier
+  swipe-to-reveal-delete row (`SwipeableRow`, removed) as the one
+  delete-affordance pattern; a new deletable card/row wraps in this
+  rather than reintroducing a swipe gesture.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
-- **SwipeableRow** — a swipe-to-reveal-delete list row; its gesture
-  arbitration and settle math are pure functions in `gesture.ts` — see
-  `kiko-gestures`.
+- **EntityIconTile** (`src/design-system/components/entity-icon-tile/`)
+  — the entity glyph tile (an account/holding card's icon swatch):
+  takes the SF Symbol `name` plus the entity's already-RESOLVED hex
+  `color` (see "Entity color and tint" below — never a raw stored/
+  nullable value) and derives its own gradient from that hex via
+  `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
+  own, defaulting to the `body` icon-size token when omitted.
 - **Switch** — a labeled toggle wrapping RN's `Switch` with theme
   track/thumb colors.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
@@ -436,6 +487,16 @@ new component can land between reviews of this skill:
   `disabledFieldStyle`, not a fresh inline dim.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
+- **CurrencyField** (`src/design-system/components/currency-field/`) —
+  the shared currency-picker trigger + `BottomSheet`: a labeled trigger
+  showing the current selection (or a placeholder) that opens a sheet
+  listing a caller-supplied `options` set (defaults to every currency;
+  the cash-account form passes fiat-only, the holding form the full
+  set). Supports `hideLabel` for a caller that already labels the
+  control externally (the Settings base-currency row), `required`, and
+  a `disabled` read-only state. Not `CurrencySwitch` below — a field
+  opens a picker sheet for one selection among many options, a switch
+  toggles inline among a small fixed set.
 - **CurrencySwitch** — a segmented base-currency toggle pill; not a
   `Button` (it is a selection control, not an action, and needs a
   transparent selected-state fill `Button` does not support).
@@ -489,7 +550,7 @@ new component can land between reviews of this skill:
 The app-lock screen/gate components are part of the shared
 screen/gate vocabulary, not a one-off: `src/auth/lock-gate/` (the
 launch-time lock screen) and
-`src/screens/settings/app-lock-setting/` (the settings toggle row).
+`src/screens/settings/system/app-lock-setting/` (the settings toggle row).
 Follow their existing shape — read the folders directly — when adding
 a related security UI rather than inventing a new screen pattern.
 

@@ -280,6 +280,16 @@ Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
 the type/value distinction to be explicit.
 
+**Recommendation: a dedicated whole-`src/screens` import re-sort.**
+Because this ordering is hand-enforced rather than mechanized, it
+drifts — two separate `kiko:reviewer` passes have flagged pre-existing
+length-sort violations under `src/screens/` that predate this rule
+being written down. A standalone pass that re-sorts every import block
+under `src/screens/` (and, opportunistically, wherever else a reviewer
+next finds it) against this rule is recommended, rather than only
+fixing a violation the next time that exact file happens to be
+touched.
+
 ## Variable naming
 
 Full, unabbreviated names — never shorten to save keystrokes:

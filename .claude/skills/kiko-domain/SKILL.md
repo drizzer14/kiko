@@ -118,7 +118,7 @@ holding entirely.
 ## Sync-only holding types are not manually creatable
 
 Some `Holding.type` members are owned exclusively by the Monobank sync
-pipeline (`src/monobank/sync.ts`, which creates those rows
+pipeline (`src/monobank/sync/`, which creates those rows
 programmatically) and must never appear as an option on the manual
 create form — a bank's create form offers only the remaining,
 non-sync types. Per Layer 2, this rule's exact type membership is not
@@ -281,7 +281,7 @@ the marker on its single debit leg). Three consequences hold together:
 
 `settings.lockEnabled` is LIVE — wired through `src/auth/use-app-lock.ts`
 and the `AppLockSetting` component
-(`src/screens/settings/app-lock-setting/`). `settings.lockGraceSeconds`
+(`src/screens/settings/system/app-lock-setting/`). `settings.lockGraceSeconds`
 is LEGACY/DEAD: it defaults to 30 and has no reader anywhere in `src/`
 (a grace-period-after-backgrounding design was built, then replaced
 with a cold-launch-only lock; the column was intentionally left in

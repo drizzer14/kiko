@@ -7,7 +7,8 @@ description: Invoke when touching a react-native-svg chart component (BarChart, 
 
 Source files: `src/screens/statistics/bar-chart/`,
 `src/screens/statistics/pie-chart/`,
-`src/screens/statistics/net-worth-line/`, and the manual mock at
+`src/screens/statistics/net-worth-line/`,
+`src/screens/statistics/category-trend-line/`, and the manual mock at
 `__mocks__/react-native-svg.tsx`.
 
 ## Fixed logical coordinate space + stretch-to-fit
@@ -164,19 +165,29 @@ function for the tie-break rule before touching legend percent rendering.
 (`src/screens/statistics/category-trend-line/category-trend-line.component.tsx`)
 is the "Spending Trend by Category" chart: a multi-line plot, one
 `<Polyline>` per category, each point that category's total EXPENSE
-inside one calendar-month bucket (a per-period figure, never
-cumulative), in the base currency's MAJOR units.
+inside one day-or-week bucket over the active Statistics date range (a
+per-period figure, never cumulative), in the base currency's MAJOR
+units.
 
 The builder, `buildCategoryTrend`
-(`src/statistics/category-trend.ts`), reuses the donut's exact
+(`src/statistics/category-trend/category-trend.ts`), reuses the donut's exact
 expense/exclusion/default-fold/conversion rules — see
 `category-breakdown.ts` (`buildCategoryBreakdown`) rather than
 restating them here — and resolves each line's color the same way the
-donut does, via `resolveCategoryColor`. It buckets every kept expense
-by UTC calendar month, zero-fills every month in the earliest-to-latest
-span for every series so all lines share one set of X positions even
-where a category had no spend in a given month, and sorts the returned
-series by total spend descending.
+donut does, via `resolveCategoryColor`. It no longer buckets by
+calendar month: it takes an explicit `range` (`{ from, to }`) and
+`bucketDays`, and folds every kept expense into
+`bucketTimes(range.from, range.to, bucketDays)` — the SAME bucket
+positions `buildNetWorthSeries` plots for the same `range`/`bucketDays`
+(see `src/statistics/buckets/`), so the trend chart honors the
+Statistics screen's own date-range picker rather than a fixed span, and
+zero-fills every bucket in that range for every series so all lines
+share one set of X positions even where a category had no spend in a
+given bucket. It sorts the returned series by total spend descending.
+Read `bucketDaysForSpan` (`src/statistics/buckets/`, how the screen
+picks day-vs-week bucketing from the active range) and `category-trend.ts`
+itself for the exact bucket math rather than trusting a restated
+cadence here.
 
 The component follows this file's "Fixed logical coordinate space" and
 "Hand-rolled scale/tick builders" conventions above, mirroring
@@ -184,7 +195,12 @@ The component follows this file's "Fixed logical coordinate space" and
 hand-rolled `buildScales`/`buildTicks`/`buildXTicks` split — but its
 Y-scale is rooted at 0 with headroom only above the peak, not anchored
 to a start-value reference baseline the way `net-worth-line`'s is,
-since spending has no natural reference point to diff against.
+since spending has no natural reference point to diff against. Its
+`buildXTicks` places three X labels (first/middle/last, the two range
+extremes plus their midpoint) and formats each with the shared
+`formatDayMonth` helper as a zero-padded numeric `DD.MM` (e.g.
+`01.01`), read against UTC calendar fields — never a month name — since
+the buckets are UTC-midnight instants.
 
 Its `testID`-per-primitive scheme (see "testID scheme per SVG
 primitive" above for why): `category-trend-line-line-<key>` (one
@@ -207,7 +223,7 @@ opening a `BottomSheet` — and feeds the result through the SAME
 `excludedCategories` path the builder already had. Manual mode passes explicit
 keys; Top mode ranks the categories live over the fixed 30-day window with
 `buildCategoryMeasures` + `selectTopCategories`
-(`src/statistics/category-trend.ts`, `src/statistics/trend-filter.ts`) by one
+(`src/statistics/category-trend/`, `src/statistics/trend-filter/`) by one
 of three measures — Contribution (total spend), Frequency (kept-row count), or
 Rising (the least-squares slope of daily spend across the 30 window days,
 most-positive first) — then excludes every windowed category NOT in the top N.
