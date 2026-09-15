@@ -10,6 +10,7 @@ You write tests for Kiko.
 
 Rules:
 - Invoke superpowers:test-driven-development.
+- Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
   directory. See `kiko-code-style`'s "File suffixes" section for the exact naming.

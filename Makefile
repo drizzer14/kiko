@@ -8,7 +8,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help deploy pods gate jest deep typecheck lint dup knip deps \
-        security secrets rules plist overrides start clean-ios
+        security secrets rules plist overrides start clean-ios verify
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -29,6 +29,9 @@ clean-ios: ## Remove the iOS build output (forces a clean rebuild + pod install 
 
 gate: ## Full fast+medium gate: lint, dup, knip, deps, security, rules, plist, secrets, overrides, typecheck
 	npm run check:all
+
+verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stops at first failure
+	bash scripts/checks/verify.sh
 
 jest: ## Run the full Jest suite
 	npx jest
