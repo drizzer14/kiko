@@ -984,17 +984,21 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
           {/* The delete-return control reuses the SAME shared Button the deposit
             (term-deposit contributions) form uses for its remove action — a
             destructiveTonal small button WITH a text label — rather than the
-            hand-rolled icon-only button it was before (item 3). */}
-          <Button
-            variant="destructiveTonal"
-            size="small"
-            fullWidth={false}
-            icon="trash"
-            accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
-            onPress={() => props.onRemove(index)}
-          >
-            {props.t('forms.transaction.remove')}
-          </Button>
+            hand-rolled icon-only button it was before (item 3). Gated on more
+            than one return, mirroring the contributions list's own guard, so
+            the last remaining split return cannot be deleted. */}
+          {props.returns.length > 1 && (
+            <Button
+              variant="destructiveTonal"
+              size="small"
+              fullWidth={false}
+              icon="trash"
+              accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
+              onPress={() => props.onRemove(index)}
+            >
+              {props.t('forms.transaction.remove')}
+            </Button>
+          )}
         </Box>
       ))}
 

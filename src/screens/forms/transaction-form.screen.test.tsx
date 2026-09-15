@@ -2427,6 +2427,28 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.queryByLabelText('Return to 2')).toBeNull();
   });
 
+  it('hides the return-row delete control while exactly one return exists', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    // Split mode seeds exactly one return row and no others were added, so the
+    // last remaining return must not offer a delete control — mirrors the
+    // deposit contributions list's own single-row guard.
+    expect(utils.queryByLabelText('Remove return 1')).toBeNull();
+    expect(utils.queryByText('Remove')).toBeNull();
+  });
+
+  it('shows a delete control on every row once a second return is added', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByText('Add return'));
+
+    // With two or more rows, each one gets its own delete control.
+    expect(utils.getByLabelText('Remove return 1')).toBeTruthy();
+    expect(utils.getByLabelText('Remove return 2')).toBeTruthy();
+    expect(utils.getAllByText('Remove')).toHaveLength(2);
+  });
+
   it('renders a divider and a section heading above the returns list (item 4)', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
