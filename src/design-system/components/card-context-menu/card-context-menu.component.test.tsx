@@ -9,6 +9,12 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import '../../unistyles';
+// Real i18n init (side effect), same as App.tsx. Previously reached only by
+// accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
+// screenshot-subsystem strip removed that import chain; now imported directly
+// so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
+// the same way they do at runtime.
+import '../../../i18n';
 
 import CardContextMenu, {
   DELETE_ACTION_TEST_ID,
