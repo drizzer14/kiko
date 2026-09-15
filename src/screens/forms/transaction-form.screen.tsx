@@ -906,7 +906,6 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         onChange={props.onChangeTime}
         disabled={props.isReadOnly}
         testID="transaction-date-field"
-        backdropTestID="transaction-date-backdrop"
       />
 
       <TimeField
@@ -915,7 +914,6 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         onChange={props.onChangeTime}
         disabled={props.isReadOnly}
         testID="transaction-time-field"
-        backdropTestID="transaction-time-backdrop"
       />
     </>
   );

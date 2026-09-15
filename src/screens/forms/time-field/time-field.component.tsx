@@ -39,7 +39,6 @@ const TimeField: FC<TimeFieldProps> = ({
   placeholder,
   disabled = false,
   testID,
-  backdropTestID,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -79,7 +78,6 @@ const TimeField: FC<TimeFieldProps> = ({
         onDismiss={() => setOpen(false)}
         gap={4}
         header={<Text variant="heading">{label}</Text>}
-        backdropTestID={backdropTestID}
       >
         <DateTimePicker
           testID={`${label} picker`}

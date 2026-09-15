@@ -37,7 +37,6 @@ const DateField: FC<DateFieldProps> = ({
   disabled = false,
   required,
   testID,
-  backdropTestID,
 }) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
@@ -102,7 +101,6 @@ const DateField: FC<DateFieldProps> = ({
         onDismiss={() => setOpen(false)}
         gap={4}
         header={<Text variant="heading">{label}</Text>}
-        backdropTestID={backdropTestID}
       >
         <KikoCalendar
           testID={`${label} calendar`}
