@@ -19,12 +19,13 @@ declare module 'react-native-svg' {
   }
 }
 
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
-import type { Currency } from '../../../currency/currency';
+import { formatDayMonth } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
+import type { Currency } from '../../../currency/currency';
 import type { NetWorthPoint } from '../../../statistics/net-worth-series';
+import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 
 import { styles } from './net-worth-line.styles';
 
@@ -58,10 +59,10 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior dates, so the axis reads as a real
-// timeline rather than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+// The fractions of the time range the X-axis labels the timeline at: the two
+// extremes plus their midpoint, so the axis reads first, middle, last rather
+// than just its endpoints.
+const X_TICK_FRACTIONS = [0, 0.5, 1] as const;
 // The dashed pattern for the start-reference baseline.
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
@@ -254,6 +255,22 @@ const buildXTicks = (scales: Scales): XTick[] => {
 // the line. Callers guard against an empty `points` array before invoking this
 // (the loading/empty state short-circuits the render), so `points[0]` is always
 // present here.
+// The four scaled coordinates of one adjacent point-pair (x1,y1,x2,y2, the
+// segment ending at `points[index]`) — shared by every builder below that
+// walks adjacent points looking for a REFERENCE crossing (`toAreaPath`'s fill
+// boundary, `buildLineSegments`' stroke split): both derive the exact same
+// crossing-x formula from these same four numbers.
+const adjacentSegment = (
+  points: NetWorthPoint[],
+  scales: Scales,
+  index: number,
+): { x1: number; y1: number; x2: number; y2: number } => ({
+  x1: scales.x(points[index - 1].t),
+  y1: scales.y(points[index - 1].amount),
+  x2: scales.x(points[index].t),
+  y2: scales.y(points[index].amount),
+});
+
 export const toAreaPath = (
   points: NetWorthPoint[],
   scales: Scales,
@@ -267,10 +284,7 @@ export const toAreaPath = (
   const vertices: string[] = [`${firstX},${clamp(scales.y(points[0].amount))}`];
 
   for (let i = 1; i < points.length; i += 1) {
-    const x1 = scales.x(points[i - 1].t);
-    const y1 = scales.y(points[i - 1].amount);
-    const x2 = scales.x(points[i].t);
-    const y2 = scales.y(points[i].amount);
+    const { x1, y1, x2, y2 } = adjacentSegment(points, scales, i);
 
     // Strictly-opposite sides of the reference: insert the vertex at the true
     // crossing x. A point sitting exactly ON the reference is not a crossing
@@ -337,10 +351,7 @@ export const buildLineSegments = (
   };
 
   for (let i = 1; i < points.length; i += 1) {
-    const x1 = scales.x(points[i - 1].t);
-    const y1 = scales.y(points[i - 1].amount);
-    const x2 = scales.x(points[i].t);
-    const y2 = scales.y(points[i].amount);
+    const { x1, y1, x2, y2 } = adjacentSegment(points, scales, i);
     const nextSide = sideOfY(y2, referenceY);
 
     if (nextSide !== side) {
@@ -385,8 +396,7 @@ const bandExtremes = (
   };
 };
 
-const formatAxisTime = (t: number): string =>
-  new Date(t).toLocaleDateString(activeLocale(), { month: 'short', day: 'numeric' });
+const formatAxisTime = (t: number): string => formatDayMonth(t);
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a
 // runtime number, so it widens to `string` and needs the cast onto the
@@ -429,11 +439,12 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   // The red/negative fill needs more opacity than the green band on the OLED
   // true-black background (see NEGATIVE_AREA_OPACITY above).
   const negativeAreaOpacity = NEGATIVE_AREA_OPACITY;
-  // formatAxisTime and formatCompactMoney below both read activeLocale() at
-  // render/call time, not via a subscription of their own (formatAxisTime is
-  // a module-scope helper). Subscribing here, the same as MoneyText, is what
-  // makes a language switch actually re-render this component's axis labels
-  // instead of leaving them stale until some other prop change forces it.
+  // formatCompactMoney below reads activeLocale() at render/call time, not via
+  // a subscription of its own. Subscribing here, the same as MoneyText, is what
+  // makes a language switch actually re-render this component's Y-axis money
+  // labels instead of leaving them stale until some other prop change forces
+  // it. formatAxisTime (the X-axis date label) is locale-independent — a fixed
+  // numeric day.month format — so it needs no such subscription.
   const { t } = useTranslation();
 
   if (points.length === 0) {

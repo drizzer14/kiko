@@ -41,6 +41,15 @@ const styleLayers = (style: unknown): Record<string, unknown>[] =>
     (layer): layer is Record<string, unknown> => layer != null && typeof layer === 'object',
   );
 
+// Reads one numeric style value (e.g. `width`, `height`, `columnGap`) back off
+// a rendered node's (possibly array/nested) style prop — every layout
+// assertion below reads a Unistyles-computed number back from `props.style`
+// this same way, since there is no real layout engine under Jest.
+const numberStyleOf = (style: unknown, key: string): number | undefined =>
+  styleLayers(style)
+    .map((layer) => layer[key])
+    .find((value): value is number => typeof value === 'number');
+
 const points: NetWorthPoint[] = [
   { t: 0, amount: 100 },
   { t: 86_400_000, amount: 300 },
@@ -339,6 +348,21 @@ describe('NetWorthLine', () => {
     expect(reference.props.y1).toBeCloseTo(height / 2);
   });
 
+  // Renders NetWorthLine with the given points/height and returns the dashed
+  // reference line's y1 (== y2, since it is horizontal) — shared by the two
+  // "places the reference near..." cases below, which differ only in which
+  // side of the start value the series sits on.
+  const referenceYFor = async (points: NetWorthPoint[], height: number): Promise<number> => {
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={100} baseCurrency="USD" height={height} />,
+    );
+
+    const reference = getByTestId('net-worth-line-reference');
+    expect(reference.props.y1).toBe(reference.props.y2);
+
+    return reference.props.y1;
+  };
+
   // The Y domain now runs from the net worth's own minimum to its own maximum, so
   // the dashed reference sits at its true value position rather than the plot
   // centre: it rides near the TOP when it is the series maximum (net worth only
@@ -346,42 +370,30 @@ describe('NetWorthLine', () => {
   // only rose above it).
   it('places the reference near the top when net worth only dips below the start', async () => {
     const height = 200;
-    const { getByTestId } = await render(
-      <NetWorthLine
-        points={[
-          { t: 0, amount: 100 },
-          { t: 1, amount: 95 },
-        ]}
-        startReference={100}
-        baseCurrency="USD"
-        height={height}
-      />,
+    const y1 = await referenceYFor(
+      [
+        { t: 0, amount: 100 },
+        { t: 1, amount: 95 },
+      ],
+      height,
     );
 
-    const reference = getByTestId('net-worth-line-reference');
-    expect(reference.props.y1).toBe(reference.props.y2);
     // The reference (100) is the series maximum, so it sits above the plot centre.
-    expect(reference.props.y1).toBeLessThan(height / 2);
+    expect(y1).toBeLessThan(height / 2);
   });
 
   it('places the reference near the bottom when net worth only rises above the start', async () => {
     const height = 200;
-    const { getByTestId } = await render(
-      <NetWorthLine
-        points={[
-          { t: 0, amount: 100 },
-          { t: 1, amount: 105 },
-        ]}
-        startReference={100}
-        baseCurrency="USD"
-        height={height}
-      />,
+    const y1 = await referenceYFor(
+      [
+        { t: 0, amount: 100 },
+        { t: 1, amount: 105 },
+      ],
+      height,
     );
 
-    const reference = getByTestId('net-worth-line-reference');
-    expect(reference.props.y1).toBe(reference.props.y2);
     // The reference (100) is the series minimum, so it sits below the plot centre.
-    expect(reference.props.y1).toBeGreaterThan(height / 2);
+    expect(y1).toBeGreaterThan(height / 2);
   });
 
   it('renders about four Y-axis tick labels spanning the value range', async () => {
@@ -482,48 +494,40 @@ describe('NetWorthLine', () => {
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    const yAxisWidth = styleLayers(getByTestId('net-worth-line-y-axis').props.style)
-      .map((layer) => layer.width)
-      .find((value): value is number => typeof value === 'number');
+    const yAxisWidth = numberStyleOf(getByTestId('net-worth-line-y-axis').props.style, 'width');
     // The label row mirrors the plot row: a spacer exactly the Y-axis column's
     // width, then a column gap, then the flex:1 track — so the track starts at the
     // plot's left edge instead of being pushed over by a bare marginLeft (which
     // gave the absolute labels no definite width to resolve their percent against).
-    const spacerWidth = styleLayers(getByTestId('net-worth-line-x-axis-spacer').props.style)
-      .map((layer) => layer.width)
-      .find((value): value is number => typeof value === 'number');
-    const rowGap = styleLayers(getByTestId('net-worth-line-x-axis-labels').props.style)
-      .map((layer) => layer.columnGap)
-      .find((value): value is number => typeof value === 'number');
+    const spacerWidth = numberStyleOf(
+      getByTestId('net-worth-line-x-axis-spacer').props.style,
+      'width',
+    );
+    const rowGap = numberStyleOf(
+      getByTestId('net-worth-line-x-axis-labels').props.style,
+      'columnGap',
+    );
 
     expect(yAxisWidth).toBeGreaterThan(0);
     expect(spacerWidth).toBe(yAxisWidth);
     expect(rowGap).toBe(darkTheme.spacing(2));
   });
 
-  it('spreads the intermediate X-axis date labels across distinct horizontal positions', async () => {
+  it('pins the middle X-axis date label under its own gridline position, distinct from both edges', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    // Each interior label is pinned under its own gridline by a percentage `left`
-    // — the three must land at three DISTINCT positions, not collapse onto one x.
-    const lefts = ['0.25', '0.50', '0.75'].map((key) => {
-      const left = styleLayers(getByTestId(`net-worth-line-x-tick-${key}`).props.style)
-        .map((layer) => layer.left)
-        .find((value) => value !== undefined);
+    // The middle label is pinned under its own gridline by a percentage `left`
+    // — computed via the same x() scale the plotted line uses — distinct from
+    // the track's left edge (the collapse this guards against pinned it there).
+    const midLeft = styleLayers(getByTestId('net-worth-line-x-tick-0.50').props.style)
+      .map((layer) => layer.left)
+      .find((value) => value !== undefined);
 
-      return left;
-    });
-
-    expect(new Set(lefts).size).toBe(3);
-    for (const left of lefts) {
-      // A non-zero percentage string, so no interior label sits at the track's
-      // left edge (the collapse this guards against rendered them all there).
-      expect(typeof left).toBe('string');
-      expect(left).toMatch(/%$/);
-      expect(left).not.toBe('0%');
-    }
+    expect(typeof midLeft).toBe('string');
+    expect(midLeft).toMatch(/%$/);
+    expect(midLeft).not.toBe('0%');
 
     // The two range extremes stay flush to their own edges — start left, end
     // right — rather than both pinning to one side (the `leftPercent === 0` bug).
@@ -564,8 +568,11 @@ describe('NetWorthLine', () => {
         <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
       );
 
-      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('Sep 5');
-      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('Sep 7');
+      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
+      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
+      // The new numeric day.month format (this task's change) applies to the
+      // middle label too, not just the two range extremes.
+      expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
     } finally {
       if (originalTz === undefined) {
         delete process.env.TZ;
@@ -828,55 +835,55 @@ describe('NetWorthLine', () => {
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    const width = styleLayers(getByTestId('net-worth-line-y-axis').props.style)
-      .map((layer) => layer.width)
-      .find((value): value is number => typeof value === 'number');
+    const width = numberStyleOf(getByTestId('net-worth-line-y-axis').props.style, 'width');
 
     expect(width).toBeGreaterThan(0);
   });
 
-  it('labels the X axis at evenly spaced intermediate dates, not just the endpoints', async () => {
-    const { getByTestId } = await render(
-      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
-    );
-
-    // Five ticks: the two range extremes plus three interior dates, so the axis
-    // reads as a timeline rather than only its first/last dates.
-    for (const key of ['0.00', '0.25', '0.50', '0.75', '1.00']) {
-      expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
-    }
-  });
-
-  it('drops a thin vertical gridline from each intermediate date to the plot', async () => {
+  it('labels the X axis first, middle, and last, not the old evenly spaced five', async () => {
     const { getByTestId, queryByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    // The three interior dates each get a gridline; the two extremes ARE the
-    // plot's own left/right edges, so they get no extra line.
-    for (const key of ['0.25', '0.50', '0.75']) {
-      const grid = getByTestId(`net-worth-line-x-grid-${key}`);
-      // Vertical: one x, dropping from the plot's top down toward its baseline.
-      expect(grid.props.x1).toBe(grid.props.x2);
-      expect(grid.props.y1).toBeLessThan(grid.props.y2);
+    // Three ticks: the two range extremes plus their midpoint, so the axis
+    // reads first, middle, last rather than only its first/last dates.
+    for (const key of ['0.00', '0.50', '1.00']) {
+      expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }
+    expect(queryByTestId('net-worth-line-x-tick-0.25')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-tick-0.75')).toBeNull();
+  });
+
+  it('drops a thin vertical gridline from the middle date to the plot, not from the edges', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
+    );
+
+    // The middle date gets a gridline; the two extremes ARE the plot's own
+    // left/right edges, so they get no extra line.
+    const grid = getByTestId('net-worth-line-x-grid-0.50');
+    // Vertical: one x, dropping from the plot's top down toward its baseline.
+    expect(grid.props.x1).toBe(grid.props.x2);
+    expect(grid.props.y1).toBeLessThan(grid.props.y2);
 
     expect(queryByTestId('net-worth-line-x-grid-0.00')).toBeNull();
     expect(queryByTestId('net-worth-line-x-grid-1.00')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-grid-0.25')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-grid-0.75')).toBeNull();
   });
 
   it('collapses the X axis to a single date when every point shares one instant', async () => {
-    // A single-instant range has no time span, so the evenly spaced ticks would
-    // all stack on the same x — it falls back to one start-edge date label with
-    // no interior gridlines.
+    // A single-instant range has no time span, so the first/middle/last ticks
+    // would all stack on the same x — it falls back to one start-edge date
+    // label with no middle label and no interior gridline.
     const onePoint: NetWorthPoint[] = [{ t: 172_800_000, amount: 200 }];
     const { getByTestId, queryByTestId } = await render(
       <NetWorthLine points={onePoint} startReference={200} baseCurrency="USD" />,
     );
 
     expect(getByTestId('net-worth-line-x-tick-0.00')).toBeTruthy();
-    expect(queryByTestId('net-worth-line-x-tick-0.25')).toBeNull();
-    expect(queryByTestId('net-worth-line-x-grid-0.25')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-tick-0.50')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-grid-0.50')).toBeNull();
   });
 
   it('renders a loading state when loading with no points yet', async () => {
@@ -897,6 +904,17 @@ describe('NetWorthLine', () => {
     expect(queryByTestId(/^net-worth-line-polyline-/)).toBeNull();
   });
 
+  // Renders the loading placeholder at the given plot height and returns its
+  // reserved total height — shared by both "reserves the same total height..."
+  // cases below, which differ only in what they compare it against.
+  const loadingHeightAt = async (height: number): Promise<number | undefined> => {
+    const { getByTestId } = await render(
+      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" loading height={height} />,
+    );
+
+    return numberStyleOf(getByTestId('net-worth-line-loading').props.style, 'height');
+  };
+
   // Regression: the loading placeholder used to be a short spinner box that
   // grew ~135px once the loaded chart replaced it, jumping the Charts screen's
   // content height above the viewport mid-render and interrupting the OS's
@@ -905,25 +923,18 @@ describe('NetWorthLine', () => {
   // height, so no post-mount height change ever occurs.
   it('reserves the same total height in the loading state as the loaded chart', async () => {
     const height = 200;
+    const loadingHeight = await loadingHeightAt(height);
 
-    const { getByTestId: getByTestIdLoading } = await render(
-      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" loading height={height} />,
-    );
-    const loadingHeight = styleLayers(getByTestIdLoading('net-worth-line-loading').props.style)
-      .map((layer) => layer.height)
-      .find((value): value is number => typeof value === 'number');
-
-    const { getByTestId: getByTestIdLoaded } = await render(
+    const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" height={height} />,
     );
     // The loaded chart's total footprint: the plot row's height, plus the
     // container's rowGap, plus the X-axis label row's height below it.
-    const plotHeight = styleLayers(getByTestIdLoaded('net-worth-line-y-axis').props.style)
-      .map((layer) => layer.height)
-      .find((value): value is number => typeof value === 'number');
-    const rowGap = styleLayers(getByTestIdLoaded('net-worth-line-x-axis-labels').props.style)
-      .map((layer) => layer.columnGap)
-      .find((value): value is number => typeof value === 'number');
+    const plotHeight = numberStyleOf(getByTestId('net-worth-line-y-axis').props.style, 'height');
+    const rowGap = numberStyleOf(
+      getByTestId('net-worth-line-x-axis-labels').props.style,
+      'columnGap',
+    );
     const xAxisTrackHeight = darkTheme.typography.caption.fontSize + darkTheme.spacing(1);
     const loadedTotalHeight = (plotHeight ?? 0) + (rowGap ?? 0) + xAxisTrackHeight;
 
@@ -934,19 +945,12 @@ describe('NetWorthLine', () => {
   it('reserves the same total height in the empty state as the loaded chart', async () => {
     const height = 200;
 
-    const { getByTestId: getByTestIdEmpty } = await render(
+    const { getByTestId } = await render(
       <NetWorthLine points={[]} startReference={0} baseCurrency="USD" height={height} />,
     );
-    const emptyHeight = styleLayers(getByTestIdEmpty('net-worth-line-empty').props.style)
-      .map((layer) => layer.height)
-      .find((value): value is number => typeof value === 'number');
+    const emptyHeight = numberStyleOf(getByTestId('net-worth-line-empty').props.style, 'height');
 
-    const { getByTestId: getByTestIdLoading } = await render(
-      <NetWorthLine points={[]} startReference={0} baseCurrency="USD" loading height={height} />,
-    );
-    const loadingHeight = styleLayers(getByTestIdLoading('net-worth-line-loading').props.style)
-      .map((layer) => layer.height)
-      .find((value): value is number => typeof value === 'number');
+    const loadingHeight = await loadingHeightAt(height);
 
     expect(emptyHeight).toBe(loadingHeight);
   });

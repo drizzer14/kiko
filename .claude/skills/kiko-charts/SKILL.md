@@ -81,7 +81,7 @@ polyline's `points`) is to look the element up by `testID` through the
 manual mock and read its props back. A chart primitive with no `testID`
 is untestable geometry — always add one when adding a new primitive,
 following the existing `<chart-name>-<primitive>[-<key>]` naming (e.g.
-`bar-chart-bar-card`, `net-worth-line-x-grid-0.25`).
+`bar-chart-bar-card`, `net-worth-line-x-grid-0.50`).
 
 ## Adding a new chart requires extending the mock
 

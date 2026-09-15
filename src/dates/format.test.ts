@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime, formatTime, parseLocalDate } from './format';
+import { formatDate, formatDateTime, formatDayMonth, formatTime, parseLocalDate } from './format';
 
 describe('formatDate', () => {
   it('formats a Date as zero-padded DD.MM.YYYY', () => {
@@ -13,6 +13,41 @@ describe('formatDate', () => {
     const timestamp = new Date(2026, 8, 2).getTime();
 
     expect(formatDate(timestamp)).toBe('02.09.2026');
+  });
+});
+
+describe('formatDayMonth', () => {
+  it('formats a Date as zero-padded DD.MM, with no year', () => {
+    expect(formatDayMonth(new Date(2026, 8, 15))).toBe('15.09');
+  });
+
+  it('zero-pads a single-digit day and month', () => {
+    expect(formatDayMonth(new Date(2026, 0, 5))).toBe('05.01');
+  });
+
+  it('accepts a numeric timestamp', () => {
+    const timestamp = new Date(2026, 10, 23).getTime();
+
+    expect(formatDayMonth(timestamp)).toBe('23.11');
+  });
+
+  it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
+    // A UTC-midnight instant on Jan 15 is still Jan 14 local in a negative-
+    // offset zone: the UTC accessor must read the UTC day regardless of the
+    // host's own timezone.
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const utcMidnight = Date.UTC(2026, 0, 15);
+
+      expect(formatDayMonth(utcMidnight, { timeZone: 'UTC' })).toBe('15.01');
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
   });
 });
 

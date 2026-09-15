@@ -3,12 +3,13 @@ import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
-import type { Currency } from '../../../currency/currency';
+import { formatDayMonth } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
+import type { Currency } from '../../../currency/currency';
 import type { CategoryTrendSeries } from '../../../statistics/category-trend';
+import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 
 import { styles } from './category-trend-line.styles';
 
@@ -45,10 +46,10 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior days, so the axis reads as a real
-// timeline rather than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+// The fractions of the time range the X-axis labels the timeline at: the two
+// extremes plus their midpoint, so the axis reads first, middle, last rather
+// than just its endpoints.
+const X_TICK_FRACTIONS = [0, 0.5, 1] as const;
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
 
@@ -131,15 +132,10 @@ const toPolylinePoints = (points: CategoryTrendSeries['points'], scales: Scales)
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
 // The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
-// label must format in UTC too — without `timeZone: 'UTC'`, a negative-UTC-
-// offset locale renders every label one day early (a UTC-midnight instant is
-// still the previous local day there).
-const formatAxisTime = (t: number): string =>
-  new Date(t).toLocaleDateString(activeLocale(), {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+// label must read UTC calendar fields too — without `timeZone: 'UTC'`, a
+// negative-UTC-offset locale renders every label one day early (a UTC-midnight
+// instant is still the previous local day there).
+const formatAxisTime = (t: number): string => formatDayMonth(t, { timeZone: 'UTC' });
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a
 // runtime number, so it widens to `string` and needs the cast onto the

@@ -108,34 +108,32 @@ describe('CategoryTrendLine', () => {
     expect(getByText('Transport')).toBeTruthy();
   });
 
-  it('draws the X and Y gridlines', async () => {
-    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+  it('draws the X and Y gridlines, first/middle/last only — not the old five-tick set', async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={series} baseCurrency="UAH" />,
+    );
 
     expect(getByTestId('category-trend-line-y-grid-0')).toBeTruthy();
-    for (const key of ['0.25', '0.50', '0.75']) {
-      expect(getByTestId(`category-trend-line-x-grid-${key}`)).toBeTruthy();
-    }
+    expect(getByTestId('category-trend-line-x-grid-0.50')).toBeTruthy();
+    expect(queryByTestId('category-trend-line-x-grid-0.25')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-grid-0.75')).toBeNull();
   });
 
-  it('labels the X axis at day granularity, so the tick numbers vary across the window', async () => {
+  it('labels the X axis with distinct numeric day.month values at first, middle, and last', async () => {
     const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
 
-    // Each X tick reads month-abbrev + day-of-month (e.g. "Jan 1"), so the
-    // trailing number is the DAY and varies across the 5 ticks. The old
-    // month/year format ("Jan 25") put the constant 2-digit year there, so
-    // every tick's trailing number would be identical — this asserts it is not.
+    // Each X tick reads a zero-padded "DD.MM" (e.g. "01.01"), not a month name.
     const tickLabel = (fraction: string): string => {
       const node = within(getByTestId(`category-trend-line-x-tick-${fraction}`)).getByText(/\d/);
 
       return String(node.props.children);
     };
-    const trailingNumbers = new Set(
-      ['0.00', '0.25', '0.50', '0.75', '1.00'].map((fraction) =>
-        tickLabel(fraction).replace(/^\D+/, ''),
-      ),
-    );
+    const labels = ['0.00', '0.50', '1.00'].map(tickLabel);
 
-    expect(trailingNumbers.size).toBeGreaterThan(1);
+    for (const label of labels) {
+      expect(label).toMatch(/^\d{2}\.\d{2}$/);
+    }
+    expect(new Set(labels).size).toBe(3);
   });
 
   it('renders an empty state when there are no series', async () => {
@@ -148,23 +146,53 @@ describe('CategoryTrendLine', () => {
   });
 
   // The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
-  // axis labels must be formatted in UTC too — otherwise, in a negative-UTC-
-  // offset locale, a UTC-midnight instant is still the PREVIOUS local day and
-  // every label reads one day early. The formatter therefore must pass
-  // `timeZone: 'UTC'`, which a spy on `toLocaleDateString` verifies directly
-  // (the jest worker's own timezone is fixed and can't be changed at runtime,
-  // so asserting the option is the deterministic proof).
-  it('formats every X-axis label in UTC so the bucket day is never off by one', async () => {
-    const spy = jest.spyOn(Date.prototype, 'toLocaleDateString');
+  // axis labels must be read off UTC calendar fields too — otherwise, in a
+  // negative-UTC-offset locale, a UTC-midnight instant is still the PREVIOUS
+  // local day and every label reads one day early. Pinning the process TZ to a
+  // negative-offset zone at runtime is the deterministic proof: reading LOCAL
+  // fields here would render '14.01', not the correct UTC day '15.01'.
+  it('labels UTC bucket dates using UTC calendar fields so the bucket day is never off by one', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
     try {
-      await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+      const utcSeries: CategoryTrendSeries[] = [
+        {
+          key: 'groceries',
+          title: 'Groceries',
+          color: '#ff0000',
+          points: [
+            { t: Date.UTC(2025, 0, 15), amount: 10 },
+            { t: Date.UTC(2025, 0, 17), amount: 20 },
+          ],
+        },
+      ];
+      const { getByTestId } = await render(
+        <CategoryTrendLine series={utcSeries} baseCurrency="UAH" />,
+      );
 
-      expect(spy).toHaveBeenCalled();
-      for (const call of spy.mock.calls) {
-        expect(call[1]).toMatchObject({ timeZone: 'UTC' });
-      }
+      expect(getByTestId('category-trend-line-x-tick-0.00')).toHaveTextContent('15.01');
     } finally {
-      spy.mockRestore();
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
     }
+  });
+
+  it('collapses the X axis to a single date when every point shares one instant', async () => {
+    // A single-instant range has no time span, so the first/middle/last ticks
+    // would all stack on the same x — it falls back to one start-edge date
+    // label with no middle label and no interior gridline.
+    const onePointSeries: CategoryTrendSeries[] = [
+      { key: 'groceries', title: 'Groceries', color: '#ff0000', points: [{ t: JAN, amount: 10 }] },
+    ];
+    const { getByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={onePointSeries} baseCurrency="UAH" />,
+    );
+
+    expect(getByTestId('category-trend-line-x-tick-0.00')).toBeTruthy();
+    expect(queryByTestId('category-trend-line-x-tick-0.50')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-grid-0.50')).toBeNull();
   });
 });

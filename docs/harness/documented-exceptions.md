@@ -129,6 +129,23 @@ verified usage, not dead weight:
   is a pure false positive on them. Only the generated `*_snapshot.json`
   files are excluded; the hand-authored `.sql` migrations and every
   other JSON file stay in scope.
+- **`.jscpd.json` `ignore`**: `**/net-worth-line/net-worth-line.component.tsx`
+  and `**/category-trend-line/category-trend-line.component.tsx` — the two
+  line-chart components intentionally mirror each other's structure
+  (documented in the `kiko-charts` skill: parallel scale/tick/path-building
+  helpers for a two-axis SVG line chart). Verified PRE-EXISTING at base
+  `5838bf7` (before the chart date-label change): the two files already
+  shared 182 lines (13.03%) scoped together, not introduced by that change.
+  Project-level `npm run check:dup` and `make gate` both PASS (the
+  duplication only trips the changed-file-scoped medium-tier run when both
+  files are in scope together). The `kiko:reviewer` ponytail review verdict
+  on this pair was "lean already, nothing to cut" — there is no shared
+  block left to extract without coupling two independently-evolving chart
+  components through an artificial abstraction. Only these two component
+  files are ignored; their test files and every other chart file stay in
+  scope. Revisit or remove this exception if the two charts' structure
+  ever diverges enough that the duplication is no longer a deliberate
+  mirror.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that
