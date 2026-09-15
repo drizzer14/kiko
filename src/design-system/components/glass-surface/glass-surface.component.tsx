@@ -1,5 +1,5 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { isStableGlass } from '@kiko/screenshot/screenshot-mode';
+import { SCREENSHOT_MODE, SCREENSHOT_STABLE_GLASS } from '@env';
 import type { FC, ReactNode } from 'react';
 import { StyleSheet as RNStyleSheet, type StyleProp, View, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
@@ -75,7 +75,7 @@ const isActiveVariant = (flag: boolean, tint: string | undefined): boolean =>
 // Layer testIDs mirror the live path (`-base`, `-wash`) so a single test can
 // assert either branch. Split out purely to keep GlassSurface's cognitive
 // complexity under budget.
-const StableSurface: FC<{
+export const StableSurface: FC<{
   children: ReactNode;
   style: StyleProp<ViewStyle>;
   tint: string | undefined;
@@ -240,15 +240,15 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   const needsResample = isBloom && isLiquidGlassSupported;
   const { remountToken, surfaceRef } = useBloomResample(needsResample);
 
-  // STABLE-GLASS regression mode (see `isStableGlass`): render a FIXED, OPAQUE
-  // surface with NO live LiquidGlass sampling and NO bloom, so the pixelmatch
-  // regression check gets byte-stable pixels (the 'clear' bloom re-refracts
-  // varying chart/scroll content and drifts run-to-run). DEAD in production and
-  // on the real-glass marketing build alike — both leave `SCREENSHOT_STABLE_GLASS`
-  // unset, so `isStableGlass()` is false and the live tree below renders
-  // byte-for-byte unchanged. Delegated to `StableSurface` so this component's
-  // cognitive complexity stays under budget.
-  if (isStableGlass()) {
+  // STABLE-GLASS regression mode: a build made against `.env.screenshots.stable`
+  // (or the empty/locked stable variants) sets BOTH `SCREENSHOT_MODE=true` and
+  // `SCREENSHOT_STABLE_GLASS=true`, so this renders a fixed opaque surface with no
+  // live LiquidGlass sampling and no bloom, giving pixelmatch byte-stable pixels.
+  // PRODUCTION SAFETY (5.6): both keys are absent from the committed `.env`, so
+  // react-native-dotenv inlines `undefined` for each, this AND folds to `false`,
+  // and Metro deletes the branch — no screenshot flag reaches the Release bundle,
+  // and the live tree below renders byte-for-byte unchanged.
+  if (SCREENSHOT_MODE === 'true' && SCREENSHOT_STABLE_GLASS === 'true') {
     return (
       <StableSurface style={[styles.surface, edge, sizing, style]} tint={tint} testID={testID}>
         {children}

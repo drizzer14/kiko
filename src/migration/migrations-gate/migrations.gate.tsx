@@ -1,3 +1,4 @@
+import { SCREENSHOT_MODE } from '@env';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
 import { initDatabase } from '@kiko/db/client';
@@ -7,8 +8,6 @@ import Text from '@kiko/design-system/components/text';
 import { i18n } from '@kiko/i18n';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { migrateLegacyToken } from '@kiko/monobank/token';
-import { isScreenshotMode } from '@kiko/screenshot/screenshot-mode';
-import { seedScreenshotData } from '@kiko/screenshot/seed/screenshot-seed';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -88,17 +87,25 @@ const migratePerAccountBinanceCredential = async (): Promise<void> => {
 };
 
 /**
- * DEV/TEST-ONLY. In a build made against `.env.screenshots`
- * (`isScreenshotMode()` true), rebuild the deterministic App Store screenshot
- * dataset before the gate paints its children. A no-op dead branch in
- * production: the committed `.env` carries no `SCREENSHOT_MODE`, so
- * `isScreenshotMode()` is always false there and the seed is never imported at
- * runtime. Runs AFTER the settings row exists and the persisted language is
- * applied (the seed overwrites both), and BEFORE children mount so the first
- * paint already shows the demo data.
+ * DEV/TEST-ONLY. In a build made against `.env.screenshots*`
+ * (`SCREENSHOT_MODE=true`), rebuild the deterministic App Store screenshot
+ * dataset before the gate paints its children.
+ *
+ * PRODUCTION SAFETY (App Store Guideline 5.6): the committed `.env` carries no
+ * `SCREENSHOT_MODE`, so react-native-dotenv inlines `undefined` here
+ * (babel.config.js), this comparison constant-folds to `false`, and Metro's
+ * constant-folding pass deletes the whole block — INCLUDING the `require` —
+ * BEFORE dependency collection, exactly as it does for `if (__DEV__)
+ * require(...)`. The screenshot seed and its fabricated dataset are therefore
+ * never bundled into the shipping binary. The `require` is intentionally lazy
+ * and lexically inside the guard for precisely this reason; a static import (or
+ * a `require` behind an `isScreenshotMode()` CALL) would defeat the DCE.
  */
 const seedScreenshotDataIfEnabled = async (): Promise<void> => {
-  if (isScreenshotMode()) {
+  if (SCREENSHOT_MODE === 'true') {
+    const { seedScreenshotData } =
+      require('@kiko/screenshot/seed/screenshot-seed') as typeof import('@kiko/screenshot/seed/screenshot-seed');
+
     await seedScreenshotData();
   }
 };

@@ -110,6 +110,16 @@ describe('useAppLock', () => {
     expect(AppState.addEventListener).not.toHaveBeenCalled();
   });
 
+  it('returns promptOnMount true under the committed .env (production auto-prompts on mount)', async () => {
+    // `promptOnMount` is `SCREENSHOT_MODE !== 'true'`, and react-native-dotenv
+    // inlines the absent key as `undefined` under Jest — so production must
+    // auto-prompt. The screenshot-capture (false) path is build-time only and is
+    // covered by check:screenshots:locked, not here (same @env limitation the
+    // screenshot-mode.test.ts header documents).
+    const { result } = await renderHook(() => useAppLock());
+    expect(result.current.promptOnMount).toBe(true);
+  });
+
   it('once unlocked, a background→foreground cycle never re-locks, however long the background', async () => {
     settled(true);
     const { result } = await renderHook(() => useAppLock());

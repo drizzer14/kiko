@@ -1,4 +1,3 @@
-import { isStableGlass } from '@kiko/screenshot/screenshot-mode';
 import { render, within } from '@testing-library/react-native';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 // The border width the surface applies comes from Unistyles' own
@@ -11,7 +10,7 @@ import { darkTheme } from '../../theme';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/glass-surface`), not `./glass-surface.component`
 // directly, so this test also exercises index.ts's re-export.
-import GlassSurface from '.';
+import GlassSurface, { StableSurface } from '.';
 import { MAX_SETTLE_ATTEMPTS } from './glass-surface.resample';
 
 // The minimal shape the first-paint re-sample tests below need from a `View`
@@ -70,26 +69,7 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   resetBaseMountCount: () => void;
 };
 
-// `isStableGlass()` reads a value react-native-dotenv inlines at BUILD time, so
-// it cannot be flipped by mocking `@env` at runtime — mock the screenshot-mode
-// module itself. The jest.fn is defined INLINE in the factory (jest.mock is
-// hoisted above every top-level statement, so an outer const would not exist
-// yet). It defaults to `false` — the production and real-glass marketing value —
-// so every existing test above runs the live/fallback tree unchanged; the
-// stable-glass describe below flips it on through the imported handle.
-jest.mock('@kiko/screenshot/screenshot-mode', () => ({
-  isStableGlass: jest.fn(() => false),
-}));
-const mockIsStableGlass = isStableGlass as jest.Mock;
-
 describe('GlassSurface', () => {
-  // Every test defaults to the live/fallback tree (stable-glass OFF, the
-  // production + real-glass marketing value); the stable-glass describe flips it
-  // on for its own cases and this resets it afterwards.
-  beforeEach(() => {
-    mockIsStableGlass.mockReturnValue(false);
-  });
-
   it('renders its children (falls back to a plain View under Jest, since @callstack/liquid-glass is mocked with isLiquidGlassSupported: false)', async () => {
     const { getByText } = await render(
       <GlassSurface padding={3}>
@@ -810,41 +790,32 @@ describe('GlassSurface', () => {
     });
   });
 
-  // STABLE-GLASS regression mode: when `isStableGlass()` is true (the pixelmatch
-  // regression build only), GlassSurface renders a FIXED OPAQUE surface with no
-  // live LiquidGlass and no bloom, so the check gets byte-stable pixels. It must
-  // NOT touch production or the real-glass marketing path — both keep
-  // `isStableGlass()` false and render the live tree asserted above.
-  describe('under stable-glass regression mode (isStableGlass() true)', () => {
-    it('renders a fixed opaque themed base and no backdrop, even on glass-capable iOS', async () => {
-      mockIsStableGlass.mockReturnValue(true);
-      // Force the glass-capable branch AND request bloom/transparent: stable
-      // glass must override all of it with a plain opaque View (no LiquidGlass).
-      liquidGlass.isLiquidGlassSupported = true;
-      const { getByTestId, queryByTestId } = await render(
-        <GlassSurface testID="stable" transparent bloom>
+  // STABLE-GLASS regression surface: a build made against `.env.screenshots*.stable`
+  // renders `StableSurface` (a FIXED OPAQUE View, no LiquidGlass, no bloom) so the
+  // pixelmatch check gets byte-stable pixels. The `SCREENSHOT_MODE === 'true' &&
+  // SCREENSHOT_STABLE_GLASS === 'true'` guard that selects it is a build-time
+  // `@env` fold (stripped from Release, per 5.6), so it cannot be flipped under
+  // Jest — the surface's own rendering is unit-tested directly here instead.
+  describe('StableSurface (opaque regression surface)', () => {
+    it('renders a fixed opaque themed base and no live-glass props', async () => {
+      const { getByTestId } = await render(
+        <StableSurface testID="stable" style={undefined} tint={undefined}>
           <Text>content</Text>
-        </GlassSurface>,
+        </StableSurface>,
       );
-
       const base = getByTestId('stable-base');
       expect(StyleSheet.flatten(base.props.style).backgroundColor).toBe(darkTheme.colors.surface);
-      // A plain View, not a LiquidGlassView: no native glass props at all.
       expect(base.props.effect).toBeUndefined();
       expect(base.props.tintColor).toBeUndefined();
-      expect(queryByTestId('stable-backdrop')).toBeNull();
-      liquidGlass.isLiquidGlassSupported = false;
     });
 
-    it('keeps the entity tint as a flat wash over the opaque base', async () => {
-      mockIsStableGlass.mockReturnValue(true);
+    it('paints the entity tint as a flat wash over the opaque base', async () => {
       const tint = 'rgba(255, 69, 58, 0.1)';
       const { getByTestId } = await render(
-        <GlassSurface testID="stable-tint" tint={tint}>
+        <StableSurface testID="stable-tint" style={undefined} tint={tint}>
           <Text>content</Text>
-        </GlassSurface>,
+        </StableSurface>,
       );
-
       expect(StyleSheet.flatten(getByTestId('stable-tint-base').props.style).backgroundColor).toBe(
         darkTheme.colors.surface,
       );
@@ -853,19 +824,13 @@ describe('GlassSurface', () => {
       );
     });
 
-    it('renders the normal live-glass tree when isStableGlass() is false (real-glass marketing / production path unchanged)', async () => {
-      mockIsStableGlass.mockReturnValue(false);
-      liquidGlass.isLiquidGlassSupported = true;
-      const { getByTestId } = await render(
-        <GlassSurface testID="live" transparent>
+    it('renders no wash when no tint is set', async () => {
+      const { queryByTestId } = await render(
+        <StableSurface testID="stable-plain" style={undefined} tint={undefined}>
           <Text>content</Text>
-        </GlassSurface>,
+        </StableSurface>,
       );
-
-      // The live path renders a real LiquidGlassView base (has the `effect`
-      // prop) — proof stable glass did not hijack the non-regression build.
-      expect(getByTestId('live-base').props.effect).toBe('regular');
-      liquidGlass.isLiquidGlassSupported = false;
+      expect(queryByTestId('stable-plain-wash')).toBeNull();
     });
   });
 });

@@ -1,10 +1,10 @@
 ---
 name: auditor
 description: Runs a read-only whole-codebase audit — security, performance, bundle size, or dependencies — and reports ranked findings. Writes NO code and NO docs. Use for a standing audit of the tree, not a diff review (reviewer) or a single reproduced fault (debugger).
-model: opus
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
-<!-- effort: high (launch with: claude --effort high) -->
+<!-- effort: medium (launch with: claude --effort medium) -->
 
 You audit the standing codebase and report ranked findings. You write no code and no docs.
 
