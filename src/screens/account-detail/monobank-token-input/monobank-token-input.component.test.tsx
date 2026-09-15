@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 
@@ -14,6 +15,22 @@ jest.mock('react-native/Libraries/Linking/Linking', () => ({
 jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: () => mockGetString(),
 }));
+
+// The Text primitive's tone -> color mapping lives in a react-native-unistyles
+// variant that the project's Jest mock strips before a test can inspect it.
+// Mock Text here — following the account-detail screen test precedent — so the
+// resolved `tone` the link renders with is observable via a testID, while the
+// label still renders as plain text so every getByText assertion is unaffected.
+jest.mock('../../../design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone, children }: { tone?: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
 
 describe('MonobankTokenInput', () => {
   beforeEach(() => {
@@ -46,6 +63,15 @@ describe('MonobankTokenInput', () => {
     );
 
     expect(getByPlaceholderText('Monobank token').props.value).toBe('controlled-token');
+  });
+
+  it('renders the API link through the shared Text primitive with the accent tone', async () => {
+    const { getByText } = await render(<MonobankTokenInput value="" onChangeText={jest.fn()} />);
+
+    // The link reads as a tappable inline label via the shared `Text` tone
+    // token, matching the pie legend's "Show all" toggle, rather than an
+    // inline-styled raw RN `Text`.
+    expect(getByText('Open api.monobank.ua').props.testID).toBe('text-tone-accent');
   });
 
   it('opens api.monobank.ua when the link is pressed', async () => {

@@ -2,13 +2,14 @@ import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, Text as RNText } from 'react-native';
+import { Linking, Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import { fetchAccount } from '../../../crypto-sync/binance/binance.client';
 import { saveCredentials } from '../../../crypto-sync/binance/binance.credentials';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
+import Text from '../../../design-system/components/text';
 import TextField from '../../../design-system/components/text-field';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
@@ -31,6 +32,7 @@ type Field = 'apiKey' | 'secret';
 // first sync. The pair never leaves this component except into `saveCredentials`.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, onConnect }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
@@ -91,7 +93,9 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         onPress={handleOpenBinance}
         style={styles.linkPressable}
       >
-        <RNText style={styles.link}>{t('accountDetail.openBinanceLink')}</RNText>
+        <Text variant="body" tone="accent">
+          {t('accountDetail.openBinanceLink')}
+        </Text>
       </Pressable>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
@@ -107,14 +111,15 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           />
         </Box>
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="small"
+          fullWidth={false}
+          icon="document.on.clipboard"
+          textColor={theme.colors.textSecondary}
           accessibilityLabel={t('accountDetail.pasteApiKey')}
           onPress={() => handlePaste('apiKey')}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
-        </Pressable>
+        />
       </Box>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
@@ -130,14 +135,15 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           />
         </Box>
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="small"
+          fullWidth={false}
+          icon="document.on.clipboard"
+          textColor={theme.colors.textSecondary}
           accessibilityLabel={t('accountDetail.pasteApiSecret')}
           onPress={() => handlePaste('secret')}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
-        </Pressable>
+        />
       </Box>
 
       <Box direction="row" gap={2} style={styles.statusLine}>

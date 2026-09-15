@@ -1,12 +1,11 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
 import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
@@ -28,6 +27,7 @@ type WalletAddressFieldProps = {
 // runs a local format check first, then the trial sync behind `onConnect`.
 const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
@@ -76,14 +76,15 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           />
         </Box>
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="small"
+          fullWidth={false}
+          icon="document.on.clipboard"
+          textColor={theme.colors.textSecondary}
           accessibilityLabel={t('accountDetail.pasteFromClipboard')}
           onPress={handlePasteAddress}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
-        </Pressable>
+        />
       </Box>
 
       <Box direction="row" gap={2} style={styles.statusLine}>

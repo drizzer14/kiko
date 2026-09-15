@@ -1,10 +1,12 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, Text as RNText } from 'react-native';
+import { Linking, Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
+import Button from '../../../design-system/components/button';
+import Text from '../../../design-system/components/text';
 import TextField from '../../../design-system/components/text-field';
 import { styles } from '../account-detail.styles';
 
@@ -21,6 +23,7 @@ const MONOBANK_API_URL = 'https://api.monobank.ua/';
 // rather than drifting as two hand-rolled copies.
 const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
 
   const handleOpenMonobank = (): void => {
     Linking.openURL(MONOBANK_API_URL);
@@ -40,7 +43,9 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         onPress={handleOpenMonobank}
         style={styles.linkPressable}
       >
-        <RNText style={styles.link}>{t('accountDetail.openMonobankLink')}</RNText>
+        <Text variant="body" tone="accent">
+          {t('accountDetail.openMonobankLink')}
+        </Text>
       </Pressable>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
@@ -56,14 +61,15 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
           />
         </Box>
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="small"
+          fullWidth={false}
+          icon="document.on.clipboard"
+          textColor={theme.colors.textSecondary}
           accessibilityLabel={t('accountDetail.pasteFromClipboard')}
           onPress={handlePasteToken}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="document.on.clipboard" tone="textSecondary" />
-        </Pressable>
+        />
       </Box>
     </Box>
   );
