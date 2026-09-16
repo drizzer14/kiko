@@ -75,13 +75,17 @@ export const styles = StyleSheet.create((theme) => ({
     position: 'absolute',
     right: 0,
   },
-  // An intermediate date: a zero-width anchor pinned (via an inline `left: n%`)
-  // to its gridline's x, with `alignItems: 'center'` centering the label on that
-  // line so the date reads directly beneath its tick.
+  // An intermediate date: pinned (via an inline `left: n%`) to its gridline's
+  // x, then re-centered on that x by shifting itself back half its own
+  // resolved width (`translateX: '-50%'`). It deliberately does NOT set a
+  // `width` — a fixed `width: 0` parent constrained its `<Text>` child's
+  // measured width to 0 on iOS, so the label drew nothing on device even
+  // though it read fine under Jest (no real layout engine there). Leaving
+  // width unset lets the row auto-size to the "DD.MM" text, and the
+  // percentage transform centers that auto width on the gridline.
   xLabelMid: {
     position: 'absolute',
-    width: 0,
-    alignItems: 'center',
+    transform: [{ translateX: '-50%' }],
   },
   // Loading and empty states reserve the SAME total footprint the loaded chart
   // occupies for a given plot height — plot height + the row gap + the X-axis

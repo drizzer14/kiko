@@ -31,6 +31,13 @@ const series: CategoryTrendSeries[] = [
   },
 ];
 
+// Flatten a (possibly nested/array) style prop into its plain object layers so a
+// test can assert a single directive regardless of how Unistyles composed it.
+const styleLayers = (style: unknown): Record<string, unknown>[] =>
+  (Array.isArray(style) ? style.flat(Number.POSITIVE_INFINITY) : [style]).filter(
+    (layer): layer is Record<string, unknown> => layer != null && typeof layer === 'object',
+  );
+
 // Parse a polyline's `points` prop into an array of [x, y] number pairs.
 const pairsOf = (raw: string): [number, number][] =>
   raw
@@ -150,6 +157,23 @@ describe('CategoryTrendLine', () => {
     // Every label distinct — in particular, the regression this fix targets:
     // the middle label must read a genuinely different date from both edges.
     expect(new Set(labels).size).toBe(3);
+  });
+
+  // Regression guard: a fixed `width: 0` parent constrains its `<Text>`
+  // child's measured width to 0 on iOS, so the middle date drew nothing on
+  // device even though this same style read fine under Jest/RNTL (no real
+  // layout engine). The fix centers the label on its `left: n%` anchor via a
+  // `-50%` translateX instead, leaving the row auto-width so its Text child
+  // can measure and render normally.
+  it('does not zero-width the middle label, centering it via translateX instead', async () => {
+    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+
+    const midStyle = styleLayers(getByTestId('category-trend-line-x-tick-0.50').props.style);
+    const width = midStyle.map((layer) => layer.width).find((value) => value !== undefined);
+    const transform = midStyle.map((layer) => layer.transform).find((value) => value !== undefined);
+
+    expect(width).toBeUndefined();
+    expect(transform).toEqual([{ translateX: '-50%' }]);
   });
 
   it('renders an empty state when there are no series', async () => {

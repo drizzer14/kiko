@@ -537,6 +537,25 @@ describe('NetWorthLine', () => {
     expect(endStyle.map((layer) => layer.right).find((value) => value !== undefined)).toBe(0);
   });
 
+  // Regression guard: a fixed `width: 0` parent constrains its `<Text>`
+  // child's measured width to 0 on iOS, so the middle date drew nothing on
+  // device even though this same style read fine under Jest/RNTL (no real
+  // layout engine). The fix centers the label on its `left: n%` anchor via a
+  // `-50%` translateX instead, leaving the row auto-width so its Text child
+  // can measure and render normally.
+  it('does not zero-width the middle label, centering it via translateX instead', async () => {
+    const { getByTestId } = await render(
+      <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
+    );
+
+    const midStyle = styleLayers(getByTestId('net-worth-line-x-tick-0.50').props.style);
+    const width = midStyle.map((layer) => layer.width).find((value) => value !== undefined);
+    const transform = midStyle.map((layer) => layer.transform).find((value) => value !== undefined);
+
+    expect(width).toBeUndefined();
+    expect(transform).toEqual([{ translateX: '-50%' }]);
+  });
+
   // Regression guard (NEW-1): the "tomorrow as the end date" symptom exists only
   // on `main`, where the range bounds were UTC-anchored (an inline `startOfLocalDay`
   // returning `Date.UTC(...)` plus a fixed `+ DAY_MS - 1`). On this branch the
