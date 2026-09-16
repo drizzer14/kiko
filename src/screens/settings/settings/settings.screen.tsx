@@ -34,17 +34,11 @@ const resolvePrivacyPolicyUrl = (language: string): string =>
     .otherwise(() => PRIVACY_POLICY_URL_EN);
 
 const styles = StyleSheet.create(() => ({
-  // Pushes the footer down to the bottom of the scroll content on a short
-  // page, mirroring the iOS Settings "About" footer — `Screen`'s
-  // `fillHeight` opt-in makes this `flex: 1` spacer actually grow rather
-  // than collapse to 0 height.
-  spacer: {
-    flex: 1,
-  },
   // Centers the whole footer block (app name/version, copyright, Privacy
-  // Policy link) horizontally, per review feedback — the flex spacer above
-  // provides the vertical separation now, so this Box no longer needs its
-  // own top margin.
+  // Policy link) horizontally, per review feedback. The block renders through
+  // `Screen`'s pinned `footer` slot (outside the scrolling content), which
+  // already supplies the vertical separation from the cards above and keeps
+  // it pinned above the tab bar with no scrolling required.
   footer: {
     alignItems: 'center',
   },
@@ -77,7 +71,35 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <Screen scroll scrollableRef={scrollRef} fillHeight>
+    <Screen
+      scroll
+      scrollableRef={scrollRef}
+      footer={
+        // App Store compliance footer: app name + version, copyright, and a
+        // Privacy Policy link. It renders through the pinned `footer` slot so
+        // it always stays visible just above the tab bar, never pushed below
+        // the fold by the scrolling cards above it.
+        <Box gap={1} style={styles.footer}>
+          <Text variant="caption" tone="textSecondary" style={styles.footerText}>
+            {`${t('settings.footer.appName')} v${pkg.version}`}
+          </Text>
+
+          <Text variant="caption" tone="textSecondary" style={styles.footerText}>
+            {`© ${new Date().getFullYear()} ${t('settings.footer.copyrightHolder')}`}
+          </Text>
+
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={t('settings.footer.privacyPolicy')}
+            onPress={handleOpenPrivacyPolicy}
+          >
+            <Text variant="caption" tone="accent" style={styles.footerText}>
+              {t('settings.footer.privacyPolicy')}
+            </Text>
+          </Pressable>
+        </Box>
+      }
+    >
       {/* Each setting is its own GlassSurface card, mirroring the Accounts
           list — the Box gap gives the vertical space between cards. For now,
           if more settings appear that belong together they can be grouped back
@@ -125,31 +147,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Categories')}
           />
         </GlassSurface>
-      </Box>
-
-      <Box style={styles.spacer} />
-
-      {/* App Store compliance footer: app name + version, copyright, and a
-          Privacy Policy link — a sibling of the cards Box, not a fourth card,
-          so it reads as page chrome rather than another setting. */}
-      <Box gap={1} style={styles.footer}>
-        <Text variant="caption" tone="textSecondary" style={styles.footerText}>
-          {`${t('settings.footer.appName')} v${pkg.version}`}
-        </Text>
-
-        <Text variant="caption" tone="textSecondary" style={styles.footerText}>
-          {`© ${new Date().getFullYear()} ${t('settings.footer.copyrightHolder')}`}
-        </Text>
-
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={t('settings.footer.privacyPolicy')}
-          onPress={handleOpenPrivacyPolicy}
-        >
-          <Text variant="caption" tone="accent" style={styles.footerText}>
-            {t('settings.footer.privacyPolicy')}
-          </Text>
-        </Pressable>
       </Box>
     </Screen>
   );

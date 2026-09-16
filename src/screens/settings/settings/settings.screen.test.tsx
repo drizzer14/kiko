@@ -289,6 +289,22 @@ describe('SettingsScreen — footer', () => {
 
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
   });
+
+  // DEVICE BUG: the footer previously rendered as scroll CONTENT (a `flex: 1`
+  // spacer plus `Screen`'s `fillHeight`), which pushed it below the fold on a
+  // real device — the user had to scroll to see it. It must instead render
+  // through `Screen`'s pinned `footer` slot, the same mechanism
+  // `account-detail.screen.tsx` uses for its Add-holding button, so it always
+  // stays visible just above the tab bar with no scrolling.
+  it('pins the footer to the screen footer slot, not the scrolling content', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    const scrollView = getByTestId('screen-scroll-view');
+
+    expect(within(footer).getByText(`Kiko v${pkg.version}`)).toBeTruthy();
+    expect(within(scrollView).queryByText(`Kiko v${pkg.version}`)).toBeNull();
+  });
 });
 
 describe('SettingsScreen — localization', () => {
