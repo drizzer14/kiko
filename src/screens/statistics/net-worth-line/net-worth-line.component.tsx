@@ -59,10 +59,10 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The fractions of the time range the X-axis labels the timeline at: the two
-// extremes plus their midpoint, so the axis reads first, middle, last rather
-// than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.5, 1] as const;
+// The evenly-spaced fractions of the time range the X-axis labels the timeline
+// at: the two extremes plus three interior dates, so the axis reads as a real
+// timeline rather than just its endpoints.
+const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 // The dashed pattern for the start-reference baseline.
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.

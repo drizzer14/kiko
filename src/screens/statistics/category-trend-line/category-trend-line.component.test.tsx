@@ -108,18 +108,20 @@ describe('CategoryTrendLine', () => {
     expect(getByText('Transport')).toBeTruthy();
   });
 
-  it('draws the X and Y gridlines, first/middle/last only — not the old five-tick set', async () => {
+  it('draws the X and Y gridlines at the two extremes plus three interior fractions', async () => {
     const { getByTestId, queryByTestId } = await render(
       <CategoryTrendLine series={series} baseCurrency="UAH" />,
     );
 
     expect(getByTestId('category-trend-line-y-grid-0')).toBeTruthy();
-    expect(getByTestId('category-trend-line-x-grid-0.50')).toBeTruthy();
-    expect(queryByTestId('category-trend-line-x-grid-0.25')).toBeNull();
-    expect(queryByTestId('category-trend-line-x-grid-0.75')).toBeNull();
+    for (const fraction of ['0.25', '0.50', '0.75']) {
+      expect(getByTestId(`category-trend-line-x-grid-${fraction}`)).toBeTruthy();
+    }
+    expect(queryByTestId('category-trend-line-x-grid-0.00')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-grid-1.00')).toBeNull();
   });
 
-  it('labels the X axis with distinct numeric day.month values at first, middle, and last', async () => {
+  it('labels the X axis with distinct numeric day.month values at the two extremes plus three interior dates', async () => {
     const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
 
     // Each X tick reads a zero-padded "DD.MM" (e.g. "01.01"), not a month name.
@@ -128,12 +130,12 @@ describe('CategoryTrendLine', () => {
 
       return String(node.props.children);
     };
-    const labels = ['0.00', '0.50', '1.00'].map(tickLabel);
+    const labels = ['0.00', '0.25', '0.50', '0.75', '1.00'].map(tickLabel);
 
     for (const label of labels) {
       expect(label).toMatch(/^\d{2}\.\d{2}$/);
     }
-    expect(new Set(labels).size).toBe(3);
+    expect(new Set(labels).size).toBe(5);
   });
 
   it('renders an empty state when there are no series', async () => {
@@ -145,29 +147,31 @@ describe('CategoryTrendLine', () => {
     expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
   });
 
-  // The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
-  // axis labels must be read off UTC calendar fields too — otherwise, in a
-  // negative-UTC-offset locale, a UTC-midnight instant is still the PREVIOUS
-  // local day and every label reads one day early. Pinning the process TZ to a
-  // negative-offset zone at runtime is the deterministic proof: reading LOCAL
-  // fields here would render '14.01', not the correct UTC day '15.01'.
-  it('labels UTC bucket dates using UTC calendar fields so the bucket day is never off by one', async () => {
+  // The buckets are LOCAL-midnight instants (`bucketTimes` steps from the
+  // screen's `startOfLocalDay` range start — see category-trend.ts), so the
+  // axis labels must be read off LOCAL calendar fields, exactly like
+  // net-worth-line's own axis. On a POSITIVE-UTC-offset device (e.g. Kyiv),
+  // reading UTC fields instead renders the start date one day EARLY: local
+  // midnight Jan 15 is still Jan 14 in UTC there. Pinning the process TZ to a
+  // positive-offset zone at runtime is the deterministic proof: reading UTC
+  // fields would render '14.01', not the correct local day '15.01'.
+  it('labels the start bucket with the LOCAL calendar day, not the UTC day, on a positive-offset device', async () => {
     const originalTz = process.env.TZ;
-    process.env.TZ = 'America/Los_Angeles';
+    process.env.TZ = 'Europe/Kyiv';
     try {
-      const utcSeries: CategoryTrendSeries[] = [
+      const localSeries: CategoryTrendSeries[] = [
         {
           key: 'groceries',
           title: 'Groceries',
           color: '#ff0000',
           points: [
-            { t: Date.UTC(2025, 0, 15), amount: 10 },
-            { t: Date.UTC(2025, 0, 17), amount: 20 },
+            { t: new Date(2025, 0, 15).getTime(), amount: 10 },
+            { t: new Date(2025, 0, 17).getTime(), amount: 20 },
           ],
         },
       ];
       const { getByTestId } = await render(
-        <CategoryTrendLine series={utcSeries} baseCurrency="UAH" />,
+        <CategoryTrendLine series={localSeries} baseCurrency="UAH" />,
       );
 
       expect(getByTestId('category-trend-line-x-tick-0.00')).toHaveTextContent('15.01');

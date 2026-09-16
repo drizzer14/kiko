@@ -196,11 +196,16 @@ hand-rolled `buildScales`/`buildTicks`/`buildXTicks` split — but its
 Y-scale is rooted at 0 with headroom only above the peak, not anchored
 to a start-value reference baseline the way `net-worth-line`'s is,
 since spending has no natural reference point to diff against. Its
-`buildXTicks` places three X labels (first/middle/last, the two range
-extremes plus their midpoint) and formats each with the shared
-`formatDayMonth` helper as a zero-padded numeric `DD.MM` (e.g.
-`01.01`), read against UTC calendar fields — never a month name — since
-the buckets are UTC-midnight instants.
+`buildXTicks` places five X labels via `X_TICK_FRACTIONS` (the two range
+extremes plus three interior dates — see that constant in
+`category-trend-line.component.tsx`, same shape as `net-worth-line`'s
+own), drawing a vertical gridline under each of the three interior
+ticks the same as `net-worth-line`. It formats each label with the
+shared `formatDayMonth` helper as a zero-padded numeric `DD.MM` (e.g.
+`01.01`), read against LOCAL calendar fields — never a month name —
+since the buckets are LOCAL-midnight instants (`bucketTimes` steps from
+the screen's `startOfLocalDay` range start), matching
+`net-worth-line`'s own `formatAxisTime` exactly.
 
 Its `testID`-per-primitive scheme (see "testID scheme per SVG
 primitive" above for why): `category-trend-line-line-<key>` (one

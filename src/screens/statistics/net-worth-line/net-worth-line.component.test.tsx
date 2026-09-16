@@ -840,36 +840,34 @@ describe('NetWorthLine', () => {
     expect(width).toBeGreaterThan(0);
   });
 
-  it('labels the X axis first, middle, and last, not the old evenly spaced five', async () => {
-    const { getByTestId, queryByTestId } = await render(
+  it('labels the X axis at the two extremes plus three interior dates', async () => {
+    const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    // Three ticks: the two range extremes plus their midpoint, so the axis
-    // reads first, middle, last rather than only its first/last dates.
-    for (const key of ['0.00', '0.50', '1.00']) {
+    // Five ticks: the two range extremes plus their three interior dates, so
+    // the axis reads as a real timeline rather than only first/middle/last.
+    for (const key of ['0.00', '0.25', '0.50', '0.75', '1.00']) {
       expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }
-    expect(queryByTestId('net-worth-line-x-tick-0.25')).toBeNull();
-    expect(queryByTestId('net-worth-line-x-tick-0.75')).toBeNull();
   });
 
-  it('drops a thin vertical gridline from the middle date to the plot, not from the edges', async () => {
+  it('drops a thin vertical gridline from each interior date to the plot, not from the edges', async () => {
     const { getByTestId, queryByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    // The middle date gets a gridline; the two extremes ARE the plot's own
-    // left/right edges, so they get no extra line.
-    const grid = getByTestId('net-worth-line-x-grid-0.50');
-    // Vertical: one x, dropping from the plot's top down toward its baseline.
-    expect(grid.props.x1).toBe(grid.props.x2);
-    expect(grid.props.y1).toBeLessThan(grid.props.y2);
+    // Every interior date gets a gridline; the two extremes ARE the plot's
+    // own left/right edges, so they get no extra line.
+    for (const key of ['0.25', '0.50', '0.75']) {
+      const grid = getByTestId(`net-worth-line-x-grid-${key}`);
+      // Vertical: one x, dropping from the plot's top down toward its baseline.
+      expect(grid.props.x1).toBe(grid.props.x2);
+      expect(grid.props.y1).toBeLessThan(grid.props.y2);
+    }
 
     expect(queryByTestId('net-worth-line-x-grid-0.00')).toBeNull();
     expect(queryByTestId('net-worth-line-x-grid-1.00')).toBeNull();
-    expect(queryByTestId('net-worth-line-x-grid-0.25')).toBeNull();
-    expect(queryByTestId('net-worth-line-x-grid-0.75')).toBeNull();
   });
 
   it('collapses the X axis to a single date when every point shares one instant', async () => {
