@@ -52,7 +52,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
       const connected = await onConnect(trimmed);
       if (connected) {
         // SECURITY: drop the raw token from state once connected so the bank
-        // secret is not parked in the React tree (matches MonobankTokenField).
+        // secret is not parked in the React tree.
         setToken('');
         setStatus({
           kind: 'success',

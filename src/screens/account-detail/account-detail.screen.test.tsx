@@ -81,8 +81,6 @@ jest.mock('../../design-system/components/button', () => {
 const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
-const mockReadToken = jest.fn();
-const mockHasToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
@@ -117,8 +115,6 @@ jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../monobank/token', () => ({
-  readToken: (...args: unknown[]) => mockReadToken(...args),
-  hasToken: (...args: unknown[]) => mockHasToken(...args),
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
 jest.mock('../../monobank/client', () => ({
@@ -272,8 +268,6 @@ describe('AccountDetailScreen', () => {
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    mockReadToken.mockResolvedValue('token-abc');
-    mockHasToken.mockResolvedValue(false);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -335,28 +329,6 @@ describe('AccountDetailScreen', () => {
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
     expect(disconnectEntry?.icon).toBe('lock.open');
-  });
-
-  it('keeps the not-yet-connected Connect action neutral (secondaryTonal), not blue', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
-
-    mockButtonProps.length = 0;
-    await renderScreen();
-
-    // Before connection the same action button is the neutral Connect affordance,
-    // so making Sync blue must NOT bleed into the Connect state.
-    const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
-    expect(connectEntry?.variant).toBe('secondaryTonal');
-  });
-
-  it('uses the lock glyph for the not-yet-connected Connect action', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
-
-    mockButtonProps.length = 0;
-    await renderScreen();
-
-    const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
-    expect(connectEntry?.icon).toBe('lock');
   });
 
   it('lists holdings for the account', async () => {
@@ -621,13 +593,6 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Monobank is connected to another account')).toBeNull();
   });
 
-  it('syncs the account when a Monobank token exists (Connect action)', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('Connect Monobank'));
-    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
-  });
-
   it('re-syncs a connected account when Sync is pressed', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: 'monobank' })], holdings: [] });
     const { getByText } = await renderScreen();
@@ -635,33 +600,67 @@ describe('AccountDetailScreen', () => {
     await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
   });
 
-  it('points the user at the on-screen token input and does not sync when no token is stored', async () => {
-    mockReadToken.mockResolvedValue(undefined);
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByText, findByText, queryByText, navigation } = await renderScreen();
-    await fireEvent.press(getByText('Connect Monobank'));
-    expect(await findByText(/Add your Monobank token above/)).toBeTruthy();
-    // The token existence guard probes THIS account's own per-account item.
-    expect(mockReadToken).toHaveBeenCalledWith('a');
-    // The pointer no longer sends the user to global Settings.
-    expect(queryByText(/in Settings/)).toBeNull();
-    expect(mockSync).not.toHaveBeenCalled();
-    expect(navigation.navigate).not.toHaveBeenCalled();
-  });
-
-  it('renders the Monobank token input and saves it via the token path for a bank account', async () => {
+  it('connects a bank account by validating the token, saving it, then syncing it (Connect folds save into connect)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
     const { getByPlaceholderText, getByText } = await renderScreen();
     const input = getByPlaceholderText('Monobank token');
-    expect(input).toBeTruthy();
     await fireEvent.changeText(input, 'entered-here');
     await act(async () => {
-      await fireEvent.press(getByText('Save'));
+      await fireEvent.press(getByText('Connect Monobank'));
     });
+
+    // Validate BEFORE save: fetchClientInfo runs first, and only a successful
+    // validation reaches saveToken — no orphaned Keychain item on an invalid
+    // token (see the invalid-token test below).
     expect(mockFetchClientInfo).toHaveBeenCalledWith('entered-here');
     // The token binds to THIS account's id (per-account Keychain item), not a
     // shared global slot.
     expect(mockSaveToken).toHaveBeenCalledWith('a', 'entered-here');
+    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
+  });
+
+  it('never saves an invalid token: validation failure keeps the field usable and skips saveToken/sync entirely', async () => {
+    mockFetchClientInfo.mockRejectedValue(new Error('401'));
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const { getByPlaceholderText, getByText, findByText } = await renderScreen();
+    const input = getByPlaceholderText('Monobank token');
+    await fireEvent.changeText(input, 'bad-token');
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Monobank'));
+    });
+
+    expect(await findByText('Invalid token')).toBeTruthy();
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSync).not.toHaveBeenCalled();
+    // The entered text is kept so the user can retry immediately, without
+    // re-entering the token.
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('bad-token');
+  });
+
+  it('keeps a valid-but-unsynced token retryable: a failed connect keeps the field usable for an immediate retry', async () => {
+    mockSync.mockResolvedValueOnce(false);
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const { getByPlaceholderText, getByText, findByText } = await renderScreen();
+    const input = getByPlaceholderText('Monobank token');
+    await fireEvent.changeText(input, 'entered-here');
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Monobank'));
+    });
+
+    expect(await findByText('Could not connect Monobank')).toBeTruthy();
+    // The token is kept in the field (not cleared) so a retry does not require
+    // re-entering it.
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('entered-here');
+
+    // Retrying without re-entering the token succeeds: Connect stayed pressable
+    // and re-runs the same validated token through save + sync.
+    mockSync.mockResolvedValueOnce(true);
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Monobank'));
+    });
+    expect(mockSaveToken).toHaveBeenCalledTimes(2);
+    expect(mockSaveToken).toHaveBeenLastCalledWith('a', 'entered-here');
+    await waitFor(() => expect(mockSync).toHaveBeenCalledTimes(2));
   });
 
   it('shows the last sync time on a connected bank account, formatted as DD.MM.YYYY HH:mm', async () => {
@@ -972,8 +971,6 @@ describe('AccountDetailScreen — localization', () => {
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    mockReadToken.mockResolvedValue('token-abc');
-    mockHasToken.mockResolvedValue(false);
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
   });
 

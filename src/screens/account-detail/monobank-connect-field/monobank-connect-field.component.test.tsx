@@ -67,7 +67,7 @@ it('validates the token, then calls onConnect and shows "Connected as {name}" on
   expect(view.getByDisplayValue('')).toBeTruthy();
 });
 
-it('shows invalidToken and never calls onConnect when validation throws', async () => {
+it('shows invalidToken and never calls onConnect (so saveToken, which onConnect gates, never runs) when validation throws', async () => {
   mockFetchClientInfo.mockRejectedValue(new Error('401'));
   const onConnect = jest.fn();
   const view = await render(<MonobankConnectField onConnect={onConnect} />);
@@ -76,13 +76,16 @@ it('shows invalidToken and never calls onConnect when validation throws', async 
   await pressConnect(view);
 
   await waitFor(() => expect(view.getByText(i18n.t('accountDetail.invalidToken'))).toBeTruthy());
+  // fetchClientInfo (validation) runs BEFORE onConnect (which is where the
+  // screen's closure calls saveToken), so an invalid token is never handed to
+  // onConnect at all — no orphaned Keychain item.
   expect(onConnect).not.toHaveBeenCalled();
   // Unlike the success path, an invalid token is kept in the field so the user
   // can correct and retry it, rather than retyping it from scratch.
   expect(view.getByDisplayValue('bad')).toBeTruthy();
 });
 
-it('shows couldNotConnectMonobank when a valid token fails to store/sync', async () => {
+it('shows couldNotConnectMonobank when a valid token fails to store/sync, keeping Connect pressable for an immediate retry', async () => {
   mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
   const onConnect = jest.fn().mockResolvedValue(false);
   const view = await render(<MonobankConnectField onConnect={onConnect} />);
@@ -94,8 +97,16 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync', async
     expect(view.getByText(i18n.t('accountDetail.couldNotConnectMonobank'))).toBeTruthy(),
   );
   // A save/sync failure also keeps the validated token in the field so the user
-  // can retry the connect without retyping it.
+  // can retry the connect without retyping it, and Connect stays pressable
+  // (not stuck disabled) since the field is still non-blank.
   expect(view.getByDisplayValue('tok')).toBeTruthy();
+  expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
+
+  // The retry itself succeeds without re-entering the token.
+  onConnect.mockResolvedValueOnce(true);
+  await pressConnect(view);
+  await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(2));
+  expect(onConnect).toHaveBeenLastCalledWith('tok');
 });
 
 it('disables Connect while validation is in flight, even with a filled token', async () => {

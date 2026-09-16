@@ -5,9 +5,8 @@ import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useSync } from '@kiko/sync/use-sync';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { TFunction } from 'i18next';
 import type { FC } from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
@@ -32,7 +31,7 @@ import { isSyncedHolding } from '../../holdings/deletable';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
 import { disconnectMonobank } from '../../monobank/disconnect';
-import { readToken } from '../../monobank/token';
+import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
@@ -43,34 +42,7 @@ import { styles } from './account-detail.styles';
 import CryptoSyncSection from './crypto-sync-section';
 import { formatLastSyncAt } from './format-last-sync';
 import HoldingCard from './holding-card';
-import MonobankTokenField from './monobank-token-field';
-
-// Connect (mark institution + first import) and Sync (re-import) are the same
-// action; the label, glyph, and emphasis differ. A link glyph on the neutral
-// `secondaryTonal` fill while the action still establishes the connection; a
-// refresh glyph on the affirmative blue `primary` fill once it re-imports. The
-// variant is decided here (not inline) so the screen component's JSX stays a
-// straight read and its cognitive-complexity budget is unaffected.
-const actionPresentation = (
-  isConnectedToMonobank: boolean,
-  isSyncing: boolean,
-  t: TFunction,
-): { label: string; icon: string; variant: 'primary' | 'secondaryTonal' } => {
-  if (!isConnectedToMonobank) {
-    return { label: t('accountDetail.connectMonobank'), icon: 'lock', variant: 'secondaryTonal' };
-  }
-
-  return {
-    label: isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow'),
-    // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-    // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-    // `arrow.triangle.2.circlepath` on a pre-26 device automatically, even
-    // through the shared Button's `icon` prop, so no explicit fallback is
-    // threaded here.
-    icon: 'arrow.trianglehead.2.clockwise.rotate.90',
-    variant: 'primary',
-  };
-};
+import MonobankConnectField from './monobank-connect-field';
 
 // The account's display identity for the view-only header: its stored icon (or
 // the kind default), and its effective color resolved through the SAME
@@ -154,34 +126,25 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const isConnectedToMonobank = account?.institution === 'monobank';
 
   const { isSyncing, error, sync } = useSync();
-  const [tokenMessage, setTokenMessage] = useState<string | undefined>();
   // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
   // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
   const [disconnectPending, setDisconnectPending] = useState(false);
-  // Guards a fast double-tap: the button is disabled only on `isSyncing`, which
-  // is still false during the `readToken(accountId)` await below, so a second press
-  // could fire `sync` again before the first resolves.
-  const inFlight = useRef(false);
 
-  // Connect (mark institution + first import) and Sync (re-import) are the
-  // same action against a bank account; only the label differs. Guard on a
-  // stored token first so a missing token points the user at the token field
-  // above (NO_TOKEN_MESSAGE) instead of surfacing an opaque sync failure.
-  const handlePress = async (): Promise<void> => {
-    if (inFlight.current) {
-      return;
-    }
-    inFlight.current = true;
+  // The bank counterpart of the create-form's `connectMonobank` closure
+  // (`account-form.screen.tsx`): store the validated token to the Keychain
+  // (keyed by THIS account's id), then run the first sync. `MonobankConnectField`
+  // validates the token with `fetchClientInfo` BEFORE calling this, so an
+  // invalid token never reaches `saveToken` — no orphaned Keychain item. A save
+  // failure is caught here and surfaced to the field as a `false` result rather
+  // than an unhandled rejection; the token goes ONLY to the Keychain, never to
+  // the database or a log.
+  const connectMonobank = async (token: string): Promise<boolean> => {
     try {
-      setTokenMessage(undefined);
-      if ((await readToken(accountId)) === undefined) {
-        setTokenMessage(t('accountDetail.noTokenMessage'));
-        return;
-      }
-      await sync(accountId);
-    } finally {
-      inFlight.current = false;
+      await saveToken(accountId, token);
+    } catch {
+      return false;
     }
+    return sync(accountId);
   };
 
   // Disconnect is the required first step before a Monobank account can be
@@ -209,12 +172,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     setDisconnectPending(false);
     runDisconnect();
   };
-
-  const {
-    label: actionLabel,
-    icon: actionIcon,
-    variant: actionVariant,
-  } = actionPresentation(isConnectedToMonobank, isSyncing, t);
 
   // Every bank account shows the connect/sync affordance independently — there
   // is no single-connection gate, so a second Monobank account can connect
@@ -258,70 +215,67 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {showActionButton && <Box style={styles.divider} />}
 
         {showActionButton && (
-          <MonobankTokenField accountId={accountId} isConnected={isConnectedToMonobank} />
-        )}
+          <Box gap={3}>
+            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-        {showActionButton && (
-          // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing equals
-          // the surrounding content container's gap={4}, keeping one even vertical
-          // rhythm. The Sync and Disconnect buttons themselves sit SIDE BY SIDE in
-          // the single actions row below, not stacked.
-          <Box gap={4} testID="monobank-sync-status-actions">
-            {isConnectedToMonobank && (
-              <Box direction="row" gap={2} style={styles.statusLine}>
-                <SymbolIcon name="clock" tone="textSecondary" />
-                <Text variant="body" tone="textSecondary">
-                  {t('accountDetail.lastSync', {
-                    // The DISPLAY stamp (moves on any run that imported rows,
-                    // including a partial failure), falling back to the pure
-                    // statement cursor for installs that predate the display
-                    // column (it reads null there).
-                    time: formatLastSyncAt(
-                      syncStateRows.at(0)?.lastSyncDisplayAt ??
-                        syncStateRows.at(0)?.lastSyncAt ??
-                        null,
-                      t,
-                    ),
-                  })}
-                </Text>
+            {isConnectedToMonobank ? (
+              // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing
+              // equals the surrounding content container's gap={4}, keeping one
+              // even vertical rhythm. The Sync and Disconnect buttons themselves
+              // sit SIDE BY SIDE in the single actions row below, not stacked.
+              <Box gap={4} testID="monobank-sync-status-actions">
+                <Box direction="row" gap={2} style={styles.statusLine}>
+                  <SymbolIcon name="clock" tone="textSecondary" />
+                  <Text variant="body" tone="textSecondary">
+                    {t('accountDetail.lastSync', {
+                      // The DISPLAY stamp (moves on any run that imported rows,
+                      // including a partial failure), falling back to the pure
+                      // statement cursor for installs that predate the display
+                      // column (it reads null there).
+                      time: formatLastSyncAt(
+                        syncStateRows.at(0)?.lastSyncDisplayAt ??
+                          syncStateRows.at(0)?.lastSyncAt ??
+                          null,
+                        t,
+                      ),
+                    })}
+                  </Text>
+                </Box>
+                {/* Sync and Disconnect share a single row. Sync is the affirmative
+                    blue `primary` re-import CTA; Disconnect stays a neutral tonal
+                    action beside it — never blue. */}
+                <Box direction="row" gap={2} testID="monobank-sync-actions-row">
+                  <Button
+                    variant="primary"
+                    size="small"
+                    fullWidth={false}
+                    onPress={() => {
+                      sync(accountId);
+                    }}
+                    disabled={isSyncing}
+                    // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
+                    // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
+                    // `arrow.triangle.2.circlepath` on a pre-26 device automatically,
+                    // even through the shared Button's `icon` prop.
+                    icon="arrow.trianglehead.2.clockwise.rotate.90"
+                  >
+                    {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
+                  </Button>
+                  <Button
+                    variant="secondaryTonal"
+                    size="small"
+                    fullWidth={false}
+                    onPress={confirmDisconnect}
+                    icon="lock.open"
+                  >
+                    {t('accountDetail.disconnectAction')}
+                  </Button>
+                </Box>
               </Box>
+            ) : (
+              <MonobankConnectField onConnect={connectMonobank} />
             )}
-            {/* Sync and Disconnect share a single row. The Sync action is the
-              affirmative blue `primary` CTA once connected; before connection the
-              same button is the neutral Connect affordance (secondaryTonal).
-              Disconnect stays a neutral tonal action beside it — never blue. */}
-            <Box direction="row" gap={2} testID="monobank-sync-actions-row">
-              <Button
-                variant={actionVariant}
-                size="small"
-                fullWidth={false}
-                onPress={() => {
-                  handlePress();
-                }}
-                disabled={isSyncing}
-                icon={actionIcon}
-              >
-                {actionLabel}
-              </Button>
-              {isConnectedToMonobank && (
-                <Button
-                  variant="secondaryTonal"
-                  size="small"
-                  fullWidth={false}
-                  onPress={confirmDisconnect}
-                  icon="lock.open"
-                >
-                  {t('accountDetail.disconnectAction')}
-                </Button>
-              )}
-            </Box>
           </Box>
-        )}
-
-        {tokenMessage !== undefined && (
-          <Text variant="body" tone="negative">
-            {tokenMessage}
-          </Text>
         )}
 
         {error !== undefined && (

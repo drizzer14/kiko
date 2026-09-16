@@ -16,9 +16,9 @@ const MONOBANK_API_URL = 'https://api.monobank.ua/';
 
 // The shared, presentational Monobank token-entry surface: the
 // "Open api.monobank.ua" link, the token TextField, and its trailing paste-icon
-// button (which reads the clipboard into the field). It owns NO Save button,
+// button (which reads the clipboard into the field). It owns NO Connect button,
 // sync status, or Disconnect action — those are edit-surface-only concerns that
-// stay with `MonobankTokenField`. Both the account-detail edit surface and the
+// stay with `MonobankConnectField`. Both the account-detail edit surface and the
 // add-account create form consume this so the two entry surfaces stay identical
 // rather than drifting as two hand-rolled copies.
 const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
