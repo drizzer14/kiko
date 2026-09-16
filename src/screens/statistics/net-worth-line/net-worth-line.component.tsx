@@ -59,10 +59,16 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior dates, so the axis reads as a real
-// timeline rather than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+// The X-axis GRIDLINE fractions: three interior verticals (no edge lines — the
+// plot border already draws the extremes). Deliberately decoupled from
+// X_LABEL_FRACTIONS below: five evenly-spaced labels crowd a narrow phone
+// axis and the interior middle label was dropping out on-device, so the
+// labels now render at a sparser set while the gridlines keep their original
+// density and testIDs (`*-x-grid-0.25`/`0.50`/`0.75`).
+const X_GRID_FRACTIONS = [0.25, 0.5, 0.75] as const;
+// The X-axis LABEL fractions: first, middle, last only, so the middle date is
+// always legible instead of crowding out under five labels.
+const X_LABEL_FRACTIONS = [0, 0.5, 1] as const;
 // The dashed pattern for the start-reference baseline.
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
@@ -157,7 +163,8 @@ type Tick = { key: string; value: number };
 //
 // A FLAT range (every amount equal to `startReference` — a single point, or a
 // holding whose balance never moved in the window) collapses to ONE tick, the
-// same way `buildXTicks` collapses a single-instant time range below. Spreading
+// same way `buildXLabelTicks`/`buildXGridTicks` collapse a single-instant time
+// range below. Spreading
 // TICK_COUNT ticks across a zero-width range put all of them at the same value
 // AND the same y: four labels drawn on top of each other and four coincident
 // gridlines.
@@ -209,16 +216,13 @@ export const buildTicks = (points: NetWorthPoint[], startReference: number): Tic
 // both range labels at the right edge.
 type XTick = { key: string; time: number; leftPercent: number; isEdge: boolean; isStart: boolean };
 
-// The X-axis time ticks across the range. A single-instant range (one point, or
-// every point at the same time) collapses to a lone start label — the evenly
-// spaced set would otherwise stack every date on the same x.
-const buildXTicks = (scales: Scales): XTick[] => {
+// One X tick per fraction of the time span, shared by the grid and label
+// builders below — the only difference between the two is which fraction set
+// (and which collapse behavior) they feed in.
+const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
-  if (timeSpan <= 0) {
-    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
-  }
 
-  return X_TICK_FRACTIONS.map((fraction) => {
+  return fractions.map((fraction) => {
     const time = scales.minTime + fraction * timeSpan;
 
     return {
@@ -229,6 +233,31 @@ const buildXTicks = (scales: Scales): XTick[] => {
       isStart: fraction === 0,
     };
   });
+};
+
+// The X-axis date LABEL ticks across the range. A single-instant range (one
+// point, or every point at the same time) collapses to a lone start label —
+// the evenly spaced set would otherwise stack every date on the same x.
+const buildXLabelTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
+  }
+
+  return buildXTickSet(scales, X_LABEL_FRACTIONS);
+};
+
+// The X-axis vertical GRIDLINE ticks across the range. A single-instant range
+// collapses to zero gridlines — there is no interior to mark — matching the
+// gridline count today (the label collapse's lone tick is an edge, which the
+// old single fraction-set render filtered out of the gridlines anyway).
+const buildXGridTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [];
+  }
+
+  return buildXTickSet(scales, X_GRID_FRACTIONS);
 };
 
 // One filled area between the line and the dashed REFERENCE baseline, CLAMPED
@@ -465,7 +494,8 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
 
   const scales = buildScales(points, startReference, height);
   const ticks = buildTicks(points, startReference);
-  const xTicks = buildXTicks(scales);
+  const xLabelTicks = buildXLabelTicks(scales);
+  const xGridTicks = buildXGridTicks(scales);
   // One compact unit for the whole axis, chosen from the spread of tick values
   // so adjacent labels stay distinct while staying short (see chooseCompactUnit).
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
@@ -525,20 +555,18 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
             </G>
 
             <G>
-              {xTicks
-                .filter((tick) => !tick.isEdge)
-                .map((tick) => (
-                  <Line
-                    key={tick.key}
-                    testID={`net-worth-line-x-grid-${tick.key}`}
-                    x1={scales.x(tick.time)}
-                    y1={PADDING_Y}
-                    x2={scales.x(tick.time)}
-                    y2={baselineY}
-                    stroke={theme.colors.border}
-                    strokeWidth={GRID_STROKE_WIDTH}
-                  />
-                ))}
+              {xGridTicks.map((tick) => (
+                <Line
+                  key={tick.key}
+                  testID={`net-worth-line-x-grid-${tick.key}`}
+                  x1={scales.x(tick.time)}
+                  y1={PADDING_Y}
+                  x2={scales.x(tick.time)}
+                  y2={baselineY}
+                  stroke={theme.colors.border}
+                  strokeWidth={GRID_STROKE_WIDTH}
+                />
+              ))}
             </G>
 
             <Line
@@ -672,7 +700,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
         <View testID="net-worth-line-x-axis-spacer" style={styles.xAxisSpacer} />
 
         <View style={styles.xAxisTrack}>
-          {xTicks.map((tick) => (
+          {xLabelTicks.map((tick) => (
             <View
               key={tick.key}
               testID={`net-worth-line-x-tick-${tick.key}`}

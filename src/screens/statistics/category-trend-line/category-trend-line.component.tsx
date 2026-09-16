@@ -46,10 +46,16 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior days, so the axis reads as a real
-// timeline rather than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+// The X-axis GRIDLINE fractions: three interior verticals (no edge lines — the
+// plot border already draws the extremes). Deliberately decoupled from
+// X_LABEL_FRACTIONS below: five evenly-spaced labels crowd a narrow phone
+// axis and the interior middle label was dropping out on-device, so the
+// labels now render at a sparser set while the gridlines keep their original
+// density and testIDs (`*-x-grid-0.25`/`0.50`/`0.75`).
+const X_GRID_FRACTIONS = [0.25, 0.5, 0.75] as const;
+// The X-axis LABEL fractions: first, middle, last only, so the middle date is
+// always legible instead of crowding out under five labels.
+const X_LABEL_FRACTIONS = [0, 0.5, 1] as const;
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
 
@@ -106,16 +112,13 @@ const buildTicks = (maxValue: number): Tick[] =>
 // the start's `leftPercent` is the plot's left padding, never exactly 0.
 type XTick = { key: string; time: number; leftPercent: number; isEdge: boolean; isStart: boolean };
 
-// The X-axis day ticks across the range. A single-instant range (one bucket,
-// or every point at the same time) collapses to a lone start label — the evenly
-// spaced set would otherwise stack every day on the same x.
-const buildXTicks = (scales: Scales): XTick[] => {
+// One X tick per fraction of the time span, shared by the grid and label
+// builders below — the only difference between the two is which fraction set
+// (and which collapse behavior) they feed in.
+const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
-  if (timeSpan <= 0) {
-    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
-  }
 
-  return X_TICK_FRACTIONS.map((fraction) => {
+  return fractions.map((fraction) => {
     const time = scales.minTime + fraction * timeSpan;
 
     return {
@@ -126,6 +129,31 @@ const buildXTicks = (scales: Scales): XTick[] => {
       isStart: fraction === 0,
     };
   });
+};
+
+// The X-axis day LABEL ticks across the range. A single-instant range (one
+// bucket, or every point at the same time) collapses to a lone start label —
+// the evenly spaced set would otherwise stack every day on the same x.
+const buildXLabelTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
+  }
+
+  return buildXTickSet(scales, X_LABEL_FRACTIONS);
+};
+
+// The X-axis vertical GRIDLINE ticks across the range. A single-instant range
+// collapses to zero gridlines — there is no interior to mark — matching the
+// gridline count today (the label collapse's lone tick is an edge, which the
+// old single fraction-set render filtered out of the gridlines anyway).
+const buildXGridTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [];
+  }
+
+  return buildXTickSet(scales, X_GRID_FRACTIONS);
 };
 
 const toPolylinePoints = (points: CategoryTrendSeries['points'], scales: Scales): string =>
@@ -187,7 +215,8 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
 
   const scales = buildScales(series, height);
   const ticks = buildTicks(scales.maxValue);
-  const xTicks = buildXTicks(scales);
+  const xLabelTicks = buildXLabelTicks(scales);
+  const xGridTicks = buildXGridTicks(scales);
   // One compact unit for the whole axis, chosen from the spread of tick values
   // so adjacent labels stay distinct while staying short (see chooseCompactUnit).
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
@@ -239,20 +268,18 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
             </G>
 
             <G>
-              {xTicks
-                .filter((tick) => !tick.isEdge)
-                .map((tick) => (
-                  <Line
-                    key={tick.key}
-                    testID={`category-trend-line-x-grid-${tick.key}`}
-                    x1={scales.x(tick.time)}
-                    y1={PADDING_Y}
-                    x2={scales.x(tick.time)}
-                    y2={baselineY}
-                    stroke={theme.colors.border}
-                    strokeWidth={GRID_STROKE_WIDTH}
-                  />
-                ))}
+              {xGridTicks.map((tick) => (
+                <Line
+                  key={tick.key}
+                  testID={`category-trend-line-x-grid-${tick.key}`}
+                  x1={scales.x(tick.time)}
+                  y1={PADDING_Y}
+                  x2={scales.x(tick.time)}
+                  y2={baselineY}
+                  stroke={theme.colors.border}
+                  strokeWidth={GRID_STROKE_WIDTH}
+                />
+              ))}
             </G>
 
             <Line
@@ -285,7 +312,7 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
         <View testID="category-trend-line-x-axis-spacer" style={styles.xAxisSpacer} />
 
         <View style={styles.xAxisTrack}>
-          {xTicks.map((tick) => (
+          {xLabelTicks.map((tick) => (
             <View
               key={tick.key}
               testID={`category-trend-line-x-tick-${tick.key}`}

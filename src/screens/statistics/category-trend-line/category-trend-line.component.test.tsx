@@ -109,11 +109,15 @@ describe('CategoryTrendLine', () => {
   });
 
   it('draws the X and Y gridlines at the two extremes plus three interior fractions', async () => {
-    const { getByTestId, queryByTestId } = await render(
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
       <CategoryTrendLine series={series} baseCurrency="UAH" />,
     );
 
     expect(getByTestId('category-trend-line-y-grid-0')).toBeTruthy();
+    // Exactly three interior gridlines — independent of however many X-axis
+    // date labels render (see the label test below): the gridline and label
+    // fraction sets are deliberately decoupled.
+    expect(getAllByTestId(/^category-trend-line-x-grid-/)).toHaveLength(3);
     for (const fraction of ['0.25', '0.50', '0.75']) {
       expect(getByTestId(`category-trend-line-x-grid-${fraction}`)).toBeTruthy();
     }
@@ -121,8 +125,16 @@ describe('CategoryTrendLine', () => {
     expect(queryByTestId('category-trend-line-x-grid-1.00')).toBeNull();
   });
 
-  it('labels the X axis with distinct numeric day.month values at the two extremes plus three interior dates', async () => {
-    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+  it('labels the X axis with distinct numeric day.month values at only the start, middle, and end — decoupled from the interior gridlines', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={series} baseCurrency="UAH" />,
+    );
+
+    // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
+    // fractions get no label of their own.
+    expect(getAllByTestId(/^category-trend-line-x-tick-/)).toHaveLength(3);
+    expect(queryByTestId('category-trend-line-x-tick-0.25')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-tick-0.75')).toBeNull();
 
     // Each X tick reads a zero-padded "DD.MM" (e.g. "01.01"), not a month name.
     const tickLabel = (fraction: string): string => {
@@ -130,12 +142,14 @@ describe('CategoryTrendLine', () => {
 
       return String(node.props.children);
     };
-    const labels = ['0.00', '0.25', '0.50', '0.75', '1.00'].map(tickLabel);
+    const labels = ['0.00', '0.50', '1.00'].map(tickLabel);
 
     for (const label of labels) {
       expect(label).toMatch(/^\d{2}\.\d{2}$/);
     }
-    expect(new Set(labels).size).toBe(5);
+    // Every label distinct — in particular, the regression this fix targets:
+    // the middle label must read a genuinely different date from both edges.
+    expect(new Set(labels).size).toBe(3);
   });
 
   it('renders an empty state when there are no series', async () => {

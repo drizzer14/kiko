@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 
 import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
 import { darkTheme } from '../../../design-system/theme';
@@ -840,22 +840,43 @@ describe('NetWorthLine', () => {
     expect(width).toBeGreaterThan(0);
   });
 
-  it('labels the X axis at the two extremes plus three interior dates', async () => {
-    const { getByTestId } = await render(
+  it('labels the X axis at only the start, middle, and end — decoupled from the interior gridlines — with a distinct middle date', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
 
-    // Five ticks: the two range extremes plus their three interior dates, so
-    // the axis reads as a real timeline rather than only first/middle/last.
-    for (const key of ['0.00', '0.25', '0.50', '0.75', '1.00']) {
+    // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
+    // fractions get no label of their own, unlike the gridline set above.
+    expect(getAllByTestId(/^net-worth-line-x-tick-/)).toHaveLength(3);
+    for (const key of ['0.00', '0.50', '1.00']) {
       expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }
+    expect(queryByTestId('net-worth-line-x-tick-0.25')).toBeNull();
+    expect(queryByTestId('net-worth-line-x-tick-0.75')).toBeNull();
+
+    // The regression this fix targets: the middle label must read a
+    // genuinely different date from both edges, not drop out or collapse
+    // onto one of them.
+    const textOf = (id: string): string =>
+      String(within(getByTestId(id)).getByText(/\d/).props.children);
+    const start = textOf('net-worth-line-x-tick-0.00');
+    const middle = textOf('net-worth-line-x-tick-0.50');
+    const end = textOf('net-worth-line-x-tick-1.00');
+
+    expect(middle).not.toBe(start);
+    expect(middle).not.toBe(end);
   });
 
   it('drops a thin vertical gridline from each interior date to the plot, not from the edges', async () => {
-    const { getByTestId, queryByTestId } = await render(
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
+
+    // Exactly three interior gridlines — no more, no fewer — independent of
+    // however many X-axis date labels render below (see the label test
+    // below): the gridline and label fraction sets are deliberately
+    // decoupled.
+    expect(getAllByTestId(/^net-worth-line-x-grid-/)).toHaveLength(3);
 
     // Every interior date gets a gridline; the two extremes ARE the plot's
     // own left/right edges, so they get no extra line.
