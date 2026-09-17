@@ -1,15 +1,8 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
-import Clipboard from '@react-native-clipboard/clipboard';
 
-import SyncStatusLine from '../sync-status-line';
-import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import TextField from '../../../design-system/components/text-field';
+import TokenConnectField from '../token-connect-field';
 
 type BunqConnectFieldProps = {
   // Runs the connect: store the entered API key to the Keychain (keyed by
@@ -37,19 +30,12 @@ type BunqConnectFieldProps = {
 // unhandled rejection.
 const BunqConnectField: FC<BunqConnectFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const [apiKey, setApiKey] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
   const handleChangeApiKey = (value: string): void => {
     setApiKey(value);
     setStatus({ kind: 'idle' });
-  };
-
-  const handlePaste = (): void => {
-    Clipboard.getString().then((value) => {
-      handleChangeApiKey(value.trim());
-    });
   };
 
   const handleConnect = (): void => {
@@ -73,50 +59,18 @@ const BunqConnectField: FC<BunqConnectFieldProps> = ({ onConnect }) => {
   };
 
   return (
-    <Box gap={3}>
-      <Text variant="body" tone="textSecondary">
-        {t('accountDetail.bunqApiKeyNotice')}
-      </Text>
-
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.apiKeyLabel')}
-            value={apiKey}
-            onChangeText={handleChangeApiKey}
-            placeholder={t('accountDetail.bunqApiKeyPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteBunqApiKey')}
-          onPress={handlePaste}
-        />
-      </Box>
-
-      <Box direction="row" gap={2} style={styles.statusLine}>
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={handleConnect}
-          disabled={status.kind === 'checking' || apiKey.trim() === ''}
-          icon="lock"
-        >
-          {t('accountDetail.connectBunq')}
-        </Button>
-
-        <SyncStatusLine status={status} />
-      </Box>
-    </Box>
+    <TokenConnectField
+      notice={t('accountDetail.bunqApiKeyNotice')}
+      label={t('accountDetail.apiKeyLabel')}
+      value={apiKey}
+      onChangeText={handleChangeApiKey}
+      placeholder={t('accountDetail.bunqApiKeyPlaceholder')}
+      pasteAccessibilityLabel={t('accountDetail.pasteBunqApiKey')}
+      connectLabel={t('accountDetail.connectBunq')}
+      onConnectPress={handleConnect}
+      connectDisabled={status.kind === 'checking' || apiKey.trim() === ''}
+      status={status}
+    />
   );
 };
 

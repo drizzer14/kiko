@@ -1,16 +1,9 @@
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
-import Clipboard from '@react-native-clipboard/clipboard';
 
-import SyncStatusLine from '../sync-status-line';
-import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
+import TokenConnectField from '../token-connect-field';
 import { fetchAccounts } from '../../../starling/client';
-import Button from '../../../design-system/components/button';
-import TextField from '../../../design-system/components/text-field';
 
 type StarlingConnectFieldProps = {
   // Runs the connect: store the validated Personal Access Token to the
@@ -33,19 +26,12 @@ type StarlingConnectFieldProps = {
 // surfaces as a `false` result here rather than an unhandled rejection.
 const StarlingConnectField: FC<StarlingConnectFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
   const handleChangeToken = (value: string): void => {
     setToken(value);
     setStatus({ kind: 'idle' });
-  };
-
-  const handlePaste = (): void => {
-    Clipboard.getString().then((value) => {
-      handleChangeToken(value.trim());
-    });
   };
 
   const handleConnect = (): void => {
@@ -76,50 +62,18 @@ const StarlingConnectField: FC<StarlingConnectFieldProps> = ({ onConnect }) => {
   };
 
   return (
-    <Box gap={3}>
-      <Text variant="body" tone="textSecondary">
-        {t('accountDetail.starlingTokenNotice')}
-      </Text>
-
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.tokenLabel')}
-            value={token}
-            onChangeText={handleChangeToken}
-            placeholder={t('accountDetail.starlingTokenPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteStarlingToken')}
-          onPress={handlePaste}
-        />
-      </Box>
-
-      <Box direction="row" gap={2} style={styles.statusLine}>
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={handleConnect}
-          disabled={status.kind === 'checking' || token.trim() === ''}
-          icon="lock"
-        >
-          {t('accountDetail.connectStarling')}
-        </Button>
-
-        <SyncStatusLine status={status} />
-      </Box>
-    </Box>
+    <TokenConnectField
+      notice={t('accountDetail.starlingTokenNotice')}
+      label={t('accountDetail.tokenLabel')}
+      value={token}
+      onChangeText={handleChangeToken}
+      placeholder={t('accountDetail.starlingTokenPlaceholder')}
+      pasteAccessibilityLabel={t('accountDetail.pasteStarlingToken')}
+      connectLabel={t('accountDetail.connectStarling')}
+      onConnectPress={handleConnect}
+      connectDisabled={status.kind === 'checking' || token.trim() === ''}
+      status={status}
+    />
   );
 };
 

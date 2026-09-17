@@ -38,8 +38,9 @@ describe('visibleCatalogEntries', () => {
 });
 
 describe('AddBankProviderSheet', () => {
-  // This worktree's local `.env` sets `SHOW_UNREADY_BANKS=true` (a test build,
-  // never a release one — see `.env.example`'s comment), so the real,
+  // The committed `.env.test` (the default ENVFILE for Jest, set in
+  // jest.config.js) sets `SHOW_UNREADY_BANKS=true` (a test build, never a
+  // release one — see `.env.example`'s comment), so the real,
   // build-time-inlined flag shows every wired entry here.
   it('renders the wired catalog entries with their about + eligibility copy', async () => {
     const view = await render(
