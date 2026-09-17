@@ -13,10 +13,20 @@ reimplementation written against Kiko's own `ParsedTransaction`/
 matcher, and edge-case knowledge — no uabean source (Python or
 otherwise) is copied into this repository.
 
-**One fixture's bytes are reused as-is**:
-`src/statement-import/formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv`
-is a verbatim copy of uabean's own low-PII sample export,
-`tests/importers/monobank/monobank-black-UAH_01-06-23_15-03-59.csv`.
+**Two fixtures' bytes are reused as-is**:
+
+- `src/statement-import/formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv`
+  is a verbatim copy of uabean's own low-PII sample export,
+  `tests/importers/monobank/monobank-black-UAH_01-06-23_15-03-59.csv`.
+- `src/statement-import/formats/sensebank-csv/__fixtures__/uabean-sensebank-sample.csv`
+  is a verbatim, byte-for-byte copy (cp1251-encoded, NOT re-encoded) of
+  uabean's own confirmed-synthetic sample export,
+  `tests/importers/sensebank/alfabank-uah.csv` — a placeholder all-1s IBAN
+  (`UA111111111111111111111111111`), a test-pattern Visa card number
+  (`4111xxxxxxx1111`, the well-known `4111 1111 1111 1111` test-card
+  prefix), and year-2000 dates confirm it is not real personal data
+  (`docs/plans/statement-import.md` section C.4).
+
 Because the MIT license's core condition — "The above copyright notice
 and this permission notice shall be included in all copies or
 substantial portions of the Software" — is triggered by reusing those

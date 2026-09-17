@@ -3,6 +3,7 @@ import * as RNFS from 'react-native-fs';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import readXlsxFile from 'read-excel-file/browser';
+import { decode as decodeWindows1251 } from 'windows-1251';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
@@ -297,7 +298,20 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
           return;
         }
 
-        setLoadState({ kind: 'ready', text: decodeBase64Utf8(base64) });
+        const utf8Text = decodeBase64Utf8(base64);
+        const utf8Input = { text: utf8Text, fileName: fileNameOf(filePath) };
+
+        // Sensebank (and Phase 4's FOP CSVs) are cp1251-encoded, not UTF-8 —
+        // section C.2's KEY DESIGN. A UTF-8 decode of cp1251 bytes never
+        // matches a cp1251 format's own Cyrillic detect signature, so this is
+        // an honest, visible second decode attempt of the SAME bytes — no
+        // flag, no per-format bytes field — that runs only when the first
+        // (UTF-8) pass matched no known format.
+        const text = detectFormat(utf8Input)
+          ? utf8Text
+          : decodeWindows1251(new Uint8Array(decodeBase64ToBytes(base64)));
+
+        setLoadState({ kind: 'ready', text });
       })
       .catch(() => {
         // A failed read — an iCloud placeholder not yet downloaded, a

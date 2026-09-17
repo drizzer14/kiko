@@ -21,13 +21,14 @@ describe('StatementParseError', () => {
 });
 
 describe('statementFormatIds', () => {
-  // Phase 2 (Task 3) widens this tuple to add 'privatbank-xlsx', per
-  // docs/plans/statement-import.md's own Phase 2 file list — this is the one
-  // Phase 1 assertion that update is EXPECTED to touch, not a loosened one:
-  // the PrivatBank format's own `id: 'privatbank-xlsx'` cannot typecheck
-  // against `StatementFormatId` without this tuple actually carrying it.
-  it('ships exactly the Monobank CSV and PrivatBank XLSX format ids in this phase', () => {
-    expect(statementFormatIds).toEqual(['monobank-csv', 'privatbank-xlsx']);
+  // Phase 3 (Task 4) widens this tuple again to add 'sensebank-csv', per
+  // docs/plans/statement-import.md's own Phase 3 file list — the one Phase
+  // 1/2 assertion this task is authorized to touch (task-4-brief.md), for
+  // the same reason Phase 2 touched it: the Sensebank format's own
+  // `id: 'sensebank-csv'` cannot typecheck against `StatementFormatId`
+  // without this tuple actually carrying it.
+  it('ships exactly the Monobank CSV, PrivatBank XLSX, and Sensebank CSV format ids in this phase', () => {
+    expect(statementFormatIds).toEqual(['monobank-csv', 'privatbank-xlsx', 'sensebank-csv']);
   });
 });
 

@@ -75,10 +75,11 @@ export type ParsedStatement = {
   unresolvedRows?: UnresolvedStatementRow[];
 };
 
-/** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 adds
- * PrivatBank XLSX. Every other bank studied for this plan (Sensebank CSV, …)
- * lands in its own later phase and is deliberately NOT listed here yet. */
-export const statementFormatIds = ['monobank-csv', 'privatbank-xlsx'] as const;
+/** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 added
+ * PrivatBank XLSX; Phase 3 adds Sensebank CSV. Every other bank studied for
+ * this plan lands in its own later phase and is deliberately NOT listed here
+ * yet. */
+export const statementFormatIds = ['monobank-csv', 'privatbank-xlsx', 'sensebank-csv'] as const;
 export type StatementFormatId = (typeof statementFormatIds)[number];
 
 /** One resolved spreadsheet cell value — mirrors `read-excel-file`'s own

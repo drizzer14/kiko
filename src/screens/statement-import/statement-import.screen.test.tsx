@@ -121,12 +121,67 @@ const multiCardFormatStub: StatementFormat = {
   parse: () => multiCardParsedStatement,
 };
 
+// Phase 3 (Task 4) — the screen's cp1251 decode FALLBACK, isolated from
+// `sensebank-csv.format.ts`'s own CSV-shape logic (still a throwing stub at
+// this point in the task split, task-4-report.md). This sentinel format's
+// `detect` checks for the CORRECTLY cp1251-decoded literal Sensebank
+// preamble text — it never imports the real `sensebank-csv` module — so
+// these tests prove ONLY that the screen itself retries with a cp1251 decode
+// when the UTF-8 pass finds no match, not that the real format module works.
+const SENSEBANK_TRIGGER_FILE_NAME = 'sensebank-decode-trigger.csv';
+// The literal preamble line (section C.2) `sensebankCsvFormat.detect` will
+// eventually check for too — matches `SENSEBANK_PREAMBLE` in
+// `sensebank-csv.format.ts` exactly (not imported from there, kept as an
+// independent literal here on purpose, so this test's pass/fail is never
+// coupled to that module's own export surface).
+const SENSEBANK_DECODED_PREAMBLE = 'Виписка за рахунком;;;;;;;';
+// The SAME preamble line, cp1251-ENCODED then base64-encoded — exactly the
+// shape `RNFS.readFile(uri, 'base64')` would hand the screen for a real
+// Sensebank export. Computed via the REAL `windows-1251` library's own
+// `encode()` at authoring time and verified via a roundtrip `decode()`
+// (task-4-report.md); NOT derived from any decode call this test file makes
+// itself, so this is a genuine fixed-bytes input, not a tautology.
+const sensebankPreambleCp1251Base64 = 'wujv6PHq4CDn4CDw4PXz7eru7Ds7Ozs7Ozs=';
+const sensebankParsedStatement: ParsedStatement = {
+  formatId: 'sensebank-csv',
+  account: { currency: 'UAH' },
+  transactions: [
+    {
+      currency: 'UAH',
+      amountMinorUnits: -15_000,
+      timeSeconds: 947_379_480,
+      description: 'Щомісячна комісія за обслуговування пакета банківських послуг',
+    },
+  ],
+};
+const sensebankFormatStub: StatementFormat = {
+  id: 'sensebank-csv',
+  displayName: 'Sensebank (CSV)',
+  detect: (input) => input.text.startsWith(SENSEBANK_DECODED_PREAMBLE),
+  parse: () => sensebankParsedStatement,
+};
+// Records every `input.text` the mocked `detectFormat` sees for the sentinel
+// file, in call order — lets a test prove the screen actually RETRIES a
+// second decode attempt (cp1251) rather than giving up after the first
+// (UTF-8) attempt finds no match.
+const sensebankDetectFormatCalls: string[] = [];
+
 jest.mock('../../statement-import/registry', () => {
   const actual = jest.requireActual('../../statement-import/registry');
   return {
     ...actual,
-    detectFormat: (input: { text: string; fileName: string }) =>
-      input.fileName === MULTI_CARD_FILE_NAME ? multiCardFormatStub : actual.detectFormat(input),
+    detectFormat: (input: { text: string; fileName: string }) => {
+      if (input.fileName === MULTI_CARD_FILE_NAME) {
+        return multiCardFormatStub;
+      }
+
+      if (input.fileName === SENSEBANK_TRIGGER_FILE_NAME) {
+        sensebankDetectFormatCalls.push(input.text);
+        return sensebankFormatStub.detect(input) ? sensebankFormatStub : undefined;
+      }
+
+      return actual.detectFormat(input);
+    },
   };
 });
 
@@ -350,5 +405,55 @@ describe('StatementImportScreen', () => {
     await waitFor(() =>
       expect(getByText(i18n.t('statementImport.skippedWrongCurrency', { count: 1 }))).toBeTruthy(),
     );
+  });
+
+  // Phase 3 (Task 4), section C.2's KEY DESIGN: Sensebank (and, later, Phase
+  // 4's FOP CSVs) is cp1251-encoded, not UTF-8. The screen must try decoding
+  // the picked file's bytes as UTF-8 first (Monobank's existing path); if NO
+  // format recognizes that text, it must retry decoding the SAME bytes as
+  // cp1251 before giving up.
+  describe('cp1251 decode fallback (Sensebank, section C.2)', () => {
+    beforeEach(() => {
+      sensebankDetectFormatCalls.length = 0;
+    });
+
+    it('retries with a cp1251 decode when the UTF-8 decode matches no known format, and previews the result', async () => {
+      mockReadFile.mockResolvedValue(sensebankPreambleCp1251Base64);
+
+      const { getByText, getByTestId } = await renderScreen({
+        filePath: `/mock/${SENSEBANK_TRIGGER_FILE_NAME}`,
+        accountId: 'a',
+      });
+
+      await waitFor(() => expect(getByText('Sensebank (CSV)')).toBeTruthy());
+
+      // Proves the screen genuinely RETRIED — the first `detectFormat` call
+      // (the UTF-8 decode of these cp1251 bytes) must NOT already be the
+      // correctly decoded preamble, and at least one later call must be.
+      expect(sensebankDetectFormatCalls[0]).not.toBe(SENSEBANK_DECODED_PREAMBLE);
+      expect(sensebankDetectFormatCalls).toContain(SENSEBANK_DECODED_PREAMBLE);
+
+      // The preview renders the SECOND (cp1251) pass's real match — the
+      // sentinel's own canned stats — not a blank/unrecognized state.
+      expect(getByTestId('statement-import-transaction-count')).toHaveTextContent('1');
+      expect(getByTestId('statement-import-currency')).toHaveTextContent('UAH');
+    });
+
+    // Regression guard: the fallback must never run (or interfere) for a
+    // file that already matches on the FIRST (UTF-8) pass — Monobank stays a
+    // single-attempt detect, exactly as it was before this task.
+    it('still detects a UTF-8 Monobank file on the first pass (no regression)', async () => {
+      mockReadFile.mockResolvedValue(fixtureBase64);
+
+      const { getByText } = await renderScreen({
+        filePath: '/mock/statement.csv',
+        accountId: 'a',
+      });
+
+      await waitFor(() => expect(getByText('Monobank (CSV)')).toBeTruthy());
+      // The sensebank sentinel's own call log stays untouched — proves this
+      // path never goes anywhere near the cp1251 branch.
+      expect(sensebankDetectFormatCalls).toHaveLength(0);
+    });
   });
 });

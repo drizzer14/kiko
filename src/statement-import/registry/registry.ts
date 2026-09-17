@@ -1,8 +1,13 @@
 import { monobankCsvFormat } from '../formats/monobank-csv';
+import { sensebankCsvFormat } from '../formats/sensebank-csv';
 import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
 import type { StatementFormat, StatementFormatInput } from '../parser';
 
-export const statementFormats: StatementFormat[] = [monobankCsvFormat, privatbankXlsxFormat];
+export const statementFormats: StatementFormat[] = [
+  monobankCsvFormat,
+  privatbankXlsxFormat,
+  sensebankCsvFormat,
+];
 
 /**
  * First format whose `detect` accepts the input, or `undefined` — a file
