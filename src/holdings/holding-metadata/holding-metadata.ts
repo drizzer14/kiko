@@ -50,11 +50,20 @@ const isNumber = (value: unknown): value is number =>
 
 /**
  * The metadata fields that mark a holding as owned by a sync, one per source:
- * `monobankId` (a Monobank card/jar), `walletAddress` (a BTC public-address
- * wallet), `binanceAsset` (a Binance spot balance). The single source of truth
- * for `isSyncedHolding` and for the metadata-key upserts in the holdings repo.
+ * `monobankId` (a Monobank card/jar), `privatbankId` (a PrivatBank AutoClient
+ * account), `bunqId` (a bunq monetary account), `starlingId` (a Starling
+ * account), `walletAddress` (a BTC public-address wallet), `binanceAsset` (a
+ * Binance spot balance). The single source of truth for `isSyncedHolding`
+ * and for the metadata-key upserts in the holdings repo.
  */
-export const syncedMetadataFields = ['monobankId', 'walletAddress', 'binanceAsset'] as const;
+export const syncedMetadataFields = [
+  'monobankId',
+  'privatbankId',
+  'bunqId',
+  'starlingId',
+  'walletAddress',
+  'binanceAsset',
+] as const;
 
 export type SyncedMetadataField = (typeof syncedMetadataFields)[number];
 

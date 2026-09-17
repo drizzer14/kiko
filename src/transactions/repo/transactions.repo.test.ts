@@ -631,6 +631,88 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   });
 });
 
+// A STORE-backed fake transaction handle for `addManyDedup`, unlike
+// `makeAddManyTx` above (which only CAPTURES the issued insert/conflict
+// config for one call). `insert(...).onConflictDoUpdate(...)` here actually
+// applies the real `(source, external_id)` unique-index semantics against a
+// plain array — merging into an existing row on a match, pushing a new one
+// otherwise — so a test can run `addManyDedup` TWICE against the SAME store
+// (mirroring two providers' own syncs) and read back what actually persisted,
+// not just the SQL shape a single call would have issued.
+const makeAddManyStoreTx = (store: Record<string, unknown>[]) => ({
+  select: () => ({
+    from: (table: unknown) => ({
+      // `categoryOverrides` never carries a matching rule here (no test row
+      // seeded), and the countNewRows existing-rows probe over `transactions`
+      // does not need to be clause-accurate — mirrors `holdings.repo.test.ts`'s
+      // `makeTx`, which resolves the whole table rather than interpreting
+      // `.where(...)`.
+      where: async () => (table === categoryOverrides ? [] : store),
+    }),
+  }),
+  insert: () => ({
+    values: (values: Record<string, unknown>[]) => ({
+      onConflictDoUpdate: () => {
+        for (const row of values) {
+          const existingIndex = store.findIndex(
+            (stored) => stored.source === row.source && stored.externalId === row.externalId,
+          );
+
+          if (existingIndex >= 0) {
+            store[existingIndex] = { ...store[existingIndex], ...row };
+          } else {
+            store.push(row);
+          }
+        }
+
+        return Promise.resolve();
+      },
+    }),
+  }),
+});
+
+describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', () => {
+  // Global Constraints invariant: `externalId` is namespaced
+  // `${accountId}:${providerStatementId}`, so two DIFFERENT providers can
+  // legitimately land on the identical namespaced string (e.g. bunq's
+  // payment id "1" and PrivatBank's statement id "1" on the SAME internal
+  // account id) without colliding, because the unique index is
+  // `(source, external_id)`, not `external_id` alone.
+  it('keeps both rows when two different providers report the SAME namespaced externalId, because source differs', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeAddManyStoreTx(store);
+
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-bunq',
+        amountMinorUnits: -150,
+        time: 1,
+        source: 'bunq',
+        description: 'Coffee',
+        externalId: 'acc-1:1',
+      },
+    ]);
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-privatbank',
+        amountMinorUnits: 5000,
+        time: 2,
+        source: 'privatbank',
+        description: 'Salary',
+        externalId: 'acc-1:1',
+      },
+    ]);
+
+    expect(store).toHaveLength(2);
+    const bunqRow = store.find((row) => row.source === 'bunq');
+    const privatbankRow = store.find((row) => row.source === 'privatbank');
+    expect(bunqRow?.externalId).toBe('acc-1:1');
+    expect(bunqRow?.amountMinorUnits).toBe(-150);
+    expect(privatbankRow?.externalId).toBe('acc-1:1');
+    expect(privatbankRow?.amountMinorUnits).toBe(5000);
+  });
+});
+
 describe('transactionsRepo.setCategory', () => {
   it("rewrites ONLY the target row's category inside one transaction, with no source gate", async () => {
     const captured: { table?: unknown; set?: Record<string, unknown>; whereArg?: unknown } = {};

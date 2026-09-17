@@ -13,10 +13,10 @@ import type { CategoryRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Button from '../../../design-system/components/button';
+import Card from '../../../design-system/components/card';
 import Screen from '../../../design-system/components/screen';
 import HoldingIdentityField from '../../forms/holding-identity-field';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import GlassSurface from '../../../design-system/components/glass-surface';
 import { DEFAULT_CATEGORY_KEY } from '../../../categories/category-display';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { onGridDragEnd } from '../../../design-system/grid-interaction';
@@ -59,8 +59,8 @@ const styles = StyleSheet.create(() => ({
   },
 }));
 
-// One category, rendered as its own glass card — the same GlassSurface
-// treatment (padding, bordered edge) the account and holding cards use, so
+// One category, rendered as its own `Card` — the same solid content-layer
+// surface (padding, defined border) the account and holding cards use, so
 // the categories list reads as a vertical stack of cards rather than rows
 // inside one shared surface. Inside the card, the shared identity field pairs
 // the leading icon (which doubles as the picker toggle) with an inline
@@ -160,7 +160,7 @@ const CategoryListRow: FC<{
   };
 
   return (
-    <GlassSurface testID="category-card" padding={4} bordered transparent>
+    <Card testID="category-card" padding={4}>
       <Box gap={2}>
         <Box direction="row" gap={2} style={styles.header}>
           <Box style={styles.identity}>
@@ -314,7 +314,7 @@ const CategoryListRow: FC<{
         destructive
         confirmTestID="category-delete-confirm"
       />
-    </GlassSurface>
+    </Card>
   );
 };
 
@@ -338,15 +338,13 @@ const CATEGORY_DRAG_ACTIVATION_MS = 600;
 // mutation anywhere in the list (a rename, an icon pick, a color pick, a
 // reorder, a delete — each writes the `categories` table, which re-fires this
 // screen's `useLiveQuery`). So editing ONE category's color used to force
-// every OTHER unaffected card through a full node recompute too: each
-// `GlassSurface` card here renders a real Liquid-Glass material (see
-// `glass-surface.component.tsx`) that samples its backdrop from the app's actual
-// current visual state — a card that is unnecessarily torn down and rebuilt by
-// this churn can resample a transient, not-yet-settled backdrop and paint
-// visibly wrong until something else (a drag, a remount) forces a correct
-// resample. Hoisting this extractor (it closes over nothing) makes it
-// referentially stable forever, the same fix class `renderCategoryRow` below
-// applies to `renderItem`.
+// every OTHER unaffected card through a full node recompute too — a real cost
+// even now that each card is a plain solid `Card` (no Liquid Glass material to
+// resample; that was the ORIGINAL motivation here, back when this card was a
+// `GlassSurface` — see its own doc comment for the resample mechanism this
+// screen no longer has to worry about). Hoisting this extractor (it closes
+// over nothing) makes it referentially stable forever, the same fix class
+// `renderCategoryRow` below applies to `renderItem`.
 const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 
 // The Categories settings sub-screen: a live-queried vertical stack of every

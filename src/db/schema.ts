@@ -122,7 +122,9 @@ export const transactions = sqliteTable(
     // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
     // 'btc_wallet' still writes none.
-    source: text('source', { enum: ['manual', 'monobank', 'btc_wallet', 'binance'] }).notNull(),
+    source: text('source', {
+      enum: ['manual', 'monobank', 'privatbank', 'bunq', 'starling', 'btc_wallet', 'binance'],
+    }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   },

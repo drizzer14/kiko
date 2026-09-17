@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
 
 import { isSensorAvailable, type SensorStatus } from '../../../../auth/biometrics';
-import GlassSurface from '../../../../design-system/components/glass-surface';
+import Card from '../../../../design-system/components/card';
 import Switch from '../../../../design-system/components/switch';
 import Text from '../../../../design-system/components/text';
 import SettingsRow from '../../settings-row';
@@ -56,7 +56,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   const lockAvailable = canOfferLock(sensorStatus);
 
   return (
-    <GlassSurface testID="settings-card-app-lock" padding={3} bloom>
+    <Card testID="settings-card-app-lock" padding={3}>
       <SettingsRow testID="settings-row-app-lock" icon="faceid" label={t('settings.appLock.label')}>
         <Switch
           testID="settings-switch-app-lock"
@@ -72,7 +72,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
           </Text>
         )}
       </SettingsRow>
-    </GlassSurface>
+    </Card>
   );
 };
 

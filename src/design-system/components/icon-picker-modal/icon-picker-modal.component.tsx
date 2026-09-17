@@ -38,6 +38,16 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { t } = useTranslation();
 
   return (
+    // No `animationType` override: this used to pass `"slide"`, which drove
+    // BottomSheet's own `Modal` — the SAME native transition presents both the
+    // dismiss-scrim blur and the sheet card, they are not independently
+    // animatable — so the backdrop blur visibly slid in/out with the sheet
+    // instead of fading like every other sheet in the app (every other
+    // `BottomSheet` call site relies on the shared default). Device/on-review
+    // feedback: the blur should fade, matching the rest of the app, so this
+    // sheet now falls back to `BottomSheet`'s own default (`'fade'`) rather
+    // than carrying a one-off override with no stated reason to diverge.
+    //
     // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
     // the body end regardless of scroll position — BottomSheet's shared
     // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
@@ -51,7 +61,6 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
-      animationType="slide"
       backdropAccessibilityLabel={t('categories.dismissIconPicker')}
       scrollable={false}
       header={<Text variant="heading">{t('categories.chooseIconHeading')}</Text>}

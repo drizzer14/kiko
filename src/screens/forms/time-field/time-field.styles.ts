@@ -9,7 +9,7 @@ export const styles = StyleSheet.create((theme) => ({
   // control. A leading clock icon precedes the formatted time / placeholder.
   field: {
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     paddingVertical: theme.spacing(3),

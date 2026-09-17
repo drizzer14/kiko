@@ -69,25 +69,21 @@ describe('AddCategoryRow', () => {
     expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
-  // The app-wide bloom rollout: this card carries no `transparent`/`material`
-  // variant, so before bloom its non-glass fallback rendered the plain,
-  // OPAQUE themed `surface` fill. Adding `bloom` (see GlassSurface's
-  // `resolveFallbackFill`) makes the fallback fill TRANSLUCENT instead — the
-  // one observable-under-Jest regression bloom's fallback path introduces
-  // for a previously-plain surface. Checked in both the collapsed and
-  // expanded state, since each renders its own `<GlassSurface bloom>`.
-  it('fills the add-category card fallback base with the translucent bloom token, not the plain opaque surface, collapsed and expanded', async () => {
+  // The card is the shared solid content-layer `Card` (see its own doc
+  // comment for why a content card is flat, not glass): the OPAQUE themed
+  // `surface` fill, applied directly to the card's own node (no separate
+  // base/wash sub-layer the way `GlassSurface` used to render). Checked in
+  // both the collapsed and expanded state, since each renders its own `Card`.
+  it('fills the add-category card with the shared solid surface token, collapsed and expanded', async () => {
     const { getByTestId, getByLabelText } = await render(<AddCategoryRow />);
 
-    const collapsedFlat = StyleSheet.flatten(getByTestId('add-category-card-base').props.style);
-    expect(collapsedFlat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
-    expect(collapsedFlat.backgroundColor).not.toBe(darkTheme.colors.surface);
+    const collapsedFlat = StyleSheet.flatten(getByTestId('add-category-card').props.style);
+    expect(collapsedFlat.backgroundColor).toBe(darkTheme.colors.surface);
 
     await fireEvent.press(getByLabelText('Add category'));
 
-    const expandedFlat = StyleSheet.flatten(getByTestId('add-category-card-base').props.style);
-    expect(expandedFlat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
-    expect(expandedFlat.backgroundColor).not.toBe(darkTheme.colors.surface);
+    const expandedFlat = StyleSheet.flatten(getByTestId('add-category-card').props.style);
+    expect(expandedFlat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
   it('reveals the form and reports the expansion through onExpand when tapped', async () => {

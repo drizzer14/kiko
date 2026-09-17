@@ -291,59 +291,29 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
   });
 
-  it('renders each transaction row as a glass card (M2 in the HIG audit)', async () => {
+  it('renders each transaction row as the shared solid Card surface (M2 in the HIG audit)', async () => {
     const { getAllByTestId } = await renderHome();
-    // Each row is wrapped in a GlassSurface, matching the app's glass-card
-    // language, rather than a plain bordered list row.
+    // Each row is wrapped in the shared content-layer `Card`, matching every
+    // other content card's language, rather than a plain bordered list row.
     expect(getAllByTestId('transaction-row').length).toBeGreaterThan(0);
   });
 
-  it("renders the transaction card through GlassSurface's stronger-translucent translucentStrong backdrop variant, reconciled with the app-wide bloom rollout", async () => {
-    // The row uses GlassSurface's `translucentStrong` variant — a MORE-opaque
-    // (0.80 alpha) translucent backdrop pinned UNDER the glass, so the card
-    // stays see-through but drifts LESS in lightness on scroll than either
-    // `material` (no backdrop) or `transparent` (a softer 0.60 backdrop). On the
-    // non-glass FALLBACK path the `-base` fill IS that stronger translucent
-    // color, with NO extra wash (the fallback was never the broken path — see
-    // GlassSurface's `translucentStrong` doc); on the live-glass path a
-    // `-backdrop` layer carries it, PLUS a `-wash` layer (the device-bug fix:
-    // the backdrop alpha alone is invisible under the live glass's own
-    // refraction, so a neutral dark overlay painted OVER the finished glass is
-    // what actually makes the card read darker). The default seed (beforeEach)
-    // is a single transaction, so exactly one row renders.
-    //
-    // The row ALSO takes `bloom` (the app-wide rollout). On the fallback path
-    // this changes nothing — `resolveFallbackFill` checks `isStrong` before
-    // `isBloom`, so the stronger translucent fill still wins. On the real
-    // glass path it is the key reconciliation: `bloom` wins the BACKDROP
-    // (removed entirely, re-admitting the live sample `translucentStrong`'s
-    // pin exists to prevent) and switches the native effect to `'clear'`, but
-    // the dark `-wash` is UNCHANGED — `resolveWashFill` is driven by
-    // `translucentStrong` alone and never reads `bloom` — so it keeps painting
-    // over the now-backdrop-less glass. COMBINE, not replace: the dark wash
-    // stays for row-text legibility; only the anti-drift backdrop pin is
-    // traded away for bloom's live sample.
-    const { getByTestId: getByTestIdFallback, queryByTestId: queryByTestIdFallback } =
-      await renderHome();
-    const fallbackBase = StyleSheet.flatten(
-      getByTestIdFallback('transaction-row-base').props.style,
-    );
-    expect(fallbackBase.backgroundColor).toBe(darkTheme.colors.surfaceTranslucentStrong);
-    expect(queryByTestIdFallback('transaction-row-wash')).toBeNull();
+  it('renders the transaction card with the shared solid surface token, regardless of Liquid Glass support', async () => {
+    // The row is the shared solid content-layer `Card` — a flat `surface`
+    // fill with a defined border (see `Card`'s own doc comment for why
+    // content no longer routes through `GlassSurface`/Liquid Glass at all).
+    // Unlike the old `GlassSurface translucentStrong bloom` combination, its
+    // rendered tree is identical whether or not the device supports Liquid
+    // Glass, so this asserts across BOTH `isLiquidGlassSupported` states.
+    const { getByTestId: getByTestIdFallback } = await renderHome();
+    const fallbackFill = StyleSheet.flatten(getByTestIdFallback('transaction-row').props.style);
+    expect(fallbackFill.backgroundColor).toBe(darkTheme.colors.surface);
 
     try {
       liquidGlass.isLiquidGlassSupported = true;
-      // `bloom` wins on the backdrop: it is entirely absent, not just a
-      // different fill — this fails if the row ever drops `bloom` and reverts
-      // to plain `translucentStrong`'s pinned backdrop.
-      const { getByTestId, queryByTestId } = await renderHome();
-      expect(queryByTestId('transaction-row-backdrop')).toBeNull();
-      expect(getByTestId('transaction-row-base').props.effect).toBe('clear');
-
-      // The dark wash survives the reconciliation — legibility is preserved
-      // even though the backdrop pin is gone.
-      const wash = StyleSheet.flatten(getByTestId('transaction-row-wash').props.style);
-      expect(wash.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
+      const { getByTestId } = await renderHome();
+      const glassFill = StyleSheet.flatten(getByTestId('transaction-row').props.style);
+      expect(glassFill.backgroundColor).toBe(darkTheme.colors.surface);
     } finally {
       liquidGlass.isLiquidGlassSupported = false;
     }

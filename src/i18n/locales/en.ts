@@ -258,7 +258,42 @@ export const en = {
     icon: '{{name}} icon',
     title: 'Accounts',
   },
+  // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
+  // about/dataProvided/eligibility triple per native provider, shown on the
+  // picker before any credential is entered.
+  addBank: {
+    monobank: {
+      about:
+        'Monobank is a Ukrainian mobile-only bank. Kiko connects with a personal API token you generate in the Monobank app.',
+      dataProvided:
+        'Balances, jars, and transaction history, refreshed automatically and on pull-to-refresh. Read-only — Kiko cannot move money.',
+      eligibility: 'Works with any personal Monobank account. No business or FOP account needed.',
+    },
+    privatbank: {
+      about:
+        "PrivatBank is Ukraine's largest bank. Kiko connects through its AutoClient API using a token from Privat24.",
+      dataProvided:
+        'Balances and transaction statements, refreshed the same way as Monobank. Read-only — Kiko cannot send payments.',
+      eligibility:
+        "Requires a Privat24 business or individual-entrepreneur (FOP) account with API access enabled from the 'API for developers' menu. A personal retail Privat24 account does not have this option.",
+    },
+    bunq: {
+      about:
+        'bunq is a European mobile bank. Kiko connects with a personal API key you generate in the bunq app.',
+      dataProvided: 'Balances and transaction history, read-only. Kiko cannot move money.',
+      eligibility:
+        'Works with a personal bunq account in the EU. You create the API key in the bunq app.',
+    },
+    starling: {
+      about:
+        'Starling is a UK digital bank. Kiko connects with a personal access token you create in the Starling developer portal.',
+      dataProvided: 'Account balance and transaction feed, read-only. Kiko cannot move money.',
+      eligibility:
+        'Works with a personal Starling account in the UK. You create a read-only token with account and balance access.',
+    },
+  },
   accountDetail: {
+    addBankAction: 'Add a bank',
     addHolding: 'Add holding',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
@@ -269,50 +304,127 @@ export const en = {
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
     btcAddressPlaceholder: 'BTC address',
+    // The "add a bank" caption + placeholder/status copy for bunq
+    // (src/screens/account-detail/bunq-connect-field/): one API key field,
+    // no client id.
+    bunqApiKeyNotice:
+      'Create the API key in the bunq app under Profile > Security & Privacy > Developers > API keys.',
+    bunqApiKeyPlaceholder: 'bunq API key',
+    bunqConnected: 'bunq connected',
+    bunqPaymentPageCapReached:
+      "bunq sync: account {{accountId}}'s payment history exceeds the {{maxPages}}-page fetch cap before reaching the sync window's start; the window will be retried.",
+    bunqRateLimited: 'bunq is rate-limiting requests right now. Please try again shortly.',
+    bunqTimeout: 'bunq did not respond in time. Please try again.',
     checking: 'Checking…',
     connectBinance: 'Connect Binance',
+    connectBunq: 'Connect bunq',
     connectedAs: 'Connected as {{name}}',
     connectMonobank: 'Connect Monobank',
+    connectPrivatbank: 'Connect PrivatBank',
+    connectStarling: 'Connect Starling',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
+    couldNotConnectBunq: 'Could not connect bunq',
     couldNotConnectMonobank: 'Could not connect Monobank',
+    couldNotConnectPrivatbank: 'Could not connect PrivatBank',
+    couldNotConnectStarling: 'Could not connect Starling',
     couldNotConnectWallet: 'Could not connect wallet',
     couldNotSaveCredentials: 'Could not save credentials',
     disconnectAction: 'Disconnect',
+    disconnectBunq: 'Disconnect bunq',
+    disconnectBunqMessage:
+      'This clears the connection and the stored credentials. Your holdings and transactions stay as a manual snapshot.',
     disconnectErrorTitle: 'Could not disconnect',
     disconnectMonobank: 'Disconnect Monobank',
     disconnectMonobankMessage:
       'This clears the connection and the stored token. Your holdings and transactions stay as a manual snapshot.',
+    disconnectPrivatbank: 'Disconnect PrivatBank',
+    disconnectPrivatbankMessage:
+      'This clears the connection and the stored credentials. Your holdings and transactions stay as a manual snapshot.',
     disconnectProvider: 'Disconnect {{provider}}',
     disconnectProviderMessage: {
       binance:
         'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
+    disconnectStarling: 'Disconnect Starling',
+    disconnectStarlingMessage:
+      'This clears the connection and the stored token. Your holdings and transactions stay as a manual snapshot.',
     holdingsHeading: 'Holdings',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
     invalidBTCAddress: 'Invalid BTC address',
+    invalidBunqCredentials: 'Invalid API key',
+    invalidBunqPaymentAmount:
+      'bunq sync: unparseable payment amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidBunqPaymentDate:
+      'bunq sync: unparseable payment date for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidPrivatbankBalanceAmount:
+      'PrivatBank sync: unparseable balance amount for account {{accountId}}, PrivatBank account {{acc}}: "{{value}}"',
+    invalidPrivatbankCredentials: 'Invalid token',
+    invalidPrivatbankStatementAmount:
+      'PrivatBank sync: unparseable statement amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidPrivatbankStatementDate:
+      'PrivatBank sync: unparseable statement date for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidStarlingFeedAmount:
+      'Starling sync: unparseable feed amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidStarlingFeedDate:
+      'Starling sync: unparseable feed date for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidStarlingToken: 'Invalid token',
     invalidToken: 'Invalid token',
     lastSync: 'Last sync: {{time}}',
     monobankRateLimited: 'Monobank is rate-limiting requests right now. Please try again shortly.',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
+    noBunqConnection: 'No bunq account connected',
+    noBunqCredentials: 'No bunq credentials found; connect an account before syncing.',
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',
+    noPrivatbankConnection: 'No PrivatBank account connected',
+    noPrivatbankCredentials: 'No PrivatBank credentials found; connect an account before syncing.',
+    noStarlingConnection: 'No Starling account connected',
+    noStarlingToken: 'No Starling token found; connect an account before syncing.',
     openBinanceLink: 'Open Binance API Management',
     openMonobankLink: 'Open api.monobank.ua',
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
+    pasteBunqApiKey: 'Paste bunq API key from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
+    pastePrivatbankToken: 'Paste PrivatBank token from clipboard',
+    pasteStarlingToken: 'Paste Starling token from clipboard',
+    privatbankBalancePageCapReached:
+      'PrivatBank sync: the balance listing exceeds the {{maxPages}}-page fetch cap; the sync will be retried.',
+    privatbankBalancePageTruncated:
+      'PrivatBank sync: the balance page reports more items (exist_next_page) but carries no next_page_id to follow; the sync will be retried.',
+    privatbankConnected: 'PrivatBank connected',
+    privatbankFopNotice:
+      "Requires a Privat24 business or individual-entrepreneur (FOP) account with API access enabled from the 'API for developers' menu.",
+    privatbankRateLimited:
+      'PrivatBank is rate-limiting requests right now. Please try again shortly.',
+    privatbankStatementPageCapReached:
+      "PrivatBank sync: account {{accountId}}'s statement history exceeds the {{maxPages}}-page fetch cap within one sync window; the window will be retried.",
+    privatbankStatementPageTruncated:
+      "PrivatBank sync: account {{accountId}}'s statement page reports more items (exist_next_page) but carries no next_page_id to follow; the window will be retried.",
+    privatbankTimeout: 'PrivatBank did not respond in time. Please try again.',
+    privatbankTokenPlaceholder: 'PrivatBank token',
     sourceLabel: 'Source',
+    starlingAccountName: 'Starling account',
+    starlingConnected: 'Starling connected',
+    starlingRateLimited: 'Starling is rate-limiting requests right now. Please try again shortly.',
+    starlingTimeout: 'Starling did not respond in time. Please try again.',
+    starlingTokenNotice:
+      'Create a Personal Access Token in the Starling developer portal with account, balance, and transaction read access.',
+    starlingTokenPlaceholder: 'Starling token',
     synchronization: 'Synchronization',
     syncing: 'Syncing…',
     syncNow: 'Sync',
     tokenLabel: 'Token',
     tryAgainMessage: 'Please try again.',
+    unsupportedBunqCurrency: 'Unsupported bunq currency: {{code}}',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}',
+    unsupportedPrivatbankCurrency: 'Unsupported PrivatBank currency: {{code}}',
+    unsupportedStarlingCurrency: 'Unsupported Starling currency: {{code}}',
     wallet: 'Wallet',
     walletConnected: 'Wallet connected',
   },

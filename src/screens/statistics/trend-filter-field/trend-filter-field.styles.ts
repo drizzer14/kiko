@@ -7,7 +7,7 @@ export const styles = StyleSheet.create((theme) => ({
   field: {
     alignSelf: 'flex-start',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.surface,

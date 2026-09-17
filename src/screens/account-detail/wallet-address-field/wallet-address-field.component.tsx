@@ -1,15 +1,13 @@
-import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
 
-import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import TextField from '../../../design-system/components/text-field';
+import SyncStatusLine from '../sync-status-line';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
-import SyncStatusLine from '../sync-status-line';
+import Box from '../../../design-system/components/box';
+import ClipboardTextField from '../clipboard-text-field';
+import Button from '../../../design-system/components/button';
+import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
 
 type WalletAddressFieldProps = {
   /**
@@ -27,20 +25,15 @@ type WalletAddressFieldProps = {
 // runs a local format check first, then the trial sync behind `onConnect`.
 const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
+  // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
+  // already-trimmed pasted value), so typing and pasting reset the stale
+  // status identically.
   const handleChangeAddress = (value: string): void => {
     setAddress(value);
     setStatus({ kind: 'idle' });
-  };
-
-  const handlePasteAddress = (): void => {
-    Clipboard.getString().then((value) => {
-      setAddress(value.trim());
-      setStatus({ kind: 'idle' });
-    });
   };
 
   const handleConnect = (): void => {
@@ -64,28 +57,13 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
 
   return (
     <Box gap={3}>
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.addressLabel')}
-            value={address}
-            onChangeText={handleChangeAddress}
-            placeholder={t('accountDetail.btcAddressPlaceholder')}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteAddress}
-        />
-      </Box>
+      <ClipboardTextField
+        label={t('accountDetail.addressLabel')}
+        value={address}
+        onChangeText={handleChangeAddress}
+        placeholder={t('accountDetail.btcAddressPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
+      />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
