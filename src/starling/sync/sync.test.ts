@@ -10,6 +10,11 @@ import {
 } from '../../monobank/sync-status';
 import { i18n } from '../../i18n';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
+import {
+  fetchAccounts as starlingFetchAccounts,
+  fetchBalance as starlingFetchBalance,
+  fetchFeedChangedSince as starlingFetchFeedChangedSince,
+} from '../client';
 import type { StarlingAccount, StarlingBalance, StarlingFeedItem } from '../starling.types';
 
 import { mapAccountToHolding, mapFeedItem, runSync, type SyncDeps } from './sync';
@@ -603,5 +608,108 @@ describe('runSync', () => {
       workCompleted: 0,
       workTotal: 0,
     });
+  });
+});
+
+// Every test above drives `runSync` through DEPS-LEVEL stubs for
+// `fetchAccounts`/`fetchBalance`/`fetchFeedChangedSince`, bypassing
+// `../client`'s actual HTTP-request/body-unwrapping entirely (that layer is
+// unit-tested on its own terms in `../client/starling.client.test.ts`, never
+// through `runSync`). This closes that seam: the REAL client functions run
+// against ONE mocked `fetchImpl` dispatched by URL, returning realistic
+// Starling `/accounts`, `/balance` (integer `minorUnits`), and
+// `changesSince` feed responses (mixing SETTLED/PENDING/DECLINED and both
+// IN/OUT directions), so the full wire-to-mapping path is proven at least
+// once, not just its two halves independently.
+describe('runSync end-to-end against a realistic Starling sandbox-shaped response (real client.ts, real mapping)', () => {
+  const jsonResponse = (body: unknown): Response =>
+    ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+
+  const accountsEnvelope = { accounts: [account()] };
+  const balanceEnvelope = balance({
+    clearedBalance: { currency: 'GBP', minorUnits: 24_567 },
+    effectiveBalance: { currency: 'GBP', minorUnits: 24_567 },
+  });
+  const feedEnvelope = {
+    feedItems: [
+      feedItem({
+        feedItemUid: 'feed-in-1',
+        direction: 'IN',
+        amount: { currency: 'GBP', minorUnits: 5000 },
+        transactionTime: '2026-01-05T09:00:00.000Z',
+        status: 'SETTLED',
+        reference: 'Salary',
+      }),
+      feedItem({
+        feedItemUid: 'feed-out-1',
+        direction: 'OUT',
+        amount: { currency: 'GBP', minorUnits: 1299 },
+        transactionTime: '2026-01-06T12:30:00.000Z',
+        status: 'SETTLED',
+        reference: undefined,
+        counterPartyName: 'Tesco',
+      }),
+      feedItem({
+        feedItemUid: 'feed-pending-1',
+        direction: 'OUT',
+        amount: { currency: 'GBP', minorUnits: 999 },
+        transactionTime: '2026-01-07T08:00:00.000Z',
+        status: 'PENDING',
+      }),
+      feedItem({
+        feedItemUid: 'feed-declined-1',
+        direction: 'OUT',
+        amount: { currency: 'GBP', minorUnits: 4200 },
+        transactionTime: '2026-01-07T09:00:00.000Z',
+        status: 'DECLINED',
+      }),
+    ],
+  };
+
+  it('drives the real client fetch + mapping: only SETTLED items import, OUT flips sign, minorUnits map without decimal parsing, externalId is namespaced', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      () => [],
+      [target],
+    );
+    deps.targetAccountId = 'acc-1';
+
+    const fetchImpl = jest.fn(async (url: string) => {
+      if (url.includes('/feed/account/')) {
+        return jsonResponse(feedEnvelope);
+      }
+      if (url.includes('/balance')) {
+        return jsonResponse(balanceEnvelope);
+      }
+      if (url.includes('/accounts')) {
+        return jsonResponse(accountsEnvelope);
+      }
+      throw new Error(`unexpected starling url in integration test: ${url}`);
+    }) as unknown as typeof fetch;
+
+    deps.fetchImpl = fetchImpl;
+    deps.fetchAccounts = starlingFetchAccounts;
+    deps.fetchBalance = starlingFetchBalance;
+    deps.fetchFeedChangedSince = starlingFetchFeedChangedSince;
+
+    const result = await runSync(deps);
+
+    expect(accountsStore[0].institution).toBe('starling');
+    expect(holdingsStore).toHaveLength(1);
+    // The clearedBalance's integer minorUnits pass straight through — no
+    // decimal-string parsing, unlike bunq/PrivatBank's major-unit strings.
+    expect(holdingsStore[0].balanceMinorUnits).toBe(24_567);
+
+    expect(result.importedTransactions).toBe(2);
+    expect(transactionsStore).toHaveLength(2);
+    const inbound = transactionsStore.find((row) => row.externalId === 'acc-1:feed-in-1');
+    const outbound = transactionsStore.find((row) => row.externalId === 'acc-1:feed-out-1');
+    expect(inbound?.amountMinorUnits).toBe(5000);
+    // OUT flips the sign of the positive wire amount.
+    expect(outbound?.amountMinorUnits).toBe(-1299);
+    expect(transactionsStore.every((row) => row.source === 'starling')).toBe(true);
+    // PENDING and DECLINED items never reach the transactions store.
+    expect(transactionsStore.some((row) => row.externalId === 'acc-1:feed-pending-1')).toBe(false);
+    expect(transactionsStore.some((row) => row.externalId === 'acc-1:feed-declined-1')).toBe(false);
   });
 });

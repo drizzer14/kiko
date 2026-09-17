@@ -11,6 +11,13 @@ import {
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { i18n } from '../../i18n';
 import type { BunqCrypto, BunqMonetaryAccount, BunqPayment } from '../bunq.types';
+import {
+  fetchMonetaryAccounts as bunqFetchMonetaryAccounts,
+  fetchPayments as bunqFetchPayments,
+  installClient as bunqInstallClient,
+  openSession as bunqOpenSession,
+  registerDevice as bunqRegisterDevice,
+} from '../client';
 import type { BunqContext } from '../credentials';
 
 import { mapAccountToHolding, mapPaymentItem, runSync, type SyncDeps } from './sync';
@@ -746,5 +753,139 @@ describe('runSync', () => {
       expect(contextStore.get('acc-bunq')?.installationToken).toBe('install-token-fixture');
       expect(contextStore.get('acc-bunq')?.deviceId).toBe('device-1');
     });
+  });
+});
+
+// Every test above drives `runSync` through DEPS-LEVEL stubs for
+// `fetchMonetaryAccounts`/`fetchPayments`/`installClient`/`registerDevice`/
+// `openSession`, bypassing `../client`'s actual HTTP-request/tagged-envelope
+// parsing entirely (that layer is unit-tested on its own terms in
+// `../client/bunq.client.test.ts`, never through `runSync`). This closes that
+// seam: the REAL client functions run against ONE mocked `fetchImpl`
+// dispatched by URL, returning a realistic bunq sandbox-shaped tagged
+// Response-array envelope end to end (installation -> device -> session ->
+// monetary-account -> payment), so the full wire-to-mapping path is proven at
+// least once, not just its two halves independently.
+describe('runSync end-to-end against a realistic bunq sandbox-shaped response (real client.ts, real mapping)', () => {
+  const jsonResponse = (body: unknown): Response =>
+    ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+
+  const installationEnvelope = {
+    Response: [
+      { Id: { id: 1 } },
+      { Token: { id: 2, token: 'installation-token-fixture' } },
+      { ServerPublicKey: { server_public_key: 'server-public-key-fixture' } },
+    ],
+  };
+  const deviceEnvelope = { Response: [{ Id: { id: 42 } }] };
+  const sessionEnvelope = {
+    Response: [
+      { Id: { id: 3 } },
+      { Token: { id: 4, token: 'session-token-fixture' } },
+      { UserPerson: { id: 99, session_timeout: 900 } },
+    ],
+  };
+  // A MonetaryAccountSavings entry alongside the Bank one — CONFIRMED
+  // (`fetchMonetaryAccounts`'s own doc comment) that only the `Bank` tag is
+  // mapped; this proves the unmapped tag is actually excluded end-to-end, not
+  // just by the client unit test's own narrower fixture.
+  const monetaryAccountEnvelope = {
+    Response: [
+      {
+        MonetaryAccountBank: {
+          id: 15_467,
+          currency: 'EUR',
+          balance: { currency: 'EUR', value: '1234.56' },
+          description: 'Personal account',
+          alias: [{ type: 'IBAN', value: 'NL43BUNQ2291234567', name: 'J. Doe' }],
+        },
+      },
+      {
+        MonetaryAccountSavings: {
+          id: 15_468,
+          currency: 'EUR',
+          balance: { currency: 'EUR', value: '500.00' },
+        },
+      },
+    ],
+  };
+  const paymentsEnvelope = {
+    Response: [
+      {
+        Payment: {
+          id: 2321,
+          created: '2026-01-05 14:23:01.123456',
+          amount: { currency: 'EUR', value: '-42.10' },
+          description: 'Albert Heijn',
+          counterparty_alias: { iban: 'NL69ABNA0433787980', display_name: 'Albert Heijn' },
+        },
+      },
+      {
+        Payment: {
+          id: 2322,
+          created: '2026-01-06 09:00:00.000000',
+          amount: { currency: 'EUR', value: '250.00' },
+          description: 'Salary',
+        },
+      },
+    ],
+  };
+
+  it('drives the real handshake + client fetch + mapping into holdings and namespaced transactions', async () => {
+    const target = bankAccount({ id: 'acc-1', institution: null });
+    const { deps, accountsStore, holdingsStore, transactionsStore } = makeInMemoryDeps(
+      () => [],
+      [target],
+    );
+    deps.targetAccountId = 'acc-1';
+    deps.now = () => Date.parse('2026-01-10T00:00:00.000Z');
+
+    const fetchImpl = jest.fn(async (url: string) => {
+      if (url.includes('/installation')) {
+        return jsonResponse(installationEnvelope);
+      }
+      if (url.includes('/device-server')) {
+        return jsonResponse(deviceEnvelope);
+      }
+      if (url.includes('/session-server')) {
+        return jsonResponse(sessionEnvelope);
+      }
+      // A payment URL also contains "/monetary-account", so this check must
+      // run before the monetary-account one below.
+      if (url.includes('/payment')) {
+        return jsonResponse(paymentsEnvelope);
+      }
+      if (url.includes('/monetary-account')) {
+        return jsonResponse(monetaryAccountEnvelope);
+      }
+      throw new Error(`unexpected bunq url in integration test: ${url}`);
+    }) as unknown as typeof fetch;
+
+    deps.fetchImpl = fetchImpl;
+    deps.installClient = bunqInstallClient;
+    deps.registerDevice = bunqRegisterDevice;
+    deps.openSession = bunqOpenSession;
+    deps.fetchMonetaryAccounts = bunqFetchMonetaryAccounts;
+    deps.fetchPayments = bunqFetchPayments;
+
+    const result = await runSync(deps);
+
+    expect(accountsStore[0].institution).toBe('bunq');
+    // Only the MonetaryAccountBank entry maps to a holding — the Savings one
+    // is silently excluded (unmapped tag).
+    expect(holdingsStore).toHaveLength(1);
+    expect(holdingsStore[0].balanceMinorUnits).toBe(123_456);
+    expect(bunqIdOf(holdingsStore[0].metadata)).toBe('15467');
+
+    expect(result.importedTransactions).toBe(2);
+    expect(transactionsStore).toHaveLength(2);
+    const outgoing = transactionsStore.find((row) => row.externalId === 'acc-1:2321');
+    const incoming = transactionsStore.find((row) => row.externalId === 'acc-1:2322');
+    // The negative decimal-string Amount value converts to a negative minor-unit
+    // integer; the counterparty IBAN rides along.
+    expect(outgoing?.amountMinorUnits).toBe(-4210);
+    expect(outgoing?.counterIban).toBe('NL69ABNA0433787980');
+    expect(incoming?.amountMinorUnits).toBe(25_000);
+    expect(transactionsStore.every((row) => row.source === 'bunq')).toBe(true);
   });
 });
