@@ -1,9 +1,9 @@
-import { type SyncAction, useSync, useSyncAction } from '@kiko/sync/use-sync';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
-import type { FC, ReactNode } from 'react';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
+import type { FC, ReactNode } from 'react';
+import { useSync } from '@kiko/sync/use-sync';
+import { useTranslation } from 'react-i18next';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 
 import {
   bankProviderIdOf,
@@ -11,31 +11,19 @@ import {
   type BankProviderId,
 } from '../../../bank-sync/provider';
 import { saveToken } from '../../../monobank/token';
-import { saveToken as saveStarlingToken } from '../../../starling/token';
 import type { AccountRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { useLiveQuery } from '../../../db/use-live-query';
-import { runSync as bunqRunSync } from '../../../bunq/sync';
 import Button from '../../../design-system/components/button';
-import { runSync as starlingRunSync } from '../../../starling/sync';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
-import { runSync as privatbankRunSync } from '../../../privatbank/sync';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import {
-  saveApiKey as saveBunqCredentials,
-  clearCredentials as clearBunqCredentials,
-} from '../../../bunq/credentials';
-import { saveCredentials as savePrivatbankCredentials } from '../../../privatbank/credentials';
 
 import { styles } from '../account-detail.styles';
 import AddBankProviderSheet from '../add-bank-sheet';
-import BunqConnectField from '../bunq-connect-field';
 import { formatLastSyncAt } from '../format-last-sync';
 import MonobankConnectField from '../monobank-connect-field';
-import PrivatbankConnectField from '../privatbank-connect-field';
-import StarlingConnectField from '../starling-connect-field';
 
 type BankSyncSectionProps = {
   account: AccountRow;
@@ -43,9 +31,9 @@ type BankSyncSectionProps = {
 
 /**
  * The connected provider, resolved THROUGH THE REGISTRY rather than a
- * hardcoded `=== 'monobank'` check, so a PrivatBank (or any later native
- * provider) connection renders the exact same connected-state block below. A
- * multi-bank provider's institution carries a `<providerId>:<...>` suffix
+ * hardcoded `=== 'monobank'` check, so a later native provider's connection
+ * renders the exact same connected-state block below. A multi-bank
+ * provider's institution carries a `<providerId>:<...>` suffix
  * (`bankProviderIdOf` strips it); a single-bank one round-trips unchanged.
  * Guarded with `isBankProviderId` rather than asserted with `as` — an
  * institution value that is not a known bank provider id (defensively,
@@ -62,27 +50,21 @@ const resolveConnectedProviderId = (institution: string | null): BankProviderId 
 };
 
 type DisconnectCopy = {
-  titleKey:
-    | 'accountDetail.disconnectPrivatbank'
-    | 'accountDetail.disconnectBunq'
-    | 'accountDetail.disconnectStarling'
-    | 'accountDetail.disconnectMonobank';
-  messageKey:
-    | 'accountDetail.disconnectPrivatbankMessage'
-    | 'accountDetail.disconnectBunqMessage'
-    | 'accountDetail.disconnectStarlingMessage'
-    | 'accountDetail.disconnectMonobankMessage';
+  titleKey: 'accountDetail.disconnectMonobank';
+  messageKey: 'accountDetail.disconnectMonobankMessage';
 };
 
 /**
  * The connected-state Disconnect confirmation copy, keyed by provider id —
- * DATA-DRIVEN (a lookup, not a `=== 'privatbank'` ternary), so a later
- * native provider adds one entry here rather than growing a binary
- * conditional. `Partial`, matching `connectFieldByProviderId` below: only
- * the providers with a wired registry entry get a row. Falls back to the
- * Monobank copy for a provider id this map has no entry for (defensive;
- * unreachable today, since this is read only when `connectedEntry` — itself
- * only ever set for a registry-wired provider — is defined).
+ * DATA-DRIVEN (a lookup, not a `=== 'monobank'` ternary), so a later native
+ * provider adds one entry here rather than growing a binary conditional.
+ * `Partial`, matching `connectFieldByProviderId` below: only the providers
+ * with a wired registry entry get a row. Falls back to the Monobank copy for
+ * a provider id this map has no entry for (defensive; unreachable today,
+ * since this is read only when `connectedEntry` — itself only ever set for
+ * a registry-wired provider — is defined). Guideline 5.6 remediation:
+ * PrivatBank, bunq, and Starling rows were removed — Monobank is the sole
+ * shipped provider.
  */
 const DEFAULT_DISCONNECT_COPY: DisconnectCopy = {
   titleKey: 'accountDetail.disconnectMonobank',
@@ -91,18 +73,6 @@ const DEFAULT_DISCONNECT_COPY: DisconnectCopy = {
 
 const disconnectCopyByProviderId: Partial<Record<BankProviderId, DisconnectCopy>> = {
   monobank: DEFAULT_DISCONNECT_COPY,
-  privatbank: {
-    titleKey: 'accountDetail.disconnectPrivatbank',
-    messageKey: 'accountDetail.disconnectPrivatbankMessage',
-  },
-  bunq: {
-    titleKey: 'accountDetail.disconnectBunq',
-    messageKey: 'accountDetail.disconnectBunqMessage',
-  },
-  starling: {
-    titleKey: 'accountDetail.disconnectStarling',
-    messageKey: 'accountDetail.disconnectStarlingMessage',
-  },
 };
 
 const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy =>
@@ -111,12 +81,14 @@ const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy 
 // The bank account's Synchronization section — the counterpart of
 // `CryptoSyncSection` for a native stored-token/credential provider. Before a
 // connection: an "Add a bank" trigger opens `AddBankProviderSheet`, then the
-// chosen provider's own connect field (Monobank's single token, PrivatBank's
-// token+clientId pair). Once connected: Sync with the last-sync stamp, and a
-// confirmed Disconnect — both routed THROUGH THE REGISTRY
-// (`bankProviderRegistry[connectedProviderId]`), never hardcoded to Monobank,
-// so a later native provider needs only a registry entry and a row in
-// `connectFieldByProviderId` below, never a rewrite of this section.
+// chosen provider's own connect field (Monobank's single token). Once
+// connected: Sync with the last-sync stamp, and a confirmed Disconnect —
+// both routed THROUGH THE REGISTRY (`bankProviderRegistry[connectedProviderId]`),
+// never hardcoded to Monobank, so a later native provider needs only a
+// registry entry and a row in `connectFieldByProviderId` below, never a
+// rewrite of this section. Guideline 5.6 remediation: PrivatBank, bunq, and
+// Starling connect flows were removed — Monobank is the sole shipped
+// provider.
 const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const { t } = useTranslation();
   // The bank "last sync" line reads this account's OWN cursor from the
@@ -141,39 +113,12 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
   const [disconnectPending, setDisconnectPending] = useState(false);
 
-  // The provider whose sync action (and its `isSyncing`/`error`) currently
-  // drives this section: the CONNECTED provider once one exists, otherwise
-  // whichever provider's connect field is showing.
-  const activeProviderId = connectedProviderId ?? selectedProviderId;
-
   // Monobank's existing, battle-tested sync hook — unchanged, still used
   // directly for the Monobank connect/re-sync flow (reuse by import, never
-  // rewrite `src/monobank/sync/sync.ts`). PrivatBank's own sync gets the
-  // same `{ isSyncing, error, sync }` shape via the generic `useSyncAction`,
-  // so this section has one consistent surface for either provider. BOTH
-  // hooks are called UNCONDITIONALLY on every render (rules of hooks) —
-  // only the SELECTION of which result is "active" is data-driven below.
-  const monobankSync = useSync();
-  const privatbankSync = useSyncAction((targetAccountId?: string) =>
-    privatbankRunSync({ targetAccountId }),
-  );
-  const bunqSync = useSyncAction((targetAccountId?: string) => bunqRunSync({ targetAccountId }));
-  const starlingSync = useSyncAction((targetAccountId?: string) =>
-    starlingRunSync({ targetAccountId }),
-  );
-  // DATA-DRIVEN provider -> sync-action lookup (not a `=== 'privatbank'`
-  // ternary), so a later native provider's own `useSyncAction` result adds
-  // one entry here rather than growing a binary conditional. Falls back to
-  // the Monobank action when no provider is active yet (the disconnected,
-  // nothing-picked state) or for a provider id this map has no entry for.
-  const syncActionByProviderId: Partial<Record<BankProviderId, SyncAction<string | undefined>>> = {
-    monobank: monobankSync,
-    privatbank: privatbankSync,
-    bunq: bunqSync,
-    starling: starlingSync,
-  };
-  const { isSyncing, error, sync } =
-    (activeProviderId ? syncActionByProviderId[activeProviderId] : undefined) ?? monobankSync;
+  // rewrite `src/monobank/sync/sync.ts`). The sole provider today, so it is
+  // the section's one sync action — a later native provider's own action
+  // joins it behind the same `{ isSyncing, error, sync }` shape.
+  const { isSyncing, error, sync } = useSync();
 
   // The bank counterpart of the create-form's `connectMonobank` closure
   // (`account-form.screen.tsx`): store the validated token to the Keychain
@@ -183,63 +128,6 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectMonobank = async (token: string): Promise<boolean> => {
     try {
       await saveToken(account.id, token);
-    } catch {
-      return false;
-    }
-
-    return sync(account.id);
-  };
-
-  // The PrivatBank counterpart of `connectMonobank`: store the validated
-  // token to the Keychain, then run the first PrivatBank sync.
-  // `PrivatbankConnectField` validates the token with `fetchAccounts` BEFORE
-  // calling this, so an invalid token never reaches
-  // `savePrivatbankCredentials` — no orphaned Keychain item.
-  const connectPrivatbank = async (token: string): Promise<boolean> => {
-    try {
-      await savePrivatbankCredentials(account.id, token);
-    } catch {
-      return false;
-    }
-
-    return sync(account.id);
-  };
-
-  // The bunq counterpart of `connectPrivatbank`: store the entered API key
-  // to the Keychain, then run the first bunq sync. UNLIKE the other two
-  // providers, `BunqConnectField` does NOT pre-validate the key itself
-  // (bunq has no side-effect-free check — see that field's own doc comment)
-  // — the sync's own handshake IS the validation, so a wrong key (or any
-  // other genuine handshake failure) surfaces through this same
-  // `sync(account.id)` result. A failed first sync must not leave the
-  // apiKey ORPHANED in the Keychain (a half-connected state no other
-  // provider's connect flow can reach, since Monobank/PrivatBank/Starling
-  // all pre-validate BEFORE saving) — a failure clears it back out, so a
-  // retry starts from the same clean, disconnected state as a first attempt.
-  const connectBunq = async (apiKey: string): Promise<boolean> => {
-    try {
-      await saveBunqCredentials(account.id, { apiKey });
-    } catch {
-      return false;
-    }
-
-    const connected = await sync(account.id);
-
-    if (!connected) {
-      await clearBunqCredentials(account.id);
-    }
-
-    return connected;
-  };
-
-  // The Starling counterpart of `connectMonobank`: store the validated
-  // Personal Access Token to the Keychain, then run the first Starling
-  // sync. `StarlingConnectField` validates the token with `fetchAccounts`
-  // BEFORE calling this, so an invalid token never reaches
-  // `saveStarlingToken` — no orphaned Keychain item.
-  const connectStarling = async (token: string): Promise<boolean> => {
-    try {
-      await saveStarlingToken(account.id, token);
     } catch {
       return false;
     }
@@ -367,9 +255,6 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // here without rewriting the rest of this section.
   const connectFieldByProviderId: Partial<Record<BankProviderId, ReactNode>> = {
     monobank: <MonobankConnectField onConnect={connectMonobank} />,
-    privatbank: <PrivatbankConnectField onConnect={connectPrivatbank} />,
-    bunq: <BunqConnectField onConnect={connectBunq} />,
-    starling: <StarlingConnectField onConnect={connectStarling} />,
   };
 
   return (

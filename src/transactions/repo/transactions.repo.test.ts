@@ -674,8 +674,8 @@ const makeAddManyStoreTx = (store: Record<string, unknown>[]) => ({
 describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', () => {
   // Global Constraints invariant: `externalId` is namespaced
   // `${accountId}:${providerStatementId}`, so two DIFFERENT providers can
-  // legitimately land on the identical namespaced string (e.g. bunq's
-  // payment id "1" and PrivatBank's statement id "1" on the SAME internal
+  // legitimately land on the identical namespaced string (e.g. Monobank's
+  // statement id "1" and Binance's transfer id "1" on the SAME internal
   // account id) without colliding, because the unique index is
   // `(source, external_id)`, not `external_id` alone.
   it('keeps both rows when two different providers report the SAME namespaced externalId, because source differs', async () => {
@@ -684,32 +684,32 @@ describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', 
 
     await transactionsRepo.addManyDedup([
       {
-        holdingId: 'h-bunq',
+        holdingId: 'h-monobank',
         amountMinorUnits: -150,
         time: 1,
-        source: 'bunq',
+        source: 'monobank',
         description: 'Coffee',
         externalId: 'acc-1:1',
       },
     ]);
     await transactionsRepo.addManyDedup([
       {
-        holdingId: 'h-privatbank',
+        holdingId: 'h-binance',
         amountMinorUnits: 5000,
         time: 2,
-        source: 'privatbank',
+        source: 'binance',
         description: 'Salary',
         externalId: 'acc-1:1',
       },
     ]);
 
     expect(store).toHaveLength(2);
-    const bunqRow = store.find((row) => row.source === 'bunq');
-    const privatbankRow = store.find((row) => row.source === 'privatbank');
-    expect(bunqRow?.externalId).toBe('acc-1:1');
-    expect(bunqRow?.amountMinorUnits).toBe(-150);
-    expect(privatbankRow?.externalId).toBe('acc-1:1');
-    expect(privatbankRow?.amountMinorUnits).toBe(5000);
+    const monobankRow = store.find((row) => row.source === 'monobank');
+    const binanceRow = store.find((row) => row.source === 'binance');
+    expect(monobankRow?.externalId).toBe('acc-1:1');
+    expect(monobankRow?.amountMinorUnits).toBe(-150);
+    expect(binanceRow?.externalId).toBe('acc-1:1');
+    expect(binanceRow?.amountMinorUnits).toBe(5000);
   });
 });
 

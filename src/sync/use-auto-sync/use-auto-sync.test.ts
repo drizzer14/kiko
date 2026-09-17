@@ -5,32 +5,17 @@ const mockLatestFetchedAt = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
 const mockListQuery = jest.fn();
 const mockMonobankHasCredentials = jest.fn();
-const mockPrivatbankHasCredentials = jest.fn();
-const mockBunqHasCredentials = jest.fn();
-const mockStarlingHasCredentials = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
 // (those are covered by their own suites).
 const mockMonobankRun = jest.fn();
-const mockPrivatbankRun = jest.fn();
-const mockBunqRun = jest.fn();
-const mockStarlingRun = jest.fn();
 const mockCryptoRun = jest.fn();
 
 jest.mock('../sync-jobs', () => ({
   syncJobsFor: (account: { name: string; institution: string | null }) => {
     if (account.institution === 'monobank') {
       return [{ name: account.name, run: mockMonobankRun }];
-    }
-    if (account.institution === 'privatbank') {
-      return [{ name: account.name, run: mockPrivatbankRun }];
-    }
-    if (account.institution === 'bunq') {
-      return [{ name: account.name, run: mockBunqRun }];
-    }
-    if (account.institution === 'starling') {
-      return [{ name: account.name, run: mockStarlingRun }];
     }
     if (account.institution === 'binance' || account.institution === 'btc_wallet') {
       return [{ name: account.name, run: mockCryptoRun }];
@@ -41,9 +26,6 @@ jest.mock('../sync-jobs', () => ({
 jest.mock('../../bank-sync/registry', () => ({
   bankProviderRegistry: {
     monobank: { hasCredentials: (...args: unknown[]) => mockMonobankHasCredentials(...args) },
-    privatbank: { hasCredentials: (...args: unknown[]) => mockPrivatbankHasCredentials(...args) },
-    bunq: { hasCredentials: (...args: unknown[]) => mockBunqHasCredentials(...args) },
-    starling: { hasCredentials: (...args: unknown[]) => mockStarlingHasCredentials(...args) },
   },
 }));
 jest.mock('../../rates/rates-refresh', () => ({
@@ -69,9 +51,6 @@ import { AUTO_SYNC_INTERVAL_MS, throttleElapsed, useAutoSync } from './use-auto-
 
 const monobank = { id: 'acc-mono', name: 'Monobank', institution: 'monobank' };
 const binance = { id: 'acc-binance', name: 'Binance', institution: 'binance' };
-const starling = { id: 'acc-starling', name: 'Starling', institution: 'starling' };
-const privatbank = { id: 'acc-privat', name: 'PrivatBank', institution: 'privatbank' };
-const bunq = { id: 'acc-bunq', name: 'bunq', institution: 'bunq' };
 
 describe('throttleElapsed', () => {
   const now = 1_700_000_000_000;
@@ -90,18 +69,12 @@ describe('useAutoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockMonobankRun.mockResolvedValue(undefined);
-    mockPrivatbankRun.mockResolvedValue(undefined);
-    mockBunqRun.mockResolvedValue(undefined);
-    mockStarlingRun.mockResolvedValue(undefined);
     mockCryptoRun.mockResolvedValue(undefined);
     mockRefreshRates.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(null);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockListQuery.mockResolvedValue([]);
     mockMonobankHasCredentials.mockResolvedValue(true);
-    mockPrivatbankHasCredentials.mockResolvedValue(true);
-    mockBunqHasCredentials.mockResolvedValue(true);
-    mockStarlingHasCredentials.mockResolvedValue(true);
   });
 
   it('refreshes live rates but runs no sync for a manual-only user (no connected sync account)', async () => {
@@ -236,64 +209,10 @@ describe('useAutoSync', () => {
   });
 
   // Item A (whole-branch review): the cross-open throttle used to read ONLY a
-  // Monobank account's cursor, so a Starling/PrivatBank/bunq-only user's
-  // `lastSyncAt` always resolved `null` and every cold open bypassed the
-  // throttle — burning a provider's request budget (Starling's is a hard
-  // 1000/day). The cursor is now read from ANY connected bank account.
-  it('throttles a Starling-only user using the Starling account’s own cursor (no Monobank account)', async () => {
-    mockListQuery.mockResolvedValue([starling]);
-    mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockSyncStateGetQuery).toHaveBeenCalledWith('acc-starling'));
-    expect(mockStarlingRun).not.toHaveBeenCalled();
-    expect(mockRefreshRates).not.toHaveBeenCalled();
-  });
-
-  it('syncs a Starling-only user past the throttle window using its own cursor', async () => {
-    mockListQuery.mockResolvedValue([starling]);
-    mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockSyncStateGetQuery).toHaveBeenCalledWith('acc-starling'));
-    await waitFor(() => expect(mockStarlingRun).toHaveBeenCalled());
-  });
-
-  it('throttles a PrivatBank-only user using the PrivatBank account’s own cursor (no Monobank account)', async () => {
-    mockListQuery.mockResolvedValue([privatbank]);
-    mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockSyncStateGetQuery).toHaveBeenCalledWith('acc-privat'));
-    expect(mockPrivatbankRun).not.toHaveBeenCalled();
-  });
-
-  // Item A: the credential pre-gate used to be Monobank `hasToken`-only, so a
-  // connected non-Monobank account whose credential was cleared made a
-  // throwing job every open. Each bank account's job is now gated on its OWN
-  // registry-resolved `hasCredentials`.
-  it('drops a credential-cleared bunq account and keeps a connected crypto account', async () => {
-    mockListQuery.mockResolvedValue([bunq, binance]);
-    mockBunqHasCredentials.mockResolvedValue(false);
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockBunqHasCredentials).toHaveBeenCalledWith('acc-bunq'));
-    await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
-    expect(mockBunqRun).not.toHaveBeenCalled();
-  });
-
-  it('drops a credential-cleared PrivatBank account, leaving no job for it', async () => {
-    mockListQuery.mockResolvedValue([privatbank]);
-    mockPrivatbankHasCredentials.mockResolvedValue(false);
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockPrivatbankHasCredentials).toHaveBeenCalledWith('acc-privat'));
-    await waitFor(() => expect(mockRefreshRates).toHaveBeenCalled());
-    expect(mockPrivatbankRun).not.toHaveBeenCalled();
-  });
+  // Monobank account's cursor, so a non-Monobank-only user's `lastSyncAt`
+  // always resolved `null` and every cold open bypassed the throttle. The
+  // cursor is read from ANY connected bank account (`bankAccountIdFor`),
+  // proven above by the Monobank cases — Guideline 5.6 remediation removed
+  // the other native providers this used to also cover (PrivatBank, bunq,
+  // Starling), so no cross-provider case remains to exercise here.
 });

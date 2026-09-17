@@ -1,18 +1,9 @@
 import { hasToken } from '../../monobank/token';
-import { hasToken as hasStarlingToken } from '../../starling/token';
 import type { BankProviderId } from '../provider';
 import { providerCatalog } from '../provider-catalog';
-import { disconnectBunq } from '../../bunq/disconnect';
-import { runSync as bunqRunSync } from '../../bunq/sync';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import type { ProviderCatalogEntry } from '../provider-catalog';
 import { runSync as monobankRunSync } from '../../monobank/sync';
-import { disconnectPrivatbank } from '../../privatbank/disconnect';
-import { runSync as privatbankRunSync } from '../../privatbank/sync';
-import { disconnectStarling } from '../../starling/disconnect';
-import { runSync as starlingRunSync } from '../../starling/sync';
-import { hasCredentials as hasBunqCredentials } from '../../bunq/credentials';
-import { hasCredentials as hasPrivatbankCredentials } from '../../privatbank/credentials';
 
 export type BankProviderRegistryEntry = {
   id: BankProviderId;
@@ -38,6 +29,11 @@ const catalogEntryFor = (id: BankProviderId): ProviderCatalogEntry => {
  * Partial: an id in `bankProviderIds` with no entry here is simply not yet
  * implemented — its sync/connect/disconnect callers must skip it, never
  * assume every native id resolves.
+ *
+ * Guideline 5.6 remediation: PrivatBank, bunq, and Starling entries were
+ * REMOVED (their code is deleted, not flag-hidden) — Monobank is the sole
+ * shipped provider. This `Partial<Record<...>>` shape stays exactly as it
+ * was, so a future provider is a new entry here again.
  */
 export const bankProviderRegistry: Partial<Record<BankProviderId, BankProviderRegistryEntry>> = {
   monobank: {
@@ -46,26 +42,5 @@ export const bankProviderRegistry: Partial<Record<BankProviderId, BankProviderRe
     runSync: monobankRunSync,
     hasCredentials: hasToken,
     disconnect: disconnectMonobank,
-  },
-  privatbank: {
-    id: 'privatbank',
-    catalog: catalogEntryFor('privatbank'),
-    runSync: privatbankRunSync,
-    hasCredentials: hasPrivatbankCredentials,
-    disconnect: disconnectPrivatbank,
-  },
-  bunq: {
-    id: 'bunq',
-    catalog: catalogEntryFor('bunq'),
-    runSync: bunqRunSync,
-    hasCredentials: hasBunqCredentials,
-    disconnect: disconnectBunq,
-  },
-  starling: {
-    id: 'starling',
-    catalog: catalogEntryFor('starling'),
-    runSync: starlingRunSync,
-    hasCredentials: hasStarlingToken,
-    disconnect: disconnectStarling,
   },
 };

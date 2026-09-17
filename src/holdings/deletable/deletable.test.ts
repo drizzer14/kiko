@@ -10,13 +10,18 @@ describe('synced predicates', () => {
 
   it('flags every synced institution', () => {
     expect(isSyncedAccount({ institution: 'monobank' })).toBe(true);
-    expect(isSyncedAccount({ institution: 'privatbank' })).toBe(true);
-    expect(isSyncedAccount({ institution: 'bunq' })).toBe(true);
-    expect(isSyncedAccount({ institution: 'starling' })).toBe(true);
     expect(isSyncedAccount({ institution: 'btc_wallet' })).toBe(true);
     expect(isSyncedAccount({ institution: 'binance' })).toBe(true);
     expect(isSyncedAccount({ institution: null })).toBe(false);
     expect(isSyncedAccount({ institution: 'kraken' })).toBe(false);
+  });
+
+  // Guideline 5.6 remediation: PrivatBank, bunq, and Starling bank-CONNECT
+  // were removed entirely — their institution ids are no longer synced.
+  it('rejects every removed provider institution', () => {
+    expect(isSyncedAccount({ institution: 'privatbank' })).toBe(false);
+    expect(isSyncedAccount({ institution: 'bunq' })).toBe(false);
+    expect(isSyncedAccount({ institution: 'starling' })).toBe(false);
   });
 });
 
@@ -40,22 +45,6 @@ describe('isSyncedHolding', () => {
     expect(isSyncedHolding({ metadata: { iban: 'UA...' } }, { institution: 'monobank' })).toBe(
       false,
     );
-  });
-
-  it('flags a holding carrying a privatbankId while its account is connected', () => {
-    expect(
-      isSyncedHolding({ metadata: { privatbankId: 'acc-1' } }, { institution: 'privatbank' }),
-    ).toBe(true);
-  });
-
-  it('flags a holding carrying a bunqId while its account is connected', () => {
-    expect(isSyncedHolding({ metadata: { bunqId: '5' } }, { institution: 'bunq' })).toBe(true);
-  });
-
-  it('flags a holding carrying a starlingId while its account is connected', () => {
-    expect(
-      isSyncedHolding({ metadata: { starlingId: 'acc-uid-1' } }, { institution: 'starling' }),
-    ).toBe(true);
   });
 
   it('flags a holding carrying a walletAddress or a binanceAsset', () => {

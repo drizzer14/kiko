@@ -249,29 +249,6 @@ export const uk: typeof en = {
       eligibility:
         'Працює з будь-яким особистим рахунком Monobank. Бізнес-рахунок або ФОП не потрібні.',
     },
-    privatbank: {
-      about:
-        'ПриватБанк — найбільший банк України. Kiko підключається через API AutoClient за допомогою токена з Приват24.',
-      dataProvided:
-        'Баланси та виписки за рахунками, що оновлюються так само, як у Monobank. Лише читання — Kiko не може надсилати платежі.',
-      eligibility:
-        'Потрібен бізнес-рахунок Приват24 або рахунок фізичної особи-підприємця (ФОП) із увімкненим доступом до API в розділі «API для розробників». Особистий роздрібний рахунок Приват24 такої опції не має.',
-    },
-    bunq: {
-      about:
-        'bunq — європейський мобільний банк. Kiko підключається за допомогою особистого API-ключа, який ви створюєте в застосунку bunq.',
-      dataProvided: 'Баланси та історія транзакцій, лише читання. Kiko не може переказувати кошти.',
-      eligibility:
-        'Працює з особистим рахунком bunq у ЄС. Ви створюєте API-ключ у застосунку bunq.',
-    },
-    starling: {
-      about:
-        'Starling — британський цифровий банк. Kiko підключається за допомогою особистого токена доступу, який ви створюєте в порталі розробників Starling.',
-      dataProvided:
-        'Баланс рахунку та стрічка транзакцій, лише читання. Kiko не може переказувати кошти.',
-      eligibility:
-        'Працює з особистим рахунком Starling у Великій Британії. Ви створюєте токен лише для читання з доступом до рахунку та балансу.',
-    },
   },
   accountDetail: {
     addBankAction: 'Додати банк',
@@ -285,125 +262,50 @@ export const uk: typeof en = {
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
     btcAddressPlaceholder: 'BTC-адреса',
-    bunqApiKeyNotice:
-      'Створіть API-ключ у застосунку bunq в розділі Профіль → Безпека та конфіденційність → Розробникам → API-ключі.',
-    bunqApiKeyPlaceholder: 'API-ключ bunq',
-    bunqConnected: 'bunq підключено',
-    bunqPaymentPageCapReached:
-      'Синхронізація bunq: історія платежів рахунку {{accountId}} перевищує ліміт у {{maxPages}} сторінок, не дійшовши до початку вікна синхронізації; вікно буде повторено.',
-    bunqRateLimited: 'bunq зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
-    bunqTimeout: 'bunq не відповів вчасно. Спробуйте ще раз.',
     checking: 'Перевірка…',
     connectBinance: 'Підключити Binance',
-    connectBunq: 'Підключити bunq',
     connectedAs: 'Підключено як {{name}}',
     connectMonobank: 'Підключити Monobank',
-    connectPrivatbank: 'Підключити ПриватБанк',
-    connectStarling: 'Підключити Starling',
     connectWallet: 'Підключити гаманець',
     couldNotConnectBinance: 'Не вдалося підключити Binance',
-    couldNotConnectBunq: 'Не вдалося підключити bunq',
     couldNotConnectMonobank: 'Не вдалося підключити Monobank',
-    couldNotConnectPrivatbank: 'Не вдалося підключити ПриватБанк',
-    couldNotConnectStarling: 'Не вдалося підключити Starling',
     couldNotConnectWallet: 'Не вдалося підключити гаманець',
     couldNotSaveCredentials: 'Не вдалося зберегти облікові дані',
     disconnectAction: 'Відключити',
-    disconnectBunq: 'Відключити bunq',
-    disconnectBunqMessage:
-      'Це очистить зʼєднання та збережені облікові дані. Ваші рахунки й транзакції залишаться як ручний знімок.',
     disconnectErrorTitle: 'Не вдалося відключити',
     disconnectMonobank: 'Відключити Monobank',
     disconnectMonobankMessage:
       'Це очистить зʼєднання та збережений токен. Ваші рахунки й транзакції залишаться як ручний знімок.',
-    disconnectPrivatbank: 'Відключити ПриватБанк',
-    disconnectPrivatbankMessage:
-      'Це очистить зʼєднання та збережені облікові дані. Ваші рахунки й транзакції залишаться як ручний знімок.',
     disconnectProvider: 'Відключити {{provider}}',
     disconnectProviderMessage: {
       binance:
         'Це очистить зʼєднання та збережений API ключ. Ваш BTC-актив залишиться як ручний знімок.',
       wallet: 'Це очистить зʼєднання. Ваш BTC-актив залишиться як ручний знімок.',
     },
-    disconnectStarling: 'Відключити Starling',
-    disconnectStarlingMessage:
-      'Це очистить зʼєднання та збережений токен. Ваші рахунки й транзакції залишаться як ручний знімок.',
     holdingsHeading: 'Активи',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
     invalidBTCAddress: 'Недійсна BTC-адреса',
-    invalidBunqCredentials: 'Недійсний API-ключ',
-    invalidBunqPaymentAmount:
-      'Синхронізація bunq: сума платежу не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidBunqPaymentDate:
-      'Синхронізація bunq: дата платежу не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidPrivatbankBalanceAmount:
-      'Синхронізація ПриватБанку: сума балансу не розпізнана для рахунку {{accountId}}, рахунок ПриватБанку {{acc}}: "{{value}}"',
-    invalidPrivatbankCredentials: 'Недійсний токен',
-    invalidPrivatbankStatementAmount:
-      'Синхронізація ПриватБанку: сума виписки не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidPrivatbankStatementDate:
-      'Синхронізація ПриватБанку: дата виписки не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidStarlingFeedAmount:
-      'Синхронізація Starling: сума операції не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidStarlingFeedDate:
-      'Синхронізація Starling: дата операції не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidStarlingToken: 'Недійсний токен',
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
     monobankRateLimited: 'Monobank зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
     monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',
     monobankTokenPlaceholder: 'Токен Monobank',
     never: 'Ніколи',
-    noBunqConnection: 'Рахунок bunq не підключено',
-    noBunqCredentials: 'Облікові дані bunq не знайдено; підключіть рахунок перед синхронізацією.',
     noConnectionFound: 'Немає підключення {{name}}',
     noMonobankConnection: 'Рахунок Monobank не підключено',
     noMonobankToken: 'Токен Monobank не знайдено; підключіть рахунок перед синхронізацією.',
-    noPrivatbankConnection: 'Рахунок ПриватБанк не підключено',
-    noPrivatbankCredentials:
-      'Облікові дані ПриватБанку не знайдено; підключіть рахунок перед синхронізацією.',
-    noStarlingConnection: 'Рахунок Starling не підключено',
-    noStarlingToken: 'Токен Starling не знайдено; підключіть рахунок перед синхронізацією.',
     openBinanceLink: 'Відкрити керування API Binance',
     openMonobankLink: 'Відкрити api.monobank.ua',
     pasteApiKey: 'Вставити API ключ із буфера обміну',
     pasteApiSecret: 'Вставити API секрет із буфера обміну',
-    pasteBunqApiKey: 'Вставити API-ключ bunq з буфера обміну',
     pasteFromClipboard: 'Вставити з буфера обміну',
-    pastePrivatbankToken: 'Вставити токен ПриватБанку з буфера обміну',
-    pasteStarlingToken: 'Вставити токен Starling з буфера обміну',
-    privatbankBalancePageCapReached:
-      'Синхронізація ПриватБанку: список балансів перевищує ліміт у {{maxPages}} сторінок; синхронізацію буде повторено.',
-    privatbankBalancePageTruncated:
-      'Синхронізація ПриватБанку: сторінка балансів повідомляє про більше записів (exist_next_page), але не містить next_page_id для продовження; синхронізацію буде повторено.',
-    privatbankConnected: 'ПриватБанк підключено',
-    privatbankFopNotice:
-      'Потрібен бізнес-рахунок Приват24 або рахунок фізичної особи-підприємця (ФОП) із увімкненим доступом до API в розділі «API для розробників».',
-    privatbankRateLimited:
-      'ПриватБанк зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
-    privatbankStatementPageCapReached:
-      'Синхронізація ПриватБанку: історія виписки рахунку {{accountId}} перевищує ліміт у {{maxPages}} сторінок в межах одного вікна синхронізації; вікно буде повторено.',
-    privatbankStatementPageTruncated:
-      'Синхронізація ПриватБанку: сторінка виписки рахунку {{accountId}} повідомляє про більше записів (exist_next_page), але не містить next_page_id для продовження; вікно буде повторено.',
-    privatbankTimeout: 'ПриватБанк не відповів вчасно. Спробуйте ще раз.',
-    privatbankTokenPlaceholder: 'Токен ПриватБанку',
     sourceLabel: 'Джерело',
-    starlingAccountName: 'Рахунок Starling',
-    starlingConnected: 'Starling підключено',
-    starlingRateLimited: 'Starling зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
-    starlingTimeout: 'Starling не відповів вчасно. Спробуйте ще раз.',
-    starlingTokenNotice:
-      'Створіть Personal Access Token у порталі розробників Starling з доступом на читання рахунку, балансу та транзакцій.',
-    starlingTokenPlaceholder: 'Токен Starling',
     synchronization: 'Синхронізація',
     syncing: 'Синхронізуємо…',
     syncNow: 'Синхронізувати',
     tokenLabel: 'Токен',
     tryAgainMessage: 'Спробуйте ще раз.',
-    unsupportedBunqCurrency: 'Непідтримувана валюта bunq: {{code}}',
     unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}',
-    unsupportedPrivatbankCurrency: 'Непідтримувана валюта ПриватБанку: {{code}}',
-    unsupportedStarlingCurrency: 'Непідтримувана валюта Starling: {{code}}',
     wallet: 'Гаманець',
     walletConnected: 'Гаманець підключено',
   },

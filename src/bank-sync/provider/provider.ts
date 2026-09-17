@@ -4,8 +4,15 @@
  * provider, and as a `transactions.source` literal. NATIVE-ONLY: there is
  * deliberately no aggregator id here — every provider currently wired is a
  * single stored-credential bank.
+ *
+ * Guideline 5.6 remediation (App Store rejection: "features intentionally
+ * hidden during review"): PrivatBank, bunq, and Starling bank-CONNECT were
+ * REMOVED from the app entirely, not flag-hidden — Monobank is the sole
+ * shipped provider. The registry ARCHITECTURE stays (this tuple, the
+ * catalog, and `bankProviderRegistry` are still generic over
+ * `BankProviderId`), so a future provider is a one-line addition here again.
  */
-export const bankProviderIds = ['monobank', 'privatbank', 'bunq', 'starling'] as const;
+export const bankProviderIds = ['monobank'] as const;
 
 export type BankProviderId = (typeof bankProviderIds)[number];
 

@@ -1,9 +1,7 @@
-// Bank providers gated by `connectReady:false` (bunq, PrivatBank) render in
-// `AddBankProviderSheet` only for a TEST build (`SHOW_UNREADY_BANKS=true`).
 // `react-native-dotenv` inlines `@env` from `process.env.ENVFILE || '.env'`
-// at transform time, and `.env` is gitignored, so the gate must NOT depend
-// on a local `.env`. Default every Jest run to the committed `.env.test`
-// (flag on); an explicit ENVFILE (e.g. the screenshot flows) still wins.
+// at transform time, and `.env` is gitignored, so a Jest run must NOT depend
+// on a local `.env`. Default every Jest run to the committed `.env.test`; an
+// explicit ENVFILE (e.g. the screenshot flows) still wins.
 process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 
 module.exports = {

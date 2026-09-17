@@ -21,13 +21,15 @@ export const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * The time throttle for the on-open sync: sync only when nothing has synced
- * within the window (or never has). The cursor now lives PER CONNECTION in
+ * within the window (or never has). The cursor lives PER CONNECTION in
  * `sync_state` (de-globalized from `settings` — see the `syncState` table
  * comment in `db/schema.ts`), so the throttle reads a connected BANK
- * account's own cursor — ANY of the four native providers, not only
- * Monobank (see `bankAccountIdFor` below); a crypto-only or fully manual
- * user has none, so the throttle lets every launch sync once (the per-mount
- * `hasRun` ref still fires it at most once per app open).
+ * account's own cursor — routed through `bankAccountIdFor` below, so the
+ * next native provider (Guideline 5.6 remediation left Monobank as the sole
+ * shipped one) throttles the exact same way without a rewrite here; a
+ * crypto-only or fully manual user has none, so the throttle lets every
+ * launch sync once (the per-mount `hasRun` ref still fires it at most once
+ * per app open).
  */
 export const throttleElapsed = (lastSyncAt: number | null, now: number): boolean =>
   lastSyncAt === null || now - lastSyncAt >= AUTO_SYNC_INTERVAL_MS;
@@ -35,10 +37,9 @@ export const throttleElapsed = (lastSyncAt: number | null, now: number): boolean
 /**
  * The first connected BANK account's id, for the throttle cursor — resolved
  * through the registry (`isBankProviderId`/`bankProviderIdOf`) rather than a
- * hardcoded `=== 'monobank'` check, so a Starling/PrivatBank/bunq-only user
- * is throttled exactly like a Monobank one. `undefined` for a crypto-only or
- * fully manual account list (a Monobank-connected list resolves the SAME id
- * it always did, so this is a pure generalization, not a behavior change).
+ * hardcoded `=== 'monobank'` check, so a later native provider is throttled
+ * exactly like Monobank is today. `undefined` for a crypto-only or fully
+ * manual account list.
  */
 const bankAccountIdFor = (accounts: SyncableAccount[]): string | undefined =>
   accounts.find(
@@ -48,11 +49,11 @@ const bankAccountIdFor = (accounts: SyncableAccount[]): string | undefined =>
 
 /**
  * Whether a connected BANK account's own credential is currently stored,
- * resolved through the registry — generalized off the old Monobank-only
- * `hasToken` gate so a credential-cleared PrivatBank/bunq/Starling account is
- * dropped the exact same way a tokenless Monobank one already was. `true`
- * for a non-bank (crypto) account, which needs no credential probe, and for
- * a bank id whose registry entry is not yet wired (defensive — `syncJobsFor`
+ * resolved through the registry — generalized off a hardcoded Monobank-only
+ * `hasToken` gate, so a later native provider drops a credential-cleared
+ * account the same way a tokenless Monobank one already is. `true` for a
+ * non-bank (crypto) account, which needs no credential probe, and for a
+ * bank id whose registry entry is not yet wired (defensive — `syncJobsFor`
  * already contributes no job for it either).
  */
 const hasBankCredentials = async (account: SyncableAccount): Promise<boolean> => {
@@ -73,11 +74,12 @@ const hasBankCredentials = async (account: SyncableAccount): Promise<boolean> =>
 
 /**
  * Runs one throttled background sync when the app opens, fanning out over EVERY
- * connected account — every connected bank account (Monobank, PrivatBank, bunq,
- * Starling — routed through the registry) PLUS each connected crypto account —
- * exactly the set the pull-to-refresh fan-out (`useSyncAll`) drives, so a crypto
- * balance + Binance transaction import happens on open, not only on pull. The
- * jobs run settled under a bounded worker pool (`settleAllLimited`, cap
+ * connected account — every connected bank account (Monobank today — routed
+ * through the registry, so a later native provider joins for free) PLUS each
+ * connected crypto account — exactly the set the pull-to-refresh fan-out
+ * (`useSyncAll`) drives, so a crypto balance + Binance transaction import
+ * happens on open, not only on pull. The jobs run settled under a bounded
+ * worker pool (`settleAllLimited`, cap
  * `SYNC_CONCURRENCY_LIMIT`), so one account's failure never blocks the others
  * and a many-connection fan-out never fires every provider request at once;
  * rates refresh once for the batch.

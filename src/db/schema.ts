@@ -122,8 +122,14 @@ export const transactions = sqliteTable(
     // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
     // 'btc_wallet' still writes none.
+    // Guideline 5.6 remediation: 'privatbank', 'bunq', and 'starling' were
+    // removed from this enum — those bank-CONNECT providers were deleted
+    // entirely (src/bank-sync/provider/provider.ts), and no user release
+    // ever shipped a transaction row with one of those sources, so no
+    // migration was needed to narrow this TS-only enum (SQLite stores this
+    // column as plain `text`, with no CHECK constraint).
     source: text('source', {
-      enum: ['manual', 'monobank', 'privatbank', 'bunq', 'starling', 'btc_wallet', 'binance'],
+      enum: ['manual', 'monobank', 'btc_wallet', 'binance'],
     }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),

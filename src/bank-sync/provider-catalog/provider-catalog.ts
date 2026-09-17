@@ -29,19 +29,6 @@ export type ProviderCatalogEntry = {
   /** (c) Who it works for, stated plainly. i18n key. */
   eligibilityKey: AddBankTranslationKey;
   /**
-   * Release-readiness gate (whole-branch review, item E). `false` means the
-   * provider is not yet safe to offer a real user in a RELEASE build (e.g.
-   * bunq's node-forge crypto binding (`src/bunq/crypto/node-forge-crypto.ts`)
-   * is wired and unit-tested, but the handshake itself still needs a manual
-   * sandbox/real-account network check before this flips to `true`;
-   * PrivatBank's wire shapes are still `TODO(VERIFY LIVE)` throughout
-   * `src/privatbank/`). `AddBankProviderSheet` hides a `false` entry UNLESS
-   * the `SHOW_UNREADY_BANKS` build flag is on, so a TEST build can still
-   * exercise the honest graceful-fail/fail-closed states end to end while a
-   * RELEASE build never lets a real user pick a not-ready bank.
-   */
-  connectReady: boolean;
-  /**
    * Country/bank coverage, shown only for a multi-bank provider — a
    * single-bank provider's coverage is implicit in its `aboutKey`. No entry
    * below is multi-bank yet, so none sets this.
@@ -49,6 +36,11 @@ export type ProviderCatalogEntry = {
   coverage?: { countries: string[]; bankCount?: string };
 };
 
+// Guideline 5.6 remediation (App Store rejection: "features intentionally
+// hidden during review"): PrivatBank, bunq, and Starling entries were
+// REMOVED — Monobank is the sole shipped provider. Their bank-CONNECT code
+// (src/{privatbank,bunq,starling}/) was deleted, not flag-hidden; the
+// registry architecture stays so a future provider is a new entry again.
 export const providerCatalog: ProviderCatalogEntry[] = [
   {
     id: 'monobank',
@@ -58,36 +50,5 @@ export const providerCatalog: ProviderCatalogEntry[] = [
     aboutKey: 'addBank.monobank.about',
     dataProvidedKey: 'addBank.monobank.dataProvided',
     eligibilityKey: 'addBank.monobank.eligibility',
-    connectReady: true,
-  },
-  {
-    id: 'privatbank',
-    displayName: 'PrivatBank',
-    connectionMethod: 'stored-token',
-    shape: 'single-bank',
-    aboutKey: 'addBank.privatbank.about',
-    dataProvidedKey: 'addBank.privatbank.dataProvided',
-    eligibilityKey: 'addBank.privatbank.eligibility',
-    connectReady: false,
-  },
-  {
-    id: 'bunq',
-    displayName: 'bunq',
-    connectionMethod: 'stored-token',
-    shape: 'single-bank',
-    aboutKey: 'addBank.bunq.about',
-    dataProvidedKey: 'addBank.bunq.dataProvided',
-    eligibilityKey: 'addBank.bunq.eligibility',
-    connectReady: false,
-  },
-  {
-    id: 'starling',
-    displayName: 'Starling',
-    connectionMethod: 'stored-token',
-    shape: 'single-bank',
-    aboutKey: 'addBank.starling.about',
-    dataProvidedKey: 'addBank.starling.dataProvided',
-    eligibilityKey: 'addBank.starling.eligibility',
-    connectReady: true,
   },
 ];

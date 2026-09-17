@@ -3,19 +3,8 @@ import { i18n } from '../../i18n';
 import { providerCatalog } from './provider-catalog';
 
 describe('provider catalog', () => {
-  it('lists exactly the four native providers, in id order', () => {
-    expect(providerCatalog.map((entry) => entry.id)).toEqual([
-      'monobank',
-      'privatbank',
-      'bunq',
-      'starling',
-    ]);
-  });
-
-  it('marks only Monobank and Starling as release-connect-ready', () => {
-    const readyIds = providerCatalog.filter((entry) => entry.connectReady).map((entry) => entry.id);
-
-    expect(readyIds).toEqual(['monobank', 'starling']);
+  it('lists exactly the sole shipped native provider (Guideline 5.6 remediation: Monobank-only)', () => {
+    expect(providerCatalog.map((entry) => entry.id)).toEqual(['monobank']);
   });
 
   it.each(providerCatalog)(

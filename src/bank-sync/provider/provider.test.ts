@@ -1,8 +1,8 @@
 import { bankProviderIdOf, bankProviderIds, isBankProviderId } from './provider';
 
 describe('bank provider ids', () => {
-  it('lists the four native bank providers, in ship order', () => {
-    expect(bankProviderIds).toEqual(['monobank', 'privatbank', 'bunq', 'starling']);
+  it('lists the sole shipped native bank provider (Guideline 5.6 remediation: Monobank-only)', () => {
+    expect(bankProviderIds).toEqual(['monobank']);
   });
 
   it('bankProviderIdOf returns a single-bank institution unchanged', () => {
@@ -13,15 +13,15 @@ describe('bank provider ids', () => {
     expect(bankProviderIdOf('aggregator:REVOLUT_REVOGB21')).toBe('aggregator');
   });
 
-  it('recognizes every native provider id', () => {
+  it('recognizes the shipped provider id', () => {
     expect(isBankProviderId('monobank')).toBe(true);
-    expect(isBankProviderId('privatbank')).toBe(true);
-    expect(isBankProviderId('bunq')).toBe(true);
-    expect(isBankProviderId('starling')).toBe(true);
   });
 
-  it('rejects a stranger id and null', () => {
+  it('rejects a stranger id, a removed provider id, and null', () => {
     expect(isBankProviderId('kraken')).toBe(false);
+    expect(isBankProviderId('privatbank')).toBe(false);
+    expect(isBankProviderId('bunq')).toBe(false);
+    expect(isBankProviderId('starling')).toBe(false);
     expect(isBankProviderId(null)).toBe(false);
   });
 });
