@@ -87,6 +87,12 @@ sync boundary only; net-worth assets-only rule.
 | `kiko-no-keychain-secret-into-usestate` | S5, H4 | Semgrep (TS, taint mode, WARNING/Class B) | Catches `const x = await readToken(); setX(x)`. Also flags a value *derived* from a secret (e.g. a client-info call using it) — a judgment call, which is why it is Class B rather than a hard fail; the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. |
 | `kiko-no-keychain-secret-through-then` | S5, H4 | Semgrep (TS, WARNING/Class B) | Companion for `readToken().then(...)`, which Semgrep 1.175's taint engine cannot follow (propagators and `focus-metavariable` sources both verified not to work through a `.then` callback parameter); the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. Proven by its own fixture pair (`kiko-no-keychain-secret-through-then.bad.ts` / `.good.ts`), not the taint rule's — the fixture harness only credits a rule id against the fixture whose filename names it. |
 
+### Enforced — 2026-09-18 Guideline 5.6 remediation
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-hidden-feature-flag-or-demo-import` | App Store rejection of build 7 (Guideline 5.6, "features intentionally hidden during review") | Semgrep (TS/JS, ERROR) | Two deterministic shapes, one rule: importing a SHOW_*/HIDE_* visibility-control `@env` flag, or a static `import` reaching from app source into the dev-only `e2e/` tree (screenshot/demo/seed). Deliberately carries NO `paths.include` scope — a path-prefixed `"src/**"` would hit the same fixture-scan gotcha the Swift rows above document (matches nothing when `semgrep-rules.sh` scans `rules/fixtures/` directly, since the fixture is not nested under a `src/` segment); scoping is content-only instead (the `e2e/` regex needs a literal `e2e/` path segment, which `e2e/`'s own internal relative imports never spell out — verified empirically), and it is verified to report zero findings on the real tree (`src/` and `e2e/` both). Does not flag the one documented, dead-branched dynamic `require(...)` in `migrations.gate.tsx` — that is a `require` call, never a static `import`. |
+
 **Not mechanized, with reason.** H3's Semgrep half — "flag a `fetch` whose
 headers carry a credential key" — was dropped. Semgrep cannot read
 `Info.plist`, so the rule can only report every credential-bearing client
