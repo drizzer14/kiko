@@ -20,15 +20,27 @@ const REQUEST_TIMEOUT_MS = 30_000;
  */
 const MAX_RATE_LIMIT_RETRIES = 2;
 /**
- * Backoff used for a 429 that carries no parseable Retry-After header.
- * TODO(VERIFY LIVE): PrivatBank AutoClient's own per-credential rate-limit
- * interval is unknown; this reuses Monobank's 60s fallback as a one-line-to-
- * fix placeholder until confirmed (see `PRIVATBANK_RATE_LIMIT_MS` in
- * `src/privatbank/sync/sync.ts`).
+ * Backoff used for a 429 that carries no parseable Retry-After header. This
+ * is the REACTIVE fallback for an actual 429 response — distinct from the
+ * PROACTIVE per-request pacing gate (`PRIVATBANK_RATE_LIMIT_MS` in
+ * `src/privatbank/sync/sync.ts`, confirmed at 1 req/s per the official
+ * AutoClient doc). The official doc does not document a 429 Retry-After
+ * convention, so this keeps Monobank's 60s fallback as a conservative
+ * placeholder — TODO(VERIFY LIVE) if AutoClient's actual 429 behavior is
+ * ever confirmed to want a shorter wait.
  */
 const RATE_LIMIT_FALLBACK_MS = 60_000;
 
 const HTTP_TOO_MANY_REQUESTS = 429;
+
+/**
+ * The statement page size requested per call. CONFIRMED against the official
+ * AutoClient doc: default 20, max 500, recommended <=100 — this pins the
+ * upper end of that recommendation explicitly rather than relying on the
+ * server's smaller default. TODO(VERIFY LIVE): confirm the actual
+ * query-parameter NAME this maps to (`limit` is a best-effort placeholder).
+ */
+const STATEMENT_PAGE_SIZE = 100;
 
 /**
  * A request that did not respond within `REQUEST_TIMEOUT_MS` and was
@@ -178,6 +190,11 @@ export const fetchAccounts = (
  * `/rest/statement?acc=<id>&startDate=<DD-MM-YYYY>&endDate=<DD-MM-YYYY>` is a
  * best-effort placeholder (Monobank instead encodes unix-second path
  * segments; PrivatBank's own AutoClient docs must confirm its real shape).
+ * The AutoClient doc confirms paging is by `followId`/`exist_next_page`, not
+ * a date-range cap — this client does not yet page a single [from, to] call
+ * beyond one `STATEMENT_PAGE_SIZE`-sized response; a follow-up page (a
+ * response whose `exist_next_page` is true) is unhandled until that
+ * cursor's real field names are confirmed — TODO(VERIFY LIVE).
  */
 export const fetchStatement = (
   credentials: PrivatbankCredentials,
@@ -188,7 +205,7 @@ export const fetchStatement = (
   options: RequestOptions = {},
 ): Promise<PrivatbankStatementItem[]> =>
   request(
-    `/rest/statement?acc=${encodeURIComponent(accountId)}&startDate=${formatPrivatbankDate(fromSeconds)}&endDate=${formatPrivatbankDate(toSeconds)}`,
+    `/rest/statement?acc=${encodeURIComponent(accountId)}&startDate=${formatPrivatbankDate(fromSeconds)}&endDate=${formatPrivatbankDate(toSeconds)}&limit=${STATEMENT_PAGE_SIZE}`,
     credentials,
     fetchImpl,
     options,

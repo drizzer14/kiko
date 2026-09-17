@@ -334,6 +334,10 @@ export const en = {
     invalidApiKeyOrSecret: 'Invalid API key or secret',
     invalidBTCAddress: 'Invalid BTC address',
     invalidPrivatbankCredentials: 'Invalid token or client ID',
+    invalidPrivatbankStatementAmount:
+      'PrivatBank sync: unparseable statement amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
+    invalidPrivatbankStatementDate:
+      'PrivatBank sync: unparseable statement date for account {{accountId}}, item {{itemId}}: "{{value}}"',
     invalidToken: 'Invalid token',
     lastSync: 'Last sync: {{time}}',
     monobankRateLimited: 'Monobank is rate-limiting requests right now. Please try again shortly.',

@@ -315,6 +315,10 @@ export const uk: typeof en = {
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
     invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidPrivatbankCredentials: 'Недійсний токен або ID клієнта',
+    invalidPrivatbankStatementAmount:
+      'Синхронізація ПриватБанку: сума виписки не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
+    invalidPrivatbankStatementDate:
+      'Синхронізація ПриватБанку: дата виписки не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
     monobankRateLimited: 'Monobank зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',

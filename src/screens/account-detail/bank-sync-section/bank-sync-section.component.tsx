@@ -1,4 +1,4 @@
-import { useSync, useSyncAction } from '@kiko/sync/use-sync';
+import { type SyncAction, useSync, useSyncAction } from '@kiko/sync/use-sync';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import type { FC, ReactNode } from 'react';
 import { useState } from 'react';
@@ -15,7 +15,11 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { runSync as privatbankRunSync } from '../../../privatbank/sync';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { bankProviderIdOf, type BankProviderId } from '../../../bank-sync/provider';
+import {
+  bankProviderIdOf,
+  isBankProviderId,
+  type BankProviderId,
+} from '../../../bank-sync/provider';
 import { saveCredentials as savePrivatbankCredentials } from '../../../privatbank/credentials';
 
 import { styles } from '../account-detail.styles';
@@ -34,28 +38,52 @@ type BankSyncSectionProps = {
  * provider) connection renders the exact same connected-state block below. A
  * multi-bank provider's institution carries a `<providerId>:<...>` suffix
  * (`bankProviderIdOf` strips it); a single-bank one round-trips unchanged.
+ * Guarded with `isBankProviderId` rather than asserted with `as` — an
+ * institution value that is not a known bank provider id (defensively,
+ * should never happen) resolves to `undefined` instead of a false-typed id.
  */
-const resolveConnectedProviderId = (institution: string | null): BankProviderId | undefined =>
-  institution == null ? undefined : (bankProviderIdOf(institution) as BankProviderId);
+const resolveConnectedProviderId = (institution: string | null): BankProviderId | undefined => {
+  if (institution === null) {
+    return undefined;
+  }
 
-type DisconnectCopyKeys = {
+  const providerId = bankProviderIdOf(institution);
+
+  return isBankProviderId(providerId) ? providerId : undefined;
+};
+
+type DisconnectCopy = {
   titleKey: 'accountDetail.disconnectPrivatbank' | 'accountDetail.disconnectMonobank';
   messageKey:
     | 'accountDetail.disconnectPrivatbankMessage'
     | 'accountDetail.disconnectMonobankMessage';
 };
 
-/** The connected-state Disconnect confirmation copy, resolved by provider. */
-const disconnectCopyKeys = (connectedProviderId: BankProviderId | undefined): DisconnectCopyKeys =>
-  connectedProviderId === 'privatbank'
-    ? {
-        titleKey: 'accountDetail.disconnectPrivatbank',
-        messageKey: 'accountDetail.disconnectPrivatbankMessage',
-      }
-    : {
-        titleKey: 'accountDetail.disconnectMonobank',
-        messageKey: 'accountDetail.disconnectMonobankMessage',
-      };
+/**
+ * The connected-state Disconnect confirmation copy, keyed by provider id —
+ * DATA-DRIVEN (a lookup, not a `=== 'privatbank'` ternary), so a later
+ * native provider adds one entry here rather than growing a binary
+ * conditional. `Partial`, matching `connectFieldByProviderId` below: only
+ * the providers with a wired registry entry get a row. Falls back to the
+ * Monobank copy for a provider id this map has no entry for (defensive;
+ * unreachable today, since this is read only when `connectedEntry` — itself
+ * only ever set for a registry-wired provider — is defined).
+ */
+const DEFAULT_DISCONNECT_COPY: DisconnectCopy = {
+  titleKey: 'accountDetail.disconnectMonobank',
+  messageKey: 'accountDetail.disconnectMonobankMessage',
+};
+
+const disconnectCopyByProviderId: Partial<Record<BankProviderId, DisconnectCopy>> = {
+  monobank: DEFAULT_DISCONNECT_COPY,
+  privatbank: {
+    titleKey: 'accountDetail.disconnectPrivatbank',
+    messageKey: 'accountDetail.disconnectPrivatbankMessage',
+  },
+};
+
+const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy =>
+  disconnectCopyByProviderId[connectedProviderId] ?? DEFAULT_DISCONNECT_COPY;
 
 // The bank account's Synchronization section — the counterpart of
 // `CryptoSyncSection` for a native stored-token/credential provider. Before a
@@ -99,13 +127,24 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // directly for the Monobank connect/re-sync flow (reuse by import, never
   // rewrite `src/monobank/sync/sync.ts`). PrivatBank's own sync gets the
   // same `{ isSyncing, error, sync }` shape via the generic `useSyncAction`,
-  // so this section has one consistent surface for either provider.
+  // so this section has one consistent surface for either provider. BOTH
+  // hooks are called UNCONDITIONALLY on every render (rules of hooks) —
+  // only the SELECTION of which result is "active" is data-driven below.
   const monobankSync = useSync();
   const privatbankSync = useSyncAction((targetAccountId?: string) =>
     privatbankRunSync({ targetAccountId }),
   );
+  // DATA-DRIVEN provider -> sync-action lookup (not a `=== 'privatbank'`
+  // ternary), so a later native provider's own `useSyncAction` result adds
+  // one entry here rather than growing a binary conditional. Falls back to
+  // the Monobank action when no provider is active yet (the disconnected,
+  // nothing-picked state) or for a provider id this map has no entry for.
+  const syncActionByProviderId: Partial<Record<BankProviderId, SyncAction<string | undefined>>> = {
+    monobank: monobankSync,
+    privatbank: privatbankSync,
+  };
   const { isSyncing, error, sync } =
-    activeProviderId === 'privatbank' ? privatbankSync : monobankSync;
+    (activeProviderId ? syncActionByProviderId[activeProviderId] : undefined) ?? monobankSync;
 
   // The bank counterpart of the create-form's `connectMonobank` closure
   // (`account-form.screen.tsx`): store the validated token to the Keychain
@@ -169,7 +208,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   };
 
   if (connectedEntry && connectedProviderId) {
-    const { titleKey, messageKey } = disconnectCopyKeys(connectedProviderId);
+    const { titleKey, messageKey } = disconnectCopyFor(connectedProviderId);
 
     return (
       <Box gap={3}>

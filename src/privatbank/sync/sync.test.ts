@@ -102,6 +102,26 @@ describe('mapStatementItem', () => {
 
     expect(transaction.counterIban).toBe('UA733220010000026201112223334');
   });
+
+  // FAIL CLOSED: an unparseable date/amount must THROW, never silently
+  // persist a NaN time or amount — a NaN time corrupts `ORDER BY time DESC`,
+  // a NaN amount corrupts money parity. The per-account fault isolation in
+  // `runSyncInner` catches this the same way it catches a fetch failure.
+  it('throws, naming the account and the raw value, on an unparseable statement date rather than persisting NaN', () => {
+    const item = statementItem({ date: 'not-a-date' });
+
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/date/i);
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/acc-1/);
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/not-a-date/);
+  });
+
+  it('throws, naming the account and the raw value, on an unparseable statement amount rather than persisting NaN', () => {
+    const item = statementItem({ amount: 'not-a-number' });
+
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/amount/i);
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/acc-1/);
+    expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/not-a-number/);
+  });
 });
 
 const privatbankIdOf = (metadata: unknown): string | undefined =>
@@ -376,6 +396,44 @@ describe('runSync', () => {
     expect(setLastSyncAt).not.toHaveBeenCalled();
   });
 
+  // Fail-closed (mirrors the fetch-failure case above): a malformed record
+  // must freeze the cursor exactly the same way a transport failure does —
+  // the row is never silently dropped, and a retry re-covers the window
+  // once the malformed data (or the parser) is fixed.
+  it('leaves sync_state.lastSyncAt unchanged and imports nothing when a statement item has an unparseable date (fail-closed)', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(
+      () => [statementItem({ date: 'not-a-date' })],
+      [connected],
+    );
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+
+    await expect(runSync(deps)).rejects.toThrow(/date/i);
+
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
+  it('leaves sync_state.lastSyncAt unchanged and imports nothing when a statement item has an unparseable amount (fail-closed)', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(
+      () => [statementItem({ amount: 'not-a-number' })],
+      [connected],
+    );
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+
+    await expect(runSync(deps)).rejects.toThrow(/amount/i);
+
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('reads credentials keyed by the resolved connected account id', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
@@ -425,7 +483,7 @@ describe('runSync', () => {
 
     // 3 requests total: fetchAccounts, account A's statement, account B's
     // statement — two gaps, both throttled by the one shared per-run gate.
-    expect(sleep.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([60_000, 60_000]);
+    expect(sleep.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([1_000, 1_000]);
   });
 
   it('isolates a per-account failure: one account failing does not stop another from importing', async () => {

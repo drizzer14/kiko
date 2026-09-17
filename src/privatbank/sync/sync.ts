@@ -28,19 +28,23 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
   Partial<Pick<TransactionRow, 'description' | 'counterIban' | 'externalId'>>;
 
 /**
- * PrivatBank's max statement window, in seconds. TODO(VERIFY LIVE): reuses
- * Monobank's 31-day ceiling as a placeholder — PrivatBank AutoClient's own
- * max window is unknown.
+ * VERIFIED (official AutoClient doc): the statement endpoint has NO
+ * documented max date-range window — paging is driven by the response's
+ * `followId`/`exist_next_page` cursor, not a date cap. This 31-day value is
+ * therefore kept only as this client's own PAGING CHUNK SIZE (how wide a
+ * single `fetchStatement` call's [from, to] span is before this engine steps
+ * to the next chunk), reusing Monobank's ceiling as a reasonable default —
+ * not a confirmed AutoClient limit, and not something the API enforces.
  */
 const MAX_WINDOW_SECONDS = 31 * 24 * 60 * 60;
 /**
  * PrivatBank's per-credential rate limit, in one named constant per the task
- * brief. TODO(VERIFY LIVE): the real AutoClient limit is unknown; this
- * reuses Monobank's conservative 1-req/60s guess as a one-line-to-fix
- * placeholder until confirmed — see docs/plans/bank-providers.md section B
- * "Rate limits — VERIFY LIVE".
+ * brief. VERIFIED (official AutoClient doc): no more than 1 request per
+ * second. This is a stated RECOMMENDATION, not a hard 429 cap — the bounded
+ * `PrivatbankRateLimitError` retry wrapper (`src/privatbank/client/`) stays
+ * as the safety net for whatever the server actually enforces.
  */
-const PRIVATBANK_RATE_LIMIT_MS = 60 * 1000;
+const PRIVATBANK_RATE_LIMIT_MS = 1_000;
 /** First-sync lookback when no previous sync timestamp is stored. */
 const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
 
@@ -202,25 +206,62 @@ const parsePrivatbankDate = (value: string): number => {
   );
 };
 
+/**
+ * FAIL CLOSED (Global Constraints): a malformed statement date or amount
+ * must never silently persist a `NaN` `time`/`amountMinorUnits` — a NaN time
+ * corrupts every `ORDER BY time DESC` read, and a NaN amount corrupts money
+ * parity. Throwing here (rather than skipping the item) lets the per-account
+ * fault isolation in `runSyncInner` catch it: the account's whole run fails,
+ * `institution` stays whatever it already was, and `sync_state.lastSyncAt`
+ * never advances past the malformed window, so a retry re-covers it
+ * idempotently once the underlying data (or this parser) is fixed — a real
+ * ledger row is never silently dropped.
+ */
 export const mapStatementItem = (
   item: PrivatbankStatementItem,
   holdingId: string,
   accountId: string,
   currency: Currency,
-): NewTransaction => ({
-  holdingId,
+): NewTransaction => {
+  const time = parsePrivatbankDate(item.date);
+
+  if (Number.isNaN(time)) {
+    throw new Error(
+      i18n.t('accountDetail.invalidPrivatbankStatementDate', {
+        accountId,
+        itemId: item.id,
+        value: item.date,
+      }),
+    );
+  }
+
   // TODO(VERIFY LIVE): `amount` is assumed a signed decimal string in MAJOR
   // units (see `PrivatbankStatementItem`'s own doc comment).
-  amountMinorUnits: Money.fromMajor(currency, Number.parseFloat(item.amount)).minorUnits,
-  time: parsePrivatbankDate(item.date),
-  description: item.description ?? '',
-  counterIban: item.counterIban ?? null,
-  source: 'privatbank',
-  // NAMESPACED per connection, same rule as Monobank (Global Constraints):
-  // `${accountId}:${statementId}` keeps the GLOBAL `(source, external_id)`
-  // unique index disjoint across every connection of every provider.
-  externalId: `${accountId}:${item.id}`,
-});
+  const amountMajor = Number.parseFloat(item.amount);
+
+  if (!Number.isFinite(amountMajor)) {
+    throw new Error(
+      i18n.t('accountDetail.invalidPrivatbankStatementAmount', {
+        accountId,
+        itemId: item.id,
+        value: item.amount,
+      }),
+    );
+  }
+
+  return {
+    holdingId,
+    amountMinorUnits: Money.fromMajor(currency, amountMajor).minorUnits,
+    time,
+    description: item.description ?? '',
+    counterIban: item.counterIban ?? null,
+    source: 'privatbank',
+    // NAMESPACED per connection, same rule as Monobank (Global Constraints):
+    // `${accountId}:${statementId}` keeps the GLOBAL `(source, external_id)`
+    // unique index disjoint across every connection of every provider.
+    externalId: `${accountId}:${item.id}`,
+  };
+};
 
 export const mapAccountToHolding = (
   account: PrivatbankAccount,
@@ -331,11 +372,15 @@ const upsertAllHoldings = async (
 
 /**
  * Pull every statement item for one PrivatBank account within [fromSeconds,
- * toSeconds], capped at `MAX_WINDOW_SECONDS` per page — the simplified
+ * toSeconds], chunked at `MAX_WINDOW_SECONDS` per request — the simplified
  * engine's forward paging (plan Phase 1: "deliberately simpler" than
- * Monobank's capped-response narrowing, since PrivatBank's own per-response
- * item cap is unknown — TODO(VERIFY LIVE)). The gate is shared across every
- * account's pages in one run, mirroring Monobank's single per-run gate.
+ * Monobank's capped-response narrowing). AutoClient's own per-response item
+ * cap is confirmed by its doc (`STATEMENT_PAGE_SIZE` in
+ * `src/privatbank/client/`), but its `followId`/`exist_next_page` cursor for
+ * a chunk whose item count exceeds that page size is not yet handled here —
+ * TODO(VERIFY LIVE) the cursor's real field names before wiring that up. The
+ * gate is shared across every account's pages in one run, mirroring
+ * Monobank's single per-run gate.
  */
 const fetchAllStatements = async (
   deps: SyncDeps,
