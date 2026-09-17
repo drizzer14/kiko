@@ -2,6 +2,7 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
+import { pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect } from 'react';
@@ -117,18 +118,66 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // alongside the first (each binds its own per-account credential and cursor).
   const showActionButton = isBankAccount;
 
+  // The document-picker statement-import entry point (docs/plans/statement-
+  // import.md section B.1), same style as the create-form's `connectMonobank`
+  // closure: open the picker, then — on a real pick, not a cancel — hand the
+  // picked `uri` straight to `StatementImportScreen`, which owns the actual
+  // read/decode/detect/parse/preview. This handler does NOT pre-read the
+  // file: an earlier revision read it here too (as a validity check before
+  // navigating), but that made every pick pay for two reads of the same file
+  // and, worse, left the READ's own failure mode (an iCloud placeholder not
+  // yet downloaded, a revoked security-scoped URL) unhandled right here —
+  // the single read now lives entirely in `StatementImportScreen`, which
+  // already guards it and renders a graceful error state on failure. The
+  // accepted-type list includes xlsx from the start even though Phase 1 only
+  // ships the Monobank CSV format (PrivatBank XLSX lands in a later phase
+  // and must not need this list revisited). A cancelled picker rejects with
+  // `OPERATION_CANCELED` — caught and swallowed here, not surfaced as an
+  // error.
+  const pickAndOpenStatement = async (): Promise<void> => {
+    let results: Awaited<ReturnType<typeof pick>>;
+
+    try {
+      results = await pick({ type: [types.csv, types.xlsx, types.plainText, types.allFiles] });
+    } catch {
+      // A cancelled picker rejects with `OPERATION_CANCELED` — the expected
+      // case, handled the same as every other connect-field's `catch {}`
+      // above: fail silently and leave the screen exactly as it was, no
+      // error surfaced for the (very common) "user backed out" path.
+      return;
+    }
+
+    const picked = results.at(0);
+
+    if (!picked) {
+      return;
+    }
+
+    navigation.navigate('StatementImport', { filePath: picked.uri, accountId });
+  };
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
       footer={
-        <Button
-          variant="primary"
-          fullWidth
-          onPress={() => navigation.navigate('HoldingForm', { accountId })}
-        >
-          {t('accountDetail.addHolding')}
-        </Button>
+        <Box direction="row" gap={2}>
+          <Button
+            variant="secondaryTonal"
+            fullWidth={false}
+            onPress={pickAndOpenStatement}
+            icon="doc.badge.plus"
+          >
+            {t('accountDetail.importStatement')}
+          </Button>
+          <Button
+            variant="primary"
+            fullWidth
+            onPress={() => navigation.navigate('HoldingForm', { accountId })}
+          >
+            {t('accountDetail.addHolding')}
+          </Button>
+        </Box>
       }
     >
       <Box gap={4} testID="account-detail-content">

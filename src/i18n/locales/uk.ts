@@ -283,6 +283,7 @@ export const uk: typeof en = {
       wallet: 'Це очистить зʼєднання. Ваш BTC-актив залишиться як ручний знімок.',
     },
     holdingsHeading: 'Активи',
+    importStatement: 'Імпортувати виписку',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
     invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidToken: 'Недійсний токен',
@@ -411,6 +412,26 @@ export const uk: typeof en = {
   migrations: {
     error: 'Помилка міграції: {{message}}',
     preparing: 'Підготовка бази даних…',
+  },
+  statementImport: {
+    previewHeading: 'Перегляд виписки',
+    reading: 'Читаємо файл…',
+    unrecognizedFormat: 'Ми не розпізнаємо формат цього файлу. Спробуйте інший експорт.',
+    chooseHolding: 'Оберіть актив',
+    createNewHolding: 'Створити новий актив',
+    importButton: 'Імпортувати',
+    importedCount: 'Імпортовано {{imported}} з {{total}}',
+    // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
+    // 5-20 рядків), _other (fractional, unreachable here).
+    unresolvedRowsSkipped_one: '{{count}} рядок пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_few: '{{count}} рядки пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_many: '{{count}} рядків пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_other: '{{count}} рядки пропущено: нерозпізнана валюта',
+    detectedCurrenciesLabel: 'Цей файл містить кілька валют:',
+    skippedWrongCurrency_one: '{{count}} рядок в іншій валюті пропущено',
+    skippedWrongCurrency_few: '{{count}} рядки в іншій валюті пропущено',
+    skippedWrongCurrency_many: '{{count}} рядків в іншій валюті пропущено',
+    skippedWrongCurrency_other: '{{count}} рядки в іншій валюті пропущено',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

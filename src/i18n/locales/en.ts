@@ -305,6 +305,7 @@ export const en = {
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
     holdingsHeading: 'Holdings',
+    importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
     invalidBTCAddress: 'Invalid BTC address',
     invalidToken: 'Invalid token',
@@ -462,6 +463,43 @@ export const en = {
   migrations: {
     error: 'Migration error: {{message}}',
     preparing: 'Preparing database…',
+  },
+  // The shared preview + target-holding screen (Phase 1b,
+  // src/screens/statement-import/statement-import.screen.tsx) that both statement-
+  // import entry points converge on — see docs/plans/statement-import.md section B.
+  statementImport: {
+    previewHeading: 'Statement preview',
+    reading: 'Reading the file…',
+    unrecognizedFormat: "We don't recognize this file's format. Try a different export.",
+    chooseHolding: 'Choose a holding',
+    createNewHolding: 'Create new holding',
+    importButton: 'Import',
+    importedCount: 'Imported {{imported}} of {{total}}',
+    // A row a format's parse could not resolve (e.g. a PrivatBank currency
+    // word its abbreviation map doesn't cover yet, section C.1) — excluded
+    // from the import, but surfaced honestly rather than silently dropped
+    // (see `ParsedStatement.unresolvedRows` in parser.ts). English selects
+    // _one/_other; the _few/_many forms exist only to mirror Ukrainian's
+    // plural set (see uk.ts), so the two catalogues keep an identical key
+    // set and `typeof en` still types uk.
+    unresolvedRowsSkipped_one: '{{count}} row skipped: unrecognized currency',
+    unresolvedRowsSkipped_few: '{{count}} rows skipped: unrecognized currency',
+    unresolvedRowsSkipped_many: '{{count}} rows skipped: unrecognized currency',
+    unresolvedRowsSkipped_other: '{{count}} rows skipped: unrecognized currency',
+    // Shown above the preview's currency list ONLY when a file mixes more
+    // than one currency (a multi-card PrivatBank export, section C.1) —
+    // helps the user pick a holding that actually matches BEFORE importing,
+    // since `importStatement` excludes any row whose currency doesn't match
+    // the target holding's (Task 3 review, CRITICAL fix).
+    detectedCurrenciesLabel: 'This file contains multiple currencies:',
+    // Rows excluded from the write because their currency didn't match the
+    // target holding's — Kiko has no FX, so a mismatched row is excluded,
+    // never converted or written verbatim (see `ImportResult.skippedWrongCurrency`
+    // in import-statement.ts).
+    skippedWrongCurrency_one: '{{count}} row in a different currency was skipped',
+    skippedWrongCurrency_few: '{{count}} rows in a different currency were skipped',
+    skippedWrongCurrency_many: '{{count}} rows in a different currency were skipped',
+    skippedWrongCurrency_other: '{{count}} rows in a different currency were skipped',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

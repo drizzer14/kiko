@@ -128,8 +128,16 @@ export const transactions = sqliteTable(
     // ever shipped a transaction row with one of those sources, so no
     // migration was needed to narrow this TS-only enum (SQLite stores this
     // column as plain `text`, with no CHECK constraint).
+    // 'import' (`docs/plans/statement-import.md`): a row parsed from a
+    // user-picked statement file (Monobank CSV and later formats), fed
+    // through the SAME `addManyDedup` upsert as every synced source. Shared
+    // by every bank format in the registry — the FORMAT is recorded only via
+    // `ParsedStatement.formatId`, not a per-bank source value. Like
+    // 'monobank'/'binance', `isSyncedTransaction` refuses an individual-row
+    // delete on it (`src/holdings/deletable/deletable.ts`), so a bad import
+    // is undone by deleting its whole (always-plain) holding, not one row.
     source: text('source', {
-      enum: ['manual', 'monobank', 'btc_wallet', 'binance'],
+      enum: ['manual', 'monobank', 'btc_wallet', 'binance', 'import'],
     }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),

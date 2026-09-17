@@ -56,6 +56,12 @@ export type AccountsStackParamList = {
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
   // instead; only deposits take a dedicated contribution form.
   ContributionForm: { holdingId: string };
+  // The shared statement-import preview + target-holding screen (Phase 1b), reached
+  // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
+  // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
+  // `accountId`. A later entry point (the Share Extension) has no known target
+  // account, hence `accountId` is optional here rather than required.
+  StatementImport: { filePath: string; accountId?: string };
 };
 
 export type SettingsStackParamList = {

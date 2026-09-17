@@ -83,6 +83,8 @@ const mockSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
+const mockPick = jest.fn();
+const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
 const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
@@ -121,6 +123,16 @@ jest.mock('../../monobank/token', () => ({
 }));
 jest.mock('../../monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
+jest.mock('@react-native-documents/picker', () => ({
+  pick: (...args: unknown[]) => mockPick(...args),
+  types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+  isErrorWithCode: (error: unknown): error is { code: string } =>
+    typeof error === 'object' && error !== null && 'code' in error,
+}));
+jest.mock('react-native-fs', () => ({
+  readFile: (...args: unknown[]) => mockReadFile(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
@@ -1003,6 +1015,83 @@ describe('AccountDetailScreen', () => {
     // the grown valuation the breakdown would instead show 1,000.00 ₴, leaving
     // only the single headline match.
     expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('AccountDetailScreen — statement import (footer button + pickAndOpenStatement)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setLiveData({ accounts: [account()], holdings: [] });
+  });
+
+  it('renders an Import statement action beside Add holding in the footer', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+  });
+
+  it('renders Import statement with the secondaryTonal variant and its doc icon (Add holding stays primary)', async () => {
+    await renderScreen();
+
+    const importButton = mockButtonProps.find((props) => props.children === 'Import statement');
+    const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
+
+    expect(importButton?.variant).toBe('secondaryTonal');
+    expect(importButton?.icon).toBe('doc.badge.plus');
+    expect(addHoldingButton?.variant).toBe('primary');
+  });
+
+  it('opens the document picker with csv/xlsx/plainText/allFiles accepted types when Import statement is pressed', async () => {
+    mockPick.mockRejectedValue({ code: 'OPERATION_CANCELED' });
+    const { getByText } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(mockPick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: ['text/csv', 'application/xlsx', 'text/plain', '*/*'],
+      }),
+    );
+  });
+
+  it('handles a cancelled picker gracefully: no file read, no navigation, no thrown error', async () => {
+    mockPick.mockRejectedValue({ code: 'OPERATION_CANCELED' });
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
+  });
+
+  it('navigates to StatementImport with the resolved filePath and accountId on success, without reading the file itself', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    // `pickAndOpenStatement` hands the picked `uri` straight to
+    // `StatementImportScreen`, which owns the ONE read of this file — a
+    // pre-read here would pay for the read twice and leave its own failure
+    // mode unhandled at this call site (see the handler's own doc comment).
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///mock/statement.csv',
+      accountId: 'a',
+    });
   });
 });
 
