@@ -81,6 +81,12 @@ jest.mock('../../design-system/components/button', () => {
 const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
+const mockPrivatbankSync = jest.fn();
+const mockBunqSync = jest.fn();
+const mockStarlingSync = jest.fn();
+const mockUseSyncAction = jest.fn();
+const mockUseBunqSyncAction = jest.fn();
+const mockUseStarlingSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
@@ -88,6 +94,9 @@ const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
+const mockDisconnectPrivatbank = jest.fn();
+const mockDisconnectBunq = jest.fn();
+const mockDisconnectStarling = jest.fn();
 
 // HoldingCard (rendered inside this screen) subscribes to the native stack's
 // `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
@@ -108,11 +117,36 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+// `BankSyncSection` (real, unmocked here) calls `useSyncAction` THREE times
+// per render, ALWAYS in the same order (privatbank, bunq, starling — see
+// `bank-sync-section.component.tsx`), so a stable modulo-3 call-count parity
+// distinguishes the three results across however many renders one test
+// triggers — mirrors `bank-sync-section.component.test.tsx`'s own trio.
+let mockUseSyncActionCallCount = 0;
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
+  useSyncAction: () => {
+    const parity = mockUseSyncActionCallCount % 3;
+    mockUseSyncActionCallCount += 1;
+
+    if (parity === 0) {
+      return mockUseSyncAction();
+    }
+
+    return parity === 1 ? mockUseBunqSyncAction() : mockUseStarlingSyncAction();
+  },
 }));
 jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
+}));
+jest.mock('../../privatbank/disconnect', () => ({
+  disconnectPrivatbank: (...args: unknown[]) => mockDisconnectPrivatbank(...args),
+}));
+jest.mock('../../bunq/disconnect', () => ({
+  disconnectBunq: (...args: unknown[]) => mockDisconnectBunq(...args),
+}));
+jest.mock('../../starling/disconnect', () => ({
+  disconnectStarling: (...args: unknown[]) => mockDisconnectStarling(...args),
 }));
 jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
@@ -262,12 +296,46 @@ const renderScreen = async () => {
   return { ...view, navigation };
 };
 
+/**
+ * Drives the disconnected picker flow up to (not including) the Connect
+ * press: opens `AddBankProviderSheet` via the "Add a bank" trigger, then
+ * selects the Monobank row — the sheet reports the choice and closes itself,
+ * leaving `MonobankConnectField` mounted for the caller to drive further.
+ */
+const openMonobankConnectField = async (
+  view: Pick<Awaited<ReturnType<typeof render>>, 'getByText' | 'getByTestId'>,
+): Promise<void> => {
+  await fireEvent.press(view.getByText(i18n.t('accountDetail.addBankAction')));
+  await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+};
+
 describe('AccountDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSyncActionCallCount = 0;
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockPrivatbankSync.mockResolvedValue(undefined);
+    mockUseSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockPrivatbankSync,
+    });
+    mockBunqSync.mockResolvedValue(undefined);
+    mockUseBunqSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockBunqSync,
+    });
+    mockDisconnectBunq.mockResolvedValue(undefined);
+    mockStarlingSync.mockResolvedValue(undefined);
+    mockUseStarlingSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockStarlingSync,
+    });
+    mockDisconnectStarling.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -285,9 +353,7 @@ describe('AccountDetailScreen', () => {
     const { getByTestId } = await renderScreen();
 
     const contentGap = StyleSheet.flatten(getByTestId('account-detail-content').props.style).gap;
-    const groupGap = StyleSheet.flatten(
-      getByTestId('monobank-sync-status-actions').props.style,
-    ).gap;
+    const groupGap = StyleSheet.flatten(getByTestId('bank-sync-status-actions').props.style).gap;
 
     expect(groupGap).toBe(contentGap);
   });
@@ -298,7 +364,7 @@ describe('AccountDetailScreen', () => {
     const { getByTestId } = await renderScreen();
 
     // The two buttons now share one horizontal row rather than stacking.
-    const row = getByTestId('monobank-sync-actions-row');
+    const row = getByTestId('bank-sync-actions-row');
     expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
   });
 
@@ -549,8 +615,10 @@ describe('AccountDetailScreen', () => {
     {
       description: 'a bank account not yet connected to Monobank',
       account: account({ kind: 'bank', institution: null }),
-      visible: ['Connect Monobank'],
-      hidden: ['Sync'],
+      // Disconnected now shows the "Add a bank" picker trigger, not the
+      // Monobank field directly — see the picker-flow tests below.
+      visible: ['Add a bank'],
+      hidden: ['Connect Monobank', 'Sync'],
     },
     {
       description: 'a bank account connected to Monobank',
@@ -588,9 +656,10 @@ describe('AccountDetailScreen', () => {
       accounts: [account({ id: 'a', kind: 'bank', institution: null })],
       holdings: [],
     });
-    const { getByText, queryByText } = await renderScreen();
-    expect(getByText('Connect Monobank')).toBeTruthy();
-    expect(queryByText('Monobank is connected to another account')).toBeNull();
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    expect(view.getByText('Connect Monobank')).toBeTruthy();
+    expect(view.queryByText('Monobank is connected to another account')).toBeNull();
   });
 
   it('re-syncs a connected account when Sync is pressed', async () => {
@@ -602,11 +671,12 @@ describe('AccountDetailScreen', () => {
 
   it('connects a bank account by validating the token, saving it, then syncing it (Connect folds save into connect)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByPlaceholderText, getByText } = await renderScreen();
-    const input = getByPlaceholderText('Monobank token');
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const input = view.getByPlaceholderText('Monobank token');
     await fireEvent.changeText(input, 'entered-here');
     await act(async () => {
-      await fireEvent.press(getByText('Connect Monobank'));
+      await fireEvent.press(view.getByText('Connect Monobank'));
     });
 
     // Validate BEFORE save: fetchClientInfo runs first, and only a successful
@@ -622,25 +692,28 @@ describe('AccountDetailScreen', () => {
   it('never saves an invalid token: validation failure keeps the field usable and skips saveToken/sync entirely', async () => {
     mockFetchClientInfo.mockRejectedValue(new Error('401'));
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByPlaceholderText, getByText, findByText } = await renderScreen();
-    const input = getByPlaceholderText('Monobank token');
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const input = view.getByPlaceholderText('Monobank token');
     await fireEvent.changeText(input, 'bad-token');
     await act(async () => {
-      await fireEvent.press(getByText('Connect Monobank'));
+      await fireEvent.press(view.getByText('Connect Monobank'));
     });
 
-    expect(await findByText('Invalid token')).toBeTruthy();
+    expect(await view.findByText('Invalid token')).toBeTruthy();
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
     // The entered text is kept so the user can retry immediately, without
     // re-entering the token.
-    expect(getByPlaceholderText('Monobank token').props.value).toBe('bad-token');
+    expect(view.getByPlaceholderText('Monobank token').props.value).toBe('bad-token');
   });
 
   it('keeps a valid-but-unsynced token retryable: a failed connect keeps the field usable for an immediate retry', async () => {
     mockSync.mockResolvedValueOnce(false);
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByPlaceholderText, getByText, findByText } = await renderScreen();
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const { getByPlaceholderText, getByText, findByText } = view;
     const input = getByPlaceholderText('Monobank token');
     await fireEvent.changeText(input, 'entered-here');
     await act(async () => {
@@ -876,7 +949,7 @@ describe('AccountDetailScreen', () => {
     // connection + token are cleared.
     expect(getByText('Disconnect Monobank')).toBeTruthy();
     expect(mockDisconnect).not.toHaveBeenCalled();
-    await fireEvent.press(getByTestId('monobank-disconnect-confirm'));
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
     await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
   });
 
@@ -898,6 +971,190 @@ describe('AccountDetailScreen', () => {
     });
     const { queryByText } = await renderScreen();
     expect(queryByText('Disconnect')).toBeNull();
+  });
+
+  it('opens the add-a-bank picker sheet for a disconnected bank account, listing every native provider', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+
+    // No provider's field is mounted before a choice is made.
+    expect(view.queryByText('Connect Monobank')).toBeNull();
+    expect(view.queryByText('Connect PrivatBank')).toBeNull();
+    expect(view.queryByText('Connect bunq')).toBeNull();
+    expect(view.queryByText('Connect Starling')).toBeNull();
+
+    await fireEvent.press(view.getByText('Add a bank'));
+
+    expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
+    expect(view.getByText('Monobank')).toBeTruthy();
+    expect(view.getByText('PrivatBank')).toBeTruthy();
+    expect(view.getByText('bunq')).toBeTruthy();
+    expect(view.getByText('Starling')).toBeTruthy();
+  });
+
+  it('renders the PrivatBank connect field after picking PrivatBank from the sheet', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-privatbank'));
+
+    expect(view.getByText('Connect PrivatBank')).toBeTruthy();
+    expect(view.queryByText('Connect Monobank')).toBeNull();
+  });
+
+  it('shows the connected status block — Sync/Disconnect, no connect field — for a PrivatBank-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'privatbank' })],
+      holdings: [],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+    expect(view.queryByText('Connect PrivatBank')).toBeNull();
+    expect(view.queryByText('Add a bank')).toBeNull();
+  });
+
+  it('re-syncs a PrivatBank-connected account through the PrivatBank sync action, not Monobank', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'privatbank' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Sync'));
+
+    await waitFor(() => expect(mockPrivatbankSync).toHaveBeenCalledWith('a'));
+    expect(mockSync).not.toHaveBeenCalled();
+  });
+
+  it('routes Disconnect to disconnectPrivatbank (not disconnectMonobank) for a PrivatBank-connected account', async () => {
+    mockDisconnectPrivatbank.mockResolvedValue(undefined);
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'privatbank' })],
+      holdings: [],
+    });
+    const { getByText, getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByText('Disconnect'));
+    expect(getByText('Disconnect PrivatBank')).toBeTruthy();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectPrivatbank).toHaveBeenCalledWith('a'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('shows the connected status block — Sync/Disconnect, no connect field — for a bunq-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+    expect(view.queryByText('Add a bank')).toBeNull();
+  });
+
+  it('re-syncs a bunq-connected account through the bunq sync action, not Monobank or PrivatBank', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Sync'));
+
+    await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+  });
+
+  it('routes Disconnect to disconnectBunq (not disconnectMonobank/disconnectPrivatbank) for a bunq-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+    });
+    const { getByText, getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByText('Disconnect'));
+    expect(getByText('Disconnect bunq')).toBeTruthy();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectBunq).toHaveBeenCalledWith('a'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+  });
+
+  it('renders the Starling connect field after picking Starling from the sheet', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-starling'));
+
+    expect(view.getByText('Connect Starling')).toBeTruthy();
+    expect(view.queryByText('Connect Monobank')).toBeNull();
+  });
+
+  it('shows the connected status block — Sync/Disconnect, no connect field — for a Starling-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+    expect(view.queryByText('Add a bank')).toBeNull();
+  });
+
+  it('re-syncs a Starling-connected account through the Starling sync action, not Monobank, PrivatBank, or bunq', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Sync'));
+
+    await waitFor(() => expect(mockStarlingSync).toHaveBeenCalledWith('a'));
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+    expect(mockBunqSync).not.toHaveBeenCalled();
+  });
+
+  it('routes Disconnect to disconnectStarling (not disconnectMonobank/disconnectPrivatbank/disconnectBunq) for a Starling-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+    });
+    const { getByText, getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByText('Disconnect'));
+    expect(getByText('Disconnect Starling')).toBeTruthy();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectStarling).toHaveBeenCalledWith('a'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+    expect(mockDisconnectBunq).not.toHaveBeenCalled();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {
@@ -971,6 +1228,12 @@ describe('AccountDetailScreen — localization', () => {
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockPrivatbankSync.mockResolvedValue(undefined);
+    mockUseSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockPrivatbankSync,
+    });
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
   });
 
@@ -985,12 +1248,19 @@ describe('AccountDetailScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByText, queryByText } = await renderScreen();
+    const view = await renderScreen();
 
-    expect(getByText('Додати актив')).toBeTruthy();
-    expect(getByText('Активи')).toBeTruthy();
-    expect(getByText('Підключити Monobank')).toBeTruthy();
-    expect(queryByText('Add holding')).toBeNull();
-    expect(queryByText('Connect Monobank')).toBeNull();
+    expect(view.getByText('Додати актив')).toBeTruthy();
+    expect(view.getByText('Активи')).toBeTruthy();
+    expect(view.getByText('Додати банк')).toBeTruthy();
+    expect(view.queryByText('Add holding')).toBeNull();
+
+    // Opening the picker and choosing Monobank renders its connect field
+    // from the same Ukrainian catalog.
+    await fireEvent.press(view.getByText('Додати банк'));
+    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+
+    expect(view.getByText('Підключити Monobank')).toBeTruthy();
+    expect(view.queryByText('Connect Monobank')).toBeNull();
   });
 });

@@ -1,8 +1,10 @@
+import type { AccountRow } from '../../db/schema';
+import type { BankProviderId } from '../../bank-sync/provider';
+import { bankProviderRegistry } from '../../bank-sync/registry';
 import { isBalanceProviderId } from '../../crypto-sync/provider';
 import { resyncRequest } from '../../crypto-sync/resync-request';
 import { runCryptoSync } from '../../crypto-sync/run-crypto-sync';
-import type { AccountRow } from '../../db/schema';
-import { runSync } from '../../monobank/sync';
+import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
 
 /**
  * The fan-out only needs each account's connection marker and a name to report a
@@ -13,28 +15,47 @@ export type SyncableAccount = Pick<AccountRow, 'id' | 'name' | 'institution'>;
 
 /**
  * One account's sync job: its display name (for failure reporting) and the
- * promise-returning run. A connected Monobank account runs TARGETED at its own
- * id (`runSync({ targetAccountId })`), so its per-account token, `sync_state`
- * cursor, and single-flight all key off that id and never collide with another
- * connection's; a connected crypto account re-syncs from its stored key (wallet
- * address / Keychain credentials) via `resyncRequest`. A non-syncable (manual)
- * account contributes no job.
+ * promise-returning run. A connected bank account (Monobank today, routed
+ * through `bankProviderRegistry`) runs TARGETED at its own id
+ * (`runSync({ targetAccountId })`), so its per-account credentials,
+ * `sync_state` cursor, and single-flight all key off that id and never
+ * collide with another connection's; a connected crypto account re-syncs
+ * from its stored key (wallet address / Keychain credentials) via
+ * `resyncRequest`. A non-syncable (manual) account contributes no job.
  */
 export type SyncJob = { name: string; run: () => Promise<unknown> };
 
 /**
  * Build the sync jobs for one account. Shared by the pull-to-refresh fan-out and
  * the app-open auto-sync so both drive EXACTLY the same set — every connected
- * Monobank account plus each connected crypto account — from one place.
+ * bank account plus each connected crypto account — from one place.
  */
 export const syncJobsFor = (account: SyncableAccount): SyncJob[] => {
-  if (account.institution === 'monobank') {
-    return [{ name: account.name, run: () => runSync({ targetAccountId: account.id }) }];
-  }
-
   // Capture the narrowed institution in a const so it survives into the closure
   // (property narrowing on `account` would not).
   const { institution } = account;
+
+  if (isBankProviderId(institution)) {
+    // `isBankProviderId` narrows the RAW institution string (which could
+    // still carry a multi-bank `<providerId>:<externalId>` suffix) to
+    // `BankProviderId` imprecisely; `bankProviderIdOf` strips that suffix to
+    // the actual registry key, which membership above already guarantees is
+    // one of `bankProviderIds`.
+    const providerId = bankProviderIdOf(institution) as BankProviderId;
+    const entry = bankProviderRegistry[providerId];
+
+    // An id in `bankProviderIds` whose registry entry is not yet wired (e.g. a
+    // native provider ahead of its own implementation task) contributes no
+    // job — skipped the same way an unrecognized institution is, never
+    // thrown — so one unwired provider never breaks the fan-out for other
+    // accounts.
+    if (!entry) {
+      return [];
+    }
+
+    return [{ name: account.name, run: () => entry.runSync({ targetAccountId: account.id }) }];
+  }
+
   if (isBalanceProviderId(institution)) {
     return [
       { name: account.name, run: () => runCryptoSync(resyncRequest(institution, account.id)) },

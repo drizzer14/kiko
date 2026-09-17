@@ -4,6 +4,19 @@
 // time. Included by tsconfig's `**/*.ts` glob so `@env` imports type-check.
 declare module '@env' {
   export const MONOBANK_API_ENDPOINT: string;
+  export const PRIVATBANK_API_ENDPOINT: string;
+  // bunq public API base URL (handshake + monetary-account/payment reads).
+  // CONFIRMED (coordinator's live verification pass): sandbox
+  // https://public-api.sandbox.bunq.com/v1, production
+  // https://api.bunq.com/v1. Defaults to the sandbox base — see
+  // `.env.example`'s own comment for the sandbox/production switch.
+  export const BUNQ_API_ENDPOINT: string;
+  // Starling Bank v2 public API base URL (accounts, balance, and feed
+  // reads). COORDINATOR-VERIFIED against Starling's own docs: sandbox
+  // https://api-sandbox.starlingbank.com, production
+  // https://api.starlingbank.com. Defaults to the sandbox base — see
+  // `.env.example`'s own comment for the sandbox/production switch.
+  export const STARLING_API_ENDPOINT: string;
   // Base CoinGecko simple-price URL; the `ids`/`vs_currencies` query is built in
   // code from `src/rates/coingecko-ids` so the coin set cannot drift from a
   // stale committed `.env`.
@@ -11,6 +24,15 @@ declare module '@env' {
   export const BTC_EXPLORER_ENDPOINT: string;
   export const BINANCE_API_ENDPOINT: string;
   export const BINANCE_API_MANAGEMENT_URL: string;
+  // Release-readiness build flag (whole-branch review, item E). Public,
+  // non-secret. `'true'` (a test build) shows every `providerCatalog` entry
+  // with a wired registry entry, `connectReady` or not, in
+  // `AddBankProviderSheet` — anything else (absent, `'false'`, a release/
+  // archive build) shows ONLY a `connectReady` one, so a real user can never
+  // pick a not-yet-safe-to-connect provider. Defaults to `'false'` in
+  // `.env.example`, so a fresh checkout/archive is release-safe by default;
+  // set to `'true'` only in a local, gitignored `.env` for a test build.
+  export const SHOW_UNREADY_BANKS: string;
   // DEV/TEST-ONLY (screenshot mode). Present only in `.env.screenshots`, absent
   // from the committed `.env`, so a production build inlines `undefined`. Typed
   // as optional to model that absence honestly — see src/screenshot/.
