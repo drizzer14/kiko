@@ -209,9 +209,9 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // to the Keychain, then run the first bunq sync. UNLIKE the other two
   // providers, `BunqConnectField` does NOT pre-validate the key itself
   // (bunq has no side-effect-free check — see that field's own doc comment)
-  // — the sync's own handshake IS the validation, so a wrong key (or the
-  // still-unwired crypto binding, `defaultBunqCrypto`) surfaces through this
-  // same `sync(account.id)` result. A failed first sync must not leave the
+  // — the sync's own handshake IS the validation, so a wrong key (or any
+  // other genuine handshake failure) surfaces through this same
+  // `sync(account.id)` result. A failed first sync must not leave the
   // apiKey ORPHANED in the Keychain (a half-connected state no other
   // provider's connect flow can reach, since Monobank/PrivatBank/Starling
   // all pre-validate BEFORE saving) — a failure clears it back out, so a

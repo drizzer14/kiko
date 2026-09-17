@@ -14,9 +14,11 @@
  * signing change; optional elsewhere and never used for a payment POST,
  * since this app is read-only). React Native has no built-in RSA and this
  * app's `@noble/hashes` dependency has none either, so this is injected
- * rather than hand-rolled — see `src/bunq/crypto/bunq-crypto.ts` for the
- * concrete-binding stub and `src/bunq/sync/sync.ts` for how it is threaded
- * through the handshake.
+ * rather than hand-rolled — see `src/bunq/crypto/node-forge-crypto.ts` for
+ * the concrete node-forge binding and `src/bunq/sync/sync.ts` for how it is
+ * threaded through the handshake. Still injected (not hardcoded) so
+ * `src/bunq/client/bunq.client.test.ts` and `src/bunq/sync/sync.test.ts` can
+ * exercise the handshake against a hermetic MOCK `BunqCrypto`.
  */
 export interface BunqCrypto {
   generateKeyPair(): Promise<{ privateKeyPem: string; publicKeyPem: string }>;

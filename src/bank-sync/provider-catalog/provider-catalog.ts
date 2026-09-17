@@ -31,7 +31,9 @@ export type ProviderCatalogEntry = {
   /**
    * Release-readiness gate (whole-branch review, item E). `false` means the
    * provider is not yet safe to offer a real user in a RELEASE build (e.g.
-   * bunq's crypto binding is still unwired, `src/bunq/crypto/bunq-crypto.ts`;
+   * bunq's node-forge crypto binding (`src/bunq/crypto/node-forge-crypto.ts`)
+   * is wired and unit-tested, but the handshake itself still needs a manual
+   * sandbox/real-account network check before this flips to `true`;
    * PrivatBank's wire shapes are still `TODO(VERIFY LIVE)` throughout
    * `src/privatbank/`). `AddBankProviderSheet` hides a `false` entry UNLESS
    * the `SHOW_UNREADY_BANKS` build flag is on, so a TEST build can still

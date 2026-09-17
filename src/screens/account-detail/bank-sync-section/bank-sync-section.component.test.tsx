@@ -253,9 +253,10 @@ describe('BankSyncSection — disconnected', () => {
 
   // Item B (whole-branch review): bunq has no pre-validation call (see
   // `BunqConnectField`'s own doc comment), so the apiKey is saved BEFORE the
-  // handshake runs. A failed first sync — a wrong key, or today's unwired
-  // `defaultBunqCrypto` stub — must not leave that apiKey ORPHANED in the
-  // Keychain (a half-connected state); `connectBunq` clears it back out.
+  // handshake runs. A failed first sync — a wrong key, an offline device, or
+  // any other genuine handshake failure — must not leave that apiKey
+  // ORPHANED in the Keychain (a half-connected state); `connectBunq` clears
+  // it back out.
   it('clears the orphaned bunq apiKey when the first sync fails', async () => {
     mockBunqSync.mockResolvedValue(false);
     const view = await render(<BankSyncSection account={bankAccount()} />);

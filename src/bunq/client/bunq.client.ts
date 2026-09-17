@@ -282,9 +282,9 @@ export type BunqSessionResult = { sessionToken: string; userId: string; sessionT
  * (coordinator's live verification pass): since bunq's 2020 signing change,
  * the request BODY must be signed with the client's RSA private key for
  * THIS call specifically (mandatory here and for a payment POST — this
- * read-only app never makes one). PRODUCTION therefore genuinely needs the
- * concrete `BunqCrypto` binding (see `src/bunq/crypto/bunq-crypto.ts`'s
- * stub); a SANDBOX/hermetic caller may instead pass `sandboxTestSignature:
+ * read-only app never makes one). PRODUCTION uses the concrete node-forge
+ * `BunqCrypto` binding (see `src/bunq/crypto/node-forge-crypto.ts`); a
+ * SANDBOX/hermetic caller may instead pass `sandboxTestSignature:
  * true` to send the documented `X-Bunq-Client-Signature:
  * IGNORE_ONLY_FOR_TESTING` shortcut header, which bypasses the SIGNATURE
  * only — `installClient` above still needs a real keypair either way.

@@ -311,10 +311,6 @@ export const en = {
       'Create the API key in the bunq app under Profile > Security & Privacy > Developers > API keys.',
     bunqApiKeyPlaceholder: 'bunq API key',
     bunqConnected: 'bunq connected',
-    // Graceful, translated stand-in for the unwired `defaultBunqCrypto` RSA
-    // binding (see `src/bunq/crypto/bunq-crypto.ts`) — shown on the UI error
-    // line instead of that stub's raw internal dev-reason string.
-    bunqNotYetAvailable: 'bunq connections are not available yet.',
     bunqPaymentPageCapReached:
       "bunq sync: account {{accountId}}'s payment history exceeds the {{maxPages}}-page fetch cap before reaching the sync window's start; the window will be retried.",
     bunqRateLimited: 'bunq is rate-limiting requests right now. Please try again shortly.',
