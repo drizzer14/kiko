@@ -13,7 +13,7 @@ export const styles = StyleSheet.create((theme) => ({
   // column, on the same vertical center too.
   input: {
     height: theme.spacing(11),
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(3),

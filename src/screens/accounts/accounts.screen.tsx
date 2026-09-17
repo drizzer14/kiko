@@ -11,6 +11,7 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import Box from '../../design-system/components/box';
+import Card from '../../design-system/components/card';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
@@ -23,7 +24,6 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
-import GlassSurface from '../../design-system/components/glass-surface';
 import EntityIconTile from '../../design-system/components/entity-icon-tile';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
@@ -145,15 +145,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     deletable={!isSyncedAccount(item)}
                     onDelete={() => accountsRepo.remove(item.id)}
                   >
-                    <GlassSurface
+                    <Card
                       testID="account-card"
                       padding={4}
-                      bordered
-                      // The card itself is a neutral frosted surface — the same
-                      // `transparent` treatment every other neutral list row/card
-                      // uses — since the entity color now lives on the icon tile
-                      // (see `EntityIconTile`) instead of the whole card.
-                      transparent
+                      // The card itself is the shared solid content-layer
+                      // surface — the entity color lives on the icon tile (see
+                      // `EntityIconTile`) instead of the whole card.
                     >
                       <Pressable
                         accessibilityRole="button"
@@ -180,7 +177,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                         </Box>
                         <MoneyText money={balance} context="balance" />
                       </Pressable>
-                    </GlassSurface>
+                    </Card>
                   </CardContextMenu>
                 );
               }}

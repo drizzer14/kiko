@@ -13,7 +13,7 @@ import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Screen from '../../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../../navigation/types';
-import GlassSurface from '../../../design-system/components/glass-surface';
+import Card from '../../../design-system/components/card';
 import CurrencyField from '../../../design-system/components/currency-field';
 import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
 import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
@@ -100,7 +100,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         </Box>
       }
     >
-      {/* Each setting is its own GlassSurface card, mirroring the Accounts
+      {/* Each setting is its own Card, mirroring the Accounts
           list — the Box gap gives the vertical space between cards. For now,
           if more settings appear that belong together they can be grouped back
           into a shared card; until then one-card-per-setting keeps them
@@ -109,14 +109,14 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* The System sub-page groups system-level preferences (Language, Color
             Scheme, Face ID) away from the finance settings below. It sits at the
             very top as a navigating row that pushes the System screen. */}
-        <GlassSurface testID="settings-card-system" padding={3} transparent bloom>
+        <Card testID="settings-card-system" padding={3}>
           <SettingsRow
             testID="settings-row-system"
             icon="gearshape"
             label={t('settings.system')}
             onPress={() => navigation.navigate('System')}
           />
-        </GlassSurface>
+        </Card>
 
         {/* The base currency is FIAT-ONLY: it drives every net-worth conversion,
             so a crypto base (BTC) is not selectable here. The field reuses the
@@ -126,7 +126,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             every other settings row; `hideLabel` suppresses CurrencyField's own
             inline caption so "Base Currency" is not shown twice, while the label
             still titles the picker sheet. */}
-        <GlassSurface testID="settings-card-base-currency" padding={3} transparent bloom>
+        <Card testID="settings-card-base-currency" padding={3}>
           <SettingsRow icon="hryvniasign.circle" label={t('settings.baseCurrency')}>
             <CurrencyField
               testID="settings-row-base-currency"
@@ -137,16 +137,16 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
               options={fiatCurrencyOptions}
             />
           </SettingsRow>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="settings-card-categories" padding={3} transparent bloom>
+        <Card testID="settings-card-categories" padding={3}>
           <SettingsRow
             testID="settings-row-categories"
             icon="tag"
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />
-        </GlassSurface>
+        </Card>
       </Box>
     </Screen>
   );

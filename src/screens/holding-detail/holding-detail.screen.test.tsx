@@ -451,8 +451,8 @@ describe('HoldingDetailScreen', () => {
 
     const { getAllByTestId } = await renderScreen();
 
-    // Each ledger row is wrapped in a GlassSurface, matching the app's
-    // glass-card language, rather than a plain surface-filled box.
+    // Each ledger row is wrapped in the shared solid content-layer `Card`,
+    // matching the app's card language, rather than a plain surface-filled box.
     expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
   });
 

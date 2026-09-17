@@ -2,8 +2,8 @@ import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { Money } from '@kiko/currency/money';
 import { formatTime } from '@kiko/dates/format';
 import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import GlassSurface from '@kiko/design-system/components/glass-surface';
 import MoneyText from '@kiko/design-system/components/money-text';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import Text from '@kiko/design-system/components/text';
@@ -46,28 +46,13 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // resolves which from the transaction's own `source`, so the row only needs
   // to pass the id.
   //
-  // The card uses GlassSurface's `translucentStrong` variant — a stronger-
-  // translucent backdrop (`surfaceTranslucentStrong`) pinned UNDER the glass, so
-  // the card stays see-through but drifts LESS in lightness as the list scrolls.
-  // It is the deliberate middle ground between `material` (no backdrop, so the
-  // glass samples the live content and drifts most) and an opaque `tint` card.
-  // On device that backdrop bump alone was invisible under the live glass's own
-  // refraction, so `translucentStrong` also paints a neutral dark `wash` OVER
-  // the finished glass — see `GlassSurface`'s `translucentStrong` prop doc for
-  // the full mechanism.
-  //
-  // It also takes `bloom`, per the app-wide bloom rollout — this row is the
-  // one place the rollout deliberately keeps its accepted tradeoff explicit:
-  // `resolveBackdropFill` checks `bloom` BEFORE `translucentStrong`, so `bloom`
-  // WINS on the backdrop — the 0.80-alpha pin is removed and the glass goes
-  // back to live-sampling the real scrolling content behind the row (the exact
-  // drift `translucentStrong` exists to kill, now knowingly re-admitted here,
-  // per product decision, everywhere bloom applies). The dark `surfaceWashStrong`
-  // wash is UNCHANGED by this: `resolveWashFill` is driven by `translucentStrong`
-  // alone and never reads `bloom`, so it keeps painting over the now-backdrop-
-  // less, `'clear'`-effect glass — this is what keeps the row's text legible.
-  // COMBINE, not replace: the dark wash stays for legibility; only the
-  // anti-drift backdrop pin is traded away for bloom's live sample.
+  // The card is the shared solid content-layer `Card` — a flat, opaque
+  // `surface` fill with a defined border, no drift or legibility concern to
+  // manage while the list scrolls (unlike the `GlassSurface translucentStrong
+  // bloom` combination this row used before: Apple's iOS Human Interface
+  // Guidelines reserve Liquid Glass for the navigation layer, not scrolling
+  // content, so this row no longer needs a glass-material anti-drift pin or
+  // a legibility wash at all).
   //
   // The row wraps in the shared `CardContextMenu` (touch-and-hold to delete),
   // mirroring the holding-detail ledger: a manual row is deletable and routes
@@ -94,13 +79,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
       liftOnHold
     >
       <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
-        <GlassSurface
-          translucentStrong
-          bloom
-          padding={3}
-          testID="transaction-row"
-          style={styles.rowCard}
-        >
+        <Card padding={3} testID="transaction-row" style={styles.rowCard}>
           <Box gap={2}>
             <Box direction="row" style={styles.rowMain}>
               <Box direction="row" gap={2} style={styles.rowLead}>
@@ -140,7 +119,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
               )}
             </Box>
           </Box>
-        </GlassSurface>
+        </Card>
       </Pressable>
     </CardContextMenu>
   );

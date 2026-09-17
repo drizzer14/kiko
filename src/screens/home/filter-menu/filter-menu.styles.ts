@@ -6,7 +6,7 @@ export const styles = StyleSheet.create((theme) => ({
   // chrome so the three filter controls read as one consistent row.
   button: {
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.surface,

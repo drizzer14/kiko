@@ -1,14 +1,11 @@
-import Clipboard from '@react-native-clipboard/clipboard';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Pressable } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import Text from '../../../design-system/components/text';
-import TextField from '../../../design-system/components/text-field';
 import { styles } from '../account-detail.styles';
+import Box from '../../../design-system/components/box';
+import ClipboardTextField from '../clipboard-text-field';
+import Text from '../../../design-system/components/text';
 
 import type { MonobankTokenInputProps } from './monobank-token-input.props';
 
@@ -23,16 +20,9 @@ const MONOBANK_API_URL = 'https://api.monobank.ua/';
 // rather than drifting as two hand-rolled copies.
 const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
 
   const handleOpenMonobank = (): void => {
     Linking.openURL(MONOBANK_API_URL);
-  };
-
-  const handlePasteToken = (): void => {
-    Clipboard.getString().then((clipboardValue) => {
-      onChangeText(clipboardValue.trim());
-    });
   };
 
   return (
@@ -48,29 +38,14 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         </Text>
       </Pressable>
 
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.tokenLabel')}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={t('accountDetail.monobankTokenPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteToken}
-        />
-      </Box>
+      <ClipboardTextField
+        label={t('accountDetail.tokenLabel')}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={t('accountDetail.monobankTokenPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
+        secureTextEntry
+      />
     </Box>
   );
 };

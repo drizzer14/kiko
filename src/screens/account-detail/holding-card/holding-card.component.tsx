@@ -1,11 +1,10 @@
 import { Pressable } from 'react-native';
-import { type FC, useEffect, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { FC } from 'react';
 
 import type { HoldingRow } from '../../../db/schema';
 import { formatMoney } from '../../../currency/format';
 import Box from '../../../design-system/components/box';
+import Card from '../../../design-system/components/card';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
 import { canConvert } from '../../../rates/net-worth-view';
@@ -16,8 +15,6 @@ import MoneyText from '../../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
-import type { AccountsStackParamList } from '../../../navigation/types';
-import GlassSurface from '../../../design-system/components/glass-surface';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';
@@ -33,6 +30,14 @@ import { styles } from './holding-card.styles';
 // page. A holding in a currency OTHER than the base (main) currency shows a
 // smaller converted base-currency value beneath its own-currency value, so the
 // user reads both figures; the account card already shows the base currency.
+//
+// This card used to carry a `settled`/`transitionEnd` remount workaround for a
+// `GlassSurface` (Liquid Glass) one-shot-layout bug on this pushed route: the
+// native glass locked its tint on the transient mid-slide frame. Now that this
+// is the shared solid `Card` (a plain `View` fill, no native glass material at
+// all — see `Card`'s own doc comment for why content no longer routes through
+// Liquid Glass), that class of bug cannot recur here, so the workaround is
+// gone with it.
 const HoldingCard: FC<{
   holding: HoldingRow;
   now: number;
@@ -51,47 +56,8 @@ const HoldingCard: FC<{
       ? convert(value, baseCurrency, rateTable)
       : null;
 
-  // WHY: HoldingCard mounts on the AccountDetail *pushed* route, so its glass
-  // first lays out mid-slide at PARTIAL width. The vendor LiquidGlassView
-  // (`@callstack/liquid-glass`) applies its native UIGlassEffect EXACTLY ONCE,
-  // on its first `layoutSubviews`, then locks — it never re-applies on a later
-  // tintColor change or a settled layout. So that one-shot lands against the
-  // transient mid-transition frame and the card's tint drifts. Account cards
-  // don't suffer this: they live on the persistent tab root and lock on settled
-  // geometry.
-  //
-  // FIX: hold `settled` false until the push slide-in finishes, then flip it
-  // true. The native stack emits `transitionEnd` (with `closing: false`) when
-  // the pushed screen finishes appearing — i.e. the card has reached its final
-  // full-width geometry. Flipping `settled` swaps the GlassSurface `key`, which
-  // unmounts the old native glass and mounts a fresh one, so its single, locking
-  // `layoutSubviews` now happens at the settled, full-width size. Returning the
-  // subscription's own unsubscribe cleans the listener up on unmount. If the
-  // screen ever mounts with no transition (already settled), the event simply
-  // never fires and the card stays on its initial glass — which in that case is
-  // already laid out at full width, so no remount is needed.
-  const navigation =
-    useNavigation<NativeStackNavigationProp<AccountsStackParamList, 'AccountDetail'>>();
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('transitionEnd', (e) => {
-      if (!e.data?.closing) {
-        setSettled(true);
-      }
-    });
-    return unsubscribe;
-  }, [navigation]);
-
   return (
-    <GlassSurface
-      key={settled ? 'settled' : 'initial'}
-      testID="holding-card"
-      padding={4}
-      bordered
-      // A neutral frosted surface, mirroring the accounts-list card — the entity
-      // color lives on the icon tile (see `EntityIconTile`), not the whole card.
-      transparent
-    >
+    <Card testID="holding-card" padding={4}>
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>
           <EntityIconTile
@@ -114,7 +80,7 @@ const HoldingCard: FC<{
           )}
         </Box>
       </Pressable>
-    </GlassSurface>
+    </Card>
   );
 };
 

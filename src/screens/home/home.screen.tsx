@@ -26,8 +26,8 @@ import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Card from '../../design-system/components/card';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
@@ -426,7 +426,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     // to avoid double-counting the gap below the last transaction row.
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
-        <GlassSurface transparent bloom padding={4} radius="lg">
+        <Card padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}
@@ -436,7 +436,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
               <CurrencyBreakdown items={breakdown} />
             </Box>
           </Box>
-        </GlassSurface>
+        </Card>
 
         {failures.length > 0 && (
           <Text variant="body" tone="negative">

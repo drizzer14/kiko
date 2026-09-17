@@ -27,7 +27,7 @@ export const styles = StyleSheet.create((theme) => ({
   // matching the icon chip's fixed square beside it.
   nameField: {
     color: theme.colors.textPrimary,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),

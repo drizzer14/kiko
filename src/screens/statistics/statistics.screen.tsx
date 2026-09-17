@@ -17,7 +17,7 @@ import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import GlassSurface from '../../design-system/components/glass-surface';
+import Card from '../../design-system/components/card';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -789,7 +789,7 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-line" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-line" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
@@ -802,9 +802,9 @@ const StatisticsScreen: FC = () => {
               loading={backfillStatus.state === 'loading'}
             />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-bar" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-bar" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.byType')}
@@ -812,9 +812,9 @@ const StatisticsScreen: FC = () => {
 
             <BarChart data={typeSlices} baseCurrency={baseCurrency} />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-pie" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-pie" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.accountContribution')}
@@ -822,9 +822,9 @@ const StatisticsScreen: FC = () => {
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-category" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-category" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.expensesByCategory')}
@@ -851,9 +851,9 @@ const StatisticsScreen: FC = () => {
               legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
             />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-trend" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-trend" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.spendingTrendByCategory')}
@@ -874,7 +874,7 @@ const StatisticsScreen: FC = () => {
               emptyLabel={t('statistics.noSpendingToShow')}
             />
           </Box>
-        </GlassSurface>
+        </Card>
       </Box>
     </Screen>
   );
