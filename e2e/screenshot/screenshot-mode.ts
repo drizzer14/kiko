@@ -5,7 +5,7 @@ import {
   SCREENSHOT_STABLE_GLASS,
 } from '@env';
 
-import { type AppLanguage, appLanguages } from '../i18n';
+import { type AppLanguage, appLanguages } from '../../src/i18n';
 
 /**
  * Which deterministic dataset the screenshot seed builds. `rich` (the default)

@@ -30,7 +30,7 @@
 # drifts 2-10% run-to-run — useless as a pixelmatch regression baseline
 # (check:screenshots would flake on tolerance alone). Every `*.stable`
 # ENVFILE sets SCREENSHOT_STABLE_GLASS=true, which `isStableGlass()`
-# (src/screenshot/screenshot-mode.ts) reads to swap every GlassSurface for a
+# (e2e/screenshot/screenshot-mode.ts) reads to swap every GlassSurface for a
 # fixed, opaque, non-refracting design-system surface
 # (src/design-system/components/glass-surface/glass-surface.component.tsx) —
 # no live LiquidGlass sampling, so the same screen renders byte-identical

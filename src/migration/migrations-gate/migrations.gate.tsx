@@ -96,15 +96,23 @@ const migratePerAccountBinanceCredential = async (): Promise<void> => {
  * (babel.config.js), this comparison constant-folds to `false`, and Metro's
  * constant-folding pass deletes the whole block — INCLUDING the `require` —
  * BEFORE dependency collection, exactly as it does for `if (__DEV__)
- * require(...)`. The screenshot seed and its fabricated dataset are therefore
- * never bundled into the shipping binary. The `require` is intentionally lazy
- * and lexically inside the guard for precisely this reason; a static import (or
- * a `require` behind an `isScreenshotMode()` CALL) would defeat the DCE.
+ * require(...)`. The screenshot seed and its fabricated real-brand demo
+ * dataset are therefore never bundled into the shipping binary. The `require`
+ * is intentionally lazy and lexically inside the guard for precisely this
+ * reason; a static import (or a `require` behind an `isScreenshotMode()`
+ * CALL) would defeat the DCE.
+ *
+ * A second, deeper 5.6 measure (2026-09-18): the seed module itself no longer
+ * lives under `src/` at all — it moved to `e2e/screenshot/seed/` so the
+ * fabricated real-brand data (Сільпо, Rozetka, Монобанк, ПриватБанк, …) is
+ * physically absent from app source, not merely build-time-folded out. This
+ * is the ONE place app `src/` reaches into `e2e/`; do not add a second one —
+ * see the Semgrep rule that enforces that.
  */
 const seedScreenshotDataIfEnabled = async (): Promise<void> => {
   if (SCREENSHOT_MODE === 'true') {
     const { seedScreenshotData } =
-      require('@kiko/screenshot/seed/screenshot-seed') as typeof import('@kiko/screenshot/seed/screenshot-seed');
+      require('../../../e2e/screenshot/seed/screenshot-seed') as typeof import('../../../e2e/screenshot/seed/screenshot-seed');
 
     await seedScreenshotData();
   }

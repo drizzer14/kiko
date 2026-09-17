@@ -1,6 +1,6 @@
-import { Money } from '../../currency/money';
-import { holdingValue } from '../../holdings/holding-value';
-import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
+import { Money } from '../../../src/currency/money';
+import { holdingValue } from '../../../src/holdings/holding-value';
+import { buildRateTable, guardedNetWorth } from '../../../src/rates/net-worth-view';
 
 import { buildScreenshotDataset } from './screenshot-seed';
 

@@ -1,6 +1,6 @@
 # EMPTY-scenario visual-regression flow. Captures the app's empty states: no
 # accounts, no holdings, no transactions, no rates, no history (see
-# `src/screenshot/seed/screenshot-seed.ts`'s `buildScreenshotDataset`,
+# `e2e/screenshot/seed/screenshot-seed.ts`'s `buildScreenshotDataset`,
 # `scenario === 'empty'` branch — the seed's `purge()` still keeps the 10
 # default categories and the single settings row, everything else is empty).
 #

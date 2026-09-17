@@ -6,7 +6,7 @@ import {
   holdings,
   syncState,
   transactions,
-} from '../../db/schema';
+} from '../../../src/db/schema';
 
 // The seed's purge runs `write(work)` and issues `tx.delete(table)` per table in
 // foreign-key order. Run the work against a fake transaction that records which
@@ -22,7 +22,7 @@ const mockFakeTx = {
   },
 };
 
-jest.mock('../../db/client', () => ({
+jest.mock('../../../src/db/client', () => ({
   write: (work: (tx: unknown) => Promise<unknown>) => work(mockFakeTx),
 }));
 

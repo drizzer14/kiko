@@ -295,4 +295,40 @@ verified usage, not dead weight:
   (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`),
   which returns only the connect-ready providers, so a release/App Store
   archive never shows a not-connect-ready provider.
+- **`e2e/screenshot/` — the screenshot/seed subsystem lives outside `src/`,
+  and `knip.json` needed NO new entry/ignore for it (2026-09-18, Guideline
+  5.6 remediation).** `screenshot-mode.ts` and `seed/screenshot-seed.ts`
+  (plus their colocated tests) moved from `src/screenshot/` to
+  `e2e/screenshot/` so the fabricated real-brand demo dataset (Сільпо,
+  Rozetka, Монобанк, ПриватБанк, and other real Ukrainian merchant/bank
+  names) is physically absent from app source, not merely folded out of the
+  Release bundle by a build-time `@env` guard (the DCE-only strip that
+  shipped in build 7 and was REJECTED under 5.6). Verified with a clean
+  `npx knip` run after the move: zero new unused-file/unused-export
+  findings, so `knip.json`'s `entry`/`project`/`ignore` needed no change.
+  Two reasons this stays clean with no config: (1) Knip's Jest plugin
+  already treats every file Jest's own (unmodified) default `testMatch`
+  matches as an entry point, and that default pattern is repo-wide, not
+  scoped to `src/` — `e2e/screenshot/**/*.test.ts` counts exactly like
+  `src/screenshot/**/*.test.ts` did before the move. (2) The seed
+  (`screenshot-seed.ts`) is still reachable from the app's real entry point
+  (`App.tsx`) through the ONE dynamic `require` in `MigrationsGate`
+  (`src/migration/migrations-gate/migrations.gate.tsx`,
+  `seedScreenshotDataIfEnabled`), which now points at a plain RELATIVE path
+  (`require('../../../e2e/screenshot/seed/screenshot-seed')`) instead of the
+  old `@kiko/screenshot/seed/screenshot-seed` alias — Knip follows a
+  string-literal dynamic `require` the same way it follows a static import,
+  so `screenshot-mode.ts`/`screenshot-seed.ts` stay in the reachable graph
+  and are never flagged unused. This is intentionally the ONLY reference
+  from `src/` into `e2e/`: it is gated behind `SCREENSHOT_MODE === 'true'`
+  (a dead branch in every real build — Metro's constant-folding deletes it,
+  including the `require`, before dependency collection) and is the single
+  documented exception the companion Semgrep "no demo/seed import from
+  `src/`" rule allows; do not add a second one. No `babel.config.js`,
+  `tsconfig.json`, or `jest.config.js` alias/path change was needed either:
+  the relocated files keep using the existing `@kiko/*` alias (→ `./src/*`)
+  for their own app-repo imports, which resolves identically regardless of
+  the importing file's own location, and the one cross-boundary `require`
+  above is a plain relative path that every resolver (Metro, ts-node/tsc,
+  Jest) already handles natively.
 

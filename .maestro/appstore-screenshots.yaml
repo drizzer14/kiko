@@ -82,7 +82,7 @@ appId: com.dmytro-vasylkivskyi.kiko
 # the stop offset is deterministic. `transaction-row` (transaction-
 # row.component.tsx) is NOT a unique per-row testID — every row shares it —
 # so the target is the row's own description TEXT instead. "Комунальні
-# послуги" (a recurring monthly utilities expense, src/screenshot/seed/
+# послуги" (a recurring monthly utilities expense, e2e/screenshot/seed/
 # screenshot-seed.ts's MONTHLY_EXPENSES) is rendered verbatim by
 # `transactionRowDescription` (a non-empty stored `description` always wins,
 # no localization/transform) and, grep-verified, is the sole

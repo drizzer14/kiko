@@ -8,7 +8,7 @@
 # avoid drift). This build sets `SCREENSHOT_SCENARIO=locked` in addition to
 # `SCREENSHOT_MODE`/`SCREENSHOT_STABLE_GLASS`/`SCREENSHOT_LANG`: the seed
 # builds the SAME rich dataset but forces `lockEnabled: true`
-# (`src/screenshot/seed/screenshot-seed.ts`), so `LockGate` finds the app
+# (`e2e/screenshot/seed/screenshot-seed.ts`), so `LockGate` finds the app
 # locked at the very first render, after `MigrationsGate` (which reads
 # settings, so it must succeed first) resolves.
 #

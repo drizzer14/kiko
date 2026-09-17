@@ -42,21 +42,26 @@ whatever content sits behind it (a chart, a scrolling list), so a
 marketing-build capture of the SAME screen drifts 2-10% run-to-run on
 chart/scroll-heavy screens — useless as a pixelmatch regression
 baseline, since the check would then flake on the glass material
-alone rather than catching a real UI regression. The fix is
-`isStableGlass()` (`src/screenshot/screenshot-mode.ts`), which reads
-`SCREENSHOT_STABLE_GLASS` (set only in the three `*.stable` ENVFILEs)
-and makes `GlassSurface`
+alone rather than catching a real UI regression. The fix is an inline
+`SCREENSHOT_MODE === 'true' && SCREENSHOT_STABLE_GLASS === 'true'`
+guard `GlassSurface`
 (`src/design-system/components/glass-surface/glass-surface.component.tsx`)
-render a fixed, opaque, non-LiquidGlass surface instead — no live
-sampling, so the same screen renders byte-identical pixels across
-runs. The marketing build never sets this flag, so it keeps the real
+reads directly from `@env` (set only in the three `*.stable`
+ENVFILEs) — the same two keys `isStableGlass()` in
+`e2e/screenshot/screenshot-mode.ts` reads; `GlassSurface` reads them
+inline rather than importing that module, per the Guideline 5.6
+remediation (app `src/` no longer imports the screenshot subsystem at
+all) — and makes `GlassSurface` render a fixed, opaque, non-LiquidGlass
+surface instead — no live sampling, so the same screen renders
+byte-identical pixels across runs. The marketing build never sets
+this flag, so it keeps the real
 bloom glass App Store screenshots are meant to showcase. Never point
 any `check:screenshots*` command at the marketing dir, and never treat
 a marketing capture as a valid regression baseline.
 
-**The 3 scenarios, what each seeds** (`src/screenshot/screenshot-mode.ts`'s
+**The 3 scenarios, what each seeds** (`e2e/screenshot/screenshot-mode.ts`'s
 `screenshotScenario()`, read from `SCREENSHOT_SCENARIO` — unset/`rich`
-by default; `src/screenshot/seed/screenshot-seed.ts`'s
+by default; `e2e/screenshot/seed/screenshot-seed.ts`'s
 `buildScreenshotDataset`):
 - **Rich** — the full marketing dataset (5 accounts, 5 holdings, 63
   transactions, 6 months of history), lock off. `.maestro/

@@ -1,3 +1,13 @@
+// DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 5.6
+// remediation, 2026-09-18): the fabricated real-brand demo dataset this module
+// builds (Сільпо, Rozetka, Монобанк, ПриватБанк, and other real Ukrainian
+// merchant/bank names) must not sit in app source at all, not merely be
+// build-time-folded out of the Release bundle. It is reached only from
+// `MigrationsGate`'s single gated, dead-branched `require` — see that file's
+// `seedScreenshotDataIfEnabled` — and from its own colocated Jest tests; no
+// app `src/` module imports it. It still imports app repos/schema/theme
+// (`@kiko/*` and `../../../src/*`) because it writes through the same
+// sanctioned repositories a real app write would use.
 import { ratesRepo } from '@kiko/rates/repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -5,6 +15,11 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
+import {
+  type ScreenshotScenario,
+  screenshotLanguage,
+  screenshotScenario,
+} from '../screenshot-mode';
 import {
   type AccountRow,
   accounts,
@@ -15,16 +30,11 @@ import {
   holdings,
   syncState,
   transactions,
-} from '../../db/schema';
-import {
-  type ScreenshotScenario,
-  screenshotLanguage,
-  screenshotScenario,
-} from '../screenshot-mode';
-import { write } from '../../db/client';
-import type { AppLanguage } from '../../i18n';
-import type { Currency } from '../../currency/currency';
-import { entityColorsDark } from '../../design-system/palette';
+} from '../../../src/db/schema';
+import { write } from '../../../src/db/client';
+import type { AppLanguage } from '../../../src/i18n';
+import type { Currency } from '../../../src/currency/currency';
+import { entityColorsDark } from '../../../src/design-system/palette';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT
