@@ -280,7 +280,7 @@ verified usage, not dead weight:
   writeup, including the untried mitigation (a gentler
   `scrollUntilVisible` `speed`) that could reclaim these 3 shots.
 - **`.env.test` (tracked, public-only test env file)**: a committed `.env`
-  variant that mirrors `.env.example` plus `SHOW_UNREADY_BANKS=true`.
+  variant that mirrors `.env.example`.
   `jest.config.js` defaults `ENVFILE` to it (`process.env.ENVFILE = process.env.ENVFILE || '.env.test'`),
   so a fresh checkout runs hermetic Jest tests with no hand-edited local
   `.env`; an explicit `ENVFILE` (the screenshot flows) still wins. Concrete
@@ -289,12 +289,15 @@ verified usage, not dead weight:
   machine was not proof of a fresh checkout; defaulting to a committed file
   makes them reproducible. Every value is public, non-secret config (same
   rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
-  Release safety is unchanged even though `.env.test` sets
-  `SHOW_UNREADY_BANKS=true`: the "add a bank" sheet still gates on
-  `visibleCatalogEntries(false)`
-  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`),
-  which returns only the connect-ready providers, so a release/App Store
-  archive never shows a not-connect-ready provider.
+  Updated 2026-09-18 (Guideline 5.6 remediation, Task 1): `.env.test` no
+  longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
+  visibility gate was removed outright, not merely defaulted off. The "add
+  a bank" sheet's `visibleCatalogEntries`
+  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
+  now takes no flag argument: it shows every wired-registry provider in the
+  catalog unconditionally, so there is nothing left for a test-env value to
+  gate. See the `kiko-architecture` skill's "Guideline 5.6 — no hidden
+  features" section for the standing rule this codifies.
 - **`e2e/screenshot/` — the screenshot/seed subsystem lives outside `src/`,
   and `knip.json` needed NO new entry/ignore for it (2026-09-18, Guideline
   5.6 remediation).** `screenshot-mode.ts` and `seed/screenshot-seed.ts`

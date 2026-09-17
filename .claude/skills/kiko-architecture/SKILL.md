@@ -9,6 +9,46 @@ Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Storage and migrations", "Data flow — reactive queries", "Data
 collection" sections). This skill summarizes the settled contract.
 
+## Guideline 5.6 — no hidden features
+
+Architectural, not a one-off cleanup: the App Store rejected Kiko
+1.0.0 build 7 under Guideline 5.6 ("features intentionally hidden
+during review") for a build-time `@env` flag that only folded a
+not-ready feature out of the Release bundle. The rule going forward:
+
+- Every feature ships VISIBLE to an App Store reviewer. There is no
+  flag-gated or conditional-visibility feature in a release build —
+  no `@env` flag or other build flag (a `SHOW_*`/`HIDE_*`-style
+  control) that gates whether a feature or UI is visible. A not-ready
+  feature is REMOVED from the build (its code paths gone), never
+  flag-hidden.
+- No demo/seed/screenshot/fake-data module lives in or is imported
+  from app `src/`. That dev/test machinery lives outside `src/` (see
+  `e2e/screenshot/`) and never ships.
+
+Mechanized lightweight, on purpose — not a heavy always-on
+build-a-bundle CI gate:
+
+- A Semgrep SOURCE rule, `kiko-no-hidden-feature-flag-or-demo-import`
+  (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
+  `npm run check:security`; its fixture pair is verified by
+  `npm run check:rules`). It flags (a) importing a `SHOW_*`/`HIDE_*`
+  `@env` flag, and (b) a static `import` whose specifier contains the
+  literal `e2e/` segment. KNOWN LIMITS, documented so a reader trusts
+  human review as the backstop rather than the rule alone: it does
+  NOT catch a differently-named visibility flag (e.g. `ENABLE_*`), and
+  it does NOT catch a demo/seed import reached through a path alias
+  that omits the `e2e/` substring.
+- A one-time archive-time grep of the built Release `main.jsbundle`
+  for the screenshot/demo symbols and fake-data literals — the
+  acceptance check recorded in
+  `docs/superpowers/plans/2026-09-15-strip-screenshot-subsystem-5.6-fix.md`.
+  This is a manual verification an agent re-runs at archive time (see
+  the `release` skill's Part B, step 7), not a standing CI step.
+
+Read `CLAUDE.md`'s "Guideline 5.6 — no hidden features" for the
+project-level pointer to this section.
+
 ## Storage: op-sqlite + Drizzle
 
 - `@op-engineering/op-sqlite` (^18.1.4) is the SQLite engine.

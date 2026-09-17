@@ -1,5 +1,10 @@
 # Bank Provider Integrations Implementation Plan
 
+> **Superseded (2026-09-18):** bunq, PrivatBank AutoClient, and Starling
+> bank-CONNECT were removed for the 1.0.0 Guideline 5.6 remediation; the app
+> ships Monobank-only connect. See `CLAUDE.md`'s "Guideline 5.6 — no hidden
+> features" and the `kiko-architecture` skill. This plan is historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Generalize Kiko's Monobank-only bank sync into a provider abstraction, add PrivatBank AutoClient as the second native (stored-credential) provider, and add one free aggregator for the foreign banks displaced Ukrainian users now hold accounts at — all surfaced through a single, honestly-labeled "add a bank" catalog screen.

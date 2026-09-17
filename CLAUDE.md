@@ -124,6 +124,18 @@ and UPDATE that file when you add, change, or rely on an exception. The
 standing rule holds: a suppression is acceptable only when it names a
 concrete reason a human or agent can verify (see "Override protocol" above).
 
+## Guideline 5.6 — no hidden features
+
+Standing architecture rule, not a one-off cleanup: every feature ships
+VISIBLE to an App Store reviewer in a release build — no flag-gated or
+conditional-visibility feature, and no demo/seed/screenshot module in
+or imported from app `src/`. The full rule, the mechanized Semgrep
+check (`kiko-no-hidden-feature-flag-or-demo-import`), and its known
+limits live in **`.claude/skills/kiko-architecture/SKILL.md`**
+("Guideline 5.6 — no hidden features"). Read that section before
+adding any build/env flag that controls what a user sees, or any
+dev-only demo/seed module.
+
 ## Dependency hygiene
 
 Exact-pinning, the `.npmrc` 7-day minimum age, the npm version
