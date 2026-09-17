@@ -34,6 +34,7 @@ describe('statementFormatIds', () => {
 describe('parser contract types', () => {
   it('accepts a ParsedTransaction with only its required fields set', () => {
     const transaction: ParsedTransaction = {
+      currency: 'UAH',
       amountMinorUnits: -1_000,
       timeSeconds: 1_700_000_000,
       description: 'Coffee',
@@ -48,7 +49,9 @@ describe('parser contract types', () => {
     const statement: ParsedStatement = {
       formatId: 'monobank-csv',
       account: { currency: 'UAH' },
-      transactions: [{ amountMinorUnits: 500, timeSeconds: 1, description: 'Refund' }],
+      transactions: [
+        { currency: 'UAH', amountMinorUnits: 500, timeSeconds: 1, description: 'Refund' },
+      ],
     };
 
     expect(statement.formatId).toBe('monobank-csv');

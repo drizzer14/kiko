@@ -16,8 +16,23 @@ jest.mock('../../db/client', () => {
   };
 });
 
+// The target holding's OWN currency (Task 3 review, CRITICAL fix) — mocked
+// directly at the repo boundary rather than through the real op-sqlite
+// connection, which `write`'s own mock above already bypasses. Defaults to a
+// single UAH `holding-1`, matching every pre-existing fixture below; a test
+// exercising a different holding currency reassigns this before calling
+// `importStatement`.
+let mockHoldingRows: { id: string; currency: string }[] = [{ id: 'holding-1', currency: 'UAH' }];
+jest.mock('@kiko/holdings/repo', () => ({
+  holdingsRepo: {
+    byIdQuery: (holdingId: string) =>
+      Promise.resolve(mockHoldingRows.filter((row) => row.id === holdingId)),
+  },
+}));
+
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { StatementParseError } from '../parser';
@@ -30,6 +45,35 @@ const fixtureText = readFileSync(
   'utf-8',
 );
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
+
+// The real synthetic PrivatBank fixture (Task 3, `privatbank-xlsx.format.test.ts`'s
+// own fixture-reading pattern) — its 2 resolvable rows are DIFFERENT
+// currencies (row 1: грн -> UAH; row 2: дол -> USD), so importing it exercises
+// the real multi-currency exclusion end to end, through the real
+// `detectFormat` -> `privatbankXlsxFormat.parse` pipeline, not a hand-built
+// `ParsedStatement`.
+const privatbankFixturePath = path.join(
+  __dirname,
+  '../formats/privatbank-xlsx/__fixtures__/synthetic-privatbank-sample.xlsx',
+);
+const readPrivatbankInput = async (): Promise<{
+  text: string;
+  fileName: string;
+  sheetRows: unknown[][];
+}> => {
+  const buffer = readFileSync(privatbankFixturePath);
+  const sheets = await readXlsxFile(buffer);
+
+  return {
+    text: '',
+    fileName: 'synthetic-privatbank-sample.xlsx',
+    sheetRows: sheets[0].data,
+  };
+};
+
+beforeEach(() => {
+  mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+});
 
 // Regression fixture for the occurrence-index bug: two rows identical on
 // (holding, time, amount, normalized description) — `computeDedupKey`'s own
@@ -194,5 +238,62 @@ describe('importStatement', () => {
     expect(store.transactions).toHaveLength(0);
 
     addManyDedup.mockRestore();
+  });
+
+  // Task 3 review, CRITICAL: a PrivatBank file can mix currencies per row
+  // (one card per currency) — importing it into a holding of ONE of those
+  // currencies must write ONLY the matching rows, at their EXACT amount, and
+  // exclude (never convert, never write verbatim) every other-currency row.
+  describe('multi-currency exclusion (no FX conversion, no cross-currency corruption)', () => {
+    it('imports only the UAH rows into a UAH holding, at their exact amount, and counts the rest as skipped', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      mockTx = makeAddManyDedupTx(store);
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+
+      const result = await importStatement(await readPrivatbankInput(), 'holding-1');
+
+      expect(result.formatId).toBe('privatbank-xlsx');
+      // 2 resolvable rows total (грн + дол); фунт is excluded upstream by the
+      // format's own `unresolvedRows` handling and never reaches `total`.
+      expect(result.total).toBe(2);
+      expect(result.imported).toBe(1);
+      expect(result.skippedWrongCurrency).toBe(1);
+      expect(store.transactions).toHaveLength(1);
+      // The exact UAH amount (row 1: "-123,45 грн") — not the USD row's
+      // 5_000 minor units, and not a corrupted cross-currency value.
+      expect(store.transactions[0].amountMinorUnits).toBe(-12_345);
+      expect(store.transactions.some((row) => row.amountMinorUnits === 5_000)).toBe(false);
+    });
+
+    it('imports only the USD row into a USD holding (the reverse split)', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      mockTx = makeAddManyDedupTx(store);
+      mockHoldingRows = [{ id: 'holding-1', currency: 'USD' }];
+
+      const result = await importStatement(await readPrivatbankInput(), 'holding-1');
+
+      expect(result.total).toBe(2);
+      expect(result.imported).toBe(1);
+      expect(result.skippedWrongCurrency).toBe(1);
+      expect(store.transactions).toHaveLength(1);
+      expect(store.transactions[0].amountMinorUnits).toBe(5_000);
+      expect(store.transactions.some((row) => row.amountMinorUnits === -12_345)).toBe(false);
+    });
+
+    it('throws when the target holding cannot be found, writing nothing', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      mockTx = makeAddManyDedupTx(store);
+      mockHoldingRows = [];
+      const addManyDedup = jest.spyOn(transactionsRepo, 'addManyDedup');
+
+      await expect(importStatement(monobankInput, 'missing-holding')).rejects.toThrow(
+        'Target holding not found: missing-holding',
+      );
+
+      expect(addManyDedup).not.toHaveBeenCalled();
+      expect(store.transactions).toHaveLength(0);
+
+      addManyDedup.mockRestore();
+    });
   });
 });

@@ -12,6 +12,17 @@ export type ParsedTransaction = {
    * `undefined` here is the NORMAL case, not a placeholder. The mapper (A.3)
    * synthesizes a deterministic key when this is absent (section D). */
   externalId?: string;
+  /** THIS ROW's own currency — REQUIRED (Task 3 review, CRITICAL fix). A
+   * single-currency format (every CSV shipped so far) sets the same file-wide
+   * currency on every row; a multi-currency format (PrivatBank XLSX, one row
+   * per card, each card potentially in a different currency) sets each row's
+   * own resolved currency. `import-statement.ts` compares this against the
+   * TARGET HOLDING's currency and excludes (never converts — Kiko has no FX)
+   * a row whose currency doesn't match, so a foreign-currency amount can
+   * never be written verbatim into a holding denominated in a different
+   * currency (e.g. a USD `50.00` minor-unit amount written as `5000` into a
+   * UAH holding, a ~40x silent corruption). */
+  currency: Currency;
   amountMinorUnits: number;
   timeSeconds: number;
   description: string;
@@ -39,16 +50,19 @@ export type ParsedAccountHint = {
 };
 
 /** A row this format's `parse` recognized structurally but could NOT fully
- * resolve to a domain `ParsedTransaction` — e.g. a PrivatBank currency word
- * this format's abbreviation map doesn't cover yet (section C.1, tagged
- * `[VERIFY LIVE]` — the 4-word map is known incomplete). Surfaced to the user
- * as a "confirm currency" prompt instead of being thrown (which would abort
- * the whole file) or silently dropped without a trace. */
-export type UnresolvedStatementRow = {
-  reason: 'unmapped-currency';
-  rawCurrency: string;
-  description: string;
-};
+ * resolve to a domain `ParsedTransaction` — surfaced to the user instead of
+ * being thrown (which would abort the whole file) or silently dropped
+ * without a trace. Two reasons, both from PrivatBank XLSX today:
+ * - `unmapped-currency` — a currency word this format's abbreviation map
+ *   doesn't cover yet (section C.1, tagged `[VERIFY LIVE]` — the 4-word map
+ *   is known incomplete).
+ * - `invalid-amount` — the amount cell didn't parse to a finite number (an
+ *   empty or malformed cell) — guards against ever computing a `NaN`
+ *   `amountMinorUnits` and writing it to the ledger (Task 3 review,
+ *   IMPORTANT fix). */
+export type UnresolvedStatementRow =
+  | { reason: 'unmapped-currency'; rawCurrency: string; description: string }
+  | { reason: 'invalid-amount'; description: string; rawAmount: string };
 
 export type ParsedStatement = {
   formatId: StatementFormatId;

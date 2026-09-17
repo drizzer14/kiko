@@ -17,6 +17,7 @@ import { StatementParseError } from '../../parser';
 import { parseAmount } from '../../../currency/parse';
 import { isCurrency } from '../../../currency/currency';
 import type { Currency } from '../../../currency/currency';
+import { parseDateTimeSeconds } from '../../parse-date-time';
 
 // The exact PrivatBank detect signature (section C.1): cell A1 of the
 // exported sheet starts with this title prefix. Row 1 is a merged A1:J1
@@ -52,36 +53,11 @@ export const CURRENCY_WORD_MAP: Record<string, string> = {
   PLN: 'PLN',
 };
 
-const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
-
 // A resolved spreadsheet cell read as plain text — `read-excel-file` yields
 // `null` for a genuinely blank cell (never `undefined`), which is not a valid
 // `String()` input for the merged-title row's trailing cells.
 const cellText = (value: SpreadsheetCellValue | undefined): string =>
   value === null || value === undefined ? '' : String(value);
-
-// `DD.MM.YYYY HH:MM:SS` combined wall-clock, parsed as UTC — the same
-// convention Monobank CSV uses (section C.1: "consistency").
-const parseDateTimeSeconds = (raw: string): number => {
-  const match = DATE_TIME_PATTERN.exec(raw.trim());
-
-  if (!match) {
-    throw new StatementParseError(`Unrecognized PrivatBank date/time: "${raw}"`);
-  }
-
-  const [, day, month, year, hour, minute, second] = match;
-
-  return (
-    Date.UTC(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second),
-    ) / 1000
-  );
-};
 
 const detect = (input: StatementFormatInput): boolean => {
   const titleCell = input.sheetRows?.[0]?.[0];
@@ -90,12 +66,16 @@ const detect = (input: StatementFormatInput): boolean => {
 };
 
 // One data row's outcome: either a fully resolved transaction (its card
-// currency mapped cleanly) or an unresolved row (an unmapped currency word) —
-// see `UnresolvedStatementRow`'s doc comment in `parser.ts` for why this is
-// surfaced rather than thrown or silently dropped.
+// currency mapped cleanly AND its amount parsed to a finite number) or an
+// unresolved row (an unmapped currency word, or an unparseable amount) — see
+// `UnresolvedStatementRow`'s doc comment in `parser.ts` for why this is
+// surfaced rather than thrown or silently dropped. `currency` is carried on
+// the unresolved variant too, WHEN it is known (an `invalid-amount` row still
+// resolved its currency word cleanly), so `parse` below can still learn the
+// account's currency from a row whose amount alone was bad.
 type RowOutcome =
   | { kind: 'resolved'; currency: Currency; transaction: ParsedTransaction }
-  | { kind: 'unresolved'; row: UnresolvedStatementRow };
+  | { kind: 'unresolved'; currency?: Currency; row: UnresolvedStatementRow };
 
 // MCC: PrivatBank's export carries none (section C.1) — every row maps to
 // `category: null` through the generic mapper (`mapParsedTransaction`), so
@@ -110,17 +90,29 @@ const parseDataRow = (row: SpreadsheetCellValue[]): RowOutcome => {
     return { kind: 'unresolved', row: { reason: 'unmapped-currency', rawCurrency, description } };
   }
 
+  // The CARD-currency amount pair, not the transaction-currency one (section
+  // C.1) — the latter is informational and deliberately dropped. Guards
+  // against ever computing a `NaN` `amountMinorUnits` (Task 3 review,
+  // IMPORTANT): an empty or malformed amount cell is routed to
+  // `unresolvedRows` instead, never written.
+  const rawAmount = cellText(row[COLUMN.cardAmount]);
+  const amountMajor = parseAmount(rawAmount);
+
+  if (!Number.isFinite(amountMajor)) {
+    return {
+      kind: 'unresolved',
+      currency: mappedCurrency,
+      row: { reason: 'invalid-amount', description, rawAmount },
+    };
+  }
+
   return {
     kind: 'resolved',
     currency: mappedCurrency,
     transaction: {
-      // The CARD-currency amount pair, not the transaction-currency one
-      // (section C.1) — the latter is informational and deliberately dropped.
-      amountMinorUnits: Money.fromMajor(
-        mappedCurrency,
-        parseAmount(cellText(row[COLUMN.cardAmount])),
-      ).minorUnits,
-      timeSeconds: parseDateTimeSeconds(cellText(row[COLUMN.date])),
+      currency: mappedCurrency,
+      amountMinorUnits: Money.fromMajor(mappedCurrency, amountMajor).minorUnits,
+      timeSeconds: parseDateTimeSeconds(cellText(row[COLUMN.date]), 'PrivatBank'),
       description,
       maskedCardHint: cellText(row[COLUMN.card]),
     },
@@ -138,6 +130,7 @@ const parse = (input: StatementFormatInput): ParsedStatement => {
 
     if (outcome.kind === 'unresolved') {
       unresolvedRows.push(outcome.row);
+      accountCurrency ??= outcome.currency;
       continue;
     }
 

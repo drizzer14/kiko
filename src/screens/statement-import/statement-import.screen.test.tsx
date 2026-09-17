@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
@@ -96,12 +96,17 @@ const multiCardParsedStatement: ParsedStatement = {
   account: { currency: 'UAH', maskedPan: '1111 **** **** 1111' },
   transactions: [
     {
+      currency: 'UAH',
       amountMinorUnits: -12_345,
       timeSeconds: 1_751_364_900,
       description: 'Test Merchant One',
       maskedCardHint: '1111 **** **** 1111',
     },
     {
+      // A different currency than row 1 — this file is BOTH multi-card AND
+      // multi-currency, exercising the preview's "detected currencies" list
+      // (Task 3 review, CRITICAL fix) as well as the masked-card hint.
+      currency: 'USD',
       amountMinorUnits: 5_000,
       timeSeconds: 1_751_455_845,
       description: 'Test Merchant Two',
@@ -302,5 +307,48 @@ describe('StatementImportScreen', () => {
 
     await waitFor(() => expect(mockImportStatement).toHaveBeenCalledTimes(1));
     expect(mockImportStatement).toHaveBeenCalledWith(expect.anything(), 'h1');
+  });
+
+  // Task 3 review, CRITICAL fix: a multi-currency file's preview must
+  // surface EVERY detected currency BEFORE the user picks a holding, so they
+  // can pick one that actually matches (`importStatement` excludes any row
+  // whose currency doesn't).
+  it("surfaces the file's multiple detected currencies in the preview", async () => {
+    mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
+
+    const { getByText, getByTestId } = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
+    expect(getByText(i18n.t('statementImport.detectedCurrenciesLabel'))).toBeTruthy();
+
+    const detectedCurrencies = within(getByTestId('statement-import-detected-currencies'));
+    expect(detectedCurrencies.getByText('UAH')).toBeTruthy();
+    expect(detectedCurrencies.getByText('USD')).toBeTruthy();
+  });
+
+  it('surfaces the skipped-wrong-currency count after a real import excludes some rows', async () => {
+    mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
+    mockImportStatement.mockResolvedValue({
+      formatId: 'privatbank-xlsx',
+      imported: 1,
+      total: 2,
+      skippedWrongCurrency: 1,
+    });
+
+    const { getByText, getByTestId } = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
+    await fireEvent.press(getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(getByText(i18n.t('statementImport.skippedWrongCurrency', { count: 1 }))).toBeTruthy(),
+    );
   });
 });

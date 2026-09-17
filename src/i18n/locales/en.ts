@@ -583,6 +583,20 @@ export const en = {
     unresolvedRowsSkipped_few: '{{count}} rows skipped: unrecognized currency',
     unresolvedRowsSkipped_many: '{{count}} rows skipped: unrecognized currency',
     unresolvedRowsSkipped_other: '{{count}} rows skipped: unrecognized currency',
+    // Shown above the preview's currency list ONLY when a file mixes more
+    // than one currency (a multi-card PrivatBank export, section C.1) —
+    // helps the user pick a holding that actually matches BEFORE importing,
+    // since `importStatement` excludes any row whose currency doesn't match
+    // the target holding's (Task 3 review, CRITICAL fix).
+    detectedCurrenciesLabel: 'This file contains multiple currencies:',
+    // Rows excluded from the write because their currency didn't match the
+    // target holding's — Kiko has no FX, so a mismatched row is excluded,
+    // never converted or written verbatim (see `ImportResult.skippedWrongCurrency`
+    // in import-statement.ts).
+    skippedWrongCurrency_one: '{{count}} row in a different currency was skipped',
+    skippedWrongCurrency_few: '{{count}} rows in a different currency were skipped',
+    skippedWrongCurrency_many: '{{count}} rows in a different currency were skipped',
+    skippedWrongCurrency_other: '{{count}} rows in a different currency were skipped',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

@@ -4,6 +4,7 @@ import type { ParsedTransaction } from '../parser';
 import { computeDedupKey, mapParsedTransaction } from './mapping';
 
 const groceryTransaction: ParsedTransaction = {
+  currency: 'UAH',
   amountMinorUnits: -4_599,
   timeSeconds: 1_700_000_000,
   description: 'ATB Market',
@@ -45,6 +46,7 @@ describe('mapParsedTransaction', () => {
 
   it('defaults counterIban and comment to null when the row carries neither', () => {
     const bare: ParsedTransaction = {
+      currency: 'UAH',
       amountMinorUnits: -100,
       timeSeconds: 1,
       description: 'Cafe',
@@ -86,6 +88,7 @@ describe('mapParsedTransaction', () => {
 // "no mcc" case above, to pin the PrivatBank-sourced expectation by name.
 describe('mapParsedTransaction (PrivatBank-sourced row, no mcc)', () => {
   const privatbankRow: ParsedTransaction = {
+    currency: 'UAH',
     amountMinorUnits: -12_345,
     timeSeconds: 1_751_364_900,
     description: 'Test Merchant One',

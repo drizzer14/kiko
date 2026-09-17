@@ -14,6 +14,7 @@ import { StatementParseError } from '../../parser';
 import { parseAmount } from '../../../currency/parse';
 import { isCurrency } from '../../../currency/currency';
 import type { Currency } from '../../../currency/currency';
+import { parseDateTimeSeconds } from '../../parse-date-time';
 
 // `—` (U+2014 em dash) marks an absent optional column (commission,
 // cashback, exchange rate) in Monobank's export — never an empty string.
@@ -32,8 +33,6 @@ const COLUMN = {
   mcc: 2,
   amount: 3,
 } as const;
-
-const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
 
 const isAbsentColumn = (value: string | undefined): boolean =>
   value === undefined || value === EM_DASH;
@@ -60,38 +59,26 @@ const detect = (input: StatementFormatInput): boolean => {
   return currency !== undefined && isCurrency(currency);
 };
 
-// `DD.MM.YYYY HH:MM:SS` wall-clock components, parsed as UTC — deterministic
-// and host-timezone-independent (docs/plans/statement-import.md section C.1).
-const parseDateTimeSeconds = (raw: string): number => {
-  const match = DATE_TIME_PATTERN.exec(raw.trim());
-
-  if (!match) {
-    throw new StatementParseError(`Unrecognized Monobank date/time: "${raw}"`);
-  }
-
-  const [, day, month, year, hour, minute, second] = match;
-
-  return (
-    Date.UTC(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second),
-    ) / 1000
-  );
-};
-
 const parseMcc = (raw: string | undefined): number | undefined =>
   isAbsentColumn(raw) ? undefined : Number(raw);
 
-const parseRowAmountMinorUnits = (raw: string, currency: Currency): number =>
-  Money.fromMajor(currency, parseAmount(raw)).minorUnits;
+// Guards against ever computing a `NaN` `amountMinorUnits` (Task 3 review,
+// IMPORTANT) — an empty or malformed amount cell throws the same way a bad
+// date cell already does, rather than silently writing `NaN` to the ledger.
+const parseRowAmountMinorUnits = (raw: string, currency: Currency): number => {
+  const major = parseAmount(raw);
+
+  if (!Number.isFinite(major)) {
+    throw new StatementParseError(`Unrecognized Monobank amount: "${raw}"`);
+  }
+
+  return Money.fromMajor(currency, major).minorUnits;
+};
 
 const parseRow = (row: string[], currency: Currency): ParsedTransaction => ({
+  currency,
   amountMinorUnits: parseRowAmountMinorUnits(row[COLUMN.amount], currency),
-  timeSeconds: parseDateTimeSeconds(row[COLUMN.date]),
+  timeSeconds: parseDateTimeSeconds(row[COLUMN.date], 'Monobank'),
   description: row[COLUMN.description],
   mcc: parseMcc(row[COLUMN.mcc]),
 });

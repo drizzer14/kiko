@@ -22,7 +22,9 @@ import { detectFormat } from '../../statement-import/registry';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
+import ImportOutcome from './import-outcome';
 import { styles } from './statement-import.styles';
+import PreviewDetailList from './preview-detail-list';
 import TargetHoldingSheet from './target-holding-sheet';
 import type { TargetHoldingOption } from './target-holding-sheet/target-holding-sheet.props';
 
@@ -164,6 +166,12 @@ type PreviewStats = {
   // currency word) — excluded from `transactionCount` above, but surfaced
   // here rather than silently dropped (controller ruling 2).
   unresolvedRowCount: number;
+  // Distinct currencies across every parsed row, in first-seen order (Task 3
+  // review, CRITICAL fix) — a multi-card PrivatBank export can mix
+  // currencies per row, and `importStatement` excludes any row whose
+  // currency doesn't match the target holding's, so the user needs this
+  // BEFORE picking a holding to pick one that actually matches.
+  detectedCurrencies: string[];
 };
 
 // The preview's transaction-count/date-span/currency block, derived from a
@@ -197,6 +205,9 @@ const previewStats = (
           .filter((hint): hint is string => hint !== undefined),
       ),
     );
+    const detectedCurrencies = Array.from(
+      new Set(parsed.transactions.map((transaction) => transaction.currency)),
+    );
 
     return {
       displayName: format.displayName,
@@ -205,6 +216,7 @@ const previewStats = (
       dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
       maskedCardHints,
       unresolvedRowCount: parsed.unresolvedRows?.length ?? 0,
+      detectedCurrencies,
     };
   } catch {
     // Any parse failure here — the documented `StatementParseError` a bad
@@ -360,19 +372,24 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             </Box>
 
             {stats.maskedCardHints.length > 0 && (
-              <Box gap={1} testID="statement-import-masked-cards">
-                {stats.maskedCardHints.map((hint) => (
-                  <Text key={hint} variant="body" tone="textSecondary">
-                    {hint}
-                  </Text>
-                ))}
-              </Box>
+              <PreviewDetailList
+                items={stats.maskedCardHints}
+                testID="statement-import-masked-cards"
+              />
             )}
 
             {stats.unresolvedRowCount > 0 && (
               <Text variant="body" tone="textSecondary">
                 {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
               </Text>
+            )}
+
+            {stats.detectedCurrencies.length > 1 && (
+              <PreviewDetailList
+                items={stats.detectedCurrencies}
+                label={t('statementImport.detectedCurrenciesLabel')}
+                testID="statement-import-detected-currencies"
+              />
             )}
 
             <Button
@@ -391,20 +408,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
               {t('statementImport.importButton')}
             </Button>
 
-            {importError !== undefined && (
-              <Text variant="body" tone="negative">
-                {importError}
-              </Text>
-            )}
-
-            {importResult && (
-              <Text variant="body">
-                {t('statementImport.importedCount', {
-                  imported: importResult.imported,
-                  total: importResult.total,
-                })}
-              </Text>
-            )}
+            <ImportOutcome error={importError} result={importResult} />
           </Box>
         )}
       </Box>

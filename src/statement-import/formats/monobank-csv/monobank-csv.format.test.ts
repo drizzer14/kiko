@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 
+import { StatementParseError } from '../../parser';
+
 import { monobankCsvFormat } from './monobank-csv.format';
 
 // The real uabean fixture (C.4, NOTICE.md) — 4 real Monobank CSV rows, byte
@@ -14,6 +16,19 @@ const fixtureInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv'
 const unrelatedCsv = {
   text: 'Date,Amount,Description\n2024-01-01,-10.00,Coffee\n',
   fileName: 'other-bank-export.csv',
+};
+
+const MONOBANK_HEADER =
+  'Дата i час операції,Деталі операції,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта,Курс,Сума комісій (UAH),Сума кешбеку (UAH),Залишок після операції';
+
+// Regression fixture (Task 3 review, IMPORTANT): an empty/malformed amount
+// cell must never reach `Money.fromMajor` as `NaN` — `detect()` never
+// validates a data row, so a truncated/malformed export must fail loudly
+// (`StatementParseError`) out of `parse()` instead of silently writing a
+// `NaN` `amountMinorUnits` to the ledger.
+const malformedAmountInput = {
+  text: [MONOBANK_HEADER, '01.06.2023 12:00:00,Bad Amount,5411,,,UAH,—,—,—,1000'].join('\n'),
+  fileName: 'malformed-amount.csv',
 };
 
 describe('monobankCsvFormat.detect', () => {
@@ -65,5 +80,18 @@ describe('monobankCsvFormat.parse', () => {
     expect(last.timeSeconds).toBe(1_683_912_636);
     expect(last.description).toBe('Uklon');
     expect(last.mcc).toBe(4121);
+  });
+
+  it("carries the file's account currency on every parsed row", () => {
+    const parsed = monobankCsvFormat.parse(fixtureInput);
+
+    expect(parsed.transactions.every((transaction) => transaction.currency === 'UAH')).toBe(true);
+  });
+
+  // Task 3 review, IMPORTANT: an empty/malformed amount cell must never
+  // silently become a `NaN` `amountMinorUnits` written to the ledger —
+  // `parse()` throws instead, the same way a bad date cell already does.
+  it('throws a StatementParseError instead of writing a NaN amount for a malformed amount cell', () => {
+    expect(() => monobankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);
   });
 });

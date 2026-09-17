@@ -525,6 +525,11 @@ export const uk: typeof en = {
     unresolvedRowsSkipped_few: '{{count}} рядки пропущено: нерозпізнана валюта',
     unresolvedRowsSkipped_many: '{{count}} рядків пропущено: нерозпізнана валюта',
     unresolvedRowsSkipped_other: '{{count}} рядки пропущено: нерозпізнана валюта',
+    detectedCurrenciesLabel: 'Цей файл містить кілька валют:',
+    skippedWrongCurrency_one: '{{count}} рядок в іншій валюті пропущено',
+    skippedWrongCurrency_few: '{{count}} рядки в іншій валюті пропущено',
+    skippedWrongCurrency_many: '{{count}} рядків в іншій валюті пропущено',
+    skippedWrongCurrency_other: '{{count}} рядки в іншій валюті пропущено',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

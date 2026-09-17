@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-
 import readXlsxFile from 'read-excel-file/node';
 
 import type { SpreadsheetCellValue, StatementFormatInput } from '../../parser';
@@ -52,6 +51,44 @@ const nonMatchingSpreadsheetInput: StatementFormatInput = {
 const csvInput: StatementFormatInput = {
   text: 'Дата,Сума\n01.01.2024,100\n',
   fileName: 'not-a-spreadsheet.csv',
+};
+
+// Regression fixture (Task 3 review, IMPORTANT): a row whose amount cell is
+// empty/malformed must never reach `Money.fromMajor` as `NaN` — it is routed
+// to `unresolvedRows` as `invalid-amount` instead, the same "recoverable, not
+// thrown, not silently dropped" treatment `unmapped-currency` already gets.
+// Its currency word (`грн`) resolves cleanly, so `account.currency` still
+// resolves to `UAH` even though this is the file's only row.
+const invalidAmountInput: StatementFormatInput = {
+  text: '',
+  fileName: 'invalid-amount.xlsx',
+  sheetRows: [
+    [PRIVATBANK_TITLE_PREFIX, null, null, null, null, null, null, null, null, null],
+    [
+      'Дата',
+      'Категорія',
+      'Картка',
+      'Опис операції',
+      'Сума в валюті картки',
+      'Валюта картки',
+      'Сума в валюті транзакції',
+      'Валюта транзакції',
+      'Залишок на кінець періоду',
+      'Валюта залишку',
+    ],
+    [
+      '01.07.2025 10:15:00',
+      'Супермаркети',
+      '1111 **** **** 1111',
+      'Bad Amount Row',
+      '',
+      'грн',
+      '',
+      'UAH',
+      '0,00',
+      'грн',
+    ],
+  ],
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
@@ -123,6 +160,18 @@ describe('privatbankXlsxFormat.parse', () => {
     expect(parsed.account.currency).toBe('UAH');
   });
 
+  // Task 3 review, CRITICAL: each row must carry ITS OWN resolved currency —
+  // a multi-currency PrivatBank file mixes UAH and USD rows, and
+  // `import-statement.ts` relies on this per-row field to exclude a
+  // wrong-currency row instead of writing its amount verbatim into a
+  // differently-denominated holding.
+  it("carries each row's own resolved currency, not just the account's", async () => {
+    const parsed = privatbankXlsxFormat.parse(await fixtureInput());
+
+    expect(parsed.transactions[0].currency).toBe('UAH');
+    expect(parsed.transactions[1].currency).toBe('USD');
+  });
+
   it('reads the CARD-currency amount pair, not the transaction-currency one', async () => {
     const parsed = privatbankXlsxFormat.parse(await fixtureInput());
     const first = parsed.transactions[0];
@@ -183,5 +232,21 @@ describe('privatbankXlsxFormat.parse', () => {
     const input = await fixtureInput();
 
     expect(() => privatbankXlsxFormat.parse(input)).not.toThrow();
+  });
+
+  it('routes a row with an unparseable amount to unresolvedRows as invalid-amount, not a NaN write', () => {
+    const parsed = privatbankXlsxFormat.parse(invalidAmountInput);
+
+    expect(parsed.transactions).toHaveLength(0);
+    expect(parsed.unresolvedRows).toEqual([
+      { reason: 'invalid-amount', description: 'Bad Amount Row', rawAmount: '' },
+    ]);
+    // The row's currency word still resolved cleanly (грн), so the account
+    // currency is still known even though its only row was excluded.
+    expect(parsed.account.currency).toBe('UAH');
+  });
+
+  it('does not throw for a file whose only row is invalid-amount', () => {
+    expect(() => privatbankXlsxFormat.parse(invalidAmountInput)).not.toThrow();
   });
 });
