@@ -31,27 +31,31 @@ export const styles = StyleSheet.create((theme) => ({
   tokenFieldColumn: {
     flex: 1,
   },
-  // The token-entry row's default cross-axis alignment. The trailing paste
-  // button's OWN wrapper (`pasteButtonWrapper` below) now overrides this with
-  // `alignSelf: 'center'` so the button centers on the input instead, but
-  // `fieldRow` itself stays `flex-end` — other row content (a future trailing
-  // element with no override of its own) still bottom-anchors against the
-  // field's input row (the shared TextField sits below its caption label) by
-  // default.
-  fieldRow: {
-    alignItems: 'flex-end',
+  // `ClipboardTextField`'s own [input, paste button] row — the field's caption
+  // label now renders OUTSIDE this row entirely (see the component's own doc
+  // comment for why: centering against a row that also contained the label
+  // was the root cause of two earlier failed attempts to center the button on
+  // the input). With no label inside it, this row's only two children are the
+  // bare `TextField` (a fixed 44pt input box, `flex: 1`) and the paste
+  // button's wrapper — both fixed-height boxes with nothing else contributing
+  // height, so `alignItems: 'center'` centers the button's box exactly on the
+  // input's box, with no coordinate to compute or get wrong. Named `inputRow`,
+  // not `fieldRow`, because it deliberately no longer spans the whole labeled
+  // field the way it used to — grepped (2026-09-17): `ClipboardTextField` is
+  // this style's only consumer, so the rename is safe.
+  inputRow: {
+    alignItems: 'center',
   },
-  // The trailing paste-icon button's wrapper (`ClipboardTextField`): centers
-  // the button VERTICALLY against the whole row — in practice, against the
-  // TextField's input box, since the field's own caption label is the only
-  // other thing making the row taller than the button. This OVERRIDES
-  // `fieldRow`'s `alignItems: 'flex-end'` for just this one child (Yoga lets a
-  // child's own `alignSelf` win over its parent's `alignItems`). The wrapper
-  // still exists (rather than centering the `Button` directly) to isolate
-  // `Button`'s own `size="small"` `alignSelf: 'flex-start'` (button.styles.ts)
-  // from the row: unwrapped, `Button`'s own `alignSelf` would win over
-  // whatever this row applies, pinning it to the row's cross-axis start
-  // instead of taking this centered placement.
+  // The trailing paste-icon button's wrapper (`ClipboardTextField`). `Button`'s
+  // own `size="small"` sets `alignSelf: 'flex-start'` (button.styles.ts),
+  // which — left unwrapped — would win over `inputRow`'s `alignItems: 'center'`
+  // in Yoga (a child's own `alignSelf` always overrides its parent's
+  // `alignItems`) and pin the button to the row's cross-axis start instead.
+  // This wrapper's own `alignSelf: 'center'` is technically redundant with
+  // `inputRow`'s `alignItems: 'center'` today (an unset `alignSelf` would
+  // inherit the same value), but is kept EXPLICIT so this wrapper's placement
+  // stays centered even if `inputRow`'s own alignment ever changes for an
+  // unrelated reason — the one thing this style exists to guarantee.
   pasteButtonWrapper: {
     alignSelf: 'center',
   },

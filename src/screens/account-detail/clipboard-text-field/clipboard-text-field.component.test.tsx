@@ -31,6 +31,26 @@ describe('ClipboardTextField', () => {
     expect(getByLabelText('Paste from clipboard')).toBeTruthy();
   });
 
+  // The caption now renders through a standalone `FieldLabel` ABOVE the
+  // [input, button] row (see the component's own doc comment for why), so
+  // `TextField` itself is called with no `label` prop any more — its own
+  // `accessibilityLabel` default (`= label`, text-field.component.tsx) would
+  // otherwise silently resolve to `undefined`. This locks in that the input's
+  // accessible name still resolves to the field's label regardless.
+  it("preserves the input's accessible name as the field label even though TextField itself renders no caption", async () => {
+    const { getByLabelText, getByPlaceholderText } = await render(
+      <ClipboardTextField
+        label="Token"
+        value=""
+        onChangeText={jest.fn()}
+        placeholder="Monobank token"
+        pasteAccessibilityLabel="Paste from clipboard"
+      />,
+    );
+
+    expect(getByLabelText('Token')).toBe(getByPlaceholderText('Monobank token'));
+  });
+
   it('uses the Kiko UI clipboard glyph for the paste button', async () => {
     const { root } = await render(
       <ClipboardTextField
