@@ -258,6 +258,40 @@ export const en = {
     icon: '{{name}} icon',
     title: 'Accounts',
   },
+  // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
+  // about/dataProvided/eligibility triple per native provider, shown on the
+  // picker before any credential is entered.
+  addBank: {
+    monobank: {
+      about:
+        'Monobank is a Ukrainian mobile-only bank. Kiko connects with a personal API token you generate in the Monobank app.',
+      dataProvided:
+        'Balances, jars, and transaction history, refreshed automatically and on pull-to-refresh. Read-only — Kiko cannot move money.',
+      eligibility: 'Works with any personal Monobank account. No business or FOP account needed.',
+    },
+    privatbank: {
+      about:
+        "PrivatBank is Ukraine's largest bank. Kiko connects through its AutoClient API using a token and client ID from Privat24.",
+      dataProvided:
+        'Balances and transaction statements, refreshed the same way as Monobank. Read-only — Kiko cannot send payments.',
+      eligibility:
+        "Requires a Privat24 business or individual-entrepreneur (FOP) account with API access enabled from the 'API for developers' menu. A personal retail Privat24 account does not have this option.",
+    },
+    bunq: {
+      about:
+        'bunq is a European mobile bank. Kiko connects with a personal API key you generate in the bunq app.',
+      dataProvided: 'Balances and transaction history, read-only. Kiko cannot move money.',
+      eligibility:
+        'Works with a personal bunq account in the EU. You create the API key in the bunq app.',
+    },
+    starling: {
+      about:
+        'Starling is a UK digital bank. Kiko connects with a personal access token you create in the Starling developer portal.',
+      dataProvided: 'Account balance and transaction feed, read-only. Kiko cannot move money.',
+      eligibility:
+        'Works with a personal Starling account in the UK. You create a read-only token with account and balance access.',
+    },
+  },
   accountDetail: {
     addHolding: 'Add holding',
     addressLabel: 'Address',
