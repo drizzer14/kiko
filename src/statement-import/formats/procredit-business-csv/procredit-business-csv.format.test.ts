@@ -1,5 +1,3 @@
-import { StatementParseError } from '../../parser';
-import { FOP_BUSINESS_COLUMN_BASE } from '../fop-business-column-base';
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -8,6 +6,8 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
+import { StatementParseError } from '../../parser';
+import { FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 
@@ -46,6 +46,17 @@ const malformedDateInput = {
     '0000000001;000001;UA00000001;UAH;not-a-date;T_A;320984;АТ "ПроКредит банк";UA00000002;0000000002;Correspondent1;452607519;14.01.2000 11:21:00;100.00;;Bad date row;100.00',
   ].join('\n'),
   fileName: 'malformed-date.csv',
+};
+
+// Money-safety review: a row is a Дебет XOR Кредит row, never both — a row
+// carrying BOTH populated must throw rather than silently taking the debit
+// side and dropping the credit amount without a trace.
+const bothDebitAndCreditPopulatedInput = {
+  text: [
+    REAL_HEADER,
+    '0000000001;000001;UA00000001;UAH;15.01.2000 09:08:00;T_A;320984;АТ "ПроКредит банк";UA00000002;0000000002;Correspondent1;452607519;14.01.2000 11:21:00;100.00;100.00;Both populated row;100.00',
+  ].join('\n'),
+  fileName: 'both-debit-and-credit.csv',
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
@@ -157,6 +168,19 @@ describe('procreditBusinessCsvFormat.parse', () => {
     expect(parsed.account.currency).toBe('UAH');
   });
 
+  // The real fixture's `Рахунок` column spans TWO distinct accounts
+  // (`UA00000001` on rows 1-3 & 6, `UA00000007` on rows 4-5) — a single
+  // account export concatenated from more than one underlying account, the
+  // same shape Alfa business's own real fixture has (Controller ruling 3).
+  // `account.iban` must be undefined rather than silently picking the first
+  // row's account, unifying ProCredit/Ukrsib's shared core with Alfa's own
+  // behavior.
+  it('sets account.iban to undefined for the real fixture, which spans two distinct accounts', () => {
+    const parsed = procreditBusinessCsvFormat.parse(fixtureInput);
+
+    expect(parsed.account.iban).toBeUndefined();
+  });
+
   it('throws a StatementParseError instead of writing a NaN amount when both debit and credit are empty', () => {
     expect(() => procreditBusinessCsvFormat.parse(malformedAmountInput)).toThrow(
       StatementParseError,
@@ -165,5 +189,11 @@ describe('procreditBusinessCsvFormat.parse', () => {
 
   it('throws a StatementParseError for an unparseable DD.MM.YYYY HH:MM:SS date cell', () => {
     expect(() => procreditBusinessCsvFormat.parse(malformedDateInput)).toThrow(StatementParseError);
+  });
+
+  it('throws a StatementParseError instead of taking the debit side when both Дебет and Кредит are populated', () => {
+    expect(() => procreditBusinessCsvFormat.parse(bothDebitAndCreditPopulatedInput)).toThrow(
+      StatementParseError,
+    );
   });
 });

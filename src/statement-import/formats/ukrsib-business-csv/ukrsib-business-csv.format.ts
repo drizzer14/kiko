@@ -9,8 +9,7 @@
 // task-5-report.md).
 import type { StatementFormat } from '../../parser';
 
-import { createColumnarBusinessCsvFormat } from '../business-csv';
-import { FOP_BUSINESS_COLUMN_BASE } from '../fop-business-column-base';
+import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 // Section C.3: "Detect signature — file content matches the FULL literal
 // header line; fields are DOUBLE-QUOTED." **[VERIFY LIVE]** this exact

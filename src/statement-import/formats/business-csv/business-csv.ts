@@ -23,7 +23,12 @@ import type {
 import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
 import { parseDateTimeSeconds } from '../../parse-date-time';
-import { parseFiniteAmountMajor, readCsvRows, resolveRowCurrency } from './csv-row';
+import {
+  parseFiniteAmountMajor,
+  readDataRows,
+  resolveRowCurrency,
+  resolveSoleColumnValue,
+} from './csv-row';
 
 // Not exported — nothing outside this file references either type by name
 // (every call site passes an inline object literal to
@@ -54,7 +59,10 @@ type ColumnarBusinessCsvConfig = {
 // Controller ruling 1: the Дебет cell's raw text is UNSIGNED — negate it
 // manually; the Кредит cell is unsigned positive, no negation. Guards
 // against ever computing a NaN `amountMinorUnits` (Task 3 review precedent)
-// when both cells are empty/malformed.
+// when both cells are empty/malformed. A row carrying BOTH a debit AND a
+// credit is not a valid Дебет XOR Кредит row at all (money-safety review) —
+// silently preferring the debit side would drop the credit amount without a
+// trace, so this throws instead of guessing.
 const parseRowAmountMinorUnits = (
   row: string[],
   column: ColumnarBusinessCsvColumn,
@@ -63,6 +71,13 @@ const parseRowAmountMinorUnits = (
 ): number => {
   const debitRaw = row[column.debit];
   const creditRaw = row[column.credit];
+
+  if (debitRaw && creditRaw) {
+    throw new StatementParseError(
+      `${formatLabel} row carries both a Дебет ("${debitRaw}") and a Кредит ("${creditRaw}") amount`,
+    );
+  }
+
   const major = parseFiniteAmountMajor(debitRaw || creditRaw, formatLabel);
   const minorUnits = Money.fromMajor(currency, major).minorUnits;
 
@@ -98,18 +113,13 @@ export const createColumnarBusinessCsvFormat = (
     input.text.startsWith(config.detectSignature);
 
   const parse = (input: StatementFormatInput): ParsedStatement => {
-    const [, ...dataRows] = readCsvRows(input.text);
-    const firstRow = dataRows[0];
-
-    if (!firstRow) {
-      throw new StatementParseError(`${config.formatLabel} CSV has no data rows`);
-    }
+    const dataRows = readDataRows(input.text, config.formatLabel);
 
     return {
       formatId: config.id,
       account: {
-        currency: resolveRowCurrency(firstRow[config.column.currency], config.formatLabel),
-        iban: firstRow[config.column.account],
+        currency: resolveRowCurrency(dataRows[0][config.column.currency], config.formatLabel),
+        iban: resolveSoleColumnValue(dataRows, config.column.account),
       },
       transactions: dataRows.map((row) => parseDataRow(row, config.column, config.formatLabel)),
     };

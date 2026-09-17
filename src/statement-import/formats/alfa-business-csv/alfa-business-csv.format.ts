@@ -13,10 +13,15 @@ import type {
   StatementFormat,
   StatementFormatInput,
 } from '../../parser';
+import {
+  parseFiniteAmountMajor,
+  readDataRows,
+  resolveRowCurrency,
+  resolveSoleColumnValue,
+} from '../business-csv';
 import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
 import { parseDateTimeSeconds } from '../../parse-date-time';
-import { parseFiniteAmountMajor, readCsvRows, resolveRowCurrency } from '../business-csv';
 
 // Section C.3: "Detect signature — file content matches the FULL literal
 // header line" (unquoted, unlike Ukrsib business — verified against the real
@@ -111,32 +116,22 @@ const parseDataRow = (row: string[]): ParsedTransaction => {
   };
 };
 
-// Controller ruling 3: `account.iban` is undefined when the file spans
-// MULTIPLE distinct "Наш IBAN" values (the real fixture's own shape — rows
-// 1-5 carry one IBAN, rows 6-7 a different one, concatenated from two
-// accounts into one export). The account hint is only a non-binding
-// suggestion; the per-row currency filter is the real guard, so merging a
-// multi-account-same-currency file into one chosen holding is accepted v1
-// behavior — no per-account routing is built.
-const resolveAccountIban = (dataRows: string[][]): string | undefined => {
-  const ibans = new Set(dataRows.map((row) => row[COLUMN.ourIban]));
-
-  return ibans.size === 1 ? dataRows[0]?.[COLUMN.ourIban] : undefined;
-};
-
 const parse = (input: StatementFormatInput): ParsedStatement => {
-  const [, ...dataRows] = readCsvRows(input.text);
-  const firstRow = dataRows[0];
-
-  if (!firstRow) {
-    throw new StatementParseError(`${FORMAT_LABEL} CSV has no data rows`);
-  }
+  const dataRows = readDataRows(input.text, FORMAT_LABEL);
 
   return {
     formatId: 'alfa-business-csv',
     account: {
-      currency: resolveRowCurrency(firstRow[COLUMN.currency], FORMAT_LABEL),
-      iban: resolveAccountIban(dataRows),
+      currency: resolveRowCurrency(dataRows[0][COLUMN.currency], FORMAT_LABEL),
+      // Controller ruling 3: `account.iban` is undefined when the file spans
+      // MULTIPLE distinct "Наш IBAN" values (the real fixture's own shape —
+      // rows 1-5 carry one IBAN, rows 6-7 a different one, concatenated from
+      // two accounts into one export). The account hint is only a
+      // non-binding suggestion; the per-row currency filter is the real
+      // guard, so merging a multi-account-same-currency file into one
+      // chosen holding is accepted v1 behavior — no per-account routing is
+      // built.
+      iban: resolveSoleColumnValue(dataRows, COLUMN.ourIban),
     },
     transactions: dataRows.map(parseDataRow),
   };

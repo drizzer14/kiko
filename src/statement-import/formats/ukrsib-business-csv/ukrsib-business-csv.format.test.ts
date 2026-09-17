@@ -1,5 +1,3 @@
-import { StatementParseError } from '../../parser';
-import { FOP_BUSINESS_COLUMN_BASE } from '../fop-business-column-base';
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -8,6 +6,8 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
+import { StatementParseError } from '../../parser';
+import { FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 import { COLUMN, FULL_HEADER_LINE, OPERATSII_WORD, ukrsibBusinessCsvFormat } from '.';
 

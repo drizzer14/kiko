@@ -10,8 +10,7 @@
 // through deterministic counters/offsets, not the real values).
 import type { StatementFormat } from '../../parser';
 
-import { createColumnarBusinessCsvFormat } from '../business-csv';
-import { FOP_BUSINESS_COLUMN_BASE } from '../fop-business-column-base';
+import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
 // Section C.3: "Detect signature — file content starts with the first 59
 // characters of the header line (uabean's own truncation point, chosen to

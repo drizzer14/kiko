@@ -1,4 +1,3 @@
-import { StatementParseError } from '../../parser';
 import {
   alfaBusinessFixtureInput,
   monobankFixtureInput,
@@ -7,6 +6,7 @@ import {
   sensebankFixtureInput,
   ukrsibBusinessFixtureInput,
 } from '../format-test-fixtures';
+import { StatementParseError } from '../../parser';
 
 import {
   alfaBusinessCsvFormat,
@@ -192,6 +192,17 @@ describe('alfaBusinessCsvFormat.parse', () => {
     const parsed = alfaBusinessCsvFormat.parse(fixtureInput);
 
     expect(parsed.account.currency).toBe('GBP');
+  });
+
+  // The real fixture's `Наш IBAN` column spans TWO distinct accounts (rows
+  // 1-5 carry one IBAN, rows 6-7 a different one) — Controller ruling 3:
+  // `account.iban` must be undefined rather than silently picking the first
+  // row's IBAN. Behavior already existed; this locks it in with a real
+  // assertion.
+  it('sets account.iban to undefined for the real fixture, which spans two distinct IBANs', () => {
+    const parsed = alfaBusinessCsvFormat.parse(fixtureInput);
+
+    expect(parsed.account.iban).toBeUndefined();
   });
 
   it('throws a StatementParseError instead of writing a NaN amount for an empty Сума cell', () => {
