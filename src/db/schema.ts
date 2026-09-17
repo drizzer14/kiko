@@ -123,7 +123,7 @@ export const transactions = sqliteTable(
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
     // 'btc_wallet' still writes none.
     source: text('source', {
-      enum: ['manual', 'monobank', 'privatbank', 'bunq', 'btc_wallet', 'binance'],
+      enum: ['manual', 'monobank', 'privatbank', 'bunq', 'starling', 'btc_wallet', 'binance'],
     }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),

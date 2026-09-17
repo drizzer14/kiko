@@ -83,8 +83,10 @@ const mockSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockPrivatbankSync = jest.fn();
 const mockBunqSync = jest.fn();
+const mockStarlingSync = jest.fn();
 const mockUseSyncAction = jest.fn();
 const mockUseBunqSyncAction = jest.fn();
+const mockUseStarlingSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
@@ -94,6 +96,7 @@ const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
 const mockDisconnectPrivatbank = jest.fn();
 const mockDisconnectBunq = jest.fn();
+const mockDisconnectStarling = jest.fn();
 
 // HoldingCard (rendered inside this screen) subscribes to the native stack's
 // `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
@@ -114,17 +117,23 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-// `BankSyncSection` (real, unmocked here) calls `useSyncAction` TWICE per
-// render, ALWAYS in the same order (privatbank, then bunq — see
-// `bank-sync-section.component.tsx`), so a stable ODD/EVEN call-count parity
-// distinguishes the two results across however many renders one test
-// triggers — mirrors `bank-sync-section.component.test.tsx`'s own double.
+// `BankSyncSection` (real, unmocked here) calls `useSyncAction` THREE times
+// per render, ALWAYS in the same order (privatbank, bunq, starling — see
+// `bank-sync-section.component.tsx`), so a stable modulo-3 call-count parity
+// distinguishes the three results across however many renders one test
+// triggers — mirrors `bank-sync-section.component.test.tsx`'s own trio.
 let mockUseSyncActionCallCount = 0;
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
   useSyncAction: () => {
+    const parity = mockUseSyncActionCallCount % 3;
     mockUseSyncActionCallCount += 1;
-    return mockUseSyncActionCallCount % 2 === 1 ? mockUseSyncAction() : mockUseBunqSyncAction();
+
+    if (parity === 0) {
+      return mockUseSyncAction();
+    }
+
+    return parity === 1 ? mockUseBunqSyncAction() : mockUseStarlingSyncAction();
   },
 }));
 jest.mock('../../monobank/disconnect', () => ({
@@ -135,6 +144,9 @@ jest.mock('../../privatbank/disconnect', () => ({
 }));
 jest.mock('../../bunq/disconnect', () => ({
   disconnectBunq: (...args: unknown[]) => mockDisconnectBunq(...args),
+}));
+jest.mock('../../starling/disconnect', () => ({
+  disconnectStarling: (...args: unknown[]) => mockDisconnectStarling(...args),
 }));
 jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
@@ -317,6 +329,13 @@ describe('AccountDetailScreen', () => {
       sync: mockBunqSync,
     });
     mockDisconnectBunq.mockResolvedValue(undefined);
+    mockStarlingSync.mockResolvedValue(undefined);
+    mockUseStarlingSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockStarlingSync,
+    });
+    mockDisconnectStarling.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -965,6 +984,7 @@ describe('AccountDetailScreen', () => {
     expect(view.queryByText('Connect Monobank')).toBeNull();
     expect(view.queryByText('Connect PrivatBank')).toBeNull();
     expect(view.queryByText('Connect bunq')).toBeNull();
+    expect(view.queryByText('Connect Starling')).toBeNull();
 
     await fireEvent.press(view.getByText('Add a bank'));
 
@@ -972,6 +992,7 @@ describe('AccountDetailScreen', () => {
     expect(view.getByText('Monobank')).toBeTruthy();
     expect(view.getByText('PrivatBank')).toBeTruthy();
     expect(view.getByText('bunq')).toBeTruthy();
+    expect(view.getByText('Starling')).toBeTruthy();
   });
 
   it('renders the PrivatBank connect field after picking PrivatBank from the sheet', async () => {
@@ -1074,6 +1095,66 @@ describe('AccountDetailScreen', () => {
     await waitFor(() => expect(mockDisconnectBunq).toHaveBeenCalledWith('a'));
     expect(mockDisconnect).not.toHaveBeenCalled();
     expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+  });
+
+  it('renders the Starling connect field after picking Starling from the sheet', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-starling'));
+
+    expect(view.getByText('Connect Starling')).toBeTruthy();
+    expect(view.queryByText('Connect Monobank')).toBeNull();
+  });
+
+  it('shows the connected status block — Sync/Disconnect, no connect field — for a Starling-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+    expect(view.queryByText('Add a bank')).toBeNull();
+  });
+
+  it('re-syncs a Starling-connected account through the Starling sync action, not Monobank, PrivatBank, or bunq', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Sync'));
+
+    await waitFor(() => expect(mockStarlingSync).toHaveBeenCalledWith('a'));
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+    expect(mockBunqSync).not.toHaveBeenCalled();
+  });
+
+  it('routes Disconnect to disconnectStarling (not disconnectMonobank/disconnectPrivatbank/disconnectBunq) for a Starling-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'starling' })],
+      holdings: [],
+    });
+    const { getByText, getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByText('Disconnect'));
+    expect(getByText('Disconnect Starling')).toBeTruthy();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectStarling).toHaveBeenCalledWith('a'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+    expect(mockDisconnectBunq).not.toHaveBeenCalled();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {

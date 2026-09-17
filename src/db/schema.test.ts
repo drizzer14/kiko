@@ -7,6 +7,7 @@ describe('transactions.source enum', () => {
       'monobank',
       'privatbank',
       'bunq',
+      'starling',
       'btc_wallet',
       'binance',
     ]);

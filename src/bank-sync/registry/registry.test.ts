@@ -1,10 +1,13 @@
 import { hasToken } from '../../monobank/token';
+import { hasToken as hasStarlingToken } from '../../starling/token';
 import { disconnectBunq } from '../../bunq/disconnect';
 import { runSync as bunqRunSync } from '../../bunq/sync';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import { runSync as monobankRunSync } from '../../monobank/sync';
 import { disconnectPrivatbank } from '../../privatbank/disconnect';
 import { runSync as privatbankRunSync } from '../../privatbank/sync';
+import { disconnectStarling } from '../../starling/disconnect';
+import { runSync as starlingRunSync } from '../../starling/sync';
 import { hasCredentials as hasBunqCredentials } from '../../bunq/credentials';
 import { hasCredentials as hasPrivatbankCredentials } from '../../privatbank/credentials';
 
@@ -41,7 +44,13 @@ describe('bank provider registry', () => {
     expect(entry?.catalog.id).toBe('bunq');
   });
 
-  it('leaves the not-yet-implemented native providers absent', () => {
-    expect(bankProviderRegistry.starling).toBeUndefined();
+  it("wires the starling entry to Starling's existing exports, by identity", () => {
+    const entry: BankProviderRegistryEntry | undefined = bankProviderRegistry.starling;
+
+    expect(entry?.id).toBe('starling');
+    expect(entry?.runSync).toBe(starlingRunSync);
+    expect(entry?.hasCredentials).toBe(hasStarlingToken);
+    expect(entry?.disconnect).toBe(disconnectStarling);
+    expect(entry?.catalog.id).toBe('starling');
   });
 });

@@ -50,6 +50,8 @@ export type PrivatbankHolding = NewHolding & { privatbankId: string };
 
 export type BunqHolding = NewHolding & { bunqId: string };
 
+export type StarlingHolding = NewHolding & { starlingId: string };
+
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
@@ -408,6 +410,25 @@ export const holdingsRepo = {
     write(async (tx) => {
       for (const { bunqId, ...rest } of holdings) {
         await upsertByMetadataKey(tx, { ...rest, metadataField: 'bunqId', metadataKey: bunqId });
+      }
+    }),
+  /**
+   * Starling's counterpart of `upsertMonobankMany`/`upsertPrivatbankMany`/
+   * `upsertBunqMany`: upsert every account of ONE `/accounts` snapshot (with
+   * its freshly fetched balance) in a SINGLE transaction, so the reactive
+   * `holdings` callback fires ONCE per sync rather than once per account. A
+   * NEW function alongside the other three — deliberately NOT a
+   * generalization of any of them, per the task's constraint to leave the
+   * other providers' engines untouched.
+   */
+  upsertStarlingMany: (holdings: StarlingHolding[]) =>
+    write(async (tx) => {
+      for (const { starlingId, ...rest } of holdings) {
+        await upsertByMetadataKey(tx, {
+          ...rest,
+          metadataField: 'starlingId',
+          metadataKey: starlingId,
+        });
       }
     }),
   /**

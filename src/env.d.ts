@@ -11,6 +11,12 @@ declare module '@env' {
   // https://api.bunq.com/v1. Defaults to the sandbox base — see
   // `.env.example`'s own comment for the sandbox/production switch.
   export const BUNQ_API_ENDPOINT: string;
+  // Starling Bank v2 public API base URL (accounts, balance, and feed
+  // reads). COORDINATOR-VERIFIED against Starling's own docs: sandbox
+  // https://api-sandbox.starlingbank.com, production
+  // https://api.starlingbank.com. Defaults to the sandbox base — see
+  // `.env.example`'s own comment for the sandbox/production switch.
+  export const STARLING_API_ENDPOINT: string;
   // Base CoinGecko simple-price URL; the `ids`/`vs_currencies` query is built in
   // code from `src/rates/coingecko-ids` so the coin set cannot drift from a
   // stale committed `.env`.

@@ -1,4 +1,5 @@
 import { hasToken } from '../../monobank/token';
+import { hasToken as hasStarlingToken } from '../../starling/token';
 import type { BankProviderId } from '../provider';
 import { providerCatalog } from '../provider-catalog';
 import { disconnectBunq } from '../../bunq/disconnect';
@@ -8,6 +9,8 @@ import type { ProviderCatalogEntry } from '../provider-catalog';
 import { runSync as monobankRunSync } from '../../monobank/sync';
 import { disconnectPrivatbank } from '../../privatbank/disconnect';
 import { runSync as privatbankRunSync } from '../../privatbank/sync';
+import { disconnectStarling } from '../../starling/disconnect';
+import { runSync as starlingRunSync } from '../../starling/sync';
 import { hasCredentials as hasBunqCredentials } from '../../bunq/credentials';
 import { hasCredentials as hasPrivatbankCredentials } from '../../privatbank/credentials';
 
@@ -57,5 +60,12 @@ export const bankProviderRegistry: Partial<Record<BankProviderId, BankProviderRe
     runSync: bunqRunSync,
     hasCredentials: hasBunqCredentials,
     disconnect: disconnectBunq,
+  },
+  starling: {
+    id: 'starling',
+    catalog: catalogEntryFor('starling'),
+    runSync: starlingRunSync,
+    hasCredentials: hasStarlingToken,
+    disconnect: disconnectStarling,
   },
 };

@@ -11,14 +11,18 @@ const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockPrivatbankSync = jest.fn();
 const mockBunqSync = jest.fn();
+const mockStarlingSync = jest.fn();
 const mockUseSyncAction = jest.fn();
 const mockUseBunqSyncAction = jest.fn();
+const mockUseStarlingSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSavePrivatbankCredentials = jest.fn();
 const mockSaveBunqCredentials = jest.fn();
+const mockSaveStarlingToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
 const mockDisconnectPrivatbank = jest.fn();
 const mockDisconnectBunq = jest.fn();
+const mockDisconnectStarling = jest.fn();
 
 jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -28,17 +32,24 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-// The component calls `useSyncAction` twice per render, ALWAYS in the same
-// order (privatbank, then bunq — see `bank-sync-section.component.tsx`), so
-// a stable ODD/EVEN call-count parity distinguishes the two results across
-// however many renders one test triggers, without needing to inspect the
-// (anonymous, unnamed) run-function argument each call receives.
+// The component calls `useSyncAction` THREE times per render, ALWAYS in the
+// same order (privatbank, bunq, starling — see
+// `bank-sync-section.component.tsx`), so a stable modulo-3 call-count
+// parity distinguishes the three results across however many renders one
+// test triggers, without needing to inspect the (anonymous, unnamed)
+// run-function argument each call receives.
 let mockUseSyncActionCallCount = 0;
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
   useSyncAction: () => {
+    const parity = mockUseSyncActionCallCount % 3;
     mockUseSyncActionCallCount += 1;
-    return mockUseSyncActionCallCount % 2 === 1 ? mockUseSyncAction() : mockUseBunqSyncAction();
+
+    if (parity === 0) {
+      return mockUseSyncAction();
+    }
+
+    return parity === 1 ? mockUseBunqSyncAction() : mockUseStarlingSyncAction();
   },
 }));
 jest.mock('../../../monobank/token', () => ({
@@ -50,6 +61,9 @@ jest.mock('../../../privatbank/credentials', () => ({
 jest.mock('../../../bunq/credentials', () => ({
   saveApiKey: (...args: unknown[]) => mockSaveBunqCredentials(...args),
 }));
+jest.mock('../../../starling/token', () => ({
+  saveToken: (...args: unknown[]) => mockSaveStarlingToken(...args),
+}));
 jest.mock('../../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnectMonobank(...args),
 }));
@@ -59,7 +73,10 @@ jest.mock('../../../privatbank/disconnect', () => ({
 jest.mock('../../../bunq/disconnect', () => ({
   disconnectBunq: (...args: unknown[]) => mockDisconnectBunq(...args),
 }));
-// The three connect fields are tested on their own; here each collapses to
+jest.mock('../../../starling/disconnect', () => ({
+  disconnectStarling: (...args: unknown[]) => mockDisconnectStarling(...args),
+}));
+// The four connect fields are tested on their own; here each collapses to
 // one pressable that fires `onConnect` with a fixture, so the section's
 // wiring (which field renders, and where its `onConnect` result goes) is
 // what is under test.
@@ -103,6 +120,17 @@ jest.mock('../bunq-connect-field', () => {
     ),
   };
 });
+jest.mock('../starling-connect-field', () => {
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (
+      <Pressable accessibilityLabel="starling-field" onPress={() => onConnect('starling-token')}>
+        <Text>starling field</Text>
+      </Pressable>
+    ),
+  };
+});
 
 const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   id: 'a',
@@ -135,12 +163,20 @@ beforeEach(() => {
     error: undefined,
     sync: mockBunqSync,
   });
+  mockStarlingSync.mockResolvedValue(undefined);
+  mockUseStarlingSyncAction.mockReturnValue({
+    isSyncing: false,
+    error: undefined,
+    sync: mockStarlingSync,
+  });
   mockSaveToken.mockResolvedValue(undefined);
   mockSavePrivatbankCredentials.mockResolvedValue(undefined);
   mockSaveBunqCredentials.mockResolvedValue(undefined);
+  mockSaveStarlingToken.mockResolvedValue(undefined);
   mockDisconnectMonobank.mockResolvedValue(undefined);
   mockDisconnectPrivatbank.mockResolvedValue(undefined);
   mockDisconnectBunq.mockResolvedValue(undefined);
+  mockDisconnectStarling.mockResolvedValue(undefined);
 });
 
 describe('BankSyncSection — disconnected', () => {
@@ -155,6 +191,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('Monobank')).toBeTruthy();
     expect(view.getByText('PrivatBank')).toBeTruthy();
     expect(view.getByText('bunq')).toBeTruthy();
+    expect(view.getByText('Starling')).toBeTruthy();
   });
 
   it('renders the Monobank field after picking Monobank, and connecting saves the token then syncs', async () => {
@@ -214,6 +251,28 @@ describe('BankSyncSection — disconnected', () => {
     await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSavePrivatbankCredentials).not.toHaveBeenCalled();
+  });
+
+  it('renders the Starling field after picking Starling, and connecting saves the token then syncs via Starling', async () => {
+    const view = await render(<BankSyncSection account={bankAccount()} />);
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-starling'));
+
+    expect(view.getByText('starling field')).toBeTruthy();
+    expect(view.queryByText('monobank field')).toBeNull();
+    expect(view.queryByText('privatbank field')).toBeNull();
+    expect(view.queryByText('bunq field')).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('starling-field'));
+    });
+
+    expect(mockSaveStarlingToken).toHaveBeenCalledWith('a', 'starling-token');
+    await waitFor(() => expect(mockStarlingSync).toHaveBeenCalledWith('a'));
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSavePrivatbankCredentials).not.toHaveBeenCalled();
+    expect(mockSaveBunqCredentials).not.toHaveBeenCalled();
   });
 
   it('surfaces the active sync error below the field', async () => {
@@ -303,6 +362,35 @@ describe('BankSyncSection — connected', () => {
     await waitFor(() => expect(mockDisconnectBunq).toHaveBeenCalledWith('a'));
     expect(mockDisconnectMonobank).not.toHaveBeenCalled();
     expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+  });
+
+  it('shows Sync + Disconnect for a Starling-connected account, syncing through the Starling action', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'starling' })} />,
+    );
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    await fireEvent.press(view.getByText('Sync'));
+
+    await waitFor(() => expect(mockStarlingSync).toHaveBeenCalledWith('a'));
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+    expect(mockBunqSync).not.toHaveBeenCalled();
+  });
+
+  it('confirms and routes Disconnect to disconnectStarling for a Starling-connected account', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'starling' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    expect(view.getByText('Disconnect Starling')).toBeTruthy();
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectStarling).toHaveBeenCalledWith('a'));
+    expect(mockDisconnectMonobank).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
+    expect(mockDisconnectBunq).not.toHaveBeenCalled();
   });
 
   it('shows a syncing label while the active provider is syncing', async () => {

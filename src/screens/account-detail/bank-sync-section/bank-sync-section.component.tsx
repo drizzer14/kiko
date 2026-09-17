@@ -11,12 +11,14 @@ import {
   type BankProviderId,
 } from '../../../bank-sync/provider';
 import { saveToken } from '../../../monobank/token';
+import { saveToken as saveStarlingToken } from '../../../starling/token';
 import type { AccountRow } from '../../../db/schema';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { useLiveQuery } from '../../../db/use-live-query';
 import { runSync as bunqRunSync } from '../../../bunq/sync';
 import Button from '../../../design-system/components/button';
+import { runSync as starlingRunSync } from '../../../starling/sync';
 import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { runSync as privatbankRunSync } from '../../../privatbank/sync';
@@ -30,6 +32,7 @@ import BunqConnectField from '../bunq-connect-field';
 import { formatLastSyncAt } from '../format-last-sync';
 import MonobankConnectField from '../monobank-connect-field';
 import PrivatbankConnectField from '../privatbank-connect-field';
+import StarlingConnectField from '../starling-connect-field';
 
 type BankSyncSectionProps = {
   account: AccountRow;
@@ -59,10 +62,12 @@ type DisconnectCopy = {
   titleKey:
     | 'accountDetail.disconnectPrivatbank'
     | 'accountDetail.disconnectBunq'
+    | 'accountDetail.disconnectStarling'
     | 'accountDetail.disconnectMonobank';
   messageKey:
     | 'accountDetail.disconnectPrivatbankMessage'
     | 'accountDetail.disconnectBunqMessage'
+    | 'accountDetail.disconnectStarlingMessage'
     | 'accountDetail.disconnectMonobankMessage';
 };
 
@@ -90,6 +95,10 @@ const disconnectCopyByProviderId: Partial<Record<BankProviderId, DisconnectCopy>
   bunq: {
     titleKey: 'accountDetail.disconnectBunq',
     messageKey: 'accountDetail.disconnectBunqMessage',
+  },
+  starling: {
+    titleKey: 'accountDetail.disconnectStarling',
+    messageKey: 'accountDetail.disconnectStarlingMessage',
   },
 };
 
@@ -146,6 +155,9 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     privatbankRunSync({ targetAccountId }),
   );
   const bunqSync = useSyncAction((targetAccountId?: string) => bunqRunSync({ targetAccountId }));
+  const starlingSync = useSyncAction((targetAccountId?: string) =>
+    starlingRunSync({ targetAccountId }),
+  );
   // DATA-DRIVEN provider -> sync-action lookup (not a `=== 'privatbank'`
   // ternary), so a later native provider's own `useSyncAction` result adds
   // one entry here rather than growing a binary conditional. Falls back to
@@ -155,6 +167,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     monobank: monobankSync,
     privatbank: privatbankSync,
     bunq: bunqSync,
+    starling: starlingSync,
   };
   const { isSyncing, error, sync } =
     (activeProviderId ? syncActionByProviderId[activeProviderId] : undefined) ?? monobankSync;
@@ -198,6 +211,21 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectBunq = async (apiKey: string): Promise<boolean> => {
     try {
       await saveBunqCredentials(account.id, { apiKey });
+    } catch {
+      return false;
+    }
+
+    return sync(account.id);
+  };
+
+  // The Starling counterpart of `connectMonobank`: store the validated
+  // Personal Access Token to the Keychain, then run the first Starling
+  // sync. `StarlingConnectField` validates the token with `fetchAccounts`
+  // BEFORE calling this, so an invalid token never reaches
+  // `saveStarlingToken` — no orphaned Keychain item.
+  const connectStarling = async (token: string): Promise<boolean> => {
+    try {
+      await saveStarlingToken(account.id, token);
     } catch {
       return false;
     }
@@ -327,6 +355,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
     monobank: <MonobankConnectField onConnect={connectMonobank} />,
     privatbank: <PrivatbankConnectField onConnect={connectPrivatbank} />,
     bunq: <BunqConnectField onConnect={connectBunq} />,
+    starling: <StarlingConnectField onConnect={connectStarling} />,
   };
 
   return (

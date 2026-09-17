@@ -15,12 +15,12 @@ import type { AddBankProviderSheetProps } from './add-bank-sheet.props';
 /**
  * The catalog-driven "add a bank" picker: a `BottomSheet` listing every
  * `providerCatalog` entry that ALSO has a wired `bankProviderRegistry`
- * entry — a catalog entry with no registry wiring yet (e.g. bunq, Starling)
- * is described but not yet connectable, so it is filtered out rather than
- * shown as a dead-end row. Replaces the previous unconditional
- * `MonobankConnectField` render on `account-detail.screen.tsx` when the
- * account is disconnected; later provider tasks add a row here for free the
- * moment they wire a registry entry, with no change to this component.
+ * entry — a catalog entry with no registry wiring yet is described but not
+ * yet connectable, so it is filtered out rather than shown as a dead-end
+ * row. Replaces the previous unconditional `MonobankConnectField` render on
+ * `account-detail.screen.tsx` when the account is disconnected; a later
+ * provider task adds a row here for free the moment it wires a registry
+ * entry, with no change to this component.
  */
 const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismiss, onSelect }) => {
   const { t } = useTranslation();

@@ -3,7 +3,13 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { syncedMetadataFields } from '../holding-metadata';
 
 /** Every `accounts.institution` value that marks an account as owned by a sync. */
-const syncedInstitutions = ['monobank', 'privatbank', 'bunq', ...balanceProviderIds] as const;
+const syncedInstitutions = [
+  'monobank',
+  'privatbank',
+  'bunq',
+  'starling',
+  ...balanceProviderIds,
+] as const;
 
 export type SyncedInstitution = (typeof syncedInstitutions)[number];
 
