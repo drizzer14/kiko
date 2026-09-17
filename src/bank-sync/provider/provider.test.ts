@@ -32,61 +32,48 @@ describe('bank provider ids', () => {
   });
 });
 
-describe('provider account and statement shapes', () => {
-  it('accepts a well-formed single-bank ProviderAccount (no externalInstitutionId/countryCode)', () => {
-    const institution: ProviderInstitution = { name: 'Monobank' };
-    const account: ProviderAccount = {
+describe('provider contract shapes', () => {
+  // Compile-time only: `satisfies` fails `tsc` if a shape drifts
+  // incompatibly with `ProviderInstitution`/`ProviderAccount`/
+  // `ProviderStatementItem`/`BankProvider`, which is the entire point of
+  // this test — there is nothing behavioral to assert with `expect` about a
+  // literal that only echoes its own field values back.
+  it('type-checks a fixture against each provider contract shape', () => {
+    const institution = { name: 'Monobank' } satisfies ProviderInstitution;
+
+    ({
       externalAccountId: 'acc-1',
       institution,
       kind: 'card',
       name: 'Black card',
       currency: 'UAH',
       balanceMinorUnits: 100_00,
-    };
+    }) satisfies ProviderAccount;
 
-    expect(account.institution.externalInstitutionId).toBeUndefined();
-    expect(account.currency).toBe('UAH');
-  });
-
-  it('accepts a ProviderAccount whose currency Kiko cannot represent', () => {
-    const account: ProviderAccount = {
+    ({
       externalAccountId: 'acc-2',
-      institution: { name: 'Monobank' },
+      institution,
       kind: 'jar',
       name: 'Jar',
       currency: undefined,
       balanceMinorUnits: 0,
-    };
+    }) satisfies ProviderAccount;
 
-    expect(account.currency).toBeUndefined();
-  });
-
-  it('accepts a well-formed ProviderStatementItem', () => {
-    const item: ProviderStatementItem = {
+    ({
       externalAccountId: 'acc-1',
       externalStatementId: 'stmt-1',
       amountMinorUnits: -500,
       timeSeconds: 1_700_000_000,
       description: 'Coffee',
-    };
+    }) satisfies ProviderStatementItem;
 
-    expect(item.hold).toBeUndefined();
-    expect(item.amountMinorUnits).toBe(-500);
-  });
-});
-
-describe('BankProvider interface', () => {
-  it('is satisfiable by a minimal single-bank stub — the shape a real implementation targets', () => {
-    const stub: BankProvider<{ token: string }, { fetchImpl: typeof fetch }> = {
+    ({
       id: 'monobank',
       shape: 'single-bank',
       rateLimit: { intervalMs: 60_000 },
       maxWindowSeconds: 2_682_000,
       fetchAccounts: async () => [],
       fetchStatement: async () => [],
-    };
-
-    expect(stub.shape).toBe('single-bank');
-    expect(stub.rateLimit).toEqual({ intervalMs: 60_000 });
+    }) satisfies BankProvider<{ token: string }, { fetchImpl: typeof fetch }>;
   });
 });
