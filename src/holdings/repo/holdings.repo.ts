@@ -46,6 +46,8 @@ type SyncedHolding = NewHolding & {
 
 export type MonobankHolding = NewHolding & { monobankId: string };
 
+export type PrivatbankHolding = NewHolding & { privatbankId: string };
+
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
@@ -371,6 +373,24 @@ export const holdingsRepo = {
           ...rest,
           metadataField: 'monobankId',
           metadataKey: monobankId,
+        });
+      }
+    }),
+  /**
+   * PrivatBank's counterpart of `upsertMonobankMany`: upsert every account of
+   * ONE AutoClient accounts-list snapshot in a SINGLE transaction, so the
+   * reactive `holdings` callback fires ONCE per sync rather than once per
+   * account. A NEW function alongside `upsertMonobankMany` — deliberately NOT
+   * a generalization of Monobank's proven upsert, per the task's constraint
+   * to leave that function untouched.
+   */
+  upsertPrivatbankMany: (holdings: PrivatbankHolding[]) =>
+    write(async (tx) => {
+      for (const { privatbankId, ...rest } of holdings) {
+        await upsertByMetadataKey(tx, {
+          ...rest,
+          metadataField: 'privatbankId',
+          metadataKey: privatbankId,
         });
       }
     }),

@@ -593,6 +593,61 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 });
 
+describe('holdingsRepo.upsertPrivatbankMany (via the shared metadata-key helper)', () => {
+  const cardHolding = {
+    accountId: 'acc-bank',
+    name: 'Картка',
+    type: 'card' as const,
+    currency: 'UAH' as const,
+    balanceMinorUnits: 123_456,
+    metadata: { iban: 'UA000000000000000000000000000' },
+    privatbankId: 'UA000000000000000000000000000',
+  };
+
+  it('updates an existing account in place, merging privatbankId into its metadata', async () => {
+    const { tx, inserts, updates } = makeUpsertTx([{ id: 'h-card' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertPrivatbankMany([cardHolding]);
+
+    expect(inserts).toHaveLength(0);
+    expect(updates).toEqual([
+      {
+        balanceMinorUnits: 123_456,
+        metadata: {
+          iban: 'UA000000000000000000000000000',
+          privatbankId: 'UA000000000000000000000000000',
+        },
+      },
+    ]);
+  });
+
+  it('inserts a new account with privatbankId merged and sortOrder = max + 1 on a miss', async () => {
+    const { tx, inserts } = makeUpsertTx([], 0);
+    mockTx = tx;
+
+    await holdingsRepo.upsertPrivatbankMany([cardHolding]);
+
+    expect(inserts[0]).toMatchObject({
+      type: 'card',
+      sortOrder: 1,
+      metadata: {
+        iban: 'UA000000000000000000000000000',
+        privatbankId: 'UA000000000000000000000000000',
+      },
+    });
+  });
+
+  it('leaves Monobank holdings untouched — upsertPrivatbankMany writes only privatbankId', async () => {
+    const { tx, updates } = makeUpsertTx([{ id: 'h-card' }]);
+    mockTx = tx;
+
+    await holdingsRepo.upsertPrivatbankMany([cardHolding]);
+
+    expect(updates[0].metadata).not.toHaveProperty('monobankId');
+  });
+});
+
 describe('holdings remove', () => {
   it('deletes a manual holding and its transactions in one transaction', async () => {
     const store: Store = {

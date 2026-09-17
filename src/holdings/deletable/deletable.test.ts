@@ -10,6 +10,7 @@ describe('synced predicates', () => {
 
   it('flags every synced institution', () => {
     expect(isSyncedAccount({ institution: 'monobank' })).toBe(true);
+    expect(isSyncedAccount({ institution: 'privatbank' })).toBe(true);
     expect(isSyncedAccount({ institution: 'btc_wallet' })).toBe(true);
     expect(isSyncedAccount({ institution: 'binance' })).toBe(true);
     expect(isSyncedAccount({ institution: null })).toBe(false);
@@ -37,6 +38,12 @@ describe('isSyncedHolding', () => {
     expect(isSyncedHolding({ metadata: { iban: 'UA...' } }, { institution: 'monobank' })).toBe(
       false,
     );
+  });
+
+  it('flags a holding carrying a privatbankId while its account is connected', () => {
+    expect(
+      isSyncedHolding({ metadata: { privatbankId: 'acc-1' } }, { institution: 'privatbank' }),
+    ).toBe(true);
   });
 
   it('flags a holding carrying a walletAddress or a binanceAsset', () => {

@@ -2,47 +2,40 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
-import { useSync } from '@kiko/sync/use-sync';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, type ScrollViewInstance } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 
-import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import ConfirmSheet from '../../design-system/components/confirm-sheet';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import EditHeaderButton from '../../design-system/components/edit-header-button';
-import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
+import EntityHeaderIcon from '../entity-header-icon';
+import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
+import type { Currency } from '../../currency/currency';
+import EntityAmountHeader from '../entity-amount-header';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
+import { isSyncedHolding } from '../../holdings/deletable';
+import { sumByCurrency } from '../../rates/currency-totals';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
-import { isSyncedHolding } from '../../holdings/deletable';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
-import { disconnectMonobank } from '../../monobank/disconnect';
-import { saveToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { sumByCurrency } from '../../rates/currency-totals';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import EntityAmountHeader from '../entity-amount-header';
-import EntityHeaderIcon from '../entity-header-icon';
+import CardContextMenu from '../../design-system/components/card-context-menu';
+import EditHeaderButton from '../../design-system/components/edit-header-button';
+import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 
-import { styles } from './account-detail.styles';
-import CryptoSyncSection from './crypto-sync-section';
-import { formatLastSyncAt } from './format-last-sync';
 import HoldingCard from './holding-card';
-import MonobankConnectField from './monobank-connect-field';
+import { styles } from './account-detail.styles';
+import BankSyncSection from './bank-sync-section';
+import CryptoSyncSection from './crypto-sync-section';
 
 // The account's display identity for the view-only header: its stored icon (or
 // the kind default), and its effective color resolved through the SAME
@@ -72,11 +65,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  // The Monobank "last sync" line reads this account's OWN cursor from the
-  // per-connection `sync_state` table (de-globalized from `settings` — see the
-  // `syncState` table comment in `db/schema.ts`), so a second connection never
-  // shows another's time.
-  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(accountId), ['sync_state']);
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -123,59 +111,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   const isBankAccount = account?.kind === 'bank';
   const isCryptoAccount = account?.kind === 'crypto';
-  const isConnectedToMonobank = account?.institution === 'monobank';
-
-  const { isSyncing, error, sync } = useSync();
-  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
-  // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
-  const [disconnectPending, setDisconnectPending] = useState(false);
-
-  // The bank counterpart of the create-form's `connectMonobank` closure
-  // (`account-form.screen.tsx`): store the validated token to the Keychain
-  // (keyed by THIS account's id), then run the first sync. `MonobankConnectField`
-  // validates the token with `fetchClientInfo` BEFORE calling this, so an
-  // invalid token never reaches `saveToken` — no orphaned Keychain item. A save
-  // failure is caught here and surfaced to the field as a `false` result rather
-  // than an unhandled rejection; the token goes ONLY to the Keychain, never to
-  // the database or a log.
-  const connectMonobank = async (token: string): Promise<boolean> => {
-    try {
-      await saveToken(accountId, token);
-    } catch {
-      return false;
-    }
-    return sync(accountId);
-  };
-
-  // Disconnect is the required first step before a Monobank account can be
-  // deleted: it clears the connection and the stored Keychain token, turning the
-  // account manual (its data kept as a historical snapshot). Confirm first, since
-  // it discards the token. Once it resolves, the live query flips `institution`
-  // to null and the account becomes swipe-deletable on the accounts list.
-  const runDisconnect = async (): Promise<void> => {
-    try {
-      await disconnectMonobank(accountId);
-    } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
-    }
-  };
-
-  const confirmDisconnect = (): void => {
-    setDisconnectPending(true);
-  };
-
-  const cancelDisconnect = (): void => {
-    setDisconnectPending(false);
-  };
-
-  const disconnect = (): void => {
-    setDisconnectPending(false);
-    runDisconnect();
-  };
 
   // Every bank account shows the connect/sync affordance independently — there
-  // is no single-connection gate, so a second Monobank account can connect
-  // alongside the first (each binds its own per-account token and cursor).
+  // is no single-connection gate, so a second connection can connect
+  // alongside the first (each binds its own per-account credential and cursor).
   const showActionButton = isBankAccount;
 
   return (
@@ -212,76 +151,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           </>
         )}
 
-        {showActionButton && <Box style={styles.divider} />}
-
-        {showActionButton && (
-          <Box gap={3}>
-            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
-
-            {isConnectedToMonobank ? (
-              // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing
-              // equals the surrounding content container's gap={4}, keeping one
-              // even vertical rhythm. The Sync and Disconnect buttons themselves
-              // sit SIDE BY SIDE in the single actions row below, not stacked.
-              <Box gap={4} testID="monobank-sync-status-actions">
-                <Box direction="row" gap={2} style={styles.statusLine}>
-                  <SymbolIcon name="clock" tone="textSecondary" />
-                  <Text variant="body" tone="textSecondary">
-                    {t('accountDetail.lastSync', {
-                      // The DISPLAY stamp (moves on any run that imported rows,
-                      // including a partial failure), falling back to the pure
-                      // statement cursor for installs that predate the display
-                      // column (it reads null there).
-                      time: formatLastSyncAt(
-                        syncStateRows.at(0)?.lastSyncDisplayAt ??
-                          syncStateRows.at(0)?.lastSyncAt ??
-                          null,
-                        t,
-                      ),
-                    })}
-                  </Text>
-                </Box>
-                {/* Sync and Disconnect share a single row. Sync is the affirmative
-                    blue `primary` re-import CTA; Disconnect stays a neutral tonal
-                    action beside it — never blue. */}
-                <Box direction="row" gap={2} testID="monobank-sync-actions-row">
-                  <Button
-                    variant="primary"
-                    size="small"
-                    fullWidth={false}
-                    onPress={() => {
-                      sync(accountId);
-                    }}
-                    disabled={isSyncing}
-                    // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-                    // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-                    // `arrow.triangle.2.circlepath` on a pre-26 device automatically,
-                    // even through the shared Button's `icon` prop.
-                    icon="arrow.trianglehead.2.clockwise.rotate.90"
-                  >
-                    {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-                  </Button>
-                  <Button
-                    variant="secondaryTonal"
-                    size="small"
-                    fullWidth={false}
-                    onPress={confirmDisconnect}
-                    icon="lock.open"
-                  >
-                    {t('accountDetail.disconnectAction')}
-                  </Button>
-                </Box>
-              </Box>
-            ) : (
-              <MonobankConnectField onConnect={connectMonobank} />
-            )}
-          </Box>
-        )}
-
-        {error !== undefined && (
-          <Text variant="body" tone="negative">
-            {error}
-          </Text>
+        {showActionButton && account && (
+          <>
+            <Box style={styles.divider} />
+            <BankSyncSection account={account} />
+          </>
         )}
 
         <Box style={styles.divider} />
@@ -340,20 +214,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             />
           </Box>
         </Box>
-
-        {/* The Monobank Disconnect confirmation — the same shared themed
-            `ConfirmSheet` the grid-card long-press delete uses, replacing the
-            old native `Alert.alert`. A scrim/back dismiss behaves like Cancel. */}
-        <ConfirmSheet
-          visible={disconnectPending}
-          title={t('accountDetail.disconnectMonobank')}
-          message={t('accountDetail.disconnectMonobankMessage')}
-          confirmLabel={t('accountDetail.disconnectAction')}
-          onConfirm={disconnect}
-          onCancel={cancelDisconnect}
-          destructive
-          confirmTestID="monobank-disconnect-confirm"
-        />
       </Box>
     </Screen>
   );
