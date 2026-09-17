@@ -3,8 +3,11 @@ import { holdingsRepo, type PrivatbankHolding } from '@kiko/holdings/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { type Currency, currencyScale, isCurrency } from '../../currency/currency';
-import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
+import type {
+  PrivatbankAccount,
+  PrivatbankStatementItem,
+  PrivatbankStatementPage,
+} from '../privatbank.types';
 import { i18n } from '../../i18n';
 import {
   beginProgressSession,
@@ -14,14 +17,11 @@ import {
   registerWork,
   setFastPhaseDone,
 } from '../../monobank/sync-status';
+import { readCredentials } from '../credentials';
 import { createRequestGate, type RequestGate } from '../../monobank/throttle';
 import { fetchAccounts, fetchStatement, type RequestOptions } from '../client';
-import { readCredentials } from '../credentials';
-import type {
-  PrivatbankAccount,
-  PrivatbankStatementItem,
-  PrivatbankStatementPage,
-} from '../privatbank.types';
+import { type Currency, currencyScale, isCurrency } from '../../currency/currency';
+import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;

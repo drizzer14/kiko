@@ -119,6 +119,87 @@ describe('mapStatementItem', () => {
     expect(transaction.amountMinorUnits).toBe(1);
   });
 
+  // MONEY PARSING REGRESSION NET — the decimal-safe SUM->minor-units
+  // conversion is finance-critical; each branch of the algorithm
+  // (no-fraction, negative, whitespace, >2-decimal truncation, and the sign
+  // coming from TRANTYPE rather than SUM) gets its own case here, driven
+  // through the PUBLIC `mapStatementItem` path rather than exporting the
+  // private parser just to unit-test it in isolation.
+  describe('decimal-safe SUM parsing', () => {
+    it('parses a two-decimal SUM exactly ("12.34" -> 1234)', () => {
+      const transaction = mapStatementItem(
+        statementItem({ SUM: '12.34', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(transaction.amountMinorUnits).toBe(1234);
+    });
+
+    it('parses a one-decimal SUM, padding to the currency scale ("12.3" -> 1230)', () => {
+      const transaction = mapStatementItem(
+        statementItem({ SUM: '12.3', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(transaction.amountMinorUnits).toBe(1230);
+    });
+
+    it('parses a whole-number SUM with no fraction at all ("12" -> 1200)', () => {
+      const transaction = mapStatementItem(
+        statementItem({ SUM: '12', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(transaction.amountMinorUnits).toBe(1200);
+    });
+
+    it('takes the sign from TRANTYPE, not from a negative SUM: C is always +, D is always -', () => {
+      const credit = mapStatementItem(
+        statementItem({ SUM: '-12.34', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+      const debit = mapStatementItem(
+        statementItem({ SUM: '-12.34', TRANTYPE: 'D' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(credit.amountMinorUnits).toBe(1234);
+      expect(debit.amountMinorUnits).toBe(-1234);
+    });
+
+    it('trims leading/trailing whitespace around SUM (" 12.34 " -> 1234)', () => {
+      const transaction = mapStatementItem(
+        statementItem({ SUM: ' 12.34 ', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(transaction.amountMinorUnits).toBe(1234);
+    });
+
+    it('truncates a SUM with more than 2 decimals toward zero, past the currency scale ("12.345" -> 1234)', () => {
+      const transaction = mapStatementItem(
+        statementItem({ SUM: '12.345', TRANTYPE: 'C' }),
+        'holding-1',
+        'acc-1',
+        'UAH',
+      );
+
+      expect(transaction.amountMinorUnits).toBe(1234);
+    });
+  });
+
   it('defaults a missing description to an empty string and no counterparty account to null', () => {
     const { OSND: _osnd, ...withoutDescription } = statementItem();
     const transaction = mapStatementItem(
