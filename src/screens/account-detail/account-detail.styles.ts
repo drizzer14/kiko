@@ -31,12 +31,29 @@ export const styles = StyleSheet.create((theme) => ({
   tokenFieldColumn: {
     flex: 1,
   },
-  // The token-entry row: the field grows while its trailing paste icon button
-  // aligns to the field's input row (the shared TextField sits below its caption
-  // label), so the button lines up with the input rather than floating against
-  // the taller captioned block.
+  // The token-entry row's default cross-axis alignment. The trailing paste
+  // button's OWN wrapper (`pasteButtonWrapper` below) now overrides this with
+  // `alignSelf: 'center'` so the button centers on the input instead, but
+  // `fieldRow` itself stays `flex-end` — other row content (a future trailing
+  // element with no override of its own) still bottom-anchors against the
+  // field's input row (the shared TextField sits below its caption label) by
+  // default.
   fieldRow: {
     alignItems: 'flex-end',
+  },
+  // The trailing paste-icon button's wrapper (`ClipboardTextField`): centers
+  // the button VERTICALLY against the whole row — in practice, against the
+  // TextField's input box, since the field's own caption label is the only
+  // other thing making the row taller than the button. This OVERRIDES
+  // `fieldRow`'s `alignItems: 'flex-end'` for just this one child (Yoga lets a
+  // child's own `alignSelf` win over its parent's `alignItems`). The wrapper
+  // still exists (rather than centering the `Button` directly) to isolate
+  // `Button`'s own `size="small"` `alignSelf: 'flex-start'` (button.styles.ts)
+  // from the row: unwrapped, `Button`'s own `alignSelf` would win over
+  // whatever this row applies, pinning it to the row's cross-axis start
+  // instead of taking this centered placement.
+  pasteButtonWrapper: {
+    alignSelf: 'center',
   },
   // The link's touch target: hugs its text at the leading edge rather than
   // stretching across the column.

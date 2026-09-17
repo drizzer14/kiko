@@ -15,12 +15,17 @@ import type { ClipboardTextFieldProps } from './clipboard-text-field.props';
 // affordance, so this is the ONE place that pairs a `TextField` with the
 // paste-icon-only ghost `Button` convention (see `kiko-design-system`) rather
 // than four near-identical hand-rolled copies. The trailing Button is wrapped
-// in a bare `Box` (no props): `Button`'s `size="small"` sets its own
-// `alignSelf: 'flex-start'` (button.styles.ts), which — left unwrapped — wins
-// over the parent row's `alignItems: 'flex-end'` in Yoga and pins the button to
-// the row's TOP (level with the field's caption) instead of bottom-anchoring it
-// against the TextField's input box. The wrapper has no `alignSelf` of its own,
-// so it inherits `fieldRow`'s `alignItems: 'flex-end'` instead.
+// in a `Box` styled `pasteButtonWrapper` (`account-detail.styles.ts`):
+// `Button`'s `size="small"` sets its own `alignSelf: 'flex-start'`
+// (button.styles.ts), which — left unwrapped — would win over whatever this
+// row applies in Yoga, pinning the button to the row's cross-axis start
+// (level with the field's caption) instead of taking the wrapper's placement.
+// The wrapper's own `alignSelf: 'center'` then centers the button VERTICALLY
+// on the row — in practice, against the TextField's input box, since the
+// field's caption label above it is the only other thing making the row
+// taller than the button — overriding `fieldRow`'s own `alignItems:
+// 'flex-end'` for just this one child (on-device review: bottom-anchoring the
+// button read as sitting noticeably too low against the input).
 const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
   label,
   value,
@@ -51,7 +56,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
         />
       </Box>
 
-      <Box>
+      <Box style={styles.pasteButtonWrapper}>
         <Button
           variant="ghost"
           size="small"
