@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { monobankCsvFormat } from '../formats/monobank-csv';
 import { sensebankCsvFormat } from '../formats/sensebank-csv';
 import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
+import { alfaBusinessCsvFormat } from '../formats/alfa-business-csv';
+import { ukrsibBusinessCsvFormat } from '../formats/ukrsib-business-csv';
+import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
 
 import { detectFormat, statementFormats } from './registry';
 
@@ -14,8 +17,15 @@ const fixtureText = readFileSync(
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
 
 describe('statementFormats', () => {
-  it('registers exactly the Monobank CSV, PrivatBank XLSX, and Sensebank CSV formats in this phase', () => {
-    expect(statementFormats).toEqual([monobankCsvFormat, privatbankXlsxFormat, sensebankCsvFormat]);
+  it('registers exactly the Monobank CSV, PrivatBank XLSX, Sensebank CSV, and the three Phase 4 FOP/business CSV formats', () => {
+    expect(statementFormats).toEqual([
+      monobankCsvFormat,
+      privatbankXlsxFormat,
+      sensebankCsvFormat,
+      procreditBusinessCsvFormat,
+      ukrsibBusinessCsvFormat,
+      alfaBusinessCsvFormat,
+    ]);
   });
 });
 

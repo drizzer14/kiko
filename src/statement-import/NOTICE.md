@@ -26,6 +26,25 @@ otherwise) is copied into this repository.
   (`4111xxxxxxx1111`, the well-known `4111 1111 1111 1111` test-card
   prefix), and year-2000 dates confirm it is not real personal data
   (`docs/plans/statement-import.md` section C.4).
+- `src/statement-import/formats/procredit-business-csv/__fixtures__/uabean-procredit-business-sample.csv`
+  is a verbatim, byte-for-byte copy (cp1251-encoded, NOT re-encoded) of
+  uabean's own sample export, `tests/importers/procreditbank-business/procredit.csv`
+  — confirmed ANONYMIZED via uabean's own committed `anonymize.py` script
+  (EDRPOUs, IBANs, correspondent names, and dates all remapped through
+  deterministic counters/offsets, not the real values;
+  `docs/plans/statement-import.md` section C.4).
+- `src/statement-import/formats/alfa-business-csv/__fixtures__/uabean-alfa-business-sample.csv`
+  is a verbatim, byte-for-byte copy (cp1251-encoded, NOT re-encoded) of
+  uabean's own sample export,
+  `tests/importers/alfabank_business/ReportAlfa-Bank_20221005_124902.csv` —
+  confirmed SYNTHETIC (`XYZ COMPANY`/`JOHN DOE` placeholders, all-1s
+  IBANs/EDRPOU, literal `[REDACTED]` markers in description text;
+  `docs/plans/statement-import.md` section C.4).
+
+No uabean fixture exists for Ukrsibbank business/FOP CSV; its fixture
+(`src/statement-import/formats/ukrsib-business-csv/__fixtures__/synthetic-ukrsib-business-sample.csv`)
+is HAND-AUTHORED synthetic data (all-fake account/EDRPOU numbers, "Test
+Merchant" descriptions), not credited to uabean.
 
 Because the MIT license's core condition — "The above copyright notice
 and this permission notice shall be included in all copies or

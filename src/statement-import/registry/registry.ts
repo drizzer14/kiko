@@ -1,12 +1,18 @@
 import { monobankCsvFormat } from '../formats/monobank-csv';
 import { sensebankCsvFormat } from '../formats/sensebank-csv';
 import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
+import { alfaBusinessCsvFormat } from '../formats/alfa-business-csv';
 import type { StatementFormat, StatementFormatInput } from '../parser';
+import { ukrsibBusinessCsvFormat } from '../formats/ukrsib-business-csv';
+import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
 
 export const statementFormats: StatementFormat[] = [
   monobankCsvFormat,
   privatbankXlsxFormat,
   sensebankCsvFormat,
+  procreditBusinessCsvFormat,
+  ukrsibBusinessCsvFormat,
+  alfaBusinessCsvFormat,
 ];
 
 /**

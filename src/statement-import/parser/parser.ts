@@ -76,10 +76,20 @@ export type ParsedStatement = {
 };
 
 /** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 added
- * PrivatBank XLSX; Phase 3 adds Sensebank CSV. Every other bank studied for
- * this plan lands in its own later phase and is deliberately NOT listed here
- * yet. */
-export const statementFormatIds = ['monobank-csv', 'privatbank-xlsx', 'sensebank-csv'] as const;
+ * PrivatBank XLSX; Phase 3 added Sensebank CSV; Phase 4 (Task 5) adds the
+ * three FOP/business CSVs (ProCredit, Ukrsibbank, Alfa) — required for each
+ * new stub's own `id` field to typecheck against `StatementFormatId`, same
+ * reasoning Task 3/4 used for `privatbank-xlsx`/`sensebank-csv`. Every other
+ * bank studied for this plan lands in its own later phase and is
+ * deliberately NOT listed here yet. */
+export const statementFormatIds = [
+  'monobank-csv',
+  'privatbank-xlsx',
+  'sensebank-csv',
+  'procredit-business-csv',
+  'ukrsib-business-csv',
+  'alfa-business-csv',
+] as const;
 export type StatementFormatId = (typeof statementFormatIds)[number];
 
 /** One resolved spreadsheet cell value — mirrors `read-excel-file`'s own
