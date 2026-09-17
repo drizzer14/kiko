@@ -311,6 +311,8 @@ export const en = {
       'Create the API key in the bunq app under Profile > Security & Privacy > Developers > API keys.',
     bunqApiKeyPlaceholder: 'bunq API key',
     bunqConnected: 'bunq connected',
+    bunqPaymentPageCapReached:
+      "bunq sync: account {{accountId}}'s payment history exceeds the {{maxPages}}-page fetch cap before reaching the sync window's start; the window will be retried.",
     bunqRateLimited: 'bunq is rate-limiting requests right now. Please try again shortly.',
     bunqTimeout: 'bunq did not respond in time. Please try again.',
     checking: 'Checking…',

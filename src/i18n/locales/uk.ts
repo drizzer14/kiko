@@ -289,6 +289,8 @@ export const uk: typeof en = {
       'Створіть API-ключ у застосунку bunq в розділі Профіль → Безпека та конфіденційність → Розробникам → API-ключі.',
     bunqApiKeyPlaceholder: 'API-ключ bunq',
     bunqConnected: 'bunq підключено',
+    bunqPaymentPageCapReached:
+      'Синхронізація bunq: історія платежів рахунку {{accountId}} перевищує ліміт у {{maxPages}} сторінок, не дійшовши до початку вікна синхронізації; вікно буде повторено.',
     bunqRateLimited: 'bunq зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
     bunqTimeout: 'bunq не відповів вчасно. Спробуйте ще раз.',
     checking: 'Перевірка…',

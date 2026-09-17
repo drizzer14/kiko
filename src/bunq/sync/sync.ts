@@ -57,10 +57,19 @@ const BUNQ_RATE_LIMIT_MS = 500;
 /** First-sync lookback when no previous sync timestamp is stored. */
 const DEFAULT_LOOKBACK_SECONDS = 31 * 24 * 60 * 60;
 /**
- * Payment-page walk backstop per account. bunq's list endpoint has no
+ * Payment-page walk backstop per account, AND a FAIL-CLOSED data-completeness
+ * boundary — not merely an infinite-loop guard. bunq's list endpoint has no
  * server-side date filter (CONFIRMED, coordinator's verification pass), so
- * `fetchAllPaymentsSince` below pages backward until it reaches `sinceMs` —
- * this caps that walk so a misbehaving cursor can never loop forever.
+ * `fetchAllPaymentsSince` below pages backward until it reaches `sinceMs`.
+ * Reaching this cap BEFORE the incremental floor is a genuine
+ * data-completeness failure, not a benign stop: `fetchAllPaymentsSince`
+ * THROWS in that case rather than returning a truncated set, so the caller
+ * never advances `sync_state.lastSyncAt` past a window it did not actually
+ * finish reading (see that function's own doc comment).
+ * TODO(VERIFY LIVE): if a real account's payment volume genuinely exceeds
+ * this cap within one incremental window, implement forward/`newer_id`
+ * paging so a huge first window can be covered across multiple syncs
+ * instead of needing one run to walk it all.
  */
 const MAX_PAYMENT_PAGES = 50;
 
@@ -485,6 +494,18 @@ const ensureBunqContext = async (
  * dropped) so `mapPaymentItem`'s fail-closed throw catches it downstream,
  * the same guarantee PrivatBank's own date parser gives a malformed
  * statement.
+ *
+ * FAIL CLOSED (Global Constraints): reaching `MAX_PAYMENT_PAGES` WITHOUT
+ * ever reaching the incremental floor — bunq still reports older,
+ * still-in-window payments beyond the cap — throws rather than returning
+ * the partial set collected so far. Returning a truncated set here would
+ * let `runSyncInner` treat the window as fully read and advance
+ * `sync_state.lastSyncAt` past it, silently dropping the oldest in-window
+ * payments with no retry ever covering them again. Throwing instead lets
+ * the per-account fault isolation in `runSyncInner` catch it: the account's
+ * run fails, `institution`/the cursor stay exactly as they were, and the
+ * SAME window is retried idempotently next run — the same guarantee a
+ * fetch failure or a malformed payment already gets.
  */
 const fetchAllPaymentsSince = async (
   deps: SyncDeps,
@@ -507,7 +528,7 @@ const fetchAllPaymentsSince = async (
     );
 
     if (payments.length === 0) {
-      break;
+      return collected;
     }
 
     let reachedFloor = false;
@@ -525,13 +546,18 @@ const fetchAllPaymentsSince = async (
     }
 
     if (reachedFloor || nextOlderId === undefined) {
-      break;
+      return collected;
     }
 
     olderId = nextOlderId;
   }
 
-  return collected;
+  throw new Error(
+    i18n.t('accountDetail.bunqPaymentPageCapReached', {
+      accountId: bunqAccountId,
+      maxPages: MAX_PAYMENT_PAGES,
+    }),
+  );
 };
 
 /**

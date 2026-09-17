@@ -476,6 +476,47 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  // Fail-closed: the page-walk cap must never be treated as a silent
+  // success. An account whose payment feed still reports in-window items
+  // (and another page) at every one of the MAX_PAYMENT_PAGES iterations
+  // never reaches the incremental floor — returning the partial set here
+  // would let the cursor advance past unfetched, still-in-window payments
+  // that would then never be retried.
+  it('leaves sync_state.lastSyncAt unchanged and imports nothing when a payment feed exceeds the page cap before reaching the sync window floor (fail-closed)', async () => {
+    const connected = bankAccount({ id: 'acc-bunq', institution: 'bunq' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    let call = 0;
+    deps.fetchPayments = jest.fn(async () => {
+      call += 1;
+      // Every page returns one payment still WITHIN the sync window (never
+      // older than `sinceMs`, so the floor is never reached) and always
+      // offers another `nextOlderId` — an unbounded feed relative to the cap.
+      return {
+        payments: [paymentItem({ id: call, created: '2026-01-01 10:00:00.000000' })],
+        nextOlderId: String(call),
+      };
+    });
+
+    let thrown: unknown;
+    try {
+      await runSync(deps);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    // Names the (bunq) account id and the cap in the fail-closed message.
+    expect((thrown as Error).message).toMatch(/exceeds/i);
+    expect((thrown as Error).message).toContain(String(account().id));
+    expect((thrown as Error).message).toContain('50');
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('reads the API key keyed by the resolved connected account id', async () => {
     const connected = bankAccount({ id: 'acc-bunq', institution: 'bunq' });
     const { deps } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
