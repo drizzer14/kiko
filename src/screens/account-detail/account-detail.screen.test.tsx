@@ -82,7 +82,9 @@ const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockPrivatbankSync = jest.fn();
+const mockBunqSync = jest.fn();
 const mockUseSyncAction = jest.fn();
+const mockUseBunqSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
 const mockRemove = jest.fn();
@@ -91,6 +93,7 @@ const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
 const mockDisconnectPrivatbank = jest.fn();
+const mockDisconnectBunq = jest.fn();
 
 // HoldingCard (rendered inside this screen) subscribes to the native stack's
 // `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
@@ -111,15 +114,27 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+// `BankSyncSection` (real, unmocked here) calls `useSyncAction` TWICE per
+// render, ALWAYS in the same order (privatbank, then bunq — see
+// `bank-sync-section.component.tsx`), so a stable ODD/EVEN call-count parity
+// distinguishes the two results across however many renders one test
+// triggers — mirrors `bank-sync-section.component.test.tsx`'s own double.
+let mockUseSyncActionCallCount = 0;
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
-  useSyncAction: () => mockUseSyncAction(),
+  useSyncAction: () => {
+    mockUseSyncActionCallCount += 1;
+    return mockUseSyncActionCallCount % 2 === 1 ? mockUseSyncAction() : mockUseBunqSyncAction();
+  },
 }));
 jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../privatbank/disconnect', () => ({
   disconnectPrivatbank: (...args: unknown[]) => mockDisconnectPrivatbank(...args),
+}));
+jest.mock('../../bunq/disconnect', () => ({
+  disconnectBunq: (...args: unknown[]) => mockDisconnectBunq(...args),
 }));
 jest.mock('../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
@@ -285,6 +300,7 @@ const openMonobankConnectField = async (
 describe('AccountDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSyncActionCallCount = 0;
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
@@ -294,6 +310,13 @@ describe('AccountDetailScreen', () => {
       error: undefined,
       sync: mockPrivatbankSync,
     });
+    mockBunqSync.mockResolvedValue(undefined);
+    mockUseBunqSyncAction.mockReturnValue({
+      isSyncing: false,
+      error: undefined,
+      sync: mockBunqSync,
+    });
+    mockDisconnectBunq.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -931,22 +954,24 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Disconnect')).toBeNull();
   });
 
-  it('opens the add-a-bank picker sheet for a disconnected bank account, listing both native providers', async () => {
+  it('opens the add-a-bank picker sheet for a disconnected bank account, listing every native provider', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: null })],
       holdings: [],
     });
     const view = await renderScreen();
 
-    // Neither provider's field is mounted before a choice is made.
+    // No provider's field is mounted before a choice is made.
     expect(view.queryByText('Connect Monobank')).toBeNull();
     expect(view.queryByText('Connect PrivatBank')).toBeNull();
+    expect(view.queryByText('Connect bunq')).toBeNull();
 
     await fireEvent.press(view.getByText('Add a bank'));
 
     expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
     expect(view.getByText('Monobank')).toBeTruthy();
     expect(view.getByText('PrivatBank')).toBeTruthy();
+    expect(view.getByText('bunq')).toBeTruthy();
   });
 
   it('renders the PrivatBank connect field after picking PrivatBank from the sheet', async () => {
@@ -1005,6 +1030,50 @@ describe('AccountDetailScreen', () => {
 
     await waitFor(() => expect(mockDisconnectPrivatbank).toHaveBeenCalledWith('a'));
     expect(mockDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('shows the connected status block — Sync/Disconnect, no connect field — for a bunq-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+      syncState: [{ lastSyncAt: 1_700_000_000_000 }],
+    });
+    const view = await renderScreen();
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+    expect(view.queryByText('Add a bank')).toBeNull();
+  });
+
+  it('re-syncs a bunq-connected account through the bunq sync action, not Monobank or PrivatBank', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+    });
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Sync'));
+
+    await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+  });
+
+  it('routes Disconnect to disconnectBunq (not disconnectMonobank/disconnectPrivatbank) for a bunq-connected account', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'bunq' })],
+      holdings: [],
+    });
+    const { getByText, getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByText('Disconnect'));
+    expect(getByText('Disconnect bunq')).toBeTruthy();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectBunq).toHaveBeenCalledWith('a'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {

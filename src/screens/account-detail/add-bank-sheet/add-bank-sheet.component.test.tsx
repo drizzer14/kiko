@@ -12,16 +12,17 @@ describe('AddBankProviderSheet', () => {
 
     expect(view.getByText('Monobank')).toBeTruthy();
     expect(view.getByText('PrivatBank')).toBeTruthy();
+    expect(view.getByText('bunq')).toBeTruthy();
     expect(view.getByText(/Works with any personal Monobank account/)).toBeTruthy();
     expect(view.getByText(/Requires a Privat24 business or individual-entrepreneur/)).toBeTruthy();
+    expect(view.getByText(/bunq is a European mobile bank/)).toBeTruthy();
   });
 
-  it('does not render a catalog entry with no wired registry entry (bunq, Starling)', async () => {
+  it('does not render a catalog entry with no wired registry entry (Starling)', async () => {
     const view = await render(
       <AddBankProviderSheet visible onDismiss={jest.fn()} onSelect={jest.fn()} />,
     );
 
-    expect(view.queryByText('bunq')).toBeNull();
     expect(view.queryByText('Starling')).toBeNull();
   });
 

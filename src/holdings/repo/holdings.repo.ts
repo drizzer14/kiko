@@ -48,6 +48,8 @@ export type MonobankHolding = NewHolding & { monobankId: string };
 
 export type PrivatbankHolding = NewHolding & { privatbankId: string };
 
+export type BunqHolding = NewHolding & { bunqId: string };
+
 export type ExchangeHolding = NewHolding & {
   metadataField: ExchangeMetadataField;
   metadataKey: string;
@@ -392,6 +394,20 @@ export const holdingsRepo = {
           metadataField: 'privatbankId',
           metadataKey: privatbankId,
         });
+      }
+    }),
+  /**
+   * bunq's counterpart of `upsertMonobankMany`/`upsertPrivatbankMany`: upsert
+   * every monetary account of ONE `/monetary-account` snapshot in a SINGLE
+   * transaction, so the reactive `holdings` callback fires ONCE per sync
+   * rather than once per account. A NEW function alongside the other two —
+   * deliberately NOT a generalization of either, per the task's constraint
+   * to leave Monobank's and PrivatBank's engines untouched.
+   */
+  upsertBunqMany: (holdings: BunqHolding[]) =>
+    write(async (tx) => {
+      for (const { bunqId, ...rest } of holdings) {
+        await upsertByMetadataKey(tx, { ...rest, metadataField: 'bunqId', metadataKey: bunqId });
       }
     }),
   /**

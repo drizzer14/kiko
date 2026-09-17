@@ -5,6 +5,12 @@
 declare module '@env' {
   export const MONOBANK_API_ENDPOINT: string;
   export const PRIVATBANK_API_ENDPOINT: string;
+  // bunq public API base URL (handshake + monetary-account/payment reads).
+  // CONFIRMED (coordinator's live verification pass): sandbox
+  // https://public-api.sandbox.bunq.com/v1, production
+  // https://api.bunq.com/v1. Defaults to the sandbox base — see
+  // `.env.example`'s own comment for the sandbox/production switch.
+  export const BUNQ_API_ENDPOINT: string;
   // Base CoinGecko simple-price URL; the `ids`/`vs_currencies` query is built in
   // code from `src/rates/coingecko-ids` so the coin set cannot drift from a
   // stale committed `.env`.

@@ -10,11 +10,15 @@ const mockUseLiveQuery = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockPrivatbankSync = jest.fn();
+const mockBunqSync = jest.fn();
 const mockUseSyncAction = jest.fn();
+const mockUseBunqSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSavePrivatbankCredentials = jest.fn();
+const mockSaveBunqCredentials = jest.fn();
 const mockDisconnectMonobank = jest.fn();
 const mockDisconnectPrivatbank = jest.fn();
+const mockDisconnectBunq = jest.fn();
 
 jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -24,9 +28,18 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
+// The component calls `useSyncAction` twice per render, ALWAYS in the same
+// order (privatbank, then bunq — see `bank-sync-section.component.tsx`), so
+// a stable ODD/EVEN call-count parity distinguishes the two results across
+// however many renders one test triggers, without needing to inspect the
+// (anonymous, unnamed) run-function argument each call receives.
+let mockUseSyncActionCallCount = 0;
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
-  useSyncAction: () => mockUseSyncAction(),
+  useSyncAction: () => {
+    mockUseSyncActionCallCount += 1;
+    return mockUseSyncActionCallCount % 2 === 1 ? mockUseSyncAction() : mockUseBunqSyncAction();
+  },
 }));
 jest.mock('../../../monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
@@ -34,16 +47,22 @@ jest.mock('../../../monobank/token', () => ({
 jest.mock('../../../privatbank/credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSavePrivatbankCredentials(...args),
 }));
+jest.mock('../../../bunq/credentials', () => ({
+  saveApiKey: (...args: unknown[]) => mockSaveBunqCredentials(...args),
+}));
 jest.mock('../../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnectMonobank(...args),
 }));
 jest.mock('../../../privatbank/disconnect', () => ({
   disconnectPrivatbank: (...args: unknown[]) => mockDisconnectPrivatbank(...args),
 }));
-// The two connect fields are tested on their own; here each collapses to one
-// pressable that fires `onConnect` with a fixture, so the section's wiring
-// (which field renders, and where its `onConnect` result goes) is what is
-// under test.
+jest.mock('../../../bunq/disconnect', () => ({
+  disconnectBunq: (...args: unknown[]) => mockDisconnectBunq(...args),
+}));
+// The three connect fields are tested on their own; here each collapses to
+// one pressable that fires `onConnect` with a fixture, so the section's
+// wiring (which field renders, and where its `onConnect` result goes) is
+// what is under test.
 jest.mock('../monobank-connect-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
@@ -73,6 +92,17 @@ jest.mock('../privatbank-connect-field', () => {
     ),
   };
 });
+jest.mock('../bunq-connect-field', () => {
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onConnect }: { onConnect: (apiKey: string) => Promise<boolean> }) => (
+      <Pressable accessibilityLabel="bunq-field" onPress={() => onConnect('bunq-key')}>
+        <Text>bunq field</Text>
+      </Pressable>
+    ),
+  };
+});
 
 const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   id: 'a',
@@ -89,6 +119,7 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseSyncActionCallCount = 0;
   mockUseLiveQuery.mockReturnValue({ data: [] });
   mockMonobankSync.mockResolvedValue(undefined);
   mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockMonobankSync });
@@ -98,14 +129,22 @@ beforeEach(() => {
     error: undefined,
     sync: mockPrivatbankSync,
   });
+  mockBunqSync.mockResolvedValue(undefined);
+  mockUseBunqSyncAction.mockReturnValue({
+    isSyncing: false,
+    error: undefined,
+    sync: mockBunqSync,
+  });
   mockSaveToken.mockResolvedValue(undefined);
   mockSavePrivatbankCredentials.mockResolvedValue(undefined);
+  mockSaveBunqCredentials.mockResolvedValue(undefined);
   mockDisconnectMonobank.mockResolvedValue(undefined);
   mockDisconnectPrivatbank.mockResolvedValue(undefined);
+  mockDisconnectBunq.mockResolvedValue(undefined);
 });
 
 describe('BankSyncSection — disconnected', () => {
-  it('shows the "Add a bank" trigger, then the picker sheet listing both native providers', async () => {
+  it('shows the "Add a bank" trigger, then the picker sheet listing every native provider', async () => {
     const view = await render(<BankSyncSection account={bankAccount()} />);
 
     expect(view.getByText('Add a bank')).toBeTruthy();
@@ -115,6 +154,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
     expect(view.getByText('Monobank')).toBeTruthy();
     expect(view.getByText('PrivatBank')).toBeTruthy();
+    expect(view.getByText('bunq')).toBeTruthy();
   });
 
   it('renders the Monobank field after picking Monobank, and connecting saves the token then syncs', async () => {
@@ -154,6 +194,26 @@ describe('BankSyncSection — disconnected', () => {
     });
     await waitFor(() => expect(mockPrivatbankSync).toHaveBeenCalledWith('a'));
     expect(mockSaveToken).not.toHaveBeenCalled();
+  });
+
+  it('renders the bunq field after picking bunq, and connecting saves the API key then syncs via bunq', async () => {
+    const view = await render(<BankSyncSection account={bankAccount()} />);
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-bunq'));
+
+    expect(view.getByText('bunq field')).toBeTruthy();
+    expect(view.queryByText('monobank field')).toBeNull();
+    expect(view.queryByText('privatbank field')).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('bunq-field'));
+    });
+
+    expect(mockSaveBunqCredentials).toHaveBeenCalledWith('a', { apiKey: 'bunq-key' });
+    await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSavePrivatbankCredentials).not.toHaveBeenCalled();
   });
 
   it('surfaces the active sync error below the field', async () => {
@@ -220,6 +280,29 @@ describe('BankSyncSection — connected', () => {
 
     await waitFor(() => expect(mockDisconnectPrivatbank).toHaveBeenCalledWith('a'));
     expect(mockDisconnectMonobank).not.toHaveBeenCalled();
+  });
+
+  it('shows Sync + Disconnect for a bunq-connected account, syncing through the bunq action', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ institution: 'bunq' })} />);
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    await fireEvent.press(view.getByText('Sync'));
+
+    await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    expect(mockPrivatbankSync).not.toHaveBeenCalled();
+  });
+
+  it('confirms and routes Disconnect to disconnectBunq for a bunq-connected account', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ institution: 'bunq' })} />);
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    expect(view.getByText('Disconnect bunq')).toBeTruthy();
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockDisconnectBunq).toHaveBeenCalledWith('a'));
+    expect(mockDisconnectMonobank).not.toHaveBeenCalled();
+    expect(mockDisconnectPrivatbank).not.toHaveBeenCalled();
   });
 
   it('shows a syncing label while the active provider is syncing', async () => {

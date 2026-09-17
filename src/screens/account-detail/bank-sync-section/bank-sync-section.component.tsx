@@ -5,25 +5,28 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 
-import { saveToken } from '../../../monobank/token';
-import type { AccountRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
-import { bankProviderRegistry } from '../../../bank-sync/registry';
-import { runSync as privatbankRunSync } from '../../../privatbank/sync';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 import {
   bankProviderIdOf,
   isBankProviderId,
   type BankProviderId,
 } from '../../../bank-sync/provider';
+import { saveToken } from '../../../monobank/token';
+import type { AccountRow } from '../../../db/schema';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import { useLiveQuery } from '../../../db/use-live-query';
+import { runSync as bunqRunSync } from '../../../bunq/sync';
+import Button from '../../../design-system/components/button';
+import SymbolIcon from '../../../design-system/components/symbol';
+import { bankProviderRegistry } from '../../../bank-sync/registry';
+import { runSync as privatbankRunSync } from '../../../privatbank/sync';
+import ConfirmSheet from '../../../design-system/components/confirm-sheet';
+import { saveApiKey as saveBunqCredentials } from '../../../bunq/credentials';
 import { saveCredentials as savePrivatbankCredentials } from '../../../privatbank/credentials';
 
 import { styles } from '../account-detail.styles';
 import AddBankProviderSheet from '../add-bank-sheet';
+import BunqConnectField from '../bunq-connect-field';
 import { formatLastSyncAt } from '../format-last-sync';
 import MonobankConnectField from '../monobank-connect-field';
 import PrivatbankConnectField from '../privatbank-connect-field';
@@ -53,9 +56,13 @@ const resolveConnectedProviderId = (institution: string | null): BankProviderId 
 };
 
 type DisconnectCopy = {
-  titleKey: 'accountDetail.disconnectPrivatbank' | 'accountDetail.disconnectMonobank';
+  titleKey:
+    | 'accountDetail.disconnectPrivatbank'
+    | 'accountDetail.disconnectBunq'
+    | 'accountDetail.disconnectMonobank';
   messageKey:
     | 'accountDetail.disconnectPrivatbankMessage'
+    | 'accountDetail.disconnectBunqMessage'
     | 'accountDetail.disconnectMonobankMessage';
 };
 
@@ -79,6 +86,10 @@ const disconnectCopyByProviderId: Partial<Record<BankProviderId, DisconnectCopy>
   privatbank: {
     titleKey: 'accountDetail.disconnectPrivatbank',
     messageKey: 'accountDetail.disconnectPrivatbankMessage',
+  },
+  bunq: {
+    titleKey: 'accountDetail.disconnectBunq',
+    messageKey: 'accountDetail.disconnectBunqMessage',
   },
 };
 
@@ -134,6 +145,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const privatbankSync = useSyncAction((targetAccountId?: string) =>
     privatbankRunSync({ targetAccountId }),
   );
+  const bunqSync = useSyncAction((targetAccountId?: string) => bunqRunSync({ targetAccountId }));
   // DATA-DRIVEN provider -> sync-action lookup (not a `=== 'privatbank'`
   // ternary), so a later native provider's own `useSyncAction` result adds
   // one entry here rather than growing a binary conditional. Falls back to
@@ -142,6 +154,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const syncActionByProviderId: Partial<Record<BankProviderId, SyncAction<string | undefined>>> = {
     monobank: monobankSync,
     privatbank: privatbankSync,
+    bunq: bunqSync,
   };
   const { isSyncing, error, sync } =
     (activeProviderId ? syncActionByProviderId[activeProviderId] : undefined) ?? monobankSync;
@@ -169,6 +182,22 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectPrivatbank = async (token: string, clientId: string): Promise<boolean> => {
     try {
       await savePrivatbankCredentials(account.id, { token, clientId });
+    } catch {
+      return false;
+    }
+
+    return sync(account.id);
+  };
+
+  // The bunq counterpart of `connectPrivatbank`: store the entered API key
+  // to the Keychain, then run the first bunq sync. UNLIKE the other two
+  // providers, `BunqConnectField` does NOT pre-validate the key itself
+  // (bunq has no side-effect-free check — see that field's own doc comment)
+  // — the sync's own handshake IS the validation, so a wrong key surfaces
+  // through this same `sync(account.id)` result.
+  const connectBunq = async (apiKey: string): Promise<boolean> => {
+    try {
+      await saveBunqCredentials(account.id, { apiKey });
     } catch {
       return false;
     }
@@ -297,6 +326,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const connectFieldByProviderId: Partial<Record<BankProviderId, ReactNode>> = {
     monobank: <MonobankConnectField onConnect={connectMonobank} />,
     privatbank: <PrivatbankConnectField onConnect={connectPrivatbank} />,
+    bunq: <BunqConnectField onConnect={connectBunq} />,
   };
 
   return (

@@ -1,12 +1,15 @@
 import { hasToken } from '../../monobank/token';
 import type { BankProviderId } from '../provider';
 import { providerCatalog } from '../provider-catalog';
-import { hasCredentials as hasPrivatbankCredentials } from '../../privatbank/credentials';
+import { disconnectBunq } from '../../bunq/disconnect';
+import { runSync as bunqRunSync } from '../../bunq/sync';
 import { disconnectMonobank } from '../../monobank/disconnect';
 import type { ProviderCatalogEntry } from '../provider-catalog';
 import { runSync as monobankRunSync } from '../../monobank/sync';
 import { disconnectPrivatbank } from '../../privatbank/disconnect';
 import { runSync as privatbankRunSync } from '../../privatbank/sync';
+import { hasCredentials as hasBunqCredentials } from '../../bunq/credentials';
+import { hasCredentials as hasPrivatbankCredentials } from '../../privatbank/credentials';
 
 export type BankProviderRegistryEntry = {
   id: BankProviderId;
@@ -47,5 +50,12 @@ export const bankProviderRegistry: Partial<Record<BankProviderId, BankProviderRe
     runSync: privatbankRunSync,
     hasCredentials: hasPrivatbankCredentials,
     disconnect: disconnectPrivatbank,
+  },
+  bunq: {
+    id: 'bunq',
+    catalog: catalogEntryFor('bunq'),
+    runSync: bunqRunSync,
+    hasCredentials: hasBunqCredentials,
+    disconnect: disconnectBunq,
   },
 };
