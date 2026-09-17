@@ -191,8 +191,8 @@ This is deliberately the SAME field set `mapStatementItem` writes (minus `hold`,
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { detectFormat } from '../registry';
-import { mapParsedTransaction } from '../mapping';
 import { StatementParseError } from '../parser';
+import { computeDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = { formatId: string; imported: number; total: number };
 
@@ -207,9 +207,17 @@ export const importStatement = async (
   }
 
   const parsed = format.parse(input);
-  const seenKeys = new Map<string, number>(); // dedup-key -> occurrence count, for computeDedupKey
+  // dedup-key -> occurrence count so far. Keyed on the SAME (holding, time,
+  // amount, normalized-description) tuple `computeDedupKey` folds on —
+  // `computeDedupKey(holdingId, transaction, 0)` returns exactly that
+  // un-suffixed base string. Keying on `JSON.stringify(transaction)` instead
+  // (the whole row, including mcc/counterIban/comment) would count two rows
+  // that `computeDedupKey` treats as the SAME equivalence class as distinct
+  // occurrences of DIFFERENT ones, so both would get occurrenceIndex 0 and
+  // collide onto the same synthesized externalId.
+  const seenKeys = new Map<string, number>();
   const rows = parsed.transactions.map((transaction) => {
-    const raw = transaction.externalId ?? JSON.stringify(transaction); // provisional key basis
+    const raw = transaction.externalId ?? computeDedupKey(holdingId, transaction, 0);
     const occurrenceIndex = seenKeys.get(raw) ?? 0;
     seenKeys.set(raw, occurrenceIndex + 1);
 
