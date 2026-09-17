@@ -4,9 +4,17 @@ import type { FC, ReactNode } from 'react';
 import { StyleSheet as RNStyleSheet, type StyleProp, View, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
+import { currentOsMajor } from '../symbol/symbol.availability';
 import type { GlassSurfaceProps } from './glass-surface.props';
 import { useBloomResample } from './glass-surface.resample.hook';
 import { styles } from './glass-surface.styles';
+
+// The iOS major version where the neutral-`GlassSurface` tone regression was
+// device-verified (see `theme.colors.surfaceGlassCompensation`'s doc
+// comment). `currentOsMajor` already centralizes the one `Platform.Version`
+// parse this app uses (shared with the SF Symbol iOS-26 fallback net); reused
+// here rather than adding a second parser.
+const IOS27_TONE_REGRESSION_MAJOR = 27;
 
 // Extracted to keep the component's own cognitive complexity down: the
 // backdrop fill has a strict precedence — an entity `tint` (opaque) beats
@@ -56,6 +64,44 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
   if (isStrong && isGlassPath) return styles.strongWash;
   return undefined;
 };
+
+// iOS 27 Liquid Glass tone-compensation (see `theme.colors
+// .surfaceGlassCompensation`'s doc comment for the device-verified
+// regression this fixes). Three conditions must ALL hold:
+//   - no entity `tint` — an entity card already feeds its own resolved hex to
+//     `LiquidGlassView` `tintColor` and must keep reading exactly that color;
+//   - iOS 27+ — the iOS 26.5 baseline already composites to the correct tone
+//     with no compensation, so applying it below iOS 27 would only nudge an
+//     already-correct surface darker for no reason;
+//   - NO BACKDROP under the glass (`hasBackdrop === false`) — device-verified
+//     (2026-09-17, iPhone27-Crash vs iPhone26-Compare simulators): a
+//     `transparent`/`translucentStrong` surface paints a real translucent
+//     `View` backdrop UNDER the glass (see `resolveBackdropFill`), which
+//     DOMINATES the composited color — the categories screen's `transparent
+//     bordered` card (no backdrop-removing `bloom`) reads an IDENTICAL
+//     (17,17,18) on iOS 27 with no compensation and on iOS 26.5, so it was
+//     never actually regressed, and feeding it a tint anyway measurably
+//     shifts it AWAY from that already-correct tone (a `LiquidGlassView`
+//     with a live `tintColor` set apparently composites differently against
+//     an opaque-ish backdrop than the naturally-untinted default, not a
+//     simple alpha-over-black darken). A `bloom`/`material`/plain surface has
+//     NO backdrop (`resolveBackdropFill` returns `false` for all three), so
+//     the glass samples the live screen directly and the material's OWN
+//     brightness regression dominates undiluted — this is the ONLY case the
+//     device-verified (32,32,32)-vs-(19,19,19) delta was measured on (the
+//     Home net-worth card, `transparent bloom` — bloom wins the backdrop
+//     precedence, so it has none), and the only case this tint should touch.
+// Extracted to a plain function for the same cognitive-complexity-budget
+// reason as `resolveBackdropFill`/`resolveWashFill`/`isActiveVariant` above.
+const resolveGlassCompensationTint = (
+  tint: string | undefined,
+  osMajor: number,
+  hasBackdrop: boolean,
+  compensationTint: string,
+): string | undefined =>
+  tint === undefined && !hasBackdrop && osMajor >= IOS27_TONE_REGRESSION_MAJOR
+    ? compensationTint
+    : undefined;
 
 // Every neutral variant (`transparent`, `translucentStrong`, `material`,
 // `bloom`) shares the same precedence rule against an entity `tint`: the two
@@ -327,6 +373,14 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // above, so `effect` staying `'regular'` there is consistent with keeping
   // that card pinned and stable.
   const glassEffect = isBloom ? 'clear' : 'regular';
+  // See `resolveGlassCompensationTint` above for the iOS 27 tone-regression
+  // fix this feeds into `tintColor` below.
+  const glassCompensationTint = resolveGlassCompensationTint(
+    tint,
+    currentOsMajor(),
+    backdropFill !== false,
+    theme.colors.surfaceGlassCompensation,
+  );
   const base: ReactNode = isLiquidGlassSupported ? (
     <LiquidGlassView
       // `key={remountToken}` is the first-paint re-sample fix above: it stays
@@ -341,7 +395,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
       // under a fixed dark interface style — no scheme flip to repaint for.
       effect={glassEffect}
       colorScheme="dark"
-      tintColor={tint}
+      tintColor={tint ?? glassCompensationTint}
       animated={false}
       style={[RNStyleSheet.absoluteFill, { borderRadius: theme.radii[radius] }]}
       testID={testID && `${testID}-base`}
