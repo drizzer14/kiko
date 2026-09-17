@@ -173,3 +173,31 @@ jest.mock('@sbaiahmed1/react-native-biometrics', () => ({
   })),
   authenticateWithOptions: jest.fn(async () => ({ success: true })),
 }));
+
+// react-native-fs ships Flow-annotated CommonJS source (FS.common.js) that
+// Jest cannot parse when the real module is loaded — any test that
+// transitively renders `account-detail.screen.tsx` or
+// `statement-import.screen.tsx` (both of which now do a real
+// `import * as RNFS from 'react-native-fs'` for the document-picker
+// statement-import feature) crashes with a raw SyntaxError otherwise, not
+// just the two screens' own test files (which already register their own
+// richer per-file mock — see the `@op-engineering/op-sqlite` comment above
+// for why a per-file `jest.mock` safely overrides this one). `readFile`
+// rejects by default so a test that transitively renders one of those
+// screens but does not care about file contents fails loudly (not a silent
+// wrong-success) if it ever awaits the read without overriding this mock.
+jest.mock('react-native-fs', () => ({
+  readFile: jest.fn(() => Promise.reject(new Error('react-native-fs: not mocked in this test'))),
+}));
+
+// @react-native-documents/picker ships untranspiled ESM (`export {...} from`)
+// under its `lib/module/` entry, the same class of parse failure as
+// react-native-fs above — `account-detail.screen.tsx`'s real
+// `pickAndOpenStatement` handler imports `pick`/`types` from it. `pick`
+// rejects by default (mirrors a user backing out of the picker, the handler's
+// own graceful-cancel path) so a transitively-rendering test that never
+// presses "Import statement" is unaffected either way.
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(() => Promise.reject({ code: 'OPERATION_CANCELED' })),
+  types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
+}));

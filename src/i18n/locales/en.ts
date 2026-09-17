@@ -351,6 +351,7 @@ export const en = {
     disconnectStarlingMessage:
       'This clears the connection and the stored token. Your holdings and transactions stay as a manual snapshot.',
     holdingsHeading: 'Holdings',
+    importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
     invalidBTCAddress: 'Invalid BTC address',
     invalidBunqCredentials: 'Invalid API key',
@@ -559,6 +560,17 @@ export const en = {
   migrations: {
     error: 'Migration error: {{message}}',
     preparing: 'Preparing database…',
+  },
+  // The shared preview + target-holding screen (Phase 1b,
+  // src/screens/statement-import/statement-import.screen.tsx) that both statement-
+  // import entry points converge on — see docs/plans/statement-import.md section B.
+  statementImport: {
+    previewHeading: 'Statement preview',
+    unrecognizedFormat: "We don't recognize this file's format. Try a different export.",
+    chooseHolding: 'Choose a holding',
+    createNewHolding: 'Create new holding',
+    importButton: 'Import',
+    importedCount: 'Imported {{imported}} of {{total}}',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

@@ -329,6 +329,7 @@ export const uk: typeof en = {
     disconnectStarlingMessage:
       'Це очистить зʼєднання та збережений токен. Ваші рахунки й транзакції залишаться як ручний знімок.',
     holdingsHeading: 'Активи',
+    importStatement: 'Імпортувати виписку',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
     invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidBunqCredentials: 'Недійсний API-ключ',
@@ -509,6 +510,14 @@ export const uk: typeof en = {
   migrations: {
     error: 'Помилка міграції: {{message}}',
     preparing: 'Підготовка бази даних…',
+  },
+  statementImport: {
+    previewHeading: 'Перегляд виписки',
+    unrecognizedFormat: 'Ми не розпізнаємо формат цього файлу. Спробуйте інший експорт.',
+    chooseHolding: 'Оберіть актив',
+    createNewHolding: 'Створити новий актив',
+    importButton: 'Імпортувати',
+    importedCount: 'Імпортовано {{imported}} з {{total}}',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

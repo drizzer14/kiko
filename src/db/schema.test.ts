@@ -10,6 +10,7 @@ describe('transactions.source enum', () => {
       'starling',
       'btc_wallet',
       'binance',
+      'import',
     ]);
   });
 });
