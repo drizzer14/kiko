@@ -13,17 +13,19 @@ import type { TargetHoldingOption, TargetHoldingSheetProps } from './target-hold
 type HoldingGroup = { accountId: string; accountName: string; holdings: TargetHoldingOption[] };
 
 // Groups `holdings` by `accountId`, preserving the FIRST-SEEN order of each
-// account (not a re-sort) — the unscoped picker's own display order.
+// account (not a re-sort) — the unscoped picker's own display order. A
+// `Map` keyed by `accountId` keeps this O(n) — the prior `groups.find(...)`
+// per holding was O(n^2) over the holding list.
 const groupByAccount = (holdings: TargetHoldingOption[]): HoldingGroup[] => {
-  const groups: HoldingGroup[] = [];
+  const groupsByAccountId = new Map<string, HoldingGroup>();
 
   for (const holding of holdings) {
-    const existing = groups.find((group) => group.accountId === holding.accountId);
+    const existing = groupsByAccountId.get(holding.accountId);
 
     if (existing) {
       existing.holdings.push(holding);
     } else {
-      groups.push({
+      groupsByAccountId.set(holding.accountId, {
         accountId: holding.accountId,
         accountName: holding.accountName,
         holdings: [holding],
@@ -31,7 +33,7 @@ const groupByAccount = (holdings: TargetHoldingOption[]): HoldingGroup[] => {
     }
   }
 
-  return groups;
+  return [...groupsByAccountId.values()];
 };
 
 /**

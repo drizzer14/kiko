@@ -41,12 +41,11 @@ const decodeBase64ToBytes = (base64: string): number[] => {
   let buffer = 0;
   let bitsCollected = 0;
 
+  // The regex above already dropped every character not in
+  // `BASE64_ALPHABET`, so `BASE64_ALPHABET.indexOf(char)` can never miss
+  // here — no `=== -1` guard needed.
   for (const char of clean) {
     const sextet = BASE64_ALPHABET.indexOf(char);
-
-    if (sextet === -1) {
-      continue;
-    }
 
     buffer = (buffer << 6) | sextet;
     bitsCollected += 6;
@@ -114,22 +113,50 @@ const decodeBase64Utf8 = (base64: string): string => decodeUtf8Bytes(decodeBase6
 // a real (if inert) value is passed rather than an empty string.
 const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
 
+type PreviewStats = {
+  displayName: string;
+  transactionCount: number;
+  currency: string;
+  dateSpan: string;
+};
+
 // The preview's transaction-count/date-span/currency block, derived from a
 // RECOGNIZED parse. `timeSeconds` reduces to the min/max across every row —
 // not just the first/last row's on-file order — so an out-of-order export
 // still reports its true span.
-const previewStats = (format: StatementFormat, input: { text: string; fileName: string }) => {
-  const parsed = format.parse(input);
-  const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
-  const minSeconds = Math.min(...times);
-  const maxSeconds = Math.max(...times);
+//
+// `detect()` is a cheap header/signature sniff — it does NOT validate every
+// data row, so a format it accepted can still throw `StatementParseError`
+// out of `parse()` on a bad row (a truncated export, a reformatted date
+// cell). There is no ErrorBoundary anywhere in this app, so an unguarded
+// `parse()` call here would crash the whole screen instead of falling back
+// to the same graceful "can't read this file" state the caller already
+// shows for an outright unrecognized format. Returns `undefined` on ANY
+// parse failure — not just the documented `StatementParseError` case — so a
+// future format's unexpected throw degrades the same way rather than
+// crashing.
+const previewStats = (
+  format: StatementFormat,
+  input: { text: string; fileName: string },
+): PreviewStats | undefined => {
+  try {
+    const parsed = format.parse(input);
+    const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
+    const minSeconds = Math.min(...times);
+    const maxSeconds = Math.max(...times);
 
-  return {
-    displayName: format.displayName,
-    transactionCount: parsed.transactions.length,
-    currency: parsed.account.currency,
-    dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
-  };
+    return {
+      displayName: format.displayName,
+      transactionCount: parsed.transactions.length,
+      currency: parsed.account.currency,
+      dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
+    };
+  } catch {
+    // Any parse failure here — the documented `StatementParseError` a bad
+    // data row throws, or anything else unexpected — degrades to the same
+    // graceful state rather than crashing the screen.
+    return undefined;
+  }
 };
 
 // Joins the holding rows this screen is scoped to (per `accountId`, or every
@@ -152,6 +179,12 @@ const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOp
   }));
 };
 
+// The file-read pipeline's own state — kept separate from the derived
+// format/stats below so the screen always has SOMETHING to render (a
+// loading state while the read is pending, an error state on a failed read)
+// instead of a permanently blank `Box` before the async read resolves.
+type LoadState = { kind: 'loading' } | { kind: 'unreadable' } | { kind: 'ready'; text: string };
+
 /**
  * The shared preview + target-holding screen both statement-import entry
  * points converge on — see docs/plans/statement-import.md section B. Reads
@@ -163,20 +196,32 @@ const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOp
 const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigation }) => {
   const { filePath, accountId } = route.params;
   const { t } = useTranslation();
-  const [text, setText] = useState<string | undefined>(undefined);
+  const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
   useEffect(() => {
     let cancelled = false;
 
-    RNFS.readFile(filePath, 'base64').then((base64) => {
-      if (!cancelled) {
-        setText(decodeBase64Utf8(base64));
-      }
-    });
+    RNFS.readFile(filePath, 'base64')
+      .then((base64) => {
+        if (!cancelled) {
+          setLoadState({ kind: 'ready', text: decodeBase64Utf8(base64) });
+        }
+      })
+      .catch(() => {
+        // A failed read — an iCloud placeholder not yet downloaded, a
+        // revoked security-scoped URL, a file removed after picking —
+        // degrades to the SAME graceful "can't read this file" state the
+        // unrecognized-format case shows below, never a blank screen.
+        if (!cancelled) {
+          setLoadState({ kind: 'unreadable' });
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -184,22 +229,43 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   }, [filePath]);
 
   const fileName = fileNameOf(filePath);
-  const input = text === undefined ? undefined : { text, fileName };
+  const input = loadState.kind === 'ready' ? { text: loadState.text, fileName } : undefined;
   const format = input ? detectFormat(input) : undefined;
   const stats = format && input ? previewStats(format, input) : undefined;
+  // Covers every "this file cannot be imported as-is" outcome under one
+  // message: the read itself failed, OR the read succeeded but no format
+  // recognized it, OR a format matched and then failed to parse a data row.
+  // The user does not need to know WHERE in the pipeline it failed.
+  const showUnreadable =
+    loadState.kind === 'unreadable' || (input !== undefined && stats === undefined);
 
   const handleImport = async (): Promise<void> => {
-    if (!input || !selectedHoldingId) {
+    if (!input || !selectedHoldingId || importing) {
       return;
     }
 
-    setImportResult(await importStatement(input, selectedHoldingId));
+    setImporting(true);
+    setImportError(undefined);
+
+    try {
+      setImportResult(await importStatement(input, selectedHoldingId));
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
     <Screen scroll>
       <Box gap={4} testID="statement-import-content">
-        {input && !format && <Text variant="body">{t('statementImport.unrecognizedFormat')}</Text>}
+        {loadState.kind === 'loading' && (
+          <Text variant="body" tone="textSecondary">
+            {t('statementImport.reading')}
+          </Text>
+        )}
+
+        {showUnreadable && <Text variant="body">{t('statementImport.unrecognizedFormat')}</Text>}
 
         {stats && (
           <Box gap={3} style={styles.previewBlock}>
@@ -227,10 +293,16 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             <Button
               variant="primary"
               onPress={handleImport}
-              disabled={selectedHoldingId === undefined}
+              disabled={selectedHoldingId === undefined || importing}
             >
               {t('statementImport.importButton')}
             </Button>
+
+            {importError !== undefined && (
+              <Text variant="body" tone="negative">
+                {importError}
+              </Text>
+            )}
 
             {importResult && (
               <Text variant="body">

@@ -1308,18 +1308,21 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
   });
 
-  it('reads the picked file as base64 and navigates to StatementImport with the resolved filePath and accountId on success', async () => {
+  it('navigates to StatementImport with the resolved filePath and accountId on success, without reading the file itself', async () => {
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
     ]);
-    mockReadFile.mockResolvedValue('ZmFrZS1iYXNlNjQ=');
     const { getByText, navigation } = await renderScreen();
 
     await act(async () => {
       await fireEvent.press(getByText('Import statement'));
     });
 
-    expect(mockReadFile).toHaveBeenCalledWith('file:///mock/statement.csv', 'base64');
+    // `pickAndOpenStatement` hands the picked `uri` straight to
+    // `StatementImportScreen`, which owns the ONE read of this file — a
+    // pre-read here would pay for the read twice and leave its own failure
+    // mode unhandled at this call site (see the handler's own doc comment).
+    expect(mockReadFile).not.toHaveBeenCalled();
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
       filePath: 'file:///mock/statement.csv',
       accountId: 'a',

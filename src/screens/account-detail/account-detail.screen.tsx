@@ -6,7 +6,6 @@ import { pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useLayoutEffect } from 'react';
-import * as RNFS from 'react-native-fs';
 import { useTranslation } from 'react-i18next';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
@@ -121,13 +120,20 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   // The document-picker statement-import entry point (docs/plans/statement-
   // import.md section B.1), same style as the create-form's `connectMonobank`
-  // closure: open the picker, then — on a real pick, not a cancel — read the
-  // file as base64 and hand off to `StatementImportScreen`, which owns the
-  // actual decode/detect/parse/preview. The accepted-type list includes xlsx
-  // from the start even though Phase 1 only ships the Monobank CSV format
-  // (PrivatBank XLSX lands in a later phase and must not need this list
-  // revisited). A cancelled picker rejects with `OPERATION_CANCELED` — caught
-  // and swallowed here, not surfaced as an error.
+  // closure: open the picker, then — on a real pick, not a cancel — hand the
+  // picked `uri` straight to `StatementImportScreen`, which owns the actual
+  // read/decode/detect/parse/preview. This handler does NOT pre-read the
+  // file: an earlier revision read it here too (as a validity check before
+  // navigating), but that made every pick pay for two reads of the same file
+  // and, worse, left the READ's own failure mode (an iCloud placeholder not
+  // yet downloaded, a revoked security-scoped URL) unhandled right here —
+  // the single read now lives entirely in `StatementImportScreen`, which
+  // already guards it and renders a graceful error state on failure. The
+  // accepted-type list includes xlsx from the start even though Phase 1 only
+  // ships the Monobank CSV format (PrivatBank XLSX lands in a later phase
+  // and must not need this list revisited). A cancelled picker rejects with
+  // `OPERATION_CANCELED` — caught and swallowed here, not surfaced as an
+  // error.
   const pickAndOpenStatement = async (): Promise<void> => {
     let results: Awaited<ReturnType<typeof pick>>;
 
@@ -147,7 +153,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
-    await RNFS.readFile(picked.uri, 'base64');
     navigation.navigate('StatementImport', { filePath: picked.uri, accountId });
   };
 

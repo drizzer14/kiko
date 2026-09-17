@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
@@ -26,6 +26,18 @@ const fixtureBase64 = Buffer.from(fixtureText, 'utf-8').toString('base64');
 
 const unrelatedBase64 = Buffer.from(
   'Date,Amount,Description\n2024-01-01,-10.00,Coffee\n',
+  'utf-8',
+).toString('base64');
+
+// The REAL Monobank header row (so `detect()` matches, exactly like the
+// unrelated-format test above proves the opposite) followed by a data row
+// whose date column is unparseable — `monobankCsvFormat.parse` throws a
+// REAL `StatementParseError` out of `parseDateTimeSeconds` for this, since
+// `detect()` only sniffs the header, never a data row. Proves the screen
+// catches a parse-time throw rather than crashing (CRITICAL #1).
+const malformedRowBase64 = Buffer.from(
+  'Дата i час операції,Деталі операції,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта,Курс,Сума комісій (UAH),Сума кешбеку (UAH),Залишок після операції\n' +
+    'not-a-date,Coffee,4829,10.00,10.00,UAH,—,—,—,100\n',
   'utf-8',
 ).toString('base64');
 
@@ -146,6 +158,34 @@ describe('StatementImportScreen', () => {
 
     const { getByText, queryByTestId } = await renderScreen({
       filePath: '/mock/other.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() =>
+      expect(getByText(i18n.t('statementImport.unrecognizedFormat'))).toBeTruthy(),
+    );
+    expect(queryByTestId('statement-import-transaction-count')).toBeNull();
+  });
+
+  it('shows the same graceful state (not a crash) when detect() matches but parse() throws on a bad data row', async () => {
+    mockReadFile.mockResolvedValue(malformedRowBase64);
+
+    const { getByText, queryByTestId } = await renderScreen({
+      filePath: '/mock/bad-row.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() =>
+      expect(getByText(i18n.t('statementImport.unrecognizedFormat'))).toBeTruthy(),
+    );
+    expect(queryByTestId('statement-import-transaction-count')).toBeNull();
+  });
+
+  it('shows the same graceful state (not a crash) when the file read itself fails', async () => {
+    mockReadFile.mockRejectedValue(new Error('ENOENT: file not found'));
+
+    const { getByText, queryByTestId } = await renderScreen({
+      filePath: '/mock/missing.csv',
       accountId: 'a',
     });
 

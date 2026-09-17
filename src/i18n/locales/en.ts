@@ -566,6 +566,7 @@ export const en = {
   // import entry points converge on — see docs/plans/statement-import.md section B.
   statementImport: {
     previewHeading: 'Statement preview',
+    reading: 'Reading the file…',
     unrecognizedFormat: "We don't recognize this file's format. Try a different export.",
     chooseHolding: 'Choose a holding',
     createNewHolding: 'Create new holding',

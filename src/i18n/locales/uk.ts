@@ -513,6 +513,7 @@ export const uk: typeof en = {
   },
   statementImport: {
     previewHeading: 'Перегляд виписки',
+    reading: 'Читаємо файл…',
     unrecognizedFormat: 'Ми не розпізнаємо формат цього файлу. Спробуйте інший експорт.',
     chooseHolding: 'Оберіть актив',
     createNewHolding: 'Створити новий актив',
