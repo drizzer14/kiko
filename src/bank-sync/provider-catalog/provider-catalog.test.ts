@@ -12,6 +12,12 @@ describe('provider catalog', () => {
     ]);
   });
 
+  it('marks only Monobank and Starling as release-connect-ready', () => {
+    const readyIds = providerCatalog.filter((entry) => entry.connectReady).map((entry) => entry.id);
+
+    expect(readyIds).toEqual(['monobank', 'starling']);
+  });
+
   it.each(providerCatalog)(
     "resolves $id's about/dataProvided/eligibility keys to non-empty text in en and uk",
     async (entry) => {

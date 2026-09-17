@@ -24,6 +24,15 @@ declare module '@env' {
   export const BTC_EXPLORER_ENDPOINT: string;
   export const BINANCE_API_ENDPOINT: string;
   export const BINANCE_API_MANAGEMENT_URL: string;
+  // Release-readiness build flag (whole-branch review, item E). Public,
+  // non-secret. `'true'` (a test build) shows every `providerCatalog` entry
+  // with a wired registry entry, `connectReady` or not, in
+  // `AddBankProviderSheet` — anything else (absent, `'false'`, a release/
+  // archive build) shows ONLY a `connectReady` one, so a real user can never
+  // pick a not-yet-safe-to-connect provider. Defaults to `'false'` in
+  // `.env.example`, so a fresh checkout/archive is release-safe by default;
+  // set to `'true'` only in a local, gitignored `.env` for a test build.
+  export const SHOW_UNREADY_BANKS: string;
   // DEV/TEST-ONLY (screenshot mode). Present only in `.env.screenshots`, absent
   // from the committed `.env`, so a production build inlines `undefined`. Typed
   // as optional to model that absence honestly — see src/screenshot/.

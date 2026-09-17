@@ -19,7 +19,11 @@ import {
 import { createRequestGate, type RequestGate } from '../../monobank/throttle';
 import { fetchAccounts, fetchStatement } from '../client';
 import { readCredentials, type PrivatbankCredentials } from '../credentials';
-import type { PrivatbankAccount, PrivatbankStatementItem } from '../privatbank.types';
+import type {
+  PrivatbankAccount,
+  PrivatbankStatementItem,
+  PrivatbankStatementPage,
+} from '../privatbank.types';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;
@@ -121,7 +125,7 @@ export interface SyncDeps {
     fromSeconds: number,
     toSeconds: number,
     fetchImpl?: typeof fetch,
-  ) => Promise<PrivatbankStatementItem[]>;
+  ) => Promise<PrivatbankStatementPage>;
   /**
    * The user-created account to (re)target this sync at. When set, the
    * account is marked `institution: 'privatbank'` once `fetchAccounts`
@@ -377,10 +381,19 @@ const upsertAllHoldings = async (
  * Monobank's capped-response narrowing). AutoClient's own per-response item
  * cap is confirmed by its doc (`STATEMENT_PAGE_SIZE` in
  * `src/privatbank/client/`), but its `followId`/`exist_next_page` cursor for
- * a chunk whose item count exceeds that page size is not yet handled here —
- * TODO(VERIFY LIVE) the cursor's real field names before wiring that up. The
- * gate is shared across every account's pages in one run, mirroring
- * Monobank's single per-run gate.
+ * a chunk whose item count exceeds that page size is not yet FOLLOWED here —
+ * TODO(VERIFY LIVE) the cursor's real field names before wiring real forward
+ * paging up. The gate is shared across every account's pages in one run,
+ * mirroring Monobank's single per-run gate.
+ *
+ * FAIL CLOSED (Global Constraints, mirrors bunq's `fetchAllPaymentsSince`
+ * page-cap throw): a page whose `exist_next_page` is true reports MORE items
+ * than this client fetched. Treating that page as the whole window would let
+ * the caller advance `sync_state.lastSyncAt` past data this run never
+ * actually read, silently dropping it forever. Throwing here instead lets
+ * the per-account fault isolation in `runSyncInner` catch it: the account's
+ * whole run fails, the cursor never advances, and the SAME window is retried
+ * idempotently next run once real paging lands.
  */
 const fetchAllStatements = async (
   deps: SyncDeps,
@@ -398,14 +411,23 @@ const fetchAllStatements = async (
 
     await gate.wait();
 
-    const items = await deps.fetchStatement(
+    const page = await deps.fetchStatement(
       credentials,
       privatbankAccountId,
       windowFrom,
       windowTo,
       deps.fetchImpl,
     );
-    collected.push(...items);
+
+    if (page.exist_next_page) {
+      throw new Error(
+        i18n.t('accountDetail.privatbankStatementPageTruncated', {
+          accountId: privatbankAccountId,
+        }),
+      );
+    }
+
+    collected.push(...page.transactions);
     windowFrom = windowTo;
   }
 

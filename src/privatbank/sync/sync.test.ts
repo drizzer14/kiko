@@ -261,7 +261,7 @@ const makeInMemoryDeps = (
     sleep,
     readCredentials: async () => ({ token: 'tok', clientId: 'client-1' }),
     fetchAccounts: async () => fetchedAccounts,
-    fetchStatement: async (_credentials, accountId) => statementFor(accountId),
+    fetchStatement: async (_credentials, accountId) => ({ transactions: statementFor(accountId) }),
     accountsRepo,
     holdingsRepo,
     transactionsRepo,
@@ -434,6 +434,30 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  // FAIL CLOSED: a page that reports more items than this client fetched
+  // (exist_next_page) must never be treated as the whole window — this
+  // engine fetches only ONE page per window and does not yet follow
+  // AutoClient's own paging cursor (TODO(VERIFY LIVE)), so silently
+  // accepting a truncated page would advance the cursor past data this run
+  // never actually read, dropping it forever. Mirrors bunq's page-cap throw.
+  it('throws and never advances the cursor when a statement page signals more items than it fetched (exist_next_page)', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    deps.fetchStatement = jest.fn(async () => ({
+      transactions: [statementItem()],
+      exist_next_page: true,
+    }));
+
+    await expect(runSync(deps)).rejects.toThrow(/statement/i);
+
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('reads credentials keyed by the resolved connected account id', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
@@ -500,7 +524,7 @@ describe('runSync', () => {
         throw new Error('boom');
       }
 
-      return [statementItem()];
+      return { transactions: [statementItem()] };
     });
 
     await expect(runSync(deps)).rejects.toThrow('boom');

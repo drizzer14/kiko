@@ -29,6 +29,17 @@ export type ProviderCatalogEntry = {
   /** (c) Who it works for, stated plainly. i18n key. */
   eligibilityKey: AddBankTranslationKey;
   /**
+   * Release-readiness gate (whole-branch review, item E). `false` means the
+   * provider is not yet safe to offer a real user in a RELEASE build (e.g.
+   * bunq's crypto binding is still unwired, `src/bunq/crypto/bunq-crypto.ts`;
+   * PrivatBank's wire shapes are still `TODO(VERIFY LIVE)` throughout
+   * `src/privatbank/`). `AddBankProviderSheet` hides a `false` entry UNLESS
+   * the `SHOW_UNREADY_BANKS` build flag is on, so a TEST build can still
+   * exercise the honest graceful-fail/fail-closed states end to end while a
+   * RELEASE build never lets a real user pick a not-ready bank.
+   */
+  connectReady: boolean;
+  /**
    * Country/bank coverage, shown only for a multi-bank provider — a
    * single-bank provider's coverage is implicit in its `aboutKey`. No entry
    * below is multi-bank yet, so none sets this.
@@ -45,6 +56,7 @@ export const providerCatalog: ProviderCatalogEntry[] = [
     aboutKey: 'addBank.monobank.about',
     dataProvidedKey: 'addBank.monobank.dataProvided',
     eligibilityKey: 'addBank.monobank.eligibility',
+    connectReady: true,
   },
   {
     id: 'privatbank',
@@ -54,6 +66,7 @@ export const providerCatalog: ProviderCatalogEntry[] = [
     aboutKey: 'addBank.privatbank.about',
     dataProvidedKey: 'addBank.privatbank.dataProvided',
     eligibilityKey: 'addBank.privatbank.eligibility',
+    connectReady: false,
   },
   {
     id: 'bunq',
@@ -63,6 +76,7 @@ export const providerCatalog: ProviderCatalogEntry[] = [
     aboutKey: 'addBank.bunq.about',
     dataProvidedKey: 'addBank.bunq.dataProvided',
     eligibilityKey: 'addBank.bunq.eligibility',
+    connectReady: false,
   },
   {
     id: 'starling',
@@ -72,5 +86,6 @@ export const providerCatalog: ProviderCatalogEntry[] = [
     aboutKey: 'addBank.starling.about',
     dataProvidedKey: 'addBank.starling.dataProvided',
     eligibilityKey: 'addBank.starling.eligibility',
+    connectReady: true,
   },
 ];

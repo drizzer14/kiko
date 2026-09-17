@@ -23,7 +23,10 @@ import SymbolIcon from '../../../design-system/components/symbol';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
 import { runSync as privatbankRunSync } from '../../../privatbank/sync';
 import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { saveApiKey as saveBunqCredentials } from '../../../bunq/credentials';
+import {
+  saveApiKey as saveBunqCredentials,
+  clearCredentials as clearBunqCredentials,
+} from '../../../bunq/credentials';
 import { saveCredentials as savePrivatbankCredentials } from '../../../privatbank/credentials';
 
 import { styles } from '../account-detail.styles';
@@ -206,8 +209,13 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // to the Keychain, then run the first bunq sync. UNLIKE the other two
   // providers, `BunqConnectField` does NOT pre-validate the key itself
   // (bunq has no side-effect-free check — see that field's own doc comment)
-  // — the sync's own handshake IS the validation, so a wrong key surfaces
-  // through this same `sync(account.id)` result.
+  // — the sync's own handshake IS the validation, so a wrong key (or the
+  // still-unwired crypto binding, `defaultBunqCrypto`) surfaces through this
+  // same `sync(account.id)` result. A failed first sync must not leave the
+  // apiKey ORPHANED in the Keychain (a half-connected state no other
+  // provider's connect flow can reach, since Monobank/PrivatBank/Starling
+  // all pre-validate BEFORE saving) — a failure clears it back out, so a
+  // retry starts from the same clean, disconnected state as a first attempt.
   const connectBunq = async (apiKey: string): Promise<boolean> => {
     try {
       await saveBunqCredentials(account.id, { apiKey });
@@ -215,7 +223,13 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
       return false;
     }
 
-    return sync(account.id);
+    const connected = await sync(account.id);
+
+    if (!connected) {
+      await clearBunqCredentials(account.id);
+    }
+
+    return connected;
   };
 
   // The Starling counterpart of `connectMonobank`: store the validated

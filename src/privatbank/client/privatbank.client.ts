@@ -3,7 +3,7 @@ import { guard } from 'fnts';
 
 import { i18n } from '../../i18n';
 import type { PrivatbankCredentials } from '../credentials';
-import type { PrivatbankAccount, PrivatbankStatementItem } from '../privatbank.types';
+import type { PrivatbankAccount, PrivatbankStatementPage } from '../privatbank.types';
 
 const base = PRIVATBANK_API_ENDPOINT;
 
@@ -192,9 +192,12 @@ export const fetchAccounts = (
  * segments; PrivatBank's own AutoClient docs must confirm its real shape).
  * The AutoClient doc confirms paging is by `followId`/`exist_next_page`, not
  * a date-range cap — this client does not yet page a single [from, to] call
- * beyond one `STATEMENT_PAGE_SIZE`-sized response; a follow-up page (a
- * response whose `exist_next_page` is true) is unhandled until that
- * cursor's real field names are confirmed — TODO(VERIFY LIVE).
+ * beyond one `STATEMENT_PAGE_SIZE`-sized response, and never follows a
+ * `exist_next_page` cursor (real forward paging stays a TODO(VERIFY LIVE)).
+ * The flag is still surfaced on the resolved `PrivatbankStatementPage` (not
+ * swallowed) so the sync engine can fail closed on a truncated page rather
+ * than silently dropping the unread items — see `fetchAllStatements`
+ * (`src/privatbank/sync/sync.ts`).
  */
 export const fetchStatement = (
   credentials: PrivatbankCredentials,
@@ -203,7 +206,7 @@ export const fetchStatement = (
   toSeconds: number,
   fetchImpl: typeof fetch = fetch,
   options: RequestOptions = {},
-): Promise<PrivatbankStatementItem[]> =>
+): Promise<PrivatbankStatementPage> =>
   request(
     `/rest/statement?acc=${encodeURIComponent(accountId)}&startDate=${formatPrivatbankDate(fromSeconds)}&endDate=${formatPrivatbankDate(toSeconds)}&limit=${STATEMENT_PAGE_SIZE}`,
     credentials,

@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n';
 import type { BunqCrypto } from '../bunq.types';
 
 /**
@@ -17,10 +18,27 @@ import type { BunqCrypto } from '../bunq.types';
  * constraint: no new dependency added here). bunq will NOT connect on a real
  * device until this is wired.
  */
-const NOT_WIRED_MESSAGE =
+const NOT_WIRED_DEV_REASON =
   'bunq crypto binding not wired — coordinator must choose a JS RSA lib or a native module';
 
+/**
+ * The error `defaultBunqCrypto`'s two methods reject with. The user-facing
+ * `.message` is the GRACEFUL, TRANSLATED `accountDetail.bunqNotYetAvailable`
+ * line — the raw internal dev reason above must never reach the UI error
+ * line in `BankSyncSection` (`sync()`'s caught message IS what renders
+ * there). It stays reachable as `.cause`, plus one diagnostic log, for a dev
+ * reading a device console.
+ */
+const notWiredError = (): Error => {
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface the internal reason a bunq connect failed so a dev can tell this is the unwired-crypto stub, not a real handshake failure
+  console.warn('[bunq crypto]', NOT_WIRED_DEV_REASON);
+
+  return new Error(i18n.t('accountDetail.bunqNotYetAvailable'), {
+    cause: new Error(NOT_WIRED_DEV_REASON),
+  });
+};
+
 export const defaultBunqCrypto: BunqCrypto = {
-  generateKeyPair: () => Promise.reject(new Error(NOT_WIRED_MESSAGE)),
-  sign: () => Promise.reject(new Error(NOT_WIRED_MESSAGE)),
+  generateKeyPair: () => Promise.reject(notWiredError()),
+  sign: () => Promise.reject(notWiredError()),
 };

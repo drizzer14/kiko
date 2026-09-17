@@ -1,3 +1,4 @@
+import { SHOW_UNREADY_BANKS } from '@env';
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -6,27 +7,51 @@ import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import type { BankProviderId } from '../../../bank-sync/provider';
 import { bankProviderRegistry } from '../../../bank-sync/registry';
-import { providerCatalog } from '../../../bank-sync/provider-catalog';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import { type ProviderCatalogEntry, providerCatalog } from '../../../bank-sync/provider-catalog';
 
 import { styles } from './add-bank-sheet.styles';
 import type { AddBankProviderSheetProps } from './add-bank-sheet.props';
 
 /**
- * The catalog-driven "add a bank" picker: a `BottomSheet` listing every
- * `providerCatalog` entry that ALSO has a wired `bankProviderRegistry`
- * entry — a catalog entry with no registry wiring yet is described but not
- * yet connectable, so it is filtered out rather than shown as a dead-end
- * row. Replaces the previous unconditional `MonobankConnectField` render on
+ * Pure parse of the `SHOW_UNREADY_BANKS` build flag (mirrors
+ * `parseScreenshotMode` in `src/screenshot/screenshot-mode.ts`) — exported so
+ * a test can exercise both states directly. `react-native-dotenv` INLINES
+ * every `@env` value at BUILD time and deletes the import, so a Jest
+ * `jest.mock('@env')` never runs (see that module's own doc comment); a pure
+ * function taking the string is the only hermetically testable seam.
+ */
+export const shouldShowUnreadyBanks = (value: string): boolean => value === 'true';
+
+/**
+ * The rows `AddBankProviderSheet` offers: every `providerCatalog` entry that
+ * has a wired `bankProviderRegistry` entry (a catalog entry with no registry
+ * wiring yet is described but not yet connectable, so it stays filtered out
+ * as before) AND is either `connectReady` or the `showUnready` build flag is
+ * on. RELEASE READINESS (whole-branch review, item E): a not-`connectReady`
+ * provider (bunq, PrivatBank today) must never be selectable by a real user
+ * in a release/App Store build — only a TEST build with the flag on shows
+ * it, so the honest graceful-fail/fail-closed states stay exercisable
+ * end-to-end without shipping a not-yet-safe connection to a real user.
+ * Exported (pure, no `@env` read) so a test can assert both flag states
+ * directly rather than fighting the build-time `@env` inlining above.
+ */
+export const visibleCatalogEntries = (showUnready: boolean): ProviderCatalogEntry[] =>
+  providerCatalog.filter(
+    (entry) => bankProviderRegistry[entry.id] !== undefined && (entry.connectReady || showUnready),
+  );
+
+/**
+ * The catalog-driven "add a bank" picker: a `BottomSheet` listing the rows
+ * `visibleCatalogEntries` resolves for the real, build-time `SHOW_UNREADY_BANKS`
+ * flag. Replaces the previous unconditional `MonobankConnectField` render on
  * `account-detail.screen.tsx` when the account is disconnected; a later
  * provider task adds a row here for free the moment it wires a registry
- * entry, with no change to this component.
+ * entry and flips `connectReady`, with no change to this component.
  */
 const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismiss, onSelect }) => {
   const { t } = useTranslation();
-  const availableEntries = providerCatalog.filter(
-    (entry) => bankProviderRegistry[entry.id] !== undefined,
-  );
+  const availableEntries = visibleCatalogEntries(shouldShowUnreadyBanks(SHOW_UNREADY_BANKS));
 
   const handleSelect = (providerId: BankProviderId): void => {
     onSelect(providerId);

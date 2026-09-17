@@ -38,3 +38,18 @@ export interface PrivatbankStatementItem {
   description?: string;
   counterIban?: string;
 }
+
+/**
+ * One `fetchStatement` page's response wrapper. `exist_next_page` keeps the
+ * AutoClient doc's own wire casing (see `kiko-code-style`'s wire-mirror
+ * exception) -- CONFIRMED by the official doc to be the paging signal;
+ * TODO(VERIFY LIVE) only its literal field name and any follow-cursor value
+ * beside it, both against a live response. This client still fetches exactly
+ * ONE page per window and does not follow the cursor (real forward paging
+ * stays a TODO(VERIFY LIVE)) -- `exist_next_page` exists so the sync engine
+ * can fail closed on a truncated page instead of silently dropping it.
+ */
+export interface PrivatbankStatementPage {
+  transactions: PrivatbankStatementItem[];
+  exist_next_page?: boolean;
+}

@@ -47,13 +47,13 @@ describe('fetchAccounts', () => {
 });
 
 describe('fetchStatement', () => {
-  it('sends the credential headers and returns the typed statement items', async () => {
+  it('sends the credential headers and returns the typed statement page', async () => {
     let sentUrl = '';
     let sentHeaders: Record<string, string> = {};
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
-      return { ok: true, json: async () => statementFixture, status: 200 };
+      return { ok: true, json: async () => ({ transactions: statementFixture }), status: 200 };
     }) as unknown as typeof fetch;
 
     const result = await fetchStatement(CREDENTIALS, 'acc-1', 1704067200, 1704240000, spyFetch);
@@ -62,7 +62,20 @@ describe('fetchStatement', () => {
     expect(sentUrl).toContain('acc-1');
     expect(sentHeaders.token).toBe('token-fixture');
     expect(sentHeaders.id).toBe('client-id-fixture');
-    expect(result).toEqual(statementFixture);
+    expect(result).toEqual({ transactions: statementFixture });
+  });
+
+  it('surfaces exist_next_page when the response signals more items than this page fetched', async () => {
+    const spyFetch = (async () => ({
+      ok: true,
+      json: async () => ({ transactions: statementFixture, exist_next_page: true }),
+      status: 200,
+    })) as unknown as typeof fetch;
+
+    const result = await fetchStatement(CREDENTIALS, 'acc-1', 1704067200, 1704240000, spyFetch);
+
+    expect(result.exist_next_page).toBe(true);
+    expect(result.transactions).toEqual(statementFixture);
   });
 
   it('throws on a non-ok, non-429 response', async () => {

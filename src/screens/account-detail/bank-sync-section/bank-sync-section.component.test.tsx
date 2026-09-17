@@ -18,6 +18,7 @@ const mockUseStarlingSyncAction = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSavePrivatbankCredentials = jest.fn();
 const mockSaveBunqCredentials = jest.fn();
+const mockClearBunqCredentials = jest.fn();
 const mockSaveStarlingToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
 const mockDisconnectPrivatbank = jest.fn();
@@ -60,6 +61,7 @@ jest.mock('../../../privatbank/credentials', () => ({
 }));
 jest.mock('../../../bunq/credentials', () => ({
   saveApiKey: (...args: unknown[]) => mockSaveBunqCredentials(...args),
+  clearCredentials: (...args: unknown[]) => mockClearBunqCredentials(...args),
 }));
 jest.mock('../../../starling/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveStarlingToken(...args),
@@ -157,7 +159,10 @@ beforeEach(() => {
     error: undefined,
     sync: mockPrivatbankSync,
   });
-  mockBunqSync.mockResolvedValue(undefined);
+  // Defaults to a successful sync (unlike the other three providers' plain
+  // `undefined`) because `connectBunq` — uniquely — branches on the resolved
+  // value to decide whether to clear the just-saved apiKey back out.
+  mockBunqSync.mockResolvedValue(true);
   mockUseBunqSyncAction.mockReturnValue({
     isSyncing: false,
     error: undefined,
@@ -172,6 +177,7 @@ beforeEach(() => {
   mockSaveToken.mockResolvedValue(undefined);
   mockSavePrivatbankCredentials.mockResolvedValue(undefined);
   mockSaveBunqCredentials.mockResolvedValue(undefined);
+  mockClearBunqCredentials.mockResolvedValue(undefined);
   mockSaveStarlingToken.mockResolvedValue(undefined);
   mockDisconnectMonobank.mockResolvedValue(undefined);
   mockDisconnectPrivatbank.mockResolvedValue(undefined);
@@ -251,6 +257,29 @@ describe('BankSyncSection — disconnected', () => {
     await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSavePrivatbankCredentials).not.toHaveBeenCalled();
+    // A successful connect keeps the just-saved apiKey — nothing to clean up.
+    expect(mockClearBunqCredentials).not.toHaveBeenCalled();
+  });
+
+  // Item B (whole-branch review): bunq has no pre-validation call (see
+  // `BunqConnectField`'s own doc comment), so the apiKey is saved BEFORE the
+  // handshake runs. A failed first sync — a wrong key, or today's unwired
+  // `defaultBunqCrypto` stub — must not leave that apiKey ORPHANED in the
+  // Keychain (a half-connected state); `connectBunq` clears it back out.
+  it('clears the orphaned bunq apiKey when the first sync fails', async () => {
+    mockBunqSync.mockResolvedValue(false);
+    const view = await render(<BankSyncSection account={bankAccount()} />);
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-bunq'));
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('bunq-field'));
+    });
+
+    expect(mockSaveBunqCredentials).toHaveBeenCalledWith('a', { apiKey: 'bunq-key' });
+    await waitFor(() => expect(mockBunqSync).toHaveBeenCalledWith('a'));
+    await waitFor(() => expect(mockClearBunqCredentials).toHaveBeenCalledWith('a'));
   });
 
   it('renders the Starling field after picking Starling, and connecting saves the token then syncs via Starling', async () => {

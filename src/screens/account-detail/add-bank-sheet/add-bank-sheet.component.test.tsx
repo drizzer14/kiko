@@ -2,9 +2,45 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 
-import AddBankProviderSheet from '.';
+import AddBankProviderSheet, { shouldShowUnreadyBanks, visibleCatalogEntries } from '.';
+
+// Item E (whole-branch review, release readiness gating): `react-native-dotenv`
+// inlines `@env` at BUILD time and deletes the import, so a `jest.mock('@env')`
+// never runs (see `shouldShowUnreadyBanks`'s own doc comment) — these two pure
+// functions are the hermetically testable seam for both flag states, mirroring
+// `src/screenshot/screenshot-mode.test.ts`'s `parseScreenshotMode` pattern.
+describe('shouldShowUnreadyBanks', () => {
+  it('is true only for the exact string "true"', () => {
+    expect(shouldShowUnreadyBanks('true')).toBe(true);
+  });
+
+  it('is false for any other value, including "false", "1", and empty', () => {
+    expect(shouldShowUnreadyBanks('false')).toBe(false);
+    expect(shouldShowUnreadyBanks('1')).toBe(false);
+    expect(shouldShowUnreadyBanks('TRUE')).toBe(false);
+    expect(shouldShowUnreadyBanks('')).toBe(false);
+  });
+});
+
+describe('visibleCatalogEntries', () => {
+  it('with the flag off, lists only the release-connect-ready providers (Monobank, Starling)', () => {
+    expect(visibleCatalogEntries(false).map((entry) => entry.id)).toEqual(['monobank', 'starling']);
+  });
+
+  it('with the flag on, lists every wired provider regardless of connectReady', () => {
+    expect(visibleCatalogEntries(true).map((entry) => entry.id)).toEqual([
+      'monobank',
+      'privatbank',
+      'bunq',
+      'starling',
+    ]);
+  });
+});
 
 describe('AddBankProviderSheet', () => {
+  // This worktree's local `.env` sets `SHOW_UNREADY_BANKS=true` (a test build,
+  // never a release one — see `.env.example`'s comment), so the real,
+  // build-time-inlined flag shows every wired entry here.
   it('renders the wired catalog entries with their about + eligibility copy', async () => {
     const view = await render(
       <AddBankProviderSheet visible onDismiss={jest.fn()} onSelect={jest.fn()} />,
