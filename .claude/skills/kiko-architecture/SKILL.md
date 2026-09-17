@@ -40,11 +40,14 @@ build-a-bundle CI gate:
   it does NOT catch a demo/seed import reached through a path alias
   that omits the `e2e/` substring.
 - A one-time archive-time grep of the built Release `main.jsbundle`
-  for the screenshot/demo symbols and fake-data literals — the
-  acceptance check recorded in
+  for the screenshot/demo symbols and fake-data literals — recorded as
+  a one-time acceptance check in
   `docs/superpowers/plans/2026-09-15-strip-screenshot-subsystem-5.6-fix.md`.
-  This is a manual verification an agent re-runs at archive time (see
-  the `release` skill's Part B, step 7), not a standing CI step.
+  It is NOT currently a standing step in the `release` skill (that
+  skill's Part B "Verify the archive invariants" lists only
+  `UIDeviceFamily`, signing identity, App Group, and `get-task-allow`).
+  Wiring this grep into the `release` skill as a standing archive step
+  is a recommended, not-yet-done follow-up.
 
 Read `CLAUDE.md`'s "Guideline 5.6 — no hidden features" for the
 project-level pointer to this section.
