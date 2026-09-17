@@ -5,7 +5,7 @@ import { Pressable, type TextInputInstance } from 'react-native';
 
 import Box from '../../../../design-system/components/box';
 import Button from '../../../../design-system/components/button';
-import GlassSurface from '../../../../design-system/components/glass-surface';
+import Card from '../../../../design-system/components/card';
 import { KIKO_CATEGORIES_ICONS } from '../../../../design-system/components/icon-picker-modal/icon-pools';
 import SymbolIcon from '../../../../design-system/components/symbol';
 import Text from '../../../../design-system/components/text';
@@ -95,11 +95,11 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
 
   if (!expanded) {
     return (
-      // The collapsed affordance is its own card too — the same GlassSurface
+      // The collapsed affordance is its own card too — the same `Card`
       // treatment as every category card above it — so it reads as the final
       // item in the stack rather than a leftover list row. No gradient: it has
       // no entity color of its own yet.
-      <GlassSurface testID="add-category-card" padding={4} bordered bloom>
+      <Card testID="add-category-card" padding={4}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('categories.addCategory')}
@@ -117,12 +117,12 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
             </Text>
           </Box>
         </Pressable>
-      </GlassSurface>
+      </Card>
     );
   }
 
   return (
-    <GlassSurface testID="add-category-card" padding={4} bordered bloom>
+    <Card testID="add-category-card" padding={4}>
       <Box gap={3}>
         {/* The shared identity field in its caption-free (dense list) mode, so
             the icon chip and the name field line up at equal height — matching
@@ -176,7 +176,7 @@ const AddCategoryRow: FC<AddCategoryRowProps> = ({ onExpand }) => {
           </Box>
         </Box>
       </Box>
-    </GlassSurface>
+    </Card>
   );
 };
 

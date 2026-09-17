@@ -151,7 +151,7 @@ describe('SettingsScreen', () => {
     const currencyCard = getByTestId('settings-card-base-currency');
     const categoriesCard = getByTestId('settings-card-categories');
 
-    // Two distinct GlassSurface cards, one per setting.
+    // Two distinct Card surfaces, one per setting.
     expect(currencyCard).toBeTruthy();
     expect(categoriesCard).toBeTruthy();
     expect(currencyCard).not.toBe(categoriesCard);
@@ -171,8 +171,9 @@ describe('SettingsScreen', () => {
     expect(getByTestId('settings-card-system')).toBeTruthy();
     expect(getByTestId('settings-row-system')).toBeTruthy();
 
-    // GlassSurface renders an inner `<id>-base` layer node under each card, so
-    // filter those out to compare just the top-level card order.
+    // `Card` renders a single flat node per testID (no inner `-base` layer the
+    // way `GlassSurface` used to), but the filter is kept defensively so this
+    // assertion only ever compares top-level card order.
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
       .filter((testID) => !testID.endsWith('-base'));

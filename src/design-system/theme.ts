@@ -167,50 +167,6 @@ export const darkTheme = {
     // `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so this change
     // cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
-    // iOS 27 Liquid Glass tone-compensation tint. Device-verified regression,
-    // but only on a NO-BACKDROP neutral surface (`GlassSurface`'s `bloom`,
-    // `material`, or plain variant — see `resolveBackdropFill` in
-    // `glass-surface.component.tsx`, which returns NO backdrop for exactly
-    // those three): iOS 27's native `UIGlassEffect` compositor renders that
-    // live, fully-sampled glass measurably LIGHTER and FLATTER than iOS 26.5
-    // for byte-identical JS/native code — the Home net-worth card
-    // (`transparent bloom`, so bloom wins the backdrop precedence and it has
-    // NONE) sampled a clean interior at (32,32,32) on iOS 27.0 vs (19,19,19)
-    // on iOS 26.5, same binary/props, on the real `UIGlassEffect` path (not
-    // the JS fallback). A `transparent`/`translucentStrong` surface, by
-    // contrast, paints a real translucent `View` BACKDROP under the glass
-    // that dominates the composited color and is a plain RN `View` — never
-    // touched by this native-material bug — so it needs NO compensation:
-    // device-verified (2026-09-17) the Settings categories screen's
-    // `transparent bordered` card (no `bloom`, so it keeps its backdrop)
-    // reads an IDENTICAL (17,17,18) on iOS 27 with no compensation and on iOS
-    // 26.5; feeding it this tint anyway measurably shifted it AWAY from that
-    // already-correct tone instead of toward it, so `GlassSurface` gates the
-    // call site on `hasBackdrop === false` too, not just OS major and
-    // tint-lessness. `GlassSurface` exposes no intensity/reach knob on the
-    // native glass material, so this compensates at the one lever it does
-    // expose on the affected (no-backdrop) case: `LiquidGlassView`'s own
-    // `tintColor` (`UIGlassEffect.tintColor`). A hueless dark tint pulls the
-    // composited result back toward the pre-iOS-27 tone, the same "a wash
-    // needs no hue, only a darkening step" precedent as `surfaceWashStrong`
-    // above — though unlike that wash (a sibling painted OVER the finished
-    // glass), this is fed straight into the glass's own native tint, so its
-    // relationship to the final alpha is the native compositor's, not a
-    // simple over-black blend (see the calibration note below). Gated to iOS
-    // 27+ only in `GlassSurface` — the iOS 26.5 baseline already lands at the
-    // correct tone with no compensation, so applying this token there too
-    // would nudge an already-correct surface darker for no reason; this
-    // token's own value is not iOS-version-gated, only its call site is.
-    // Applied only when NO entity `tint` is set — an entity card already
-    // feeds its own resolved hex to `tintColor` and must keep reading exactly
-    // that color, never this one.
-    // Value calibrated on-device (iPhone27-Crash simulator, iOS 27.0, the
-    // Home net-worth card's no-backdrop `bloom` interior — the only case this
-    // token's call site now applies to): 0.12 alpha under-corrected
-    // (32,32,32) only down to (28,28,28); 0.41 (the alpha a linear
-    // over-black-composite model predicts to reach 19 from a 32 starting
-    // point: `1 - 19/32`) measured back at the (19,19,19) target exactly.
-    surfaceGlassCompensation: 'rgba(0,0,0,0.41)',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
   },

@@ -1,5 +1,5 @@
 import { render, within } from '@testing-library/react-native';
-import { Platform, StyleSheet, Text, View, type ViewProps } from 'react-native';
+import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 // The border width the surface applies comes from Unistyles' own
 // `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so the
 // assertion reads the expected value from the same source the style uses.
@@ -402,110 +402,6 @@ describe('GlassSurface', () => {
       const base = getByTestId('plain-glass-base');
       expect(base.props.tintColor).toBeUndefined();
       expect(base.props.animated).toBe(false);
-    });
-
-    // iOS 27's native `UIGlassEffect` compositor renders every neutral
-    // (non-`tint`) surface measurably lighter/flatter than iOS 26.5 for
-    // byte-identical code (device-verified: a clean card interior sampled
-    // (32,32,32) on iOS 27.0 vs (19,19,19) on iOS 26.5). `GlassSurface`
-    // compensates by feeding the low-alpha `surfaceGlassCompensation` token
-    // as the glass's own `tintColor` — but ONLY on iOS 27+, so the already-
-    // correct iOS 26.5 baseline is never touched.
-    describe('iOS 27 tone compensation', () => {
-      afterEach(() => {
-        jest.restoreAllMocks();
-      });
-
-      it('feeds the compensation tint to a tint-less surface on iOS 27+', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('27.0');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios27-plain-glass">
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios27-plain-glass-base').props.tintColor).toBe(
-          darkTheme.colors.surfaceGlassCompensation,
-        );
-      });
-
-      it('leaves a tint-less surface with no tintColor below iOS 27 (the already-correct iOS 26.5 baseline)', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.5');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios26-plain-glass">
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios26-plain-glass-base').props.tintColor).toBeUndefined();
-      });
-
-      it('keeps an entity tint winning over the compensation tint on iOS 27+', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('27.0');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios27-tinted-glass" tint={tint}>
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios27-tinted-glass-base').props.tintColor).toBe(tint);
-      });
-
-      // Device-verified (2026-09-17, iPhone27-Crash vs iPhone26-Compare
-      // simulators): a `transparent`/`translucentStrong` surface's real
-      // translucent `View` backdrop (see `resolveBackdropFill`) dominates the
-      // composited color and is never touched by the native no-backdrop
-      // material-brightness regression — the Settings categories screen's
-      // `transparent bordered` card reads IDENTICAL on iOS 27 with no
-      // compensation and on iOS 26.5, and feeding it this tint anyway
-      // measurably shifted it away from that already-correct tone. So the
-      // compensation must skip any surface that still has a backdrop, even
-      // when it is otherwise tint-less and on iOS 27+.
-      it('does NOT feed the compensation tint to a tint-less surface that still has a backdrop (transparent) on iOS 27+', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('27.0');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios27-transparent-glass" transparent>
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios27-transparent-glass-base').props.tintColor).toBeUndefined();
-      });
-
-      it('does NOT feed the compensation tint to a tint-less surface that still has a backdrop (translucentStrong) on iOS 27+', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('27.0');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios27-strong-glass" translucentStrong>
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios27-strong-glass-base').props.tintColor).toBeUndefined();
-      });
-
-      // `bloom` OVERRIDES `transparent`'s own backdrop (see
-      // `resolveBackdropFill`'s precedence), so a `transparent bloom` surface
-      // (the Home net-worth card's actual variant) has NO backdrop and DOES
-      // need the compensation — this is the one case the (32,32,32)-vs-
-      // (19,19,19) delta was device-measured on.
-      it('feeds the compensation tint to a transparent+bloom surface (bloom removes the backdrop) on iOS 27+', async () => {
-        jest.spyOn(Platform, 'Version', 'get').mockReturnValue('27.0');
-
-        const { getByTestId } = await render(
-          <GlassSurface testID="ios27-transparent-bloom-glass" transparent bloom>
-            <Text>content</Text>
-          </GlassSurface>,
-        );
-
-        expect(getByTestId('ios27-transparent-bloom-glass-base').props.tintColor).toBe(
-          darkTheme.colors.surfaceGlassCompensation,
-        );
-      });
     });
 
     // `transparent` opts a tint-LESS surface into a TRANSLUCENT themed backdrop

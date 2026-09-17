@@ -241,7 +241,7 @@ describe('AccountsScreen', () => {
     });
     const { getAllByTestId } = await renderAccounts();
 
-    // Each account maps to its own GlassSurface card (testID `account-card`),
+    // Each account maps to its own Card (testID `account-card`),
     // so two active accounts yield two distinct cards rather than one group.
     expect(getAllByTestId('account-card')).toHaveLength(2);
   });
@@ -389,22 +389,21 @@ describe('AccountsScreen', () => {
     expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
   });
 
-  it('leaves the account card itself a neutral frosted surface, not an entity-color wash', async () => {
+  it('leaves the account card itself the shared solid surface, not an entity-color wash', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
       ],
       holdings: [],
     });
-    const { getByTestId, queryByTestId } = await renderAccounts();
+    const { getByTestId } = await renderAccounts();
 
-    // The color now lives on the icon tile only (see the tests above) — the
-    // card's own base goes back to the shared neutral `surfaceTranslucent`
-    // fill every other frosted list card/row uses, and there is no colored
-    // wash layer over it at all.
-    const flat = StyleSheet.flatten(getByTestId('account-card-base').props.style);
-    expect(flat.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
-    expect(queryByTestId('account-card-wash')).toBeNull();
+    // The color lives on the icon tile only (see the tests above) — the card
+    // itself is the shared solid content-layer `Card`: a flat `surface` fill
+    // applied directly to its own node (no separate base/wash sub-layer the
+    // way `GlassSurface` used to render, and no colored wash at all).
+    const flat = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
   it('draws the shared hairline card border on first render (G2)', async () => {

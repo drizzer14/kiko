@@ -28,9 +28,9 @@ import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
+import Card from '../../design-system/components/card';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
-import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
@@ -252,9 +252,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     // "Projected". The amount reads in its kind-derived tone (tax red,
     // interest/coupon green, principal movements neutral/by-sign).
     return (
-      <GlassSurface
-        transparent
-        bloom
+      <Card
         padding={3}
         testID="ledger-row"
         style={row.entry.isFuture ? styles.futureRow : undefined}
@@ -278,7 +276,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
             </Text>
           </Box>
         </Box>
-      </GlassSurface>
+      </Card>
     );
   }
 
@@ -325,7 +323,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       liftOnHold
     >
       <Pressable accessibilityRole="button" onPress={() => onPressTransaction(row.transaction.id)}>
-        <GlassSurface transparent bloom padding={3} testID="ledger-row">
+        <Card padding={3} testID="ledger-row">
           <Box gap={1}>
             <Box direction="row" style={styles.rowMain}>
               <Box direction="row" gap={2} style={styles.rowLead}>
@@ -358,7 +356,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               </Box>
             )}
           </Box>
-        </GlassSurface>
+        </Card>
       </Pressable>
     </CardContextMenu>
   );

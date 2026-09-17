@@ -133,36 +133,33 @@ describe('CategoriesScreen', () => {
   it('renders each category as its own card, plus one trailing add-category card', async () => {
     const { getAllByTestId, getByTestId } = await renderScreen();
 
-    // One GlassSurface card per category — not a single shared surface housing
-    // every row.
+    // One Card per category — not a single shared surface housing every row.
     expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
     // The add-category affordance is its own trailing card in the same stack.
     expect(getByTestId('add-category-card')).toBeTruthy();
   });
 
-  // The category card uses the SAME neutral frosted treatment the account and
-  // holding cards use permanently (`transparent`, no `bloom`, no entity tint):
-  // its base fills with the shared neutral `surfaceTranslucent` token, and it
-  // carries no colored wash layer — the category color lives on the row icon
-  // only, never on the card background.
-  it('renders each category card as a neutral frosted surface, no bloom and no color wash', async () => {
-    const { getAllByTestId, queryAllByTestId } = await renderScreen();
+  // The category card is the SAME solid content-layer `Card` the account and
+  // holding cards use: a flat `surface` fill, no Liquid Glass material and so
+  // no separate base/wash sub-layers to assert on — the category color lives
+  // on the row icon only, never on the card background.
+  it('renders each category card as the shared solid Card surface', async () => {
+    const { getAllByTestId } = await renderScreen();
 
-    const base = getAllByTestId('category-card-base')[0];
-    expect(StyleSheet.flatten(base.props.style).backgroundColor).toBe(
-      darkTheme.colors.surfaceTranslucent,
-    );
-    expect(queryAllByTestId('category-card-wash')).toHaveLength(0);
+    const card = getAllByTestId('category-card')[0];
+    expect(StyleSheet.flatten(card.props.style).backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  // ROOT-CAUSE REGRESSION for the flaky category-card backgrounds: an inline
+  // ROOT-CAUSE REGRESSION for the flaky category-card ordering: an inline
   // `keyExtractor`/`renderItem` (a fresh function on every render) makes
   // `react-native-sortables`' item store (`ItemsProvider`/`createItemsStore`)
   // treat the renderer itself as changed and recompute EVERY row's node, not
-  // just the row whose data actually changed — including every card's
-  // `GlassSurface`, which samples its live glass material from the app's
-  // current visual state (see `categoryKeyExtractor`'s doc comment in
-  // `categories.screen.tsx`). This asserts the FIX (`categoryKeyExtractor` +
+  // just the row whose data actually changed (see `categoryKeyExtractor`'s
+  // doc comment in `categories.screen.tsx` — this used to also risk a stale
+  // Liquid Glass resample back when this card was a `GlassSurface`, a concern
+  // the current solid `Card` no longer has, but the referential-stability fix
+  // itself remains worth keeping and asserting). This asserts the FIX
+  // (`categoryKeyExtractor` +
   // the memoized `renderCategoryRow`) directly: the exact function references
   // `Sortable.Grid` receives must survive a re-render triggered by an
   // unrelated category write — a live-query refire that hands back a brand

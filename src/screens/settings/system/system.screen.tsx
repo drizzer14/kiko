@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { APP_LOCK_ENABLED } from '../../../db/db-config';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Box from '../../../design-system/components/box';
-import GlassSurface from '../../../design-system/components/glass-surface';
+import Card from '../../../design-system/components/card';
 import LanguageSwitch from '../../../design-system/components/language-switch';
 import Screen from '../../../design-system/components/screen';
 import { type AppLanguage, deviceLanguage } from '../../../i18n';
@@ -43,11 +43,11 @@ const SystemScreen: FC<SystemScreenProps> = () => {
   return (
     <Screen scroll>
       <Box gap={4}>
-        <GlassSurface testID="settings-card-language" padding={3} bloom>
+        <Card testID="settings-card-language" padding={3}>
           <SettingsRow testID="settings-row-language" icon="globe" label={t('settings.language')}>
             <LanguageSwitch selected={effectiveLanguage} onSelect={handleSelectLanguage} />
           </SettingsRow>
-        </GlassSurface>
+        </Card>
 
         {/* Gated behind APP_LOCK_ENABLED (a build-time kill switch, hardcoded on):
             flipping it off is the escape hatch for a build without the
