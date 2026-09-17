@@ -78,6 +78,33 @@ describe('mapParsedTransaction', () => {
   });
 });
 
+// PrivatBank XLSX (Phase 2/Task 3) never carries an MCC — section C.1 — so a
+// row shaped exactly like a real PrivatBank row (masked-card hint, no mcc at
+// all) must map to `category: null` through the SAME generic mapper, not a
+// PrivatBank-specific branch. This exercises the real `mapParsedTransaction`
+// function against that shape directly, distinct from the generic
+// "no mcc" case above, to pin the PrivatBank-sourced expectation by name.
+describe('mapParsedTransaction (PrivatBank-sourced row, no mcc)', () => {
+  const privatbankRow: ParsedTransaction = {
+    amountMinorUnits: -12_345,
+    timeSeconds: 1_751_364_900,
+    description: 'Test Merchant One',
+    maskedCardHint: '1111 **** **** 1111',
+  };
+
+  it('maps a PrivatBank row (no mcc) to category: null', () => {
+    const mapped = mapParsedTransaction(privatbankRow, 'holding-1', 0);
+
+    expect(mapped.category).toBeNull();
+  });
+
+  it('does not carry the masked-card hint on the mapped DB row (preview-only field)', () => {
+    const mapped = mapParsedTransaction(privatbankRow, 'holding-1', 0);
+
+    expect(mapped).not.toHaveProperty('maskedCardHint');
+  });
+});
+
 describe('computeDedupKey', () => {
   it('is stable across two identical calls', () => {
     const first = computeDedupKey('holding-1', groceryTransaction, 0);

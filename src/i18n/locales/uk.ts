@@ -519,6 +519,12 @@ export const uk: typeof en = {
     createNewHolding: 'Створити новий актив',
     importButton: 'Імпортувати',
     importedCount: 'Імпортовано {{imported}} з {{total}}',
+    // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
+    // 5-20 рядків), _other (fractional, unreachable here).
+    unresolvedRowsSkipped_one: '{{count}} рядок пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_few: '{{count}} рядки пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_many: '{{count}} рядків пропущено: нерозпізнана валюта',
+    unresolvedRowsSkipped_other: '{{count}} рядки пропущено: нерозпізнана валюта',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

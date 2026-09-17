@@ -2,8 +2,14 @@ import type { FC } from 'react';
 import * as RNFS from 'react-native-fs';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import readXlsxFile from 'read-excel-file/browser';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import type {
+  SpreadsheetCellValue,
+  StatementFormat,
+  StatementFormatInput,
+} from '../../statement-import/parser';
 import { formatDate } from '../../dates/format';
 import { holdingsRepo } from '../../holdings/repo';
 import Box from '../../design-system/components/box';
@@ -14,7 +20,6 @@ import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { detectFormat } from '../../statement-import/registry';
 import type { AccountsStackParamList } from '../../navigation/types';
-import type { StatementFormat } from '../../statement-import/parser';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import { styles } from './statement-import.styles';
@@ -113,11 +118,52 @@ const decodeBase64Utf8 = (base64: string): string => decodeUtf8Bytes(decodeBase6
 // a real (if inert) value is passed rather than an empty string.
 const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
 
+// PrivatBank XLSX is the only spreadsheet format in scope (section C.5) —
+// an honest, visible extension check decides the text-vs-spreadsheet branch
+// below, not a hidden flag. Every other picked file (every CSV format
+// shipped so far) takes the existing UTF-8 text path.
+const isXlsxFile = (fileName: string): boolean => fileName.toLowerCase().endsWith('.xlsx');
+
+// Runs the async `read-excel-file` parse ONCE, ahead of `detectFormat`/
+// `format.parse` (both synchronous — see `StatementFormatInput.sheetRows`'s
+// doc comment in `parser.ts`). [VERIFY AT BUILD TIME]: the `/browser` entry
+// point is the Hermes-safe choice picked here — it accepts a plain
+// `ArrayBuffer` (no Node `Buffer`, no DOM `File`/`Blob`), matching exactly
+// what `decodeBase64ToBytes` above already produces from the picked file's
+// base64 content; this cannot be proven under Jest (which runs on Node, not
+// Hermes), only by a real on-device import.
+const readSheetRowsSafely = async (
+  base64: string,
+): Promise<SpreadsheetCellValue[][] | undefined> => {
+  const arrayBuffer = new Uint8Array(decodeBase64ToBytes(base64)).buffer;
+
+  try {
+    const sheets = await readXlsxFile(arrayBuffer);
+
+    return sheets[0]?.data as SpreadsheetCellValue[][] | undefined;
+  } catch {
+    // A genuinely invalid/corrupted `.xlsx` — degrades to the same "we don't
+    // recognize this file" state `previewStats` already shows for any other
+    // format-level failure (no `sheetRows` means `detectFormat` recognizes
+    // nothing), rather than a distinct crash/error path.
+    return undefined;
+  }
+};
+
 type PreviewStats = {
   displayName: string;
   transactionCount: number;
   currency: string;
   dateSpan: string;
+  // Distinct masked-card hints across every parsed row, in first-seen order.
+  // PrivatBank XLSX is the only format that ever produces one (section C.1,
+  // a multi-card export) — every other shipped format's rows carry none, so
+  // this is always `[]` for them.
+  maskedCardHints: string[];
+  // Rows this format's parse could not resolve (e.g. an unmapped PrivatBank
+  // currency word) — excluded from `transactionCount` above, but surfaced
+  // here rather than silently dropped (controller ruling 2).
+  unresolvedRowCount: number;
 };
 
 // The preview's transaction-count/date-span/currency block, derived from a
@@ -137,19 +183,28 @@ type PreviewStats = {
 // crashing.
 const previewStats = (
   format: StatementFormat,
-  input: { text: string; fileName: string },
+  input: StatementFormatInput,
 ): PreviewStats | undefined => {
   try {
     const parsed = format.parse(input);
     const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
     const minSeconds = Math.min(...times);
     const maxSeconds = Math.max(...times);
+    const maskedCardHints = Array.from(
+      new Set(
+        parsed.transactions
+          .map((transaction) => transaction.maskedCardHint)
+          .filter((hint): hint is string => hint !== undefined),
+      ),
+    );
 
     return {
       displayName: format.displayName,
       transactionCount: parsed.transactions.length,
       currency: parsed.account.currency,
       dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
+      maskedCardHints,
+      unresolvedRowCount: parsed.unresolvedRows?.length ?? 0,
     };
   } catch {
     // Any parse failure here — the documented `StatementParseError` a bad
@@ -183,7 +238,10 @@ const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOp
 // format/stats below so the screen always has SOMETHING to render (a
 // loading state while the read is pending, an error state on a failed read)
 // instead of a permanently blank `Box` before the async read resolves.
-type LoadState = { kind: 'loading' } | { kind: 'unreadable' } | { kind: 'ready'; text: string };
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'unreadable' }
+  | { kind: 'ready'; text: string; sheetRows?: SpreadsheetCellValue[][] };
 
 /**
  * The shared preview + target-holding screen both statement-import entry
@@ -208,10 +266,26 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     let cancelled = false;
 
     RNFS.readFile(filePath, 'base64')
-      .then((base64) => {
-        if (!cancelled) {
-          setLoadState({ kind: 'ready', text: decodeBase64Utf8(base64) });
+      .then(async (base64) => {
+        if (cancelled) {
+          return;
         }
+
+        // The picked file's own extension decides the text-vs-spreadsheet
+        // branch (an honest, visible check — see `isXlsxFile`'s doc
+        // comment). PrivatBank XLSX is the only spreadsheet format in
+        // scope, so this stays a plain two-way split.
+        if (isXlsxFile(fileNameOf(filePath))) {
+          const sheetRows = await readSheetRowsSafely(base64);
+
+          if (!cancelled) {
+            setLoadState({ kind: 'ready', text: '', sheetRows });
+          }
+
+          return;
+        }
+
+        setLoadState({ kind: 'ready', text: decodeBase64Utf8(base64) });
       })
       .catch(() => {
         // A failed read — an iCloud placeholder not yet downloaded, a
@@ -229,7 +303,10 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   }, [filePath]);
 
   const fileName = fileNameOf(filePath);
-  const input = loadState.kind === 'ready' ? { text: loadState.text, fileName } : undefined;
+  const input =
+    loadState.kind === 'ready'
+      ? { text: loadState.text, fileName, sheetRows: loadState.sheetRows }
+      : undefined;
   const format = input ? detectFormat(input) : undefined;
   const stats = format && input ? previewStats(format, input) : undefined;
   // Covers every "this file cannot be imported as-is" outcome under one
@@ -281,6 +358,22 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             <Box testID="statement-import-date-span">
               <Text variant="body">{stats.dateSpan}</Text>
             </Box>
+
+            {stats.maskedCardHints.length > 0 && (
+              <Box gap={1} testID="statement-import-masked-cards">
+                {stats.maskedCardHints.map((hint) => (
+                  <Text key={hint} variant="body" tone="textSecondary">
+                    {hint}
+                  </Text>
+                ))}
+              </Box>
+            )}
+
+            {stats.unresolvedRowCount > 0 && (
+              <Text variant="body" tone="textSecondary">
+                {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
+              </Text>
+            )}
 
             <Button
               variant="secondaryTonal"

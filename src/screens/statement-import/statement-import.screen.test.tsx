@@ -5,6 +5,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
+import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -79,6 +80,50 @@ const mockImportStatement = jest.fn();
 jest.mock('../../statement-import/import-statement', () => ({
   importStatement: (...args: unknown[]) => mockImportStatement(...args),
 }));
+
+// A multi-card PrivatBank export can span MULTIPLE distinct masked cards
+// (docs/plans/statement-import.md section C.1) — the preview must surface
+// EACH row's own hint. `privatbank-xlsx.format.ts` is still a throwing stub
+// at this point in the task split (Task 3 report), so this test drives the
+// screen against a hand-built `ParsedStatement` through a wrapped
+// `detectFormat`, keyed on one sentinel `fileName` — every OTHER test in this
+// file keeps using the REAL `detectFormat`/`monobankCsvFormat` pipeline
+// unchanged (`jest.requireActual` below), so this addition cannot affect any
+// existing assertion.
+const MULTI_CARD_FILE_NAME = 'multi-card-privatbank-trigger.xlsx';
+const multiCardParsedStatement: ParsedStatement = {
+  formatId: 'privatbank-xlsx',
+  account: { currency: 'UAH', maskedPan: '1111 **** **** 1111' },
+  transactions: [
+    {
+      amountMinorUnits: -12_345,
+      timeSeconds: 1_751_364_900,
+      description: 'Test Merchant One',
+      maskedCardHint: '1111 **** **** 1111',
+    },
+    {
+      amountMinorUnits: 5_000,
+      timeSeconds: 1_751_455_845,
+      description: 'Test Merchant Two',
+      maskedCardHint: '2222 **** **** 2222',
+    },
+  ],
+};
+const multiCardFormatStub: StatementFormat = {
+  id: 'privatbank-xlsx',
+  displayName: 'PrivatBank (XLSX)',
+  detect: () => true,
+  parse: () => multiCardParsedStatement,
+};
+
+jest.mock('../../statement-import/registry', () => {
+  const actual = jest.requireActual('../../statement-import/registry');
+  return {
+    ...actual,
+    detectFormat: (input: { text: string; fileName: string }) =>
+      input.fileName === MULTI_CARD_FILE_NAME ? multiCardFormatStub : actual.detectFormat(input),
+  };
+});
 
 // The target-holding picker has its own dedicated test file
 // (`target-holding-sheet/target-holding-sheet.component.test.tsx`) — mocked
@@ -220,5 +265,42 @@ describe('StatementImportScreen', () => {
     expect(
       getByText(i18n.t('statementImport.importedCount', { imported: 3, total: 4 })),
     ).toBeTruthy();
+  });
+
+  it('surfaces each row’s distinct masked-card hint in a multi-card PrivatBank preview', async () => {
+    mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
+
+    const { getByText } = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
+    expect(getByText('1111 **** **** 1111')).toBeTruthy();
+    expect(getByText('2222 **** **** 2222')).toBeTruthy();
+  });
+
+  it('still requires an explicit holding pick before importing a multi-card PrivatBank file, even with a hint shown', async () => {
+    mockReadFile.mockResolvedValue('irrelevant-base64-the-mocked-detectFormat-ignores-it');
+    mockImportStatement.mockResolvedValue({ formatId: 'privatbank-xlsx', imported: 2, total: 2 });
+
+    const { getByText, getByTestId } = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(getByText('PrivatBank (XLSX)')).toBeTruthy());
+
+    // No holding picked yet: pressing Import must NOT auto-route by either
+    // card hint shown above — the masked-card hint is a display suggestion
+    // only, never a silent target pick (section C.1).
+    await fireEvent.press(getByText(i18n.t('statementImport.importButton')));
+    expect(mockImportStatement).not.toHaveBeenCalled();
+
+    await fireEvent.press(getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() => expect(mockImportStatement).toHaveBeenCalledTimes(1));
+    expect(mockImportStatement).toHaveBeenCalledWith(expect.anything(), 'h1');
   });
 });

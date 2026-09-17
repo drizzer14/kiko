@@ -2,6 +2,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 
 import { monobankCsvFormat } from '../formats/monobank-csv';
+import { privatbankXlsxFormat } from '../formats/privatbank-xlsx';
 
 import { detectFormat, statementFormats } from './registry';
 
@@ -12,8 +13,8 @@ const fixtureText = readFileSync(
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
 
 describe('statementFormats', () => {
-  it('registers exactly the Monobank CSV format in this phase', () => {
-    expect(statementFormats).toEqual([monobankCsvFormat]);
+  it('registers exactly the Monobank CSV and PrivatBank XLSX formats in this phase', () => {
+    expect(statementFormats).toEqual([monobankCsvFormat, privatbankXlsxFormat]);
   });
 });
 

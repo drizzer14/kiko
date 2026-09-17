@@ -572,6 +572,17 @@ export const en = {
     createNewHolding: 'Create new holding',
     importButton: 'Import',
     importedCount: 'Imported {{imported}} of {{total}}',
+    // A row a format's parse could not resolve (e.g. a PrivatBank currency
+    // word its abbreviation map doesn't cover yet, section C.1) — excluded
+    // from the import, but surfaced honestly rather than silently dropped
+    // (see `ParsedStatement.unresolvedRows` in parser.ts). English selects
+    // _one/_other; the _few/_many forms exist only to mirror Ukrainian's
+    // plural set (see uk.ts), so the two catalogues keep an identical key
+    // set and `typeof en` still types uk.
+    unresolvedRowsSkipped_one: '{{count}} row skipped: unrecognized currency',
+    unresolvedRowsSkipped_few: '{{count}} rows skipped: unrecognized currency',
+    unresolvedRowsSkipped_many: '{{count}} rows skipped: unrecognized currency',
+    unresolvedRowsSkipped_other: '{{count}} rows skipped: unrecognized currency',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

@@ -18,6 +18,14 @@ export type ParsedTransaction = {
   mcc?: number;
   counterIban?: string;
   comment?: string;
+  /** The masked card/account hint THIS ROW belongs to (PrivatBank's own
+   * `Картка` column, section C.1) — distinct from `ParsedAccountHint.maskedPan`
+   * below, which is only ever a single suggestion for the whole file. A
+   * multi-card PrivatBank export needs this per row so the screen can show
+   * which card each previewed row came from; the user's target-holding pick
+   * stays load-bearing regardless — this is never used to auto-route a row.
+   * Optional; every format shipped before PrivatBank XLSX omits it. */
+  maskedCardHint?: string;
 };
 
 export type ParsedAccountHint = {
@@ -30,19 +38,58 @@ export type ParsedAccountHint = {
   maskedPan?: string;
 };
 
+/** A row this format's `parse` recognized structurally but could NOT fully
+ * resolve to a domain `ParsedTransaction` — e.g. a PrivatBank currency word
+ * this format's abbreviation map doesn't cover yet (section C.1, tagged
+ * `[VERIFY LIVE]` — the 4-word map is known incomplete). Surfaced to the user
+ * as a "confirm currency" prompt instead of being thrown (which would abort
+ * the whole file) or silently dropped without a trace. */
+export type UnresolvedStatementRow = {
+  reason: 'unmapped-currency';
+  rawCurrency: string;
+  description: string;
+};
+
 export type ParsedStatement = {
   formatId: StatementFormatId;
   account: ParsedAccountHint;
   transactions: ParsedTransaction[];
+  /** Rows this format's parse could not resolve (see `UnresolvedStatementRow`
+   * above) — optional; a format that never produces one (every CSV format
+   * shipped so far) simply omits it, so `ParsedStatement`'s shape stays
+   * unchanged for them. */
+  unresolvedRows?: UnresolvedStatementRow[];
 };
 
-/** One entry per SHIPPED format. Phase 1 ships Monobank CSV only — every
- * other bank studied for this plan (PrivatBank XLSX, Sensebank CSV, …) lands
- * in its own later phase and is deliberately NOT listed here yet. */
-export const statementFormatIds = ['monobank-csv'] as const;
+/** One entry per SHIPPED format. Phase 1 shipped Monobank CSV; Phase 2 adds
+ * PrivatBank XLSX. Every other bank studied for this plan (Sensebank CSV, …)
+ * lands in its own later phase and is deliberately NOT listed here yet. */
+export const statementFormatIds = ['monobank-csv', 'privatbank-xlsx'] as const;
 export type StatementFormatId = (typeof statementFormatIds)[number];
 
-export type StatementFormatInput = { text: string; fileName: string };
+/** One resolved spreadsheet cell value — mirrors `read-excel-file`'s own
+ * `CellValue | null` shape closely enough for this plan's needs, without this
+ * format-agnostic contract file importing the library itself. */
+export type SpreadsheetCellValue = string | number | boolean | Date | null;
+
+export type StatementFormatInput = {
+  text: string;
+  fileName: string;
+  /** Pre-parsed spreadsheet rows for a binary format (PrivatBank XLSX is the
+   * only one in this plan's scope) — `read-excel-file`'s API is entirely
+   * `Promise`-based (confirmed against its published `.d.ts`, no synchronous
+   * entry point exists anywhere in the package), which cannot run inside a
+   * `StatementFormat`'s synchronous `detect`/`parse` (`registry.ts`'s
+   * `Array.prototype.find` and this screen's render path are both
+   * synchronous, and changing that would ripple through Phase 1's already
+   * shipped, tested code). So the file-read layer (the screen) runs the
+   * async `read-excel-file` call ONCE, ahead of time, and hands the already
+   * resolved rows through here — `detect`/`parse` for a spreadsheet format
+   * then stay perfectly synchronous, operating on plain, already-resolved
+   * data. A text format (every CSV in this plan) never sets this and keeps
+   * using `text` exactly as before — this field is purely additive. */
+  sheetRows?: SpreadsheetCellValue[][];
+};
 
 export interface StatementFormat {
   id: StatementFormatId;
