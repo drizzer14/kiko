@@ -6,7 +6,7 @@ export const styles = StyleSheet.create((theme) => ({
   // two lists share one visual language. The border is the affordance; there is
   // no overlaid pencil badge.
   iconChip: {
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),

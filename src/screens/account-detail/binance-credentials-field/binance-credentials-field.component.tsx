@@ -111,15 +111,17 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           />
         </Box>
 
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteApiKey')}
-          onPress={() => handlePaste('apiKey')}
-        />
+        <Box>
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            icon="document.on.clipboard"
+            textColor={theme.colors.textSecondary}
+            accessibilityLabel={t('accountDetail.pasteApiKey')}
+            onPress={() => handlePaste('apiKey')}
+          />
+        </Box>
       </Box>
 
       <Box direction="row" gap={3} style={styles.fieldRow}>
@@ -135,15 +137,17 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
           />
         </Box>
 
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteApiSecret')}
-          onPress={() => handlePaste('secret')}
-        />
+        <Box>
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            icon="document.on.clipboard"
+            textColor={theme.colors.textSecondary}
+            accessibilityLabel={t('accountDetail.pasteApiSecret')}
+            onPress={() => handlePaste('secret')}
+          />
+        </Box>
       </Box>
 
       <Box direction="row" gap={2} style={styles.statusLine}>

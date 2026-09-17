@@ -61,15 +61,17 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
           />
         </Box>
 
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteToken}
-        />
+        <Box>
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            icon="document.on.clipboard"
+            textColor={theme.colors.textSecondary}
+            accessibilityLabel={t('accountDetail.pasteFromClipboard')}
+            onPress={handlePasteToken}
+          />
+        </Box>
       </Box>
     </Box>
   );

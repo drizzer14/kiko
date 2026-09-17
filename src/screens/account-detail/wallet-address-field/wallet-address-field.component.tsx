@@ -76,15 +76,17 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           />
         </Box>
 
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteAddress}
-        />
+        <Box>
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            icon="document.on.clipboard"
+            textColor={theme.colors.textSecondary}
+            accessibilityLabel={t('accountDetail.pasteFromClipboard')}
+            onPress={handlePasteAddress}
+          />
+        </Box>
       </Box>
 
       <Box direction="row" gap={2} style={styles.statusLine}>
