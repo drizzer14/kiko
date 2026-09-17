@@ -45,6 +45,14 @@ Rules:
   and recreates the log at the start of every run — plain `-f` would
   keep following the old inode. If the user is already tailing the
   log, do not launch a duplicate `tail`.
+- **`make deep` / `check:deep` is the COORDINATOR's own job, not an ops
+  dispatch.** The coordinator runs the long, no-incremental checks
+  (Stryker mutation + osv) ITSELF as a background process and launches
+  the human `tail -F` of the progress log at the same time
+  (`scripts/checks/mutation.sh` prints the exact tail command near the
+  start). NEVER dispatch a `kiko:ops` subagent to "run `make deep` and
+  wait": a watching subagent only polls the run, burns tokens, and
+  cannot be stopped mid-flight.
 
 ## Device-deploy recipe
 

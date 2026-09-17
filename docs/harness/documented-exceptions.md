@@ -279,4 +279,20 @@ verified usage, not dead weight:
   too. See the `check:screenshots` section above for the full
   writeup, including the untried mitigation (a gentler
   `scrollUntilVisible` `speed`) that could reclaim these 3 shots.
+- **`.env.test` (tracked, public-only test env file)**: a committed `.env`
+  variant that mirrors `.env.example` plus `SHOW_UNREADY_BANKS=true`.
+  `jest.config.js` defaults `ENVFILE` to it (`process.env.ENVFILE = process.env.ENVFILE || '.env.test'`),
+  so a fresh checkout runs hermetic Jest tests with no hand-edited local
+  `.env`; an explicit `ENVFILE` (the screenshot flows) still wins. Concrete
+  justification: the native-banks render tests were non-hermetic — they
+  depended on a hand-edited local `.env`, so a medium-tier green on one
+  machine was not proof of a fresh checkout; defaulting to a committed file
+  makes them reproducible. Every value is public, non-secret config (same
+  rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
+  Release safety is unchanged even though `.env.test` sets
+  `SHOW_UNREADY_BANKS=true`: the "add a bank" sheet still gates on
+  `visibleCatalogEntries(false)`
+  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`),
+  which returns only the connect-ready providers, so a release/App Store
+  archive never shows a not-connect-ready provider.
 

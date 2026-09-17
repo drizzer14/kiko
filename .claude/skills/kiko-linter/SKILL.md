@@ -64,7 +64,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   mirrors. An empty changed set exits 0 (nothing to mutate).
   `KIKO_MUTATION_FULL=1` forces the whole project, and an unresolvable
   merge-base also falls back to the whole project — the gate never
-  silently mutates nothing. This keeps the manual `check:deep` cheap;
+  silently mutates nothing. See `CLAUDE.md`'s `check:deep` section for
+  when to override the base (`KIKO_MUTATION_BASE=next` when deep-gating
+  an integration stacked on `next`). This keeps the manual `check:deep` cheap;
   the diff logic is tested hermetically (a throwaway git repo, the real
   script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 

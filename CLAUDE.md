@@ -40,7 +40,7 @@ Composite scripts:
   default the mutation step mutates ONLY the source files changed
   against the merge-base with `${KIKO_MUTATION_BASE:-main}`
   (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. The mutation step tees its output to a stable,
+  whole-project run. When you deep-gate an integration branch stacked on `next`, pass `KIKO_MUTATION_BASE=next make deep`: the default `main` base diffs against the last release and re-mutates the ENTIRE next-vs-main delta (2026-09-17: 199 files / ~8850 mutants) instead of the integration's own changes (86 files vs `next`). Reserve the `main` base for a genuine full release-scope gate. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports
@@ -117,8 +117,9 @@ Every ignore-list / suppression exception in this repo is a real, verified
 usage with a concrete justification — not dead weight. The full inventory
 (`knip.json`, `tsconfig.json` `types`, `.depcheckrc.json`, `.gitleaks.toml`,
 `.jscpd.json`, `rules/fixtures/**`, the Stryker mutate-set and sandbox
-exclusions, `.npmrc` `min-release-age-exclude`, and the `check:screenshots`
-diff exclusions) lives in **`docs/harness/documented-exceptions.md`**. Read
+exclusions, `.npmrc` `min-release-age-exclude`, the tracked public-only
+`.env.test`, and the `check:screenshots` diff exclusions) lives in
+**`docs/harness/documented-exceptions.md`**. Read
 and UPDATE that file when you add, change, or rely on an exception. The
 standing rule holds: a suppression is acceptable only when it names a
 concrete reason a human or agent can verify (see "Override protocol" above).
