@@ -516,6 +516,14 @@ No XML-parsing dependency appears in this table — PrivatBank's XML format is D
 
 Every dependency above still needs explicit approval BEFORE the phase that first requires it starts (Global Constraints) — the four APPROVED rows are cleared for their own phase, not for installation today. **No dependency in this table has been installed. Nothing has been added to `package.json`. The build itself waits for `native-banks` to integrate first** (the `src/bank-sync` provider abstraction this plan's output must stay compatible with, per the Spec line and Grounding above) — this plan remains planning-only until that integration lands and the coordinator explicitly authorizes implementation.
 
+### C.6 Deferred: generic column-mapping tier (NOT built — recorded for the record only)
+
+This plan is, and stays, **AUTO-DETECT PER-BANK FORMATS ONLY** — the 7 formats in C.1-C.3 (Monobank, PrivatBank XLSX, Sensebank, ProCredit retail, ProCredit business/FOP, Ukrsibbank business/FOP, Alfa business/FOP), each with its own `StatementFormat.detect`/`parse` (section A). A user whose bank's export matches none of these sees the existing "we don't recognize this file" state (B.1/B.2) and nothing more.
+
+A GENERIC fallback tier — a user-driven manual column-mapping UI, where a user whose bank isn't auto-detected could hand-pick which spreadsheet/CSV column maps to date/amount/description/currency and import through that mapping instead of a bank-specific `StatementFormat` — was considered during this planning work and **deliberately deferred, per the user's decision**. The reasoning on record: a manual column-mapping flow is a materially more complex UI/UX surface (a column-picker, a live preview reconciling the user's mapping against sample rows, validation for a malformed mapping, and its own dedicated set of error states) than anything else in this plan, and it was judged too complex to present to users right now, given the 7-format auto-detected set already covers Kiko's actual near-term user base (a Monobank-holding user, plus PrivatBank/Sensebank/ProCredit/Ukrsibbank/Alfa retail and FOP account holders).
+
+This is a recorded FUTURE idea, not a scoped task: no `StatementFormat`-adjacent type, UI screen, or file is designed for it anywhere in this plan, and none should be built from this section alone. If it is ever picked up, it needs its own fresh planning pass — including, at minimum, its own UX design (not just a parsing shape) and a fresh review of whether the 7-format auto-detected set has grown stale by then.
+
 ---
 
 ## D. Dedup
