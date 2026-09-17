@@ -11,7 +11,7 @@ export const styles = StyleSheet.create((theme) => ({
   // precedes the formatted date / placeholder.
   field: {
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     paddingVertical: theme.spacing(3),

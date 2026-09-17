@@ -4,7 +4,11 @@ import { darkTheme } from './theme';
 describe('darkTheme iOS dark palette', () => {
   it('uses Apple dark system color values', () => {
     expect(darkTheme.colors.background).toBe('#000000');
-    expect(darkTheme.colors.surface).toBe('#1C1C1E');
+    // Darkened from the original `#1C1C1E` (secondarySystemBackground) on
+    // live-review feedback — see the token's own doc comment in theme.ts for
+    // why `#111112` (the tone the old translucent glass system already
+    // composited to) was chosen over reverting to the Apple system default.
+    expect(darkTheme.colors.surface).toBe('#111112');
     expect(darkTheme.colors.surfaceHigh).toBe('#2C2C2E');
     expect(darkTheme.colors.textPrimary).toBe('#FFFFFF');
     expect(darkTheme.colors.textSecondary).toBe('rgba(235,235,245,0.60)');
