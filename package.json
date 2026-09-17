@@ -33,6 +33,7 @@
   "dependencies": {
     "@bottom-tabs/react-navigation": "^1.4.0",
     "@callstack/liquid-glass": "0.8.1",
+    "@noble/ciphers": "2.4.0",
     "@noble/hashes": "^2.4.0",
     "@op-engineering/op-sqlite": "^18.1.4",
     "@react-native-clipboard/clipboard": "^1.16.3",
@@ -53,6 +54,7 @@
     "react-native-calendars": "^1.1314.0",
     "react-native-fs": "2.20.0",
     "react-native-gesture-handler": "^3.2.1",
+    "react-native-get-random-values": "2.0.0",
     "react-native-haptic-feedback": "3.0.0",
     "react-native-keychain": "^10.0.0",
     "react-native-nitro-modules": "^0.37.0",
