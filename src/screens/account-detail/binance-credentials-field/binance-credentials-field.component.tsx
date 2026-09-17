@@ -1,19 +1,17 @@
-import { BINANCE_API_MANAGEMENT_URL } from '@env';
-import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { Linking, Pressable } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 
-import { fetchAccount } from '../../../crypto-sync/binance/binance.client';
-import { saveCredentials } from '../../../crypto-sync/binance/binance.credentials';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import Text from '../../../design-system/components/text';
-import TextField from '../../../design-system/components/text-field';
+import SyncStatusLine from '../sync-status-line';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
-import SyncStatusLine from '../sync-status-line';
+import Box from '../../../design-system/components/box';
+import ClipboardTextField from '../clipboard-text-field';
+import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import { fetchAccount } from '../../../crypto-sync/binance/binance.client';
+import { saveCredentials } from '../../../crypto-sync/binance/binance.credentials';
 
 type BinanceCredentialsFieldProps = {
   // The account this field's credentials belong to. The pair is a PER-ACCOUNT
@@ -32,11 +30,13 @@ type Field = 'apiKey' | 'secret';
 // first sync. The pair never leaves this component except into `saveCredentials`.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, onConnect }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
+  // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
+  // already-trimmed pasted value), so typing and pasting reset the stale
+  // status identically.
   const setField = (field: Field, value: string): void => {
     if (field === 'apiKey') {
       setAPIKey(value);
@@ -45,12 +45,6 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
     }
 
     setStatus({ kind: 'idle' });
-  };
-
-  const handlePaste = (field: Field): void => {
-    Clipboard.getString().then((value) => {
-      setField(field, value.trim());
-    });
   };
 
   const handleOpenBinance = (): void => {
@@ -98,57 +92,23 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         </Text>
       </Pressable>
 
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.apiKeyLabel')}
-            value={apiKey}
-            onChangeText={(value) => setField('apiKey', value)}
-            placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
+      <ClipboardTextField
+        label={t('accountDetail.apiKeyLabel')}
+        value={apiKey}
+        onChangeText={(value) => setField('apiKey', value)}
+        placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteApiKey')}
+        secureTextEntry
+      />
 
-        <Box>
-          <Button
-            variant="ghost"
-            size="small"
-            fullWidth={false}
-            icon="document.on.clipboard"
-            textColor={theme.colors.textSecondary}
-            accessibilityLabel={t('accountDetail.pasteApiKey')}
-            onPress={() => handlePaste('apiKey')}
-          />
-        </Box>
-      </Box>
-
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.apiSecretLabel')}
-            value={secret}
-            onChangeText={(value) => setField('secret', value)}
-            placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Box>
-          <Button
-            variant="ghost"
-            size="small"
-            fullWidth={false}
-            icon="document.on.clipboard"
-            textColor={theme.colors.textSecondary}
-            accessibilityLabel={t('accountDetail.pasteApiSecret')}
-            onPress={() => handlePaste('secret')}
-          />
-        </Box>
-      </Box>
+      <ClipboardTextField
+        label={t('accountDetail.apiSecretLabel')}
+        value={secret}
+        onChangeText={(value) => setField('secret', value)}
+        placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteApiSecret')}
+        secureTextEntry
+      />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
