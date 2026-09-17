@@ -3,18 +3,17 @@
 // TypeScript implementation.
 import Papa from 'papaparse';
 
-import type { Currency } from '../../../currency/currency';
-import { isCurrency } from '../../../currency/currency';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
 import type {
-  ParsedAccountHint,
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
   StatementFormatInput,
 } from '../../parser';
+import { Money } from '../../../currency/money';
 import { StatementParseError } from '../../parser';
+import { parseAmount } from '../../../currency/parse';
+import { isCurrency } from '../../../currency/currency';
+import type { Currency } from '../../../currency/currency';
 
 // `—` (U+2014 em dash) marks an absent optional column (commission,
 // cashback, exchange rate) in Monobank's export — never an empty string.
@@ -109,15 +108,13 @@ const resolveAccountCurrency = (headerRow: string[] | undefined): Currency => {
   return currencyCode;
 };
 
-const buildAccountHint = (currency: Currency): ParsedAccountHint => ({ currency });
-
 const parse = (input: StatementFormatInput): ParsedStatement => {
   const [headerRow, ...dataRows] = readRows(input);
   const currency = resolveAccountCurrency(headerRow);
 
   return {
     formatId: 'monobank-csv',
-    account: buildAccountHint(currency),
+    account: { currency },
     transactions: dataRows.map((row) => parseRow(row, currency)),
   };
 };

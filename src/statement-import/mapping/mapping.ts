@@ -1,18 +1,18 @@
+import type { ParsedTransaction } from '../parser';
+import type { TransactionRow } from '../../db/schema';
 import { categoryForMcc } from '../../monobank/mcc-category';
 import { normalizeTransactionName } from '../../transactions/normalize-name';
-import type { TransactionRow } from '../../db/schema';
-import type { ParsedTransaction } from '../parser';
 
 /**
  * The identical `NewTransaction` field set `mapStatementItem`
  * (`src/monobank/sync/sync.ts`) writes, minus `hold` — an exported statement
  * row is always settled, there is no pending-authorization concept in a file
- * export, so this type carries no `hold` field at all.
+ * export, so this type carries no `hold` field at all. Not exported (matches
+ * `docs/plans/statement-import.md` section A.3 verbatim, and `transactions.repo.ts`'s
+ * own identically-shaped local `NewTransaction`) — nothing outside this
+ * module needs the type name, only the function it shapes.
  */
-export type NewTransaction = Pick<
-  TransactionRow,
-  'holdingId' | 'amountMinorUnits' | 'time' | 'source'
-> &
+type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
     Pick<
       TransactionRow,

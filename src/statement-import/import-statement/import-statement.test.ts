@@ -16,13 +16,12 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
-
+import { readFileSync } from 'node:fs';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import { categoryOverrides, transactions } from '../../db/schema';
 import { StatementParseError } from '../parser';
+import { categoryOverrides, transactions } from '../../db/schema';
 
 import { importStatement } from './import-statement';
 
@@ -31,6 +30,21 @@ const fixtureText = readFileSync(
   'utf-8',
 );
 const monobankInput = { text: fixtureText, fileName: 'uabean-monobank-sample.csv' };
+
+// Regression fixture for the occurrence-index bug: two rows identical on
+// (holding, time, amount, normalized description) — `computeDedupKey`'s own
+// equivalence-class tuple — but differing only on `mcc`, a field
+// `computeDedupKey` deliberately ignores.
+const MONOBANK_HEADER =
+  'Дата i час операції,Деталі операції,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта,Курс,Сума комісій (UAH),Сума кешбеку (UAH),Залишок після операції';
+const duplicateMccInput = {
+  text: [
+    MONOBANK_HEADER,
+    '01.06.2023 12:00:00,Duplicate Merchant,5411,-100,-100,UAH,—,—,—,1000',
+    '01.06.2023 12:00:00,Duplicate Merchant,5412,-100,-100,UAH,—,—,—,900',
+  ].join('\n'),
+  fileName: 'duplicate-mcc.csv',
+};
 
 /** A row as `addManyDedup`'s upsert sees it: enough of `TransactionRow` for
  * this fake's (source, externalId) match/refresh. */
@@ -143,6 +157,25 @@ describe('importStatement', () => {
     // No duplicates accumulated across the two calls — the real
     // (source, external_id) upsert refreshed the existing rows in place.
     expect(store.transactions).toHaveLength(4);
+  });
+
+  // Regression test: `seenKeys` used to key on `JSON.stringify(transaction)`
+  // (the whole row), but `computeDedupKey` folds only on (holding, time,
+  // amount, normalized description) — it ignores `mcc`. Two rows identical
+  // on that tuple but differing only on `mcc` each got occurrenceIndex 0
+  // under the old code, so `computeDedupKey` produced the SAME externalId
+  // for both and the second silently overwrote the first.
+  it('keeps two rows identical on (holding, time, amount, description) but differing only on mcc as distinct rows', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    mockTx = makeAddManyDedupTx(store);
+
+    const result = await importStatement(duplicateMccInput, 'holding-1');
+
+    expect(result.total).toBe(2);
+    expect(result.imported).toBe(2);
+    expect(store.transactions).toHaveLength(2);
+    const externalIds = store.transactions.map((row) => row.externalId);
+    expect(new Set(externalIds).size).toBe(2);
   });
 
   it('throws StatementParseError for an unrecognized file before calling the repo', async () => {
