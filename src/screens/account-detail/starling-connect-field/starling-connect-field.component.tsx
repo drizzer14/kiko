@@ -22,9 +22,9 @@ type StarlingConnectFieldProps = {
 };
 
 // The Starling counterpart of PrivatbankConnectField: ONE secure input (a
-// Personal Access Token — Starling has no separate client id, unlike
-// PrivatBank's token+clientId pair) plus the "create a PAT" notice, an
-// explicit Connect button, and a live status line. It validates the token in
+// Personal Access Token), same single-field shape as PrivatBank's own token,
+// plus the "create a PAT" notice, an explicit Connect button, and a live
+// status line. It validates the token in
 // place with `fetchAccounts` BEFORE handing the RAW token to `onConnect`,
 // which stores it and starts the sync — mirrors PrivatbankConnectField's
 // validate-then-connect ordering. The field owns no account id and writes no

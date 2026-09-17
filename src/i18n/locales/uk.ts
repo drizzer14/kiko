@@ -251,7 +251,7 @@ export const uk: typeof en = {
     },
     privatbank: {
       about:
-        'ПриватБанк — найбільший банк України. Kiko підключається через API AutoClient за допомогою токена та ID клієнта з Приват24.',
+        'ПриватБанк — найбільший банк України. Kiko підключається через API AutoClient за допомогою токена з Приват24.',
       dataProvided:
         'Баланси та виписки за рахунками, що оновлюються так само, як у Monobank. Лише читання — Kiko не може надсилати платежі.',
       eligibility:
@@ -295,7 +295,6 @@ export const uk: typeof en = {
     bunqRateLimited: 'bunq зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
     bunqTimeout: 'bunq не відповів вчасно. Спробуйте ще раз.',
     checking: 'Перевірка…',
-    clientIdLabel: 'ID клієнта',
     connectBinance: 'Підключити Binance',
     connectBunq: 'Підключити bunq',
     connectedAs: 'Підключено як {{name}}',
@@ -338,7 +337,9 @@ export const uk: typeof en = {
       'Синхронізація bunq: сума платежу не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
     invalidBunqPaymentDate:
       'Синхронізація bunq: дата платежу не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
-    invalidPrivatbankCredentials: 'Недійсний токен або ID клієнта',
+    invalidPrivatbankBalanceAmount:
+      'Синхронізація ПриватБанку: сума балансу не розпізнана для рахунку {{accountId}}, рахунок ПриватБанку {{acc}}: "{{value}}"',
+    invalidPrivatbankCredentials: 'Недійсний токен',
     invalidPrivatbankStatementAmount:
       'Синхронізація ПриватБанку: сума виписки не розпізнана для рахунку {{accountId}}, запис {{itemId}}: "{{value}}"',
     invalidPrivatbankStatementDate:
@@ -370,17 +371,21 @@ export const uk: typeof en = {
     pasteApiSecret: 'Вставити API секрет із буфера обміну',
     pasteBunqApiKey: 'Вставити API-ключ bunq з буфера обміну',
     pasteFromClipboard: 'Вставити з буфера обміну',
-    pastePrivatbankClientId: 'Вставити ID клієнта з буфера обміну',
     pastePrivatbankToken: 'Вставити токен ПриватБанку з буфера обміну',
     pasteStarlingToken: 'Вставити токен Starling з буфера обміну',
-    privatbankClientIdPlaceholder: 'ID клієнта',
+    privatbankBalancePageCapReached:
+      'Синхронізація ПриватБанку: список балансів перевищує ліміт у {{maxPages}} сторінок; синхронізацію буде повторено.',
+    privatbankBalancePageTruncated:
+      'Синхронізація ПриватБанку: сторінка балансів повідомляє про більше записів (exist_next_page), але не містить next_page_id для продовження; синхронізацію буде повторено.',
     privatbankConnected: 'ПриватБанк підключено',
     privatbankFopNotice:
       'Потрібен бізнес-рахунок Приват24 або рахунок фізичної особи-підприємця (ФОП) із увімкненим доступом до API в розділі «API для розробників».',
     privatbankRateLimited:
       'ПриватБанк зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
+    privatbankStatementPageCapReached:
+      'Синхронізація ПриватБанку: історія виписки рахунку {{accountId}} перевищує ліміт у {{maxPages}} сторінок в межах одного вікна синхронізації; вікно буде повторено.',
     privatbankStatementPageTruncated:
-      'Синхронізація ПриватБанку: сторінка виписки рахунку {{accountId}} повідомляє про більше записів (exist_next_page), ніж отримав цей клієнт; вікно буде повторено.',
+      'Синхронізація ПриватБанку: сторінка виписки рахунку {{accountId}} повідомляє про більше записів (exist_next_page), але не містить next_page_id для продовження; вікно буде повторено.',
     privatbankTimeout: 'ПриватБанк не відповів вчасно. Спробуйте ще раз.',
     privatbankTokenPlaceholder: 'Токен ПриватБанку',
     sourceLabel: 'Джерело',

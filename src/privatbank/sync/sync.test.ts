@@ -16,31 +16,32 @@ import { mapAccountToHolding, mapStatementItem, runSync, type SyncDeps } from '.
 
 const account = (overrides: Partial<PrivatbankAccount> = {}): PrivatbankAccount => ({
   acc: 'UA000000000000000000000000000',
-  currency: 'UAH',
+  CCY: 'UAH',
   balance: '1234.56',
-  name: 'Картка',
   ...overrides,
 });
 
 const statementItem = (
   overrides: Partial<PrivatbankStatementItem> = {},
 ): PrivatbankStatementItem => ({
-  id: 'stmt-1',
-  date: '01.01.2026 10:00:00',
-  amount: '-100.00',
-  currency: 'UAH',
-  description: 'Coffee',
+  REF: 'REF123',
+  REFN: '01',
+  SUM: '100.00',
+  CCY: 'UAH',
+  TRANTYPE: 'D',
+  DATE_TIME_DAT_OD_TIM_P: '01.01.2026 10:00:00',
+  OSND: 'Coffee',
   ...overrides,
 });
 
 describe('mapAccountToHolding', () => {
-  it('maps a PrivatBank account onto a card holding, in minor units', () => {
+  it('maps a PrivatBank balance entry onto a card holding, in minor units, decimal-safe', () => {
     const holding = mapAccountToHolding(account(), 'account-1');
 
     expect(holding.accountId).toBe('account-1');
     expect(holding.type).toBe('card');
     expect(holding.currency).toBe('UAH');
-    expect(holding.name).toBe('Картка');
+    expect(holding.name).toBe('UA000000000000000000000000000');
     expect(holding.balanceMinorUnits).toBe(123_456);
     expect(holding.metadata).toEqual({
       privatbankId: 'UA000000000000000000000000000',
@@ -48,43 +49,78 @@ describe('mapAccountToHolding', () => {
     });
   });
 
-  it('falls back to the account number when no name is given', () => {
-    const { name, ...withoutName } = account();
-    const holding = mapAccountToHolding(withoutName as PrivatbankAccount, 'account-1');
+  it('parses a small decimal balance ("0.01") to exactly 1 minor unit, never via parseFloat drift', () => {
+    const holding = mapAccountToHolding(account({ balance: '0.01' }), 'account-1');
 
-    expect(holding.name).toBe('UA000000000000000000000000000');
+    expect(holding.balanceMinorUnits).toBe(1);
   });
 
   it('throws on an unrepresentable currency code', () => {
-    expect(() => mapAccountToHolding(account({ currency: 'ZZZ' }), 'account-1')).toThrow(
-      /currency/i,
+    expect(() => mapAccountToHolding(account({ CCY: 'ZZZ' }), 'account-1')).toThrow(/currency/i);
+  });
+
+  it('throws, naming the account, on an unparseable balance amount rather than fabricating a balance', () => {
+    expect(() => mapAccountToHolding(account({ balance: 'not-a-number' }), 'account-1')).toThrow(
+      /balance/i,
+    );
+    expect(() => mapAccountToHolding(account({ balance: 'not-a-number' }), 'account-1')).toThrow(
+      /not-a-number/,
     );
   });
 });
 
 describe('mapStatementItem', () => {
-  it('namespaces the external id by account id and converts to minor units', () => {
+  it('namespaces the external id by REF+REFN and converts to minor units, decimal-safe', () => {
     const transaction = mapStatementItem(statementItem(), 'holding-1', 'acc-1', 'UAH');
 
     expect(transaction.source).toBe('privatbank');
-    expect(transaction.externalId).toBe('acc-1:stmt-1');
+    expect(transaction.externalId).toBe('acc-1:REF12301');
     expect(transaction.amountMinorUnits).toBe(-10_000);
     expect(transaction.holdingId).toBe('holding-1');
     expect(transaction.description).toBe('Coffee');
   });
 
-  it('produces a distinct external id per account for the SAME raw statement id', () => {
+  it('produces a distinct external id per account for the SAME raw REF+REFN', () => {
     const item = statementItem();
     const a = mapStatementItem(item, 'holding-a', 'acc-a', 'UAH');
     const b = mapStatementItem(item, 'holding-b', 'acc-b', 'UAH');
 
-    expect(a.externalId).toBe('acc-a:stmt-1');
-    expect(b.externalId).toBe('acc-b:stmt-1');
+    expect(a.externalId).toBe('acc-a:REF12301');
+    expect(b.externalId).toBe('acc-b:REF12301');
     expect(a.externalId).not.toBe(b.externalId);
   });
 
-  it('defaults a missing description to an empty string and no counterIban to null', () => {
-    const { description, ...withoutDescription } = statementItem();
+  it('derives the sign from TRANTYPE, not from SUM: C credits (+), D debits (-)', () => {
+    const credit = mapStatementItem(
+      statementItem({ TRANTYPE: 'C', SUM: '250.50' }),
+      'holding-1',
+      'acc-1',
+      'UAH',
+    );
+    const debit = mapStatementItem(
+      statementItem({ TRANTYPE: 'D', SUM: '250.50' }),
+      'holding-1',
+      'acc-1',
+      'UAH',
+    );
+
+    expect(credit.amountMinorUnits).toBe(25_050);
+    expect(debit.amountMinorUnits).toBe(-25_050);
+  });
+
+  it('parses a small decimal SUM ("0.01") to exactly 1 minor unit, never via parseFloat drift', () => {
+    const transaction = mapStatementItem(
+      statementItem({ SUM: '0.01', TRANTYPE: 'C' }),
+      'holding-1',
+      'acc-1',
+      'UAH',
+    );
+
+    expect(transaction.amountMinorUnits).toBe(1);
+  });
+
+  it('defaults a missing description to an empty string and no counterparty account to null', () => {
+    const { OSND: _osnd, ...withoutDescription } = statementItem();
     const transaction = mapStatementItem(
       withoutDescription as PrivatbankStatementItem,
       'holding-1',
@@ -96,8 +132,8 @@ describe('mapStatementItem', () => {
     expect(transaction.counterIban).toBeNull();
   });
 
-  it('persists the counterparty IBAN when the statement item carries one', () => {
-    const item = statementItem({ counterIban: 'UA733220010000026201112223334' });
+  it('persists the counterparty account from AUT_CNTR_ACC', () => {
+    const item = statementItem({ AUT_CNTR_ACC: 'UA733220010000026201112223334' });
     const transaction = mapStatementItem(item, 'holding-1', 'acc-1', 'UAH');
 
     expect(transaction.counterIban).toBe('UA733220010000026201112223334');
@@ -108,19 +144,44 @@ describe('mapStatementItem', () => {
   // a NaN amount corrupts money parity. The per-account fault isolation in
   // `runSyncInner` catches this the same way it catches a fetch failure.
   it('throws, naming the account and the raw value, on an unparseable statement date rather than persisting NaN', () => {
-    const item = statementItem({ date: 'not-a-date' });
+    const item = statementItem({ DATE_TIME_DAT_OD_TIM_P: 'not-a-date' });
 
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/date/i);
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/acc-1/);
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/not-a-date/);
   });
 
-  it('throws, naming the account and the raw value, on an unparseable statement amount rather than persisting NaN', () => {
-    const item = statementItem({ amount: 'not-a-number' });
+  it('throws, naming the account and the raw value, on an unparseable SUM rather than persisting NaN', () => {
+    const item = statementItem({ SUM: 'not-a-number' });
 
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/amount/i);
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/acc-1/);
     expect(() => mapStatementItem(item, 'holding-1', 'acc-1', 'UAH')).toThrow(/not-a-number/);
+  });
+
+  // Kyiv-local timezone assumption (see the single TODO(VERIFY LIVE) in
+  // `client/privatbank.client.ts`'s `requestOnce`): EET (+2h) outside
+  // April-October, EEST (+3h) within it.
+  it('parses DATE_TIME_DAT_OD_TIM_P as Kyiv EET (+2h) in January', () => {
+    const transaction = mapStatementItem(
+      statementItem({ DATE_TIME_DAT_OD_TIM_P: '01.01.2026 10:00:00' }),
+      'holding-1',
+      'acc-1',
+      'UAH',
+    );
+
+    expect(transaction.time).toBe(Date.UTC(2026, 0, 1, 8, 0, 0));
+  });
+
+  it('parses DATE_TIME_DAT_OD_TIM_P as Kyiv EEST (+3h) in July', () => {
+    const transaction = mapStatementItem(
+      statementItem({ DATE_TIME_DAT_OD_TIM_P: '01.07.2026 10:00:00' }),
+      'holding-1',
+      'acc-1',
+      'UAH',
+    );
+
+    expect(transaction.time).toBe(Date.UTC(2026, 6, 1, 7, 0, 0));
   });
 });
 
@@ -131,7 +192,9 @@ const privatbankIdOf = (metadata: unknown): string | undefined =>
  * A faithful in-memory double of the injected data-access seams: holdings
  * upsert on (accountId, privatbankId), transactions dedup on (source,
  * externalId) — the same keys the real repos enforce. Mirrors
- * `src/monobank/sync/sync.test.ts`'s deps-injection style.
+ * `src/bunq/sync/sync.test.ts`'s deps-injection style. `fetchAccounts`
+ * resolves the CONFIRMED balance envelope shape (`{ balances, exist_next_page? }`),
+ * not a bare array, matching the real `/api/statements/balance` response.
  */
 const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   id: 'acc-1',
@@ -259,9 +322,9 @@ const makeInMemoryDeps = (
     fetchImpl: (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch,
     now: () => 1_704_326_400_000,
     sleep,
-    readCredentials: async () => ({ token: 'tok', clientId: 'client-1' }),
-    fetchAccounts: async () => fetchedAccounts,
-    fetchStatement: async (_credentials, accountId) => ({ transactions: statementFor(accountId) }),
+    readCredentials: async () => 'tok',
+    fetchAccounts: async () => ({ balances: fetchedAccounts }),
+    fetchStatement: async (_token, accountId) => ({ transactions: statementFor(accountId) }),
     accountsRepo,
     holdingsRepo,
     transactionsRepo,
@@ -291,7 +354,7 @@ describe('runSync', () => {
     expect(holdingsStore[0].accountId).toBe('acc-1');
     expect(result.importedTransactions).toBe(1);
     expect(transactionsStore).toHaveLength(1);
-    expect(transactionsStore[0].externalId).toBe('acc-1:stmt-1');
+    expect(transactionsStore[0].externalId).toBe('acc-1:REF12301');
   });
 
   it('with no target id, syncs into the existing institution=privatbank account', async () => {
@@ -345,10 +408,10 @@ describe('runSync', () => {
     deps.targetAccountId = 'acc-1';
     const calls: string[] = [];
     const originalFetchAccounts = deps.fetchAccounts;
-    deps.fetchAccounts = async (credentials, fetchImpl) => {
+    deps.fetchAccounts = async (token, fetchImpl, options) => {
       calls.push('fetchAccounts');
       expect(accountsStore[0].institution).toBeNull();
-      return originalFetchAccounts(credentials, fetchImpl);
+      return originalFetchAccounts(token, fetchImpl, options);
     };
     deps.accountsRepo.update = async (accountId, patch) => {
       calls.push('updateAccount');
@@ -403,7 +466,7 @@ describe('runSync', () => {
   it('leaves sync_state.lastSyncAt unchanged and imports nothing when a statement item has an unparseable date (fail-closed)', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps, transactionsStore } = makeInMemoryDeps(
-      () => [statementItem({ date: 'not-a-date' })],
+      () => [statementItem({ DATE_TIME_DAT_OD_TIM_P: 'not-a-date' })],
       [connected],
     );
     const setLastSyncAt = jest.fn(
@@ -417,10 +480,10 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
-  it('leaves sync_state.lastSyncAt unchanged and imports nothing when a statement item has an unparseable amount (fail-closed)', async () => {
+  it('leaves sync_state.lastSyncAt unchanged and imports nothing when a statement item has an unparseable SUM (fail-closed)', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps, transactionsStore } = makeInMemoryDeps(
-      () => [statementItem({ amount: 'not-a-number' })],
+      () => [statementItem({ SUM: 'not-a-number' })],
       [connected],
     );
     const setLastSyncAt = jest.fn(
@@ -434,13 +497,75 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
-  // FAIL CLOSED: a page that reports more items than this client fetched
-  // (exist_next_page) must never be treated as the whole window — this
-  // engine fetches only ONE page per window and does not yet follow
-  // AutoClient's own paging cursor (TODO(VERIFY LIVE)), so silently
-  // accepting a truncated page would advance the cursor past data this run
-  // never actually read, dropping it forever. Mirrors bunq's page-cap throw.
-  it('throws and never advances the cursor when a statement page signals more items than it fetched (exist_next_page)', async () => {
+  // REAL PAGINATION (task-6 brief): follows `next_page_id` as the next
+  // request's `followId` WHILE `exist_next_page` stays true, collecting every
+  // page's items rather than throwing on the first truncated page.
+  it('follows the statement cursor across pages, importing items from every page', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
+    const pageOneItem = statementItem({ REF: 'PAGE1', REFN: '1' });
+    const pageTwoItem = statementItem({ REF: 'PAGE2', REFN: '1' });
+    const fetchStatement = jest.fn(
+      async (
+        _token: string,
+        _accountId: string,
+        _fromSeconds: number,
+        _toSeconds: number,
+        _fetchImpl?: typeof fetch,
+        options?: { followId?: string },
+      ) => {
+        if (options?.followId === undefined) {
+          return { transactions: [pageOneItem], exist_next_page: true, next_page_id: 'cursor-2' };
+        }
+
+        expect(options.followId).toBe('cursor-2');
+
+        return { transactions: [pageTwoItem], exist_next_page: false };
+      },
+    );
+    deps.fetchStatement = fetchStatement;
+
+    const result = await runSync(deps);
+
+    expect(result.importedTransactions).toBe(2);
+    expect(transactionsStore.map((row) => row.externalId).sort()).toEqual([
+      'acc-privat:PAGE11',
+      'acc-privat:PAGE21',
+    ]);
+  });
+
+  // FAIL CLOSED (mirrors bunq's `MAX_PAYMENT_PAGES` backstop): reaching the
+  // page cap WHILE `exist_next_page` is still true is a genuine
+  // data-completeness failure, not a benign stop — throw rather than
+  // silently truncating, so the cursor never advances past unread data.
+  it('throws and never advances the cursor when the statement page cap is reached before exist_next_page goes false', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    let call = 0;
+    deps.fetchStatement = jest.fn(async () => {
+      call += 1;
+
+      return {
+        transactions: [statementItem({ REF: `R${call}` })],
+        exist_next_page: true,
+        next_page_id: `cursor-${call}`,
+      };
+    });
+
+    await expect(runSync(deps)).rejects.toThrow(/page/i);
+
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
+  // FAIL CLOSED: `exist_next_page` true but no `next_page_id` to follow means
+  // the page cannot safely be continued — treating it as complete would drop
+  // the unread remainder forever.
+  it('throws and never advances the cursor when a statement page is unfollowable (exist_next_page true, no next_page_id)', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
     const setLastSyncAt = jest.fn(
@@ -458,10 +583,48 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
+  // The balance envelope pages the same way (task-6 brief: "If the balance
+  // envelope also paginates via exist_next_page, page it the same way").
+  it('follows the balance cursor across pages, upserting holdings from every page', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const accountA = account({ acc: 'acc-a' });
+    const accountB = account({ acc: 'acc-b' });
+    const { deps, holdingsStore } = makeInMemoryDeps(() => [], [connected]);
+    deps.fetchAccounts = jest.fn(async (_token, _fetchImpl, options) => {
+      if (options?.followId === undefined) {
+        return { balances: [accountA], exist_next_page: true, next_page_id: 'cursor-2' };
+      }
+
+      expect(options.followId).toBe('cursor-2');
+
+      return { balances: [accountB], exist_next_page: false };
+    });
+
+    await runSync(deps);
+
+    expect(holdingsStore).toHaveLength(2);
+    expect(holdingsStore.map((h) => privatbankIdOf(h.metadata)).sort()).toEqual(['acc-a', 'acc-b']);
+  });
+
+  it('throws and never advances the cursor when a balance page is unfollowable (exist_next_page true, no next_page_id)', async () => {
+    const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
+    const { deps, transactionsStore } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
+    const setLastSyncAt = jest.fn(
+      async (_accountId: string, _timestamp: number): Promise<void> => undefined,
+    );
+    deps.syncStateRepo.setLastSyncAt = setLastSyncAt;
+    deps.fetchAccounts = jest.fn(async () => ({ balances: [account()], exist_next_page: true }));
+
+    await expect(runSync(deps)).rejects.toThrow(/balance/i);
+
+    expect(setLastSyncAt).not.toHaveBeenCalled();
+    expect(transactionsStore).toHaveLength(0);
+  });
+
   it('reads credentials keyed by the resolved connected account id', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
     const { deps } = makeInMemoryDeps(onlyPrimaryAccount, [connected]);
-    deps.readCredentials = jest.fn(async () => ({ token: 'tok', clientId: 'client-1' }));
+    deps.readCredentials = jest.fn(async () => 'tok');
 
     await runSync(deps);
 
@@ -472,7 +635,7 @@ describe('runSync', () => {
     const target = bankAccount({ id: 'acc-1', institution: null });
     const { deps } = makeInMemoryDeps(onlyPrimaryAccount, [target]);
     deps.targetAccountId = 'acc-1';
-    deps.readCredentials = jest.fn(async () => ({ token: 'tok', clientId: 'client-1' }));
+    deps.readCredentials = jest.fn(async () => 'tok');
 
     await runSync(deps);
 
@@ -481,8 +644,8 @@ describe('runSync', () => {
 
   it('skips an unrepresentable-currency account, completing the sync for the supported one', async () => {
     const connected = bankAccount({ id: 'acc-privat', institution: 'privatbank' });
-    const supported = account({ acc: 'acc-uah', currency: 'UAH' });
-    const unsupported = account({ acc: 'acc-zzz', currency: 'ZZZ' });
+    const supported = account({ acc: 'acc-uah', CCY: 'UAH' });
+    const unsupported = account({ acc: 'acc-zzz', CCY: 'ZZZ' });
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(
       (accountId) => (accountId === supported.acc ? [statementItem()] : []),
       [connected],
@@ -519,7 +682,7 @@ describe('runSync', () => {
       [connected],
       [accountA, accountB],
     );
-    deps.fetchStatement = jest.fn(async (_credentials, accountId) => {
+    deps.fetchStatement = jest.fn(async (_token, accountId) => {
       if (accountId === 'acc-a') {
         throw new Error('boom');
       }
@@ -558,7 +721,7 @@ describe('runSync', () => {
     });
     const fetchAccountsSpy = jest.fn(async () => {
       await opened;
-      return [account()];
+      return { balances: [account()] };
     });
     deps.fetchAccounts = fetchAccountsSpy;
 
@@ -583,7 +746,7 @@ describe('runSync', () => {
     });
     const fetchAccountsSpy = jest.fn(async () => {
       await opened;
-      return [account()];
+      return { balances: [account()] };
     });
     deps.fetchAccounts = fetchAccountsSpy;
 

@@ -13,74 +13,65 @@ import Button from '../../../design-system/components/button';
 import TextField from '../../../design-system/components/text-field';
 
 type PrivatbankConnectFieldProps = {
-  // Runs the connect: store the validated token+clientId to the Keychain
-  // (keyed by the account id the screen owns) and start the first PrivatBank
-  // sync. Resolves whether it succeeded. The field passes the RAW pair here
-  // and holds it only for the duration of this call — never to the DB or a
-  // log.
-  onConnect: (token: string, clientId: string) => Promise<boolean>;
+  // Runs the connect: store the validated token to the Keychain (keyed by
+  // the account id the screen owns) and start the first PrivatBank sync.
+  // Resolves whether it succeeded. The field passes the RAW token here and
+  // holds it only for the duration of this call — never to the DB or a log.
+  onConnect: (token: string) => Promise<boolean>;
 };
 
-type Field = 'token' | 'clientId';
-
-// The PrivatBank counterpart of MonobankConnectField: two secure inputs (a
-// token and a client id, mirroring `BinanceCredentialsField`'s two-field
-// shape rather than Monobank's single token) plus the FOP eligibility notice,
-// an explicit Connect button, and a live status line. It validates the pair
-// in place with `fetchAccounts` BEFORE handing the RAW pair to `onConnect`,
-// which stores it and starts the sync. The field owns no account id and
-// writes no Keychain item itself — the pair's storage stays in the screen
-// closure keyed by the pre-generated account id, so a validated-but-
-// unstorable pair surfaces as a `false` result here rather than an
-// unhandled rejection.
+// The PrivatBank counterpart of MonobankConnectField/StarlingConnectField —
+// VERIFIED (task-6 brief): the AutoClient credential is a SINGLE `token`
+// header, not a `{ token, clientId }` pair, so this field now takes ONE
+// secure input, mirroring `StarlingConnectField` exactly rather than
+// Binance's two-field shape it used to copy. It keeps the FOP eligibility
+// notice, an explicit Connect button, and a live status line. It validates
+// the token in place with `fetchAccounts` BEFORE handing the RAW token to
+// `onConnect`, which stores it and starts the sync. The field owns no
+// account id and writes no Keychain item itself — the token's storage stays
+// in the screen closure keyed by the pre-generated account id, so a
+// validated-but-unstorable token surfaces as a `false` result here rather
+// than an unhandled rejection.
 const PrivatbankConnectField: FC<PrivatbankConnectFieldProps> = ({ onConnect }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [token, setToken] = useState('');
-  const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
-  const setField = (field: Field, value: string): void => {
-    if (field === 'token') {
-      setToken(value);
-    } else {
-      setClientId(value);
-    }
-
+  const handleChangeToken = (value: string): void => {
+    setToken(value);
     setStatus({ kind: 'idle' });
   };
 
-  const handlePaste = (field: Field): void => {
+  const handlePaste = (): void => {
     Clipboard.getString().then((value) => {
-      setField(field, value.trim());
+      handleChangeToken(value.trim());
     });
   };
 
   const handleConnect = (): void => {
-    const trimmedToken = token.trim();
-    const trimmedClientId = clientId.trim();
+    const trimmed = token.trim();
     setStatus({ kind: 'checking' });
     (async () => {
       try {
-        await fetchAccounts({ token: trimmedToken, clientId: trimmedClientId });
+        await fetchAccounts(trimmed);
       } catch {
         setStatus({ kind: 'invalid', message: t('accountDetail.invalidPrivatbankCredentials') });
 
         return;
       }
 
-      const connected = await onConnect(trimmedToken, trimmedClientId);
+      const connected = await onConnect(trimmed);
       if (connected) {
-        // SECURITY: drop the raw pair from state once connected so the bank
-        // secret is not parked in the React tree.
+        // SECURITY: drop the raw token from state once connected so the
+        // bank secret is not parked in the React tree.
         setToken('');
-        setClientId('');
         setStatus({ kind: 'success', message: t('accountDetail.privatbankConnected') });
 
         return;
       }
 
-      // On failure the user keeps the entered pair to retry, so it stays in state.
+      // On failure the user keeps the entered token to retry, so it stays in state.
       setStatus({ kind: 'saveError', message: t('accountDetail.couldNotConnectPrivatbank') });
     })();
   };
@@ -96,7 +87,7 @@ const PrivatbankConnectField: FC<PrivatbankConnectFieldProps> = ({ onConnect }) 
           <TextField
             label={t('accountDetail.tokenLabel')}
             value={token}
-            onChangeText={(value) => setField('token', value)}
+            onChangeText={handleChangeToken}
             placeholder={t('accountDetail.privatbankTokenPlaceholder')}
             secureTextEntry
             autoCapitalize="none"
@@ -111,31 +102,7 @@ const PrivatbankConnectField: FC<PrivatbankConnectFieldProps> = ({ onConnect }) 
           icon="document.on.clipboard"
           textColor={theme.colors.textSecondary}
           accessibilityLabel={t('accountDetail.pastePrivatbankToken')}
-          onPress={() => handlePaste('token')}
-        />
-      </Box>
-
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.clientIdLabel')}
-            value={clientId}
-            onChangeText={(value) => setField('clientId', value)}
-            placeholder={t('accountDetail.privatbankClientIdPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Button
-          variant="ghost"
-          size="small"
-          fullWidth={false}
-          icon="document.on.clipboard"
-          textColor={theme.colors.textSecondary}
-          accessibilityLabel={t('accountDetail.pastePrivatbankClientId')}
-          onPress={() => handlePaste('clientId')}
+          onPress={handlePaste}
         />
       </Box>
 
@@ -145,7 +112,7 @@ const PrivatbankConnectField: FC<PrivatbankConnectFieldProps> = ({ onConnect }) 
           size="small"
           fullWidth={false}
           onPress={handleConnect}
-          disabled={status.kind === 'checking' || token.trim() === '' || clientId.trim() === ''}
+          disabled={status.kind === 'checking' || token.trim() === ''}
           icon="lock"
         >
           {t('accountDetail.connectPrivatbank')}

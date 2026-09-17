@@ -2,16 +2,11 @@ import { PRIVATBANK_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
 
 import { i18n } from '../../i18n';
-import type { PrivatbankCredentials } from '../credentials';
-import type { PrivatbankAccount, PrivatbankStatementPage } from '../privatbank.types';
+import type { PrivatbankBalancePage, PrivatbankStatementPage } from '../privatbank.types';
 
 const base = PRIVATBANK_API_ENDPOINT;
 
-/**
- * Abort a PrivatBank request that has not responded within this window.
- * TODO(VERIFY LIVE): reuses Monobank's 30s pick with no PrivatBank-specific
- * evidence behind it — confirm AutoClient's real p99 latency before shipping.
- */
+/** Abort a PrivatBank request that has not responded within this window. Reuses Monobank's/Starling's 30s pick. */
 const REQUEST_TIMEOUT_MS = 30_000;
 /**
  * How many times a 429 is retried (after honouring Retry-After) before the
@@ -26,21 +21,21 @@ const MAX_RATE_LIMIT_RETRIES = 2;
  * `src/privatbank/sync/sync.ts`, confirmed at 1 req/s per the official
  * AutoClient doc). The official doc does not document a 429 Retry-After
  * convention, so this keeps Monobank's 60s fallback as a conservative
- * placeholder — TODO(VERIFY LIVE) if AutoClient's actual 429 behavior is
- * ever confirmed to want a shorter wait.
+ * placeholder.
  */
 const RATE_LIMIT_FALLBACK_MS = 60_000;
 
 const HTTP_TOO_MANY_REQUESTS = 429;
 
-/**
- * The statement page size requested per call. CONFIRMED against the official
- * AutoClient doc: default 20, max 500, recommended <=100 — this pins the
- * upper end of that recommendation explicitly rather than relying on the
- * server's smaller default. TODO(VERIFY LIVE): confirm the actual
- * query-parameter NAME this maps to (`limit` is a best-effort placeholder).
- */
+/** The statement page size requested per call. VERIFIED (task-6 brief): default 20, max 500, recommended <=100 — this pins the upper end of that recommendation explicitly rather than relying on the server's smaller default. */
 const STATEMENT_PAGE_SIZE = 100;
+
+/**
+ * A stable Kiko app identifier — VERIFIED (task-6 brief) that AutoClient
+ * REQUIRES a `User-Agent` header; the brief does not mandate a specific
+ * string, only that one is sent, so this is Kiko's own name/version.
+ */
+const PRIVATBANK_USER_AGENT = 'Kiko/1.0';
 
 /**
  * A request that did not respond within `REQUEST_TIMEOUT_MS` and was
@@ -99,28 +94,39 @@ const retryAfterMs = (response: Response): number => {
 /**
  * Per-request tuning. Defaulted so production call sites pass nothing; tests
  * inject a fake `sleep` (no real backoff wait) and can shrink the timeout /
- * retry budget to keep the suite instant.
+ * retry budget to keep the suite instant. `followId` (VERIFIED, task-6
+ * brief) is the AutoClient pagination cursor — the caller passes the
+ * previous response's `next_page_id` back in to fetch the next page of
+ * EITHER endpoint below.
  */
-type RequestOptions = {
+export type RequestOptions = {
   sleep?: (milliseconds: number) => Promise<void>;
   timeoutMs?: number;
   maxRetries?: number;
+  followId?: string;
 };
 
 /**
- * Issue one request with an AbortController-based timeout. On abort the
- * fetch rejects; we translate that into a `PrivatbankTimeoutError` (any other
- * rejection is re-thrown untouched). The timer is always cleared so a
- * completed request never leaves a dangling handle.
+ * Issue one request with an AbortController-based timeout, bearing the
+ * SINGLE `token` header (VERIFIED, task-6 brief — no separate client-id
+ * header), a required `User-Agent`, and an explicit `charset=utf8` so
+ * Ukrainian `OSND`/counterparty text is not returned cp1251-encoded. On
+ * abort the fetch rejects; we translate that into a `PrivatbankTimeoutError`
+ * (any other rejection is re-thrown untouched). The timer is always cleared
+ * so a completed request never leaves a dangling handle.
  *
- * TODO(VERIFY LIVE): confirm the AutoClient's actual auth header names —
- * Monobank uses a single `X-Token` header; this assumes a `token` +
- * `id` (client id) header pair per the reference clients, until PrivatBank's
- * own docs confirm its real scheme.
+ * TODO(VERIFY LIVE): the two things a live smoke test with real AutoClient
+ * credentials must still confirm — everything else in this module is now
+ * documented against the official AutoClient doc, not guessed: (1) this
+ * single `token` header actually authenticates and the `charset=utf8`
+ * request round-trips Ukrainian text without cp1251 mangling; (2) the exact
+ * timezone `DATE_TIME_DAT_OD_TIM_P` is reported in — `sync/sync.ts`'s
+ * `parsePrivatbankDateTime` assumes Kyiv local time (EET/EEST) by calendar
+ * month, not a live-confirmed offset.
  */
 const requestOnce = async (
   path: string,
-  credentials: PrivatbankCredentials,
+  token: string,
   fetchImpl: typeof fetch,
   timeoutMs: number,
 ): Promise<Response> => {
@@ -128,7 +134,11 @@ const requestOnce = async (
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetchImpl(`${base}${path}`, {
-      headers: { token: credentials.token, id: credentials.clientId },
+      headers: {
+        token,
+        'User-Agent': PRIVATBANK_USER_AGENT,
+        'Content-Type': 'application/json;charset=utf8',
+      },
       signal: controller.signal,
     });
   } catch (error) {
@@ -150,7 +160,7 @@ const requestOnce = async (
  */
 const request = async <T>(
   path: string,
-  credentials: PrivatbankCredentials,
+  token: string,
   fetchImpl: typeof fetch,
   options: RequestOptions = {},
 ): Promise<T> => {
@@ -159,7 +169,7 @@ const request = async <T>(
   const maxRetries = options.maxRetries ?? MAX_RATE_LIMIT_RETRIES;
 
   for (let attempt = 0; ; attempt += 1) {
-    const response = await requestOnce(path, credentials, fetchImpl, timeoutMs);
+    const response = await requestOnce(path, token, fetchImpl, timeoutMs);
 
     if (response.status === HTTP_TOO_MANY_REQUESTS) {
       if (attempt >= maxRetries) {
@@ -173,34 +183,49 @@ const request = async <T>(
   }
 };
 
-/**
- * The AutoClient balances/accounts call. TODO(VERIFY LIVE): confirm the real
- * endpoint path — `/rest/accounts` is a best-effort placeholder, not
- * confirmed against Privat24's own docs.
- */
-export const fetchAccounts = (
-  credentials: PrivatbankCredentials,
-  fetchImpl: typeof fetch = fetch,
-  options: RequestOptions = {},
-): Promise<PrivatbankAccount[]> => request('/rest/accounts', credentials, fetchImpl, options);
+/** Appends every DEFINED entry of `params` as a `?key=value&...` query string; an `undefined` value (an omitted optional param) is dropped rather than serialized as the literal string `'undefined'`. */
+const buildQuery = (params: Record<string, string | undefined>): string => {
+  const entries = Object.entries(params).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined,
+  );
+
+  return entries.length === 0
+    ? ''
+    : `?${entries.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')}`;
+};
 
 /**
- * The date-ranged statement call. TODO(VERIFY LIVE): confirm the real
- * endpoint path, its query-parameter names, and its date-range format —
- * `/rest/statement?acc=<id>&startDate=<DD-MM-YYYY>&endDate=<DD-MM-YYYY>` is a
- * best-effort placeholder (Monobank instead encodes unix-second path
- * segments; PrivatBank's own AutoClient docs must confirm its real shape).
- * The AutoClient doc confirms paging is by `followId`/`exist_next_page`, not
- * a date-range cap — this client does not yet page a single [from, to] call
- * beyond one `STATEMENT_PAGE_SIZE`-sized response, and never follows a
- * `exist_next_page` cursor (real forward paging stays a TODO(VERIFY LIVE)).
- * The flag is still surfaced on the resolved `PrivatbankStatementPage` (not
- * swallowed) so the sync engine can fail closed on a truncated page rather
- * than silently dropping the unread items — see `fetchAllStatements`
- * (`src/privatbank/sync/sync.ts`).
+ * The balance call — VERIFIED endpoint (task-6 brief): `/api/statements/balance`,
+ * SEPARATE from the transactions endpoint below (replaces the old, guessed
+ * `/rest/accounts`). Pages via `followId`/`exist_next_page` the same way
+ * `fetchStatement` does — see `sync/sync.ts`'s `fetchAllAccounts` for the
+ * loop that follows the cursor.
+ */
+export const fetchAccounts = (
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+  options: RequestOptions = {},
+): Promise<PrivatbankBalancePage> =>
+  request(
+    `/api/statements/balance${buildQuery({ followId: options.followId })}`,
+    token,
+    fetchImpl,
+    options,
+  );
+
+/**
+ * The date-ranged statement call — VERIFIED endpoint (task-6 brief):
+ * `/api/statements/transactions` (replaces the old, guessed `/rest/statement`).
+ * VERIFIED query params: `acc` (the account number), `startDate` MANDATORY
+ * `DD-MM-YYYY` (dashes — the response's own `DATE_TIME_DAT_OD_TIM_P` uses
+ * dots instead, see `formatPrivatbankDate` below), `endDate` optional same
+ * format, `followId` the pagination cursor, `limit` pinned at
+ * `STATEMENT_PAGE_SIZE`. This client still fetches exactly ONE page per call
+ * — the sync engine (`sync/sync.ts`'s `fetchAllStatements`) is what follows
+ * `exist_next_page`/`next_page_id` across repeated calls.
  */
 export const fetchStatement = (
-  credentials: PrivatbankCredentials,
+  token: string,
   accountId: string,
   fromSeconds: number,
   toSeconds: number,
@@ -208,17 +233,23 @@ export const fetchStatement = (
   options: RequestOptions = {},
 ): Promise<PrivatbankStatementPage> =>
   request(
-    `/rest/statement?acc=${encodeURIComponent(accountId)}&startDate=${formatPrivatbankDate(fromSeconds)}&endDate=${formatPrivatbankDate(toSeconds)}&limit=${STATEMENT_PAGE_SIZE}`,
-    credentials,
+    `/api/statements/transactions${buildQuery({
+      acc: accountId,
+      startDate: formatPrivatbankDate(fromSeconds),
+      endDate: formatPrivatbankDate(toSeconds),
+      followId: options.followId,
+      limit: String(STATEMENT_PAGE_SIZE),
+    })}`,
+    token,
     fetchImpl,
     options,
   );
 
 /**
- * TODO(VERIFY LIVE): confirm PrivatBank's actual statement query date format;
- * DD-MM-YYYY is the format the `kagatan/privatbank-autoclient` reference
- * client documents for its date-ranged statement request, used here as the
- * best-effort placeholder.
+ * VERIFIED (task-6 brief): the statement query's `startDate`/`endDate` use
+ * `DD-MM-YYYY` (DASHES) — distinct from the response's own
+ * `DATE_TIME_DAT_OD_TIM_P`, which uses dots (see `sync/sync.ts`'s
+ * `parsePrivatbankDateTime`).
  */
 const formatPrivatbankDate = (seconds: number): string => {
   const date = new Date(seconds * 1000);

@@ -21,9 +21,9 @@ type BunqConnectFieldProps = {
 };
 
 // The bunq counterpart of PrivatbankConnectField: ONE secure input (an API
-// key — bunq has no separate client id, unlike PrivatBank's token+clientId
-// pair) plus the "create the API key" notice, an explicit Connect button,
-// and a live status line. UNLIKE Monobank/PrivatBank, this field does NOT
+// key), same single-field shape as PrivatBank's own token, plus the "create
+// the API key" notice, an explicit Connect button, and a live status line.
+// UNLIKE Monobank/PrivatBank, this field does NOT
 // pre-validate the key with a side-effect-free call before handing it to
 // `onConnect`: bunq has no such call — every real request needs an actual
 // session (the handshake itself), and re-running it twice in a row would

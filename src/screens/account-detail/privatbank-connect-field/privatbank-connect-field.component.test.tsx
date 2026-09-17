@@ -22,14 +22,10 @@ beforeEach(() => {
 
 type View = Awaited<ReturnType<typeof render>>;
 
-const fillBoth = async (view: View, token: string, clientId: string): Promise<void> => {
+const fillToken = async (view: View, token: string): Promise<void> => {
   await fireEvent.changeText(
     view.getByPlaceholderText(i18n.t('accountDetail.privatbankTokenPlaceholder')),
     token,
-  );
-  await fireEvent.changeText(
-    view.getByPlaceholderText(i18n.t('accountDetail.privatbankClientIdPlaceholder')),
-    clientId,
   );
 };
 
@@ -45,27 +41,18 @@ it('shows the FOP eligibility notice', async () => {
   expect(view.getByText(i18n.t('accountDetail.privatbankFopNotice'))).toBeTruthy();
 });
 
-it('disables Connect until both the token and client id are entered', async () => {
+it('disables Connect until the token is entered', async () => {
   const view = await render(<PrivatbankConnectField onConnect={jest.fn()} />);
   const connect = (): ReturnType<typeof view.getByRole> =>
     view.getByRole('button', { name: connectLabel });
 
   expect(connect()).toBeDisabled();
 
-  await fireEvent.changeText(
-    view.getByPlaceholderText(i18n.t('accountDetail.privatbankTokenPlaceholder')),
-    'tok-123',
-  );
-  expect(connect()).toBeDisabled();
-
-  await fireEvent.changeText(
-    view.getByPlaceholderText(i18n.t('accountDetail.privatbankClientIdPlaceholder')),
-    'client-1',
-  );
+  await fillToken(view, 'tok-123');
   expect(connect()).not.toBeDisabled();
 });
 
-it('gives the Connect action a lock glyph and both paste buttons the clipboard glyph', async () => {
+it('gives the Connect action a lock glyph and the paste button the clipboard glyph', async () => {
   const view = await render(<PrivatbankConnectField onConnect={jest.fn()} />);
 
   expect((view.root?.queryAll((node) => node.props.name === 'lock') ?? []).length).toBeGreaterThan(
@@ -73,41 +60,34 @@ it('gives the Connect action a lock glyph and both paste buttons the clipboard g
   );
   expect(
     (view.root?.queryAll((node) => node.props.name === 'document.on.clipboard') ?? []).length,
-  ).toBe(2);
+  ).toBe(1);
 });
 
-it('pastes into the token and client id fields separately, trimmed', async () => {
+it('pastes into the token field, trimmed', async () => {
   const view = await render(<PrivatbankConnectField onConnect={jest.fn()} />);
 
   mockGetString.mockResolvedValue(' tok-123 ');
   await act(async () => {
     await fireEvent.press(view.getByLabelText(i18n.t('accountDetail.pastePrivatbankToken')));
   });
-  mockGetString.mockResolvedValue('client-1\n');
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText(i18n.t('accountDetail.pastePrivatbankClientId')));
-  });
 
   expect(
     view.getByPlaceholderText(i18n.t('accountDetail.privatbankTokenPlaceholder')).props.value,
   ).toBe('tok-123');
-  expect(
-    view.getByPlaceholderText(i18n.t('accountDetail.privatbankClientIdPlaceholder')).props.value,
-  ).toBe('client-1');
 });
 
-it('validates the pair, then calls onConnect and shows the success status', async () => {
-  mockFetchAccounts.mockResolvedValue([]);
+it('validates the token, then calls onConnect and shows the success status', async () => {
+  mockFetchAccounts.mockResolvedValue({ balances: [] });
   const onConnect = jest.fn().mockResolvedValue(true);
   const view = await render(<PrivatbankConnectField onConnect={onConnect} />);
 
-  await fillBoth(view, '  tok-123  ', ' client-1 ');
+  await fillToken(view, '  tok-123  ');
   await pressConnect(view);
 
-  expect(mockFetchAccounts).toHaveBeenCalledWith({ token: 'tok-123', clientId: 'client-1' });
-  expect(onConnect).toHaveBeenCalledWith('tok-123', 'client-1');
+  expect(mockFetchAccounts).toHaveBeenCalledWith('tok-123');
+  expect(onConnect).toHaveBeenCalledWith('tok-123');
   expect(await view.findByText(i18n.t('accountDetail.privatbankConnected'))).toBeTruthy();
-  // SECURITY: the raw pair is dropped from state once connected.
+  // SECURITY: the raw token is dropped from state once connected.
   expect(
     view.getByPlaceholderText(i18n.t('accountDetail.privatbankTokenPlaceholder')).props.value,
   ).toBe('');
@@ -118,32 +98,32 @@ it('shows invalidPrivatbankCredentials and never calls onConnect when validation
   const onConnect = jest.fn();
   const view = await render(<PrivatbankConnectField onConnect={onConnect} />);
 
-  await fillBoth(view, 'bad-token', 'bad-client');
+  await fillToken(view, 'bad-token');
   await pressConnect(view);
 
   expect(await view.findByText(i18n.t('accountDetail.invalidPrivatbankCredentials'))).toBeTruthy();
   // Validation runs BEFORE onConnect (which is where the screen's closure
-  // saves credentials), so an invalid pair is never handed to onConnect —
+  // saves credentials), so an invalid token is never handed to onConnect —
   // no orphaned Keychain item.
   expect(onConnect).not.toHaveBeenCalled();
 });
 
-it('shows couldNotConnectPrivatbank when a valid pair fails to store/sync', async () => {
-  mockFetchAccounts.mockResolvedValue([]);
+it('shows couldNotConnectPrivatbank when a valid token fails to store/sync', async () => {
+  mockFetchAccounts.mockResolvedValue({ balances: [] });
   const onConnect = jest.fn().mockResolvedValue(false);
   const view = await render(<PrivatbankConnectField onConnect={onConnect} />);
 
-  await fillBoth(view, 'tok', 'client-1');
+  await fillToken(view, 'tok');
   await pressConnect(view);
 
   expect(await view.findByText(i18n.t('accountDetail.couldNotConnectPrivatbank'))).toBeTruthy();
-  // A save/sync failure keeps the validated pair in the fields so the user
+  // A save/sync failure keeps the validated token in the field so the user
   // can retry the connect without retyping it, and Connect stays pressable.
   expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
 });
 
-it('disables Connect while validation is in flight, even with both fields filled', async () => {
-  let resolveFetch: (accounts: unknown[]) => void = () => {};
+it('disables Connect while validation is in flight, even with the field filled', async () => {
+  let resolveFetch: (balancePage: unknown) => void = () => {};
   mockFetchAccounts.mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -152,7 +132,7 @@ it('disables Connect while validation is in flight, even with both fields filled
   );
   const view = await render(<PrivatbankConnectField onConnect={jest.fn()} />);
 
-  await fillBoth(view, 'tok-123', 'client-1');
+  await fillToken(view, 'tok-123');
   expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
 
   await pressConnect(view);
@@ -160,6 +140,6 @@ it('disables Connect while validation is in flight, even with both fields filled
   expect(view.getByRole('button', { name: connectLabel })).toBeDisabled();
 
   await act(async () => {
-    resolveFetch([]);
+    resolveFetch({ balances: [] });
   });
 });

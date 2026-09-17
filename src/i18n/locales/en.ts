@@ -271,7 +271,7 @@ export const en = {
     },
     privatbank: {
       about:
-        "PrivatBank is Ukraine's largest bank. Kiko connects through its AutoClient API using a token and client ID from Privat24.",
+        "PrivatBank is Ukraine's largest bank. Kiko connects through its AutoClient API using a token from Privat24.",
       dataProvided:
         'Balances and transaction statements, refreshed the same way as Monobank. Read-only — Kiko cannot send payments.',
       eligibility:
@@ -306,7 +306,7 @@ export const en = {
     btcAddressPlaceholder: 'BTC address',
     // The "add a bank" caption + placeholder/status copy for bunq
     // (src/screens/account-detail/bunq-connect-field/): one API key field,
-    // no client id — see accountDetail.clientIdLabel's PrivatBank-only use.
+    // no client id.
     bunqApiKeyNotice:
       'Create the API key in the bunq app under Profile > Security & Privacy > Developers > API keys.',
     bunqApiKeyPlaceholder: 'bunq API key',
@@ -320,7 +320,6 @@ export const en = {
     bunqRateLimited: 'bunq is rate-limiting requests right now. Please try again shortly.',
     bunqTimeout: 'bunq did not respond in time. Please try again.',
     checking: 'Checking…',
-    clientIdLabel: 'Client ID',
     connectBinance: 'Connect Binance',
     connectBunq: 'Connect bunq',
     connectedAs: 'Connected as {{name}}',
@@ -363,7 +362,9 @@ export const en = {
       'bunq sync: unparseable payment amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
     invalidBunqPaymentDate:
       'bunq sync: unparseable payment date for account {{accountId}}, item {{itemId}}: "{{value}}"',
-    invalidPrivatbankCredentials: 'Invalid token or client ID',
+    invalidPrivatbankBalanceAmount:
+      'PrivatBank sync: unparseable balance amount for account {{accountId}}, PrivatBank account {{acc}}: "{{value}}"',
+    invalidPrivatbankCredentials: 'Invalid token',
     invalidPrivatbankStatementAmount:
       'PrivatBank sync: unparseable statement amount for account {{accountId}}, item {{itemId}}: "{{value}}"',
     invalidPrivatbankStatementDate:
@@ -394,17 +395,21 @@ export const en = {
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteBunqApiKey: 'Paste bunq API key from clipboard',
     pasteFromClipboard: 'Paste from clipboard',
-    pastePrivatbankClientId: 'Paste client ID from clipboard',
     pastePrivatbankToken: 'Paste PrivatBank token from clipboard',
     pasteStarlingToken: 'Paste Starling token from clipboard',
-    privatbankClientIdPlaceholder: 'Client ID',
+    privatbankBalancePageCapReached:
+      'PrivatBank sync: the balance listing exceeds the {{maxPages}}-page fetch cap; the sync will be retried.',
+    privatbankBalancePageTruncated:
+      'PrivatBank sync: the balance page reports more items (exist_next_page) but carries no next_page_id to follow; the sync will be retried.',
     privatbankConnected: 'PrivatBank connected',
     privatbankFopNotice:
       "Requires a Privat24 business or individual-entrepreneur (FOP) account with API access enabled from the 'API for developers' menu.",
     privatbankRateLimited:
       'PrivatBank is rate-limiting requests right now. Please try again shortly.',
+    privatbankStatementPageCapReached:
+      "PrivatBank sync: account {{accountId}}'s statement history exceeds the {{maxPages}}-page fetch cap within one sync window; the window will be retried.",
     privatbankStatementPageTruncated:
-      "PrivatBank sync: account {{accountId}}'s statement page reports more items (exist_next_page) than this client fetches; the window will be retried.",
+      "PrivatBank sync: account {{accountId}}'s statement page reports more items (exist_next_page) but carries no next_page_id to follow; the window will be retried.",
     privatbankTimeout: 'PrivatBank did not respond in time. Please try again.',
     privatbankTokenPlaceholder: 'PrivatBank token',
     sourceLabel: 'Source',

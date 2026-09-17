@@ -191,13 +191,13 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   };
 
   // The PrivatBank counterpart of `connectMonobank`: store the validated
-  // {token, clientId} pair to the Keychain, then run the first PrivatBank
-  // sync. `PrivatbankConnectField` validates the pair with `fetchAccounts`
-  // BEFORE calling this, so an invalid pair never reaches
+  // token to the Keychain, then run the first PrivatBank sync.
+  // `PrivatbankConnectField` validates the token with `fetchAccounts` BEFORE
+  // calling this, so an invalid token never reaches
   // `savePrivatbankCredentials` — no orphaned Keychain item.
-  const connectPrivatbank = async (token: string, clientId: string): Promise<boolean> => {
+  const connectPrivatbank = async (token: string): Promise<boolean> => {
     try {
-      await savePrivatbankCredentials(account.id, { token, clientId });
+      await savePrivatbankCredentials(account.id, token);
     } catch {
       return false;
     }

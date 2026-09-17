@@ -3,9 +3,7 @@ import { holdingsRepo, type PrivatbankHolding } from '@kiko/holdings/repo';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
-import type { Currency } from '../../currency/currency';
-import { isCurrency } from '../../currency/currency';
-import { Money } from '../../currency/money';
+import { type Currency, currencyScale, isCurrency } from '../../currency/currency';
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
 import { i18n } from '../../i18n';
 import {
@@ -17,8 +15,8 @@ import {
   setFastPhaseDone,
 } from '../../monobank/sync-status';
 import { createRequestGate, type RequestGate } from '../../monobank/throttle';
-import { fetchAccounts, fetchStatement } from '../client';
-import { readCredentials, type PrivatbankCredentials } from '../credentials';
+import { fetchAccounts, fetchStatement, type RequestOptions } from '../client';
+import { readCredentials } from '../credentials';
 import type {
   PrivatbankAccount,
   PrivatbankStatementItem,
@@ -32,13 +30,14 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
   Partial<Pick<TransactionRow, 'description' | 'counterIban' | 'externalId'>>;
 
 /**
- * VERIFIED (official AutoClient doc): the statement endpoint has NO
- * documented max date-range window — paging is driven by the response's
- * `followId`/`exist_next_page` cursor, not a date cap. This 31-day value is
+ * VERIFIED (task-6 brief, official AutoClient doc): the statement endpoint
+ * has NO documented max date-range window — paging within one window is
+ * driven by the response's `followId`/`exist_next_page` cursor (see
+ * `fetchAllStatements` below), not a date cap. This 31-day value is
  * therefore kept only as this client's own PAGING CHUNK SIZE (how wide a
- * single `fetchStatement` call's [from, to] span is before this engine steps
- * to the next chunk), reusing Monobank's ceiling as a reasonable default —
- * not a confirmed AutoClient limit, and not something the API enforces.
+ * single window's [from, to] span is before this engine steps to the next
+ * chunk), reusing Monobank's ceiling as a reasonable default — not a
+ * confirmed AutoClient limit, and not something the API enforces.
  */
 const MAX_WINDOW_SECONDS = 31 * 24 * 60 * 60;
 /**
@@ -51,6 +50,23 @@ const MAX_WINDOW_SECONDS = 31 * 24 * 60 * 60;
 const PRIVATBANK_RATE_LIMIT_MS = 1_000;
 /** First-sync lookback when no previous sync timestamp is stored. */
 const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
+/**
+ * Statement page-follow backstop PER WINDOW CHUNK, AND a FAIL-CLOSED
+ * data-completeness boundary — not merely an infinite-loop guard. Mirrors
+ * bunq's `MAX_PAYMENT_PAGES` (`src/bunq/sync/sync.ts`): reaching this cap
+ * while `exist_next_page` is still `true` is a genuine data-completeness
+ * failure, so `fetchAllStatements` THROWS rather than returning a truncated
+ * set — see that function's own doc comment.
+ */
+const MAX_STATEMENT_PAGES = 50;
+/**
+ * Balance-envelope page-follow backstop — task-6 brief: "If the balance
+ * envelope also paginates via exist_next_page, page it the same way." A
+ * lower cap than `MAX_STATEMENT_PAGES` because a balance listing (one row
+ * per connected account) is expected to be far smaller than a transaction
+ * history.
+ */
+const MAX_BALANCE_PAGES = 20;
 
 /**
  * The `accountsRepo` methods the sync calls directly — mirrors Monobank's
@@ -102,29 +118,34 @@ interface SyncSyncStateRepo {
 /**
  * The injectable seams of this pipeline — mirrors Monobank's `SyncDeps`
  * shape (network, clock, delay, and the repos, all injected so tests run
- * instantly against fakes).
+ * instantly against fakes). `readCredentials`/`fetchAccounts`/`fetchStatement`
+ * now take a plain `string` token (task-6 brief: the AutoClient credential is
+ * a SINGLE `token` header, not a `{ token, clientId }` pair).
  */
 export interface SyncDeps {
   fetchImpl: typeof fetch;
   now: () => number;
   sleep: (milliseconds: number) => Promise<void>;
   /**
-   * Read the credential pair for the RESOLVED target account. The pair is
-   * PER CONNECTION (`serviceFor(accountId)` in `../credentials`), so
+   * Read the token for the RESOLVED target account. The token is PER
+   * CONNECTION (`serviceFor(accountId)` in `../credentials`), so
    * `runSyncInner` resolves the target account id FIRST, then reads its own
-   * pair — one connection's credentials can never gate or corrupt another's.
+   * token — one connection's credentials can never gate or corrupt
+   * another's.
    */
-  readCredentials: (accountId: string) => Promise<PrivatbankCredentials | undefined>;
+  readCredentials: (accountId: string) => Promise<string | undefined>;
   fetchAccounts: (
-    credentials: PrivatbankCredentials,
+    token: string,
     fetchImpl?: typeof fetch,
-  ) => Promise<PrivatbankAccount[]>;
+    options?: RequestOptions,
+  ) => ReturnType<typeof fetchAccounts>;
   fetchStatement: (
-    credentials: PrivatbankCredentials,
+    token: string,
     accountId: string,
     fromSeconds: number,
     toSeconds: number,
     fetchImpl?: typeof fetch,
+    options?: RequestOptions,
   ) => Promise<PrivatbankStatementPage>;
   /**
    * The user-created account to (re)target this sync at. When set, the
@@ -157,14 +178,9 @@ const readLastSyncAt = async (deps: SyncDeps, accountId: string): Promise<number
   (await deps.syncStateRepo.getQuery(accountId)).at(0)?.lastSyncAt ?? null;
 
 /**
- * PrivatBank's currency mapping. TODO(VERIFY LIVE): this assumes PrivatBank
- * returns an ALPHABETIC ISO 4217 code (e.g. 'UAH'), validated directly
- * against the `Currency` union — `undefined` for an unrepresentable currency
- * (mirrors `isUnrepresentableCurrency` in `src/monobank/sync/sync.ts`). If
- * PrivatBank actually returns a NUMERIC code like Monobank's `currencyCode`,
- * swap this for `currencyFromCode` (`src/monobank/currency-code`) instead —
- * that module is generic ISO 4217, not Monobank-specific, and is already
- * reused cross-provider elsewhere in this codebase.
+ * PrivatBank's currency mapping — validated directly against the `Currency`
+ * union, `undefined` for an unrepresentable currency (mirrors
+ * `isUnrepresentableCurrency` in `src/monobank/sync/sync.ts`).
  */
 const currencyFromPrivatbankCode = (code: string): Currency | undefined =>
   isCurrency(code) ? code : undefined;
@@ -185,30 +201,84 @@ const isUnrepresentableCurrency = (code: string, id: string): boolean => {
   return true;
 };
 
+const STATEMENT_DATETIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/;
+
 /**
- * TODO(VERIFY LIVE): confirm PrivatBank's actual statement date format —
- * assumed 'DD.MM.YYYY HH:mm:ss' (the reference clients' documented
- * convention). Returns `Number.NaN` on an unparseable value; a caller must
- * never persist a NaN time.
+ * Kyiv's assumed UTC offset for `monthIndex` (0-indexed): EEST (+3h, summer
+ * DST) April through October, EET (+2h, standard) the rest of the year — a
+ * MONTH-boundary approximation of Ukraine's EU-aligned DST calendar (the
+ * real transition falls on the last Sunday of March/October), not an
+ * exact-day-and-hour calculation. See the module-tree's single
+ * `TODO(VERIFY LIVE)` in `client/privatbank.client.ts`'s `requestOnce` — the
+ * exact timezone `DATE_TIME_DAT_OD_TIM_P` is reported in is still
+ * unconfirmed against a live response.
  */
-const parsePrivatbankDate = (value: string): number => {
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/.exec(value);
+const kyivOffsetHoursForMonth = (monthIndex: number): number =>
+  monthIndex >= 3 && monthIndex <= 9 ? 3 : 2;
+
+/**
+ * VERIFIED format (task-6 brief): a statement's `DATE_TIME_DAT_OD_TIM_P` is
+ * `'DD.MM.YYYY HH:MM:SS'` (DOTS — distinct from the request's own
+ * `startDate`/`endDate`, which use dashes). Assumed Kyiv LOCAL time — see
+ * `kyivOffsetHoursForMonth`'s own doc comment. Returns `Number.NaN` on an
+ * unparseable value; a caller must never persist a NaN time.
+ */
+const parsePrivatbankDateTime = (value: string): number => {
+  const match = STATEMENT_DATETIME_PATTERN.exec(value);
 
   if (!match) {
     return Number.NaN;
   }
 
-  const [, day, month, year, hour = '00', minute = '00', second = '00'] = match;
+  const [, day, month, year, hour, minute, second] = match;
+  const monthIndex = Number(month) - 1;
+  const offsetHours = kyivOffsetHoursForMonth(monthIndex);
 
   return Date.UTC(
     Number(year),
-    Number(month) - 1,
+    monthIndex,
     Number(day),
-    Number(hour),
+    Number(hour) - offsetHours,
     Number(minute),
     Number(second),
   );
 };
+
+const DECIMAL_AMOUNT_PATTERN = /^(-?)(\d+)(?:\.(\d+))?$/;
+
+/**
+ * Convert PrivatBank's decimal-string MAJOR-units amount (`SUM`/`balance`)
+ * to integer minor units WITHOUT floating-point multiplication — per the
+ * task brief ("never parseFloat"), this is string-integer math only: pad or
+ * truncate the fractional part to the currency's own decimal scale, then
+ * read the concatenated whole+fraction digits as one integer.
+ * `Money.fromMajor` (`src/currency/money/money.ts`) is not reused here
+ * because it multiplies a FLOAT by the scale factor — an acceptable
+ * precision for values Monobank/bunq already hand over as JS numbers, but
+ * not the byte-for-byte guarantee this decimal STRING deserves. Returns
+ * `undefined` on anything that is not a plain (optionally signed) decimal
+ * number string.
+ */
+const parseDecimalMajorToMinorUnits = (value: string, currency: Currency): number | undefined => {
+  const match = DECIMAL_AMOUNT_PATTERN.exec(value.trim());
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, sign, whole, fraction = ''] = match;
+  const scale = currencyScale[currency];
+  const fractionDigits = fraction.padEnd(scale, '0').slice(0, scale);
+  const minorUnits = Number(`${sign}${whole}${fractionDigits}`);
+
+  return Number.isFinite(minorUnits) ? minorUnits : undefined;
+};
+
+/**
+ * VERIFIED (task-6 brief): `REF`+`REFN` together are the doc's confirmed
+ * unique dedup key — `ID` is also present as a fallback but unused here.
+ */
+const dedupKey = (item: PrivatbankStatementItem): string => `${item.REF}${item.REFN}`;
 
 /**
  * FAIL CLOSED (Global Constraints): a malformed statement date or amount
@@ -227,43 +297,45 @@ export const mapStatementItem = (
   accountId: string,
   currency: Currency,
 ): NewTransaction => {
-  const time = parsePrivatbankDate(item.date);
+  const time = parsePrivatbankDateTime(item.DATE_TIME_DAT_OD_TIM_P);
 
   if (Number.isNaN(time)) {
     throw new Error(
       i18n.t('accountDetail.invalidPrivatbankStatementDate', {
         accountId,
-        itemId: item.id,
-        value: item.date,
+        itemId: dedupKey(item),
+        value: item.DATE_TIME_DAT_OD_TIM_P,
       }),
     );
   }
 
-  // TODO(VERIFY LIVE): `amount` is assumed a signed decimal string in MAJOR
-  // units (see `PrivatbankStatementItem`'s own doc comment).
-  const amountMajor = Number.parseFloat(item.amount);
+  const magnitude = parseDecimalMajorToMinorUnits(item.SUM, currency);
 
-  if (!Number.isFinite(amountMajor)) {
+  if (magnitude === undefined) {
     throw new Error(
       i18n.t('accountDetail.invalidPrivatbankStatementAmount', {
         accountId,
-        itemId: item.id,
-        value: item.amount,
+        itemId: dedupKey(item),
+        value: item.SUM,
       }),
     );
   }
 
+  // VERIFIED (task-6 brief): the sign comes from TRANTYPE ('C' credit/+, 'D'
+  // debit/-), NEVER from SUM itself — SUM is an unsigned magnitude.
+  const amountMinorUnits = item.TRANTYPE === 'D' ? -Math.abs(magnitude) : Math.abs(magnitude);
+
   return {
     holdingId,
-    amountMinorUnits: Money.fromMajor(currency, amountMajor).minorUnits,
+    amountMinorUnits,
     time,
-    description: item.description ?? '',
-    counterIban: item.counterIban ?? null,
+    description: item.OSND ?? '',
+    counterIban: item.AUT_CNTR_ACC ?? null,
     source: 'privatbank',
     // NAMESPACED per connection, same rule as Monobank (Global Constraints):
-    // `${accountId}:${statementId}` keeps the GLOBAL `(source, external_id)`
+    // `${accountId}:${REF}${REFN}` keeps the GLOBAL `(source, external_id)`
     // unique index disjoint across every connection of every provider.
-    externalId: `${accountId}:${item.id}`,
+    externalId: `${accountId}:${dedupKey(item)}`,
   };
 };
 
@@ -271,25 +343,36 @@ export const mapAccountToHolding = (
   account: PrivatbankAccount,
   privatbankAccountId: string,
 ): NewHolding => {
-  const currency = currencyFromPrivatbankCode(account.currency);
+  const currency = currencyFromPrivatbankCode(account.CCY);
 
   if (!currency) {
+    throw new Error(i18n.t('accountDetail.unsupportedPrivatbankCurrency', { code: account.CCY }));
+  }
+
+  const balanceMinorUnits = parseDecimalMajorToMinorUnits(account.balance, currency);
+
+  // FAIL CLOSED (Global Constraints, "no fabricated balance"): an
+  // unparseable balance must never silently persist as 0 — throw, exactly
+  // like a malformed statement item, so the per-account fault isolation in
+  // `runSyncInner` freezes the cursor instead of writing a wrong balance.
+  if (balanceMinorUnits === undefined) {
     throw new Error(
-      i18n.t('accountDetail.unsupportedPrivatbankCurrency', { code: account.currency }),
+      i18n.t('accountDetail.invalidPrivatbankBalanceAmount', {
+        accountId: privatbankAccountId,
+        acc: account.acc,
+        value: account.balance,
+      }),
     );
   }
 
   return {
     accountId: privatbankAccountId,
-    name: account.name ?? account.acc,
+    // No friendly account name is modeled on `PrivatbankAccount` (see its
+    // own doc comment) — every holding is named after its account number.
+    name: account.acc,
     type: 'card',
     currency,
-    // TODO(VERIFY LIVE): `balance` is assumed a decimal string in MAJOR
-    // units (see `PrivatbankAccount`'s own doc comment).
-    balanceMinorUnits: Money.fromMajor(currency, Number.parseFloat(account.balance)).minorUnits,
-    // TODO(VERIFY LIVE): confirm whether `acc` is the IBAN itself or a
-    // separate internal id exists — both keys are set to the same value
-    // until that is confirmed.
+    balanceMinorUnits,
     metadata: { privatbankId: account.acc, iban: account.acc },
   };
 };
@@ -364,7 +447,7 @@ const upsertAllHoldings = async (
   const holdings: PrivatbankHolding[] = [];
 
   for (const account of accounts) {
-    if (isUnrepresentableCurrency(account.currency, account.acc)) {
+    if (isUnrepresentableCurrency(account.CCY, account.acc)) {
       continue;
     }
 
@@ -375,30 +458,75 @@ const upsertAllHoldings = async (
 };
 
 /**
+ * Pull every balance entry from `/api/statements/balance`, following
+ * `next_page_id` as the next request's `followId` WHILE `exist_next_page`
+ * stays `true` — task-6 brief: "If the balance envelope also paginates via
+ * exist_next_page, page it the same way [as the statement endpoint]."
+ *
+ * FAIL CLOSED (Global Constraints, mirrors `fetchAllStatements` below): a
+ * page that reports more items (`exist_next_page: true`) but carries no
+ * `next_page_id` to follow, or a run that exhausts `MAX_BALANCE_PAGES`
+ * before `exist_next_page` goes false, THROWS rather than silently treating
+ * the page(s) collected so far as the complete balance listing — that would
+ * let the caller mark `institution` and commit a partial, wrong net-worth
+ * snapshot.
+ */
+const fetchAllAccounts = async (
+  deps: SyncDeps,
+  gate: RequestGate,
+  token: string,
+): Promise<PrivatbankAccount[]> => {
+  const collected: PrivatbankAccount[] = [];
+  let followId: string | undefined;
+
+  for (let page = 0; page < MAX_BALANCE_PAGES; page += 1) {
+    await gate.wait();
+
+    const response = await deps.fetchAccounts(token, deps.fetchImpl, { followId });
+
+    collected.push(...response.balances);
+
+    if (!response.exist_next_page) {
+      return collected;
+    }
+
+    if (response.next_page_id === undefined) {
+      throw new Error(i18n.t('accountDetail.privatbankBalancePageTruncated'));
+    }
+
+    followId = response.next_page_id;
+  }
+
+  throw new Error(
+    i18n.t('accountDetail.privatbankBalancePageCapReached', { maxPages: MAX_BALANCE_PAGES }),
+  );
+};
+
+/**
  * Pull every statement item for one PrivatBank account within [fromSeconds,
- * toSeconds], chunked at `MAX_WINDOW_SECONDS` per request — the simplified
- * engine's forward paging (plan Phase 1: "deliberately simpler" than
- * Monobank's capped-response narrowing). AutoClient's own per-response item
- * cap is confirmed by its doc (`STATEMENT_PAGE_SIZE` in
- * `src/privatbank/client/`), but its `followId`/`exist_next_page` cursor for
- * a chunk whose item count exceeds that page size is not yet FOLLOWED here —
- * TODO(VERIFY LIVE) the cursor's real field names before wiring real forward
- * paging up. The gate is shared across every account's pages in one run,
- * mirroring Monobank's single per-run gate.
+ * toSeconds], chunked at `MAX_WINDOW_SECONDS` per request (the simplified
+ * engine's own paging-chunk-size choice, unrelated to a real API limit — see
+ * `MAX_WINDOW_SECONDS`'s own doc comment). WITHIN each chunk, REAL
+ * PAGINATION follows `next_page_id` as the next request's `followId` WHILE
+ * `exist_next_page` stays `true` (task-6 brief — this replaces the interim
+ * fail-closed throw a previous review pass added here).
  *
  * FAIL CLOSED (Global Constraints, mirrors bunq's `fetchAllPaymentsSince`
- * page-cap throw): a page whose `exist_next_page` is true reports MORE items
- * than this client fetched. Treating that page as the whole window would let
- * the caller advance `sync_state.lastSyncAt` past data this run never
- * actually read, silently dropping it forever. Throwing here instead lets
- * the per-account fault isolation in `runSyncInner` catch it: the account's
- * whole run fails, the cursor never advances, and the SAME window is retried
- * idempotently next run once real paging lands.
+ * page-cap throw): a page that reports more items (`exist_next_page: true`)
+ * but carries no `next_page_id` to follow CANNOT be safely continued —
+ * treating it as the whole window would let the caller advance
+ * `sync_state.lastSyncAt` past data this run never actually read, silently
+ * dropping it forever. The same is true of exhausting
+ * `MAX_STATEMENT_PAGES` while `exist_next_page` is still `true` — a genuine
+ * data-completeness failure, not a benign stop. Both THROW rather than
+ * returning a truncated set: the per-account fault isolation in
+ * `runSyncInner` catches it, the cursor never advances, and the SAME window
+ * is retried idempotently next run.
  */
 const fetchAllStatements = async (
   deps: SyncDeps,
   gate: RequestGate,
-  credentials: PrivatbankCredentials,
+  token: string,
   privatbankAccountId: string,
   fromSeconds: number,
   toSeconds: number,
@@ -408,26 +536,46 @@ const fetchAllStatements = async (
 
   while (windowFrom < toSeconds) {
     const windowTo = Math.min(toSeconds, windowFrom + MAX_WINDOW_SECONDS);
+    let followId: string | undefined;
 
-    await gate.wait();
+    for (let page = 0; ; page += 1) {
+      if (page >= MAX_STATEMENT_PAGES) {
+        throw new Error(
+          i18n.t('accountDetail.privatbankStatementPageCapReached', {
+            accountId: privatbankAccountId,
+            maxPages: MAX_STATEMENT_PAGES,
+          }),
+        );
+      }
 
-    const page = await deps.fetchStatement(
-      credentials,
-      privatbankAccountId,
-      windowFrom,
-      windowTo,
-      deps.fetchImpl,
-    );
+      await gate.wait();
 
-    if (page.exist_next_page) {
-      throw new Error(
-        i18n.t('accountDetail.privatbankStatementPageTruncated', {
-          accountId: privatbankAccountId,
-        }),
+      const statementPage = await deps.fetchStatement(
+        token,
+        privatbankAccountId,
+        windowFrom,
+        windowTo,
+        deps.fetchImpl,
+        { followId },
       );
+
+      collected.push(...statementPage.transactions);
+
+      if (!statementPage.exist_next_page) {
+        break;
+      }
+
+      if (statementPage.next_page_id === undefined) {
+        throw new Error(
+          i18n.t('accountDetail.privatbankStatementPageTruncated', {
+            accountId: privatbankAccountId,
+          }),
+        );
+      }
+
+      followId = statementPage.next_page_id;
     }
 
-    collected.push(...page.transactions);
     windowFrom = windowTo;
   }
 
@@ -444,14 +592,14 @@ const fetchAllStatements = async (
 const importPrivatbankAccount = async (
   deps: SyncDeps,
   gate: RequestGate,
-  credentials: PrivatbankCredentials,
+  token: string,
   accountId: string,
   account: PrivatbankAccount,
   holding: HoldingRow,
   fromSeconds: number,
   toSeconds: number,
 ): Promise<number> => {
-  const currency = currencyFromPrivatbankCode(account.currency);
+  const currency = currencyFromPrivatbankCode(account.CCY);
 
   // Unreachable in practice — the caller already filters to representable
   // accounts only — but keeps `mapStatementItem`'s `currency` argument
@@ -460,14 +608,7 @@ const importPrivatbankAccount = async (
     return 0;
   }
 
-  const items = await fetchAllStatements(
-    deps,
-    gate,
-    credentials,
-    account.acc,
-    fromSeconds,
-    toSeconds,
-  );
+  const items = await fetchAllStatements(deps, gate, token, account.acc, fromSeconds, toSeconds);
   const mapped = items.map((item) => mapStatementItem(item, holding.id, accountId, currency));
 
   if (mapped.length === 0) {
@@ -528,13 +669,13 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // or setter below. Idempotent.
   await deps.syncStateRepo.ensure(accountId);
 
-  const credentials = await deps.readCredentials(accountId);
+  const token = await deps.readCredentials(accountId);
 
-  if (!credentials) {
+  if (!token) {
     throw new Error(i18n.t('accountDetail.noPrivatbankCredentials'));
   }
 
-  // ONE gate for this whole invocation, shared by the accounts call and
+  // ONE gate for this whole invocation, shared by the balance call and
   // every account's statement pages — mirrors Monobank's per-run gate.
   const gate = createRequestGate({
     intervalMs: PRIVATBANK_RATE_LIMIT_MS,
@@ -542,8 +683,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     sleep: deps.sleep,
   });
 
-  await gate.wait();
-  const accounts = await deps.fetchAccounts(credentials, deps.fetchImpl);
+  const accounts = await fetchAllAccounts(deps, gate, token);
   // Mark `institution: 'privatbank'` ONLY after that fetch succeeded — never
   // before (Global Constraints' fail-closed rule).
   await markPrivatbankAccount(deps, accountId);
@@ -568,7 +708,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // account's statements are re-fetched every run — no balance-diff skip, no
   // changed-first queue, no force-retry set, no full-fetch graduation.
   const representable = accounts.filter(
-    (account) => !isUnrepresentableCurrency(account.currency, account.acc),
+    (account) => !isUnrepresentableCurrency(account.CCY, account.acc),
   );
 
   if (representable.length > 0) {
@@ -589,7 +729,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
       importedTransactions += await importPrivatbankAccount(
         deps,
         gate,
-        credentials,
+        token,
         accountId,
         account,
         holding,

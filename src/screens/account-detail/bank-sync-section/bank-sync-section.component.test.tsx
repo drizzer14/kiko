@@ -97,15 +97,8 @@ jest.mock('../privatbank-connect-field', () => {
   const { Pressable, Text } = require('react-native');
   return {
     __esModule: true,
-    default: ({
-      onConnect,
-    }: {
-      onConnect: (token: string, clientId: string) => Promise<boolean>;
-    }) => (
-      <Pressable
-        accessibilityLabel="privatbank-field"
-        onPress={() => onConnect('privat-token', 'client-1')}
-      >
+    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (
+      <Pressable accessibilityLabel="privatbank-field" onPress={() => onConnect('privat-token')}>
         <Text>privatbank field</Text>
       </Pressable>
     ),
@@ -218,7 +211,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(mockSavePrivatbankCredentials).not.toHaveBeenCalled();
   });
 
-  it('renders the PrivatBank field after picking PrivatBank, and connecting saves the pair then syncs via PrivatBank', async () => {
+  it('renders the PrivatBank field after picking PrivatBank, and connecting saves the token then syncs via PrivatBank', async () => {
     const view = await render(<BankSyncSection account={bankAccount()} />);
 
     await fireEvent.press(view.getByText('Add a bank'));
@@ -231,10 +224,7 @@ describe('BankSyncSection — disconnected', () => {
       await fireEvent.press(view.getByLabelText('privatbank-field'));
     });
 
-    expect(mockSavePrivatbankCredentials).toHaveBeenCalledWith('a', {
-      token: 'privat-token',
-      clientId: 'client-1',
-    });
+    expect(mockSavePrivatbankCredentials).toHaveBeenCalledWith('a', 'privat-token');
     await waitFor(() => expect(mockPrivatbankSync).toHaveBeenCalledWith('a'));
     expect(mockSaveToken).not.toHaveBeenCalled();
   });

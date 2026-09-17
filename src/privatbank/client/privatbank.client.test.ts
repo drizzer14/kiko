@@ -7,15 +7,30 @@ import {
   PrivatbankTimeoutError,
 } from './privatbank.client';
 
-const CREDENTIALS = { token: 'token-fixture', clientId: 'client-id-fixture' };
+const TOKEN = 'token-fixture';
 
 const accountsFixture: PrivatbankAccount[] = [
-  { acc: 'UA000000000000000000000000000', currency: 'UAH', balance: '1234.56', name: 'Картка' },
+  { acc: 'UA000000000000000000000000000', CCY: 'UAH', balance: '1234.56' },
 ];
 
 const statementFixture: PrivatbankStatementItem[] = [
-  { id: 'stmt-1', date: '01.01.2026 10:00:00', amount: '-100.00', currency: 'UAH' },
-  { id: 'stmt-2', date: '02.01.2026 11:30:00', amount: '250.50', currency: 'UAH' },
+  {
+    REF: 'ref-1',
+    REFN: '1',
+    SUM: '100.00',
+    CCY: 'UAH',
+    TRANTYPE: 'D',
+    DATE_TIME_DAT_OD_TIM_P: '01.01.2026 10:00:00',
+    OSND: 'Coffee',
+  },
+  {
+    REF: 'ref-2',
+    REFN: '1',
+    SUM: '250.50',
+    CCY: 'UAH',
+    TRANTYPE: 'C',
+    DATE_TIME_DAT_OD_TIM_P: '02.01.2026 11:30:00',
+  },
 ];
 
 const makeFetch = (body: unknown, ok = true): typeof fetch =>
@@ -24,30 +39,43 @@ const makeFetch = (body: unknown, ok = true): typeof fetch =>
 type SpyFetchInit = { headers: Record<string, string> };
 
 describe('fetchAccounts', () => {
-  it('sends the credential headers and returns the parsed account list', async () => {
+  it('hits /api/statements/balance with the token/User-Agent/utf8 headers and returns the balance page', async () => {
     let sentUrl = '';
     let sentHeaders: Record<string, string> = {};
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
-      return { ok: true, json: async () => accountsFixture, status: 200 };
+      return { ok: true, json: async () => ({ balances: accountsFixture }), status: 200 };
     }) as unknown as typeof fetch;
 
-    const result = await fetchAccounts(CREDENTIALS, spyFetch);
+    const result = await fetchAccounts(TOKEN, spyFetch);
 
-    expect(sentUrl).toContain('/rest/accounts');
+    expect(sentUrl).toContain('/api/statements/balance');
     expect(sentHeaders.token).toBe('token-fixture');
-    expect(sentHeaders.id).toBe('client-id-fixture');
-    expect(result).toEqual(accountsFixture);
+    expect(sentHeaders['User-Agent']).toBeTruthy();
+    expect(sentHeaders['Content-Type']).toBe('application/json;charset=utf8');
+    expect(result).toEqual({ balances: accountsFixture });
+  });
+
+  it('appends followId when paging the balance envelope', async () => {
+    let sentUrl = '';
+    const spyFetch = (async (url: string) => {
+      sentUrl = url;
+      return { ok: true, json: async () => ({ balances: [] }), status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchAccounts(TOKEN, spyFetch, { followId: 'cursor-1' });
+
+    expect(sentUrl).toContain('followId=cursor-1');
   });
 
   it('throws on a non-ok, non-429 response', async () => {
-    await expect(fetchAccounts(CREDENTIALS, makeFetch({}, false))).rejects.toThrow('500');
+    await expect(fetchAccounts(TOKEN, makeFetch({}, false))).rejects.toThrow('500');
   });
 });
 
 describe('fetchStatement', () => {
-  it('sends the credential headers and returns the typed statement page', async () => {
+  it('hits /api/statements/transactions with acc, DD-MM-YYYY startDate/endDate, and limit', async () => {
     let sentUrl = '';
     let sentHeaders: Record<string, string> = {};
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
@@ -56,31 +84,53 @@ describe('fetchStatement', () => {
       return { ok: true, json: async () => ({ transactions: statementFixture }), status: 200 };
     }) as unknown as typeof fetch;
 
-    const result = await fetchStatement(CREDENTIALS, 'acc-1', 1704067200, 1704240000, spyFetch);
+    const result = await fetchStatement(TOKEN, 'acc-1', 1_704_067_200, 1_704_240_000, spyFetch);
 
-    expect(sentUrl).toContain('/rest/statement');
-    expect(sentUrl).toContain('acc-1');
+    expect(sentUrl).toContain('/api/statements/transactions');
+    expect(sentUrl).toContain('acc=acc-1');
+    expect(sentUrl).toContain('startDate=01-01-2024');
+    expect(sentUrl).toContain('endDate=03-01-2024');
+    expect(sentUrl).toContain('limit=100');
     expect(sentHeaders.token).toBe('token-fixture');
-    expect(sentHeaders.id).toBe('client-id-fixture');
+    expect(sentHeaders['Content-Type']).toBe('application/json;charset=utf8');
     expect(result).toEqual({ transactions: statementFixture });
   });
 
-  it('surfaces exist_next_page when the response signals more items than this page fetched', async () => {
+  it('passes followId as the pagination cursor when provided', async () => {
+    let sentUrl = '';
+    const spyFetch = (async (url: string) => {
+      sentUrl = url;
+      return { ok: true, json: async () => ({ transactions: [] }), status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchStatement(TOKEN, 'acc-1', 1_704_067_200, 1_704_240_000, spyFetch, {
+      followId: 'cursor-1',
+    });
+
+    expect(sentUrl).toContain('followId=cursor-1');
+  });
+
+  it('surfaces exist_next_page/next_page_id so the caller can keep following the cursor', async () => {
     const spyFetch = (async () => ({
       ok: true,
-      json: async () => ({ transactions: statementFixture, exist_next_page: true }),
+      json: async () => ({
+        transactions: statementFixture,
+        exist_next_page: true,
+        next_page_id: 'cursor-2',
+      }),
       status: 200,
     })) as unknown as typeof fetch;
 
-    const result = await fetchStatement(CREDENTIALS, 'acc-1', 1704067200, 1704240000, spyFetch);
+    const result = await fetchStatement(TOKEN, 'acc-1', 1_704_067_200, 1_704_240_000, spyFetch);
 
     expect(result.exist_next_page).toBe(true);
+    expect(result.next_page_id).toBe('cursor-2');
     expect(result.transactions).toEqual(statementFixture);
   });
 
   it('throws on a non-ok, non-429 response', async () => {
     await expect(
-      fetchStatement(CREDENTIALS, 'acc-1', 1704067200, 1704240000, makeFetch({}, false)),
+      fetchStatement(TOKEN, 'acc-1', 1_704_067_200, 1_704_240_000, makeFetch({}, false)),
     ).rejects.toThrow('500');
   });
 });
@@ -102,14 +152,18 @@ describe('429 / Retry-After handling', () => {
       call += 1;
       return call === 1
         ? rateLimited('2')
-        : ({ ok: true, status: 200, json: async () => accountsFixture } as unknown as Response);
+        : ({
+            ok: true,
+            status: 200,
+            json: async () => ({ balances: accountsFixture }),
+          } as unknown as Response);
     }) as unknown as typeof fetch;
 
-    const result = await fetchAccounts(CREDENTIALS, fetchImpl, { sleep });
+    const result = await fetchAccounts(TOKEN, fetchImpl, { sleep });
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(2000);
-    expect(result).toEqual(accountsFixture);
+    expect(result).toEqual({ balances: accountsFixture });
   });
 
   it('falls back to the per-credential interval when the 429 carries no Retry-After header', async () => {
@@ -119,10 +173,14 @@ describe('429 / Retry-After handling', () => {
       call += 1;
       return call === 1
         ? rateLimited(null)
-        : ({ ok: true, status: 200, json: async () => accountsFixture } as unknown as Response);
+        : ({
+            ok: true,
+            status: 200,
+            json: async () => ({ balances: accountsFixture }),
+          } as unknown as Response);
     }) as unknown as typeof fetch;
 
-    await fetchAccounts(CREDENTIALS, fetchImpl, { sleep });
+    await fetchAccounts(TOKEN, fetchImpl, { sleep });
 
     expect(sleep).toHaveBeenCalledWith(60_000);
   });
@@ -134,10 +192,14 @@ describe('429 / Retry-After handling', () => {
       call += 1;
       return call === 1
         ? rateLimited('0')
-        : ({ ok: true, status: 200, json: async () => accountsFixture } as unknown as Response);
+        : ({
+            ok: true,
+            status: 200,
+            json: async () => ({ balances: accountsFixture }),
+          } as unknown as Response);
     }) as unknown as typeof fetch;
 
-    await fetchAccounts(CREDENTIALS, fetchImpl, { sleep });
+    await fetchAccounts(TOKEN, fetchImpl, { sleep });
 
     expect(sleep).toHaveBeenCalledWith(60_000);
     expect(sleep).not.toHaveBeenCalledWith(0);
@@ -147,9 +209,9 @@ describe('429 / Retry-After handling', () => {
     const sleep = jest.fn(async () => undefined);
     const fetchImpl = jest.fn(async () => rateLimited('1')) as unknown as typeof fetch;
 
-    await expect(
-      fetchAccounts(CREDENTIALS, fetchImpl, { sleep, maxRetries: 2 }),
-    ).rejects.toBeInstanceOf(PrivatbankRateLimitError);
+    await expect(fetchAccounts(TOKEN, fetchImpl, { sleep, maxRetries: 2 })).rejects.toBeInstanceOf(
+      PrivatbankRateLimitError,
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 });
@@ -165,7 +227,7 @@ describe('request timeout', () => {
           });
         })) as unknown as typeof fetch;
 
-      const pending = fetchAccounts(CREDENTIALS, fetchImpl, { timeoutMs: 30_000 });
+      const pending = fetchAccounts(TOKEN, fetchImpl, { timeoutMs: 30_000 });
       const assertion = expect(pending).rejects.toBeInstanceOf(PrivatbankTimeoutError);
 
       await jest.advanceTimersByTimeAsync(30_000);
@@ -179,11 +241,11 @@ describe('request timeout', () => {
     const fetchImpl = (async () => ({
       ok: true,
       status: 200,
-      json: async () => accountsFixture,
+      json: async () => ({ balances: accountsFixture }),
     })) as unknown as typeof fetch;
 
-    const result = await fetchAccounts(CREDENTIALS, fetchImpl);
+    const result = await fetchAccounts(TOKEN, fetchImpl);
 
-    expect(result).toEqual(accountsFixture);
+    expect(result).toEqual({ balances: accountsFixture });
   });
 });
