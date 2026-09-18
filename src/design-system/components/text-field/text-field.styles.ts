@@ -11,6 +11,12 @@ export const styles = StyleSheet.create((theme) => ({
   // mirrors this SAME `theme.spacing(11)` token so the two land on exactly
   // the same height and, bottom-aligned against this field's captioned
   // column, on the same vertical center too.
+  //
+  // Exception: a `multiline` field must grow to fit its content instead (e.g.
+  // the export screen's Encryption-Key field, which holds a 44-character
+  // base64 key that must be fully visible without scrolling). The component
+  // layers `inputMultiline` on top of this base style in that case, which
+  // overrides `height` with a `minHeight` floor of the same 44pt token.
   input: {
     height: theme.spacing(11),
     borderWidth: StyleSheet.hairlineWidth,
@@ -19,6 +25,15 @@ export const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing(3),
     color: theme.colors.textPrimary,
     ...theme.typography.body,
+  },
+  // Applied on top of `input` when `multiline === true`: drops the fixed
+  // `height` in favor of a `minHeight` floor (keeping the same 44pt tap
+  // target) so the field grows to fit its content, and top-aligns the text
+  // so it starts at the field's top edge rather than vertically centering.
+  inputMultiline: {
+    height: undefined,
+    minHeight: theme.spacing(11),
+    textAlignVertical: 'top',
   },
   // Applied on top of `input` when `editable === false`, so the field reads
   // clearly as non-editable rather than merely un-focusable.
