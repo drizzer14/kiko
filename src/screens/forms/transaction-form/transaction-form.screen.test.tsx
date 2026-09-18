@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 import type { TransactionFormParams } from '../../../navigation/types';
 import '../../../design-system/unistyles';
@@ -548,6 +548,23 @@ describe('TransactionFormScreen — add mode', () => {
       expect(index).toBeGreaterThan(-1);
     }
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('surfaces an alert and does not navigate when the write fails', async () => {
+    mockRecordManual.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const utils = await renderAdd();
+    const { getByLabelText, getByText, navigation } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });
 
