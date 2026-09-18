@@ -12,6 +12,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 
+import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 import SettingsScreen from './settings.screen';
 
 type SettingsProps = ComponentProps<typeof SettingsScreen>;
@@ -236,17 +237,21 @@ describe('SettingsScreen', () => {
     expect(marginLeft).toBe(darkTheme.iconSizes.body + darkTheme.spacing(3));
   });
 
-  it('insets the Import/Export divider on the RIGHT too, to match the row content padding (round-6 device feedback item 4)', async () => {
+  it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding (round-7 device feedback item 1)", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
     const marginRight = StyleSheet.flatten(divider.props.style).marginRight;
 
     // The card's own padding is 0 (each row carries its own
-    // `paddingHorizontal`, see `dataTransferRowStyle`); the divider used to run
-    // all the way to the card's true right edge instead of stopping level with
-    // the row's own right-padded content.
-    expect(marginRight).toBe(darkTheme.spacing(3));
+    // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
+    // alone (round-6 item 4) is no longer the whole story: the divider must
+    // also cross the trailing whitespace inside the (round-7 item 2 resized)
+    // chevron's own render frame, so it visually terminates at the ">"
+    // glyph's right edge rather than the frame's.
+    expect(marginRight).toBe(
+      darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
+    );
   });
 
   it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding (device-feedback-round-4 item 6)', async () => {

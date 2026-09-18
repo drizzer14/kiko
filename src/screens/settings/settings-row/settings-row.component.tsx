@@ -1,11 +1,13 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
 import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
 import { styles } from '../settings/settings.styles';
 
+import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';
 
 // A single full-width row inside a Settings GlassSurface card: an optional
@@ -22,6 +24,8 @@ const SettingsRow: FC<SettingsRowProps> = ({
   children,
   ...props
 }) => {
+  const { theme } = useUnistyles();
+
   const header = (
     <Box direction="row" style={styles.header}>
       <Box direction="row" gap={3} style={styles.rowLead}>
@@ -37,13 +41,16 @@ const SettingsRow: FC<SettingsRowProps> = ({
         // The chevron is a decorative affordance: the row's own button role
         // already conveys "navigates", so hide the glyph from the a11y tree
         // (otherwise a screen reader announces a bare "chevron"). Tests target
-        // it by testID instead of a label.
+        // it by testID instead of a label. Sized to the label's OWN fontSize
+        // (`chevronSize`, `settings-row.chevron.ts`) — see that module's doc
+        // comment — rather than the oversized `iconSizes.body` default, so the
+        // glyph reads as a peer of the title, not larger than it.
         <Box
           testID="settings-row-chevron"
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <SymbolIcon name="chevron.right" tone="textSecondary" />
+          <SymbolIcon name="chevron.right" tone="textSecondary" size={chevronSize(theme)} />
         </Box>
       )}
     </Box>

@@ -20,6 +20,7 @@ import { type Currency, fiatCurrencyOptions } from '../../../currency/currency';
 import { useScrollToTopOnTabPress } from '../../../navigation/use-scroll-to-top-on-tab-press';
 
 import SettingsRow from '../settings-row';
+import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
 
@@ -78,17 +79,25 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // gap. The divider's LEFT inset is the leading icon's own width
   // (`iconSizes.body`, the default `SettingsRow` icon size) plus the
   // icon-to-label gap (`theme.spacing(3)`), so it aligns with the row LABEL
-  // rather than running edge-to-edge. Its RIGHT inset (round-6 device
-  // feedback item 4) matches the row's own `paddingHorizontal` above, so the
-  // divider stops level with the row's right-padded content instead of
-  // running past it to the card's true right edge.
+  // rather than running edge-to-edge.
+  //
+  // The RIGHT inset (round-7 item 1) terminates the divider at the visible
+  // right edge of the trailing ">" glyph, not the row's raw padding: it is
+  // the row's own `paddingHorizontal` above PLUS the trailing whitespace
+  // inside the (round-7 item 2 resized) chevron's own render frame — an SF
+  // Symbol glyph is centered in its square frame with visible space on both
+  // sides, so the frame's right edge sits past the glyph's own visible tip.
+  // Both the chevron's size and that whitespace are derived from the SAME
+  // `settings-row.chevron.ts` helpers `SettingsRow` itself uses for the
+  // glyph, so this stays in sync if that sizing ever changes.
   const dataTransferRowStyle = {
     paddingHorizontal: theme.spacing(3),
     paddingVertical: theme.spacing(3),
   };
+  const dataTransferChevronSize = chevronSize(theme);
   const dataTransferDividerStyle = {
     marginLeft: theme.iconSizes.body + theme.spacing(3),
-    marginRight: theme.spacing(3),
+    marginRight: theme.spacing(3) + chevronTrailingWhitespace(dataTransferChevronSize, theme),
   };
 
   const handleSelectCurrency = (currency: Currency): void => {

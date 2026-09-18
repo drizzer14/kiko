@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { Text as RNText, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import GlassSurface from '../../../design-system/components/glass-surface';
+import { darkTheme } from '../../../design-system/theme';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
@@ -22,6 +23,21 @@ describe('SettingsRow', () => {
   it('renders no trailing chevron for a non-navigating row', async () => {
     const { queryByTestId } = await render(<SettingsRow label="Base currency" />);
     expect(queryByTestId('settings-row-chevron', { includeHiddenElements: true })).toBeNull();
+  });
+
+  // Round-7 device feedback item 2: the chevron previously fell back to
+  // SymbolIcon's default `iconSizes.body` (fontSize * 1.25), which renders
+  // LARGER than the row's own title. It must instead match the title's
+  // fontSize (the label's `variant="body"` Text) exactly.
+  it("sizes the trailing chevron to match the row title's own fontSize, not the larger default icon size", async () => {
+    const { root } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
+
+    const chevronGlyphs = root?.queryAll((node) => node.props.name === 'chevron.right') ?? [];
+    expect(chevronGlyphs).toHaveLength(1);
+    expect(chevronGlyphs[0].props.size).toBe(darkTheme.typography.body.fontSize);
+    // Guards the premise: this must be a real shrink, not a no-op equal to
+    // the old default.
+    expect(chevronGlyphs[0].props.size).not.toBe(darkTheme.iconSizes.body);
   });
 
   it('hides the decorative chevron from the accessibility tree', async () => {
