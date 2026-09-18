@@ -5,6 +5,7 @@ import { Alert, StyleSheet } from 'react-native';
 import type { TransactionFormParams } from '../../../navigation/types';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
@@ -525,6 +526,18 @@ describe('TransactionFormScreen — add mode', () => {
 
     await pickCategory(utils, 'Groceries');
     expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
+  it('adds the same vertical gap above the category error that a text field has above its own', async () => {
+    const utils = await renderAdd();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.press(utils.getByText('Save'));
+
+    // Round-4 device feedback item 1 — a select field's error lacked the same
+    // gap TextField's own `Box gap={1}` already gives its error line.
+    const errorGroup = utils.getByText('Select a category.').parent?.parent;
+    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
   it('renders only the Save button in the footer — no reason line, on any blocked path', async () => {

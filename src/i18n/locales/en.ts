@@ -227,6 +227,7 @@ export const en = {
       compounding: 'Compounding',
       contributionAmount: 'Contribution {{index}} Amount',
       contributionDate: 'Contribution {{index}} Date',
+      contributionIncompleteError: "Fill in this contribution's amount and date, or remove it.",
       contributionPlaceholder: '500.00',
       contributions: 'Contributions',
       contributionsRequiredError: 'Add at least one contribution with an amount and a date.',

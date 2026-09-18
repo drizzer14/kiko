@@ -1293,18 +1293,20 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         descriptions are fixed, auto-generated copy. */}
       {!props.isExchange && (
         <View ref={props.categoryFieldRef}>
-          <CategoryField
-            label={props.t('forms.transaction.category')}
-            testID="transaction-category-field"
-            options={props.categoryOptions}
-            selectedKey={props.selectedCategory}
-            onSelect={props.onSelectCategory}
-            // A category is required only on a fresh add (isSaveDisabled gates
-            // a create on it); an edit leaves the category optional.
-            required={!props.isEditing}
-          />
+          <Box gap={1}>
+            <CategoryField
+              label={props.t('forms.transaction.category')}
+              testID="transaction-category-field"
+              options={props.categoryOptions}
+              selectedKey={props.selectedCategory}
+              onSelect={props.onSelectCategory}
+              // A category is required only on a fresh add (isSaveDisabled
+              // gates a create on it); an edit leaves the category optional.
+              required={!props.isEditing}
+            />
 
-          {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
+            {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
+          </Box>
         </View>
       )}
 

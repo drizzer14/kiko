@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
 import '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
@@ -92,6 +93,17 @@ describe('ConvertExchangeFields', () => {
     );
 
     expect(getByText('Select a counterpart account.')).toBeTruthy();
+  });
+
+  it('adds the same vertical gap above the counterpart error that a text field has above its own', async () => {
+    const { getByText } = await render(
+      <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
+    );
+
+    // Round-4 device feedback item 1 — a select field's error lacked the same
+    // gap TextField's own `Box gap={1}` already gives its error line.
+    const errorGroup = getByText('Select a counterpart account.').parent?.parent;
+    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
   it('applies counterpartAmountError to the counterpart amount field', async () => {

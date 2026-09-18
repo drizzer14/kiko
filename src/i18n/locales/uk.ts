@@ -210,6 +210,7 @@ export const uk: typeof en = {
       compounding: 'Капіталізація',
       contributionAmount: 'Внесок {{index}}: сума',
       contributionDate: 'Внесок {{index}}: дата',
+      contributionIncompleteError: 'Заповніть суму та дату цього внеску або видаліть його.',
       contributionPlaceholder: '500,00',
       contributions: 'Внески',
       contributionsRequiredError: 'Додайте щонайменше один внесок із сумою та датою.',

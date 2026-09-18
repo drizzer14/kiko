@@ -107,9 +107,14 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
 
       {/* REFLOW, not reserve (Option A): no error node while valid, so a bare
         (uncaptioned) row and a valid captioned row both take no extra space.
-        Only rendered when captioned — a dense list row never validates. */}
+        Only rendered when captioned — a dense list row never validates. The
+        `nameFieldError` offset (round-4 device feedback item 5) shifts the
+        message right by the icon chip's width + gap, so it aligns under the
+        name input rather than flush-left under the icon. */}
       {captioned && hasError && (
-        <FieldError message={error} testID={deriveTestID(testID, 'error')} />
+        <Box style={styles.nameFieldError}>
+          <FieldError message={error} testID={deriveTestID(testID, 'error')} />
+        </Box>
       )}
 
       {accessory}

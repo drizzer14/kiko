@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import Box from '../../../design-system/components/box';
 import FieldError from '../../../design-system/components/field-error';
 import TextField from '../../../design-system/components/text-field';
 import DateField from '../date-field';
@@ -53,16 +54,18 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
       />
 
       <View ref={counterpartFieldRef}>
-        <HoldingSelectField
-          label={counterpartLabel}
-          placeholder={counterpartPlaceholder}
-          options={counterpartOptions}
-          selectedId={counterpartHoldingId}
-          onSelect={onSelectCounterpart}
-          required
-        />
+        <Box gap={1}>
+          <HoldingSelectField
+            label={counterpartLabel}
+            placeholder={counterpartPlaceholder}
+            options={counterpartOptions}
+            selectedId={counterpartHoldingId}
+            onSelect={onSelectCounterpart}
+            required
+          />
 
-        {counterpartError !== undefined && <FieldError message={counterpartError} />}
+          {counterpartError !== undefined && <FieldError message={counterpartError} />}
+        </Box>
       </View>
 
       <View ref={counterpartAmountFieldRef}>

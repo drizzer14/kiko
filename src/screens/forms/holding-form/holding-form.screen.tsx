@@ -63,6 +63,7 @@ type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ho
 // from src/i18n/locales/en.ts) accepts them.
 type TermDepositReasonKey =
   | 'forms.holding.contributionsRequiredError'
+  | 'forms.holding.contributionIncompleteError'
   | 'forms.holding.annualRateError'
   | 'forms.holding.termMonthsError';
 
@@ -241,7 +242,9 @@ const firstInvalidFieldRef = (params: {
     ...(type === 'term_deposit'
       ? [
           {
-            invalid: termDepositReasonKey === 'forms.holding.contributionsRequiredError',
+            invalid:
+              termDepositReasonKey === 'forms.holding.contributionsRequiredError' ||
+              termDepositReasonKey === 'forms.holding.contributionIncompleteError',
             ref: refs.contributionsFieldRef,
           },
           {
@@ -560,6 +563,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return [{ amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date }];
     });
 
+  // A single contribution ROW's own validity: a positive amount paired with a
+  // picked date, the same pair `parsedContributions` requires to keep a row.
+  // Used to catch a row `parsedContributions` would otherwise silently DROP —
+  // a blank or partially-filled row (most often a fresh `addContribution`
+  // left unfilled) — while at least one OTHER row is already valid, so the
+  // overall `contributionsRequiredError` (below) never fires (round-4 device
+  // feedback item 10: saving used to drop that row without any indication it
+  // was ignored).
+  const isContributionRowValid = (contribution: Contribution): boolean =>
+    parseAmount(contribution.amount) > 0 && contribution.date !== null;
+
   const buildDepositMetadata = (): Record<string, unknown> | undefined => {
     const rows = parsedContributions();
     if (rows.length === 0) {
@@ -606,14 +620,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   };
 
   // A term deposit needs at least one contribution with a positive amount and a
-  // picked date (parsedContributions already drops blank/partial rows), a
-  // non-negative annual rate that was actually entered, and a whole-month term
-  // greater than zero. Recapitalization and compounding always carry defaults.
-  // Not gated on whether the name is filled: the name's own required asterisk
-  // covers that separately.
+  // picked date (parsedContributions already drops blank/partial rows), EVERY
+  // row present to be either fully filled in or removed (never silently
+  // dropped — round-4 device feedback item 10), a non-negative annual rate
+  // that was actually entered, and a whole-month term greater than zero.
+  // Recapitalization and compounding always carry defaults. Not gated on
+  // whether the name is filled: the name's own required asterisk covers that
+  // separately.
   const termDepositReasonKey = (): TermDepositReasonKey | null => {
     if (parsedContributions().length === 0) {
       return 'forms.holding.contributionsRequiredError';
+    }
+
+    if (contributions.some((contribution) => !isContributionRowValid(contribution))) {
+      return 'forms.holding.contributionIncompleteError';
     }
 
     const rate = parseAmount(annualRate);
@@ -802,6 +822,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     termDepositReasonKey(),
     'forms.holding.contributionsRequiredError',
   );
+  const contributionIncompleteMessage = fieldErrorMessage(
+    t,
+    attemptedSave,
+    termDepositReasonKey(),
+    'forms.holding.contributionIncompleteError',
+  );
   const maturityDateErrorMessage = fieldErrorMessage(
     t,
     attemptedSave,
@@ -924,6 +950,16 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                       {index === 0 && contributionsRequiredMessage !== undefined && (
                         <FieldError message={contributionsRequiredMessage} />
                       )}
+
+                      {/* A row left blank or half-filled once at least one
+                        OTHER row is already valid — `contributionsRequiredMessage`
+                        above only fires when EVERY row is empty, so this
+                        catches the row `parsedContributions` would otherwise
+                        silently drop (round-4 device feedback item 10). */}
+                      {contributionIncompleteMessage !== undefined &&
+                        !isContributionRowValid(contribution) && (
+                          <FieldError message={contributionIncompleteMessage} />
+                        )}
 
                       {contributions.length > 1 && (
                         <Button

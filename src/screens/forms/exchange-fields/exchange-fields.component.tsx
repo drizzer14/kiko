@@ -2,6 +2,7 @@ import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import Box from '../../../design-system/components/box';
 import FieldError from '../../../design-system/components/field-error';
 import TextField from '../../../design-system/components/text-field';
 import DateField from '../date-field';
@@ -57,16 +58,18 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
       </View>
 
       <View ref={destinationFieldRef}>
-        <HoldingSelectField
-          label={t('forms.transaction.to')}
-          placeholder={t('forms.transaction.selectHolding')}
-          options={destinationOptions}
-          selectedId={destinationHoldingId}
-          onSelect={onSelectDestination}
-          required
-        />
+        <Box gap={1}>
+          <HoldingSelectField
+            label={t('forms.transaction.to')}
+            placeholder={t('forms.transaction.selectHolding')}
+            options={destinationOptions}
+            selectedId={destinationHoldingId}
+            onSelect={onSelectDestination}
+            required
+          />
 
-        {destinationError !== undefined && <FieldError message={destinationError} />}
+          {destinationError !== undefined && <FieldError message={destinationError} />}
+        </Box>
       </View>
 
       <View ref={valueInFieldRef}>

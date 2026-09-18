@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { darkTheme as theme } from '../../../design-system/theme';
 
 import HoldingIdentityField from '.';
 import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
@@ -186,6 +187,21 @@ describe('HoldingIdentityField', () => {
     const flatStyle = StyleSheet.flatten(getByLabelText('Name').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
     expect(getByText('This field is required.')).toBeTruthy();
+  });
+
+  it('offsets the row-level error to align with the name input, not the icon (round-4 device feedback item 5)', async () => {
+    const { getByTestId } = await setup({
+      error: 'This field is required.',
+      testID: 'holding-identity-name-field',
+    });
+
+    // The icon chip is a fixed theme.spacing(11) square, separated from the
+    // name column by a theme.spacing(3) row gap — the offset must match
+    // BOTH, or the message reads as flush-left under the icon instead of
+    // under the name field it actually describes.
+    const errorNode = getByTestId('holding-identity-name-field-error');
+    const flatStyle = StyleSheet.flatten(errorNode.parent?.props.style);
+    expect(flatStyle.marginLeft).toBe(theme.spacing(11) + theme.spacing(3));
   });
 
   it('renders no error node for a bare (uncaptioned) row, even with error set', async () => {

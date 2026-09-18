@@ -83,7 +83,26 @@ export const resolveFieldScrollTarget = (
     return { shouldScroll: false, targetOffset: currentOffset };
   }
 
-  return { shouldScroll: true, targetOffset: Math.max(fieldTop - headerInset, 0) };
+  // THE POSITION-SCALING BUG (round-4 device feedback, item 2): the landing
+  // target used to floor at 0 — correct only for a plain, non-inset
+  // ScrollView where "content top visible right below the header" sits at
+  // offset 0. This app's scroll screens set
+  // `contentInsetAdjustmentBehavior="automatic"` (screen.component.tsx), so
+  // iOS itself treats `-headerInset` as that resting offset (content position
+  // 0 shows right below the header at `contentOffset === -headerInset`), and
+  // `fieldTop` — content-absolute, unaffected by scroll, the same contract
+  // `visibleTop`/`visibleBottom` above already assume — can legitimately need
+  // a target anywhere down to `-headerInset` (exactly at `fieldTop === 0`).
+  // Flooring at 0 instead forced MORE scroll than a near-top field needed,
+  // landing its top back inside the header band whenever the user was
+  // already scrolled down when Save ran (the common case — Save is a pinned
+  // footer button reachable from any scroll position, so an early field can
+  // fail validation while `currentOffset` is deep into a long form). This is
+  // a reference-frame floor bug, not a currentOffset-double-count bug: given
+  // `fieldTop >= 0` always, `fieldTop - headerInset` can never fall below
+  // `-headerInset` on its own, so this floor is a documented safety bound,
+  // not an active clamp.
+  return { shouldScroll: true, targetOffset: Math.max(fieldTop - headerInset, -headerInset) };
 };
 
 // Scrolls `scrollableRef`'s content so `fieldRef` lands just below the

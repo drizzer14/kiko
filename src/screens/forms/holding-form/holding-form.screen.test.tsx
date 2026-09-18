@@ -316,7 +316,7 @@ describe('HoldingFormScreen term deposit', () => {
     ]);
   });
 
-  it('persists only the filled row when a blank contribution row is left empty', async () => {
+  it('blocks save and shows an inline error on a new contribution row left blank (round-4 device feedback item 10)', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -331,8 +331,87 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Save'));
 
-    const metadata = metadataOfFirstCreate();
-    expect(metadata.contributions).toEqual([
+    // The blank second row blocks save entirely — it must not be silently
+    // dropped, taking only the first (filled) row with it.
+    expect(createMock).not.toHaveBeenCalled();
+    expect(
+      within(screen.getByTestId('contributions-group')).getByText(
+        "Fill in this contribution's amount and date, or remove it.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('blocks save on a new contribution row that has only an amount, no date (round-4 device feedback item 10)', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Term (Months)', '12');
+
+    await fireEvent.press(screen.getByText('Add contribution'));
+    // Partially filled: an amount but no picked date.
+    await fill(screen, 'Contribution 2 Amount', '500');
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Fill in this contribution's amount and date, or remove it."),
+    ).toBeTruthy();
+  });
+
+  it('creates the deposit once the second row is filled in, clearing its inline error', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Term (Months)', '12');
+    await fireEvent.press(screen.getByText('Add contribution'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText("Fill in this contribution's amount and date, or remove it."),
+    ).toBeTruthy();
+
+    await fill(screen, 'Contribution 2 Amount', '500');
+    await pickDate(screen, 'Contribution 2 Date', 2026, 2, 1);
+
+    expect(
+      screen.queryByText("Fill in this contribution's amount and date, or remove it."),
+    ).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().contributions).toEqual([
+      { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
+      { amountMinorUnits: 50_000, date: localDay(2026, 2, 1) },
+    ]);
+  });
+
+  it('saves once the blank second row is removed instead of filled in', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Annual Rate %', '12');
+    await fill(screen, 'Term (Months)', '12');
+    await fireEvent.press(screen.getByText('Add contribution'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByLabelText('Remove contribution 2'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(metadataOfFirstCreate().contributions).toEqual([
       { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
     ]);
   });
