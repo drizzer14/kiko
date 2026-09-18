@@ -22,7 +22,8 @@ Rules:
   and kiko-domain for storage/sync/Money; kiko-charts and kiko-gestures for render cost;
   kiko-design-system and kiko-code-style for styling and conventions. For a security
   focus, also apply the security-review skill mindset and the "`.env` is public-only" rule
-  in CLAUDE.md.
+  in CLAUDE.md. For a whole-codebase App Store compliance sweep, load
+  `kiko-compliance` too.
 - Reconcile against any prior audit doc named in your brief. Do not re-report an item that
   the current code already fixed — grep to confirm each before you list it.
 - Verify every finding against the CURRENT code. Give each one a short id, a `file:line`,
