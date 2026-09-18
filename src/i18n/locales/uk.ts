@@ -492,6 +492,8 @@ export const uk: typeof en = {
     skippedWrongCurrency_few: '{{count}} рядки в іншій валюті пропущено',
     skippedWrongCurrency_many: '{{count}} рядків в іншій валюті пропущено',
     skippedWrongCurrency_other: '{{count}} рядки в іншій валюті пропущено',
+    bankMismatch:
+      'Це не схоже на виписку {{bank}}. Оберіть відповідний файл або змініть банк рахунку.',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

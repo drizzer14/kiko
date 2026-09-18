@@ -193,6 +193,7 @@ type Account = {
   name: string;
   kind: string;
   institution?: string | null;
+  bankId?: string | null;
   icon?: string | null;
   color?: string | null;
 };
@@ -1110,6 +1111,24 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
       filePath: 'file:///mock/statement.csv',
       accountId: 'a',
+    });
+  });
+
+  it('passes expectedFormatId resolved from the account bankId when navigating to StatementImport', async () => {
+    setLiveData({ accounts: [account({ bankId: 'privatbank' })], holdings: [] });
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.xlsx', name: 'statement.xlsx', type: 'application/xlsx' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///mock/statement.xlsx',
+      accountId: 'a',
+      expectedFormatId: 'privatbank-xlsx',
     });
   });
 });

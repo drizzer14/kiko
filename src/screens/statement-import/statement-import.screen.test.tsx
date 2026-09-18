@@ -218,7 +218,11 @@ jest.mock('./target-holding-sheet', () => {
 
 type StatementImportProps = ComponentProps<typeof StatementImportScreen>;
 
-const renderScreen = async (params: { filePath: string; accountId?: string }) => {
+const renderScreen = async (params: {
+  filePath: string;
+  accountId?: string;
+  expectedFormatId?: string;
+}) => {
   const navigation = navigationSpy();
   const route = asRouteProp<StatementImportProps['route']>('StatementImport', params);
   const view = await render(
@@ -256,6 +260,36 @@ describe('StatementImportScreen', () => {
     expect(dateSpan).toHaveTextContent(/2022/);
     expect(dateSpan).toHaveTextContent(/2023/);
     expect(getByText(i18n.t('statementImport.chooseHolding'))).toBeTruthy();
+  });
+
+  it('still recognizes the real file when expectedFormatId matches its actual format', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getByText } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'monobank-csv',
+    });
+
+    await waitFor(() => expect(getByText('Monobank (CSV)')).toBeTruthy());
+  });
+
+  it('shows a bank-mismatch reason, not the generic unrecognized-format text, when the file matches a DIFFERENT bank than expected', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getByText, queryByTestId, queryByText } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(
+        getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(queryByText(i18n.t('statementImport.unrecognizedFormat'))).toBeNull();
+    expect(queryByTestId('statement-import-transaction-count')).toBeNull();
   });
 
   it('shows the "we don\'t recognize this file" state for a non-matching format, with no error thrown', async () => {

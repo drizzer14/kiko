@@ -559,6 +559,12 @@ export const en = {
     skippedWrongCurrency_few: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_many: '{{count}} rows in a different currency were skipped',
     skippedWrongCurrency_other: '{{count}} rows in a different currency were skipped',
+    // The picked file recognized as a DIFFERENT bank's format than the one
+    // scoped by `expectedFormatId` (device-feedback-round-1 item 5) — a more
+    // specific state than the generic `unrecognizedFormat`, so the user
+    // knows WHY (wrong bank's export), not just that the file failed.
+    bankMismatch:
+      "This doesn't look like a {{bank}} statement. Pick the matching file, or change the account's bank.",
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

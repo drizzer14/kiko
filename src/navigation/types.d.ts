@@ -1,5 +1,7 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
+import type { StatementFormatId } from '../statement-import/parser';
+
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens
  * type their props with `NativeStackScreenProps<TheStackParamList, 'Name'>`.
@@ -61,7 +63,12 @@ export type AccountsStackParamList = {
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
   // `accountId`. A later entry point (the Share Extension) has no known target
   // account, hence `accountId` is optional here rather than required.
-  StatementImport: { filePath: string; accountId?: string };
+  // `expectedFormatId` (device-feedback-round-1 item 5) scopes recognition
+  // to the account's own selected bank when one is known — see
+  // `statementFormatIdForBank` (`src/bank-sync/bank-catalog/`). Undefined
+  // falls back to the existing multi-format auto-detect (an account with no
+  // `bankId`, or the accountId-less Share Extension entry point).
+  StatementImport: { filePath: string; accountId?: string; expectedFormatId?: StatementFormatId };
 };
 
 export type SettingsStackParamList = {
