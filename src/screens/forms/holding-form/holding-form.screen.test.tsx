@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { Alert } from 'react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
@@ -511,6 +512,21 @@ describe('HoldingFormScreen save validation', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('Save')).toBeDisabled();
+  });
+
+  it('surfaces an alert and does not navigate when the create fails', async () => {
+    createMock.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const screen = await renderScreen();
+    await fillTermDepositFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });
 
