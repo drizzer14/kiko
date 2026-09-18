@@ -1,11 +1,12 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
+import { scrollToField } from '../scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
@@ -71,6 +72,10 @@ jest.mock('../../../db/use-live-query', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+// Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
+// rejected Save targets, without a real ScrollView/measureLayout in the test
+// environment (mirrors contribution-form's and account-form's own mock).
+jest.mock('../scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });
@@ -495,7 +500,7 @@ describe('HoldingFormScreen save validation', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('shows the rate reason once a contribution is set but the rate is missing, after a failed Save', async () => {
+  it('shows the annual-rate error directly on that field, with a red border, not only after unrelated fields below it', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -505,9 +510,11 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Annual Rate %').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
   });
 
-  it('shows the term reason once the rate is set but the term is missing, after a failed Save', async () => {
+  it('shows the term reason directly on that field, with a red border, once the rate is set but the term is missing', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -518,6 +525,22 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term (Months)').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
+  });
+
+  it('shows the contributions-required reason inside the contributions group, anchored to the first row', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      within(screen.getByTestId('contributions-group')).getByText(
+        'Add at least one contribution with an amount and a date.',
+      ),
+    ).toBeTruthy();
   });
 
   it('clears the term-deposit reason once every field becomes valid, without a second Save press', async () => {
@@ -551,7 +574,7 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByText('Save')).not.toBeDisabled();
   });
 
-  it('does not create a bond whose maturity is not after its purchase date, and shows the reason after Save', async () => {
+  it('does not create a bond whose maturity is not after its purchase date, and shows the reason directly under the maturity date field', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -563,7 +586,11 @@ describe('HoldingFormScreen save validation', () => {
     await pickDate(screen, 'Maturity Date', 2026, 1, 1);
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Maturity date must be after the purchase date.')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('maturity-date-field')).getByText(
+        'Maturity date must be after the purchase date.',
+      ),
+    ).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -576,7 +603,7 @@ describe('HoldingFormScreen save validation', () => {
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
   });
 
-  it('shows the quantity reason for a bond missing its numeric fields, only after Save is pressed', async () => {
+  it('shows the quantity reason directly on that field, with a red border, for a bond missing its numeric fields', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -587,9 +614,11 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Quantity').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
   });
 
-  it('shows the face-value reason once quantity is set but face value is missing, after a failed Save', async () => {
+  it('shows the face-value reason directly on that field, with a red border, once quantity is set but face value is missing', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -598,6 +627,22 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Face Value').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
+  });
+
+  it('shows the coupon reason directly on that field, with a red border, once face value is set but the coupon is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Face Value', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a coupon of 0 or higher.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(screen.getByLabelText('Coupon %').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
   });
 
   it('shows no bond reason once every field and date is valid', async () => {
@@ -631,6 +676,31 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(queryByTestId('holding-name-error')).toBeTruthy();
+  });
+
+  it('scrolls to a DIFFERENT field target as each earlier one becomes valid, in the term-deposit priority order', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    scrollToFieldMock.mockClear();
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fireEvent.press(screen.getByText('Save'));
+    const [, contributionsRef] = scrollToFieldMock.mock.calls[0];
+
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fireEvent.press(screen.getByText('Save'));
+    const [, annualRateRef] = scrollToFieldMock.mock.calls[1];
+
+    expect(annualRateRef).not.toBe(contributionsRef);
+
+    await fill(screen, 'Annual Rate %', '12');
+    await fireEvent.press(screen.getByText('Save'));
+    const [, termMonthsRef] = scrollToFieldMock.mock.calls[2];
+
+    expect(termMonthsRef).not.toBe(annualRateRef);
+    expect(termMonthsRef).not.toBe(contributionsRef);
   });
 
   it('surfaces an alert and does not navigate when the create fails', async () => {

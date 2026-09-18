@@ -1,12 +1,13 @@
 import { match } from 'ts-pattern';
-import { Alert } from 'react-native';
+import type { TFunction } from 'i18next';
+import { Alert, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   creatableHoldingTypesForAccountKind,
@@ -48,6 +49,7 @@ import DateField from '../date-field';
 import ColorPicker from '../color-picker';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { scrollToField, type FieldInstance } from '../scroll-to-field';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
@@ -146,33 +148,109 @@ const compoundingOptions: readonly CompoundingFrequency[] = [
 const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
 type CouponFrequency = (typeof couponFrequencies)[number];
 
-// The three inline reasons shown only after a failed Save press: gated as one
-// unit on `attemptedSave` so nothing renders before the first press, then
-// narrowed to the active type (or the name field, independent of type). A
-// module-level helper — rather than inline in the component — keeps this
-// branching out of the component's own cognitive-complexity budget.
+// The name-required reason, shown only after a failed Save press: gated on
+// `attemptedSave` so it renders nothing before the first press. The
+// type-specific per-field reasons (term deposit / bond) no longer flow
+// through this helper — each field now calls `termDepositReasonKey()` /
+// `bondReasonKey()` directly (see `fieldErrorMessage` below), since each field
+// needs its OWN reason, not the type's single first-failing one. Kept as a
+// module-level helper (rather than inline in the component) to mirror the
+// pattern the rest of this file already uses for save-time branching.
 const saveReasonsFor = (params: {
   attemptedSave: boolean;
-  type: HoldingType;
   name: string;
-  termDepositReasonKey: () => TermDepositReasonKey | null;
-  bondReasonKey: () => BondReasonKey | null;
-}): {
-  termDepositReason: TermDepositReasonKey | null;
-  bondReason: BondReasonKey | null;
-  showNameReason: boolean;
-} => {
-  const { attemptedSave, type, name, termDepositReasonKey, bondReasonKey } = params;
+}): { showNameReason: boolean } => {
+  const { attemptedSave, name } = params;
 
-  if (!attemptedSave) {
-    return { termDepositReason: null, bondReason: null, showNameReason: false };
-  }
+  return { showNameReason: attemptedSave && name.trim().length === 0 };
+};
 
-  return {
-    termDepositReason: type === 'term_deposit' ? termDepositReasonKey() : null,
-    bondReason: type === 'bond' ? bondReasonKey() : null,
-    showNameReason: name.trim().length === 0,
-  };
+// The active error message for one of `termDepositReasonKey`'s /
+// `bondReasonKey`'s own returned keys, or `undefined` while that field's own
+// check still passes (or before the first failed Save press) — shared by
+// every per-field `TextField`/`HoldingIdentityField` `error` prop and the two
+// relocated group `<FieldError>`s below, so each render site is a single call
+// rather than repeating the `attemptedSave &&` comparison inline at all seven
+// fields. Kept module-level and pure so its branch stays out of
+// HoldingFormScreen's own cognitive-complexity budget (the same reason
+// transaction-form's `resolveDescriptionPlaceholder` is a module-level
+// helper).
+const fieldErrorMessage = (
+  t: TFunction,
+  attemptedSave: boolean,
+  reasonKey: TermDepositReasonKey | BondReasonKey | null,
+  expectedKey: TermDepositReasonKey | BondReasonKey,
+): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
+
+// The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
+// grouped into its own type so that function's own signature reads as one
+// param per concern (the reasons, then the refs) rather than eight positional
+// refs.
+type ValidatedFieldRefs = {
+  nameFieldRef: RefObject<FieldInstance | null>;
+  contributionsFieldRef: RefObject<FieldInstance | null>;
+  annualRateFieldRef: RefObject<FieldInstance | null>;
+  termMonthsFieldRef: RefObject<FieldInstance | null>;
+  quantityFieldRef: RefObject<FieldInstance | null>;
+  faceValueFieldRef: RefObject<FieldInstance | null>;
+  couponPctFieldRef: RefObject<FieldInstance | null>;
+  maturityDateFieldRef: RefObject<FieldInstance | null>;
+};
+
+// The first still-invalid field's own wrapper ref, in the SAME priority order
+// `termDepositReasonKey`/`bondReasonKey` already check their fields in: the
+// name field first (it always applies, independent of type), then the active
+// type's fields. `save`'s `!isValid` branch passes this straight to
+// `scrollToField`. Module-level and pure (given the already-computed reason
+// keys) so this branching stays out of `save`'s own cognitive-complexity
+// budget — the same reason `fieldErrorMessage` above is a module-level helper.
+const firstInvalidFieldRef = (params: {
+  name: string;
+  type: HoldingType;
+  termDepositReasonKey: TermDepositReasonKey | null;
+  bondReasonKey: BondReasonKey | null;
+  refs: ValidatedFieldRefs;
+}): RefObject<FieldInstance | null> | null => {
+  const { name, type, termDepositReasonKey, bondReasonKey, refs } = params;
+
+  const order: { invalid: boolean; ref: RefObject<FieldInstance | null> }[] = [
+    { invalid: name.trim().length === 0, ref: refs.nameFieldRef },
+    ...(type === 'term_deposit'
+      ? [
+          {
+            invalid: termDepositReasonKey === 'forms.holding.contributionsRequiredError',
+            ref: refs.contributionsFieldRef,
+          },
+          {
+            invalid: termDepositReasonKey === 'forms.holding.annualRateError',
+            ref: refs.annualRateFieldRef,
+          },
+          {
+            invalid: termDepositReasonKey === 'forms.holding.termMonthsError',
+            ref: refs.termMonthsFieldRef,
+          },
+        ]
+      : []),
+    ...(type === 'bond'
+      ? [
+          { invalid: bondReasonKey === 'forms.holding.quantityError', ref: refs.quantityFieldRef },
+          {
+            invalid: bondReasonKey === 'forms.holding.faceValueError',
+            ref: refs.faceValueFieldRef,
+          },
+          {
+            invalid: bondReasonKey === 'forms.holding.couponPctError',
+            ref: refs.couponPctFieldRef,
+          },
+          {
+            invalid: bondReasonKey === 'forms.holding.maturityDateError',
+            ref: refs.maturityDateFieldRef,
+          },
+        ]
+      : []),
+  ];
+
+  return order.find((entry) => entry.invalid)?.ref ?? null;
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -288,6 +366,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // The scroll-mode ScrollView's ref, so adding a contribution can bring the
   // newly appended row into view.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+
+  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  // in `save`'s ordered first-invalid scroll below — each field's own inline
+  // error (a `TextField`/`HoldingIdentityField` `error` prop, or a relocated
+  // `FieldError` for the two group/relational reasons) sits right beside it,
+  // so the scroll always lands on the same field the message is anchored to.
+  const nameFieldRef = useRef<FieldInstance>(null);
+  const contributionsFieldRef = useRef<FieldInstance>(null);
+  const annualRateFieldRef = useRef<FieldInstance>(null);
+  const termMonthsFieldRef = useRef<FieldInstance>(null);
+  const quantityFieldRef = useRef<FieldInstance>(null);
+  const faceValueFieldRef = useRef<FieldInstance>(null);
+  const couponPctFieldRef = useRef<FieldInstance>(null);
+  const maturityDateFieldRef = useRef<FieldInstance>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -537,17 +629,32 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const { termDepositReason, bondReason, showNameReason } = saveReasonsFor({
-    attemptedSave,
-    type,
-    name,
-    termDepositReasonKey,
-    bondReasonKey,
-  });
+  const { showNameReason } = saveReasonsFor({ attemptedSave, name });
 
   const save = async (): Promise<void> => {
     if (!isValid) {
       setAttemptedSave(true);
+
+      const target = firstInvalidFieldRef({
+        name,
+        type,
+        termDepositReasonKey: termDepositReasonKey(),
+        bondReasonKey: bondReasonKey(),
+        refs: {
+          nameFieldRef,
+          contributionsFieldRef,
+          annualRateFieldRef,
+          termMonthsFieldRef,
+          quantityFieldRef,
+          faceValueFieldRef,
+          couponPctFieldRef,
+          maturityDateFieldRef,
+        },
+      });
+
+      if (target) {
+        scrollToField(scrollableRef, target);
+      }
 
       return;
     }
@@ -631,22 +738,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       }
     >
       <Box gap={4} testID="holding-form">
-        <HoldingIdentityField
-          icons={KIKO_ENTITIES_ICONS}
-          icon={icon}
-          fallbackIcon={holdingTypeSymbol[type]}
-          iconColor={effectiveColor}
-          name={name}
-          onChangeName={setName}
-          onSelectIcon={setIcon}
-          onRemoveIcon={() => setIcon(null)}
-          namePlaceholder={t('forms.holding.namePlaceholder')}
-          required
-        />
-
-        {showNameReason && (
-          <FieldError message={t('forms.fields.nameRequiredError')} testID="holding-name-error" />
-        )}
+        <View ref={nameFieldRef}>
+          <HoldingIdentityField
+            icons={KIKO_ENTITIES_ICONS}
+            icon={icon}
+            fallbackIcon={holdingTypeSymbol[type]}
+            iconColor={effectiveColor}
+            name={name}
+            onChangeName={setName}
+            onSelectIcon={setIcon}
+            onRemoveIcon={() => setIcon(null)}
+            namePlaceholder={t('forms.holding.namePlaceholder')}
+            required
+            error={showNameReason ? t('forms.fields.nameRequiredError') : undefined}
+            testID="holding-name"
+          />
+        </View>
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
@@ -711,41 +818,53 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <Box gap={2} testID="contributions-group">
               <Box gap={4}>
                 {contributions.map((contribution, index) => (
-                  <Box key={contribution.id} gap={2}>
-                    <TextField
-                      label={t('forms.holding.contributionAmount', { index: index + 1 })}
-                      value={contribution.amount}
-                      onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
-                      keyboardType="decimal-pad"
-                      placeholder={t('forms.holding.contributionPlaceholder')}
-                      suffix={currencySymbol[currency]}
-                      required
-                    />
+                  <View key={contribution.id} ref={index === 0 ? contributionsFieldRef : undefined}>
+                    <Box gap={2}>
+                      <TextField
+                        label={t('forms.holding.contributionAmount', { index: index + 1 })}
+                        value={contribution.amount}
+                        onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
+                        keyboardType="decimal-pad"
+                        placeholder={t('forms.holding.contributionPlaceholder')}
+                        suffix={currencySymbol[currency]}
+                        required
+                      />
 
-                    <DateField
-                      label={t('forms.holding.contributionDate', { index: index + 1 })}
-                      value={contribution.date}
-                      onChange={(next) => updateContributionDate(index, next)}
-                      placeholder={t('forms.holding.selectDatePlaceholder')}
-                      required
-                    />
+                      <DateField
+                        label={t('forms.holding.contributionDate', { index: index + 1 })}
+                        value={contribution.date}
+                        onChange={(next) => updateContributionDate(index, next)}
+                        placeholder={t('forms.holding.selectDatePlaceholder')}
+                        required
+                      />
 
-                    {contributions.length > 1 && (
-                      <Button
-                        variant="destructiveTonal"
-                        size="small"
-                        fullWidth={false}
-                        icon="trash"
-                        disabled={contribution.saved}
-                        accessibilityLabel={t('forms.holding.removeContribution', {
-                          index: index + 1,
-                        })}
-                        onPress={() => removeContribution(index)}
-                      >
-                        {t('forms.holding.remove')}
-                      </Button>
-                    )}
-                  </Box>
+                      {index === 0 &&
+                        fieldErrorMessage(
+                          t,
+                          attemptedSave,
+                          termDepositReasonKey(),
+                          'forms.holding.contributionsRequiredError',
+                        ) !== undefined && (
+                          <FieldError message={t('forms.holding.contributionsRequiredError')} />
+                        )}
+
+                      {contributions.length > 1 && (
+                        <Button
+                          variant="destructiveTonal"
+                          size="small"
+                          fullWidth={false}
+                          icon="trash"
+                          disabled={contribution.saved}
+                          accessibilityLabel={t('forms.holding.removeContribution', {
+                            index: index + 1,
+                          })}
+                          onPress={() => removeContribution(index)}
+                        >
+                          {t('forms.holding.remove')}
+                        </Button>
+                      )}
+                    </Box>
+                  </View>
                 ))}
               </Box>
 
@@ -764,23 +883,39 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('forms.holding.terms')}</Text>
 
-            <TextField
-              label={t('forms.holding.annualRatePct')}
-              value={annualRate}
-              onChangeText={setAnnualRate}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.holding.annualRatePlaceholder')}
-              required
-            />
+            <View ref={annualRateFieldRef}>
+              <TextField
+                label={t('forms.holding.annualRatePct')}
+                value={annualRate}
+                onChangeText={setAnnualRate}
+                keyboardType="decimal-pad"
+                placeholder={t('forms.holding.annualRatePlaceholder')}
+                required
+                error={fieldErrorMessage(
+                  t,
+                  attemptedSave,
+                  termDepositReasonKey(),
+                  'forms.holding.annualRateError',
+                )}
+              />
+            </View>
 
-            <TextField
-              label={t('forms.holding.termMonths')}
-              value={termMonths}
-              onChangeText={setTermMonths}
-              keyboardType="number-pad"
-              placeholder={t('forms.holding.termMonthsPlaceholder')}
-              required
-            />
+            <View ref={termMonthsFieldRef}>
+              <TextField
+                label={t('forms.holding.termMonths')}
+                value={termMonths}
+                onChangeText={setTermMonths}
+                keyboardType="number-pad"
+                placeholder={t('forms.holding.termMonthsPlaceholder')}
+                required
+                error={fieldErrorMessage(
+                  t,
+                  attemptedSave,
+                  termDepositReasonKey(),
+                  'forms.holding.termMonthsError',
+                )}
+              />
+            </View>
 
             <Switch
               label={t('forms.holding.recapitalization')}
@@ -795,8 +930,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCompounding}
               labels={compoundingLabels}
             />
-
-            {termDepositReason !== null && <FieldError message={t(termDepositReason)} />}
           </Box>
         )}
 
@@ -806,33 +939,57 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('forms.holding.details')}</Text>
 
-            <TextField
-              label={t('forms.holding.quantity')}
-              value={quantity}
-              onChangeText={(text) => setQuantity(groupAmount(text))}
-              keyboardType="number-pad"
-              placeholder={t('forms.holding.quantityPlaceholder')}
-              required
-            />
+            <View ref={quantityFieldRef}>
+              <TextField
+                label={t('forms.holding.quantity')}
+                value={quantity}
+                onChangeText={(text) => setQuantity(groupAmount(text))}
+                keyboardType="number-pad"
+                placeholder={t('forms.holding.quantityPlaceholder')}
+                required
+                error={fieldErrorMessage(
+                  t,
+                  attemptedSave,
+                  bondReasonKey(),
+                  'forms.holding.quantityError',
+                )}
+              />
+            </View>
 
-            <TextField
-              label={t('forms.holding.faceValue')}
-              value={faceValue}
-              onChangeText={(text) => setFaceValue(groupAmount(text))}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.holding.faceValuePlaceholder')}
-              suffix={currencySymbol[currency]}
-              required
-            />
+            <View ref={faceValueFieldRef}>
+              <TextField
+                label={t('forms.holding.faceValue')}
+                value={faceValue}
+                onChangeText={(text) => setFaceValue(groupAmount(text))}
+                keyboardType="decimal-pad"
+                placeholder={t('forms.holding.faceValuePlaceholder')}
+                suffix={currencySymbol[currency]}
+                required
+                error={fieldErrorMessage(
+                  t,
+                  attemptedSave,
+                  bondReasonKey(),
+                  'forms.holding.faceValueError',
+                )}
+              />
+            </View>
 
-            <TextField
-              label={t('forms.holding.couponPct')}
-              value={couponPct}
-              onChangeText={setCouponPct}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.holding.couponPlaceholder')}
-              required
-            />
+            <View ref={couponPctFieldRef}>
+              <TextField
+                label={t('forms.holding.couponPct')}
+                value={couponPct}
+                onChangeText={setCouponPct}
+                keyboardType="decimal-pad"
+                placeholder={t('forms.holding.couponPlaceholder')}
+                required
+                error={fieldErrorMessage(
+                  t,
+                  attemptedSave,
+                  bondReasonKey(),
+                  'forms.holding.couponPctError',
+                )}
+              />
+            </View>
 
             <TextField
               label={t('forms.holding.purchasePrice')}
@@ -851,13 +1008,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               required
             />
 
-            <DateField
-              label={t('forms.holding.maturityDate')}
-              value={maturityDate}
-              onChange={setMaturityDate}
-              placeholder={t('forms.holding.selectDatePlaceholder')}
-              required
-            />
+            <View ref={maturityDateFieldRef} testID="maturity-date-field">
+              <DateField
+                label={t('forms.holding.maturityDate')}
+                value={maturityDate}
+                onChange={setMaturityDate}
+                placeholder={t('forms.holding.selectDatePlaceholder')}
+                required
+              />
+
+              {fieldErrorMessage(
+                t,
+                attemptedSave,
+                bondReasonKey(),
+                'forms.holding.maturityDateError',
+              ) !== undefined && <FieldError message={t('forms.holding.maturityDateError')} />}
+            </View>
 
             <ChipRow
               label={t('forms.holding.bondKind')}
@@ -874,8 +1040,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCouponFrequency}
               labels={couponFrequencyLabels}
             />
-
-            {bondReason !== null && <FieldError message={t(bondReason)} />}
           </Box>
         )}
       </Box>
