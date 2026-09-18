@@ -119,10 +119,10 @@ From `biome.json`'s `linter.rules`:
 Default to functional or procedural code. Reach for OOP only when
 modeling a **data type with behavior attached to it** — the
 canonical example is the `Money` value object (see `kiko-domain`):
-immutable, with methods like `add`/`subtract`/`convert` that must
-enforce invariants (no currency mismatch, no float drift) every time
-the value is touched. A class earns its place when the invariant
-needs enforcing at every call site, not just at construction.
+immutable, with methods like `add`/`subtract` that must enforce
+invariants (no currency mismatch, no float drift) every time the
+value is touched. A class earns its place when the invariant needs
+enforcing at every call site, not just at construction.
 
 A value object's internals use native private fields and methods
 (`#field`, `#method`), not the TS `private` keyword — TS `private` is
@@ -231,6 +231,23 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
 - Inference gotcha: annotate a `bifold` result's type explicitly
   wherever a narrowed `Right` value leaves nothing for TypeScript to
   infer `LeftValue` from.
+
+## Form validation model
+
+Every Kiko form (`account-form.screen.tsx` and its siblings) follows
+one validation model — don't hand-roll a different one:
+
+- The Save/submit button is **always enabled**, never a standing
+  `disabled={!isValid}` gate. Validate on press instead: the submit
+  handler checks its own guard (e.g. `canSave = trimmedName !== ''`)
+  and returns early when it fails, only then revealing the error.
+- A blocked field shows its message via the shared `FieldError`
+  component (`src/design-system/components/field-error/`), not a
+  hand-rolled `Box`+`Text` caption — see that component's own doc
+  comment for the rationale.
+- The error's visibility is its own piece of state (e.g.
+  `showNameError`), set true only after a failed submit attempt, so a
+  fresh form shows no error before the user has tried to save.
 
 ## Import ordering and `import type`
 

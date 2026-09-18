@@ -44,9 +44,9 @@ Composite scripts:
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports
-  that count — for a human to watch directly; agents still must not poll
-  it — the exit code remains the only signal. See the `kiko-linter`
-  skill.
+  that count — for a human to watch directly. The full never-poll rule
+  (agents await only the exit code) lives in the `ops` skill — see it,
+  and the `kiko-linter` skill, before running this yourself.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier

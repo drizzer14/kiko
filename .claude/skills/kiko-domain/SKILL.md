@@ -23,8 +23,26 @@ absent** — this skill states the shape and non-enum facts only:
 
 - **Account** — a bank, cash stash, or crypto wallet. `id`, `name`,
   `kind` (see `schema.ts`'s `accounts.kind` enum for the current
-  member set), `institution` (nullable, e.g. `monobank`), `icon`,
-  `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+  member set), `institution` (nullable, e.g. `monobank` — marks a LIVE
+  sync connection), `bankId` (nullable, migration `0033`; see below),
+  `icon`, `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+
+  **`bankId`** is the "which bank does this account represent" field
+  set from the account-form's bank picker (`BankTypeField`,
+  `src/screens/forms/bank-type-field/`), backed by the catalog at
+  `src/bank-sync/bank-catalog/` — read that file for the current
+  6-bank set (`BankId`/`bankCatalog`) rather than trusting a list
+  copied here. It is **identity-only, independent of `institution`**:
+  only Monobank has a live API Connect today (`connectable: true` in
+  the catalog), the other 5 entries are import-only, scoping which
+  `statement-import` parser applies. `bankId` is deliberately **never
+  read** by `isSyncedAccount`/`isSyncedHolding`
+  (`src/holdings/deletable/`) or any provider-registry lookup — those
+  stay keyed on `institution` alone, so tagging an account
+  `bankId: 'privatbank'` can never make it look connected. This is the
+  Guideline 5.6 invariant (see `guidelines-compliance-is-architecture-rule`
+  in memory): never wire a picker selection into a connected-ness
+  check.
 - **Holding** — a balance-bearing thing under an account (a card, a
   jar, a term deposit, a crypto asset). `id`, `accountId` (FK),
   `name`, `type` (see `schema.ts`'s `holdings.type` enum), `currency`

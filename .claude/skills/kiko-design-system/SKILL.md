@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, CurrencyBreakdown, CurrencyField, CurrencySwitch, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, CurrencySwitch, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -484,7 +484,18 @@ new component can land between reviews of this skill:
   token above (`disabled-opacity.ts`) — a disabled field is a different
   control class from a disabled pressable (e.g. Button), and the two must
   not be conflated. A third disabled-field-like control reuses
-  `disabledFieldStyle`, not a fresh inline dim.
+  `disabledFieldStyle`, not a fresh inline dim. Its `multiline` prop
+  grows the field to fit its content instead of clipping to the fixed
+  44pt single-line height — pass it for any free-text input whose value
+  can wrap (see `text-field.component.test.tsx` for the two behaviors
+  contrasted).
+- **FieldError** (`src/design-system/components/field-error/`) — the
+  one inline validation-failure line a form renders next to a blocked
+  field or footer Save button (`Text variant="caption" tone="negative"`,
+  the same tone `FieldLabel`'s required asterisk uses). Every form
+  composes this instead of hand-rolling its own error caption — see
+  `kiko-code-style`'s "Form validation model" section for when to show
+  it.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —

@@ -9,12 +9,10 @@ Source of truth: `CLAUDE.md` (the checks table, "Override protocol",
 "Documented exceptions") and `scripts/checks/_lib.sh`. This skill
 states the conventions for adding to the harness itself — the checks
 that check the app, not the app's own code style (see
-`kiko-code-style` for that). Some files named below
+`kiko-code-style` for that). The files named below
 (`scripts/checks/semgrep-rules.sh`, `scripts/checks/plist.sh`,
-`scripts/checks/typecheck.sh`, `rules/fixtures/`) land with the
-2026-09-06 security-pass-fixes / bug-hunt-fixes branches — check
-`ls scripts/checks/` before assuming a given wrapper already exists on
-the branch you're on.
+`scripts/checks/typecheck.sh`, `rules/fixtures/`) all exist in the
+tree today.
 
 The root `Makefile`'s `verify` target (`make verify`, wrapping
 `scripts/checks/verify.sh`) is the single end-of-work command for the

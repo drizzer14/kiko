@@ -36,8 +36,7 @@ Rules:
   `src/test-support/` instead of re-declaring one per file — read the
   directory for the current set before adding a navigation prop
   double, a rendered-element type, an ancestor-style walker, or
-  similar. This directory lands with the 2026-09-06 bug-hunt fix
-  branch if it is not present yet.
+  similar.
 - Every test must typecheck under `npm run check:typecheck`. Do not
   reach for `as never` to satisfy a navigation-prop type — use the
   typed helpers in `src/test-support/navigation-props.ts` instead.

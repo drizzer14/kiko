@@ -8,9 +8,8 @@ description: Invoke when touching any user-facing string, a catalogue in src/i18
 Source of truth: `src/i18n/` and `docs/superpowers/specs/2026-09-06-bug-hunt-tasks.md`
 (T-6, T-17, T-24, T-25, T-41, T-43 — the i18n defect cluster from the
 2026-09-06 bug-hunt pass). This skill states the settled contract those
-fixes establish; some of them land on the `bug-hunt-fixes` branch, not
-yet merged as of this writing — check `git log`/`git status` for the
-current state of the files below before assuming a fix has landed.
+fixes establish; `bug-hunt-fixes` merged long ago, so every fix below
+is live on the tree.
 
 ## Never persist a display string — resolve with `t` at render time
 
@@ -62,10 +61,8 @@ suffixed `as const`: a literal-valued `typeof en` forces `uk.ts`'s
 `typeof en` annotation to match every English string's exact literal
 type, which turns one genuinely missing/extra key into hundreds of
 noise errors and buries the real one (T-26 measured 261 errors in
-`uk.ts` from this alone). Check `src/i18n/locales/en.ts`'s last line
-before adding a key — if it still ends `} as const;`, the T-26 fix
-has not landed on this branch yet; drop the suffix as part of that
-merge, not before.
+`uk.ts` from this alone). The T-26 fix is landed — `en.ts` ends
+`};`, not `} as const;` — keep it that way when adding a key.
 
 ## Language must be resolved before the first gate paints
 
