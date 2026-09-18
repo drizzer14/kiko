@@ -1,21 +1,36 @@
-import type { ScrollViewInstance } from 'react-native';
 import { Keyboard } from 'react-native';
+import { createElement, type ReactNode } from 'react';
+import type { ScrollViewInstance } from 'react-native';
+import { renderHook } from '@testing-library/react-native';
+import { HeaderHeightContext } from '@react-navigation/elements';
 
 import {
-  scrollToField,
-  resolveHeaderInset,
-  COMPACT_HEADER_HEIGHT,
+  useHeaderInset,
   resolveFieldScrollTarget,
+  scrollToField,
   type FieldInstance,
 } from './scroll-to-field';
 
-describe('resolveHeaderInset', () => {
-  it('adds the fixed compact nav-bar height to the safe-area top inset', () => {
-    expect(resolveHeaderInset(59)).toBe(59 + COMPACT_HEADER_HEIGHT);
+// Plain `createElement` (not JSX) — this module stays a `.ts` file, so JSX
+// syntax is not parsed here.
+const headerHeightWrapper =
+  (value: number) =>
+  ({ children }: { children: ReactNode }) =>
+    createElement(HeaderHeightContext.Provider, { value }, children);
+
+describe('useHeaderInset', () => {
+  it('reads the live header height straight from HeaderHeightContext', async () => {
+    const { result } = await renderHook(() => useHeaderInset(), {
+      wrapper: headerHeightWrapper(140),
+    });
+
+    expect(result.current).toBe(140);
   });
 
-  it('floors at the compact height alone for a device with no top inset', () => {
-    expect(resolveHeaderInset(0)).toBe(COMPACT_HEADER_HEIGHT);
+  it('degrades to 0 outside a header context, rather than throwing like useHeaderHeight() would', async () => {
+    const { result } = await renderHook(() => useHeaderInset());
+
+    expect(result.current).toBe(0);
   });
 });
 
@@ -25,6 +40,11 @@ describe('resolveFieldScrollTarget', () => {
     viewportHeight: 800,
     keyboardHeight: 0,
     headerInset: 100,
+    // Generously larger than every fixture below's fieldTop/fieldHeight, so
+    // the overshoot clamp (see its own dedicated tests further down) never
+    // engages here — these fixtures are about the lower-bound/visibility
+    // arithmetic only.
+    contentHeight: 2000,
   };
 
   it('does not scroll when the field is already fully visible below the header and above the keyboard', () => {
@@ -103,6 +123,7 @@ describe('resolveFieldScrollTarget', () => {
       viewportHeight: 700,
       keyboardHeight: 0,
       headerInset: 103,
+      contentHeight: 5000,
     };
 
     // The user is scrolled deep into a long form (e.g. filling later fields)
@@ -125,6 +146,7 @@ describe('resolveFieldScrollTarget', () => {
       viewportHeight: 700,
       keyboardHeight: 0,
       headerInset: 103,
+      contentHeight: 5000,
     };
 
     const fromNearTop = resolveFieldScrollTarget({ ...geometry, currentOffset: 0 });
@@ -135,10 +157,82 @@ describe('resolveFieldScrollTarget', () => {
     // exact same landing offset.
     expect(fromNearTop.targetOffset).toBe(fromDeepScroll.targetOffset);
   });
+
+  // THE UNDERSHOOT BUG: a fixed `COMPACT_HEADER_HEIGHT` (44) assumption is
+  // only correct once a large-title header has fully collapsed. While the
+  // large title is still expanded or mid-collapse, `HeaderHeightContext`
+  // reports a genuinely TALLER live height (see accounts.stack.tsx /
+  // home.stack.tsx's `headerLargeTitle: true`), and a scrolled-to field must
+  // clear THAT taller band, not the fixed compact one.
+  it('does not report a near-top field fully visible against the true (taller) live header height while the large title is mid-collapse', () => {
+    // Mid-collapse: `currentOffset` sits inside the collapse range (between
+    // the fully-expanded rest offset and the fully-collapsed 0).
+    const currentOffset = -30;
+    const liveHeaderInset = 100;
+
+    const decision = resolveFieldScrollTarget({
+      fieldTop: 60,
+      fieldHeight: 40,
+      currentOffset,
+      viewportHeight: 800,
+      keyboardHeight: 0,
+      headerInset: liveHeaderInset,
+      contentHeight: 2000,
+    });
+
+    // visibleTop = currentOffset(-30) + headerInset(100) = 70; the field's own
+    // top (60) sits ABOVE that boundary, so it still needs to scroll — even
+    // though a fixed 44pt assumption (`-30 + 44 = 14`, comfortably below
+    // fieldTop) would have wrongly reported it already clear of the header.
+    expect(decision.shouldScroll).toBe(true);
+  });
+
+  // THE OVERSHOOT BUG: `Screen`'s ScrollView sets `scrollToOverflowEnabled`,
+  // which lets a programmatic scroll reach an arbitrary target with no native
+  // clamp — including one past the content's own real bottom, which used to
+  // park the view in an empty void with nothing (not even the field) on
+  // screen.
+  it('clamps an over-large target to the content’s own true bottom rest, never past the real content extent', () => {
+    const geometry = {
+      fieldTop: 5000,
+      fieldHeight: 50,
+      currentOffset: 0,
+      viewportHeight: 800,
+      keyboardHeight: 0,
+      headerInset: 100,
+      // The REAL total content height — far shorter than the raw target
+      // (fieldTop - headerInset = 4900) would otherwise scroll to.
+      contentHeight: 1200,
+    };
+
+    const decision = resolveFieldScrollTarget(geometry);
+
+    expect(decision.shouldScroll).toBe(true);
+    expect(decision.targetOffset).toBe(geometry.contentHeight - geometry.viewportHeight);
+  });
+
+  it('never lets the overshoot clamp re-open the lower bound for a form shorter than its own viewport', () => {
+    // contentHeight(500) - viewportHeight(800) = -300, MORE negative than the
+    // lower bound (-headerInset = -100) — the clamp must not let this widen
+    // the allowed range past the lower bound already established above.
+    const geometry = {
+      fieldTop: 0,
+      fieldHeight: 20,
+      currentOffset: 0,
+      viewportHeight: 800,
+      keyboardHeight: 0,
+      headerInset: 100,
+      contentHeight: 500,
+    };
+
+    const decision = resolveFieldScrollTarget(geometry);
+
+    expect(decision.targetOffset).toBe(-100);
+  });
 });
 
 describe('scrollToField', () => {
-  const geometry = { currentOffset: 0, headerInset: 60 };
+  const geometry = { currentOffset: 0, headerInset: 60, contentHeight: 5000 };
 
   const mockScrollView = (viewportHeight: number, scrollTo = jest.fn()) => ({
     scrollTo,

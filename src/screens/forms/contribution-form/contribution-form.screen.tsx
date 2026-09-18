@@ -3,7 +3,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { type Currency, currencySymbol } from '../../../currency/currency';
@@ -20,7 +19,7 @@ import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import {
-  resolveHeaderInset,
+  useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
@@ -67,8 +66,13 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   // The amount field's own inner TextInput, so a blocked Save can focus it
   // imperatively once it has scrolled into view.
   const amountInputRef = useRef<TextInputInstance>(null);
-  const insets = useSafeAreaInsets();
-  const headerInset = resolveHeaderInset(insets.top);
+  const headerInset = useHeaderInset();
+  // The ScrollView's own total content height, captured off `Screen`'s
+  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
+  // can bound an over-large target against the real content extent — see
+  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
+  // read only imperatively at Save-press time, never needs to re-render.
+  const contentHeightRef = useRef(0);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -83,7 +87,11 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       scrollToField(
         scrollableRef,
         amountFieldRef,
-        { currentOffset: scrollOffset.value, headerInset },
+        {
+          currentOffset: scrollOffset.value,
+          headerInset,
+          contentHeight: contentHeightRef.current,
+        },
         () => amountInputRef.current?.focus(),
       );
 
@@ -106,6 +114,9 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.contribution.save')}

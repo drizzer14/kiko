@@ -58,4 +58,13 @@ export type ScreenProps = {
   // its own clearance. Only meaningful in the plain (non-scroll) branch; ignored
   // in `scroll` mode (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;
+  // Forwarded to the `scroll`-mode ScrollView's own `onContentSizeChange`, so
+  // a caller resolving a Save-press scroll target (`scrollToField`, see
+  // `src/screens/forms/scroll-to-field/`) can capture the CURRENT total
+  // content height into a ref and bound an over-large scroll target against
+  // the real content extent — `scrollToOverflowEnabled` (see
+  // `screen.component.tsx`) disables the native clamp that would otherwise
+  // catch an over-large programmatic target. Only meaningful in `scroll`
+  // mode; ignored otherwise.
+  onContentSizeChange?: (contentWidth: number, contentHeight: number) => void;
 };

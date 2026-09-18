@@ -6,7 +6,6 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -52,7 +51,7 @@ import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import {
-  resolveHeaderInset,
+  useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
@@ -406,8 +405,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // position itself.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   const scrollOffset = useScrollOffset(scrollableRef);
-  const insets = useSafeAreaInsets();
-  const headerInset = resolveHeaderInset(insets.top);
+  const headerInset = useHeaderInset();
+  // The ScrollView's own total content height, captured off `Screen`'s
+  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
+  // can bound an over-large target against the real content extent — see
+  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
+  // read only imperatively at Save-press time, never needs to re-render.
+  const contentHeightRef = useRef(0);
 
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
@@ -737,7 +741,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         scrollToField(
           scrollableRef,
           target.ref,
-          { currentOffset: scrollOffset.value, headerInset },
+          {
+            currentOffset: scrollOffset.value,
+            headerInset,
+            contentHeight: contentHeightRef.current,
+          },
           target.focus,
         );
       }
@@ -839,6 +847,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}

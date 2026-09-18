@@ -24,6 +24,7 @@ const Screen: FC<ScreenProps> = ({
   bleedBottom = false,
   bleedTop = false,
   scrollableRef,
+  onContentSizeChange,
 }) => {
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
@@ -100,6 +101,7 @@ const Screen: FC<ScreenProps> = ({
           //
           // Programmatic-scroll only; user scrolling is unaffected.
           scrollToOverflowEnabled={true}
+          onContentSizeChange={onContentSizeChange}
           // Default "never" consumes the first tap to dismiss the keyboard, so
           // focusing another input (or opening a date field) needs a second
           // tap. "handled" fires a focusable/handled child on the first tap

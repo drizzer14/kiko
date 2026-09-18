@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -37,7 +36,7 @@ import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import {
-  resolveHeaderInset,
+  useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
@@ -163,8 +162,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // below) — HoldingIdentityField's own `nameInputRef` prop already exposes
   // this same ref shape.
   const nameInputRef = useRef<TextInputInstance>(null);
-  const insets = useSafeAreaInsets();
-  const headerInset = resolveHeaderInset(insets.top);
+  const headerInset = useHeaderInset();
+  // The ScrollView's own total content height, captured off `Screen`'s
+  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
+  // can bound an over-large target against the real content extent — see
+  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
+  // read only imperatively at Save-press time, never needs to re-render.
+  const contentHeightRef = useRef(0);
 
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
@@ -181,7 +185,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scrollToField(
         scrollableRef,
         nameFieldRef,
-        { currentOffset: scrollOffset.value, headerInset },
+        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
         () => nameInputRef.current?.focus(),
       );
 
@@ -307,7 +311,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scrollToField(
         scrollableRef,
         nameFieldRef,
-        { currentOffset: scrollOffset.value, headerInset },
+        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
         () => nameInputRef.current?.focus(),
       );
 
@@ -383,6 +387,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}

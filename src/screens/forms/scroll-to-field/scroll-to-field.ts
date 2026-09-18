@@ -1,28 +1,7 @@
-import type { ComponentRef, RefObject } from 'react';
 import { Keyboard } from 'react-native';
 import type { ScrollViewInstance, View } from 'react-native';
-
-// iOS's standard compact nav-bar height, regardless of whether the screen
-// carries a large title — a large title only ADDS a taller band on top of
-// this while fully expanded; once the user has scrolled at all (which is
-// exactly when this module's caller runs), it collapses back to this fixed
-// height. Read `HeaderHeightContext`'s own live value instead and it would
-// still report the (taller) EXPANDED height for a screen that has not
-// scrolled away from the top yet — the wrong number for "the header height
-// once we land the scroll below it". A fixed compact-height assumption is a
-// deliberate simplification (see `resolveHeaderInset` below), the same kind
-// of well-reasoned constant `use-scroll-to-top-on-tab-press.ts` documents
-// for its own header-height arithmetic.
-export const COMPACT_HEADER_HEIGHT = 44;
-
-// The band at the very top of the scroll viewport a scrolled-to field must
-// never land under: the collapsed nav bar plus the safe-area top inset. A
-// screen's own `useSafeAreaInsets().top` is the only per-device input this
-// needs.
-export const resolveHeaderInset = (safeAreaTop: number): number =>
-  safeAreaTop + COMPACT_HEADER_HEIGHT;
-
-type ScrollableRef = RefObject<ScrollViewInstance | null> | { current: ScrollViewInstance | null };
+import { HeaderHeightContext } from '@react-navigation/elements';
+import { type ComponentRef, type RefObject, useContext } from 'react';
 
 // The field's own host INSTANCE (what a `View` ref actually resolves to,
 // carrying `measure`/`measureLayout`) — not the `View` component type
@@ -35,16 +14,48 @@ type ScrollableRef = RefObject<ScrollViewInstance | null> | { current: ScrollVie
 // input alike.
 export type FieldInstance = ComponentRef<typeof View>;
 
+type ScrollableRef = RefObject<ScrollViewInstance | null> | { current: ScrollViewInstance | null };
+
 type FieldRef = RefObject<FieldInstance | null> | { current: FieldInstance | null };
 
-// The two live signals a caller reads once, at Save-press time, from its own
-// screen: the ScrollView's current content offset (reanimated's
+// The live inset a scrolled-to field must clear at the top of the scroll
+// viewport: React Navigation's own current header height, which ALREADY
+// includes the safe-area top inset — do not add a screen's own
+// `useSafeAreaInsets().top` on top of it, that would double-count it. Unlike
+// the fixed `COMPACT_HEADER_HEIGHT` assumption this replaced, this tracks a
+// COLLAPSING large-title header's true current height (see
+// accounts.stack.tsx / home.stack.tsx's `headerLargeTitle: true`), so a
+// near-top field no longer lands under a header band whose height was
+// assumed smaller than the large title's real (still expanded, or partially
+// so) height.
+//
+// Reads `HeaderHeightContext` directly rather than
+// `@react-navigation/elements`'s own `useHeaderHeight()` wrapper, which
+// THROWS when no header context is present. Every real caller
+// (account-form, holding-form, transaction-form, contribution-form) renders
+// under a real native-stack header, so the context is always there in the
+// app — but each of those screens' own unit tests renders the bare screen
+// component directly, with no navigator (and so no header) around it at all,
+// and a throwing read would crash every one of those tests, not just a
+// scroll-specific one. Degrading to `0` outside a header context mirrors the
+// same choice `use-scroll-to-top-on-tab-press.ts` already makes for the same
+// reason.
+export const useHeaderInset = (): number => useContext(HeaderHeightContext) ?? 0;
+
+// The three live signals a caller reads once, at Save-press time, from its
+// own screen: the ScrollView's current content offset (reanimated's
 // `useScrollOffset` on the same `useAnimatedRef` the caller already holds —
 // see accounts.screen.tsx / statistics.screen.tsx for the established
-// pattern) and the collapsed-header inset (`resolveHeaderInset` above).
+// pattern), the live header inset (`useHeaderInset` above), and the
+// ScrollView's own total content height — captured off its
+// `onContentSizeChange` into a ref (see `Screen`'s own `onContentSizeChange`
+// prop), so `resolveFieldScrollTarget` can bound an over-large target
+// against the real content extent instead of letting it park past the end
+// of the content.
 type ScrollGeometry = {
   currentOffset: number;
   headerInset: number;
+  contentHeight: number;
 };
 
 // The raw geometry `scrollToField` resolves a landing decision from, pulled
@@ -57,6 +68,7 @@ type FieldScrollGeometry = {
   viewportHeight: number;
   keyboardHeight: number;
   headerInset: number;
+  contentHeight: number;
 };
 
 // Whether a scrolled-to field is already fully on-screen — between the
@@ -71,8 +83,15 @@ type FieldScrollGeometry = {
 export const resolveFieldScrollTarget = (
   geometry: FieldScrollGeometry,
 ): { shouldScroll: boolean; targetOffset: number } => {
-  const { fieldTop, fieldHeight, currentOffset, viewportHeight, keyboardHeight, headerInset } =
-    geometry;
+  const {
+    fieldTop,
+    fieldHeight,
+    currentOffset,
+    viewportHeight,
+    keyboardHeight,
+    headerInset,
+    contentHeight,
+  } = geometry;
 
   const visibleTop = currentOffset + headerInset;
   const visibleBottom = currentOffset + viewportHeight - keyboardHeight;
@@ -83,10 +102,10 @@ export const resolveFieldScrollTarget = (
     return { shouldScroll: false, targetOffset: currentOffset };
   }
 
-  // THE POSITION-SCALING BUG (round-4 device feedback, item 2): the landing
-  // target used to floor at 0 — correct only for a plain, non-inset
-  // ScrollView where "content top visible right below the header" sits at
-  // offset 0. This app's scroll screens set
+  // THE LOWER BOUND — the POSITION-SCALING BUG (round-4 device feedback, item
+  // 2): the landing target used to floor at 0 — correct only for a plain,
+  // non-inset ScrollView where "content top visible right below the header"
+  // sits at offset 0. This app's scroll screens set
   // `contentInsetAdjustmentBehavior="automatic"` (screen.component.tsx), so
   // iOS itself treats `-headerInset` as that resting offset (content position
   // 0 shows right below the header at `contentOffset === -headerInset`), and
@@ -97,12 +116,29 @@ export const resolveFieldScrollTarget = (
   // landing its top back inside the header band whenever the user was
   // already scrolled down when Save ran (the common case — Save is a pinned
   // footer button reachable from any scroll position, so an early field can
-  // fail validation while `currentOffset` is deep into a long form). This is
-  // a reference-frame floor bug, not a currentOffset-double-count bug: given
-  // `fieldTop >= 0` always, `fieldTop - headerInset` can never fall below
-  // `-headerInset` on its own, so this floor is a documented safety bound,
-  // not an active clamp.
-  return { shouldScroll: true, targetOffset: Math.max(fieldTop - headerInset, -headerInset) };
+  // fail validation while `currentOffset` is deep into a long form).
+  const lowerBound = -headerInset;
+
+  // THE UPPER BOUND — the OVERSHOOT BUG: `Screen`'s ScrollView also sets
+  // `scrollToOverflowEnabled`, which disables RN's own clamp on a
+  // programmatic `scrollTo` — exactly what the lower (negative) bound above
+  // needs to reach iOS verbatim, but the same disabled clamp means an
+  // over-large target is never pulled back either. A raw
+  // `fieldTop - headerInset` target that sits past the content's own true
+  // bottom rest (`contentHeight - viewportHeight`) used to scroll straight
+  // past the last field into a void of empty background, with nothing (not
+  // even the field) actually landing in view. `Math.max(..., lowerBound)`
+  // keeps a form shorter than its own viewport (`contentHeight <
+  // viewportHeight`, which would otherwise make this bound MORE negative
+  // than the lower bound) from re-opening a floor already set above.
+  const upperBound = Math.max(contentHeight - viewportHeight, lowerBound);
+
+  const rawTarget = fieldTop - headerInset;
+
+  return {
+    shouldScroll: true,
+    targetOffset: Math.min(Math.max(rawTarget, lowerBound), upperBound),
+  };
 };
 
 // Scrolls `scrollableRef`'s content so `fieldRef` lands just below the
@@ -149,6 +185,7 @@ export const scrollToField = (
           viewportHeight,
           keyboardHeight,
           headerInset: geometry.headerInset,
+          contentHeight: geometry.contentHeight,
         });
 
         if (decision.shouldScroll) {

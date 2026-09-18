@@ -2661,6 +2661,39 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.queryByTestId('returns-divider')).toBeNull();
     expect(utils.getByTestId('transaction-type-field')).toHaveTextContent('Expense');
   });
+
+  it('shows the split-returns wrapper (no display: none) once split mode is selected', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    const wrapperStyle = StyleSheet.flatten(utils.getByTestId('split-returns-wrapper').props.style);
+    expect(wrapperStyle?.display).toBeUndefined();
+  });
+});
+
+describe('TransactionFormScreen — phantom gap regression (split-returns wrapper)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+  });
+
+  // The split-returns wrapper `View` always mounts (see the CALL SITE comment
+  // in transaction-form.screen.tsx), but `renderSplitReturns` renders `null`
+  // in every non-split mode. An empty rendered child still counts as a flex
+  // item in the parent `Box`'s `gap` layout, doubling the gap on both sides of
+  // it (32pt between Time and Category instead of 16pt) — `display: 'none'`
+  // is the fix, asserted here directly rather than only via `queryByTestId`.
+  it('hides the split-returns wrapper with display: none in the default (non-split) mode, so it claims no phantom gap slot', async () => {
+    const utils = await renderAdd();
+
+    // `getByTestId` excludes elements hidden from accessibility by default
+    // (RNTL v12+) — exactly what this test is proving is applied, so it must
+    // opt back in with `hidden: true` to find the element at all.
+    const wrapperStyle = StyleSheet.flatten(
+      utils.getByTestId('split-returns-wrapper', { hidden: true }).props.style,
+    );
+    expect(wrapperStyle.display).toBe('none');
+  });
 });
 
 describe('canSaveSplit', () => {

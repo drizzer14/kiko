@@ -3,7 +3,6 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -74,7 +73,7 @@ import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import {
-  resolveHeaderInset,
+  useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
@@ -1561,8 +1560,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // offset for `save`'s own `scrollToField` call below.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   const scrollOffset = useScrollOffset(scrollableRef);
-  const insets = useSafeAreaInsets();
-  const headerInset = resolveHeaderInset(insets.top);
+  const headerInset = useHeaderInset();
+  // The ScrollView's own total content height, captured off `Screen`'s
+  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
+  // can bound an over-large target against the real content extent — see
+  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
+  // read only imperatively at Save-press time, never needs to re-render.
+  const contentHeightRef = useRef(0);
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s blocked path below — each field's own inline error (a
   // `TextField`/`ExchangeFields`/`ConvertExchangeFields` `error` prop, or a
@@ -2172,7 +2176,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollToField(
           scrollableRef,
           fieldRefsByKey[disableSaveField],
-          { currentOffset: scrollOffset.value, headerInset },
+          {
+            currentOffset: scrollOffset.value,
+            headerInset,
+            contentHeight: contentHeightRef.current,
+          },
           focusByKey[disableSaveField],
         );
       }
@@ -2263,6 +2271,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       <Screen
         scroll
         scrollableRef={scrollableRef}
+        onContentSizeChange={(_width, height) => {
+          contentHeightRef.current = height;
+        }}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Button onPress={onSave} disabled={isSubmitting}>
@@ -2362,8 +2373,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             `visible` gate and the `.map` live in the module-level
             `renderSplitReturns`, so this stays a single call. Wrapped in
             `splitReturnsFieldRef` here (the CALL SITE) rather than inside the
-            helper, so the ref anchors the whole section for scroll-to-invalid. */}
-          <View ref={splitReturnsFieldRef}>
+            helper, so the ref anchors the whole section for scroll-to-invalid.
+            `renderSplitReturns` renders `null` in every non-split mode, but
+            this wrapper `View` still counts as a flex item in the parent
+            `Box`'s `gap` layout — `styles.hidden` (`display: 'none'`) keeps a
+            hidden wrapper out of that gap slot while the mode is not split,
+            without unmounting it (so the ref stays usable the moment split
+            mode is selected). */}
+          <View
+            ref={splitReturnsFieldRef}
+            style={!isSplit && styles.hidden}
+            testID="split-returns-wrapper"
+          >
             {renderSplitReturns({
               visible: isSplit,
               returns: changeReturns,
@@ -2451,6 +2472,15 @@ const styles = StyleSheet.create((theme) => ({
   // colored icon reads on the same baseline as "Apply Category to All".
   confirmHeader: {
     alignItems: 'center',
+  },
+  // Keeps the split-returns wrapper out of the parent `Box`'s `gap` layout
+  // while `renderSplitReturns` renders `null` (every non-split mode) — RN
+  // excludes a `display: 'none'` view from flex/gap layout entirely, unlike
+  // an empty rendered child, which still counts as a flex item and doubles
+  // the gap on both sides of it. The node (and its ref) stay mounted, so
+  // `splitReturnsFieldRef` is still usable the instant split mode is picked.
+  hidden: {
+    display: 'none',
   },
 }));
 
