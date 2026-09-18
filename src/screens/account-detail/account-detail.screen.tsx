@@ -118,6 +118,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // is no single-connection gate, so a second connection can connect
   // alongside the first (each binds its own per-account credential and cursor).
   const showActionButton = isBankAccount;
+  // The Import-statement footer button only makes sense once the account's
+  // picked bank resolves to a known statement format (cash/crypto accounts,
+  // and a bank account with no bank picked yet, have nothing to scope an
+  // import to).
+  const canImportStatement = statementFormatIdForBank(account?.bankId) !== undefined;
 
   // The document-picker statement-import entry point (docs/plans/statement-
   // import.md section B.1), same style as the create-form's `connectMonobank`
@@ -167,14 +172,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scrollableRef={scrollableRef}
       footer={
         <Box gap={2}>
-          <Button
-            variant="secondaryTonal"
-            fullWidth
-            onPress={pickAndOpenStatement}
-            icon="doc.badge.plus"
-          >
-            {t('accountDetail.importStatement')}
-          </Button>
+          {canImportStatement && (
+            <Button
+              variant="secondaryTonal"
+              fullWidth
+              onPress={pickAndOpenStatement}
+              icon="doc.badge.plus"
+            >
+              {t('accountDetail.importStatement')}
+            </Button>
+          )}
           <Button
             variant="primary"
             fullWidth

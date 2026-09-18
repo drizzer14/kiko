@@ -1036,7 +1036,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setLiveData({ accounts: [account()], holdings: [] });
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
   });
 
   it('renders an Import statement action beside Add holding in the footer', async () => {
@@ -1111,6 +1111,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
       filePath: 'file:///mock/statement.csv',
       accountId: 'a',
+      expectedFormatId: 'monobank-csv',
     });
   });
 
@@ -1130,6 +1131,34 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
       accountId: 'a',
       expectedFormatId: 'privatbank-xlsx',
     });
+  });
+
+  it('hides Import statement for a cash account', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('hides Import statement for a crypto account', async () => {
+    setLiveData({ accounts: [account({ kind: 'crypto', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('hides Import statement for a bank account with no bank picked (no statement format to scope to)', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('shows Import statement for a bank account whose picked bank resolves to a statement format', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', bankId: 'privatbank' })], holdings: [] });
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Import statement')).toBeTruthy();
   });
 });
 
