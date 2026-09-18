@@ -161,10 +161,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scroll
       scrollableRef={scrollableRef}
       footer={
-        <Box direction="row" gap={2}>
+        <Box gap={2}>
           <Button
             variant="secondaryTonal"
-            fullWidth={false}
+            fullWidth
             onPress={pickAndOpenStatement}
             icon="doc.badge.plus"
           >
