@@ -6,12 +6,13 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { Alert, type ScrollViewInstance } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Alert, type ScrollViewInstance, View } from 'react-native';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import {
   type FC,
   type ReactElement,
+  type RefObject,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -71,6 +72,7 @@ import DescriptionSuggestions from '../description-suggestions';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -348,6 +350,88 @@ const saveDisabledReason = (params: SaveDisabledParams, t: TFunction): string | 
   }
 
   return plainReason(params, t);
+};
+
+// The field key each save-blocking reason above belongs to — so its message
+// can render beside that field instead of in the footer. One pure function per
+// `xxxReason` helper, mirroring its branches EXACTLY (same order, same
+// conditions — see the comment above each `xxxReason` pair), returning a
+// field-key literal instead of a translated string. The two families must
+// never disagree about WHICH branch is active, only about key-vs-message.
+type SaveDisabledField =
+  | 'counterpartHolding'
+  | 'counterpartAmount'
+  | 'destinationHolding'
+  | 'valueOut'
+  | 'valueIn'
+  | 'selectedCategory'
+  | 'splitReturns'
+  | 'amount';
+
+// Mirrors `convertingReason`'s branches exactly.
+const convertingField = (params: SaveDisabledParams): SaveDisabledField | null => {
+  if (params.counterpartHoldingId === null) {
+    return 'counterpartHolding';
+  }
+
+  return isPositiveAmountText(params.counterpartAmount) ? null : 'counterpartAmount';
+};
+
+// Mirrors `exchangeReason`'s branches exactly.
+const exchangeField = (params: SaveDisabledParams): SaveDisabledField | null => {
+  if (params.destinationHoldingId === null) {
+    return 'destinationHolding';
+  }
+
+  if (!isPositiveAmountText(params.amount)) {
+    return 'valueOut';
+  }
+
+  return isPositiveAmountText(params.valueIn) ? null : 'valueIn';
+};
+
+// Mirrors `splitReason`'s branches exactly.
+const splitField = (params: SaveDisabledParams): SaveDisabledField | null => {
+  if (params.selectedCategory === null) {
+    return 'selectedCategory';
+  }
+
+  return canSaveSplit(params.amount, params.changeReturns, params.currency) ? null : 'splitReturns';
+};
+
+// Mirrors `plainReason`'s branches exactly.
+const plainField = (params: SaveDisabledParams): SaveDisabledField | null => {
+  if (params.isReadOnly) {
+    return null;
+  }
+
+  if (params.isEditing) {
+    return isPositiveAmountText(params.amount) ? null : 'amount';
+  }
+
+  if (!isPositiveAmountText(params.amount)) {
+    return 'amount';
+  }
+
+  return params.selectedCategory === null ? 'selectedCategory' : null;
+};
+
+// Mirrors `saveDisabledReason`'s dispatcher exactly — the two must never
+// disagree about WHICH branch is active, only about key-vs-message.
+const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null => {
+  if (params.converting) {
+    return convertingField(params);
+  }
+
+  if (params.isExchange) {
+    return exchangeField(params);
+  }
+
+  if (params.isSplit) {
+    return splitField(params);
+  }
+
+  return plainField(params);
 };
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
@@ -917,6 +1001,23 @@ type FieldGroupProps = {
   time: number;
   onChangeTime: (timestamp: number) => void;
   t: TFunction;
+  // Per-field validation-failure messages and wrapper refs, threaded straight
+  // into `ExchangeFields`/`ConvertExchangeFields` (the Task 8 props) or onto
+  // the plain Amount `TextField` — see `fieldError`/`fieldRefsByKey` in the
+  // screen component. `undefined` everywhere on a read-only row, where no
+  // field ever gates Save.
+  amountError?: string;
+  amountFieldRef?: RefObject<FieldInstance | null>;
+  valueOutError?: string;
+  destinationError?: string;
+  valueInError?: string;
+  valueOutFieldRef?: RefObject<FieldInstance | null>;
+  destinationFieldRef?: RefObject<FieldInstance | null>;
+  valueInFieldRef?: RefObject<FieldInstance | null>;
+  counterpartError?: string;
+  counterpartAmountError?: string;
+  counterpartFieldRef?: RefObject<FieldInstance | null>;
+  counterpartAmountFieldRef?: RefObject<FieldInstance | null>;
 };
 
 const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
@@ -937,6 +1038,10 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         counterpartSuffix={props.counterpartSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        counterpartError={props.counterpartError}
+        counterpartAmountError={props.counterpartAmountError}
+        counterpartFieldRef={props.counterpartFieldRef}
+        counterpartAmountFieldRef={props.counterpartAmountFieldRef}
       />
     );
   }
@@ -955,24 +1060,34 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         valueInSuffix={props.valueInSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        valueOutError={props.valueOutError}
+        destinationError={props.destinationError}
+        valueInError={props.valueInError}
+        valueOutFieldRef={props.valueOutFieldRef}
+        destinationFieldRef={props.destinationFieldRef}
+        valueInFieldRef={props.valueInFieldRef}
       />
     );
   }
 
   return (
     <>
-      <TextField
-        label={props.t('forms.fields.amount')}
-        value={props.amount}
-        onChangeText={props.onChangeAmount}
-        editable={!props.isReadOnly}
-        keyboardType="decimal-pad"
-        placeholder={props.t('forms.transaction.amountPlaceholder')}
-        suffix={props.amountSuffix}
-        // A read-only (synced) row's amount never gates save, so it carries no
-        // required marker; a manual add/edit always needs a positive amount.
-        required={!props.isReadOnly}
-      />
+      <View ref={props.amountFieldRef}>
+        <TextField
+          label={props.t('forms.fields.amount')}
+          value={props.amount}
+          onChangeText={props.onChangeAmount}
+          editable={!props.isReadOnly}
+          keyboardType="decimal-pad"
+          placeholder={props.t('forms.transaction.amountPlaceholder')}
+          suffix={props.amountSuffix}
+          // A read-only (synced) row's amount never gates save, so it carries
+          // no required marker; a manual add/edit always needs a positive
+          // amount.
+          required={!props.isReadOnly}
+          error={props.amountError}
+        />
+      </View>
 
       <TextField
         label={props.t('forms.transaction.description')}
@@ -1030,6 +1145,11 @@ type SplitReturnsProps = {
   suffix: string;
   selectHoldingPlaceholder: string;
   t: TFunction;
+  // The combined payment+returns validation-failure message, or `undefined`
+  // when valid — rendered right after the mapped return rows, before the "Add
+  // return" action, mirroring `TextField`'s own `error` contract even though
+  // this reason covers the whole return list rather than one field.
+  error?: string;
 };
 
 const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
@@ -1088,6 +1208,8 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
         </Box>
       ))}
 
+      {props.error !== undefined && <FieldError message={props.error} />}
+
       <Button
         variant="secondaryTonal"
         size="small"
@@ -1112,23 +1234,6 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
-// The footer's inline "why is Save disabled" line, or nothing once there is no
-// reason (Save is enabled) or a submit is already in flight (the reason would
-// otherwise flash as the row saves). Kept module-level (returns `ReactElement
-// | null`) so the footer's JSX gates on a single call rather than its own
-// `&&` chain, the same shape as `renderReadOnlyNotice` above.
-const renderSaveReason = (
-  reason: string | null,
-  isSubmitting: boolean,
-  attempted: boolean,
-): ReactElement | null => {
-  if (reason === null || isSubmitting || !attempted) {
-    return null;
-  }
-
-  return <FieldError message={reason} testID="transaction-save-reason" />;
-};
-
 // The category picker and "Convert to exchange" action: everything below the
 // main field group EXCEPT while converting (a convert has no category — just
 // the convert group and Save). Deleting a transaction is offered only through
@@ -1149,6 +1254,11 @@ type ModeAndActionsProps = {
   onPressConvert: () => void;
   isEditing: boolean;
   t: TFunction;
+  // The category picker's own validation-failure message, or `undefined` when
+  // valid — rendered directly after the `CategoryField`, which is also
+  // wrapped in `categoryFieldRef` for scroll-to-invalid.
+  categoryError?: string;
+  categoryFieldRef?: RefObject<FieldInstance | null>;
 };
 
 const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
@@ -1170,16 +1280,20 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         the bank-owned amount/sign. Exchange has no category: both legs'
         descriptions are fixed, auto-generated copy. */}
       {!props.isExchange && (
-        <CategoryField
-          label={props.t('forms.transaction.category')}
-          testID="transaction-category-field"
-          options={props.categoryOptions}
-          selectedKey={props.selectedCategory}
-          onSelect={props.onSelectCategory}
-          // A category is required only on a fresh add (isSaveDisabled gates a
-          // create on it); an edit leaves the category optional.
-          required={!props.isEditing}
-        />
+        <View ref={props.categoryFieldRef}>
+          <CategoryField
+            label={props.t('forms.transaction.category')}
+            testID="transaction-category-field"
+            options={props.categoryOptions}
+            selectedKey={props.selectedCategory}
+            onSelect={props.onSelectCategory}
+            // A category is required only on a fresh add (isSaveDisabled gates
+            // a create on it); an edit leaves the category optional.
+            required={!props.isEditing}
+          />
+
+          {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
+        </View>
       )}
 
       {/* Shown for BOTH a manual and a synced row — the action never mutates
@@ -1431,6 +1545,30 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The scroll-mode ScrollView's ref, so adding a split return can bring the
   // newly appended row into view.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  // in `save`'s blocked path below — each field's own inline error (a
+  // `TextField`/`ExchangeFields`/`ConvertExchangeFields` `error` prop, or a
+  // relocated `FieldError` for the category/split-returns reasons) sits right
+  // beside it, so the scroll always lands on the same field the message is
+  // anchored to.
+  const counterpartHoldingFieldRef = useRef<FieldInstance>(null);
+  const counterpartAmountFieldRef = useRef<FieldInstance>(null);
+  const destinationFieldRef = useRef<FieldInstance>(null);
+  const valueOutFieldRef = useRef<FieldInstance>(null);
+  const valueInFieldRef = useRef<FieldInstance>(null);
+  const categoryFieldRef = useRef<FieldInstance>(null);
+  const splitReturnsFieldRef = useRef<FieldInstance>(null);
+  const amountFieldRef = useRef<FieldInstance>(null);
+  const fieldRefsByKey: Record<SaveDisabledField, RefObject<FieldInstance | null>> = {
+    counterpartHolding: counterpartHoldingFieldRef,
+    counterpartAmount: counterpartAmountFieldRef,
+    destinationHolding: destinationFieldRef,
+    valueOut: valueOutFieldRef,
+    valueIn: valueInFieldRef,
+    selectedCategory: categoryFieldRef,
+    splitReturns: splitReturnsFieldRef,
+    amount: amountFieldRef,
+  };
   // The split payment's change-returns, one row per holding the change is
   // handed back to. Starts with a single empty row so the section always shows
   // one picker when Split is entered. `nextReturnId` hands out a stable key per
@@ -1610,6 +1748,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // cognitive-complexity budget one more branch for no behavioral gain.
   const disableSave = isSaveDisabled(saveDisabledParams);
   const disableSaveReason = saveDisabledReason(saveDisabledParams, t);
+  // `saveDisabledField` is `disableSaveReason`'s twin (see the comment above
+  // `saveDisabledField`): non-null in exactly the same branches, naming the
+  // field to scroll to and to blame instead of the translated message.
+  const disableSaveField = saveDisabledField(saveDisabledParams);
+  // Each field's own inline error: the shared reason, shown only once the
+  // user has attempted a Save AND that field is the one currently blaming it —
+  // so the SAME reason text lands beside its own field instead of stacking one
+  // copy per field. Kept as a small closure (rather than one `fieldError(key)`
+  // computed per call site) so every render reads the same two latched values.
+  const fieldError = (key: SaveDisabledField): string | undefined =>
+    attemptedSave && disableSaveField === key ? (disableSaveReason ?? undefined) : undefined;
 
   // An explicit category pick: record the choice AND flag it, so a later
   // description blur (the A1 auto-pick) never overwrites what the user chose.
@@ -1984,12 +2133,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   // The outer Save gate: Save is always enabled, so a press while
   // `disableSave` is true latches `attemptedSave` (surfacing the inline
-  // reason) instead of writing anything. Kept as a thin wrapper around
-  // `performSave` — folding the gate into `performSave` itself pushes that
-  // function's cognitive complexity over Biome's ceiling.
+  // reason) and scrolls to the first invalid field instead of writing
+  // anything. Kept as a thin wrapper around `performSave` — folding the gate
+  // into `performSave` itself pushes that function's cognitive complexity
+  // over Biome's ceiling.
   const save = async (): Promise<void> => {
     if (disableSave) {
       setAttemptedSave(true);
+
+      if (disableSaveField) {
+        scrollToField(scrollableRef, fieldRefsByKey[disableSaveField]);
+      }
 
       return;
     }
@@ -2079,13 +2233,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollableRef={scrollableRef}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Box gap={2}>
-              {renderSaveReason(disableSaveReason, isSubmitting, attemptedSave)}
-
-              <Button onPress={onSave} disabled={isSubmitting}>
-                {t('common.save')}
-              </Button>
-            </Box>
+            <Button onPress={onSave} disabled={isSubmitting}>
+              {t('common.save')}
+            </Button>
           ) : undefined
         }
       >
@@ -2160,24 +2310,41 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             time,
             onChangeTime: setTime,
             t,
+            amountError: fieldError('amount'),
+            amountFieldRef,
+            valueOutError: fieldError('valueOut'),
+            destinationError: fieldError('destinationHolding'),
+            valueInError: fieldError('valueIn'),
+            valueOutFieldRef,
+            destinationFieldRef,
+            valueInFieldRef,
+            counterpartError: fieldError('counterpartHolding'),
+            counterpartAmountError: fieldError('counterpartAmount'),
+            counterpartFieldRef: counterpartHoldingFieldRef,
+            counterpartAmountFieldRef,
           })}
 
           {/* Split-change only: the dynamic return rows + "Add return" action,
             rendered below the reused Amount/Description/Date/Time group. The
             `visible` gate and the `.map` live in the module-level
-            `renderSplitReturns`, so this stays a single call. */}
-          {renderSplitReturns({
-            visible: isSplit,
-            returns: changeReturns,
-            buildOptions: returnOptionsFor,
-            onSelectHolding: selectReturnHolding,
-            onChangeAmount: changeReturnAmount,
-            onRemove: removeReturn,
-            onAdd: addReturn,
-            suffix: amountSuffix,
-            selectHoldingPlaceholder: t('forms.transaction.selectHolding'),
-            t,
-          })}
+            `renderSplitReturns`, so this stays a single call. Wrapped in
+            `splitReturnsFieldRef` here (the CALL SITE) rather than inside the
+            helper, so the ref anchors the whole section for scroll-to-invalid. */}
+          <View ref={splitReturnsFieldRef}>
+            {renderSplitReturns({
+              visible: isSplit,
+              returns: changeReturns,
+              buildOptions: returnOptionsFor,
+              onSelectHolding: selectReturnHolding,
+              onChangeAmount: changeReturnAmount,
+              onRemove: removeReturn,
+              onAdd: addReturn,
+              suffix: amountSuffix,
+              selectHoldingPlaceholder: t('forms.transaction.selectHolding'),
+              t,
+              error: fieldError('splitReturns'),
+            })}
+          </View>
 
           {/* The mode chip row, category picker, and "Convert to exchange"
             action — everything below the main field group EXCEPT while
@@ -2194,6 +2361,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             onPressConvert: () => setConverting(true),
             isEditing,
             t,
+            categoryError: fieldError('selectedCategory'),
+            categoryFieldRef,
           })}
         </Box>
       </Screen>

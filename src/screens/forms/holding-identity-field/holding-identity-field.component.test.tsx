@@ -172,6 +172,30 @@ describe('HoldingIdentityField', () => {
     expect(getByLabelText('Name').props.returnKeyType).toBe('done');
   });
 
+  it('renders no error styling or message by default', async () => {
+    const { queryByText } = await setup({});
+
+    expect(queryByText('This field is required.')).toBeNull();
+  });
+
+  it('applies the invalid border and renders the message directly under the name input when error is set (captioned)', async () => {
+    const { getByLabelText, getByText } = await setup({
+      error: 'This field is required.',
+    });
+
+    const flatStyle = StyleSheet.flatten(getByLabelText('Name').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(getByText('This field is required.')).toBeTruthy();
+  });
+
+  it('renders no reserved error slot for a bare (uncaptioned) row, even with error set', async () => {
+    const { queryByText } = await setup({ captioned: false, error: 'This field is required.' });
+
+    // A dense list row (category rename, holding-detail rename) never
+    // validates — reserving height there would regress its existing layout.
+    expect(queryByText('This field is required.')).toBeNull();
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {

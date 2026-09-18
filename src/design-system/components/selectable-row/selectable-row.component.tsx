@@ -23,6 +23,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
   reserveIconSlot = false,
   accessibilityRole = 'button',
   accessibilityLabel,
+  description,
   onLayout,
   testID,
 }) => {
@@ -78,6 +79,15 @@ const SelectableRow: FC<SelectableRowProps> = ({
           <Text variant="body" tone={selected ? 'onAccent' : 'textPrimary'}>
             {label}
           </Text>
+
+          {description !== undefined && (
+            <View
+              testID={testID ? `${testID}-description` : undefined}
+              style={styles.descriptionRow}
+            >
+              {description}
+            </View>
+          )}
         </View>
       </View>
     </Pressable>

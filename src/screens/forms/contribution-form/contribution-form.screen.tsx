@@ -1,8 +1,8 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useState } from 'react';
+import { type FC, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert } from 'react-native';
+import { Alert, View, type ScrollViewInstance } from 'react-native';
 
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -12,12 +12,12 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import TextField from '../../../design-system/components/text-field';
-import FieldError from '../../../design-system/components/field-error';
 import type { AccountsStackParamList } from '../../../navigation/types';
 
 import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -50,6 +50,12 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const [date, setDate] = useState<number>(startOfToday);
   const [attemptedSave, setAttemptedSave] = useState(false);
 
+  // The scrollable content root and the amount field's own wrapper — passed
+  // to `scrollToField` so a blocked Save (an invalid amount) scrolls the
+  // field into view alongside its inline error. See scroll-to-field.ts.
+  const scrollableRef = useRef<ScrollViewInstance>(null);
+  const amountFieldRef = useRef<FieldInstance>(null);
+
   const save = async (): Promise<void> => {
     if (!holding) {
       return;
@@ -60,6 +66,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     const majorAmount = parseAmount(amount);
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
+      scrollToField(scrollableRef, amountFieldRef);
 
       return;
     }
@@ -79,6 +86,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.contribution.save')}
@@ -86,19 +94,22 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       }
     >
       <Box gap={4}>
-        <TextField
-          label={t('forms.fields.amount')}
-          value={amount}
-          onChangeText={(text) => setAmount(groupAmount(text))}
-          keyboardType="decimal-pad"
-          placeholder={t('forms.contribution.amountPlaceholder')}
-          suffix={currencySymbol[currency]}
-          required
-        />
-
-        {attemptedSave && !(parseAmount(amount) > 0) && (
-          <FieldError message={t('forms.contribution.amountError')} />
-        )}
+        <View ref={amountFieldRef}>
+          <TextField
+            label={t('forms.fields.amount')}
+            value={amount}
+            onChangeText={(text) => setAmount(groupAmount(text))}
+            keyboardType="decimal-pad"
+            placeholder={t('forms.contribution.amountPlaceholder')}
+            suffix={currencySymbol[currency]}
+            required
+            error={
+              attemptedSave && !(parseAmount(amount) > 0)
+                ? t('forms.contribution.amountError')
+                : undefined
+            }
+          />
+        </View>
 
         <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
       </Box>

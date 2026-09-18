@@ -5,6 +5,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import Box from '../box';
 import Text from '../text';
 import SymbolIcon from '../symbol';
+import FieldError from '../field-error';
 import FieldLabel from '../field-label';
 import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 
@@ -17,6 +18,34 @@ import type { TextFieldProps } from './text-field.props';
 // label. This list only steers the returnKeyType default; the Done accessory
 // itself is unconditional (see below).
 const RETURN_KEYLESS_KEYBOARD_TYPES = ['decimal-pad', 'number-pad'];
+
+// Give inputs that HAVE a return key a `done` return key by default, as a
+// secondary dismiss affordance beside the accessory — but never override a
+// return key the caller chose (e.g. a `search` field), and never set one on a
+// return-keyless numeric keyboard where it would do nothing. Pulled out of the
+// component body (rather than an inline `??`/ternary there) to keep
+// TextField's own cognitive complexity under the project's Biome threshold.
+const resolveReturnKeyType = (
+  returnKeyType: TextFieldProps['returnKeyType'],
+  keyboardType: TextFieldProps['keyboardType'],
+): TextFieldProps['returnKeyType'] => {
+  if (returnKeyType !== undefined) {
+    return returnKeyType;
+  }
+
+  if (keyboardType !== undefined && RETURN_KEYLESS_KEYBOARD_TYPES.includes(keyboardType)) {
+    return undefined;
+  }
+
+  return 'done';
+};
+
+// Derives a nested testID from the field's own outer `testID`, or `undefined`
+// when the caller passed none — shared by the error slot and its inline
+// message so both stay `undefined`-safe without repeating the ternary inline
+// (which would add to TextField's own cognitive complexity).
+const deriveTestID = (testID: TextFieldProps['testID'], suffix: string): string | undefined =>
+  testID !== undefined ? `${testID}-${suffix}` : undefined;
 
 const TextField: FC<TextFieldProps> = ({
   label,
@@ -35,6 +64,8 @@ const TextField: FC<TextFieldProps> = ({
   leadingIcon,
   required,
   onBlur,
+  error,
+  testID,
 }) => {
   const { theme } = useUnistyles();
   // The native Done keyboard accessory, shared with every other Kiko input.
@@ -52,16 +83,11 @@ const TextField: FC<TextFieldProps> = ({
   // Either inset wraps the input in a positioned container (below); a bare
   // field with neither is returned unwrapped, unchanged.
   const hasInset = hasSuffix || hasLeadingIcon;
+  // A defined, non-empty `error` IS the invalid signal — there is no separate
+  // `invalid` boolean (see text-field.props.d.ts).
+  const hasError = error !== undefined && error !== '';
 
-  // Give inputs that HAVE a return key a `done` return key by default, as a
-  // secondary dismiss affordance beside the accessory — but never override a
-  // return key the caller chose (e.g. a `search` field), and never set one on a
-  // return-keyless numeric keyboard where it would do nothing.
-  const resolvedReturnKeyType =
-    returnKeyType ??
-    (keyboardType !== undefined && RETURN_KEYLESS_KEYBOARD_TYPES.includes(keyboardType)
-      ? undefined
-      : 'done');
+  const resolvedReturnKeyType = resolveReturnKeyType(returnKeyType, keyboardType);
 
   // The input itself is identical whether or not a suffix renders; only its
   // trailing padding grows (so the caret never slides under the glyph), and it
@@ -89,13 +115,14 @@ const TextField: FC<TextFieldProps> = ({
         editable === false && styles.inputDisabled,
         hasSuffix && styles.inputWithSuffix,
         hasLeadingIcon && styles.inputWithLeadingIcon,
+        hasError && styles.inputError,
       ]}
     />
   );
 
   return (
     <>
-      <Box gap={1}>
+      <Box gap={1} testID={testID}>
         {label !== undefined && <FieldLabel label={label} required={required} />}
 
         {hasInset ? (
@@ -121,6 +148,12 @@ const TextField: FC<TextFieldProps> = ({
         ) : (
           input
         )}
+
+        {/* Always rendered, whether or not an error is showing, so the
+          field's overall height never shifts between valid and invalid. */}
+        <Box style={styles.errorSlot} testID={deriveTestID(testID, 'error-slot')}>
+          {hasError && <FieldError message={error} testID={deriveTestID(testID, 'error')} />}
+        </Box>
       </Box>
 
       {accessory}

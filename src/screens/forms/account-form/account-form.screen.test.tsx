@@ -5,6 +5,7 @@ import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import { i18n } from '../../../i18n';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
@@ -70,6 +71,7 @@ jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
 jest.mock('../../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
+jest.mock('../scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,
@@ -426,6 +428,25 @@ describe('AccountFormScreen', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('shows the name-required error directly on the name field, not as a separate block, on a blocked Save press', async () => {
+    const { getByText, queryByTestId, getByTestId } = await renderForm();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter a name.')).toBeTruthy();
+    // The old standalone block is gone — the message now lives on the field.
+    expect(queryByTestId('account-name-error')).toBeNull();
+    expect(getByTestId('holding-identity-name-field-error')).toBeTruthy();
+  });
+
+  it('scrolls to the name field when Save is pressed while it is empty', async () => {
+    const { getByText } = await renderForm();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(scrollToField).toHaveBeenCalledWith(expect.anything(), expect.anything());
   });
 
   it('clamps a negative cash initial value to zero', async () => {
@@ -920,17 +941,17 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('shows the name-required reason only after a Connect is attempted with an empty name, on the bank form', async () => {
     const view = await renderForm();
 
-    expect(view.queryByTestId('account-name-error')).toBeNull();
+    expect(view.queryByTestId('holding-identity-name-field-error')).toBeNull();
 
     await fireEvent.press(view.getByLabelText('Bank type'));
     await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
-    expect(view.queryByTestId('account-name-error')).toBeTruthy();
+    expect(view.queryByTestId('holding-identity-name-field-error')).toBeTruthy();
     expect(mockCreate).not.toHaveBeenCalled();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-    expect(view.queryByTestId('account-name-error')).toBeNull();
+    expect(view.queryByTestId('holding-identity-name-field-error')).toBeNull();
   });
 
   it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
@@ -969,13 +990,13 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const { getByLabelText, getByText, queryByTestId } = await renderForm();
 
     await fireEvent.press(getByText('Crypto'));
-    expect(queryByTestId('account-name-error')).toBeNull();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
 
     await fireEvent.press(getByLabelText('wallet-field'));
-    expect(queryByTestId('account-name-error')).toBeTruthy();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    expect(queryByTestId('account-name-error')).toBeNull();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
   });
 
   it('does not create a crypto account when a source Connect is tapped with an empty name', async () => {
@@ -987,7 +1008,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
-    expect(queryByTestId('account-name-error')).toBeTruthy();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
   });
 
   it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
@@ -1000,7 +1021,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
-    expect(queryByTestId('account-name-error')).toBeTruthy();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
   });
 
   it('treats a whitespace-only name exactly like an empty name on the crypto form', async () => {
@@ -1010,13 +1031,13 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Crypto'));
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
-    expect(queryByTestId('account-name-error')).toBeNull();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
 
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
-    expect(queryByTestId('account-name-error')).toBeTruthy();
+    expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
   });
 
   it('retries the crypto create after an empty-name reject, once a valid name is entered', async () => {

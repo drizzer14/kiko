@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
 import '../../../i18n';
@@ -83,5 +84,26 @@ describe('ConvertExchangeFields', () => {
     // The counterpart holding picker and its amount gate save, so each shows
     // the required asterisk; the read-only fixed leg, Date, and Time do not.
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
+  it('renders counterpartError directly after the counterpart picker', async () => {
+    const { getByText } = await render(
+      <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
+    );
+
+    expect(getByText('Select a counterpart account.')).toBeTruthy();
+  });
+
+  it('applies counterpartAmountError to the counterpart amount field', async () => {
+    const { getByLabelText, getByText } = await render(
+      <ConvertExchangeFields
+        {...baseProps}
+        counterpartAmountError="Enter an amount greater than 0."
+      />,
+    );
+
+    expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
   });
 });

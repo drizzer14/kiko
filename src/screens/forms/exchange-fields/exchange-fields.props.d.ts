@@ -1,3 +1,6 @@
+import type { RefObject } from 'react';
+
+import type { FieldInstance } from '../scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 export type ExchangeFieldsProps = {
@@ -20,4 +23,18 @@ export type ExchangeFieldsProps = {
   // The transaction's date (unix-millis, local midnight once picked).
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // Per-field validation-failure messages, or `undefined` when valid — mirrors
+  // TextField's own `error` contract (text-field.props.d.ts). `destinationError`
+  // has no matching border (HoldingSelectField is a picker trigger, not a
+  // TextField) but still renders directly under its own field, never in the
+  // screen's footer.
+  valueOutError?: string;
+  destinationError?: string;
+  valueInError?: string;
+  // Optional refs to each field's own wrapping View, so a caller (transaction-
+  // form) can scroll to whichever one is first invalid — see scroll-to-field.ts.
+  // Omitted by every caller that doesn't need scroll-to-invalid.
+  valueOutFieldRef?: RefObject<FieldInstance | null>;
+  destinationFieldRef?: RefObject<FieldInstance | null>;
+  valueInFieldRef?: RefObject<FieldInstance | null>;
 };

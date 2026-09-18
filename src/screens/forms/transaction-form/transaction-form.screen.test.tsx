@@ -488,7 +488,7 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('does not save for a zero amount, keeping Save enabled and showing the reason after a press', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText, getByText, getByTestId } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0');
     await pickCategory(utils, 'Groceries');
 
@@ -498,6 +498,12 @@ describe('TransactionFormScreen — add mode', () => {
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
+    // The reason moved onto the Amount field, so the footer no longer carries
+    // it — see the "renders only the Save button in the footer" test below.
+    expect(
+      within(getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+    ).toBeNull();
+    expect(StyleSheet.flatten(getByLabelText('Amount').props.style).borderColor).toBe('#FF453A');
   });
 
   it('shows an inline reason for a fresh add missing amount and category, only after Save is pressed', async () => {
@@ -507,13 +513,26 @@ describe('TransactionFormScreen — add mode', () => {
 
     await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
     expect(utils.getByText('Select a category.')).toBeTruthy();
+    expect(within(utils.getByTestId('screen-footer')).queryByText('Select a category.')).toBeNull();
 
     await pickCategory(utils, 'Groceries');
     expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
+  it('renders only the Save button in the footer — no reason line, on any blocked path', async () => {
+    const utils = await renderAdd();
+    await fireEvent.press(utils.getByText('Save'));
+
+    const footer = utils.getByTestId('screen-footer');
+    expect(within(footer).getByText('Save')).toBeTruthy();
+    expect(within(footer).queryByText(/./)).toEqual(within(footer).getByText('Save'));
   });
 
   it('writes the picked category onto the row even with a blank description', async () => {
@@ -1135,6 +1154,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+    ).toBeNull();
   });
 
   it('persists the existing time unchanged when the date is not edited', async () => {
@@ -1793,13 +1815,22 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(utils.queryByText('Select a destination account.')).toBeNull();
     await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select a destination account.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Select a destination account.'),
+    ).toBeNull();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
     expect(utils.getByText('Enter a Value Out greater than 0.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Enter a Value Out greater than 0.'),
+    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
     expect(utils.getByText('Enter a Value In greater than 0.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Enter a Value In greater than 0.'),
+    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
     expect(utils.queryByText('Enter a Value In greater than 0.')).toBeNull();
@@ -2288,10 +2319,16 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(utils.queryByText('Select an account to convert into.')).toBeNull();
     await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Select an account to convert into.'),
+    ).toBeNull();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
     expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
     expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
@@ -2436,10 +2473,16 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.queryByText('Select a category.')).toBeNull();
     await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select a category.')).toBeTruthy();
+    expect(within(utils.getByTestId('screen-footer')).queryByText('Select a category.')).toBeNull();
 
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      within(utils.getByTestId('screen-footer')).queryByText(
+        'Enter a payment amount and at least one valid return.',
+      ),
+    ).toBeNull();
   });
 
   it('does not write an otherwise-valid split until a category is picked', async () => {

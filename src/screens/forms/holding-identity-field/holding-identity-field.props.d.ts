@@ -66,4 +66,14 @@ export type HoldingIdentityFieldProps = {
   // When true (and `captioned`), the Name caption shows a red asterisk marking
   // the name as required. Defaults to false. See the shared FieldLabel.
   required?: boolean;
+  // The validation-failure message for the NAME field, or `undefined` when
+  // valid — same contract as TextField's own `error` (see text-field.props.d.ts).
+  // Only takes effect when `captioned` (the form treatment); a bare row never
+  // reserves height for a message it can never show.
+  error?: string;
+  // Optional testID applied to the outer row. When set, the error slot
+  // beneath the name input additionally takes `${testID}-error-slot`, and the
+  // FieldError message (when shown) additionally takes `${testID}-error` —
+  // same derived-testID contract as TextField's.
+  testID?: string;
 };

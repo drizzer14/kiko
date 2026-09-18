@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 
 type SelectableRowAccessibilityRole = 'button' | 'checkbox';
@@ -26,6 +27,11 @@ export type SelectableRowProps = {
   reserveIconSlot?: boolean;
   accessibilityRole?: SelectableRowAccessibilityRole;
   accessibilityLabel?: string;
+  // An optional second line rendered below `label`, in the SAME leading-slot-
+  // aligned column — the bank picker's sync-type icons + caption is the first
+  // consumer. The caller owns any tone switching (e.g. onAccent when
+  // selected) on whatever it renders here; SelectableRow does not inspect it.
+  description?: ReactNode;
   // Forwarded to the row's Pressable so a consumer can measure each row's
   // on-screen position (e.g. to auto-scroll to the selected row).
   onLayout?: (event: LayoutChangeEvent) => void;
