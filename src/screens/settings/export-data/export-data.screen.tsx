@@ -121,9 +121,10 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
         {keyBase64 !== undefined && (
           <Card testID="settings-card-export-key" padding={3}>
             {/* No uniform `gap` here — see `export-data.styles.ts`'s
-                `keyWarning` doc comment for why the TextField's own trailing
-                space is deliberately left alone instead of adding a second
-                gap on top of it. */}
+                `keyWarning`/`keyField` doc comments: each child states its
+                own trailing space explicitly, so the field's spacing stays
+                correct regardless of whether `TextField` itself reserves any
+                space of its own below the input. */}
             <Box>
               <Box style={styles.keyWarning}>
                 <Text variant="body" tone="textPrimary">
@@ -131,13 +132,15 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
                 </Text>
               </Box>
 
-              <TextField
-                label={t('settings.dataExport.keyLabel')}
-                value={keyBase64}
-                onChangeText={() => {}}
-                editable={false}
-                multiline
-              />
+              <Box style={styles.keyField}>
+                <TextField
+                  label={t('settings.dataExport.keyLabel')}
+                  value={keyBase64}
+                  onChangeText={() => {}}
+                  editable={false}
+                  multiline
+                />
+              </Box>
 
               <Box direction="row" gap={3}>
                 <Button
