@@ -7,6 +7,11 @@ process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['./jest/setup.js'],
+  // Resets every jest.fn()'s recorded calls/instances/results before each
+  // test (does NOT touch mockImplementation/mockReturnValue setup) so a
+  // module-scoped mock's call history from one `it` never leaks into the
+  // next `it` in the same file/describe block.
+  clearMocks: true,
   // fnts ships as pure ESM; Babel must transpile it to CJS for Jest, so it is
   // exempted from the preset's node_modules transform-ignore list.
   // react-native-unistyles resolves its "react-native" package.json export
