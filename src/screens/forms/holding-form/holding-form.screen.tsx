@@ -469,6 +469,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     maturityDate !== null &&
     maturityDate > purchaseDate;
 
+  // The reason `isBondValid` above is false, for the SAME checks in the
+  // SAME priority order. A missing (not-yet-picked) date is already covered
+  // by that field's own required asterisk, so this returns null rather than
+  // a redundant "pick a date" line until BOTH dates are set — only then does
+  // an invalid ORDER between them get its own reason.
+  const bondReasonKey = (): string | null => {
+    if (!(parseAmount(quantity) > 0)) {
+      return 'forms.holding.quantityError';
+    }
+
+    if (!(parseAmount(faceValue) > 0)) {
+      return 'forms.holding.faceValueError';
+    }
+
+    if (couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)) {
+      return 'forms.holding.couponPctError';
+    }
+
+    if (purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate) {
+      return 'forms.holding.maturityDateError';
+    }
+
+    return null;
+  };
+
   const isValid =
     name.trim().length > 0 &&
     match(type)
@@ -478,6 +503,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .exhaustive();
 
   const termDepositReason = type === 'term_deposit' ? termDepositReasonKey() : null;
+  const bondReason = type === 'bond' ? bondReasonKey() : null;
 
   const save = async (): Promise<void> => {
     const metadata = buildMetadata();
@@ -803,6 +829,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCouponFrequency}
               labels={couponFrequencyLabels}
             />
+
+            {bondReason !== null && <FieldError message={t(bondReason)} />}
           </Box>
         )}
       </Box>
