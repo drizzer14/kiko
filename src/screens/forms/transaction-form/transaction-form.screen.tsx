@@ -1117,8 +1117,12 @@ const showsSaveButton = (
 // otherwise flash as the row saves). Kept module-level (returns `ReactElement
 // | null`) so the footer's JSX gates on a single call rather than its own
 // `&&` chain, the same shape as `renderReadOnlyNotice` above.
-const renderSaveReason = (reason: string | null, isSubmitting: boolean): ReactElement | null => {
-  if (reason === null || isSubmitting) {
+const renderSaveReason = (
+  reason: string | null,
+  isSubmitting: boolean,
+  attempted: boolean,
+): ReactElement | null => {
+  if (reason === null || isSubmitting || !attempted) {
     return null;
   }
 
@@ -1454,6 +1458,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // blur must never overwrite that choice.
   const [userPickedCategory, setUserPickedCategory] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Whether the user has pressed Save at least once. Save is always enabled;
+  // this latches the inline reason on so it only ever appears after a press
+  // that `disableSave` blocked, never live while the user is still filling
+  // the form in.
+  const [attemptedSave, setAttemptedSave] = useState(false);
   // The pending category-override confirmation. Non-null while the themed
   // confirm modal is up (carrying the affected name + picked category key);
   // null when no confirmation is in flight.
@@ -1973,7 +1982,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     return false;
   };
 
+  // The outer Save gate: Save is always enabled, so a press while
+  // `disableSave` is true latches `attemptedSave` (surfacing the inline
+  // reason) instead of writing anything. Kept as a thin wrapper around
+  // `performSave` — folding the gate into `performSave` itself pushes that
+  // function's cognitive complexity over Biome's ceiling.
   const save = async (): Promise<void> => {
+    if (disableSave) {
+      setAttemptedSave(true);
+
+      return;
+    }
+
+    await performSave();
+  };
+
+  const performSave = async (): Promise<void> => {
     try {
       if (await dispatchSpecialSave()) {
         return;
@@ -2056,9 +2080,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Box gap={2}>
-              {renderSaveReason(disableSaveReason, isSubmitting)}
+              {renderSaveReason(disableSaveReason, isSubmitting, attemptedSave)}
 
-              <Button onPress={onSave} disabled={disableSave || isSubmitting}>
+              <Button onPress={onSave} disabled={isSubmitting}>
                 {t('common.save')}
               </Button>
             </Box>
