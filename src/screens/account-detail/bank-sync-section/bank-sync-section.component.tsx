@@ -272,7 +272,18 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
           {t('accountDetail.addBankAction')}
         </Button>
       ) : (
-        connectFieldByProviderId[selectedProviderId]
+        <Box gap={2}>
+          {connectFieldByProviderId[selectedProviderId]}
+
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            onPress={() => setSelectedProviderId(undefined)}
+          >
+            {t('accountDetail.changeBankAction')}
+          </Button>
+        </Box>
       )}
 
       {error !== undefined && (

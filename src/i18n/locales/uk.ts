@@ -321,6 +321,7 @@ export const uk: typeof en = {
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
     btcAddressPlaceholder: 'BTC-адреса',
+    changeBankAction: 'Змінити банк',
     checking: 'Перевірка…',
     connectBinance: 'Підключити Binance',
     connectedAs: 'Підключено як {{name}}',

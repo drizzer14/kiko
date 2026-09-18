@@ -342,6 +342,7 @@ export const en = {
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
     btcAddressPlaceholder: 'BTC address',
+    changeBankAction: 'Change bank',
     checking: 'Checking…',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
