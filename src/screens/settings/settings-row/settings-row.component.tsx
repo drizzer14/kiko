@@ -14,7 +14,14 @@ import type { SettingsRowProps } from './settings-row.props';
 // non-navigating row, e.g. the inline base-currency switch). This is the ONE
 // row shape every Settings card is built from, so adding another setting is a
 // one-line addition rather than a new bespoke block.
-const SettingsRow: FC<SettingsRowProps> = ({ icon, label, onPress, children, ...props }) => {
+const SettingsRow: FC<SettingsRowProps> = ({
+  icon,
+  label,
+  onPress,
+  trailing,
+  children,
+  ...props
+}) => {
   const header = (
     <Box direction="row" style={styles.header}>
       <Box direction="row" gap={3} style={styles.rowLead}>
@@ -23,6 +30,9 @@ const SettingsRow: FC<SettingsRowProps> = ({ icon, label, onPress, children, ...
           <Text variant="body">{label}</Text>
         </Box>
       </Box>
+
+      {trailing !== undefined && <Box style={styles.trailing}>{trailing}</Box>}
+
       {onPress !== undefined && (
         // The chevron is a decorative affordance: the row's own button role
         // already conveys "navigates", so hide the glyph from the a11y tree

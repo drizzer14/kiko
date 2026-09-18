@@ -17,6 +17,8 @@ import TextField from '../../../design-system/components/text-field';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
+import { styles } from './export-data.styles';
+
 type ExportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ExportData'>;
 
 // How long the Copy Key button shows "Copied" feedback before reverting to
@@ -91,17 +93,24 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
     >
       <Box gap={4}>
         <Card testID="settings-card-export-secrets" padding={3}>
-          <SettingsRow icon="key" label={t('settings.dataExport.includeSecrets')}>
-            <Box gap={2}>
+          {/* The toggle sits INLINE with its own label (device-feedback-round-3
+              item 5), not stacked below it — `SettingsRow`'s `trailing` prop
+              puts it on the same header line as the leading icon + label; the
+              hint stays full-width `children` below, same as before. */}
+          <SettingsRow
+            icon="key"
+            label={t('settings.dataExport.includeSecrets')}
+            trailing={
               <Switch
                 testID="settings-switch-export-secrets"
                 value={includeSecrets}
                 onValueChange={setIncludeSecrets}
               />
-              <Text variant="caption" tone="textSecondary">
-                {t('settings.dataExport.includeSecretsHint')}
-              </Text>
-            </Box>
+            }
+          >
+            <Text variant="caption" tone="textSecondary">
+              {t('settings.dataExport.includeSecretsHint')}
+            </Text>
           </SettingsRow>
         </Card>
 
@@ -111,8 +120,17 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
         {keyBase64 !== undefined && (
           <Card testID="settings-card-export-key" padding={3}>
-            <Box gap={3}>
-              <Text variant="body">{t('settings.dataExport.keyWarning')}</Text>
+            {/* No uniform `gap` here — see `export-data.styles.ts`'s
+                `keyWarning` doc comment for why the TextField's own trailing
+                space is deliberately left alone instead of adding a second
+                gap on top of it. */}
+            <Box>
+              <Box style={styles.keyWarning}>
+                <Text variant="body" tone="textPrimary">
+                  {t('settings.dataExport.keyWarning')}
+                </Text>
+              </Box>
+
               <TextField
                 label={t('settings.dataExport.keyLabel')}
                 value={keyBase64}
@@ -120,6 +138,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
                 editable={false}
                 multiline
               />
+
               <Box direction="row" gap={3}>
                 <Button
                   testID="settings-button-copy-key"
