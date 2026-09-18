@@ -851,18 +851,18 @@ describe('AccountFormScreen — sync credentials on create', () => {
     );
   });
 
-  it('shows an "enter a name first" hint on the bank form while the name is empty', async () => {
-    // Parity with the crypto form's own name-required hint: the bank block
-    // renders it only while `!canSave`, and it disappears the moment a name is
-    // entered — mirrors ensureAccount's own name gate (a Connect tapped before
-    // a name is entered would otherwise fail with no visible explanation).
+  it('shows the name-required reason only after a Connect is attempted with an empty name, on the bank form', async () => {
     const view = await renderForm();
 
-    expect(view.queryByTestId('monobank-connect-name-hint')).toBeTruthy();
+    expect(view.queryByTestId('account-name-error')).toBeNull();
+
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    expect(view.queryByTestId('account-name-error')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
-
-    expect(view.queryByTestId('monobank-connect-name-hint')).toBeNull();
+    expect(view.queryByTestId('account-name-error')).toBeNull();
   });
 
   it('reuses the shared Wallet|Binance sync form (picker + fields) on the crypto create', async () => {
@@ -897,22 +897,20 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(getByLabelText('wallet-field')).toBeTruthy();
   });
 
-  it('shows an "enter a name first" hint on the crypto form while the name is empty', async () => {
+  it('shows the name-required reason only after a Connect is attempted with an empty name, on the crypto form', async () => {
     const { getByLabelText, getByText, queryByTestId } = await renderForm();
 
     await fireEvent.press(getByText('Crypto'));
-    // With no name, the hint explains why a Connect will not persist anything.
-    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+    expect(queryByTestId('account-name-error')).toBeNull();
 
-    // Typing a name clears the hint — the source can now be connected.
+    await fireEvent.press(getByLabelText('wallet-field'));
+    expect(queryByTestId('account-name-error')).toBeTruthy();
+
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    expect(queryByTestId('crypto-sync-name-hint')).toBeNull();
+    expect(queryByTestId('account-name-error')).toBeNull();
   });
 
   it('does not create a crypto account when a source Connect is tapped with an empty name', async () => {
-    // The form is visible and a credential/address may be entered, but the Connect
-    // must refuse to insert a row without a name (parity with the bank Save gate):
-    // no create, no sync, and the hint stays visible so the user understands why.
     const { getByLabelText, getByText, queryByTestId } = await renderForm();
 
     await fireEvent.press(getByText('Crypto'));
@@ -920,14 +918,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
-    // The kind switch must NOT lock — no row was started.
     expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
-    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+    expect(queryByTestId('account-name-error')).toBeTruthy();
   });
 
   it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
-    // Parity with the wallet-field case above, targeting the OTHER source field:
-    // the empty-name reject must guard both CryptoSyncForm fields, not just Wallet.
     const { getByLabelText, getByText, queryByTestId } = await renderForm();
 
     await fireEvent.press(getByText('Crypto'));
@@ -937,26 +932,23 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
-    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+    expect(queryByTestId('account-name-error')).toBeTruthy();
   });
 
   it('treats a whitespace-only name exactly like an empty name on the crypto form', async () => {
-    // A name of only spaces must not satisfy canSave: the sync form still shows
-    // (full parity, no gate on visibility), the hint stays up, and a Connect
-    // creates nothing — trimmedName === '' is the same reject path as a truly
-    // empty name.
     const { getByLabelText, getByText, queryByTestId } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Crypto'));
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
-    expect(queryByTestId('crypto-sync-name-hint')).toBeTruthy();
+    expect(queryByTestId('account-name-error')).toBeNull();
 
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
+    expect(queryByTestId('account-name-error')).toBeTruthy();
   });
 
   it('retries the crypto create after an empty-name reject, once a valid name is entered', async () => {
