@@ -478,6 +478,52 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByText('Save')).not.toBeDisabled();
   });
 
+  it('shows an inline reason for a term deposit missing its contribution, rate, and term', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+
+    expect(
+      screen.getByText('Add at least one contribution with an amount and a date.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the rate reason once a contribution is set but the rate is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+
+    expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
+  });
+
+  it('shows the term reason once the rate is set but the term is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Annual Rate %', '12');
+
+    expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+  });
+
+  it('shows no term-deposit reason once every field is valid', async () => {
+    const screen = await renderScreen();
+
+    await fillTermDepositFields(screen);
+
+    expect(
+      screen.queryByText('Add at least one contribution with an amount and a date.'),
+    ).toBeNull();
+    expect(screen.queryByText('Enter a rate of 0 or higher.')).toBeNull();
+    expect(screen.queryByText('Enter a whole number of months greater than 0.')).toBeNull();
+  });
+
   it('disables Save for a bond missing its numeric fields and dates', async () => {
     const screen = await renderScreen();
 
