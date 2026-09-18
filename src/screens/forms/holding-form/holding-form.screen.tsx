@@ -49,8 +49,8 @@ import DateField from '../date-field';
 import ColorPicker from '../color-picker';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -727,6 +727,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  // Computed once here (rather than inline at each render site below) so the
+  // group `<FieldError>`'s own `message` prop reuses this exact string
+  // instead of calling `t()` a second time for the same key.
+  const contributionsRequiredMessage = fieldErrorMessage(
+    t,
+    attemptedSave,
+    termDepositReasonKey(),
+    'forms.holding.contributionsRequiredError',
+  );
+  const maturityDateErrorMessage = fieldErrorMessage(
+    t,
+    attemptedSave,
+    bondReasonKey(),
+    'forms.holding.maturityDateError',
+  );
+
   return (
     <Screen
       scroll
@@ -838,15 +854,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                         required
                       />
 
-                      {index === 0 &&
-                        fieldErrorMessage(
-                          t,
-                          attemptedSave,
-                          termDepositReasonKey(),
-                          'forms.holding.contributionsRequiredError',
-                        ) !== undefined && (
-                          <FieldError message={t('forms.holding.contributionsRequiredError')} />
-                        )}
+                      {index === 0 && contributionsRequiredMessage !== undefined && (
+                        <FieldError message={contributionsRequiredMessage} />
+                      )}
 
                       {contributions.length > 1 && (
                         <Button
@@ -1017,12 +1027,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 required
               />
 
-              {fieldErrorMessage(
-                t,
-                attemptedSave,
-                bondReasonKey(),
-                'forms.holding.maturityDateError',
-              ) !== undefined && <FieldError message={t('forms.holding.maturityDateError')} />}
+              {maturityDateErrorMessage !== undefined && (
+                <FieldError message={maturityDateErrorMessage} />
+              )}
             </View>
 
             <ChipRow

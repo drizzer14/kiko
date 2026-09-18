@@ -17,7 +17,7 @@ import type { AccountsStackParamList } from '../../../navigation/types';
 import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,

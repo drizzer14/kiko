@@ -5,7 +5,7 @@ import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
@@ -27,7 +27,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     appendDepositContribution: jest.fn(),
   },
 }));
-jest.mock('../scroll-to-field');
+jest.mock('../scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {

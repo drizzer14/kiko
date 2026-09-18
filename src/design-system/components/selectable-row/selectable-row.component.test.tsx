@@ -1,5 +1,5 @@
-import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
+import { render } from '@testing-library/react-native';
 import '../../unistyles';
 
 import SelectableRow from '.';

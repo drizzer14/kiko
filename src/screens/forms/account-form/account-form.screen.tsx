@@ -34,7 +34,7 @@ import BankTypeField from '../bank-type-field';
 import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

@@ -6,12 +6,12 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 
 import HoldingFormScreen from './holding-form.screen';
 
@@ -75,7 +75,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
-jest.mock('../scroll-to-field');
+jest.mock('../scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });

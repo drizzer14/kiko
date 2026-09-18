@@ -6,8 +6,8 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { Alert, type ScrollViewInstance, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Alert, type ScrollViewInstance, View } from 'react-native';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import {
   type FC,
@@ -70,9 +70,9 @@ import HoldingSelectField from '../holding-select-field';
 import ConvertExchangeFields from '../convert-exchange-fields';
 import DescriptionSuggestions from '../description-suggestions';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
+import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists

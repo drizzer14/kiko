@@ -5,7 +5,7 @@ import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
@@ -71,7 +71,7 @@ jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
 jest.mock('../../../crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../scroll-to-field');
+jest.mock('../scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,
