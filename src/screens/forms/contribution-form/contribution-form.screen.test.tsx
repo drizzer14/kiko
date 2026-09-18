@@ -200,34 +200,26 @@ describe('ContributionFormScreen', () => {
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
   });
 
-  it('disables Save until a positive amount is entered', async () => {
+  it('keeps Save always enabled, regardless of the amount', async () => {
     const utils = await renderScreen();
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save contribution').parent?.props.accessibilityState.disabled;
 
-    // A blank amount cannot be saved.
-    expect(isSaveDisabled()).toBe(true);
+    expect(isSaveDisabled()).toBe(false);
 
-    // A zero amount is still not a valid contribution.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '0');
-    expect(isSaveDisabled()).toBe(true);
-
-    // A positive amount enables Save.
-    await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
     expect(isSaveDisabled()).toBe(false);
   });
 
-  it('shows an inline reason once a non-positive amount is entered', async () => {
+  it('shows the inline reason only after Save is pressed with an invalid amount, and does not append', async () => {
     const utils = await renderScreen();
 
-    // Blank: no reason yet, nothing typed.
     expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
 
-    // A zero amount: the reason appears.
-    await fireEvent.changeText(utils.getByLabelText('Amount'), '0');
+    await fireEvent.press(utils.getByText('Save contribution'));
     expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
 
-    // A positive amount: the reason clears.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
     expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
   });
