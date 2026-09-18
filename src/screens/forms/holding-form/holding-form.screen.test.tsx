@@ -555,6 +555,50 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByText('Save')).not.toBeDisabled();
   });
 
+  it('shows the quantity reason for a bond missing its numeric fields', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+
+    expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+  });
+
+  it('shows the face-value reason once quantity is set but face value is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+
+    expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
+  });
+
+  it('shows the maturity-date reason when maturity is not after purchase', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Face Value', '1000');
+    await fill(screen, 'Coupon %', '9');
+    await pickDate(screen, 'Purchase Date', 2026, 1, 1);
+    await pickDate(screen, 'Maturity Date', 2026, 1, 1);
+
+    expect(screen.getByText('Maturity date must be after the purchase date.')).toBeTruthy();
+  });
+
+  it('shows no bond reason once every field and date is valid', async () => {
+    const screen = await renderScreen();
+
+    await fillBondFields(screen);
+
+    expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
+    expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
+    expect(screen.queryByText('Enter a coupon of 0 or higher.')).toBeNull();
+    expect(screen.queryByText('Maturity date must be after the purchase date.')).toBeNull();
+  });
+
   it('disables Save when the holding name is blank', async () => {
     const { getByText } = await renderScreen();
 
