@@ -435,23 +435,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // picked date (parsedContributions already drops blank/partial rows), a
   // non-negative annual rate that was actually entered, and a whole-month term
   // greater than zero. Recapitalization and compounding always carry defaults.
-  const isTermDepositValid = (): boolean => {
-    const rate = parseAmount(annualRate);
-    const months = parseAmount(termMonths);
-
-    return (
-      parsedContributions().length > 0 &&
-      annualRate.trim() !== '' &&
-      rate >= 0 &&
-      Number.isInteger(months) &&
-      months > 0
-    );
-  };
-
-  // The reason `isTermDepositValid` above is false, for the SAME checks in
-  // the SAME priority order — so the two can never disagree. `null` once
-  // every check passes. Not gated on whether the name is filled: the name's
-  // own required asterisk covers that separately.
+  // Not gated on whether the name is filled: the name's own required asterisk
+  // covers that separately.
   const termDepositReasonKey = (): TermDepositReasonKey | null => {
     if (parsedContributions().length === 0) {
       return 'forms.holding.contributionsRequiredError';
@@ -471,6 +456,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     return null;
   };
+
+  // Derived from `termDepositReasonKey` so the two can never disagree: valid
+  // exactly when there is no reason to reject.
+  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
   // A bond needs a positive quantity and face value, a non-negative coupon that
   // was actually entered, both dates picked, and a maturity strictly after the
