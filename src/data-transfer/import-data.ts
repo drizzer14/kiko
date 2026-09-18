@@ -12,7 +12,10 @@ import type { ExportPayload } from './payload';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 
-export type ImportSummary = {
+// Not exported: nothing outside this file imports it yet (the Import Data
+// screen, Task 13, currently consumes only `importData`'s inferred return
+// type). Knip flags an exported type nothing imports as dead code.
+type ImportSummary = {
   accountsRestored: number;
   holdingsRestored: number;
   transactionsRestored: number;
