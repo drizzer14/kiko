@@ -28,6 +28,7 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
@@ -153,7 +154,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
-    navigation.navigate('StatementImport', { filePath: picked.uri, accountId });
+    navigation.navigate('StatementImport', {
+      filePath: picked.uri,
+      accountId,
+      expectedFormatId: statementFormatIdForBank(account?.bankId),
+    });
   };
 
   return (

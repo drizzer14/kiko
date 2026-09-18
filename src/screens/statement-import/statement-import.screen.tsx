@@ -9,6 +9,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type {
   SpreadsheetCellValue,
   StatementFormat,
+  StatementFormatId,
   StatementFormatInput,
 } from '../../statement-import/parser';
 import { formatDate } from '../../dates/format';
@@ -19,8 +20,8 @@ import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
-import { detectFormat } from '../../statement-import/registry';
 import type { AccountsStackParamList } from '../../navigation/types';
+import { detectFormat, statementFormats } from '../../statement-import/registry';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import ImportOutcome from './import-outcome';
@@ -120,6 +121,37 @@ const decodeBase64Utf8 = (base64: string): string => decodeUtf8Bytes(decodeBase6
 // `monobank-csv.format.ts`), but `StatementFormatInput` still carries it, so
 // a real (if inert) value is passed rather than an empty string.
 const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
+
+// The one format `expectedFormatId` names, or `undefined` when the route
+// carries none (an account with no `bankId`, or the accountId-less Share
+// Extension entry point) — the caller then falls back to the existing
+// multi-format `detectFormat` auto-detect below.
+const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
+  id === undefined ? undefined : statementFormats.find((format) => format.id === id);
+
+// The recognized format for a ready `input` (device-feedback-round-1 item
+// 5): scoped to `expectedFormat` when the account's bank is known — ONLY
+// that bank's own format may match, so a file that parses as a DIFFERENT
+// bank's format recognizes nothing here (the caller reports it as a
+// mismatch, not a silent auto-detect success) — or the original
+// cross-format `detectFormat` when no bank is known. `input === undefined`
+// (still loading or unreadable) recognizes nothing either way. Extracted
+// from the screen component so the scoping branch doesn't nest a ternary
+// inside the component and push it over the cognitive-complexity budget.
+const formatFor = (
+  input: StatementFormatInput | undefined,
+  expectedFormat: StatementFormat | undefined,
+): StatementFormat | undefined => {
+  if (input === undefined) {
+    return undefined;
+  }
+
+  if (expectedFormat !== undefined) {
+    return expectedFormat.detect(input) ? expectedFormat : undefined;
+  }
+
+  return detectFormat(input);
+};
 
 // PrivatBank XLSX is the only spreadsheet format in scope (section C.5) —
 // an honest, visible extension check decides the text-vs-spreadsheet branch
@@ -265,7 +297,7 @@ type LoadState =
  * and the `importStatement` action.
  */
 const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId } = route.params;
+  const { filePath, accountId, expectedFormatId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -333,14 +365,20 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     loadState.kind === 'ready'
       ? { text: loadState.text, fileName, sheetRows: loadState.sheetRows }
       : undefined;
-  const format = input ? detectFormat(input) : undefined;
+  const expectedFormat = expectedFormatOf(expectedFormatId);
+  // Scoped recognition (device-feedback-round-1 item 5) — see `formatFor`'s
+  // doc comment above for the full rule.
+  const format = formatFor(input, expectedFormat);
   const stats = format && input ? previewStats(format, input) : undefined;
-  // Covers every "this file cannot be imported as-is" outcome under one
-  // message: the read itself failed, OR the read succeeded but no format
-  // recognized it, OR a format matched and then failed to parse a data row.
-  // The user does not need to know WHERE in the pipeline it failed.
+  const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
+  // Covers every "this file cannot be imported as-is" outcome EXCEPT the
+  // bank-mismatch case (which renders its own, more specific message below):
+  // the read itself failed, OR the read succeeded but no format recognized
+  // it (and none was expected), OR a format matched and then failed to
+  // parse a data row.
   const showUnreadable =
-    loadState.kind === 'unreadable' || (input !== undefined && stats === undefined);
+    !bankMismatch &&
+    (loadState.kind === 'unreadable' || (input !== undefined && stats === undefined));
 
   const handleImport = async (): Promise<void> => {
     if (!input || !selectedHoldingId || importing) {
@@ -365,6 +403,12 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         {loadState.kind === 'loading' && (
           <Text variant="body" tone="textSecondary">
             {t('statementImport.reading')}
+          </Text>
+        )}
+
+        {bankMismatch && expectedFormat && (
+          <Text variant="body">
+            {t('statementImport.bankMismatch', { bank: expectedFormat.displayName })}
           </Text>
         )}
 
