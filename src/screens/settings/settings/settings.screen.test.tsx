@@ -201,6 +201,24 @@ describe('SettingsScreen', () => {
     expect(rowOrder).toEqual(['settings-row-import-data', 'settings-row-export-data']);
   });
 
+  it('separates Import and Export with a divider, between the two rows', async () => {
+    const { getByTestId, getAllByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-data-transfer');
+
+    expect(within(card).getByTestId('settings-divider-data-transfer')).toBeTruthy();
+
+    // The divider sits BETWEEN the two rows, matching the iOS grouped-list style.
+    const order = getAllByTestId(/^settings-(row-(import|export)-data|divider-data-transfer)$/).map(
+      (node) => node.props.testID as string,
+    );
+    expect(order).toEqual([
+      'settings-row-import-data',
+      'settings-divider-data-transfer',
+      'settings-row-export-data',
+    ]);
+  });
+
   it('navigates to the System sub-screen when the System row is pressed', async () => {
     const navigation = navigationSpy();
     const { getByTestId } = await renderScreen(navigation);

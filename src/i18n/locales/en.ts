@@ -53,6 +53,7 @@ export const en = {
     baseCurrency: 'Base Currency',
     categories: 'Categories',
     dataExport: {
+      copied: 'Copied',
       copyKey: 'Copy Key',
       description:
         'Export all your accounts, holdings, transactions, and categories to an encrypted file you can keep as a backup or move to another device.',
