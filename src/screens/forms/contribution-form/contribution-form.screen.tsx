@@ -48,6 +48,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const { t } = useTranslation();
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState<number>(startOfToday);
+  const [attemptedSave, setAttemptedSave] = useState(false);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -58,6 +59,8 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     // amount before persisting anything.
     const majorAmount = parseAmount(amount);
     if (!(majorAmount > 0)) {
+      setAttemptedSave(true);
+
       return;
     }
     const amountMinorUnits = Money.fromMajor(currency, majorAmount).minorUnits;
@@ -73,16 +76,11 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  // Save stays disabled until the amount is a strictly positive number, the
-  // same guard `save` enforces before it writes. `parseAmount` yields NaN for a
-  // blank or junk field, and `NaN > 0` is false, so both cases keep Save off.
-  const canSave = parseAmount(amount) > 0;
-
   return (
     <Screen
       scroll
       footer={
-        <Button onPress={onSave} disabled={!canSave || isSubmitting}>
+        <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.contribution.save')}
         </Button>
       }
@@ -98,7 +96,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           required
         />
 
-        {amount.trim() !== '' && !(parseAmount(amount) > 0) && (
+        {attemptedSave && !(parseAmount(amount) > 0) && (
           <FieldError message={t('forms.contribution.amountError')} />
         )}
 
