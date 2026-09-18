@@ -1,15 +1,16 @@
-import { Pressable } from 'react-native';
-import { useTranslation } from 'react-i18next';
 import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import { bankCatalog, type BankId } from '../../../bank-sync/bank-catalog';
+import SelectableRow from '../../../design-system/components/selectable-row';
 
 import FieldTrigger from '../field-trigger';
 
-import { styles } from './bank-type-field.styles';
 import type { BankTypeFieldProps } from './bank-type-field.props';
 
 // The Option A "which bank is this account" picker (device-feedback-round-1
@@ -22,6 +23,7 @@ import type { BankTypeFieldProps } from './bank-type-field.props';
 // SAME class of bug there).
 const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, testID }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
   const selectedEntry =
@@ -49,28 +51,45 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
         testID="bank-type-sheet"
       >
         {bankCatalog.map((entry) => {
+          const isSelected = entry.id === selected;
           const caption = entry.connectable
             ? t('forms.account.bankConnectable')
             : t('forms.account.bankImportOnly');
+          // The compliance-load-bearing branch: `entry.connectable` (a plain
+          // catalog data field, never a build/env flag — see bank-catalog.ts)
+          // is the ONLY thing gating the live-sync icon. An import-only bank
+          // NEVER renders it, so its description stays honestly
+          // statements-only (Guideline 5.6 — no fake connect affordance).
+          const descriptionTone = isSelected ? 'onAccent' : 'textSecondary';
 
           return (
-            <Pressable
+            <SelectableRow
               key={entry.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${entry.displayName}. ${caption}`}
+              selected={isSelected}
               onPress={() => handleSelect(entry.id)}
-              style={styles.option}
+              label={entry.displayName}
+              accessibilityLabel={`${entry.displayName}. ${caption}`}
               testID={`bank-type-option-${entry.id}`}
-            >
-              <Box gap={1}>
-                <Text variant="body" tone="textPrimary">
-                  {entry.displayName}
-                </Text>
-                <Text variant="caption" tone="textSecondary">
-                  {caption}
-                </Text>
-              </Box>
-            </Pressable>
+              description={
+                <Box direction="row" gap={1}>
+                  {entry.connectable && (
+                    <SymbolIcon
+                      name="arrow.trianglehead.2.clockwise.rotate.90"
+                      size={theme.iconSizes.caption}
+                      tone={descriptionTone}
+                    />
+                  )}
+                  <SymbolIcon
+                    name="receipt"
+                    size={theme.iconSizes.caption}
+                    tone={descriptionTone}
+                  />
+                  <Text variant="caption" tone={descriptionTone}>
+                    {caption}
+                  </Text>
+                </Box>
+              }
+            />
           );
         })}
       </BottomSheet>

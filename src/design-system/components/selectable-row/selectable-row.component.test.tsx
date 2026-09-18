@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react-native';
+import { Text } from 'react-native';
 import '../../unistyles';
 
 import SelectableRow from '.';
@@ -62,5 +63,27 @@ describe('SelectableRow', () => {
     );
 
     expect(queryByText('Groceries')).toBeTruthy();
+  });
+
+  it('renders an optional description node below the label', async () => {
+    const { getByText } = await render(
+      <SelectableRow
+        selected={false}
+        onPress={jest.fn()}
+        label="Monobank"
+        description={<Text>Connect and import statements.</Text>}
+      />,
+    );
+
+    expect(getByText('Monobank')).toBeTruthy();
+    expect(getByText('Connect and import statements.')).toBeTruthy();
+  });
+
+  it('renders no description row when none is passed', async () => {
+    const { queryByTestId } = await render(
+      <SelectableRow selected={false} onPress={jest.fn()} label="Groceries" testID="row" />,
+    );
+
+    expect(queryByTestId('row-description')).toBeNull();
   });
 });

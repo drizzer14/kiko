@@ -81,4 +81,62 @@ describe('BankTypeField', () => {
 
     expect(getByTestId('bank-type-field')).toHaveTextContent('Monobank');
   });
+
+  it('shows a checkmark on the currently-picked bank option, matching the app picker pattern', async () => {
+    const onSelect = jest.fn();
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected="monobank"
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId('bank-type-option-monobank').props.accessibilityState.selected).toBe(true);
+    expect(getByTestId('bank-type-option-privatbank').props.accessibilityState.selected).toBe(
+      false,
+    );
+  });
+
+  it("shows Monobank's description with BOTH the live-sync and statements icons", async () => {
+    const onSelect = jest.fn();
+    const { getByTestId, toJSON } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected={null}
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    const tree = JSON.stringify(toJSON());
+    expect(tree).toContain('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(tree).toContain('receipt');
+  });
+
+  it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(
+    "shows %s's description with the statements icon ONLY (no sync icon, honest import-only)",
+    async (bankId) => {
+      const onSelect = jest.fn();
+      const { getByTestId } = await render(
+        <BankTypeField
+          label="Bank type"
+          selected={null}
+          onSelect={onSelect}
+          testID="bank-type-field"
+        />,
+      );
+
+      await fireEvent.press(getByTestId('bank-type-field'));
+
+      const optionTree = JSON.stringify(getByTestId(`bank-type-option-${bankId}`).toJSON());
+      expect(optionTree).toContain('receipt');
+      expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
+    },
+  );
 });

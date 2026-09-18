@@ -61,4 +61,8 @@ export const styles = StyleSheet.create((theme) => ({
   label: {
     flex: 1,
   },
+  // The optional `description` slot's gap from the label line above it.
+  descriptionRow: {
+    marginTop: theme.spacing(1),
+  },
 }));
