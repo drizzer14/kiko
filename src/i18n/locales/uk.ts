@@ -125,6 +125,8 @@ export const uk: typeof en = {
       date: 'Дата',
       icon: 'Іконка',
       name: 'Назва',
+      saveErrorMessage: 'Спробуйте ще раз.',
+      saveErrorTitle: 'Не вдалося зберегти',
       searchCurrencyPlaceholder: 'Пошук за кодом або назвою',
       selectCategory: 'Оберіть категорію',
       selectCurrency: 'Оберіть валюту',

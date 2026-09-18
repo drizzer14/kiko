@@ -141,6 +141,8 @@ export const en = {
       date: 'Date',
       icon: 'Icon',
       name: 'Name',
+      saveErrorMessage: 'Please try again.',
+      saveErrorTitle: 'Could not save',
       searchCurrencyPlaceholder: 'Search by code or name',
       selectCategory: 'Select category',
       selectCurrency: 'Select currency',
