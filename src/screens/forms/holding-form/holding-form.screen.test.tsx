@@ -458,6 +458,7 @@ describe('HoldingFormScreen save validation', () => {
   beforeEach(() => {
     createMock.mockClear();
     setIconMock.mockClear();
+    navigation.goBack.mockClear();
   });
 
   it('disables Save for a term deposit missing its contribution, rate, and term', async () => {

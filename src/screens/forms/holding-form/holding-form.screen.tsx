@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { ScrollViewInstance } from 'react-native';
@@ -459,61 +460,68 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    if (isEdit && holdingId !== undefined) {
-      // Update the editable fields in one transaction (see buildHoldingPatch:
-      // deposit/bond write metadata, every other type writes its balance). The
-      // icon routes through setIcon (so a cleared icon persists an explicit
-      // null), the same split the create path uses. Type/currency are read-only.
-      //
-      // `updateWithBalanceDelta`, not `update`: an edited balance also has to
-      // land on the ledger as a `manual` transaction for the difference, or the
-      // holding's history stops being derivable from its transactions and the
-      // whole past net-worth series shifts under the edit (kiko-domain). A patch
-      // with no balance in it (a deposit/bond, or a synced holding) writes no
-      // ledger row, so this is the right call for every edit.
-      await holdingsRepo.updateWithBalanceDelta(
-        holdingId,
-        buildHoldingPatch({
-          name,
-          color,
-          type,
-          currency,
-          openingBalance,
-          metadata,
-          isSynced: isSyncedEdit,
-        }),
-        Date.now(),
-      );
+    try {
+      if (isEdit && holdingId !== undefined) {
+        // Update the editable fields in one transaction (see buildHoldingPatch:
+        // deposit/bond write metadata, every other type writes its balance). The
+        // icon routes through setIcon (so a cleared icon persists an explicit
+        // null), the same split the create path uses. Type/currency are read-only.
+        //
+        // `updateWithBalanceDelta`, not `update`: an edited balance also has to
+        // land on the ledger as a `manual` transaction for the difference, or the
+        // holding's history stops being derivable from its transactions and the
+        // whole past net-worth series shifts under the edit (kiko-domain). A patch
+        // with no balance in it (a deposit/bond, or a synced holding) writes no
+        // ledger row, so this is the right call for every edit.
+        await holdingsRepo.updateWithBalanceDelta(
+          holdingId,
+          buildHoldingPatch({
+            name,
+            color,
+            type,
+            currency,
+            openingBalance,
+            metadata,
+            isSynced: isSyncedEdit,
+          }),
+          Date.now(),
+        );
 
-      // Write the icon unconditionally in edit mode so clearing a custom icon
-      // (icon === null) persists the removal rather than leaving the old glyph.
-      await holdingsRepo.setIcon(holdingId, icon);
+        // Write the icon unconditionally in edit mode so clearing a custom icon
+        // (icon === null) persists the removal rather than leaving the old glyph.
+        await holdingsRepo.setIcon(holdingId, icon);
+
+        navigation.goBack();
+
+        return;
+      }
+
+      const newHoldingId = await holdingsRepo.create({
+        accountId,
+        name,
+        type,
+        currency,
+        balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
+        metadata,
+        // Persist the color only when the user picked one (dirty). Left null, the
+        // row follows its type's default at display time — the same fallback the
+        // icon uses — so a type-default color is not frozen onto the row.
+        color,
+      });
+
+      // Persist the chosen icon on the freshly-created row, using the id the
+      // create resolved to. Awaited so it commits before navigating away.
+      if (icon !== null) {
+        await holdingsRepo.setIcon(newHoldingId, icon);
+      }
 
       navigation.goBack();
-
-      return;
+    } catch {
+      // Mirrors contribution-form's and account-form's Alert pattern: a write
+      // failure keeps the screen open with the entered values intact, rather
+      // than navigating away as if nothing was wrong.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
     }
-
-    const newHoldingId = await holdingsRepo.create({
-      accountId,
-      name,
-      type,
-      currency,
-      balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-      metadata,
-      // Persist the color only when the user picked one (dirty). Left null, the
-      // row follows its type's default at display time — the same fallback the
-      // icon uses — so a type-default color is not frozen onto the row.
-      color,
-    });
-
-    // Persist the chosen icon on the freshly-created row, using the id the
-    // create resolved to. Awaited so it commits before navigating away.
-    if (icon !== null) {
-      await holdingsRepo.setIcon(newHoldingId, icon);
-    }
-
-    navigation.goBack();
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
