@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 // Side-effect import: src/i18n/index.ts calls `i18next.init()` at module
 // load. Every test file gets its own fresh module registry, so without this
@@ -97,5 +97,67 @@ describe('ExportDataScreen', () => {
     await fireEvent.press(await findByTestId('settings-button-share-file'));
 
     expect(mockShare).toHaveBeenCalledWith({ url: '/tmp/x.kiko' });
+  });
+
+  // DEVICE BUG: the primary Export button previously rendered as scroll
+  // CONTENT, which pushed it below the fold on a real device — matches the
+  // fix already made to the Settings screen's own footer and to
+  // ImportDataScreen's primary button.
+  it('pins the Export button to the screen footer slot, not the scrolling content', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    const scrollView = getByTestId('screen-scroll-view');
+
+    expect(within(footer).getByTestId('settings-button-export')).toBeTruthy();
+    expect(within(scrollView).queryByTestId('settings-button-export')).toBeNull();
+  });
+});
+
+describe('ExportDataScreen — copy-key feedback', () => {
+  beforeEach(() => {
+    mockExportData.mockReset();
+    mockSetString.mockReset();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shows "Copied" after pressing Copy Key, then reverts to "Copy Key" after the delay', async () => {
+    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    const { getByTestId, findByTestId, getByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-export'));
+    await fireEvent.press(await findByTestId('settings-button-copy-key'));
+
+    expect(getByText('Copied')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+
+    expect(getByText('Copy Key')).toBeTruthy();
+  });
+
+  // BLOCKING (review): a fresh Export mints a brand-new key, but the button
+  // previously kept showing "Copied" from the PRIOR key's copy — misleading,
+  // given the "save this key, it will not be shown again" warning, since the
+  // new key was never actually copied.
+  it('reverts a stale "Copied" label to "Copy Key" when a new export produces a new key', async () => {
+    mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/a.kiko', keyBase64: 'keyA==' });
+    const { getByTestId, findByTestId, getByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-export'));
+    await fireEvent.press(await findByTestId('settings-button-copy-key'));
+
+    expect(getByText('Copied')).toBeTruthy();
+    expect(mockSetString).toHaveBeenCalledWith('keyA==');
+
+    mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/b.kiko', keyBase64: 'keyB==' });
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    expect(getByText('Copy Key')).toBeTruthy();
   });
 });

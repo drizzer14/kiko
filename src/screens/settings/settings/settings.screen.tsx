@@ -12,6 +12,7 @@ import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Screen from '../../../design-system/components/screen';
+import Divider from '../../../design-system/components/divider';
 import type { SettingsStackParamList } from '../../../navigation/types';
 import Card from '../../../design-system/components/card';
 import CurrencyField from '../../../design-system/components/currency-field';
@@ -152,13 +153,15 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             Import first (the more common entry point — bringing existing data
             in) then Export. */}
         <Card testID="settings-card-data-transfer" padding={3}>
-          <Box gap={3}>
+          <Box gap={4}>
             <SettingsRow
               testID="settings-row-import-data"
               icon="square.and.arrow.down"
               label={t('settings.dataImport.title')}
               onPress={() => navigation.navigate('ImportData')}
             />
+
+            <Divider testID="settings-divider-data-transfer" />
 
             <SettingsRow
               testID="settings-row-export-data"

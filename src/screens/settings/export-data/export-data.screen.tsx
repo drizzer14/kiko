@@ -1,7 +1,7 @@
 import type { FC } from 'react';
-import { useState } from 'react';
 import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useEffect, useRef, useState } from 'react';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { exportData } from '@kiko/data-transfer/export-data';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,17 +19,35 @@ import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
 type ExportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ExportData'>;
 
+// How long the Copy Key button shows "Copied" feedback before reverting to
+// its normal label — the iOS-standard copy-confirmation duration.
+const COPIED_FEEDBACK_DURATION_MS = 2000;
+
 const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   const { t } = useTranslation();
   const [includeSecrets, setIncludeSecrets] = useState(false);
   const [keyBase64, setKeyBase64] = useState<string | undefined>(undefined);
   const [fileUri, setFileUri] = useState<string | undefined>(undefined);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      clearTimeout(copiedTimeoutRef.current);
+    },
+    [],
+  );
 
   const runExport = async (): Promise<void> => {
     try {
       const result = await exportData({ includeSecrets });
       setKeyBase64(result.keyBase64);
       setFileUri(result.fileUri);
+      // A fresh key was never copied, so any "Copied" feedback left over from
+      // a PRIOR key would mislead the "save this key, it will not be shown
+      // again" warning — reset it and drop the stale pending revert timeout.
+      clearTimeout(copiedTimeoutRef.current);
+      setCopied(false);
     } catch {
       Alert.alert(t('settings.dataExport.errorTitle'), t('settings.dataExport.errorMessage'));
     }
@@ -40,6 +58,11 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   const handleCopyKey = (): void => {
     if (keyBase64 !== undefined) {
       Clipboard.setString(keyBase64);
+      setCopied(true);
+      clearTimeout(copiedTimeoutRef.current);
+      copiedTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+      }, COPIED_FEEDBACK_DURATION_MS);
     }
   };
 
@@ -50,7 +73,22 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   };
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={
+        <Box direction="row" gap={2}>
+          <Button
+            testID="settings-button-export"
+            variant="primary"
+            fullWidth
+            onPress={handleExport}
+            disabled={isSubmitting}
+          >
+            {t('settings.dataExport.exportButton')}
+          </Button>
+        </Box>
+      }
+    >
       <Box gap={4}>
         <Card testID="settings-card-export-secrets" padding={3}>
           <SettingsRow icon="key" label={t('settings.dataExport.includeSecrets')}>
@@ -71,10 +109,6 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
           {t('settings.dataExport.description')}
         </Text>
 
-        <Button testID="settings-button-export" onPress={handleExport} disabled={isSubmitting}>
-          {t('settings.dataExport.exportButton')}
-        </Button>
-
         {keyBase64 !== undefined && (
           <Card testID="settings-card-export-key" padding={3}>
             <Box gap={3}>
@@ -92,7 +126,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
                   variant="secondaryTonal"
                   onPress={handleCopyKey}
                 >
-                  {t('settings.dataExport.copyKey')}
+                  {copied ? t('settings.dataExport.copied') : t('settings.dataExport.copyKey')}
                 </Button>
                 <Button
                   testID="settings-button-share-file"
