@@ -25,7 +25,7 @@ export const bankIds = [
 
 export type BankId = (typeof bankIds)[number];
 
-export type BankCatalogEntry = {
+type BankCatalogEntry = {
   id: BankId;
   /** The plain bank name shown in the account-form picker — distinct from
    * the matching `StatementFormat.displayName` (`../../statement-import/parser`),
