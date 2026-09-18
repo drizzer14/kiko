@@ -28,7 +28,7 @@ import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { statementFormatIdForBank } from '../../bank-sync/bank-catalog';
+import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
 import CardContextMenu from '../../design-system/components/card-context-menu';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
@@ -117,7 +117,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Every bank account shows the connect/sync affordance independently — there
   // is no single-connection gate, so a second connection can connect
   // alongside the first (each binds its own per-account credential and cursor).
-  const showActionButton = isBankAccount;
+  // Gated on the account's picked bank being CONNECTABLE (device-feedback-
+  // round-4 item 4 — the SAME `bankCatalog` capability BankTypeField's picker
+  // already reads): an import-only bank (e.g. PrivatBank) must show NO
+  // sync/connect section, only the Import-statement footer button below. An
+  // account with no bank picked yet (or one from before this feature)
+  // defaults to connectable rather than guessing it is import-only.
+  const showActionButton = isBankAccount && isConnectableBank(account?.bankId);
   // The Import-statement footer button only makes sense once the account's
   // picked bank resolves to a known statement format (cash/crypto accounts,
   // and a bank account with no bank picked yet, have nothing to scope an

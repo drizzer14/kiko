@@ -41,6 +41,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const [resultMessage, setResultMessage] = useState<string | undefined>(undefined);
   const [wrongFileTypeError, setWrongFileTypeError] = useState(false);
   const [keyTooShortError, setKeyTooShortError] = useState(false);
+  const [noFileError, setNoFileError] = useState(false);
 
   const handlePickFile = async (): Promise<void> => {
     try {
@@ -61,6 +62,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
       }
 
       setWrongFileTypeError(false);
+      setNoFileError(false);
       setFileUri(picked.uri);
       setFileName(name);
     } catch {
@@ -96,16 +98,21 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { onPress: handleConfirmedImport, isSubmitting } = useSubmitOnce(runImport);
 
   const handleImportPress = (): void => {
-    if (fileUri === undefined) {
+    // BUG (device-feedback-round-4 item 7): pressing Import with no file
+    // and/or no key used to fail SILENTLY — an early `return` on a missing
+    // file skipped the key check entirely, so a combined "nothing picked,
+    // nothing pasted" press showed no error at all. Both are now validated
+    // independently on every press, each surfacing its own inline error.
+    const missingFile = fileUri === undefined;
+    const missingKey = keyBase64.length < MIN_KEY_LENGTH;
+
+    setNoFileError(missingFile);
+    setKeyTooShortError(missingKey);
+
+    if (missingFile || missingKey) {
       return;
     }
 
-    if (keyBase64.length < MIN_KEY_LENGTH) {
-      setKeyTooShortError(true);
-      return;
-    }
-
-    setKeyTooShortError(false);
     setConfirmVisible(true);
   };
 
@@ -149,6 +156,15 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
             {wrongFileTypeError && (
               <Text variant="caption" tone="negative">
                 {t('settings.dataImport.wrongFileTypeError')}
+              </Text>
+            )}
+
+            {/* The more specific wrong-file-type error above already implies
+                "no valid file chosen yet" — showing both would be redundant,
+                so this only renders when that one is not already up. */}
+            {noFileError && !wrongFileTypeError && (
+              <Text variant="caption" tone="negative">
+                {t('settings.dataImport.noFileError')}
               </Text>
             )}
           </Box>

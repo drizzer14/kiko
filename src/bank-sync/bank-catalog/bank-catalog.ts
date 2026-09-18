@@ -88,3 +88,12 @@ export const statementFormatIdForBank = (
   isBankId(bankId)
     ? bankCatalog.find((entry) => entry.id === bankId)?.statementFormatId
     : undefined;
+
+/** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE (device-
+ * feedback-round-4 item 4): `true` for an unset/unrecognized value (the
+ * account has not declared a bank yet, or predates this feature — the
+ * connect affordance stays available rather than guessing it is import-only)
+ * and for Monobank; `false` for a known import-only bank (PrivatBank etc.),
+ * which must show NO sync/connect affordance — only its statement import. */
+export const isConnectableBank = (bankId: string | null | undefined): boolean =>
+  isBankId(bankId) ? (bankCatalog.find((entry) => entry.id === bankId)?.connectable ?? true) : true;

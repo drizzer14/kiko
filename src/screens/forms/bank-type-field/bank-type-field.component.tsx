@@ -63,9 +63,12 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
           const descriptionTone = isSelected ? 'onAccent' : 'textSecondary';
           // The capability icons now sit in `trailing` (device-feedback-round-3
           // item 7: far right of the option, aligned with the title), so they
-          // reuse the TITLE's own tone and icon-size step (`body`, the size
-          // paired with the label's `body` type step — see the "SF Symbol
-          // sizing" HIG rule) rather than the caption's smaller tone/size.
+          // reuse the TITLE's own tone. Round-3 sized them at `body` (paired
+          // with the label's `body` type step); device-feedback-round-4 item 3
+          // found that one step too big next to the title text, so they now
+          // step down to `caption` — one size smaller, while `titleRow`'s
+          // `alignItems: 'flex-start'` still keeps them top-aligned with the
+          // title's first line.
           const titleTone = isSelected ? 'onAccent' : 'textPrimary';
 
           return (
@@ -81,11 +84,17 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
                   {entry.connectable && (
                     <SymbolIcon
                       name="arrow.trianglehead.2.clockwise.rotate.90"
-                      size={theme.iconSizes.body}
+                      size={theme.iconSizes.caption}
                       tone={titleTone}
+                      testID={`bank-type-option-${entry.id}-connect-icon`}
                     />
                   )}
-                  <SymbolIcon name="receipt" size={theme.iconSizes.body} tone={titleTone} />
+                  <SymbolIcon
+                    name="receipt"
+                    size={theme.iconSizes.caption}
+                    tone={titleTone}
+                    testID={`bank-type-option-${entry.id}-import-icon`}
+                  />
                 </Box>
               }
               // No `numberOfLines`/truncation — a caption must wrap onto a

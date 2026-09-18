@@ -1,8 +1,10 @@
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 import pkg from '../../../../package.json';
+import { darkTheme } from '../../../design-system/theme';
 import {
   asNavigationProp,
   asRouteProp,
@@ -165,7 +167,7 @@ describe('SettingsScreen', () => {
     expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
-  it('renders the System navigation card at the very top, above Base Currency and Categories', async () => {
+  it('renders the System navigation card at the very top, then Import/Export directly below it', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('settings-card-system')).toBeTruthy();
@@ -174,14 +176,18 @@ describe('SettingsScreen', () => {
     // `Card` renders a single flat node per testID (no inner `-base` layer the
     // way `GlassSurface` used to), but the filter is kept defensively so this
     // assertion only ever compares top-level card order.
+    //
+    // device-feedback-round-4 item 9: the Import/Export group moves to sit
+    // directly BELOW System (round-2 asked for this and it had not landed —
+    // it previously rendered LAST, after Categories).
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
       .filter((testID) => !testID.endsWith('-base'));
     expect(cardOrder).toEqual([
       'settings-card-system',
+      'settings-card-data-transfer',
       'settings-card-base-currency',
       'settings-card-categories',
-      'settings-card-data-transfer',
     ]);
   });
 
@@ -217,6 +223,31 @@ describe('SettingsScreen', () => {
       'settings-divider-data-transfer',
       'settings-row-export-data',
     ]);
+  });
+
+  it('insets the Import/Export divider to align with the row LABEL, not edge-to-edge (device-feedback-round-4 item 6)', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const divider = getByTestId('settings-divider-data-transfer');
+    const marginLeft = StyleSheet.flatten(divider.props.style).marginLeft;
+
+    // Aligned with the label — the leading icon's own width (the default
+    // `SettingsRow` icon size) plus the icon-to-label gap, NOT 0 (edge-to-edge).
+    expect(marginLeft).toBe(darkTheme.iconSizes.body + darkTheme.spacing(3));
+  });
+
+  it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding (device-feedback-round-4 item 6)', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-data-transfer');
+    const importRow = getByTestId('settings-row-import-data');
+    const exportRow = getByTestId('settings-row-export-data');
+
+    // `Card`'s own `padding` prop is explicitly 0 (not omitted) — each row
+    // below carries its OWN padding instead (asserted below).
+    expect(StyleSheet.flatten(card.props.style).padding).toBe(0);
+    expect(StyleSheet.flatten(importRow.props.style).paddingVertical).toBe(darkTheme.spacing(3));
+    expect(StyleSheet.flatten(exportRow.props.style).paddingVertical).toBe(darkTheme.spacing(3));
   });
 
   it('navigates to the System sub-screen when the System row is pressed', async () => {

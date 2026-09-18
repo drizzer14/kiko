@@ -603,6 +603,24 @@ describe('AccountDetailScreen', () => {
       visible: [],
       hidden: ['Connect Monobank', 'Sync'],
     },
+    {
+      // device-feedback-round-4 item 4: an import-only bank (bankCatalog's
+      // `connectable: false`) must show NO sync/connect affordance at all —
+      // not even the disconnected "Add a bank" trigger.
+      description: 'a bank account whose picked bank is import-only (e.g. PrivatBank)',
+      account: account({ kind: 'bank', bankId: 'privatbank', institution: null }),
+      visible: [],
+      hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
+    },
+    {
+      // A bank account whose picked bank IS connectable (Monobank) keeps the
+      // disconnected "Add a bank" trigger — only a KNOWN import-only bank
+      // hides the section.
+      description: 'a bank account whose picked bank is connectable (Monobank), not yet connected',
+      account: account({ kind: 'bank', bankId: 'monobank', institution: null }),
+      visible: ['Add a bank'],
+      hidden: ['Connect Monobank', 'Sync'],
+    },
   ];
 
   it.each(monobankGateCases)(
@@ -618,6 +636,20 @@ describe('AccountDetailScreen', () => {
       }
     },
   );
+
+  it('hides the whole Synchronization section (heading included) for an import-only bank account', async () => {
+    // device-feedback-round-4 item 4: a non-syncable (import-only) bank
+    // account must show NO trace of the sync section — not merely the
+    // buttons the table above checks, but the "Synchronization" heading
+    // itself, which `BankSyncSection` renders at its own top.
+    setLiveData({
+      accounts: [account({ kind: 'bank', bankId: 'privatbank', institution: null })],
+      holdings: [],
+    });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText(i18n.t('accountDetail.synchronization'))).toBeNull();
+  });
 
   it('lets a bank account connect independently, with no single-connection gate or hint', async () => {
     // The single-connection gate is gone: a bank account shows Connect on its

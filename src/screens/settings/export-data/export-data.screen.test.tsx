@@ -79,6 +79,34 @@ describe('ExportDataScreen', () => {
     expect(mockSetString).toHaveBeenCalledWith('abc123==');
   });
 
+  // Device report: pressing Export could look like it silently did nothing.
+  // A successful export must produce a VISIBLE result right away, not rely
+  // on the user noticing/scrolling to the key card's own Share File button —
+  // so the OS share sheet now opens immediately once the file is ready.
+  it('opens the share sheet immediately once a fresh export succeeds, with a file:// URL', async () => {
+    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    await waitFor(() => expect(mockShare).toHaveBeenCalledWith({ url: 'file:///tmp/x.kiko' }));
+  });
+
+  // A share-sheet dismiss/cancel rejects the `Share.share` promise — the
+  // expected common case, not an export failure — so it must not surface
+  // the export error Alert or leave the key/file state cleared.
+  it('does not treat a dismissed/cancelled share sheet as an export failure', async () => {
+    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    mockShare.mockRejectedValueOnce(new Error('User did not share'));
+    const { getByTestId, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    // The key card still renders (the export itself succeeded) and no
+    // error Alert copy appears.
+    expect(await findByText('Encryption Key')).toBeTruthy();
+  });
+
   it('passes includeSecrets:true once the toggle is switched on', async () => {
     mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
     const { getByTestId } = await renderScreen();
@@ -89,14 +117,17 @@ describe('ExportDataScreen', () => {
     await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
   });
 
-  it('shares the generated file when Share File is pressed', async () => {
+  it('shares the generated file when Share File is pressed, as a file:// URL', async () => {
     mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
     const { getByTestId, findByTestId } = await renderScreen();
 
     await fireEvent.press(getByTestId('settings-button-export'));
+    mockShare.mockClear();
     await fireEvent.press(await findByTestId('settings-button-share-file'));
 
-    expect(mockShare).toHaveBeenCalledWith({ url: '/tmp/x.kiko' });
+    // `Share.share`'s `url` needs an actual URL — a bare filesystem path can
+    // silently no-op on iOS instead of attaching the file.
+    expect(mockShare).toHaveBeenCalledWith({ url: 'file:///tmp/x.kiko' });
   });
 
   // DEVICE BUG: the primary Export button previously rendered as scroll
