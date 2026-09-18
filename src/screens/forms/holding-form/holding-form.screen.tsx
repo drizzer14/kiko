@@ -52,6 +52,21 @@ import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
+// The literal i18n keys `termDepositReasonKey` may return, so `t()` (typed
+// from src/i18n/locales/en.ts) accepts them.
+type TermDepositReasonKey =
+  | 'forms.holding.contributionsRequiredError'
+  | 'forms.holding.annualRateError'
+  | 'forms.holding.termMonthsError';
+
+// The literal i18n keys `bondReasonKey` may return, so `t()` (typed from
+// src/i18n/locales/en.ts) accepts them.
+type BondReasonKey =
+  | 'forms.holding.quantityError'
+  | 'forms.holding.faceValueError'
+  | 'forms.holding.couponPctError'
+  | 'forms.holding.maturityDateError';
+
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added in
 // this session. Only unsaved rows may be removed — a persisted contribution is
@@ -437,7 +452,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // the SAME priority order — so the two can never disagree. `null` once
   // every check passes. Not gated on whether the name is filled: the name's
   // own required asterisk covers that separately.
-  const termDepositReasonKey = (): string | null => {
+  const termDepositReasonKey = (): TermDepositReasonKey | null => {
     if (parsedContributions().length === 0) {
       return 'forms.holding.contributionsRequiredError';
     }
@@ -474,7 +489,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // by that field's own required asterisk, so this returns null rather than
   // a redundant "pick a date" line until BOTH dates are set — only then does
   // an invalid ORDER between them get its own reason.
-  const bondReasonKey = (): string | null => {
+  const bondReasonKey = (): BondReasonKey | null => {
     if (!(parseAmount(quantity) > 0)) {
       return 'forms.holding.quantityError';
     }
