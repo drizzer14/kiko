@@ -1,7 +1,6 @@
-import { bytesToUtf8 } from '@noble/ciphers/utils.js';
 import * as RNFS from 'react-native-fs';
+import { bytesToUtf8 } from '@noble/ciphers/utils.js';
 
-import { decodeBase64ToBytes } from './base64/base64';
 import {
   decryptEnvelope,
   EXPORT_FORMAT,
@@ -9,6 +8,7 @@ import {
   type ExportEnvelope,
 } from './crypto/envelope';
 import type { ExportPayload } from './payload';
+import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 

@@ -1,26 +1,19 @@
+import type { FC } from 'react';
+import { useState } from 'react';
+import { Alert } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer/import-data';
 import { pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { FC } from 'react';
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Alert } from 'react-native';
 
-import ClipboardTextField from '../../account-detail/clipboard-text-field';
-// Side-effect import: initializes i18next (see src/i18n/index.ts). In the app
-// this happens once, ahead of any render, via App.tsx's own import; this
-// screen's test renders it standalone with no such import of its own (unlike
-// its sibling settings screens' tests), so without this the real
-// `useTranslation()` below would read every `t(...)` key with no resources
-// loaded and return the raw key instead of English text.
-import '../../../i18n';
 import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
 import Card from '../../../design-system/components/card';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import Screen from '../../../design-system/components/screen';
 import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
 import type { SettingsStackParamList } from '../../../navigation/types';
+import ClipboardTextField from '../../account-detail/clipboard-text-field';
+import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;

@@ -1,5 +1,12 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
+// Side-effect import: src/i18n/index.ts calls `i18next.init()` at module
+// load. Every test file gets its own fresh module registry, so without this
+// import `useTranslation`'s `t()` returns the raw key (e.g.
+// "settings.dataExport.exportButton") instead of the real English string
+// this suite asserts on — the same reason
+// src/screens/settings/settings/settings.screen.test.tsx imports it.
+import '../../../i18n';
 import {
   asNavigationProp,
   asRouteProp,
@@ -17,8 +24,14 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
 }));
 
 const mockShare = jest.fn();
+// `Share` off the `react-native` package root resolves via
+// `require('./Libraries/Share/Share').default` (node_modules/react-native/index.js),
+// so the mock needs the `__esModule: true` + `default` wrapper here to be
+// seen at that `.default` access — a bare `{ share: fn }` (no `default` key)
+// makes `Share` resolve to `undefined` in the component.
 jest.mock('react-native/Libraries/Share/Share', () => ({
-  share: (...args: unknown[]) => mockShare(...args),
+  __esModule: true,
+  default: { share: (...args: unknown[]) => mockShare(...args) },
 }));
 
 import ExportDataScreen from './export-data.screen';
