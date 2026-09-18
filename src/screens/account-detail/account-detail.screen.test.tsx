@@ -46,7 +46,12 @@ jest.mock('../../design-system/components/text', () => {
 // receives — following the contribution-buttons precedent — while still
 // rendering the label (and forwarding onPress/disabled) so every
 // getByText/press assertion in this file is unaffected.
-const mockButtonProps: { variant?: string; children: ReactNode; icon?: string }[] = [];
+const mockButtonProps: {
+  variant?: string;
+  children: ReactNode;
+  icon?: string;
+  fullWidth?: boolean;
+}[] = [];
 
 jest.mock('../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -61,8 +66,14 @@ jest.mock('../../design-system/components/button', () => {
       accessibilityLabel?: string;
       testID?: string;
       icon?: string;
+      fullWidth?: boolean;
     }) => {
-      mockButtonProps.push({ variant: props.variant, children: props.children, icon: props.icon });
+      mockButtonProps.push({
+        variant: props.variant,
+        children: props.children,
+        icon: props.icon,
+        fullWidth: props.fullWidth,
+      });
 
       return (
         <Pressable
@@ -1044,6 +1055,14 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(importButton?.variant).toBe('secondaryTonal');
     expect(importButton?.icon).toBe('doc.badge.plus');
     expect(addHoldingButton?.variant).toBe('primary');
+  });
+
+  it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {
+    await renderScreen();
+
+    const importButton = mockButtonProps.find((props) => props.children === 'Import statement');
+
+    expect(importButton?.fullWidth).toBe(true);
   });
 
   it('opens the document picker with csv/xlsx/plainText/allFiles accepted types when Import statement is pressed', async () => {
