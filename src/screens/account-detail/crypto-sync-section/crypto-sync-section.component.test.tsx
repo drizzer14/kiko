@@ -100,6 +100,7 @@ const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   name: 'Cold storage',
   kind: 'crypto',
   institution: null,
+  bankId: null,
   icon: null,
   color: null,
   sortOrder: 0,

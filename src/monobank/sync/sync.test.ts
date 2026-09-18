@@ -161,6 +161,7 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   name: 'My Bank',
   kind: 'bank',
   institution: null,
+  bankId: null,
   sortOrder: 0,
   archivedAt: null,
   createdAt: 0,
