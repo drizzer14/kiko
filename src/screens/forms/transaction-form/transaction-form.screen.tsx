@@ -3,10 +3,10 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import {
@@ -1580,6 +1580,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
   };
 
+  // The shared failure alert for every write this screen makes: `save`,
+  // `applyOverride`, and `applyOverrideOne` each catch their own write and
+  // call this rather than repeating the same two catalog keys three times.
+  const showSaveErrorAlert = (): void => {
+    Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+  };
+
   // Editing a category ALWAYS propagates to every same-name transaction (and to
   // future imports), so surface the blast radius in a themed confirm modal
   // before writing the rule. Both paths return to the list (the manual edit, if
@@ -1596,7 +1603,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       );
       navigation.goBack();
     } catch {
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      showSaveErrorAlert();
     }
   };
 
@@ -1631,7 +1638,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       });
       navigation.goBack();
     } catch {
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      showSaveErrorAlert();
     }
   };
 
@@ -1909,7 +1916,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // recordExchangeCounterpart/update/setCategory — used to escape unhandled:
       // the screen just silently failed to navigate, with Save re-enabled and
       // no explanation. Mirror the established Alert pattern instead.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      showSaveErrorAlert();
     }
   };
 
