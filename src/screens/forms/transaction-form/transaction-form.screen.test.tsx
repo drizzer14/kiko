@@ -486,17 +486,26 @@ describe('TransactionFormScreen — add mode', () => {
     );
   });
 
-  it('disables Save for a zero amount', async () => {
+  it('does not save for a zero amount, keeping Save enabled and showing the reason after a press', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0');
     await pickCategory(utils, 'Groceries');
-    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+
+    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
   });
 
-  it('shows an inline reason for a fresh add missing amount and category', async () => {
+  it('shows an inline reason for a fresh add missing amount and category, only after Save is pressed', async () => {
     const utils = await renderAdd();
 
+    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
@@ -629,21 +638,24 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     );
   });
 
-  it('re-nulls the auto-pick and re-disables Save when the name settles to a non-match', async () => {
+  it('re-nulls the auto-pick so the category reason reappears when the name settles to a non-match', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText, getByText, queryByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await fireEvent(getByLabelText('Description'), 'blur');
-    // The auto-pick enabled Save (create needs a category).
-    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(getByText('Save'));
+    // The auto-pick supplied a category, so this first press actually wrote —
+    // no reason for it.
+    expect(queryByText('Select a category.')).toBeNull();
 
-    // A name matching no rule clears the auto-pick, so Save's create-time
-    // category requirement re-engages honestly.
+    // A name matching no rule clears the auto-pick, so a SECOND attempted Save
+    // is blocked again and shows the category reason.
     await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
     await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.press(getByText('Save'));
 
-    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+    expect(getByText('Select a category.')).toBeTruthy();
   });
 });
 
@@ -1109,17 +1121,20 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
 
-  it('disables Save when the amount is cleared on an edit', async () => {
+  it('keeps Save enabled but blocks the write and shows the reason when the amount is cleared on an edit', async () => {
     const utils = await renderEdit('txn-1');
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
-    // The pre-filled amount is valid, so Save starts enabled.
     expect(isSaveDisabled()).toBe(false);
 
-    // Clearing the amount blocks Save, matching the write guard in `save`.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '');
-    expect(isSaveDisabled()).toBe(true);
+    expect(isSaveDisabled()).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
   });
 
   it('persists the existing time unchanged when the date is not edited', async () => {
@@ -1746,33 +1761,37 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(mockRecordExchange).not.toHaveBeenCalled();
   });
 
-  it('disables Save until a destination and both positive amounts are set', async () => {
+  it('keeps Save enabled through the Exchange steps but blocks the write until valid', async () => {
     const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
-    await pickType(utils, 'exchange');
 
-    // Nothing filled yet.
-    expect(isSaveDisabled()).toBe(true);
+    expect(isSaveDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchange).not.toHaveBeenCalled();
 
-    // A sent amount alone, with no destination and no received amount.
     await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
-    expect(isSaveDisabled()).toBe(true);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchange).not.toHaveBeenCalled();
 
-    // A destination picked, but still no received amount.
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    expect(isSaveDisabled()).toBe(true);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchange).not.toHaveBeenCalled();
 
-    // Both legs positive and a destination picked: Save enables.
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
-    expect(isSaveDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchange).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an inline reason through the Exchange steps', async () => {
+  it('shows an inline reason through the Exchange steps, only after Save is pressed', async () => {
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
 
+    expect(utils.queryByText('Select a destination account.')).toBeNull();
+    await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select a destination account.')).toBeTruthy();
 
     await fireEvent.press(utils.getByLabelText('To'));
@@ -2241,30 +2260,33 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
   });
 
-  it('disables Save until a counterpart holding and a positive amount are set', async () => {
+  it('keeps Save enabled through the Convert steps but blocks the write until valid', async () => {
     const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Convert to exchange'));
+
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
-    await fireEvent.press(utils.getByText('Convert to exchange'));
+    expect(isSaveDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
-    // No counterpart and no amount yet.
-    expect(isSaveDisabled()).toBe(true);
-
-    // A counterpart picked, but the amount is still blank.
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    expect(isSaveDisabled()).toBe(true);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
-    // A positive counterpart amount enables Save.
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
-    expect(isSaveDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordExchangeCounterpart).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an inline reason through the Convert steps', async () => {
+  it('shows an inline reason through the Convert steps, only after Save is pressed', async () => {
     const utils = await renderEdit('expense-manual');
     await fireEvent.press(utils.getByText('Convert to exchange'));
 
+    expect(utils.queryByText('Select an account to convert into.')).toBeNull();
+    await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
 
     await fireEvent.press(utils.getByLabelText('To'));
@@ -2389,43 +2411,39 @@ describe('TransactionFormScreen — Split-change mode', () => {
     );
   });
 
-  it('disables Save while the returns sum to at least the payment', async () => {
+  it('does not write while the returns sum to at least the payment, and Save stays enabled', async () => {
     const utils = await renderAddFromHolding('payer');
-    const isDisabled = (): boolean | undefined =>
-      utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
     await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
-    // A split expense needs a category too (its netted magnitude lands in the
-    // spending pie), so pick one up front — this test isolates the Σ-boundary.
     await pickCategory(utils, 'Groceries');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '0.20');
 
-    // Σ returns (0.20) is not strictly less than |payment| (0.20): net zero is
-    // not an expense, so Save stays disabled.
-    expect(isDisabled()).toBe(true);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
 
-    // Raising the payment above the returns makes the net an expense again.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
-    expect(isDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an inline reason for an incomplete split', async () => {
+  it('shows an inline reason for an incomplete split, only after Save is pressed', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
 
+    expect(utils.queryByText('Select a category.')).toBeNull();
+    await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Select a category.')).toBeTruthy();
 
     await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
     expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
   });
 
-  it('keeps Save disabled for an otherwise-valid split until a category is picked', async () => {
+  it('does not write an otherwise-valid split until a category is picked', async () => {
     const utils = await renderAddFromHolding('payer');
-    const isDisabled = (): boolean | undefined =>
-      utils.getByText('Save').parent?.props.accessibilityState.disabled;
 
     await pickType(utils, 'split');
     await fireEvent.press(utils.getByLabelText('Return to 1'));
@@ -2433,12 +2451,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
-    // A valid payment + return but no category: a split expense's netted
-    // magnitude appears in the spending pie, so it must be categorised.
-    expect(isDisabled()).toBe(true);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
 
     await pickCategory(utils, 'Groceries');
-    expect(isDisabled()).toBe(false);
+    await fireEvent.press(utils.getByText('Save'));
+    expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1);
   });
 
   it('excludes a holding already picked in another row (and any off-currency holding) from the next picker', async () => {
