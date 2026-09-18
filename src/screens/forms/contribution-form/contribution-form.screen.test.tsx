@@ -1,10 +1,11 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { i18n } from '../../../i18n';
+import { scrollToField } from '../scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
@@ -26,6 +27,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     appendDepositContribution: jest.fn(),
   },
 }));
+jest.mock('../scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<ContributionFormProps['route']>('ContributionForm', {
@@ -222,6 +224,24 @@ describe('ContributionFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
     expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+  });
+
+  it('shows the amount error directly on the Amount field, not as a separate block', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Save contribution'));
+
+    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(utils.getByLabelText('Amount').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
+  });
+
+  it('scrolls to the amount field when Save is pressed while it is invalid', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Save contribution'));
+
+    expect(scrollToField).toHaveBeenCalledWith(expect.anything(), expect.anything());
   });
 
   it('surfaces an alert and does not navigate when the append fails', async () => {
