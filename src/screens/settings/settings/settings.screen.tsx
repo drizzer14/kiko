@@ -148,22 +148,25 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           />
         </Card>
 
-        <Card testID="settings-card-export-data" padding={3}>
-          <SettingsRow
-            testID="settings-row-export-data"
-            icon="square.and.arrow.up"
-            label={t('settings.dataExport.title')}
-            onPress={() => navigation.navigate('ExportData')}
-          />
-        </Card>
+        {/* Import and Export share one card as a single "data transfer" group,
+            Import first (the more common entry point — bringing existing data
+            in) then Export. */}
+        <Card testID="settings-card-data-transfer" padding={3}>
+          <Box gap={3}>
+            <SettingsRow
+              testID="settings-row-import-data"
+              icon="square.and.arrow.down"
+              label={t('settings.dataImport.title')}
+              onPress={() => navigation.navigate('ImportData')}
+            />
 
-        <Card testID="settings-card-import-data" padding={3}>
-          <SettingsRow
-            testID="settings-row-import-data"
-            icon="square.and.arrow.down"
-            label={t('settings.dataImport.title')}
-            onPress={() => navigation.navigate('ImportData')}
-          />
+            <SettingsRow
+              testID="settings-row-export-data"
+              icon="square.and.arrow.up"
+              label={t('settings.dataExport.title')}
+              onPress={() => navigation.navigate('ExportData')}
+            />
+          </Box>
         </Card>
       </Box>
     </Screen>

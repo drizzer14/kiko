@@ -181,9 +181,24 @@ describe('SettingsScreen', () => {
       'settings-card-system',
       'settings-card-base-currency',
       'settings-card-categories',
-      'settings-card-export-data',
-      'settings-card-import-data',
+      'settings-card-data-transfer',
     ]);
+  });
+
+  it('groups Import and Export into one shared card, Import first', async () => {
+    const { getByTestId, getAllByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-data-transfer');
+
+    // Both rows live inside the one shared card...
+    expect(within(card).getByTestId('settings-row-import-data')).toBeTruthy();
+    expect(within(card).getByTestId('settings-row-export-data')).toBeTruthy();
+
+    // ...with Import rendered before Export, in document order.
+    const rowOrder = getAllByTestId(/^settings-row-(import|export)-data$/).map(
+      (node) => node.props.testID as string,
+    );
+    expect(rowOrder).toEqual(['settings-row-import-data', 'settings-row-export-data']);
   });
 
   it('navigates to the System sub-screen when the System row is pressed', async () => {

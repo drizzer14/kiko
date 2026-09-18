@@ -16,7 +16,7 @@ import {
 const mockPick = jest.fn();
 jest.mock('@react-native-documents/picker', () => ({
   pick: (...args: unknown[]) => mockPick(...args),
-  types: { allFiles: '*/*' },
+  types: { allFiles: '*/*', json: 'application/json' },
 }));
 
 const mockImportData = jest.fn();
@@ -44,16 +44,62 @@ const renderScreen = () =>
     />,
   );
 
+// The export key is a base64-encoded 32-byte key: 44 characters
+// (`MIN_KEY_LENGTH` in the screen under test). A shorter value must be
+// rejected before the confirm sheet opens.
+const VALID_KEY = 'a'.repeat(44);
+
 describe('ImportDataScreen', () => {
   beforeEach(() => {
     mockPick.mockReset();
     mockImportData.mockReset();
   });
 
-  it('disables the Import button until both a file is picked and a key is entered', async () => {
-    const { getByTestId } = await renderScreen();
+  it('renders the Import button enabled even before a file or key are provided', async () => {
+    const { getByTestId, queryByText } = await renderScreen();
 
-    expect(getByTestId('settings-button-import').props.accessibilityState.disabled).toBe(true);
+    expect(getByTestId('settings-button-import').props.accessibilityState.disabled).toBeFalsy();
+
+    await fireEvent.press(getByTestId('settings-button-import'));
+
+    // No file picked yet — the guard is a silent no-op, not a confirm sheet.
+    expect(queryByText('Replace Data')).toBeNull();
+  });
+
+  it('rejects a picked file whose name does not end in .kiko', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.txt', name: 'picked.txt' }]);
+
+    const { getByTestId, findByText, queryByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+
+    expect(await findByText('Choose a Kiko export file (.kiko).')).toBeTruthy();
+    expect(queryByText('picked.txt')).toBeNull();
+
+    await fireEvent.press(getByTestId('settings-button-import'));
+
+    // Still no file — pressing Import must not call importData or open the sheet.
+    expect(queryByText('Replace Data')).toBeNull();
+    expect(mockImportData).not.toHaveBeenCalled();
+  });
+
+  it('shows a too-short-key error and does not open the confirm sheet', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+
+    const { getByTestId, getByPlaceholderText, findByText, queryByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), 'short');
+    await fireEvent.press(getByTestId('settings-button-import'));
+
+    expect(
+      await findByText('The key looks too short — paste the full key from your export.'),
+    ).toBeTruthy();
+    expect(queryByText('Replace Data')).toBeNull();
+    expect(mockImportData).not.toHaveBeenCalled();
   });
 
   it('shows a confirm sheet before importing, and only calls importData after confirming', async () => {
@@ -69,7 +115,7 @@ describe('ImportDataScreen', () => {
     await fireEvent.press(getByTestId('settings-button-pick-file'));
     await waitFor(() => expect(mockPick).toHaveBeenCalled());
 
-    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), 'abc123==');
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
 
     // The destructive ConfirmSheet must appear before any real import runs.
@@ -79,7 +125,7 @@ describe('ImportDataScreen', () => {
     await waitFor(() =>
       expect(mockImportData).toHaveBeenCalledWith({
         fileUri: 'file:///picked.kiko',
-        keyBase64: 'abc123==',
+        keyBase64: VALID_KEY,
       }),
     );
   });
@@ -94,7 +140,7 @@ describe('ImportDataScreen', () => {
 
     await fireEvent.press(getByTestId('settings-button-pick-file'));
     await waitFor(() => expect(mockPick).toHaveBeenCalled());
-    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), 'wrong==');
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
     await fireEvent.press(getByTestId('settings-button-import'));
     await fireEvent.press(await findByText('Replace Data'));
 

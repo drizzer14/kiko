@@ -57,6 +57,17 @@ describe('ExportDataScreen', () => {
     mockShare.mockReset();
   });
 
+  it('explains what the include-secrets switch does, in terms of saved passwords and keys', async () => {
+    const { findByText } = await renderScreen();
+
+    expect(await findByText('Include saved passwords & keys')).toBeTruthy();
+    expect(
+      await findByText(
+        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('exports with includeSecrets:false by default, then shows the key and a Copy Key button', async () => {
     mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
     const { getByTestId, findByTestId } = await renderScreen();

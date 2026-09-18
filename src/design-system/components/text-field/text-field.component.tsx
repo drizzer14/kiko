@@ -85,6 +85,7 @@ const TextField: FC<TextFieldProps> = ({
       secureTextEntry={secureTextEntry}
       style={[
         styles.input,
+        multiline === true && styles.inputMultiline,
         editable === false && styles.inputDisabled,
         hasSuffix && styles.inputWithSuffix,
         hasLeadingIcon && styles.inputWithLeadingIcon,
