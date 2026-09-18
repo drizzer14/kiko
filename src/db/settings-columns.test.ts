@@ -11,6 +11,11 @@ import { join } from 'node:path';
  * The exception list is EXACT, not a floor: a new reader-less column fails, and
  * so does re-wiring a listed one without removing it here. That makes the list
  * a deliberate decision gate rather than a place to hide dead schema.
+ *
+ * Test files (`*.test.ts(x)`) are excluded from the scan: a column named only
+ * in a test fixture (e.g. a round-trip export/import sample) is not a
+ * production reader, and counting it would let a test mask a genuinely dead
+ * column, defeating the gate.
  */
 const DOCUMENTED_READERLESS_COLUMNS = [
   // Legacy: the abandoned background-grace design. The shipped lock is
@@ -57,7 +62,12 @@ const sourceFiles = (directory: string): string[] => {
       return sourceFiles(full);
     }
 
-    if (!/\.tsx?$/.test(entry) || full === SCHEMA_PATH || full === SELF_PATH) {
+    if (
+      !/\.tsx?$/.test(entry) ||
+      /\.test\.tsx?$/.test(entry) ||
+      full === SCHEMA_PATH ||
+      full === SELF_PATH
+    ) {
       return [];
     }
 
