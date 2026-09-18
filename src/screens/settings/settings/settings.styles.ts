@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create(() => ({
+export const styles = StyleSheet.create((theme) => ({
   // The row's header line: the leading icon+label cluster on the left, the
   // trailing chevron (navigating rows only) on the right. Each SettingsRow now
   // sits alone in its own GlassSurface card, which owns the padding, so the row
@@ -28,5 +28,11 @@ export const styles = StyleSheet.create(() => ({
   // wrap instead of overflowing past the icon/chevron.
   label: {
     flexShrink: 1,
+  },
+  // An inline `trailing` control (e.g. a Switch), pinned to the row's
+  // trailing edge on the same line as the label — a small leading gap keeps
+  // it from crowding a long label that wraps up against it.
+  trailing: {
+    marginLeft: theme.spacing(3),
   },
 }));

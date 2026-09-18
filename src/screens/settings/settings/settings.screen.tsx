@@ -151,9 +151,13 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
 
         {/* Import and Export share one card as a single "data transfer" group,
             Import first (the more common entry point — bringing existing data
-            in) then Export. */}
+            in) then Export. The gap around the divider is deliberately
+            TIGHTER (gap={2}) than the gap={4} that separates this card from
+            its siblings above/below — a within-group divider must read as a
+            closer, subordinate seam, not the same visual weight as the space
+            between two whole cards (device-feedback-round-3 item 3). */}
         <Card testID="settings-card-data-transfer" padding={3}>
-          <Box gap={4}>
+          <Box gap={2}>
             <SettingsRow
               testID="settings-row-import-data"
               icon="square.and.arrow.down"

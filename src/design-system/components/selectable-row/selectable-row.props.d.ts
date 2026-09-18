@@ -28,10 +28,20 @@ export type SelectableRowProps = {
   accessibilityRole?: SelectableRowAccessibilityRole;
   accessibilityLabel?: string;
   // An optional second line rendered below `label`, in the SAME leading-slot-
-  // aligned column — the bank picker's sync-type icons + caption is the first
-  // consumer. The caller owns any tone switching (e.g. onAccent when
-  // selected) on whatever it renders here; SelectableRow does not inspect it.
+  // aligned column — the bank picker's capability caption is the first
+  // consumer. Wraps onto multiple lines (no truncation) since it sits in a
+  // full-width column with nothing else sharing its row. The caller owns any
+  // tone switching (e.g. onAccent when selected) on whatever it renders here;
+  // SelectableRow does not inspect it.
   description?: ReactNode;
+  // An optional trailing node rendered on the SAME line as `label`, pinned to
+  // the row's far right edge and top-aligned to the label's first line — the
+  // bank picker's capability icons are the first consumer
+  // (device-feedback-round-3 item 7: the icons sit aligned with the title,
+  // not inline inside the wrappable `description` caption below it). The
+  // caller owns any tone/size choice for whatever it renders here, the same
+  // as `description`.
+  trailing?: ReactNode;
   // Forwarded to the row's Pressable so a consumer can measure each row's
   // on-screen position (e.g. to auto-scroll to the selected row).
   onLayout?: (event: LayoutChangeEvent) => void;

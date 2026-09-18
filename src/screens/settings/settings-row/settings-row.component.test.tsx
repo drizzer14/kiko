@@ -96,4 +96,22 @@ describe('SettingsRow', () => {
     const header = ancestorWithStyle(label, 'alignItems');
     expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
   });
+
+  // device-feedback-round-3 item 5: a toggle reads as ONE row with its label
+  // (label left, control right), not stacked below it the way a picker or
+  // segmented control's `children` is.
+  it('renders `trailing` inline on the same line as the label, not stacked below it', async () => {
+    const { getByText, getByTestId } = await render(
+      <SettingsRow
+        label="Include saved passwords & keys"
+        trailing={<RNText testID="trailing-switch">toggle</RNText>}
+      >
+        <RNText>Hint text below the row</RNText>
+      </SettingsRow>,
+    );
+
+    expect(getByText('Include saved passwords & keys')).toBeTruthy();
+    expect(getByTestId('trailing-switch')).toBeTruthy();
+    expect(getByText('Hint text below the row')).toBeTruthy();
+  });
 });

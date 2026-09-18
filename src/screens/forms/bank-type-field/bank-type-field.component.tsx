@@ -61,6 +61,12 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
           // NEVER renders it, so its description stays honestly
           // statements-only (Guideline 5.6 — no fake connect affordance).
           const descriptionTone = isSelected ? 'onAccent' : 'textSecondary';
+          // The capability icons now sit in `trailing` (device-feedback-round-3
+          // item 7: far right of the option, aligned with the title), so they
+          // reuse the TITLE's own tone and icon-size step (`body`, the size
+          // paired with the label's `body` type step — see the "SF Symbol
+          // sizing" HIG rule) rather than the caption's smaller tone/size.
+          const titleTone = isSelected ? 'onAccent' : 'textPrimary';
 
           return (
             <SelectableRow
@@ -70,24 +76,24 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
               label={entry.displayName}
               accessibilityLabel={`${entry.displayName}. ${caption}`}
               testID={`bank-type-option-${entry.id}`}
-              description={
+              trailing={
                 <Box direction="row" gap={1}>
                   {entry.connectable && (
                     <SymbolIcon
                       name="arrow.trianglehead.2.clockwise.rotate.90"
-                      size={theme.iconSizes.caption}
-                      tone={descriptionTone}
+                      size={theme.iconSizes.body}
+                      tone={titleTone}
                     />
                   )}
-                  <SymbolIcon
-                    name="receipt"
-                    size={theme.iconSizes.caption}
-                    tone={descriptionTone}
-                  />
-                  <Text variant="caption" tone={descriptionTone}>
-                    {caption}
-                  </Text>
+                  <SymbolIcon name="receipt" size={theme.iconSizes.body} tone={titleTone} />
                 </Box>
+              }
+              // No `numberOfLines`/truncation — a caption must wrap onto a
+              // second line rather than clip (device-feedback-round-3 item 7).
+              description={
+                <Text variant="caption" tone={descriptionTone}>
+                  {caption}
+                </Text>
               }
             />
           );

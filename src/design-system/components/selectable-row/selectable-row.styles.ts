@@ -61,6 +61,28 @@ export const styles = StyleSheet.create((theme) => ({
   label: {
     flex: 1,
   },
+  // The title line: the label on the left, an optional `trailing` node
+  // (device-feedback-round-3 item 7 — the bank picker's capability icons)
+  // pinned to the far right. Top-aligned so a `trailing` icon lines up with
+  // the label's FIRST line rather than the full label+description height —
+  // the same `alignItems: 'flex-start'` reasoning as `SettingsRow`'s own
+  // header row.
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  // The label's own wrapper inside `titleRow`: `flexShrink: 1` (RN's default
+  // is 0) lets the label give up width to `trailing` instead of pushing it
+  // out past the row.
+  titleText: {
+    flexShrink: 1,
+  },
+  // A small leading gutter so `trailing` never crowds a label that wraps up
+  // against it.
+  trailing: {
+    marginLeft: theme.spacing(2),
+  },
   // The optional `description` slot's gap from the label line above it.
   descriptionRow: {
     marginTop: theme.spacing(1),

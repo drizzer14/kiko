@@ -24,6 +24,7 @@ const SelectableRow: FC<SelectableRowProps> = ({
   accessibilityRole = 'button',
   accessibilityLabel,
   description,
+  trailing,
   onLayout,
   testID,
 }) => {
@@ -76,9 +77,20 @@ const SelectableRow: FC<SelectableRowProps> = ({
             Text's `style` prop intentionally allows only typography keys, so the
             row's space-filling belongs on a layout wrapper, not the Text. */}
         <View style={styles.label}>
-          <Text variant="body" tone={selected ? 'onAccent' : 'textPrimary'}>
-            {label}
-          </Text>
+          {/* `trailing` (e.g. the bank picker's capability icons) sits on the
+              SAME line as the title, pinned to the far right and top-aligned
+              to its first line — a sibling of `description` below, not
+              nested inside it, so the wrappable description caption never
+              has to share its row with anything else. */}
+          <View style={styles.titleRow}>
+            <View style={styles.titleText}>
+              <Text variant="body" tone={selected ? 'onAccent' : 'textPrimary'}>
+                {label}
+              </Text>
+            </View>
+
+            {trailing !== undefined && <View style={styles.trailing}>{trailing}</View>}
+          </View>
 
           {description !== undefined && (
             <View

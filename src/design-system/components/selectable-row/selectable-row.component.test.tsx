@@ -86,4 +86,23 @@ describe('SelectableRow', () => {
 
     expect(queryByTestId('row-description')).toBeNull();
   });
+
+  // device-feedback-round-3 item 7: the bank picker's capability icons move
+  // to the far right of the option, aligned with the title — not inline
+  // inside the wrappable description caption below it.
+  it('renders `trailing` on the same line as the label, separate from `description`', async () => {
+    const { getByText, getByTestId } = await render(
+      <SelectableRow
+        selected={false}
+        onPress={jest.fn()}
+        label="Monobank"
+        trailing={<Text testID="trailing-icons">icons</Text>}
+        description={<Text>Connect and import statements.</Text>}
+      />,
+    );
+
+    expect(getByText('Monobank')).toBeTruthy();
+    expect(getByTestId('trailing-icons')).toBeTruthy();
+    expect(getByText('Connect and import statements.')).toBeTruthy();
+  });
 });
