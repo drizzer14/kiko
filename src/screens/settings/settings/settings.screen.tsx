@@ -75,15 +75,21 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // card gets for free from its own `Card` padding, since this card's own
   // padding drops to 0 below) so each row reads as a normal native
   // grouped-list row rather than a shorter one squeezed by an outer `Box`
-  // gap. The divider's inset is the leading icon's own width
+  // gap. The divider's LEFT inset is the leading icon's own width
   // (`iconSizes.body`, the default `SettingsRow` icon size) plus the
   // icon-to-label gap (`theme.spacing(3)`), so it aligns with the row LABEL
-  // rather than running edge-to-edge.
+  // rather than running edge-to-edge. Its RIGHT inset (round-6 device
+  // feedback item 4) matches the row's own `paddingHorizontal` above, so the
+  // divider stops level with the row's right-padded content instead of
+  // running past it to the card's true right edge.
   const dataTransferRowStyle = {
     paddingHorizontal: theme.spacing(3),
     paddingVertical: theme.spacing(3),
   };
-  const dataTransferDividerStyle = { marginLeft: theme.iconSizes.body + theme.spacing(3) };
+  const dataTransferDividerStyle = {
+    marginLeft: theme.iconSizes.body + theme.spacing(3),
+    marginRight: theme.spacing(3),
+  };
 
   const handleSelectCurrency = (currency: Currency): void => {
     settingsRepo.setBaseCurrency(currency);

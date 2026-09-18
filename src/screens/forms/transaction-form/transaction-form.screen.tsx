@@ -61,8 +61,7 @@ import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
 import { defaultTransactionDescription } from '../../../transactions/default-description';
 
-import DateField from '../date-field';
-import TimeField from '../time-field';
+import DateTimeRow from '../date-time-row';
 import CategoryField from '../category-field';
 import ExchangeFields from '../exchange-fields';
 import ModeSelectField from '../mode-select-field';
@@ -1114,20 +1113,12 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         is rendered unconditionally here. */}
       {props.descriptionSuggestions}
 
-      <DateField
-        label={props.t('forms.fields.date')}
-        value={props.time}
-        onChange={props.onChangeTime}
+      <DateTimeRow
+        time={props.time}
+        onChangeTime={props.onChangeTime}
         disabled={props.isReadOnly}
-        testID="transaction-date-field"
-      />
-
-      <TimeField
-        label={props.t('forms.fields.time')}
-        value={props.time}
-        onChange={props.onChangeTime}
-        disabled={props.isReadOnly}
-        testID="transaction-time-field"
+        dateTestID="transaction-date-field"
+        timeTestID="transaction-time-field"
       />
     </>
   );
@@ -1161,6 +1152,14 @@ type SplitReturnsProps = {
   // return" action, mirroring `TextField`'s own `error` contract even though
   // this reason covers the whole return list rather than one field.
   error?: string;
+  // The LAST return row's own wrapper ref — a SEPARATE ref from
+  // `splitReturnsFieldRef` (the CALL SITE's own wrapper, anchoring the whole
+  // section for scroll-to-invalid) — so `addReturn` can scroll to whichever
+  // row is newest, via the SAME occlusion-aware `scrollToField` helper
+  // (round-6 device feedback item 3), rather than an unconditional
+  // `scrollToEnd` that used to fire even when the new row was already fully
+  // visible. `undefined` is a valid value (never passed while not split).
+  lastRowRef?: RefObject<FieldInstance | null>;
 };
 
 const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
@@ -1178,45 +1177,54 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
       <Text variant="heading">{props.t('forms.transaction.returnsHeading')}</Text>
 
       {props.returns.map((row, index) => (
-        <Box key={row.id} gap={2}>
-          <HoldingSelectField
-            label={props.t('forms.transaction.returnTo', { index: index + 1 })}
-            placeholder={props.selectHoldingPlaceholder}
-            options={props.buildOptions(index)}
-            selectedId={row.holdingId}
-            onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
-            required
-          />
+        <View
+          key={row.id}
+          // Only the LAST row anchors `lastRowRef` (round-6 item 3's
+          // add-row scroll target) — `undefined` on every earlier row, the
+          // same single-target-ref shape `contributionsFieldRef`'s own
+          // index-gated assignment uses in holding-form.
+          ref={index === props.returns.length - 1 ? props.lastRowRef : undefined}
+        >
+          <Box gap={2}>
+            <HoldingSelectField
+              label={props.t('forms.transaction.returnTo', { index: index + 1 })}
+              placeholder={props.selectHoldingPlaceholder}
+              options={props.buildOptions(index)}
+              selectedId={row.holdingId}
+              onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
+              required
+            />
 
-          <TextField
-            label={props.t('forms.transaction.returnAmount', { index: index + 1 })}
-            value={row.amount}
-            onChangeText={(text) => props.onChangeAmount(index, text)}
-            keyboardType="decimal-pad"
-            placeholder={props.t('forms.transaction.amountPlaceholder')}
-            suffix={props.suffix}
-            required
-          />
+            <TextField
+              label={props.t('forms.transaction.returnAmount', { index: index + 1 })}
+              value={row.amount}
+              onChangeText={(text) => props.onChangeAmount(index, text)}
+              keyboardType="decimal-pad"
+              placeholder={props.t('forms.transaction.amountPlaceholder')}
+              suffix={props.suffix}
+              required
+            />
 
-          {/* The delete-return control reuses the SAME shared Button the deposit
-            (term-deposit contributions) form uses for its remove action — a
-            destructiveTonal small button WITH a text label — rather than the
-            hand-rolled icon-only button it was before (item 3). Gated on more
-            than one return, mirroring the contributions list's own guard, so
-            the last remaining split return cannot be deleted. */}
-          {props.returns.length > 1 && (
-            <Button
-              variant="destructiveTonal"
-              size="small"
-              fullWidth={false}
-              icon="trash"
-              accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
-              onPress={() => props.onRemove(index)}
-            >
-              {props.t('forms.transaction.remove')}
-            </Button>
-          )}
-        </Box>
+            {/* The delete-return control reuses the SAME shared Button the deposit
+              (term-deposit contributions) form uses for its remove action — a
+              destructiveTonal small button WITH a text label — rather than the
+              hand-rolled icon-only button it was before (item 3). Gated on more
+              than one return, mirroring the contributions list's own guard, so
+              the last remaining split return cannot be deleted. */}
+            {props.returns.length > 1 && (
+              <Button
+                variant="destructiveTonal"
+                size="small"
+                fullWidth={false}
+                icon="trash"
+                accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
+                onPress={() => props.onRemove(index)}
+              >
+                {props.t('forms.transaction.remove')}
+              </Button>
+            )}
+          </Box>
+        </View>
       ))}
 
       {props.error !== undefined && <FieldError message={props.error} />}
@@ -1580,6 +1588,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const valueInFieldRef = useRef<FieldInstance>(null);
   const categoryFieldRef = useRef<FieldInstance>(null);
   const splitReturnsFieldRef = useRef<FieldInstance>(null);
+  // The LAST return row's own wrapper — a SEPARATE ref from
+  // `splitReturnsFieldRef` above (which anchors the whole section for
+  // scroll-to-invalid) — so `addReturn` below can scroll to whichever row is
+  // newest, via the SAME occlusion-aware `scrollToField` helper (round-6
+  // device feedback item 3), rather than an unconditional `scrollToEnd`.
+  const lastReturnFieldRef = useRef<FieldInstance>(null);
   const amountFieldRef = useRef<FieldInstance>(null);
   // The plain Amount field's own inner input, for a blocked Save's FOCUS
   // follow-up once it has scrolled into view — the ONLY validated field
@@ -1965,12 +1979,19 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     setChangeReturns((rows) => [...rows, { id, holdingId: null, amount: '' }]);
 
     // The new row's fields are only measured after this render commits, so
-    // defer the scroll to the next frame — otherwise `scrollToEnd` targets the
-    // pre-add (shorter) content size and stops short of the freshly added
-    // return. Same deferred-RAF pattern as the categories screen's
-    // `scrollToAddCategoryForm`.
+    // defer the scroll to the next frame — otherwise `lastReturnFieldRef`
+    // would still measure the PRE-add (one row shorter) layout. Same
+    // deferred-RAF pattern as the categories screen's own
+    // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
+    // `scrollToField` helper `save`'s own scroll-to-invalid uses below
+    // (round-6 device feedback item 3) — an unconditional `scrollToEnd` used
+    // to fire even when the new row was already fully on screen.
     requestAnimationFrame(() => {
-      scrollableRef.current?.scrollToEnd({ animated: true });
+      scrollToField(scrollableRef, lastReturnFieldRef, {
+        currentOffset: scrollOffset.value,
+        headerInset,
+        contentHeight: contentHeightRef.current,
+      });
     });
   };
 
@@ -2379,10 +2400,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             `Box`'s `gap` layout — `styles.hidden` (`display: 'none'`) keeps a
             hidden wrapper out of that gap slot while the mode is not split,
             without unmounting it (so the ref stays usable the moment split
-            mode is selected). */}
+            mode is selected).
+            Round-6 device feedback item 2 (a regression this wrapper itself
+            introduced, back when it first replaced `renderSplitReturns`'s
+            Fragment as a DIRECT child of the parent `Box gap={4}`): its
+            divider/heading/rows/error/button used to be that Box's own direct
+            children, each getting the 16pt rhythm between them; wrapped in one
+            `View`, they became ONE child with nothing supplying a gap between
+            them. `styles.splitReturnsGap` gives this wrapper the SAME gap
+            itself, restoring the rhythm — it is harmless while hidden
+            (`display: 'none'` still collapses the whole node). A plain `View`
+            (not `Box`) is required here: `Box` is a non-forwarding function
+            component, so `ref={splitReturnsFieldRef}` on it would never
+            resolve for `measureLayout`. */}
           <View
             ref={splitReturnsFieldRef}
-            style={!isSplit && styles.hidden}
+            style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
             testID="split-returns-wrapper"
           >
             {renderSplitReturns({
@@ -2397,6 +2430,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               selectHoldingPlaceholder: t('forms.transaction.selectHolding'),
               t,
               error: fieldError('splitReturns'),
+              lastRowRef: lastReturnFieldRef,
             })}
           </View>
 
@@ -2481,6 +2515,12 @@ const styles = StyleSheet.create((theme) => ({
   // `splitReturnsFieldRef` is still usable the instant split mode is picked.
   hidden: {
     display: 'none',
+  },
+  // Round-6 device feedback item 2: the wrapper's own gap, matching the
+  // parent form `Box`'s `gap={4}` rhythm — see the CALL SITE comment above
+  // for why this wrapper (not `renderSplitReturns` itself) owns it.
+  splitReturnsGap: {
+    gap: theme.spacing(4),
   },
 }));
 

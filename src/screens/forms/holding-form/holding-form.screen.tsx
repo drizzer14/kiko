@@ -420,6 +420,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // so the scroll always lands on the same field the message is anchored to.
   const nameFieldRef = useRef<FieldInstance>(null);
   const contributionsFieldRef = useRef<FieldInstance>(null);
+  // The LAST contribution row's own wrapper — a SEPARATE ref from
+  // `contributionsFieldRef` above (which always anchors row 0, for the
+  // Save-invalid scroll) — so `addContribution` below can scroll to whichever
+  // row is newest, via the SAME occlusion-aware `scrollToField` helper
+  // (round-6 device feedback item 3), rather than an unconditional
+  // `scrollToEnd` that used to fire even when the new row was already
+  // fully visible.
+  const lastContributionFieldRef = useRef<FieldInstance>(null);
   const annualRateFieldRef = useRef<FieldInstance>(null);
   const termMonthsFieldRef = useRef<FieldInstance>(null);
   const quantityFieldRef = useRef<FieldInstance>(null);
@@ -527,12 +535,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setContributions((rows) => [...rows, { id, amount: '', date: null, saved: false }]);
 
     // The new row's fields are only measured after this render commits, so
-    // defer the scroll to the next frame — otherwise `scrollToEnd` targets the
-    // pre-add (shorter) content size and stops short of the freshly added
-    // contribution. Same deferred-RAF pattern as the categories screen's
-    // `scrollToAddCategoryForm`.
+    // defer the scroll to the next frame — otherwise `lastContributionFieldRef`
+    // would still measure the PRE-add (one row shorter) layout. Same
+    // deferred-RAF pattern as the categories screen's own
+    // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
+    // `scrollToField` helper `save`'s own scroll-to-invalid uses below (round-6
+    // device feedback item 3) — an unconditional `scrollToEnd` used to fire
+    // even when the new row was already fully on screen.
     requestAnimationFrame(() => {
-      scrollableRef.current?.scrollToEnd({ animated: true });
+      scrollToField(scrollableRef, lastContributionFieldRef, {
+        currentOffset: scrollOffset.value,
+        headerInset,
+        contentHeight: contentHeightRef.current,
+      });
     });
   };
 
@@ -938,7 +953,23 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             <Box gap={2} testID="contributions-group">
               <Box gap={4}>
                 {contributions.map((contribution, index) => (
-                  <View key={contribution.id} ref={index === 0 ? contributionsFieldRef : undefined}>
+                  <View
+                    key={contribution.id}
+                    // Row 0 anchors `contributionsFieldRef` (the Save-invalid
+                    // scroll target, unchanged); the LAST row additionally
+                    // anchors `lastContributionFieldRef` (round-6 item 3's
+                    // add-row scroll target) — a callback ref, since a single
+                    // native element can only take one `ref` prop, and a
+                    // one-row list satisfies both conditions on the SAME node.
+                    ref={(node) => {
+                      if (index === 0) {
+                        contributionsFieldRef.current = node;
+                      }
+                      if (index === contributions.length - 1) {
+                        lastContributionFieldRef.current = node;
+                      }
+                    }}
+                  >
                     <Box gap={2}>
                       <TextField
                         label={t('forms.holding.contributionAmount', { index: index + 1 })}

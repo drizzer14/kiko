@@ -6,6 +6,7 @@ import type { TransactionFormParams } from '../../../navigation/types';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 import { darkTheme } from '../../../design-system/theme';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '../../../test-support/mock-reanimated-scroll-to-end';
@@ -20,6 +21,13 @@ import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 const mockScrollToEnd = jest.fn();
 
 jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd));
+// Round-6 device feedback item 3: `addReturn` now routes through the SAME
+// occlusion-aware `scrollToField` helper the Save-invalid path already uses
+// (see holding-form.screen.test.tsx for the identical pattern), rather than
+// an unconditional `scrollToEnd` — auto-mocked here so the new-row tests
+// below can assert on the WIRING without depending on real
+// `measureLayout`/`measure` host-instance behavior under the test renderer.
+jest.mock('../scroll-to-field/scroll-to-field');
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -2608,7 +2616,13 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.getAllByText('Remove')).toHaveLength(2);
   });
 
-  it('scrolls the ScrollView to the newly added return when Add return is pressed', async () => {
+  // Round-6 device feedback item 3 (broadened): every scroll-on-add-row
+  // trigger, not only "Додати внесок" (add contribution), must route through
+  // the SAME occlusion-aware `scrollToField` helper the Save-invalid path
+  // already uses — never an unconditional `scrollToEnd`, which used to scroll
+  // even when the newly added row was already fully visible.
+  it('scrolls to the newly added return through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd (round-6 item 3)', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
     // The scroll is deferred to the next frame so the just-added row is
     // measured first; run that frame synchronously to assert the effect (same
     // pattern as the categories screen's own deferred scroll-to-form test).
@@ -2619,10 +2633,45 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
-    mockScrollToEnd.mockClear();
+    scrollToFieldMock.mockClear();
     await fireEvent.press(utils.getByText('Add return'));
 
-    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
+    expect(mockScrollToEnd).not.toHaveBeenCalled();
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, , geometry] = scrollToFieldMock.mock.calls[0];
+    expect(geometry).toEqual(
+      expect.objectContaining({
+        currentOffset: expect.any(Number),
+        contentHeight: expect.any(Number),
+      }),
+    );
+
+    rafSpy.mockRestore();
+  });
+
+  it('targets the newly appended return row (not a fixed one) on each Add return press (round-6 item 3)', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(utils.getByText('Add return'));
+    // The SAME `lastReturnFieldRef` object is passed on every call — a ref
+    // container never changes identity — so the newest-row proof reads its
+    // mutable `.current` at each point in time, not the ref object itself.
+    const [, rowRef] = scrollToFieldMock.mock.calls[0];
+    const secondRowNode = rowRef.current;
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(utils.getByText('Add return'));
+    const thirdRowNode = rowRef.current;
+
+    expect(thirdRowNode).not.toBeNull();
+    expect(thirdRowNode).not.toBe(secondRowNode);
 
     rafSpy.mockRestore();
   });
@@ -2668,6 +2717,20 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     const wrapperStyle = StyleSheet.flatten(utils.getByTestId('split-returns-wrapper').props.style);
     expect(wrapperStyle?.display).toBeUndefined();
+  });
+
+  // Round-6 device feedback item 2 (regression from round-4's 1cd2cf1, which
+  // first wrapped `renderSplitReturns`'s Fragment in this `View`): wrapping the
+  // divider/heading/rows/button in one `View` pulls them OUT of the parent
+  // `Box gap={4}`'s own flex-item list — they used to be its direct children,
+  // each getting that 16pt rhythm; now they are all ONE child, with nothing
+  // supplying a gap between them. The wrapper must carry the SAME gap itself.
+  it('gives the split-returns wrapper its own gap matching the form rhythm, once split mode is selected (round-6 item 2)', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    const wrapperStyle = StyleSheet.flatten(utils.getByTestId('split-returns-wrapper').props.style);
+    expect(wrapperStyle.gap).toBe(darkTheme.spacing(4));
   });
 });
 

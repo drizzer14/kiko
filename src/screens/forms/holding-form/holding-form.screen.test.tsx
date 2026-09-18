@@ -316,6 +316,62 @@ describe('HoldingFormScreen term deposit', () => {
     ]);
   });
 
+  // Round-6 device feedback item 3 (broadened): every scroll-on-add-row
+  // trigger, not only "Додати внесок" (add contribution) itself, must route
+  // through the SAME occlusion-aware `scrollToField` helper the Save-invalid
+  // path already uses — never an unconditional `scrollToEnd`, which used to
+  // scroll even when the newly added row was already fully visible.
+  it('scrolls to the newly added contribution through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd (round-6 item 3)', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(screen.getByText('Add contribution'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, , geometry] = scrollToFieldMock.mock.calls[0];
+    expect(geometry).toEqual(
+      expect.objectContaining({
+        currentOffset: expect.any(Number),
+        contentHeight: expect.any(Number),
+      }),
+    );
+
+    rafSpy.mockRestore();
+  });
+
+  it('targets the newly appended row (not a fixed one) on each Add contribution press (round-6 item 3)', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(screen.getByText('Add contribution'));
+    // The SAME `lastContributionFieldRef` object is passed on every call — a
+    // ref container never changes identity — so the newest-row proof reads
+    // its mutable `.current` at each point in time, not the ref object itself.
+    const [, rowRef] = scrollToFieldMock.mock.calls[0];
+    const secondRowNode = rowRef.current;
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(screen.getByText('Add contribution'));
+    const thirdRowNode = rowRef.current;
+
+    expect(thirdRowNode).not.toBeNull();
+    expect(thirdRowNode).not.toBe(secondRowNode);
+
+    rafSpy.mockRestore();
+  });
+
   it('blocks save and shows an inline error on a new contribution row left blank (round-4 device feedback item 10)', async () => {
     const screen = await renderScreen();
 
