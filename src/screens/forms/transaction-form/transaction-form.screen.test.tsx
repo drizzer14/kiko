@@ -494,6 +494,19 @@ describe('TransactionFormScreen — add mode', () => {
     expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
   });
 
+  it('shows an inline reason for a fresh add missing amount and category', async () => {
+    const utils = await renderAdd();
+
+    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+
+    await pickCategory(utils, 'Groceries');
+    expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
   it('writes the picked category onto the row even with a blank description', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
@@ -1756,6 +1769,23 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(isSaveDisabled()).toBe(false);
   });
 
+  it('shows an inline reason through the Exchange steps', async () => {
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+
+    expect(utils.getByText('Select a destination account.')).toBeTruthy();
+
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    expect(utils.getByText('Enter a Value Out greater than 0.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
+    expect(utils.getByText('Enter a Value In greater than 0.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    expect(utils.queryByText('Enter a Value In greater than 0.')).toBeNull();
+  });
+
   it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
@@ -2231,6 +2261,20 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(isSaveDisabled()).toBe(false);
   });
 
+  it('shows an inline reason through the Convert steps', async () => {
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Convert to exchange'));
+
+    expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
+
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
+    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+  });
+
   it('never calls update/remove on the existing row when converting', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-synced');
 
@@ -2366,6 +2410,16 @@ describe('TransactionFormScreen — Split-change mode', () => {
     // Raising the payment above the returns makes the net an expense again.
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
     expect(isDisabled()).toBe(false);
+  });
+
+  it('shows an inline reason for an incomplete split', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+
+    await pickCategory(utils, 'Groceries');
+    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
   });
 
   it('keeps Save disabled for an otherwise-valid split until a category is picked', async () => {
