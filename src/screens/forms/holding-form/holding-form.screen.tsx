@@ -146,6 +146,35 @@ const compoundingOptions: readonly CompoundingFrequency[] = [
 const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
 type CouponFrequency = (typeof couponFrequencies)[number];
 
+// The three inline reasons shown only after a failed Save press: gated as one
+// unit on `attemptedSave` so nothing renders before the first press, then
+// narrowed to the active type (or the name field, independent of type). A
+// module-level helper — rather than inline in the component — keeps this
+// branching out of the component's own cognitive-complexity budget.
+const saveReasonsFor = (params: {
+  attemptedSave: boolean;
+  type: HoldingType;
+  name: string;
+  termDepositReasonKey: () => TermDepositReasonKey | null;
+  bondReasonKey: () => BondReasonKey | null;
+}): {
+  termDepositReason: TermDepositReasonKey | null;
+  bondReason: BondReasonKey | null;
+  showNameReason: boolean;
+} => {
+  const { attemptedSave, type, name, termDepositReasonKey, bondReasonKey } = params;
+
+  if (!attemptedSave) {
+    return { termDepositReason: null, bondReason: null, showNameReason: false };
+  }
+
+  return {
+    termDepositReason: type === 'term_deposit' ? termDepositReasonKey() : null,
+    bondReason: type === 'bond' ? bondReasonKey() : null,
+    showNameReason: name.trim().length === 0,
+  };
+};
+
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId, holdingId } = route.params;
   const { t } = useTranslation();
@@ -506,16 +535,24 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
 
-  const termDepositReason = type === 'term_deposit' ? termDepositReasonKey() : null;
-  const bondReason = type === 'bond' ? bondReasonKey() : null;
+  const [attemptedSave, setAttemptedSave] = useState(false);
+
+  const { termDepositReason, bondReason, showNameReason } = saveReasonsFor({
+    attemptedSave,
+    type,
+    name,
+    termDepositReasonKey,
+    bondReasonKey,
+  });
 
   const save = async (): Promise<void> => {
-    const metadata = buildMetadata();
+    if (!isValid) {
+      setAttemptedSave(true);
 
-    // A term deposit with no valid contribution is invalid input: do not persist it.
-    if (type === 'term_deposit' && metadata === undefined) {
       return;
     }
+
+    const metadata = buildMetadata();
 
     try {
       if (isEdit && holdingId !== undefined) {
@@ -588,7 +625,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       scroll
       scrollableRef={scrollableRef}
       footer={
-        <Button onPress={onSave} disabled={!isValid || isSubmitting}>
+        <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}
         </Button>
       }
@@ -606,6 +643,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           namePlaceholder={t('forms.holding.namePlaceholder')}
           required
         />
+
+        {showNameReason && (
+          <FieldError message={t('forms.fields.nameRequiredError')} testID="holding-name-error" />
+        )}
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
