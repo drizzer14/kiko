@@ -1,8 +1,8 @@
-import { Alert } from 'react-native';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { Alert, View, type ScrollViewInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -16,7 +16,6 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
-import FieldError from '../../../design-system/components/field-error';
 import CryptoSyncForm from '../../account-detail/crypto-sync-form';
 import TextField from '../../../design-system/components/text-field';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
@@ -35,6 +34,7 @@ import BankTypeField from '../bank-type-field';
 import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import { scrollToField, type FieldInstance } from '../scroll-to-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -141,6 +141,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // an empty name, rather than showing as a standing hint the whole time.
   const [showNameError, setShowNameError] = useState(false);
 
+  // The scrollable content root and the name field's own wrapper — passed to
+  // `scrollToField` so a blocked Connect/Save (empty name) scrolls the field
+  // into view alongside its inline error, rather than leaving the reason
+  // rendered off-screen above the fold. See scroll-to-field.ts.
+  const scrollableRef = useRef<ScrollViewInstance>(null);
+  const nameFieldRef = useRef<FieldInstance>(null);
+
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
     // form is always visible and a credential/address may be entered, but NO
@@ -153,6 +160,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
       setShowNameError(true);
+      scrollToField(scrollableRef, nameFieldRef);
 
       return Promise.reject(new Error('name-required'));
     }
@@ -273,6 +281,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // than a standing disabled state.
     if (!canSave) {
       setShowNameError(true);
+      scrollToField(scrollableRef, nameFieldRef);
 
       return;
     }
@@ -345,6 +354,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   return (
     <Screen
       scroll
+      scrollableRef={scrollableRef}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}
@@ -357,22 +367,22 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             (createCashAccount) now persists the picked icon in its own atomic
             insert, and the bank/crypto path sets it via setIcon on the returned
             id below. */}
-        <HoldingIdentityField
-          icons={KIKO_ENTITIES_ICONS}
-          icon={icon}
-          fallbackIcon={FALLBACK_ICON}
-          iconColor={effectiveColor}
-          name={name}
-          onChangeName={setName}
-          onSelectIcon={setIcon}
-          onRemoveIcon={() => setIcon(null)}
-          namePlaceholder={t('forms.account.namePlaceholder')}
-          required
-        />
-
-        {showNameError && !canSave && (
-          <FieldError message={t('forms.fields.nameRequiredError')} testID="account-name-error" />
-        )}
+        <View ref={nameFieldRef}>
+          <HoldingIdentityField
+            icons={KIKO_ENTITIES_ICONS}
+            icon={icon}
+            fallbackIcon={FALLBACK_ICON}
+            iconColor={effectiveColor}
+            name={name}
+            onChangeName={setName}
+            onSelectIcon={setIcon}
+            onRemoveIcon={() => setIcon(null)}
+            namePlaceholder={t('forms.account.namePlaceholder')}
+            required
+            error={showNameError && !canSave ? t('forms.fields.nameRequiredError') : undefined}
+            testID="holding-identity-name-field"
+          />
+        </View>
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
