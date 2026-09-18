@@ -104,4 +104,30 @@ describe('importData', () => {
     );
     expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
   });
+
+  it('throws an import-prefixed error on a decrypted payload missing a required table and never restores anything', async () => {
+    const key = generateExportKey();
+    const malformedPayload = {
+      exportedAt: 1,
+      appVersion: '1.1.0',
+      tables: { accounts: [], holdings: [] },
+    };
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(malformedPayload)), key);
+    mockReadFile.mockResolvedValue(JSON.stringify(envelope));
+
+    await expect(
+      importData({ fileUri: '/tmp/x.kiko', keyBase64: encodeBytesToBase64(key) }),
+    ).rejects.toThrow('data-transfer/import');
+    expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('throws a decrypt-prefixed error on a garbled keyBase64 and never restores anything', async () => {
+    const { fileText } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await expect(
+      importData({ fileUri: '/tmp/x.kiko', keyBase64: '!!!not-base64!!!' }),
+    ).rejects.toThrow('data-transfer/decrypt');
+    expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+  });
 });

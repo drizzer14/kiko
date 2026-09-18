@@ -26,12 +26,37 @@ const isExportEnvelope = (value: unknown): value is ExportEnvelope =>
   typeof (value as ExportEnvelope).nonce === 'string' &&
   typeof (value as ExportEnvelope).ciphertext === 'string';
 
-const isExportPayload = (value: unknown): value is ExportPayload =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as ExportPayload).exportedAt === 'number' &&
-  typeof (value as ExportPayload).tables === 'object' &&
-  (value as ExportPayload).tables !== null;
+const REQUIRED_TABLE_KEYS = [
+  'accounts',
+  'holdings',
+  'transactions',
+  'currencyRates',
+  'currencyRateHistory',
+  'settings',
+  'syncState',
+  'categories',
+  'categoryOverrides',
+] as const;
+
+const isExportPayload = (value: unknown): value is ExportPayload => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    typeof (value as ExportPayload).exportedAt !== 'number'
+  ) {
+    return false;
+  }
+
+  const tables = (value as ExportPayload).tables;
+
+  if (typeof tables !== 'object' || tables === null) {
+    return false;
+  }
+
+  return REQUIRED_TABLE_KEYS.every((key) =>
+    Array.isArray((tables as Record<string, unknown>)[key]),
+  );
+};
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
 
@@ -62,7 +87,13 @@ export const importData = async (options: {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 
-  const key = decodeBase64ToBytes(options.keyBase64);
+  let key: Uint8Array;
+  try {
+    key = decodeBase64ToBytes(options.keyBase64);
+  } catch {
+    throw new Error('data-transfer/decrypt: wrong key or corrupted file');
+  }
+
   const plaintext = decryptEnvelope(envelope, key);
 
   let payload: unknown;
