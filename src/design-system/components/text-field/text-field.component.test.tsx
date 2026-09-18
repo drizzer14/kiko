@@ -213,4 +213,64 @@ describe('TextField', () => {
     expect(flatStyle.minHeight).toBe(44);
     expect(flatStyle.textAlignVertical).toBe('top');
   });
+
+  it('renders no error styling or message by default', async () => {
+    const { queryByText, getByLabelText } = await renderField({ label: 'Amount', value: '' });
+
+    const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
+    expect(queryByText('Enter an amount greater than 0.')).toBeNull();
+  });
+
+  it('applies the invalid border and renders the message directly under the input when error is set', async () => {
+    const { getByLabelText, getByText } = await renderField({
+      label: 'Amount',
+      value: '',
+      error: 'Enter an amount greater than 0.',
+    });
+
+    const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
+    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
+  });
+
+  it('reserves the same error-slot height whether or not an error is showing (no layout shift)', async () => {
+    const { getByTestId, rerender } = await renderField({
+      label: 'Amount',
+      value: '',
+      testID: 'amount-field',
+    });
+
+    const emptyHeight = StyleSheet.flatten(
+      getByTestId('amount-field-error-slot').props.style,
+    ).minHeight;
+
+    await rerender(
+      <TextField
+        label="Amount"
+        value=""
+        onChangeText={jest.fn()}
+        testID="amount-field"
+        error="Enter an amount greater than 0."
+      />,
+    );
+
+    const filledHeight = StyleSheet.flatten(
+      getByTestId('amount-field-error-slot').props.style,
+    ).minHeight;
+    expect(filledHeight).toBe(emptyHeight);
+    expect(emptyHeight).toBeGreaterThan(0);
+  });
+
+  it('forwards testID to the outer field and derives the error testID from it', async () => {
+    const { getByTestId } = await renderField({
+      label: 'Amount',
+      value: '',
+      testID: 'amount-field',
+      error: 'Enter an amount greater than 0.',
+    });
+
+    expect(getByTestId('amount-field')).toBeTruthy();
+    expect(getByTestId('amount-field-error')).toBeTruthy();
+  });
 });

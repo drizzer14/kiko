@@ -47,4 +47,15 @@ export type TextFieldProps = Pick<
   // field. Optional and empty-safe: `undefined` (or an empty string) renders
   // exactly as a plain field with no leading glyph.
   leadingIcon?: string;
+  // The validation-failure message for this field, or `undefined` when it's
+  // currently valid. When set, the input's border switches to the shared
+  // invalid-border token and the message renders directly under the input in
+  // a reserved-height slot — see text-field.styles.ts's `errorSlot`. There is
+  // no separate `invalid` boolean: a defined `error` IS the invalid signal.
+  error?: string;
+  // Optional testID applied to the field's outer Box. When set, the
+  // always-rendered error slot beneath the input additionally takes
+  // `${testID}-error-slot`, and the FieldError message (when shown)
+  // additionally takes `${testID}-error`.
+  testID?: string;
 };
