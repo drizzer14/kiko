@@ -23,3 +23,11 @@ export const statementFormats: StatementFormat[] = [
  */
 export const detectFormat = (input: StatementFormatInput): StatementFormat | undefined =>
   statementFormats.find((format) => format.detect(input));
+
+/**
+ * A human-readable, comma-joined list of every currently registered format's
+ * display name — interpolated into `statementImport.unrecognizedFormat` so
+ * that message names what Kiko actually accepts instead of leaving the user
+ * to guess ("Try a different export").
+ */
+export const supportedFormatNames = statementFormats.map((format) => format.displayName).join(', ');

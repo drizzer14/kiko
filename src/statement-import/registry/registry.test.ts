@@ -8,7 +8,7 @@ import { alfaBusinessCsvFormat } from '../formats/alfa-business-csv';
 import { ukrsibBusinessCsvFormat } from '../formats/ukrsib-business-csv';
 import { procreditBusinessCsvFormat } from '../formats/procredit-business-csv';
 
-import { detectFormat, statementFormats } from './registry';
+import { detectFormat, statementFormats, supportedFormatNames } from './registry';
 
 const fixtureText = readFileSync(
   path.join(__dirname, '../formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv'),
@@ -26,6 +26,14 @@ describe('statementFormats', () => {
       ukrsibBusinessCsvFormat,
       alfaBusinessCsvFormat,
     ]);
+  });
+});
+
+describe('supportedFormatNames', () => {
+  it('joins every registered format display name, in registry order', () => {
+    expect(supportedFormatNames).toBe(
+      'Monobank (CSV), PrivatBank (XLSX), Sensebank (CSV), ProCredit Bank business (CSV), UKRSIBBANK business (CSV), Alfa-Bank business (CSV)',
+    );
   });
 });
 

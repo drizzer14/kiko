@@ -34,7 +34,7 @@ export const uk: typeof en = {
   settings: {
     appLock: {
       label: 'Блокування застосунку',
-      requireFaceIdOrPasscode: 'Вимагати Face ID або пароль',
+      requireFaceIdOrPasscode: 'Блокування Face ID або паролем',
       hint: {
         passcodeNotSet:
           'Встановіть пароль пристрою в Налаштуваннях iOS, щоб використовувати блокування застосунку.',
@@ -54,7 +54,7 @@ export const uk: typeof en = {
       exportButton: 'Експортувати дані',
       includeSecrets: 'Включити збережені паролі й ключі',
       includeSecretsHint:
-        'Додає до файлу ваш збережений токен Monobank і ключі Binance API, щоб після відновлення синхронізація продовжилася без повторного підключення. Вимкніть, щоб експортувати лише дані.',
+        'Увімкніть, аби додати до файлу ваш збережений токен Monobank і ключі Binance API, щоб після відновлення синхронізація продовжилася без повторного підключення.',
       keyLabel: 'Ключ шифрування',
       keyWarning:
         'Збережіть цей ключ у надійному місці — він більше не показуватиметься, і це єдиний спосіб розблокувати цей файл.',
@@ -65,20 +65,20 @@ export const uk: typeof en = {
       chooseFile: 'Обрати файл',
       confirmButton: 'Замінити дані',
       confirmMessage:
-        'Імпорт замінює кожен рахунок, актив, транзакцію та категорію, наявні зараз у Kiko, вмістом цього файлу. Це неможливо скасувати.',
+        'Імпорт замінює кожен рахунок, актив, транзакцію та категорію, наявні зараз у Кіко, вмістом цього файлу. Це неможливо скасувати.',
       confirmTitle: 'Замінити всі дані?',
       description:
-        'Оберіть файл експорту Kiko та введіть його ключ шифрування, щоб відновити свої дані.',
+        'Оберіть файл експорту Кіко та введіть його ключ шифрування, щоб відновити свої дані.',
       errorTitle: 'Помилка імпорту',
       importButton: 'Імпортувати дані',
-      invalidFileError: 'Це не схоже на дійсний файл експорту Kiko.',
+      invalidFileError: 'Це не схоже на дійсний файл експорту Кіко.',
       keyLabel: 'Ключ шифрування',
-      keyPlaceholder: 'Вставте ключ з вашого експорту',
+      keyPlaceholder: 'Вставте ключ, наданий при експорті',
       keyTooShortError: 'Ключ виглядає надто коротким — вставте повний ключ з вашого експорту.',
       pasteKey: 'Вставити ключ з буфера обміну',
       successMessage: 'Імпорт завершено — відновлено рахунків: {{count}}.',
       title: 'Імпорт даних',
-      wrongFileTypeError: 'Оберіть файл експорту Kiko (.kiko).',
+      wrongFileTypeError: 'Оберіть файл експорту Кіко (.kiko).',
       wrongKeyError: 'Ключ невірний, або файл пошкоджений.',
     },
     footer: {
@@ -173,13 +173,13 @@ export const uk: typeof en = {
     account: {
       addTitle: 'Додати рахунок',
       bank: 'Банк',
-      bankConnectable: 'Підключення та імпорт виписок.',
-      bankImportOnly: 'Лише імпорт виписки — без підключення.',
+      bankConnectable: 'Автоматична синхронізація та імпорт виписок.',
+      bankImportOnly: 'Імпорт виписок.',
       bankType: 'Тип банку',
       cash: 'Готівка',
       crypto: 'Крипто',
       editTitle: 'Редагувати рахунок',
-      importOnlyBankHint: 'Виписку цього банку можна імпортувати після збереження.',
+      importOnlyBankHint: 'Виписку цього банку можна буде імпортувати після створення рахунку.',
       initialValue: 'Початкова сума',
       initialValuePlaceholder: '1 000,00',
       kind: 'Вид',
@@ -188,7 +188,7 @@ export const uk: typeof en = {
     },
     contribution: {
       addTitle: 'Додати внесок',
-      amountError: 'Введіть суму більше 0.',
+      amountError: 'Сума має бути більшою за 0.',
       amountPlaceholder: '500,00',
       errorMessage: 'Спробуйте ще раз.',
       errorTitle: 'Не вдалося додати внесок',
@@ -252,17 +252,17 @@ export const uk: typeof en = {
     transaction: {
       addReturn: 'Додати повернення',
       addTitle: 'Додати транзакцію',
-      amountError: 'Введіть суму більше 0.',
+      amountError: 'Сума має бути більшою за 0.',
       amountPlaceholder: '250,00',
       apply: 'Застосувати',
       applyCategoryMessage:
-        'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}»? Це також застосується до майбутніх імпортів.',
+        'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}», включаючи майбутні?',
       applyCategoryToAll: 'Застосувати категорію до всіх',
-      applyToThisOne: 'Лише для цієї',
+      applyToThisOne: 'Лише до цієї',
       category: 'Категорія',
       convertAmountPlaceholder: '100,00',
-      convertToExchange: 'Зробити обміном',
-      counterpartAmountError: 'Введіть суму більше 0.',
+      convertToExchange: 'Обміняти',
+      counterpartAmountError: 'Сума має бути більшою за 0.',
       description: 'Опис',
       descriptionPlaceholder: 'Кава',
       editTitle: 'Редагувати транзакцію',
@@ -282,15 +282,15 @@ export const uk: typeof en = {
       selectHolding: 'Оберіть актив',
       split: 'Поділ',
       splitInvalidError: 'Введіть суму платежу та щонайменше одне коректне повернення.',
-      syncedNotice: 'Цю транзакцію імпортовано з підключеного рахунку, і її не можна редагувати.',
+      syncedNotice: 'Цю було синхронізовано, тому поміняти можна тільки категорію.',
       title: 'Транзакція',
       to: 'Куди',
       type: 'Тип',
       valueIn: 'Отримано',
-      valueInError: 'Введіть суму «Отримано» більше 0.',
+      valueInError: 'Сума має бути більшою за 0.',
       valueInPlaceholder: '100,00',
       valueOut: 'Віддано',
-      valueOutError: 'Введіть суму «Віддано» більше 0.',
+      valueOutError: 'Сума має бути більшою за 0.',
       valueOutPlaceholder: '100,00',
     },
   },
@@ -303,11 +303,10 @@ export const uk: typeof en = {
   addBank: {
     monobank: {
       about:
-        'Monobank — український мобільний банк. Kiko підключається за допомогою особистого API-токена, який ви створюєте в застосунку Monobank.',
+        'Monobank — український мобільний банк. Кіко підключається за допомогою особистого API-токена, який ви створюєте в застосунку Monobank.',
       dataProvided:
-        'Баланси, банки (jars) та історія транзакцій, що оновлюються автоматично та під час оновлення потягуванням. Лише читання — Kiko не може переказувати кошти.',
-      eligibility:
-        'Працює з будь-яким особистим рахунком Monobank. Бізнес-рахунок або ФОП не потрібні.',
+        'Баланси, банки та історія транзакцій, що оновлюються автоматично. Кіко лише читає ці дані й не може переказувати кошти.',
+      eligibility: 'Працює з будь-яким особистим рахунком Monobank.',
     },
   },
   accountDetail: {
@@ -335,13 +334,11 @@ export const uk: typeof en = {
     disconnectAction: 'Відключити',
     disconnectErrorTitle: 'Не вдалося відключити',
     disconnectMonobank: 'Відключити Monobank',
-    disconnectMonobankMessage:
-      'Це очистить зʼєднання та збережений токен. Ваші рахунки й транзакції залишаться як ручний знімок.',
+    disconnectMonobankMessage: 'Банк буде відʼєднано, але ви можете й надалі керувати ним вручну.',
     disconnectProvider: 'Відключити {{provider}}',
     disconnectProviderMessage: {
-      binance:
-        'Це очистить зʼєднання та збережений API ключ. Ваш BTC-актив залишиться як ручний знімок.',
-      wallet: 'Це очистить зʼєднання. Ваш BTC-актив залишиться як ручний знімок.',
+      binance: 'Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну.',
+      wallet: 'Гаманець буде відʼєднано, але ви можете й надалі керувати ним вручну.',
     },
     holdingsHeading: 'Активи',
     importStatement: 'Імпортувати виписку',
@@ -349,7 +346,8 @@ export const uk: typeof en = {
     invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
-    monobankRateLimited: 'Monobank зараз обмежує кількість запитів. Спробуйте ще раз незабаром.',
+    monobankRateLimited:
+      'Monobank дозволяє не більше одного запиту на 60 секунд. Зачекайте хвилину й спробуйте ще раз.',
     monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',
     monobankTokenPlaceholder: 'Токен Monobank',
     never: 'Ніколи',
@@ -422,12 +420,12 @@ export const uk: typeof en = {
     filterAccounts: 'Рахунки',
     filterCategories: 'Категорії',
     netWorthOverTime: 'Капітал з часом',
-    noSpendingToShow: 'Немає витрат для показу',
+    noSpendingToShow: 'Витрат ще немає',
     spendingTrendByCategory: 'Тренд витрат за категоріями',
     title: 'Статистика',
     trendFilter: {
       title: 'Фільтри',
-      selection: 'Вибір',
+      selection: 'Вибірка',
       manual: 'Вручну',
       top: 'Топ',
       amount: 'Кількість',
@@ -465,7 +463,7 @@ export const uk: typeof en = {
       loadingHistory: 'Завантаження історії',
     },
     pieChart: {
-      emptyDefault: 'Немає рахунків для показу',
+      emptyDefault: 'Створіть рахунок аби побачити його тут',
       showAll: 'Показати всі',
       showLess: 'Згорнути',
     },
@@ -477,9 +475,10 @@ export const uk: typeof en = {
   statementImport: {
     previewHeading: 'Перегляд виписки',
     reading: 'Читаємо файл…',
-    unrecognizedFormat: 'Ми не розпізнаємо формат цього файлу. Спробуйте інший експорт.',
+    unrecognizedFormat:
+      'Ми не розпізнаємо формат цього файлу. Кіко вміє імпортувати виписки з: {{formats}}.',
     chooseHolding: 'Оберіть актив',
-    createNewHolding: 'Створити новий актив',
+    createNewHolding: 'Створити актив',
     importButton: 'Імпортувати',
     importedCount: 'Імпортовано {{imported}} з {{total}}',
     // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
@@ -493,8 +492,7 @@ export const uk: typeof en = {
     skippedWrongCurrency_few: '{{count}} рядки в іншій валюті пропущено',
     skippedWrongCurrency_many: '{{count}} рядків в іншій валюті пропущено',
     skippedWrongCurrency_other: '{{count}} рядки в іншій валюті пропущено',
-    bankMismatch:
-      'Це не схоже на виписку {{bank}}. Оберіть відповідний файл або змініть банк рахунку.',
+    bankMismatch: 'Це не схоже на виписку {{bank}}. Оберіть відповідний файл.',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

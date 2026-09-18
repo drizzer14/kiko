@@ -21,7 +21,11 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { detectFormat, statementFormats } from '../../statement-import/registry';
+import {
+  detectFormat,
+  statementFormats,
+  supportedFormatNames,
+} from '../../statement-import/registry';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import ImportOutcome from './import-outcome';
@@ -412,7 +416,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
           </Text>
         )}
 
-        {showUnreadable && <Text variant="body">{t('statementImport.unrecognizedFormat')}</Text>}
+        {showUnreadable && (
+          <Text variant="body">
+            {t('statementImport.unrecognizedFormat', { formats: supportedFormatNames })}
+          </Text>
+        )}
 
         {stats && (
           <Box gap={3} style={styles.previewBlock}>

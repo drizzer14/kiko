@@ -6,6 +6,7 @@ import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
 import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
+import { supportedFormatNames } from '../../statement-import/registry';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -288,7 +289,9 @@ describe('StatementImportScreen', () => {
         getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
       ).toBeTruthy(),
     );
-    expect(queryByText(i18n.t('statementImport.unrecognizedFormat'))).toBeNull();
+    expect(
+      queryByText(i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames })),
+    ).toBeNull();
     expect(queryByTestId('statement-import-transaction-count')).toBeNull();
   });
 
@@ -301,7 +304,9 @@ describe('StatementImportScreen', () => {
     });
 
     await waitFor(() =>
-      expect(getByText(i18n.t('statementImport.unrecognizedFormat'))).toBeTruthy(),
+      expect(
+        getByText(i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames })),
+      ).toBeTruthy(),
     );
     expect(queryByTestId('statement-import-transaction-count')).toBeNull();
   });
@@ -315,7 +320,9 @@ describe('StatementImportScreen', () => {
     });
 
     await waitFor(() =>
-      expect(getByText(i18n.t('statementImport.unrecognizedFormat'))).toBeTruthy(),
+      expect(
+        getByText(i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames })),
+      ).toBeTruthy(),
     );
     expect(queryByTestId('statement-import-transaction-count')).toBeNull();
   });
@@ -329,7 +336,9 @@ describe('StatementImportScreen', () => {
     });
 
     await waitFor(() =>
-      expect(getByText(i18n.t('statementImport.unrecognizedFormat'))).toBeTruthy(),
+      expect(
+        getByText(i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames })),
+      ).toBeTruthy(),
     );
     expect(queryByTestId('statement-import-transaction-count')).toBeNull();
   });

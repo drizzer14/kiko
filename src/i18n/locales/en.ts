@@ -203,7 +203,7 @@ export const en = {
     },
     contribution: {
       addTitle: 'Add Contribution',
-      amountError: 'Enter an amount greater than 0.',
+      amountError: 'Amount must be greater than 0.',
       amountPlaceholder: '500.00',
       errorMessage: 'Please try again.',
       errorTitle: 'Could not add contribution',
@@ -269,7 +269,7 @@ export const en = {
     transaction: {
       addReturn: 'Add return',
       addTitle: 'Add Transaction',
-      amountError: 'Enter an amount greater than 0.',
+      amountError: 'Amount must be greater than 0.',
       amountPlaceholder: '250.00',
       apply: 'Apply',
       applyCategoryMessage:
@@ -278,8 +278,8 @@ export const en = {
       applyToThisOne: 'Just for this one',
       category: 'Category',
       convertAmountPlaceholder: '100.00',
-      convertToExchange: 'Convert to exchange',
-      counterpartAmountError: 'Enter an amount greater than 0.',
+      convertToExchange: 'Exchange',
+      counterpartAmountError: 'Amount must be greater than 0.',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
       editTitle: 'Edit Transaction',
@@ -299,15 +299,15 @@ export const en = {
       selectHolding: 'Select holding',
       split: 'Split',
       splitInvalidError: 'Enter a payment amount and at least one valid return.',
-      syncedNotice: 'This transaction was imported from a connected account and cannot be edited.',
+      syncedNotice: 'This was synced, so only the category can be changed.',
       title: 'Transaction',
       to: 'To',
       type: 'Type',
       valueIn: 'Value In',
-      valueInError: 'Enter a Value In greater than 0.',
+      valueInError: 'Amount must be greater than 0.',
       valueInPlaceholder: '100.00',
       valueOut: 'Value Out',
-      valueOutError: 'Enter a Value Out greater than 0.',
+      valueOutError: 'Amount must be greater than 0.',
       valueOutPlaceholder: '100.00',
     },
   },
@@ -370,7 +370,8 @@ export const en = {
     invalidBTCAddress: 'Invalid BTC address',
     invalidToken: 'Invalid token',
     lastSync: 'Last sync: {{time}}',
-    monobankRateLimited: 'Monobank is rate-limiting requests right now. Please try again shortly.',
+    monobankRateLimited:
+      'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
@@ -530,7 +531,8 @@ export const en = {
   statementImport: {
     previewHeading: 'Statement preview',
     reading: 'Reading the file…',
-    unrecognizedFormat: "We don't recognize this file's format. Try a different export.",
+    unrecognizedFormat:
+      "We don't recognize this file's format. Kiko can import statements from: {{formats}}.",
     chooseHolding: 'Choose a holding',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
@@ -564,8 +566,7 @@ export const en = {
     // scoped by `expectedFormatId` (device-feedback-round-1 item 5) — a more
     // specific state than the generic `unrecognizedFormat`, so the user
     // knows WHY (wrong bank's export), not just that the file failed.
-    bankMismatch:
-      "This doesn't look like a {{bank}} statement. Pick the matching file, or change the account's bank.",
+    bankMismatch: "This doesn't look like a {{bank}} statement. Pick the matching file.",
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

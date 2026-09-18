@@ -497,11 +497,11 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockRecordManual).not.toHaveBeenCalled();
-    expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(getByText('Amount must be greater than 0.')).toBeTruthy();
     // The reason moved onto the Amount field, so the footer no longer carries
     // it — see the "renders only the Save button in the footer" test below.
     expect(
-      within(getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+      within(getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
     expect(StyleSheet.flatten(getByLabelText('Amount').props.style).borderColor).toBe('#FF453A');
   });
@@ -509,16 +509,16 @@ describe('TransactionFormScreen — add mode', () => {
   it('shows an inline reason for a fresh add missing amount and category, only after Save is pressed', async () => {
     const utils = await renderAdd();
 
-    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
 
     await fireEvent.press(utils.getByText('Save'));
-    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
-    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
     expect(utils.getByText('Select a category.')).toBeTruthy();
     expect(within(utils.getByTestId('screen-footer')).queryByText('Select a category.')).toBeNull();
 
@@ -1153,9 +1153,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     await fireEvent.press(utils.getByText('Save'));
 
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
   });
 
@@ -1266,7 +1266,7 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(getByLabelText('Description').props.editable).toBe(false);
     // The notice is source-neutral: it names no single provider, so it reads
     // correctly on a Monobank, Binance or wallet row alike.
-    expect(getByText(/imported from a connected account/i)).toBeTruthy();
+    expect(getByText(/was synced/i)).toBeTruthy();
   });
 
   it('offers no Save action and never writes', async () => {
@@ -1349,7 +1349,7 @@ describe('TransactionFormScreen — synced (binance) row', () => {
   it('shows the source-neutral read-only notice, never Monobank-specific wording', async () => {
     const { getByText, queryByText } = await renderEdit('txn-b');
     // A Binance row must not claim it came from Monobank.
-    expect(getByText(/imported from a connected account/i)).toBeTruthy();
+    expect(getByText(/was synced/i)).toBeTruthy();
     expect(queryByText(/Monobank/i)).toBeNull();
   });
 
@@ -1703,9 +1703,11 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
     const utils = await renderEdit('txn-1');
     // Open the type sheet: an edit only offers income/expense, so Exchange must
-    // not appear as an option there.
+    // not appear as an option there. Scoped to the option's own testID (not a
+    // page-wide text query) because this row also offers the "Exchange" convert
+    // action elsewhere on screen, which renders the identical word.
     await fireEvent.press(utils.getByLabelText('Type'));
-    expect(utils.queryByText('Exchange')).toBeNull();
+    expect(utils.queryByTestId('transaction-type-option-exchange')).toBeNull();
   });
 
   it('lists open, non-source cash holdings in the destination select', async () => {
@@ -1821,19 +1823,19 @@ describe('TransactionFormScreen — Exchange mode', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    expect(utils.getByText('Enter a Value Out greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Enter a Value Out greater than 0.'),
+      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value Out'), '100');
-    expect(utils.getByText('Enter a Value In greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Enter a Value In greater than 0.'),
+      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
-    expect(utils.queryByText('Enter a Value In greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
   it('shows the received (Value In) leg the destination currency glyph as its suffix', async () => {
@@ -2193,34 +2195,34 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
   it('shows the action for a non-zero expense on a cash/card holding (manual AND synced)', async () => {
     const manual = await renderEdit('expense-manual');
-    expect(manual.queryByText('Convert to exchange')).toBeTruthy();
+    expect(manual.queryByText('Exchange')).toBeTruthy();
 
     const synced = await renderEdit('expense-synced');
-    expect(synced.queryByText('Convert to exchange')).toBeTruthy();
+    expect(synced.queryByText('Exchange')).toBeTruthy();
   });
 
-  it('renders the Convert to exchange action at the small inline size', async () => {
+  it('renders the Exchange action at the small inline size', async () => {
     const { getByRole } = await renderEdit('expense-manual');
 
     // The action is a small inline secondary of the form's Save CTA, so it takes
     // the shorter `small` size (34pt visible, 44pt tap via hitSlop) rather than
     // the taller 44pt `compact` — matching the other small inline actions.
-    const convert = getByRole('button', { name: 'Convert to exchange' });
+    const convert = getByRole('button', { name: 'Exchange' });
     expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(34);
   });
 
   it('does NOT show the action for a zero amount or a non-liquid holding', async () => {
     const zero = await renderEdit('zero-amount');
-    expect(zero.queryByText('Convert to exchange')).toBeNull();
+    expect(zero.queryByText('Exchange')).toBeNull();
 
     const deposit = await renderEdit('deposit-txn');
-    expect(deposit.queryByText('Convert to exchange')).toBeNull();
+    expect(deposit.queryByText('Exchange')).toBeNull();
   });
 
   it('opens the destination ("To") form for an expense-sourced convert', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
 
     // Expense source: the fixed side is Value Out; the picked leg is a destination ("To").
     expect(getByText('Value Out')).toBeTruthy();
@@ -2231,7 +2233,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('opens the source ("From") form for an income-sourced convert', async () => {
     const { getByText, getByLabelText } = await renderEdit('income-manual');
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
 
     // Income destination: the fixed side is Value In; the picked leg is a source ("From").
     expect(getByText('Value In')).toBeTruthy();
@@ -2243,7 +2245,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
     // existing: holding 'cash-1' name 'Cash UAH', amount -10_000 (100.00 UAH)
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD')); // a cash destination in another account
     await fireEvent.changeText(getByLabelText('Value In'), '2.50');
@@ -2270,7 +2272,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('restricts the source picker to cash/card for an income convert', async () => {
     const { getByText, getByLabelText, queryByText } = await renderEdit('income-manual');
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('From'));
 
     expect(getByText('Cash USD')).toBeTruthy(); // cash offered
@@ -2282,7 +2284,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   it('rejects a blank/zero/negative counterpart amount (no write)', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-manual');
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
     // leave Value In blank
@@ -2293,7 +2295,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
   it('keeps Save enabled through the Convert steps but blocks the write until valid', async () => {
     const utils = await renderEdit('expense-manual');
-    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByText('Exchange'));
 
     const isSaveDisabled = (): boolean | undefined =>
       utils.getByText('Save').parent?.props.accessibilityState.disabled;
@@ -2314,7 +2316,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
   it('shows an inline reason through the Convert steps, only after Save is pressed', async () => {
     const utils = await renderEdit('expense-manual');
-    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByText('Exchange'));
 
     expect(utils.queryByText('Select an account to convert into.')).toBeNull();
     await fireEvent.press(utils.getByText('Save'));
@@ -2325,19 +2327,19 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Enter an amount greater than 0.'),
+      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value In'), '2.5');
-    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
   it('never calls update/remove on the existing row when converting', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-synced');
 
-    await fireEvent.press(getByText('Convert to exchange'));
+    await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
     await fireEvent.changeText(getByLabelText('Value In'), '5');
@@ -2760,7 +2762,7 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
   it('prefills the counterpart amount from the latest cached rate on picking a destination', async () => {
     const utils = await renderConvert([{ base: 'USD', quote: 'UAH', rate: '41.5' }]);
 
-    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByText('Exchange'));
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash UAH'));
 
@@ -2773,7 +2775,7 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
   it('leaves the counterpart amount blank when no rate for the pair is cached', async () => {
     const utils = await renderConvert([]);
 
-    await fireEvent.press(utils.getByText('Convert to exchange'));
+    await fireEvent.press(utils.getByText('Exchange'));
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash UAH'));
 

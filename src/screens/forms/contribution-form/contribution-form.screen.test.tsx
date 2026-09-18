@@ -216,14 +216,14 @@ describe('ContributionFormScreen', () => {
   it('shows the inline reason only after Save is pressed with an invalid amount, and does not append', async () => {
     const utils = await renderScreen();
 
-    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
 
     await fireEvent.press(utils.getByText('Save contribution'));
-    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
-    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
   it('shows the amount error directly on the Amount field, not as a separate block', async () => {
@@ -231,7 +231,7 @@ describe('ContributionFormScreen', () => {
 
     await fireEvent.press(utils.getByText('Save contribution'));
 
-    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(utils.getByLabelText('Amount').props.style);
     expect(flatStyle.borderColor).toBe('#FF453A');
   });
