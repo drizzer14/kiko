@@ -52,6 +52,39 @@ export const en = {
     },
     baseCurrency: 'Base Currency',
     categories: 'Categories',
+    dataExport: {
+      copyKey: 'Copy Key',
+      description:
+        'Export all your accounts, holdings, transactions, and categories to an encrypted file you can keep as a backup or move to another device.',
+      errorMessage: 'Please try again.',
+      errorTitle: 'Export Failed',
+      exportButton: 'Export Data',
+      includeSecrets: 'Include Saved Credentials',
+      includeSecretsHint:
+        'Also includes your saved Monobank token and Binance API keys, so a restore can resume syncing without reconnecting.',
+      keyLabel: 'Encryption Key',
+      keyWarning:
+        'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
+      shareFile: 'Share File',
+      title: 'Export Data',
+    },
+    dataImport: {
+      chooseFile: 'Choose File',
+      confirmButton: 'Replace Data',
+      confirmMessage:
+        'Importing replaces every account, holding, transaction, and category currently in Kiko with the contents of this file. This cannot be undone.',
+      confirmTitle: 'Replace All Data?',
+      description: 'Choose a Kiko export file and enter its encryption key to restore your data.',
+      errorTitle: 'Import Failed',
+      importButton: 'Import Data',
+      invalidFileError: 'This does not look like a valid Kiko export file.',
+      keyLabel: 'Encryption Key',
+      keyPlaceholder: 'Paste the key from your export',
+      pasteKey: 'Paste key from clipboard',
+      successMessage: 'Import complete — {{count}} accounts restored.',
+      title: 'Import Data',
+      wrongKeyError: 'The key is wrong, or the file is corrupted.',
+    },
     footer: {
       appName: 'Kiko',
       copyrightHolder: 'Dmytro Vasylkivskyi',

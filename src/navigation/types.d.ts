@@ -68,6 +68,8 @@ export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  ExportData: undefined;
+  ImportData: undefined;
 };
 
 export type StatisticsStackParamList = {

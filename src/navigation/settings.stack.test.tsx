@@ -55,5 +55,7 @@ describe('SettingsStack', () => {
     expect(titles.Settings).toBe('Settings');
     expect(titles.System).toBe('System');
     expect(titles.Categories).toBe('Categories');
+    expect(titles.ExportData).toBe('Export Data');
+    expect(titles.ImportData).toBe('Import Data');
   });
 });
