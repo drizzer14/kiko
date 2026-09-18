@@ -555,7 +555,7 @@ describe('TransactionFormScreen — add mode', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
     const utils = await renderAdd();
-    const { getByLabelText, getByText, navigation } = utils;
+    const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(getByText('Save'));
