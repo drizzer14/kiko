@@ -54,14 +54,16 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
       <Box gap={4}>
         <Card testID="settings-card-export-secrets" padding={3}>
           <SettingsRow icon="key" label={t('settings.dataExport.includeSecrets')}>
-            <Switch
-              testID="settings-switch-export-secrets"
-              value={includeSecrets}
-              onValueChange={setIncludeSecrets}
-            />
-            <Text variant="caption" tone="textSecondary">
-              {t('settings.dataExport.includeSecretsHint')}
-            </Text>
+            <Box gap={2}>
+              <Switch
+                testID="settings-switch-export-secrets"
+                value={includeSecrets}
+                onValueChange={setIncludeSecrets}
+              />
+              <Text variant="caption" tone="textSecondary">
+                {t('settings.dataExport.includeSecretsHint')}
+              </Text>
+            </Box>
           </SettingsRow>
         </Card>
 
@@ -75,29 +77,31 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
         {keyBase64 !== undefined && (
           <Card testID="settings-card-export-key" padding={3}>
-            <Text variant="body">{t('settings.dataExport.keyWarning')}</Text>
-            <TextField
-              label={t('settings.dataExport.keyLabel')}
-              value={keyBase64}
-              onChangeText={() => {}}
-              editable={false}
-              multiline
-            />
-            <Box direction="row" gap={3}>
-              <Button
-                testID="settings-button-copy-key"
-                variant="secondaryTonal"
-                onPress={handleCopyKey}
-              >
-                {t('settings.dataExport.copyKey')}
-              </Button>
-              <Button
-                testID="settings-button-share-file"
-                variant="secondaryTonal"
-                onPress={handleShareFile}
-              >
-                {t('settings.dataExport.shareFile')}
-              </Button>
+            <Box gap={3}>
+              <Text variant="body">{t('settings.dataExport.keyWarning')}</Text>
+              <TextField
+                label={t('settings.dataExport.keyLabel')}
+                value={keyBase64}
+                onChangeText={() => {}}
+                editable={false}
+                multiline
+              />
+              <Box direction="row" gap={3}>
+                <Button
+                  testID="settings-button-copy-key"
+                  variant="secondaryTonal"
+                  onPress={handleCopyKey}
+                >
+                  {t('settings.dataExport.copyKey')}
+                </Button>
+                <Button
+                  testID="settings-button-share-file"
+                  variant="secondaryTonal"
+                  onPress={handleShareFile}
+                >
+                  {t('settings.dataExport.shareFile')}
+                </Button>
+              </Box>
             </Box>
           </Card>
         )}

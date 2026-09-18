@@ -59,9 +59,9 @@ export const en = {
       errorMessage: 'Please try again.',
       errorTitle: 'Export Failed',
       exportButton: 'Export Data',
-      includeSecrets: 'Include Saved Credentials',
+      includeSecrets: 'Include saved passwords & keys',
       includeSecretsHint:
-        'Also includes your saved Monobank token and Binance API keys, so a restore can resume syncing without reconnecting.',
+        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
       keyLabel: 'Encryption Key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
@@ -80,9 +80,11 @@ export const en = {
       invalidFileError: 'This does not look like a valid Kiko export file.',
       keyLabel: 'Encryption Key',
       keyPlaceholder: 'Paste the key from your export',
+      keyTooShortError: 'The key looks too short — paste the full key from your export.',
       pasteKey: 'Paste key from clipboard',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
+      wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
       wrongKeyError: 'The key is wrong, or the file is corrupted.',
     },
     footer: {

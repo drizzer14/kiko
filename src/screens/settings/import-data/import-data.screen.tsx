@@ -18,6 +18,20 @@ import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 
+// A Kiko export file's name always ends `.kiko` (see
+// `src/data-transfer/export-data.ts`, which writes `kiko-export-<ts>.kiko`).
+// The document picker's `type` filter only understands standard UTIs/MIMEs —
+// there is no custom `.kiko` UTI to declare without an Info.plist
+// `UTExportedTypeDeclaration` (out of scope) — so this extension check on the
+// picked file's NAME is the real guard, not the `type` hint passed to `pick`.
+const KIKO_FILE_EXTENSION = '.kiko';
+
+// The export key is a base64-encoded 32-byte key: 44 characters. Anything
+// shorter is unambiguously not a full key (a truncated paste, a stray
+// keystroke), so it is rejected before the confirm sheet ever opens rather
+// than surfacing as a confusing "wrong key" error after a real import attempt.
+const MIN_KEY_LENGTH = 44;
+
 const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { t } = useTranslation();
   const [fileUri, setFileUri] = useState<string | undefined>(undefined);
@@ -25,20 +39,39 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const [keyBase64, setKeyBase64] = useState('');
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | undefined>(undefined);
+  const [wrongFileTypeError, setWrongFileTypeError] = useState(false);
+  const [keyTooShortError, setKeyTooShortError] = useState(false);
 
   const handlePickFile = async (): Promise<void> => {
     try {
-      const results = await pick({ type: [types.allFiles] });
+      const results = await pick({ type: [types.json, types.allFiles] });
       const picked = results.at(0);
 
-      if (picked) {
-        setFileUri(picked.uri);
-        setFileName(picked.name ?? picked.uri);
+      if (!picked) {
+        return;
       }
+
+      const name = picked.name ?? picked.uri;
+
+      if (!name.toLowerCase().endsWith(KIKO_FILE_EXTENSION)) {
+        setFileUri(undefined);
+        setFileName(undefined);
+        setWrongFileTypeError(true);
+        return;
+      }
+
+      setWrongFileTypeError(false);
+      setFileUri(picked.uri);
+      setFileName(name);
     } catch {
       // A cancelled picker rejects — the expected "user backed out" case
       // (same convention as the statement-import picker): fail silently.
     }
+  };
+
+  const handleKeyChange = (text: string): void => {
+    setKeyBase64(text);
+    setKeyTooShortError(false);
   };
 
   const runImport = async (): Promise<void> => {
@@ -62,46 +95,83 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
 
   const { onPress: handleConfirmedImport, isSubmitting } = useSubmitOnce(runImport);
 
+  const handleImportPress = (): void => {
+    if (fileUri === undefined) {
+      return;
+    }
+
+    if (keyBase64.length < MIN_KEY_LENGTH) {
+      setKeyTooShortError(true);
+      return;
+    }
+
+    setKeyTooShortError(false);
+    setConfirmVisible(true);
+  };
+
   const handleConfirm = (): void => {
     setConfirmVisible(false);
     handleConfirmedImport();
   };
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={
+        <Box direction="row" gap={2}>
+          <Button
+            testID="settings-button-import"
+            variant="primary"
+            fullWidth
+            onPress={handleImportPress}
+            disabled={isSubmitting}
+          >
+            {t('settings.dataImport.importButton')}
+          </Button>
+        </Box>
+      }
+    >
       <Box gap={4}>
         <Text variant="body" tone="textSecondary">
           {t('settings.dataImport.description')}
         </Text>
 
         <Card testID="settings-card-import-file" padding={3}>
-          <Button
-            testID="settings-button-pick-file"
-            variant="secondaryTonal"
-            onPress={handlePickFile}
-          >
-            {fileName ?? t('settings.dataImport.chooseFile')}
-          </Button>
+          <Box gap={2}>
+            <Button
+              testID="settings-button-pick-file"
+              variant="secondaryTonal"
+              onPress={handlePickFile}
+            >
+              {fileName ?? t('settings.dataImport.chooseFile')}
+            </Button>
+
+            {wrongFileTypeError && (
+              <Text variant="caption" tone="negative">
+                {t('settings.dataImport.wrongFileTypeError')}
+              </Text>
+            )}
+          </Box>
         </Card>
 
         <Card testID="settings-card-import-key" padding={3}>
-          <ClipboardTextField
-            label={t('settings.dataImport.keyLabel')}
-            value={keyBase64}
-            onChangeText={setKeyBase64}
-            placeholder={t('settings.dataImport.keyPlaceholder')}
-            pasteAccessibilityLabel={t('settings.dataImport.pasteKey')}
-            secureTextEntry
-          />
-        </Card>
+          <Box gap={2}>
+            <ClipboardTextField
+              label={t('settings.dataImport.keyLabel')}
+              value={keyBase64}
+              onChangeText={handleKeyChange}
+              placeholder={t('settings.dataImport.keyPlaceholder')}
+              pasteAccessibilityLabel={t('settings.dataImport.pasteKey')}
+              secureTextEntry
+            />
 
-        <Button
-          testID="settings-button-import"
-          onPress={() => setConfirmVisible(true)}
-          disabled={isSubmitting || fileUri === undefined || keyBase64.length === 0}
-        >
-          {t('settings.dataImport.importButton')}
-        </Button>
+            {keyTooShortError && (
+              <Text variant="caption" tone="negative">
+                {t('settings.dataImport.keyTooShortError')}
+              </Text>
+            )}
+          </Box>
+        </Card>
 
         {resultMessage !== undefined && (
           // `Text` does not forward `testID` (design-system/components/text);
