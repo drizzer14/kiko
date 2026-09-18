@@ -181,6 +181,8 @@ describe('SettingsScreen', () => {
       'settings-card-system',
       'settings-card-base-currency',
       'settings-card-categories',
+      'settings-card-export-data',
+      'settings-card-import-data',
     ]);
   });
 
@@ -222,6 +224,24 @@ describe('SettingsScreen', () => {
     await fireEvent.press(getByTestId('settings-row-categories'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('Categories');
+  });
+
+  it('navigates to the ExportData sub-screen when the Export Data row is pressed', async () => {
+    const navigation = navigationSpy();
+    const { findByTestId } = await renderScreen(navigation);
+
+    fireEvent.press(await findByTestId('settings-row-export-data'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
+  });
+
+  it('navigates to the ImportData sub-screen when the Import Data row is pressed', async () => {
+    const navigation = navigationSpy();
+    const { findByTestId } = await renderScreen(navigation);
+
+    fireEvent.press(await findByTestId('settings-row-import-data'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ImportData');
   });
 
   it('calls setBaseCurrency when a currency option is pressed', async () => {

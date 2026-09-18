@@ -147,6 +147,24 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Categories')}
           />
         </Card>
+
+        <Card testID="settings-card-export-data" padding={3}>
+          <SettingsRow
+            testID="settings-row-export-data"
+            icon="square.and.arrow.up"
+            label={t('settings.dataExport.title')}
+            onPress={() => navigation.navigate('ExportData')}
+          />
+        </Card>
+
+        <Card testID="settings-card-import-data" padding={3}>
+          <SettingsRow
+            testID="settings-row-import-data"
+            icon="square.and.arrow.down"
+            label={t('settings.dataImport.title')}
+            onPress={() => navigation.navigate('ImportData')}
+          />
+        </Card>
       </Box>
     </Screen>
   );
