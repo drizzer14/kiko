@@ -144,6 +144,7 @@ export const uk: typeof en = {
     },
     contribution: {
       addTitle: 'Додати внесок',
+      amountError: 'Введіть суму більше 0.',
       amountPlaceholder: '500,00',
       errorMessage: 'Спробуйте ще раз.',
       errorTitle: 'Не вдалося додати внесок',

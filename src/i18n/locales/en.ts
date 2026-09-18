@@ -160,6 +160,7 @@ export const en = {
     },
     contribution: {
       addTitle: 'Add Contribution',
+      amountError: 'Enter an amount greater than 0.',
       amountPlaceholder: '500.00',
       errorMessage: 'Please try again.',
       errorTitle: 'Could not add contribution',
