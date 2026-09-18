@@ -96,6 +96,26 @@ describe('BankSyncSection — disconnected', () => {
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledWith('a'));
   });
 
+  it('offers a Change action once a provider is picked, which re-shows the "Add a bank" trigger', async () => {
+    const view = await render(<BankSyncSection account={bankAccount()} />);
+
+    await fireEvent.press(view.getByText('Add a bank'));
+    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+
+    expect(view.getByText('monobank field')).toBeTruthy();
+    expect(view.getByText('Change bank')).toBeTruthy();
+
+    await fireEvent.press(view.getByText('Change bank'));
+
+    expect(view.getByText('Add a bank')).toBeTruthy();
+    expect(view.queryByText('monobank field')).toBeNull();
+
+    // The picker is fully reopenable — the mechanism this test proves, even
+    // though only one provider is wired today.
+    await fireEvent.press(view.getByText('Add a bank'));
+    expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
+  });
+
   it('surfaces the active sync error below the field', async () => {
     mockUseSync.mockReturnValue({
       isSyncing: false,
