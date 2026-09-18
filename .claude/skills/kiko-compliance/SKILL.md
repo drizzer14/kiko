@@ -1,6 +1,6 @@
 ---
 name: kiko-compliance
-description: Invoke when reviewing any diff, and whenever a change touches a feature's visibility or completeness, a native permission, a network domain or third-party API, a privacy/data-collection path, app metadata (screenshots/description), a third-party trademark or logo, an analytics/tracking dependency, or encryption. Read before approving any diff for merge.
+description: Invoke when reviewing any diff, and whenever a change touches a feature's visibility or completeness, a native permission, a network domain or third-party API, a privacy/data-collection path, app metadata (screenshots/description), a third-party trademark or logo, an analytics/tracking dependency, encryption, a code-update or remote-code path, in-app purchase, or a login/account-deletion flow. Read before approving any diff for merge.
 ---
 
 # Kiko App Store compliance
@@ -118,6 +118,19 @@ unpinned, under-pinned, or if `NSAllowsArbitraryLoads` is not `false`
 — read `scripts/checks/plist.sh` for the exact resolution logic rather
 than trusting a restated one here.
 
+## 2.5.2 — no remotely-loaded executable code
+
+Ask: does this diff add a mechanism that downloads and runs code at
+runtime — a code-push / OTA JS-update dependency (`react-native-code-push`,
+`expo-updates`, and the like), or a dynamic `require`/`eval` of
+remotely-fetched JS? The signed, App-Store-reviewed JS bundle is fine;
+a live code-UPDATE path outside review is not. Satisfied today: no
+such dependency exists in the tree. `npm run check:deps` surfaces a
+newly-added dependency for confirmation, which is where such a
+dependency first becomes visible — but it does not judge whether a dep
+loads remote code, so this stays a reviewer question backed by
+`check:deps` visibility, not a mechanized gate.
+
 ## Third-party trademarks
 
 Ask: does this diff add a bank/exchange logo asset, name, or wording
@@ -132,6 +145,26 @@ changed dependency block for confirmation (see the checks table in
 `CLAUDE.md`), which is where a new dependency is visible — but it does
 not judge INTENT; deciding whether a new dependency is a tracking SDK
 is a reviewer judgment call.
+
+## Conditional triggers — N/A today, review the moment the feature lands
+
+These guidelines have no live surface in Kiko today, so there is
+nothing to check on an ordinary diff — but each names a specific
+feature that would make it live, so check for that feature instead:
+
+- 3.1.1 In-App Purchase — a paid tier or subscription of digital
+  content must transact through Apple's IAP. N/A today: no IAP
+  dependency, the app is free. Triggers the moment a paywall,
+  subscription, or IAP dependency is added.
+- 4.8 Sign in with Apple — offering a third-party or social login
+  (Google, Facebook, etc.) requires offering Sign in with Apple
+  alongside it. N/A today: Kiko has no login of any kind. Triggers
+  the moment a social/third-party login is added.
+- 5.1.1(v) in-app account deletion — an app that supports account
+  CREATION must let the user delete that account in-app. N/A today:
+  Kiko has no user-account system — its "Account" entity is a
+  financial account (bank/wallet), not a login/registration account.
+  Triggers the moment user-account creation is added.
 
 ## Mechanized vs judgment
 
