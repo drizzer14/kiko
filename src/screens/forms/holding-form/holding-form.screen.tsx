@@ -36,6 +36,7 @@ import Divider from '../../../design-system/components/divider';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import FieldError from '../../../design-system/components/field-error';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { type Currency, currencySymbol } from '../../../currency/currency';
@@ -432,6 +433,30 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     );
   };
 
+  // The reason `isTermDepositValid` above is false, for the SAME checks in
+  // the SAME priority order — so the two can never disagree. `null` once
+  // every check passes. Not gated on whether the name is filled: the name's
+  // own required asterisk covers that separately.
+  const termDepositReasonKey = (): string | null => {
+    if (parsedContributions().length === 0) {
+      return 'forms.holding.contributionsRequiredError';
+    }
+
+    const rate = parseAmount(annualRate);
+
+    if (annualRate.trim() === '' || !(rate >= 0)) {
+      return 'forms.holding.annualRateError';
+    }
+
+    const months = parseAmount(termMonths);
+
+    if (!(Number.isInteger(months) && months > 0)) {
+      return 'forms.holding.termMonthsError';
+    }
+
+    return null;
+  };
+
   // A bond needs a positive quantity and face value, a non-negative coupon that
   // was actually entered, both dates picked, and a maturity strictly after the
   // purchase. Coupon frequency always carries a default, so it is always valid.
@@ -451,6 +476,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('bond', isBondValid)
       .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
+
+  const termDepositReason = type === 'term_deposit' ? termDepositReasonKey() : null;
 
   const save = async (): Promise<void> => {
     const metadata = buildMetadata();
@@ -697,6 +724,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCompounding}
               labels={compoundingLabels}
             />
+
+            {termDepositReason !== null && <FieldError message={t(termDepositReason)} />}
           </Box>
         )}
 

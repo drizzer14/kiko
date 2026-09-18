@@ -173,6 +173,7 @@ export const en = {
       addTitle: 'Add Holding',
       annualRatePct: 'Annual Rate %',
       annualRatePlaceholder: '12',
+      annualRateError: 'Enter a rate of 0 or higher.',
       // Frequency vocabulary shared by the term-deposit Compounding chip row
       // and the bond Coupon frequency chip row within this same screen.
       annually: 'Annually',
@@ -187,6 +188,7 @@ export const en = {
       contributionDate: 'Contribution {{index}} Date',
       contributionPlaceholder: '500.00',
       contributions: 'Contributions',
+      contributionsRequiredError: 'Add at least one contribution with an amount and a date.',
       corporate: 'Corporate',
       couponFrequency: 'Coupon frequency',
       couponPct: 'Coupon %',
@@ -215,6 +217,7 @@ export const en = {
       semiannually: 'Semiannually',
       termMonths: 'Term (Months)',
       termMonthsPlaceholder: '12',
+      termMonthsError: 'Enter a whole number of months greater than 0.',
       terms: 'Terms',
       type: 'Type',
     },
