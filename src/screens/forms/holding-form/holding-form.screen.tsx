@@ -3,9 +3,10 @@ import type { TFunction } from 'i18next';
 import { Alert, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import type { ScrollViewInstance } from 'react-native';
-import { useAnimatedRef } from 'react-native-reanimated';
+import type { ScrollViewInstance, TextInputInstance } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -50,7 +51,11 @@ import ColorPicker from '../color-picker';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
+import {
+  resolveHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -197,24 +202,42 @@ type ValidatedFieldRefs = {
   maturityDateFieldRef: RefObject<FieldInstance | null>;
 };
 
-// The first still-invalid field's own wrapper ref, in the SAME priority order
-// `termDepositReasonKey`/`bondReasonKey` already check their fields in: the
-// name field first (it always applies, independent of type), then the active
-// type's fields. `save`'s `!isValid` branch passes this straight to
-// `scrollToField`. Module-level and pure (given the already-computed reason
-// keys) so this branching stays out of `save`'s own cognitive-complexity
-// budget — the same reason `fieldErrorMessage` above is a module-level helper.
+// A blocked Save's FOCUS action for each TEXT-backed validated field — called
+// once `scrollToField` has positioned it on screen (see `save`'s own
+// `onSettled` callback below). The contributions group and the maturity date
+// have no matching entry: both are composite/picker targets with no single
+// input to focus (a date picker has no keyboard of its own), so `save`'s
+// scroll for those two lands the field on screen with no focus follow-up.
+type ValidatedFieldFocus = {
+  name: () => void;
+  annualRate: () => void;
+  termMonths: () => void;
+  quantity: () => void;
+  faceValue: () => void;
+  couponPct: () => void;
+};
+
+// The first still-invalid field's own wrapper ref (plus its FOCUS action,
+// when it has one — see `ValidatedFieldFocus` above), in the SAME priority
+// order `termDepositReasonKey`/`bondReasonKey` already check their fields
+// in: the name field first (it always applies, independent of type), then
+// the active type's fields. `save`'s `!isValid` branch passes this straight
+// to `scrollToField`. Module-level and pure (given the already-computed
+// reason keys) so this branching stays out of `save`'s own
+// cognitive-complexity budget — the same reason `fieldErrorMessage` above is
+// a module-level helper.
 const firstInvalidFieldRef = (params: {
   name: string;
   type: HoldingType;
   termDepositReasonKey: TermDepositReasonKey | null;
   bondReasonKey: BondReasonKey | null;
   refs: ValidatedFieldRefs;
-}): RefObject<FieldInstance | null> | null => {
-  const { name, type, termDepositReasonKey, bondReasonKey, refs } = params;
+  focus: ValidatedFieldFocus;
+}): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
+  const { name, type, termDepositReasonKey, bondReasonKey, refs, focus } = params;
 
-  const order: { invalid: boolean; ref: RefObject<FieldInstance | null> }[] = [
-    { invalid: name.trim().length === 0, ref: refs.nameFieldRef },
+  const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
+    { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
     ...(type === 'term_deposit'
       ? [
           {
@@ -224,23 +247,31 @@ const firstInvalidFieldRef = (params: {
           {
             invalid: termDepositReasonKey === 'forms.holding.annualRateError',
             ref: refs.annualRateFieldRef,
+            focus: focus.annualRate,
           },
           {
             invalid: termDepositReasonKey === 'forms.holding.termMonthsError',
             ref: refs.termMonthsFieldRef,
+            focus: focus.termMonths,
           },
         ]
       : []),
     ...(type === 'bond'
       ? [
-          { invalid: bondReasonKey === 'forms.holding.quantityError', ref: refs.quantityFieldRef },
+          {
+            invalid: bondReasonKey === 'forms.holding.quantityError',
+            ref: refs.quantityFieldRef,
+            focus: focus.quantity,
+          },
           {
             invalid: bondReasonKey === 'forms.holding.faceValueError',
             ref: refs.faceValueFieldRef,
+            focus: focus.faceValue,
           },
           {
             invalid: bondReasonKey === 'forms.holding.couponPctError',
             ref: refs.couponPctFieldRef,
+            focus: focus.couponPct,
           },
           {
             invalid: bondReasonKey === 'forms.holding.maturityDateError',
@@ -250,7 +281,9 @@ const firstInvalidFieldRef = (params: {
       : []),
   ];
 
-  return order.find((entry) => entry.invalid)?.ref ?? null;
+  const entry = order.find((candidate) => candidate.invalid);
+
+  return entry === undefined ? null : { ref: entry.ref, focus: entry.focus };
 };
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -364,8 +397,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   }, [typeOptions, type]);
 
   // The scroll-mode ScrollView's ref, so adding a contribution can bring the
-  // newly appended row into view.
+  // newly appended row into view. `useScrollOffset` reads its LIVE content
+  // offset, so a blocked Save's `scrollToField` call below knows whether the
+  // first-invalid field is already visible without re-measuring the scroll
+  // position itself.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
+  const insets = useSafeAreaInsets();
+  const headerInset = resolveHeaderInset(insets.top);
 
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
@@ -380,6 +419,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const faceValueFieldRef = useRef<FieldInstance>(null);
   const couponPctFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
+  // The TEXT-backed validated fields' own inner TextInput/name-input, so a
+  // blocked Save can focus the first-invalid one imperatively once it has
+  // scrolled into view — mirrors `TextField`'s own `inputRef` /
+  // `HoldingIdentityField`'s own `nameInputRef`. The contributions group and
+  // the maturity date are composite/picker targets with no single input to
+  // focus (a picker/date has no keyboard of its own), so they have no
+  // matching entry here — `save`'s scroll below simply omits the focus
+  // callback for those two.
+  const nameInputRef = useRef<TextInputInstance>(null);
+  const annualRateInputRef = useRef<TextInputInstance>(null);
+  const termMonthsInputRef = useRef<TextInputInstance>(null);
+  const quantityInputRef = useRef<TextInputInstance>(null);
+  const faceValueInputRef = useRef<TextInputInstance>(null);
+  const couponPctInputRef = useRef<TextInputInstance>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -650,10 +703,23 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           couponPctFieldRef,
           maturityDateFieldRef,
         },
+        focus: {
+          name: () => nameInputRef.current?.focus(),
+          annualRate: () => annualRateInputRef.current?.focus(),
+          termMonths: () => termMonthsInputRef.current?.focus(),
+          quantity: () => quantityInputRef.current?.focus(),
+          faceValue: () => faceValueInputRef.current?.focus(),
+          couponPct: () => couponPctInputRef.current?.focus(),
+        },
       });
 
       if (target) {
-        scrollToField(scrollableRef, target);
+        scrollToField(
+          scrollableRef,
+          target.ref,
+          { currentOffset: scrollOffset.value, headerInset },
+          target.focus,
+        );
       }
 
       return;
@@ -767,6 +833,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             namePlaceholder={t('forms.holding.namePlaceholder')}
             required
             error={showNameReason ? t('forms.fields.nameRequiredError') : undefined}
+            nameInputRef={nameInputRef}
             testID="holding-name"
           />
         </View>
@@ -907,6 +974,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   termDepositReasonKey(),
                   'forms.holding.annualRateError',
                 )}
+                inputRef={annualRateInputRef}
               />
             </View>
 
@@ -924,6 +992,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   termDepositReasonKey(),
                   'forms.holding.termMonthsError',
                 )}
+                inputRef={termMonthsInputRef}
               />
             </View>
 
@@ -963,6 +1032,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   bondReasonKey(),
                   'forms.holding.quantityError',
                 )}
+                inputRef={quantityInputRef}
               />
             </View>
 
@@ -981,6 +1051,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   bondReasonKey(),
                   'forms.holding.faceValueError',
                 )}
+                inputRef={faceValueInputRef}
               />
             </View>
 
@@ -998,6 +1069,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                   bondReasonKey(),
                   'forms.holding.couponPctError',
                 )}
+                inputRef={couponPctInputRef}
               />
             </View>
 
@@ -1025,11 +1097,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
                 onChange={setMaturityDate}
                 placeholder={t('forms.holding.selectDatePlaceholder')}
                 required
+                error={maturityDateErrorMessage}
               />
-
-              {maturityDateErrorMessage !== undefined && (
-                <FieldError message={maturityDateErrorMessage} />
-              )}
             </View>
 
             <ChipRow

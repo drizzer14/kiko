@@ -178,22 +178,55 @@ describe('HoldingIdentityField', () => {
     expect(queryByText('This field is required.')).toBeNull();
   });
 
-  it('applies the invalid border and renders the message directly under the name input when error is set (captioned)', async () => {
+  it('never applies a border for an invalid name (Option A: no outline) and renders the message below the whole row when error is set (captioned)', async () => {
     const { getByLabelText, getByText } = await setup({
       error: 'This field is required.',
     });
 
     const flatStyle = StyleSheet.flatten(getByLabelText('Name').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
     expect(getByText('This field is required.')).toBeTruthy();
   });
 
-  it('renders no reserved error slot for a bare (uncaptioned) row, even with error set', async () => {
+  it('renders no error node for a bare (uncaptioned) row, even with error set', async () => {
     const { queryByText } = await setup({ captioned: false, error: 'This field is required.' });
 
     // A dense list row (category rename, holding-detail rename) never
     // validates — reserving height there would regress its existing layout.
     expect(queryByText('This field is required.')).toBeNull();
+  });
+
+  it('renders no error node at all while valid (reflow, not reserve)', async () => {
+    const { queryByTestId } = await setup({ testID: 'holding-identity-name-field' });
+
+    expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
+  });
+
+  it('keeps the icon and name column at the same height whether or not an error is showing', async () => {
+    // The error renders BELOW the whole icon+name row, never inside the
+    // name column beside it, so the icon never shifts relative to the name
+    // field when the error mounts/unmounts — see the component's own doc
+    // comment on the composite-row layout.
+    const { getByLabelText, rerender } = await setup({});
+
+    const heightBefore = StyleSheet.flatten(getByLabelText('Change Icon').props.style).height;
+
+    await rerender(
+      <HoldingIdentityField
+        icons={KIKO_CATEGORIES_ICONS}
+        icon={null}
+        fallbackIcon="creditcard"
+        name="My card"
+        onChangeName={jest.fn()}
+        onSelectIcon={jest.fn()}
+        onRemoveIcon={jest.fn()}
+        error="This field is required."
+      />,
+    );
+
+    const heightAfter = StyleSheet.flatten(getByLabelText('Change Icon').props.style).height;
+
+    expect(heightAfter).toBe(heightBefore);
   });
 
   describe('localization', () => {

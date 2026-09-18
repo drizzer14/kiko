@@ -65,7 +65,7 @@ describe('ExchangeFields', () => {
 
     expect(getByText('Enter a Value Out greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(getByLabelText('Value Out').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   it('renders destinationError directly after the destination picker', async () => {
@@ -81,7 +81,7 @@ describe('ExchangeFields', () => {
 
     expect(getByText('Enter a Value In greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   describe('localization', () => {

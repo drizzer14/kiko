@@ -2,7 +2,9 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, View, type ScrollViewInstance } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
@@ -17,7 +19,11 @@ import type { AccountsStackParamList } from '../../../navigation/types';
 import DateField from '../date-field';
 import { groupAmount } from '../amount-format/amount-format';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
+import {
+  resolveHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -52,9 +58,17 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
 
   // The scrollable content root and the amount field's own wrapper — passed
   // to `scrollToField` so a blocked Save (an invalid amount) scrolls the
-  // field into view alongside its inline error. See scroll-to-field.ts.
-  const scrollableRef = useRef<ScrollViewInstance>(null);
+  // field into view alongside its inline error. See scroll-to-field.ts. An
+  // `useAnimatedRef` (rather than a plain `useRef`) so `useScrollOffset`
+  // below can read the ScrollView's own live content offset.
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
   const amountFieldRef = useRef<FieldInstance>(null);
+  // The amount field's own inner TextInput, so a blocked Save can focus it
+  // imperatively once it has scrolled into view.
+  const amountInputRef = useRef<TextInputInstance>(null);
+  const insets = useSafeAreaInsets();
+  const headerInset = resolveHeaderInset(insets.top);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -66,7 +80,12 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     const majorAmount = parseAmount(amount);
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
-      scrollToField(scrollableRef, amountFieldRef);
+      scrollToField(
+        scrollableRef,
+        amountFieldRef,
+        { currentOffset: scrollOffset.value, headerInset },
+        () => amountInputRef.current?.focus(),
+      );
 
       return;
     }
@@ -108,6 +127,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
                 ? t('forms.contribution.amountError')
                 : undefined
             }
+            inputRef={amountInputRef}
           />
         </View>
 

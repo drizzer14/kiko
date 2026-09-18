@@ -1,4 +1,5 @@
-import type { TextInputProps } from 'react-native';
+import type { RefObject } from 'react';
+import type { TextInputInstance, TextInputProps } from 'react-native';
 
 export type TextFieldProps = Pick<
   TextInputProps,
@@ -48,14 +49,20 @@ export type TextFieldProps = Pick<
   // exactly as a plain field with no leading glyph.
   leadingIcon?: string;
   // The validation-failure message for this field, or `undefined` when it's
-  // currently valid. When set, the input's border switches to the shared
-  // invalid-border token and the message renders directly under the input in
-  // a reserved-height slot — see text-field.styles.ts's `errorSlot`. There is
-  // no separate `invalid` boolean: a defined `error` IS the invalid signal.
+  // currently valid. When set, the shared FieldError message renders directly
+  // under the input and the field's own label tints negative — REFLOW, not
+  // reserve: there is no reserved-height slot, so a valid field takes no
+  // extra space (Option A — no per-field outline, see
+  // text-field.component.tsx's own doc comment). There is no separate
+  // `invalid` boolean: a defined `error` IS the invalid signal.
   error?: string;
+  // A ref to the inner TextInput, forwarded to its `ref`. A validated form
+  // field passes this (alongside its own measurement-only wrapper ref used
+  // by `scrollToField`) so a blocked Save press can call `.focus()`
+  // imperatively once the invalid field has scrolled into view — the same
+  // pattern HoldingIdentityField's own `nameInputRef` already established.
+  inputRef?: RefObject<TextInputInstance | null>;
   // Optional testID applied to the field's outer Box. When set, the
-  // always-rendered error slot beneath the input additionally takes
-  // `${testID}-error-slot`, and the FieldError message (when shown)
-  // additionally takes `${testID}-error`.
+  // FieldError message (when shown) additionally takes `${testID}-error`.
   testID?: string;
 };

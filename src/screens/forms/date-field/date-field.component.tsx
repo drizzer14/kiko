@@ -8,11 +8,18 @@ import { formatDate } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
+import FieldError from '../../../design-system/components/field-error';
 import FieldLabel from '../../../design-system/components/field-label';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './date-field.styles';
 import type { DateFieldProps } from './date-field.props';
+
+// Derives the error message's own testID from the field's outer `testID`, or
+// `undefined` when the caller passed none — mirrors TextField's own
+// `deriveTestID` (text-field.component.tsx).
+const deriveErrorTestID = (testID: DateFieldProps['testID']): string | undefined =>
+  testID !== undefined ? `${testID}-error` : undefined;
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -36,10 +43,14 @@ const DateField: FC<DateFieldProps> = ({
   placeholder,
   disabled = false,
   required,
+  error,
   testID,
 }) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
+  // A defined, non-empty `error` IS the invalid signal — same contract as
+  // TextField's own `hasError` (see text-field.component.tsx).
+  const hasError = error !== undefined && error !== '';
 
   const handleDayPress = (day: DateData): void => {
     // Move the DAY only, carrying over the existing value's time-of-day so a
@@ -77,7 +88,7 @@ const DateField: FC<DateFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <FieldLabel label={label} required={required} />
+      <FieldLabel label={label} required={required} invalid={hasError} />
 
       <Pressable
         accessibilityRole="button"
@@ -95,6 +106,12 @@ const DateField: FC<DateFieldProps> = ({
           </Text>
         </Box>
       </Pressable>
+
+      {/* REFLOW, not reserve (Option A): no error node while valid — uniform
+        with every other field type, fixing the DATE field's own
+        inconsistency (it used to show a message with no outline while
+        TextField showed an outline; now neither shows an outline). */}
+      {hasError && <FieldError message={error} testID={deriveErrorTestID(testID)} />}
 
       <BottomSheet
         visible={open}

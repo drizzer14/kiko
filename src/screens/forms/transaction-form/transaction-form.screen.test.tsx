@@ -503,7 +503,8 @@ describe('TransactionFormScreen — add mode', () => {
     expect(
       within(getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
     ).toBeNull();
-    expect(StyleSheet.flatten(getByLabelText('Amount').props.style).borderColor).toBe('#FF453A');
+    const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   it('shows an inline reason for a fresh add missing amount and category, only after Save is pressed', async () => {

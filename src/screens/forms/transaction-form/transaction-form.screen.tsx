@@ -3,12 +3,13 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { useAnimatedRef } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Alert, type ScrollViewInstance, View } from 'react-native';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import {
   type FC,
   type ReactElement,
@@ -72,7 +73,11 @@ import DescriptionSuggestions from '../description-suggestions';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
+import {
+  resolveHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -1008,6 +1013,12 @@ type FieldGroupProps = {
   // field ever gates Save.
   amountError?: string;
   amountFieldRef?: RefObject<FieldInstance | null>;
+  // The plain Amount TextField's own inner input, so a blocked Save can
+  // focus it imperatively once it has scrolled into view — see `save`'s
+  // `onSettled` callback in the screen component. Only the plain (non-
+  // exchange, non-converting) Amount field has one; the Exchange/Convert
+  // legs are owned by their own sub-components.
+  amountInputRef?: RefObject<TextInputInstance | null>;
   valueOutError?: string;
   destinationError?: string;
   valueInError?: string;
@@ -1086,6 +1097,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
           // amount.
           required={!props.isReadOnly}
           error={props.amountError}
+          inputRef={props.amountInputRef}
         />
       </View>
 
@@ -1543,8 +1555,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
   // The scroll-mode ScrollView's ref, so adding a split return can bring the
-  // newly appended row into view.
+  // newly appended row into view. `useScrollOffset` reads its LIVE content
+  // offset for `save`'s own `scrollToField` call below.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
+  const insets = useSafeAreaInsets();
+  const headerInset = resolveHeaderInset(insets.top);
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s blocked path below — each field's own inline error (a
   // `TextField`/`ExchangeFields`/`ConvertExchangeFields` `error` prop, or a
@@ -1559,6 +1575,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const categoryFieldRef = useRef<FieldInstance>(null);
   const splitReturnsFieldRef = useRef<FieldInstance>(null);
   const amountFieldRef = useRef<FieldInstance>(null);
+  // The plain Amount field's own inner input, for a blocked Save's FOCUS
+  // follow-up once it has scrolled into view — the ONLY validated field
+  // owned directly by this screen (every other field above is a picker with
+  // no keyboard, or is owned by ExchangeFields/ConvertExchangeFields, which
+  // have no matching focus ref of their own yet).
+  const amountInputRef = useRef<TextInputInstance>(null);
+  const focusByKey: Partial<Record<SaveDisabledField, () => void>> = {
+    amount: () => amountInputRef.current?.focus(),
+  };
   const fieldRefsByKey: Record<SaveDisabledField, RefObject<FieldInstance | null>> = {
     counterpartHolding: counterpartHoldingFieldRef,
     counterpartAmount: counterpartAmountFieldRef,
@@ -2142,7 +2167,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setAttemptedSave(true);
 
       if (disableSaveField) {
-        scrollToField(scrollableRef, fieldRefsByKey[disableSaveField]);
+        scrollToField(
+          scrollableRef,
+          fieldRefsByKey[disableSaveField],
+          { currentOffset: scrollOffset.value, headerInset },
+          focusByKey[disableSaveField],
+        );
       }
 
       return;
@@ -2312,6 +2342,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             t,
             amountError: fieldError('amount'),
             amountFieldRef,
+            amountInputRef,
             valueOutError: fieldError('valueOut'),
             destinationError: fieldError('destinationHolding'),
             valueInError: fieldError('valueIn'),

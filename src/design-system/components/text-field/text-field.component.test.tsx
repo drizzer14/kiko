@@ -217,12 +217,13 @@ describe('TextField', () => {
   it('renders no error styling or message by default', async () => {
     const { queryByText, getByLabelText } = await renderField({ label: 'Amount', value: '' });
 
+    // Option A: no per-field outline, ever — see text-field.component.tsx.
     const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
     expect(queryByText('Enter an amount greater than 0.')).toBeNull();
   });
 
-  it('applies the invalid border and renders the message directly under the input when error is set', async () => {
+  it('never applies a border for an invalid field (Option A: no outline) and renders the message directly under the input', async () => {
     const { getByLabelText, getByText } = await renderField({
       label: 'Amount',
       value: '',
@@ -230,20 +231,28 @@ describe('TextField', () => {
     });
 
     const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
     expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
   });
 
-  it('reserves the same error-slot height whether or not an error is showing (no layout shift)', async () => {
-    const { getByTestId, rerender } = await renderField({
+  it('reflows rather than reserves: no error node renders at all while the field is valid', async () => {
+    const { queryByTestId } = await renderField({
       label: 'Amount',
       value: '',
       testID: 'amount-field',
     });
 
-    const emptyHeight = StyleSheet.flatten(
-      getByTestId('amount-field-error-slot').props.style,
-    ).minHeight;
+    expect(queryByTestId('amount-field-error')).toBeNull();
+  });
+
+  it('mounts the error node the instant the field becomes invalid, with no reserved slot beforehand', async () => {
+    const { getByTestId, queryByTestId, rerender } = await renderField({
+      label: 'Amount',
+      value: '',
+      testID: 'amount-field',
+    });
+
+    expect(queryByTestId('amount-field-error')).toBeNull();
 
     await rerender(
       <TextField
@@ -255,11 +264,7 @@ describe('TextField', () => {
       />,
     );
 
-    const filledHeight = StyleSheet.flatten(
-      getByTestId('amount-field-error-slot').props.style,
-    ).minHeight;
-    expect(filledHeight).toBe(emptyHeight);
-    expect(emptyHeight).toBeGreaterThan(0);
+    expect(getByTestId('amount-field-error')).toBeTruthy();
   });
 
   it('forwards testID to the outer field and derives the error testID from it', async () => {
@@ -272,5 +277,13 @@ describe('TextField', () => {
 
     expect(getByTestId('amount-field')).toBeTruthy();
     expect(getByTestId('amount-field-error')).toBeTruthy();
+  });
+
+  it('forwards inputRef to the underlying TextInput so a caller can focus it imperatively', async () => {
+    const inputRef: ComponentProps<typeof TextField>['inputRef'] = { current: null };
+    await renderField({ label: 'Amount', value: '', inputRef });
+
+    expect(inputRef.current).not.toBeNull();
+    expect(typeof inputRef.current?.focus).toBe('function');
   });
 });

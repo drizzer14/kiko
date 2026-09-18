@@ -446,7 +446,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(scrollToField).toHaveBeenCalledWith(expect.anything(), expect.anything());
+    expect(scrollToField).toHaveBeenCalled();
   });
 
   it('clamps a negative cash initial value to zero', async () => {

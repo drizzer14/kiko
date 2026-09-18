@@ -9,11 +9,14 @@ import type { FieldLabelProps } from './field-label.props';
 // centralizes the required-field marker: pass `required` and a red asterisk
 // (the `negative` money/error tone) follows the label. Every field primitive
 // composes this instead of hand-rolling its own caption Text, so the marker
-// looks and behaves the same everywhere.
-const FieldLabel: FC<FieldLabelProps> = ({ label, required = false }) => {
+// looks and behaves the same everywhere. Pass `invalid` to tint the label
+// itself the same `negative` red as the field's own error message below it —
+// a uniform, colour-plus-text affordance across every field type (see
+// `FieldError`'s own doc comment for the Option A error-state model).
+const FieldLabel: FC<FieldLabelProps> = ({ label, required = false, invalid = false }) => {
   return (
     <Box direction="row" gap={1}>
-      <Text variant="caption" tone="textSecondary">
+      <Text variant="caption" tone={invalid ? 'negative' : 'textSecondary'}>
         {label}
       </Text>
 

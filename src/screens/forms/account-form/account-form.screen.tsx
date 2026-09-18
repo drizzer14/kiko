@@ -1,9 +1,11 @@
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { Alert, View, type ScrollViewInstance } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { id } from '../../../db/id';
@@ -34,7 +36,11 @@ import BankTypeField from '../bank-type-field';
 import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { scrollToField, type FieldInstance } from '../scroll-to-field/scroll-to-field';
+import {
+  resolveHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
@@ -144,9 +150,21 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The scrollable content root and the name field's own wrapper — passed to
   // `scrollToField` so a blocked Connect/Save (empty name) scrolls the field
   // into view alongside its inline error, rather than leaving the reason
-  // rendered off-screen above the fold. See scroll-to-field.ts.
-  const scrollableRef = useRef<ScrollViewInstance>(null);
+  // rendered off-screen above the fold. See scroll-to-field.ts. An
+  // `useAnimatedRef` (rather than a plain `useRef`) so `useScrollOffset`
+  // below can read the ScrollView's own live content offset — the same
+  // pattern accounts.screen.tsx / statistics.screen.tsx already use for
+  // their own scroll-to-top hook.
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
   const nameFieldRef = useRef<FieldInstance>(null);
+  // The name field's own inner TextInput, so a blocked Connect/Save can
+  // focus it imperatively once it has scrolled into view (see `onSettled`
+  // below) — HoldingIdentityField's own `nameInputRef` prop already exposes
+  // this same ref shape.
+  const nameInputRef = useRef<TextInputInstance>(null);
+  const insets = useSafeAreaInsets();
+  const headerInset = resolveHeaderInset(insets.top);
 
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
@@ -160,7 +178,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
       setShowNameError(true);
-      scrollToField(scrollableRef, nameFieldRef);
+      scrollToField(
+        scrollableRef,
+        nameFieldRef,
+        { currentOffset: scrollOffset.value, headerInset },
+        () => nameInputRef.current?.focus(),
+      );
 
       return Promise.reject(new Error('name-required'));
     }
@@ -281,7 +304,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // than a standing disabled state.
     if (!canSave) {
       setShowNameError(true);
-      scrollToField(scrollableRef, nameFieldRef);
+      scrollToField(
+        scrollableRef,
+        nameFieldRef,
+        { currentOffset: scrollOffset.value, headerInset },
+        () => nameInputRef.current?.focus(),
+      );
 
       return;
     }
@@ -380,6 +408,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             namePlaceholder={t('forms.account.namePlaceholder')}
             required
             error={showNameError && !canSave ? t('forms.fields.nameRequiredError') : undefined}
+            nameInputRef={nameInputRef}
             testID="holding-identity-name-field"
           />
         </View>

@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { invalidFieldStyle } from '../../invalid-field-style';
 import { disabledFieldStyle } from '../../disabled-field-style';
 
 export const styles = StyleSheet.create((theme) => ({
@@ -81,17 +80,5 @@ export const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     justifyContent: 'center',
     pointerEvents: 'none',
-  },
-  // Applied on top of `input` when `error` is set — the shared invalid-field
-  // red border (see invalid-field-style.ts).
-  inputError: invalidFieldStyle(theme),
-  // Always rendered under the input, whether or not `error` is set, so
-  // showing/hiding the message causes NO layout shift. Sized to comfortably
-  // fit one `caption`-variant line (13pt) plus breathing room; the exact
-  // value is a designer call (Task 3's designer review), not load-bearing
-  // logic.
-  errorSlot: {
-    minHeight: theme.spacing(5),
-    justifyContent: 'center',
   },
 }));

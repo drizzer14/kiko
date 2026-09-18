@@ -65,6 +65,7 @@ const TextField: FC<TextFieldProps> = ({
   required,
   onBlur,
   error,
+  inputRef,
   testID,
 }) => {
   const { theme } = useUnistyles();
@@ -94,6 +95,7 @@ const TextField: FC<TextFieldProps> = ({
   // is either returned bare or wrapped with the pinned suffix slot below.
   const input = (
     <TextInput
+      ref={inputRef}
       value={value}
       onChangeText={onChangeText}
       onBlur={onBlur}
@@ -115,7 +117,6 @@ const TextField: FC<TextFieldProps> = ({
         editable === false && styles.inputDisabled,
         hasSuffix && styles.inputWithSuffix,
         hasLeadingIcon && styles.inputWithLeadingIcon,
-        hasError && styles.inputError,
       ]}
     />
   );
@@ -123,7 +124,7 @@ const TextField: FC<TextFieldProps> = ({
   return (
     <>
       <Box gap={1} testID={testID}>
-        {label !== undefined && <FieldLabel label={label} required={required} />}
+        {label !== undefined && <FieldLabel label={label} required={required} invalid={hasError} />}
 
         {hasInset ? (
           <Box style={styles.insetContainer}>
@@ -149,11 +150,11 @@ const TextField: FC<TextFieldProps> = ({
           input
         )}
 
-        {/* Always rendered, whether or not an error is showing, so the
-          field's overall height never shifts between valid and invalid. */}
-        <Box style={styles.errorSlot} testID={deriveTestID(testID, 'error-slot')}>
-          {hasError && <FieldError message={error} testID={deriveTestID(testID, 'error')} />}
-        </Box>
+        {/* REFLOW, not reserve (Option A): no error node at all while valid,
+          so every valid field shares the same height; an invalid one grows
+          to fit this line the instant `error` is set — see FieldError's own
+          doc comment. */}
+        {hasError && <FieldError message={error} testID={deriveTestID(testID, 'error')} />}
       </Box>
 
       {accessory}

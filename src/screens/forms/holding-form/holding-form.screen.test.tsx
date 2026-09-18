@@ -500,7 +500,7 @@ describe('HoldingFormScreen save validation', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('shows the annual-rate error directly on that field, with a red border, not only after unrelated fields below it', async () => {
+  it('shows the annual-rate error directly on that field, not only after unrelated fields below it', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -511,10 +511,10 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Annual Rate %').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
-  it('shows the term reason directly on that field, with a red border, once the rate is set but the term is missing', async () => {
+  it('shows the term reason directly on that field, once the rate is set but the term is missing', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Deposit'));
@@ -526,7 +526,7 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term (Months)').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   it('shows the contributions-required reason inside the contributions group, anchored to the first row', async () => {
@@ -603,7 +603,7 @@ describe('HoldingFormScreen save validation', () => {
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
   });
 
-  it('shows the quantity reason directly on that field, with a red border, for a bond missing its numeric fields', async () => {
+  it('shows the quantity reason directly on that field, for a bond missing its numeric fields', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -615,10 +615,10 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Quantity').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
-  it('shows the face-value reason directly on that field, with a red border, once quantity is set but face value is missing', async () => {
+  it('shows the face-value reason directly on that field, once quantity is set but face value is missing', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -628,10 +628,10 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Face Value').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
-  it('shows the coupon reason directly on that field, with a red border, once face value is set but the coupon is missing', async () => {
+  it('shows the coupon reason directly on that field, once face value is set but the coupon is missing', async () => {
     const screen = await renderScreen();
 
     await fireEvent.press(screen.getByText('Bond'));
@@ -642,7 +642,7 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.getByText('Enter a coupon of 0 or higher.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Coupon %').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   it('shows no bond reason once every field and date is valid', async () => {

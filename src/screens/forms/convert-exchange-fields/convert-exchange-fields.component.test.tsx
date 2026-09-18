@@ -104,6 +104,6 @@ describe('ConvertExchangeFields', () => {
 
     expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
-    expect(flatStyle.borderColor).toBe('#FF453A');
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 });

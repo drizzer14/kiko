@@ -1,7 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { invalidFieldStyle } from '../../../design-system/invalid-field-style';
-
 export const styles = StyleSheet.create((theme) => ({
   // The icon chip on the left, the name field growing beside it. Bottom-aligned
   // so the chip lines up with the field's input row (which sits below its
@@ -35,15 +33,5 @@ export const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing(2),
     height: theme.spacing(11),
     ...theme.typography.body,
-  },
-  // Applied on top of `nameField` when `error` is set — the shared
-  // invalid-field red border (see invalid-field-style.ts).
-  inputError: invalidFieldStyle(theme),
-  // Always rendered under the name input, whether or not `error` is set, so
-  // showing/hiding the message causes NO layout shift — same shape as
-  // TextField's own `errorSlot` (text-field.styles.ts).
-  errorSlot: {
-    minHeight: theme.spacing(5),
-    justifyContent: 'center',
   },
 }));

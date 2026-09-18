@@ -131,4 +131,57 @@ describe('DateField', () => {
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
+
+  it('renders no error message by default', async () => {
+    const { queryByText } = await render(
+      <DateField label="Start Date" value={null} onChange={jest.fn()} />,
+    );
+
+    expect(queryByText('Select a date.')).toBeNull();
+  });
+
+  it('renders the error message directly under the field when set, uniform with every other field (Option A: no outline)', async () => {
+    const { getByText } = await render(
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        placeholder="Pick a day"
+        error="Select a date."
+      />,
+    );
+
+    expect(getByText('Select a date.')).toBeTruthy();
+    // Same Option A contract as TextField: no per-field outline, ever — the
+    // field row's own border stays its ordinary neutral token.
+    const fieldRow = getByText('Pick a day').parent;
+    expect(StyleSheet.flatten(fieldRow?.props.style).borderColor).not.toBe('#FF453A');
+  });
+
+  it('reflows rather than reserves: no error node renders while valid', async () => {
+    const { queryByTestId } = await render(
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        testID="maturity-date-field"
+      />,
+    );
+
+    expect(queryByTestId('maturity-date-field-error')).toBeNull();
+  });
+
+  it('derives the error testID from the field testID, matching TextField', async () => {
+    const { getByTestId } = await render(
+      <DateField
+        label="Start Date"
+        value={null}
+        onChange={jest.fn()}
+        error="Select a date."
+        testID="maturity-date-field"
+      />,
+    );
+
+    expect(getByTestId('maturity-date-field-error')).toBeTruthy();
+  });
 });
