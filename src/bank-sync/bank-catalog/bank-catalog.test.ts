@@ -1,4 +1,4 @@
-import { bankCatalog, bankIds, isBankId, statementFormatIdForBank } from '.';
+import { bankCatalog, bankIds, isBankId, isConnectableBank, statementFormatIdForBank } from '.';
 
 describe('bankCatalog', () => {
   it('lists exactly the six banks, Monobank first', () => {
@@ -47,5 +47,20 @@ describe('bankCatalog', () => {
     expect(statementFormatIdForBank(null)).toBeUndefined();
     expect(statementFormatIdForBank(undefined)).toBeUndefined();
     expect(statementFormatIdForBank('not-a-bank')).toBeUndefined();
+  });
+
+  it('isConnectableBank is true for Monobank, false for every import-only bank', () => {
+    expect(isConnectableBank('monobank')).toBe(true);
+    expect(isConnectableBank('privatbank')).toBe(false);
+    expect(isConnectableBank('sensebank')).toBe(false);
+    expect(isConnectableBank('procredit')).toBe(false);
+    expect(isConnectableBank('ukrsib')).toBe(false);
+    expect(isConnectableBank('alfa')).toBe(false);
+  });
+
+  it('isConnectableBank defaults to true for an unset or unrecognized bankId', () => {
+    expect(isConnectableBank(null)).toBe(true);
+    expect(isConnectableBank(undefined)).toBe(true);
+    expect(isConnectableBank('not-a-bank')).toBe(true);
   });
 });

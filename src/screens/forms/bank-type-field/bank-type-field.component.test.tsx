@@ -2,6 +2,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 
+import { darkTheme } from '../../../design-system/theme';
+
 import BankTypeField from '.';
 
 describe('BankTypeField', () => {
@@ -117,6 +119,30 @@ describe('BankTypeField', () => {
     const tree = JSON.stringify(toJSON());
     expect(tree).toContain('arrow.trianglehead.2.clockwise.rotate.90');
     expect(tree).toContain('receipt');
+  });
+
+  it("sizes the capability icons at the caption icon-size step (one step down from round-3's body)", async () => {
+    const onSelect = jest.fn();
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected={null}
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId('bank-type-option-monobank-connect-icon').props.size).toBe(
+      darkTheme.iconSizes.caption,
+    );
+    expect(getByTestId('bank-type-option-monobank-import-icon').props.size).toBe(
+      darkTheme.iconSizes.caption,
+    );
+    expect(getByTestId('bank-type-option-privatbank-import-icon').props.size).toBe(
+      darkTheme.iconSizes.caption,
+    );
   });
 
   it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(

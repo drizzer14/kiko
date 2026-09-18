@@ -56,14 +56,51 @@ describe('ImportDataScreen', () => {
   });
 
   it('renders the Import button enabled even before a file or key are provided', async () => {
-    const { getByTestId, queryByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     expect(getByTestId('settings-button-import').props.accessibilityState.disabled).toBeFalsy();
+  });
+
+  // BUG (device-feedback-round-4 item 7): pressing Import with neither a file
+  // nor a key used to fail SILENTLY — no confirm sheet, no error, nothing.
+  // Both must now surface their own inline error.
+  it('shows inline errors for BOTH a missing file and a missing key, not a silent no-op', async () => {
+    const { getByTestId, findByText, queryByText } = await renderScreen();
 
     await fireEvent.press(getByTestId('settings-button-import'));
 
-    // No file picked yet — the guard is a silent no-op, not a confirm sheet.
+    expect(await findByText('Choose a file to import.')).toBeTruthy();
+    expect(
+      await findByText('The key looks too short — paste the full key from your export.'),
+    ).toBeTruthy();
     expect(queryByText('Replace Data')).toBeNull();
+    expect(mockImportData).not.toHaveBeenCalled();
+  });
+
+  it('shows only the missing-file error when a valid key is already entered', async () => {
+    const { getByTestId, getByPlaceholderText, findByText, queryByText } = await renderScreen();
+
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+
+    expect(await findByText('Choose a file to import.')).toBeTruthy();
+    expect(
+      queryByText('The key looks too short — paste the full key from your export.'),
+    ).toBeNull();
+    expect(queryByText('Replace Data')).toBeNull();
+  });
+
+  it('clears the missing-file error once a valid file is picked', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+    const { getByTestId, findByText, queryByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-import'));
+    expect(await findByText('Choose a file to import.')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+
+    expect(queryByText('Choose a file to import.')).toBeNull();
   });
 
   it('rejects a picked file whose name does not end in .kiko', async () => {

@@ -1,6 +1,15 @@
+// A mutable backing value (not a plain literal) so a test can flip
+// `TemporaryDirectoryPath`'s trailing-slash presence WITHOUT `jest.isolateModules`
+// — the mock is one shared module instance across every test in this file, and
+// the getter re-reads the variable on every access, matching how the real
+// native constant is read once but could plausibly omit the slash on either OS
+// version.
+let mockTemporaryDirectoryPath = '/tmp/';
 const mockWriteFile = jest.fn();
 jest.mock('react-native-fs', () => ({
-  TemporaryDirectoryPath: '/tmp/',
+  get TemporaryDirectoryPath() {
+    return mockTemporaryDirectoryPath;
+  },
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
 }));
 
@@ -28,6 +37,7 @@ const emptySnapshot = {
 
 describe('exportData', () => {
   beforeEach(() => {
+    mockTemporaryDirectoryPath = '/tmp/';
     mockWriteFile.mockReset().mockResolvedValue(undefined);
     mockReadDataSnapshot.mockReset().mockResolvedValue(emptySnapshot);
     mockReadExportSecrets
@@ -72,5 +82,20 @@ describe('exportData', () => {
     await exportData({ includeSecrets: true });
 
     expect(mockReadExportSecrets).toHaveBeenCalledWith(emptySnapshot.accounts);
+  });
+
+  it('still joins a valid path when TemporaryDirectoryPath has NO trailing slash', async () => {
+    // A bare `${dir}${file}` concatenation silently produces a malformed
+    // path (no `/` separator) when the native constant omits the trailing
+    // slash — a real cross-OS-version drift, not a hypothetical, and the
+    // likely root cause of an on-device "Export does nothing" report: a
+    // malformed path fails `writeFile` before any share sheet or key card
+    // ever appears.
+    mockTemporaryDirectoryPath = '/tmp';
+
+    const result = await exportData({ includeSecrets: false });
+
+    expect(result.fileUri).toMatch(/^\/tmp\/kiko-export-\d+\.kiko$/);
+    expect(mockWriteFile).toHaveBeenCalledWith(result.fileUri, expect.any(String), 'utf8');
   });
 });

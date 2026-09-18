@@ -82,6 +82,7 @@ export const en = {
       keyLabel: 'Encryption Key',
       keyPlaceholder: 'Paste the key from your export',
       keyTooShortError: 'The key looks too short — paste the full key from your export.',
+      noFileError: 'Choose a file to import.',
       pasteKey: 'Paste key from clipboard',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',

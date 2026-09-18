@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
@@ -59,9 +59,31 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
   const { t, i18n } = useTranslation();
+  const { theme } = useUnistyles();
 
   const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const settings = data.at(0);
+
+  // Item 6 (device-feedback-round-4): the Import/Export card's per-row
+  // padding and leading-inset divider, both PLAIN objects built from the
+  // live theme rather than a `StyleSheet.create()` entry — `StyleSheet.create`
+  // styles are meant to be read directly on a component's OWN native element,
+  // not forwarded as a `style` prop into a DIFFERENT shared component
+  // (`SettingsRow`/`Divider`), where the unistyles runtime does not resolve
+  // them. `SettingsRow` gets its own explicit vertical+horizontal padding
+  // here (matching the `theme.spacing(3)` every OTHER single-row settings
+  // card gets for free from its own `Card` padding, since this card's own
+  // padding drops to 0 below) so each row reads as a normal native
+  // grouped-list row rather than a shorter one squeezed by an outer `Box`
+  // gap. The divider's inset is the leading icon's own width
+  // (`iconSizes.body`, the default `SettingsRow` icon size) plus the
+  // icon-to-label gap (`theme.spacing(3)`), so it aligns with the row LABEL
+  // rather than running edge-to-edge.
+  const dataTransferRowStyle = {
+    paddingHorizontal: theme.spacing(3),
+    paddingVertical: theme.spacing(3),
+  };
+  const dataTransferDividerStyle = { marginLeft: theme.iconSizes.body + theme.spacing(3) };
 
   const handleSelectCurrency = (currency: Currency): void => {
     settingsRepo.setBaseCurrency(currency);
@@ -119,6 +141,41 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           />
         </Card>
 
+        {/* Import and Export share one card as a single "data transfer" group,
+            positioned directly BELOW System (device-feedback-round-4 item 9 —
+            round-2 asked for this and it had not landed; it previously sat
+            LAST, after Categories). Import first (the more common entry point
+            — bringing existing data in) then Export.
+            Item 6: each row now carries its own explicit vertical padding
+            (`dataTransferRowStyle`, matching the Card's own padding=3 the
+            OTHER single-row cards get for free) with the Card's own padding
+            dropped to 0 — an outer `Box gap` no longer supplies the
+            spacing, so each row reads as a normal native grouped-list row
+            rather than a shorter, gap-squeezed one. The divider is
+            LEADING-INSET (`dataTransferDividerStyle`'s `marginLeft`, aligned
+            with the row LABEL — past the leading icon, not edge-to-edge),
+            the standard iOS grouped-list divider treatment for an icon-led
+            row. */}
+        <Card testID="settings-card-data-transfer" padding={0}>
+          <SettingsRow
+            testID="settings-row-import-data"
+            icon="square.and.arrow.down"
+            label={t('settings.dataImport.title')}
+            onPress={() => navigation.navigate('ImportData')}
+            style={dataTransferRowStyle}
+          />
+
+          <Divider testID="settings-divider-data-transfer" style={dataTransferDividerStyle} />
+
+          <SettingsRow
+            testID="settings-row-export-data"
+            icon="square.and.arrow.up"
+            label={t('settings.dataExport.title')}
+            onPress={() => navigation.navigate('ExportData')}
+            style={dataTransferRowStyle}
+          />
+        </Card>
+
         {/* The base currency is FIAT-ONLY: it drives every net-worth conversion,
             so a crypto base (BTC) is not selectable here. The field reuses the
             shared searchable CurrencyField the account/holding forms use, its
@@ -147,33 +204,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
           />
-        </Card>
-
-        {/* Import and Export share one card as a single "data transfer" group,
-            Import first (the more common entry point — bringing existing data
-            in) then Export. The gap around the divider is deliberately
-            TIGHTER (gap={2}) than the gap={4} that separates this card from
-            its siblings above/below — a within-group divider must read as a
-            closer, subordinate seam, not the same visual weight as the space
-            between two whole cards (device-feedback-round-3 item 3). */}
-        <Card testID="settings-card-data-transfer" padding={3}>
-          <Box gap={2}>
-            <SettingsRow
-              testID="settings-row-import-data"
-              icon="square.and.arrow.down"
-              label={t('settings.dataImport.title')}
-              onPress={() => navigation.navigate('ImportData')}
-            />
-
-            <Divider testID="settings-divider-data-transfer" />
-
-            <SettingsRow
-              testID="settings-row-export-data"
-              icon="square.and.arrow.up"
-              label={t('settings.dataExport.title')}
-              onPress={() => navigation.navigate('ExportData')}
-            />
-          </Box>
         </Card>
       </Box>
     </Screen>

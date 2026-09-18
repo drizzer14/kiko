@@ -25,6 +25,15 @@ type ExportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Exp
 // its normal label — the iOS-standard copy-confirmation duration.
 const COPIED_FEEDBACK_DURATION_MS = 2000;
 
+// `Share.share`'s `url` field needs an actual URL — a BARE filesystem path
+// (what `exportData` returns) can silently no-op on iOS instead of attaching
+// the file, with no error thrown and no share sheet shown, which reads on
+// device as "Export does nothing". Prefixing the `file://` scheme is the
+// fix; the `startsWith` guard makes this a no-op if a future caller ever
+// hands in an already-schemed URL.
+const toFileShareUrl = (path: string): string =>
+  path.startsWith('file://') ? path : `file://${path}`;
+
 const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   const { t } = useTranslation();
   const [includeSecrets, setIncludeSecrets] = useState(false);
@@ -50,6 +59,20 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
       // again" warning — reset it and drop the stale pending revert timeout.
       clearTimeout(copiedTimeoutRef.current);
       setCopied(false);
+
+      // Device report: pressing Export could look like it did nothing — the
+      // key card below is real content one has to notice/scroll to. Opening
+      // the OS share sheet immediately makes a successful export VISIBLE
+      // right away, the same action the card's own Share File button
+      // performs below (which stays as the manual fallback regardless of
+      // this outcome). A dismiss/cancel here is the expected common case —
+      // the same silent-catch convention as every other picker/share cancel
+      // in this app — not a failure to surface.
+      try {
+        await Share.share({ url: toFileShareUrl(result.fileUri) });
+      } catch {
+        // Dismissed/cancelled the share sheet.
+      }
     } catch {
       Alert.alert(t('settings.dataExport.errorTitle'), t('settings.dataExport.errorMessage'));
     }
@@ -70,7 +93,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
   const handleShareFile = (): void => {
     if (fileUri !== undefined) {
-      Share.share({ url: fileUri });
+      Share.share({ url: toFileShareUrl(fileUri) });
     }
   };
 
