@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { Alert } from 'react-native';
 import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
@@ -489,6 +490,23 @@ describe('AccountFormScreen', () => {
     await fireEvent.changeText(search, 'GBP');
     expect(getByTestId('currency-option-GBP')).toBeTruthy();
     expect(queryByTestId('currency-option-BTC')).toBeNull();
+  });
+
+  it('surfaces an alert and does not navigate when the cash create fails', async () => {
+    mockCreateCashAccount.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const { getByLabelText, getByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await fireEvent.press(getByText('Cash'));
+    await fireEvent.press(getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });
 

@@ -217,6 +217,21 @@ describe('ContributionFormScreen', () => {
     expect(isSaveDisabled()).toBe(false);
   });
 
+  it('shows an inline reason once a non-positive amount is entered', async () => {
+    const utils = await renderScreen();
+
+    // Blank: no reason yet, nothing typed.
+    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+
+    // A zero amount: the reason appears.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '0');
+    expect(utils.getByText('Enter an amount greater than 0.')).toBeTruthy();
+
+    // A positive amount: the reason clears.
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '10');
+    expect(utils.queryByText('Enter an amount greater than 0.')).toBeNull();
+  });
+
   it('surfaces an alert and does not navigate when the append fails', async () => {
     (holdingsRepo.appendDepositContribution as jest.Mock).mockRejectedValueOnce(new Error('boom'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);

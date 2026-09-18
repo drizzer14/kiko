@@ -12,6 +12,7 @@ import Box from '../../../design-system/components/box';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import TextField from '../../../design-system/components/text-field';
+import FieldError from '../../../design-system/components/field-error';
 import type { AccountsStackParamList } from '../../../navigation/types';
 
 import DateField from '../date-field';
@@ -96,6 +97,10 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           suffix={currencySymbol[currency]}
           required
         />
+
+        {amount.trim() !== '' && !(parseAmount(amount) > 0) && (
+          <FieldError message={t('forms.contribution.amountError')} />
+        )}
 
         <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
       </Box>

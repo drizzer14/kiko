@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { Alert } from 'react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
@@ -457,6 +458,7 @@ describe('HoldingFormScreen save validation', () => {
   beforeEach(() => {
     createMock.mockClear();
     setIconMock.mockClear();
+    navigation.goBack.mockClear();
   });
 
   it('disables Save for a term deposit missing its contribution, rate, and term', async () => {
@@ -474,6 +476,52 @@ describe('HoldingFormScreen save validation', () => {
     await fillTermDepositFields(screen);
 
     expect(screen.getByText('Save')).not.toBeDisabled();
+  });
+
+  it('shows an inline reason for a term deposit missing its contribution, rate, and term', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+
+    expect(
+      screen.getByText('Add at least one contribution with an amount and a date.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the rate reason once a contribution is set but the rate is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+
+    expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
+  });
+
+  it('shows the term reason once the rate is set but the term is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Deposit'));
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 Amount', '1000');
+    await pickDate(screen, 'Contribution 1 Date', 2026, 1, 1);
+    await fill(screen, 'Annual Rate %', '12');
+
+    expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
+  });
+
+  it('shows no term-deposit reason once every field is valid', async () => {
+    const screen = await renderScreen();
+
+    await fillTermDepositFields(screen);
+
+    expect(
+      screen.queryByText('Add at least one contribution with an amount and a date.'),
+    ).toBeNull();
+    expect(screen.queryByText('Enter a rate of 0 or higher.')).toBeNull();
+    expect(screen.queryByText('Enter a whole number of months greater than 0.')).toBeNull();
   });
 
   it('disables Save for a bond missing its numeric fields and dates', async () => {
@@ -507,10 +555,69 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByText('Save')).not.toBeDisabled();
   });
 
+  it('shows the quantity reason for a bond missing its numeric fields', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+
+    expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+  });
+
+  it('shows the face-value reason once quantity is set but face value is missing', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+
+    expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
+  });
+
+  it('shows the maturity-date reason when maturity is not after purchase', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Bond'));
+    await fill(screen, 'Name', 'My bond');
+    await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Face Value', '1000');
+    await fill(screen, 'Coupon %', '9');
+    await pickDate(screen, 'Purchase Date', 2026, 1, 1);
+    await pickDate(screen, 'Maturity Date', 2026, 1, 1);
+
+    expect(screen.getByText('Maturity date must be after the purchase date.')).toBeTruthy();
+  });
+
+  it('shows no bond reason once every field and date is valid', async () => {
+    const screen = await renderScreen();
+
+    await fillBondFields(screen);
+
+    expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
+    expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
+    expect(screen.queryByText('Enter a coupon of 0 or higher.')).toBeNull();
+    expect(screen.queryByText('Maturity date must be after the purchase date.')).toBeNull();
+  });
+
   it('disables Save when the holding name is blank', async () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('Save')).toBeDisabled();
+  });
+
+  it('surfaces an alert and does not navigate when the create fails', async () => {
+    createMock.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const screen = await renderScreen();
+    await fillTermDepositFields(screen);
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });
 

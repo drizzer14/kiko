@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { ScrollViewInstance } from 'react-native';
@@ -35,6 +36,7 @@ import Divider from '../../../design-system/components/divider';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import FieldError from '../../../design-system/components/field-error';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { type Currency, currencySymbol } from '../../../currency/currency';
@@ -49,6 +51,21 @@ import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
+
+// The literal i18n keys `termDepositReasonKey` may return, so `t()` (typed
+// from src/i18n/locales/en.ts) accepts them.
+type TermDepositReasonKey =
+  | 'forms.holding.contributionsRequiredError'
+  | 'forms.holding.annualRateError'
+  | 'forms.holding.termMonthsError';
+
+// The literal i18n keys `bondReasonKey` may return, so `t()` (typed from
+// src/i18n/locales/en.ts) accepts them.
+type BondReasonKey =
+  | 'forms.holding.quantityError'
+  | 'forms.holding.faceValueError'
+  | 'forms.holding.couponPctError'
+  | 'forms.holding.maturityDateError';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added in
@@ -418,18 +435,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // picked date (parsedContributions already drops blank/partial rows), a
   // non-negative annual rate that was actually entered, and a whole-month term
   // greater than zero. Recapitalization and compounding always carry defaults.
-  const isTermDepositValid = (): boolean => {
+  // Not gated on whether the name is filled: the name's own required asterisk
+  // covers that separately.
+  const termDepositReasonKey = (): TermDepositReasonKey | null => {
+    if (parsedContributions().length === 0) {
+      return 'forms.holding.contributionsRequiredError';
+    }
+
     const rate = parseAmount(annualRate);
+
+    if (annualRate.trim() === '' || !(rate >= 0)) {
+      return 'forms.holding.annualRateError';
+    }
+
     const months = parseAmount(termMonths);
 
-    return (
-      parsedContributions().length > 0 &&
-      annualRate.trim() !== '' &&
-      rate >= 0 &&
-      Number.isInteger(months) &&
-      months > 0
-    );
+    if (!(Number.isInteger(months) && months > 0)) {
+      return 'forms.holding.termMonthsError';
+    }
+
+    return null;
   };
+
+  // Derived from `termDepositReasonKey` so the two can never disagree: valid
+  // exactly when there is no reason to reject.
+  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
 
   // A bond needs a positive quantity and face value, a non-negative coupon that
   // was actually entered, both dates picked, and a maturity strictly after the
@@ -443,6 +473,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     maturityDate !== null &&
     maturityDate > purchaseDate;
 
+  // The reason `isBondValid` above is false, for the SAME checks in the
+  // SAME priority order. A missing (not-yet-picked) date is already covered
+  // by that field's own required asterisk, so this returns null rather than
+  // a redundant "pick a date" line until BOTH dates are set — only then does
+  // an invalid ORDER between them get its own reason.
+  const bondReasonKey = (): BondReasonKey | null => {
+    if (!(parseAmount(quantity) > 0)) {
+      return 'forms.holding.quantityError';
+    }
+
+    if (!(parseAmount(faceValue) > 0)) {
+      return 'forms.holding.faceValueError';
+    }
+
+    if (couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)) {
+      return 'forms.holding.couponPctError';
+    }
+
+    if (purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate) {
+      return 'forms.holding.maturityDateError';
+    }
+
+    return null;
+  };
+
   const isValid =
     name.trim().length > 0 &&
     match(type)
@@ -450,6 +505,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('bond', isBondValid)
       .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
+
+  const termDepositReason = type === 'term_deposit' ? termDepositReasonKey() : null;
+  const bondReason = type === 'bond' ? bondReasonKey() : null;
 
   const save = async (): Promise<void> => {
     const metadata = buildMetadata();
@@ -459,61 +517,68 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    if (isEdit && holdingId !== undefined) {
-      // Update the editable fields in one transaction (see buildHoldingPatch:
-      // deposit/bond write metadata, every other type writes its balance). The
-      // icon routes through setIcon (so a cleared icon persists an explicit
-      // null), the same split the create path uses. Type/currency are read-only.
-      //
-      // `updateWithBalanceDelta`, not `update`: an edited balance also has to
-      // land on the ledger as a `manual` transaction for the difference, or the
-      // holding's history stops being derivable from its transactions and the
-      // whole past net-worth series shifts under the edit (kiko-domain). A patch
-      // with no balance in it (a deposit/bond, or a synced holding) writes no
-      // ledger row, so this is the right call for every edit.
-      await holdingsRepo.updateWithBalanceDelta(
-        holdingId,
-        buildHoldingPatch({
-          name,
-          color,
-          type,
-          currency,
-          openingBalance,
-          metadata,
-          isSynced: isSyncedEdit,
-        }),
-        Date.now(),
-      );
+    try {
+      if (isEdit && holdingId !== undefined) {
+        // Update the editable fields in one transaction (see buildHoldingPatch:
+        // deposit/bond write metadata, every other type writes its balance). The
+        // icon routes through setIcon (so a cleared icon persists an explicit
+        // null), the same split the create path uses. Type/currency are read-only.
+        //
+        // `updateWithBalanceDelta`, not `update`: an edited balance also has to
+        // land on the ledger as a `manual` transaction for the difference, or the
+        // holding's history stops being derivable from its transactions and the
+        // whole past net-worth series shifts under the edit (kiko-domain). A patch
+        // with no balance in it (a deposit/bond, or a synced holding) writes no
+        // ledger row, so this is the right call for every edit.
+        await holdingsRepo.updateWithBalanceDelta(
+          holdingId,
+          buildHoldingPatch({
+            name,
+            color,
+            type,
+            currency,
+            openingBalance,
+            metadata,
+            isSynced: isSyncedEdit,
+          }),
+          Date.now(),
+        );
 
-      // Write the icon unconditionally in edit mode so clearing a custom icon
-      // (icon === null) persists the removal rather than leaving the old glyph.
-      await holdingsRepo.setIcon(holdingId, icon);
+        // Write the icon unconditionally in edit mode so clearing a custom icon
+        // (icon === null) persists the removal rather than leaving the old glyph.
+        await holdingsRepo.setIcon(holdingId, icon);
+
+        navigation.goBack();
+
+        return;
+      }
+
+      const newHoldingId = await holdingsRepo.create({
+        accountId,
+        name,
+        type,
+        currency,
+        balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
+        metadata,
+        // Persist the color only when the user picked one (dirty). Left null, the
+        // row follows its type's default at display time — the same fallback the
+        // icon uses — so a type-default color is not frozen onto the row.
+        color,
+      });
+
+      // Persist the chosen icon on the freshly-created row, using the id the
+      // create resolved to. Awaited so it commits before navigating away.
+      if (icon !== null) {
+        await holdingsRepo.setIcon(newHoldingId, icon);
+      }
 
       navigation.goBack();
-
-      return;
+    } catch {
+      // Mirrors contribution-form's and account-form's Alert pattern: a write
+      // failure keeps the screen open with the entered values intact, rather
+      // than navigating away as if nothing was wrong.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
     }
-
-    const newHoldingId = await holdingsRepo.create({
-      accountId,
-      name,
-      type,
-      currency,
-      balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-      metadata,
-      // Persist the color only when the user picked one (dirty). Left null, the
-      // row follows its type's default at display time — the same fallback the
-      // icon uses — so a type-default color is not frozen onto the row.
-      color,
-    });
-
-    // Persist the chosen icon on the freshly-created row, using the id the
-    // create resolved to. Awaited so it commits before navigating away.
-    if (icon !== null) {
-      await holdingsRepo.setIcon(newHoldingId, icon);
-    }
-
-    navigation.goBack();
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
@@ -689,6 +754,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCompounding}
               labels={compoundingLabels}
             />
+
+            {termDepositReason !== null && <FieldError message={t(termDepositReason)} />}
           </Box>
         )}
 
@@ -766,6 +833,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               onSelect={setCouponFrequency}
               labels={couponFrequencyLabels}
             />
+
+            {bondReason !== null && <FieldError message={t(bondReason)} />}
           </Box>
         )}
       </Box>

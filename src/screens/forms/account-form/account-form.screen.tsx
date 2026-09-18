@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
@@ -258,50 +259,57 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
-    if (isEdit) {
-      // Update the editable identity fields in one transaction; the icon routes
-      // through setIcon (so a cleared icon persists an explicit null), the same
-      // split the create path uses. Kind is read-only, and the cash currency +
-      // initial value belong to the create-time initial holding, so neither is
-      // touched here.
-      await accountsRepo.update(editId, { name: trimmedName, color });
-      await accountsRepo.setIcon(editId, icon);
+    try {
+      if (isEdit) {
+        // Update the editable identity fields in one transaction; the icon routes
+        // through setIcon (so a cleared icon persists an explicit null), the same
+        // split the create path uses. Kind is read-only, and the cash currency +
+        // initial value belong to the create-time initial holding, so neither is
+        // touched here.
+        await accountsRepo.update(editId, { name: trimmedName, color });
+        await accountsRepo.setIcon(editId, icon);
+        navigation.goBack();
+
+        return;
+      }
+
+      if (kind === 'cash') {
+        // Clamp a negative initial value to zero — a cash balance can never be
+        // negative, and parseAmount('') is NaN so `|| 0` also covers a blank field.
+        const initialMajor = Math.max(0, parseAmount(initialValue) || 0);
+        await accountsRepo.createCashAccount({
+          name: trimmedName,
+          currency,
+          initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
+          icon,
+          color,
+        });
+        navigation.goBack();
+
+        return;
+      }
+
+      // Bank and crypto share one create path now — `kind` here is 'bank' or
+      // 'crypto' (cash returned above). A field's own Connect may already have
+      // inserted the row via ensureAccount (Option A); if so, persist any
+      // name/color/icon edited AFTER connecting rather than inserting a DUPLICATE
+      // account (the field already handled the credential + first sync). Otherwise
+      // this Save is the first write, so create the row now — an unconnected
+      // bank/crypto account is valid; the user connects a source later from its
+      // detail screen.
+      if (accountCreate.current !== null) {
+        await accountsRepo.update(pendingAccountId, { name: trimmedName, color });
+        await accountsRepo.setIcon(pendingAccountId, icon);
+      } else {
+        await ensureAccount();
+      }
       navigation.goBack();
-
-      return;
+    } catch {
+      // A DB write failure (disk full, locked) must not vanish silently — the
+      // screen was about to navigate away with nothing saved. Keep it open and
+      // say so, mirroring contribution-form's established Alert pattern.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
     }
-
-    if (kind === 'cash') {
-      // Clamp a negative initial value to zero — a cash balance can never be
-      // negative, and parseAmount('') is NaN so `|| 0` also covers a blank field.
-      const initialMajor = Math.max(0, parseAmount(initialValue) || 0);
-      await accountsRepo.createCashAccount({
-        name: trimmedName,
-        currency,
-        initialBalanceMinorUnits: Money.fromMajor(currency, initialMajor).minorUnits,
-        icon,
-        color,
-      });
-      navigation.goBack();
-
-      return;
-    }
-
-    // Bank and crypto share one create path now — `kind` here is 'bank' or
-    // 'crypto' (cash returned above). A field's own Connect may already have
-    // inserted the row via ensureAccount (Option A); if so, persist any
-    // name/color/icon edited AFTER connecting rather than inserting a DUPLICATE
-    // account (the field already handled the credential + first sync). Otherwise
-    // this Save is the first write, so create the row now — an unconnected
-    // bank/crypto account is valid; the user connects a source later from its
-    // detail screen.
-    if (accountCreate.current !== null) {
-      await accountsRepo.update(pendingAccountId, { name: trimmedName, color });
-      await accountsRepo.setIcon(pendingAccountId, icon);
-    } else {
-      await ensureAccount();
-    }
-    navigation.goBack();
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);

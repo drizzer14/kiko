@@ -3,10 +3,10 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
-import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import {
@@ -43,6 +43,7 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
+import FieldError from '../../../design-system/components/field-error';
 import { buildRateTable } from '../../../rates/net-worth-view';
 import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
@@ -262,6 +263,91 @@ const isSaveDisabled = (params: SaveDisabledParams): boolean => {
   }
 
   return !isPositiveAmountText(params.amount) || params.selectedCategory === null;
+};
+
+// One reason helper per `isSaveDisabled` branch, each mirroring that
+// branch's OWN condition (comments above each pair it verbatim) — split out
+// so `saveDisabledReason` below stays a flat dispatch instead of one deeply
+// nested function, keeping every helper under the cognitive-complexity
+// budget while the two stay impossible to drift apart.
+
+// Mirrors `isSaveDisabled`'s converting branch: `counterpartHoldingId ===
+// null || !isPositiveAmountText(counterpartAmount)`.
+const convertingReason = (params: SaveDisabledParams, t: TFunction): string | null => {
+  if (params.counterpartHoldingId === null) {
+    return t('forms.transaction.selectCounterpartError');
+  }
+
+  return isPositiveAmountText(params.counterpartAmount)
+    ? null
+    : t('forms.transaction.counterpartAmountError');
+};
+
+// Mirrors `isSaveDisabled`'s exchange branch: `destinationHoldingId ===
+// null || !isPositiveAmountText(amount) || !isPositiveAmountText(valueIn)`.
+const exchangeReason = (params: SaveDisabledParams, t: TFunction): string | null => {
+  if (params.destinationHoldingId === null) {
+    return t('forms.transaction.selectDestinationError');
+  }
+
+  if (!isPositiveAmountText(params.amount)) {
+    return t('forms.transaction.valueOutError');
+  }
+
+  return isPositiveAmountText(params.valueIn) ? null : t('forms.transaction.valueInError');
+};
+
+// Mirrors `isSaveDisabled`'s split branch: `selectedCategory === null ||
+// !canSaveSplit(amount, changeReturns, currency)`.
+const splitReason = (params: SaveDisabledParams, t: TFunction): string | null => {
+  if (params.selectedCategory === null) {
+    return t('forms.transaction.selectCategoryError');
+  }
+
+  return canSaveSplit(params.amount, params.changeReturns, params.currency)
+    ? null
+    : t('forms.transaction.splitInvalidError');
+};
+
+// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
+// in the same order: read-only is never disabled; editing needs only a
+// positive amount; a fresh add needs a positive amount AND a category.
+const plainReason = (params: SaveDisabledParams, t: TFunction): string | null => {
+  if (params.isReadOnly) {
+    return null;
+  }
+
+  if (params.isEditing) {
+    return isPositiveAmountText(params.amount) ? null : t('forms.transaction.amountError');
+  }
+
+  if (!isPositiveAmountText(params.amount)) {
+    return t('forms.transaction.amountError');
+  }
+
+  return params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : null;
+};
+
+// The reason `isSaveDisabled` above returns true, for the SAME branches in
+// the SAME priority order (converting, exchange, split, then the trailing
+// read-only/editing/fresh-add group), so the two can never disagree — a
+// drift here would disable Save for one reason while explaining another.
+// `t` is threaded in explicitly, the same way `resolveDescriptionPlaceholder`
+// above takes it, so this stays a pure module-level helper.
+const saveDisabledReason = (params: SaveDisabledParams, t: TFunction): string | null => {
+  if (params.converting) {
+    return convertingReason(params, t);
+  }
+
+  if (params.isExchange) {
+    return exchangeReason(params, t);
+  }
+
+  if (params.isSplit) {
+    return splitReason(params, t);
+  }
+
+  return plainReason(params, t);
 };
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
@@ -1026,6 +1112,19 @@ const showsSaveButton = (
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
 
+// The footer's inline "why is Save disabled" line, or nothing once there is no
+// reason (Save is enabled) or a submit is already in flight (the reason would
+// otherwise flash as the row saves). Kept module-level (returns `ReactElement
+// | null`) so the footer's JSX gates on a single call rather than its own
+// `&&` chain, the same shape as `renderReadOnlyNotice` above.
+const renderSaveReason = (reason: string | null, isSubmitting: boolean): ReactElement | null => {
+  if (reason === null || isSubmitting) {
+    return null;
+  }
+
+  return <FieldError message={reason} testID="transaction-save-reason" />;
+};
+
 // The category picker and "Convert to exchange" action: everything below the
 // main field group EXCEPT while converting (a convert has no category — just
 // the convert group and Save). Deleting a transaction is offered only through
@@ -1480,7 +1579,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `isSaveDisabled`). Both are module-level pure helpers so their branches
   // stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder(holding, mode, t);
-  const disableSave = isSaveDisabled({
+  const saveDisabledParams: SaveDisabledParams = {
     converting,
     isExchange,
     isSplit,
@@ -1494,7 +1593,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     changeReturns,
     currency,
-  });
+  };
+  // `saveDisabledReason` returns null in every branch exactly where
+  // `isSaveDisabled` returns false (they are twins — see the comment above
+  // `saveDisabledReason`), so it is safe to call unconditionally here rather
+  // than gating it on `disableSave` — which would cost this component's own
+  // cognitive-complexity budget one more branch for no behavioral gain.
+  const disableSave = isSaveDisabled(saveDisabledParams);
+  const disableSaveReason = saveDisabledReason(saveDisabledParams, t);
 
   // An explicit category pick: record the choice AND flag it, so a later
   // description blur (the A1 auto-pick) never overwrites what the user chose.
@@ -1580,6 +1686,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
   };
 
+  // The shared failure alert for every write this screen makes: `save`,
+  // `applyOverride`, and `applyOverrideOne` each catch their own write and
+  // call this rather than repeating the same two catalog keys three times.
+  const showSaveErrorAlert = (): void => {
+    Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+  };
+
   // Editing a category ALWAYS propagates to every same-name transaction (and to
   // future imports), so surface the blast radius in a themed confirm modal
   // before writing the rule. Both paths return to the list (the manual edit, if
@@ -1588,11 +1701,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     if (pendingOverride === null) {
       return;
     }
-    await categoryOverridesRepo.upsertCategoryOverride(
-      pendingOverride.name,
-      pendingOverride.category,
-    );
-    navigation.goBack();
+
+    try {
+      await categoryOverridesRepo.upsertCategoryOverride(
+        pendingOverride.name,
+        pendingOverride.category,
+      );
+      navigation.goBack();
+    } catch {
+      showSaveErrorAlert();
+    }
   };
 
   // A second `useSubmitOnce` instance, not the Save button's: this guards the
@@ -1618,11 +1736,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     if (pendingOverride === null || editingId === null) {
       return;
     }
-    await transactionsRepo.setCategory({
-      transactionId: editingId,
-      category: pendingOverride.category,
-    });
-    navigation.goBack();
+
+    try {
+      await transactionsRepo.setCategory({
+        transactionId: editingId,
+        category: pendingOverride.category,
+      });
+      navigation.goBack();
+    } catch {
+      showSaveErrorAlert();
+    }
   };
 
   // A third independent `useSubmitOnce` instance, for the same reason
@@ -1851,44 +1974,56 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   const save = async (): Promise<void> => {
-    if (await dispatchSpecialSave()) {
-      return;
+    try {
+      if (await dispatchSpecialSave()) {
+        return;
+      }
+
+      // A synced row is bank-owned: only its category may change, so skip the
+      // amount write entirely and fall through to the category confirm below.
+      if (!isReadOnly && !(await tryWriteManual())) {
+        return;
+      }
+
+      // The rule keys on the synced row's own description (read-only) or the
+      // just-saved manual description.
+      const name = isReadOnly ? (existing?.description ?? '') : description;
+      const overrideRequest = resolveCategoryOverrideRequest(
+        categoryChanged,
+        selectedCategory,
+        name,
+      );
+
+      if (overrideRequest) {
+        setPendingOverride(overrideRequest);
+
+        return;
+      }
+
+      // No propagation sheet will open — the normalized name is blank (a synced
+      // Binance/wallet row imports with an empty description), or the row is
+      // synced so `writeManual`'s `update` refused to persist its category. Write
+      // the picked category straight onto THIS row by id via the ungated
+      // `setCategory`, so a category change on an existing row is never dropped.
+      // This is the single-row writer only; the blank-name guard on the name RULE
+      // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+      // intact, so a catch-all rule is still refused. A create (no `editingId`)
+      // already carries its category from `recordManual`, so it is excluded.
+      if (editingId !== null && categoryChanged && selectedCategory !== null) {
+        await transactionsRepo.setCategory({
+          transactionId: editingId,
+          category: selectedCategory,
+        });
+      }
+
+      navigation.goBack();
+    } catch {
+      // Every write above — recordManual/recordManualWithReturns/recordExchange/
+      // recordExchangeCounterpart/update/setCategory — used to escape unhandled:
+      // the screen just silently failed to navigate, with Save re-enabled and
+      // no explanation. Mirror the established Alert pattern instead.
+      showSaveErrorAlert();
     }
-
-    // A synced row is bank-owned: only its category may change, so skip the
-    // amount write entirely and fall through to the category confirm below.
-    if (!isReadOnly && !(await tryWriteManual())) {
-      return;
-    }
-
-    // The rule keys on the synced row's own description (read-only) or the
-    // just-saved manual description.
-    const name = isReadOnly ? (existing?.description ?? '') : description;
-    const overrideRequest = resolveCategoryOverrideRequest(categoryChanged, selectedCategory, name);
-
-    if (overrideRequest) {
-      setPendingOverride(overrideRequest);
-
-      return;
-    }
-
-    // No propagation sheet will open — the normalized name is blank (a synced
-    // Binance/wallet row imports with an empty description), or the row is
-    // synced so `writeManual`'s `update` refused to persist its category. Write
-    // the picked category straight onto THIS row by id via the ungated
-    // `setCategory`, so a category change on an existing row is never dropped.
-    // This is the single-row writer only; the blank-name guard on the name RULE
-    // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
-    // intact, so a catch-all rule is still refused. A create (no `editingId`)
-    // already carries its category from `recordManual`, so it is excluded.
-    if (editingId !== null && categoryChanged && selectedCategory !== null) {
-      await transactionsRepo.setCategory({
-        transactionId: editingId,
-        category: selectedCategory,
-      });
-    }
-
-    navigation.goBack();
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
@@ -1920,9 +2055,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollableRef={scrollableRef}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={disableSave || isSubmitting}>
-              {t('common.save')}
-            </Button>
+            <Box gap={2}>
+              {renderSaveReason(disableSaveReason, isSubmitting)}
+
+              <Button onPress={onSave} disabled={disableSave || isSubmitting}>
+                {t('common.save')}
+              </Button>
+            </Box>
           ) : undefined
         }
       >
