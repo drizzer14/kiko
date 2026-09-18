@@ -16,6 +16,7 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
+import FieldError from '../../../design-system/components/field-error';
 import CryptoSyncForm from '../../account-detail/crypto-sync-form';
 import TextField from '../../../design-system/components/text-field';
 import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
@@ -128,18 +129,24 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // must re-render; it follows the ref, reset to false on a failed create so the
   // switch re-enables when no row actually exists.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
+  // Mirrors contribution-form's attempted-flag pattern: the name-required
+  // reason stays hidden until the user actually tries to Connect or Save with
+  // an empty name, rather than showing as a standing hint the whole time.
+  const [showNameError, setShowNameError] = useState(false);
 
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
     // form is always visible and a credential/address may be entered, but NO
     // account row is ever created without a name. A field's own Connect tapped
     // with an empty (whitespace-only) name rejects HERE before any insert — the
-    // field surfaces its existing "could not connect" state and the sync block
-    // shows the "enter a name first" hint so the user understands why. The latch
+    // field surfaces its existing "could not connect" state and the name-required
+    // reason renders below the name field so the user understands why. The latch
     // and the `accountRowStarted` kind-lock are left untouched (no row was
     // started), so a retry after typing a name re-attempts cleanly. Save is
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
+      setShowNameError(true);
+
       return Promise.reject(new Error('name-required'));
     }
     accountCreate.current ??= (async () => {
@@ -253,9 +260,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const canSave = trimmedName !== '';
 
   const save = async (): Promise<void> => {
-    // Block submit on an empty (or whitespace-only) name; the button is also
-    // disabled below so this guards the programmatic path too.
+    // Block submit on an empty (or whitespace-only) name; Save is always
+    // enabled now, so this surfaces the name-required reason on press rather
+    // than a standing disabled state.
     if (!canSave) {
+      setShowNameError(true);
+
       return;
     }
 
@@ -327,7 +337,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       footer={
-        <Button onPress={onSave} disabled={!canSave || isSubmitting}>
+        <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}
         </Button>
       }
@@ -350,6 +360,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           namePlaceholder={t('forms.account.namePlaceholder')}
           required
         />
+
+        {showNameError && !canSave && (
+          <FieldError message={t('forms.fields.nameRequiredError')} testID="account-name-error" />
+        )}
 
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
@@ -406,14 +420,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-            {!canSave && (
-              <Box testID="monobank-connect-name-hint">
-                <Text variant="caption" tone="textSecondary">
-                  {t('forms.account.nameRequiredForSync')}
-                </Text>
-              </Box>
-            )}
-
             <MonobankConnectField onConnect={connectMonobank} />
           </Box>
         )}
@@ -424,23 +430,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             The create invariant is enforced instead of hidden: each field's own
             Connect inserts the account row (via ensureAccount) keyed by the
             pre-generated id, and ensureAccount refuses to create a row while
-            `!canSave` (empty name), mirroring the bank Save gate. Until a name is
-            entered the hint below tells the user why a Connect will not persist
-            anything; a Connect tapped early just surfaces the field's "could not
-            connect" state and writes no row. */}
+            `!canSave` (empty name), mirroring the bank Save gate. A Connect tapped
+            early surfaces both the field's "could not connect" state and the
+            name-required reason above, and writes no row. */}
         {!isEdit && kind === 'crypto' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
-
-            {!canSave && (
-              <Box testID="crypto-sync-name-hint">
-                <Text variant="caption" tone="textSecondary">
-                  {t('forms.account.nameRequiredForSync')}
-                </Text>
-              </Box>
-            )}
 
             <CryptoSyncForm
               accountId={pendingAccountId}

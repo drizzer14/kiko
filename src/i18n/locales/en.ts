@@ -176,6 +176,7 @@ export const en = {
       date: 'Date',
       icon: 'Icon',
       name: 'Name',
+      nameRequiredError: 'Enter a name.',
       saveErrorMessage: 'Please try again.',
       saveErrorTitle: 'Could not save',
       searchCurrencyPlaceholder: 'Search by code or name',
@@ -193,7 +194,6 @@ export const en = {
       initialValuePlaceholder: '1000.00',
       kind: 'Kind',
       namePlaceholder: 'Monobank',
-      nameRequiredForSync: 'Enter a name first to connect a source.',
     },
     contribution: {
       addTitle: 'Add Contribution',

@@ -161,6 +161,7 @@ export const uk: typeof en = {
       date: 'Дата',
       icon: 'Іконка',
       name: 'Назва',
+      nameRequiredError: 'Введіть назву.',
       saveErrorMessage: 'Спробуйте ще раз.',
       saveErrorTitle: 'Не вдалося зберегти',
       searchCurrencyPlaceholder: 'Пошук за кодом або назвою',
@@ -178,7 +179,6 @@ export const uk: typeof en = {
       initialValuePlaceholder: '1 000,00',
       kind: 'Вид',
       namePlaceholder: 'Монобанк',
-      nameRequiredForSync: "Спочатку введіть назву, щоб під'єднати джерело.",
     },
     contribution: {
       addTitle: 'Додати внесок',
