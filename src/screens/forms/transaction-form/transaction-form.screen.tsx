@@ -3,7 +3,7 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { categoriesRepo } from '@kiko/categories/repo';
-import type { ScrollViewInstance } from 'react-native';
+import { Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
@@ -1588,11 +1588,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     if (pendingOverride === null) {
       return;
     }
-    await categoryOverridesRepo.upsertCategoryOverride(
-      pendingOverride.name,
-      pendingOverride.category,
-    );
-    navigation.goBack();
+
+    try {
+      await categoryOverridesRepo.upsertCategoryOverride(
+        pendingOverride.name,
+        pendingOverride.category,
+      );
+      navigation.goBack();
+    } catch {
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+    }
   };
 
   // A second `useSubmitOnce` instance, not the Save button's: this guards the
@@ -1618,11 +1623,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     if (pendingOverride === null || editingId === null) {
       return;
     }
-    await transactionsRepo.setCategory({
-      transactionId: editingId,
-      category: pendingOverride.category,
-    });
-    navigation.goBack();
+
+    try {
+      await transactionsRepo.setCategory({
+        transactionId: editingId,
+        category: pendingOverride.category,
+      });
+      navigation.goBack();
+    } catch {
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+    }
   };
 
   // A third independent `useSubmitOnce` instance, for the same reason
@@ -1851,44 +1861,56 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   const save = async (): Promise<void> => {
-    if (await dispatchSpecialSave()) {
-      return;
+    try {
+      if (await dispatchSpecialSave()) {
+        return;
+      }
+
+      // A synced row is bank-owned: only its category may change, so skip the
+      // amount write entirely and fall through to the category confirm below.
+      if (!isReadOnly && !(await tryWriteManual())) {
+        return;
+      }
+
+      // The rule keys on the synced row's own description (read-only) or the
+      // just-saved manual description.
+      const name = isReadOnly ? (existing?.description ?? '') : description;
+      const overrideRequest = resolveCategoryOverrideRequest(
+        categoryChanged,
+        selectedCategory,
+        name,
+      );
+
+      if (overrideRequest) {
+        setPendingOverride(overrideRequest);
+
+        return;
+      }
+
+      // No propagation sheet will open — the normalized name is blank (a synced
+      // Binance/wallet row imports with an empty description), or the row is
+      // synced so `writeManual`'s `update` refused to persist its category. Write
+      // the picked category straight onto THIS row by id via the ungated
+      // `setCategory`, so a category change on an existing row is never dropped.
+      // This is the single-row writer only; the blank-name guard on the name RULE
+      // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+      // intact, so a catch-all rule is still refused. A create (no `editingId`)
+      // already carries its category from `recordManual`, so it is excluded.
+      if (editingId !== null && categoryChanged && selectedCategory !== null) {
+        await transactionsRepo.setCategory({
+          transactionId: editingId,
+          category: selectedCategory,
+        });
+      }
+
+      navigation.goBack();
+    } catch {
+      // Every write above — recordManual/recordManualWithReturns/recordExchange/
+      // recordExchangeCounterpart/update/setCategory — used to escape unhandled:
+      // the screen just silently failed to navigate, with Save re-enabled and
+      // no explanation. Mirror the established Alert pattern instead.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
     }
-
-    // A synced row is bank-owned: only its category may change, so skip the
-    // amount write entirely and fall through to the category confirm below.
-    if (!isReadOnly && !(await tryWriteManual())) {
-      return;
-    }
-
-    // The rule keys on the synced row's own description (read-only) or the
-    // just-saved manual description.
-    const name = isReadOnly ? (existing?.description ?? '') : description;
-    const overrideRequest = resolveCategoryOverrideRequest(categoryChanged, selectedCategory, name);
-
-    if (overrideRequest) {
-      setPendingOverride(overrideRequest);
-
-      return;
-    }
-
-    // No propagation sheet will open — the normalized name is blank (a synced
-    // Binance/wallet row imports with an empty description), or the row is
-    // synced so `writeManual`'s `update` refused to persist its category. Write
-    // the picked category straight onto THIS row by id via the ungated
-    // `setCategory`, so a category change on an existing row is never dropped.
-    // This is the single-row writer only; the blank-name guard on the name RULE
-    // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
-    // intact, so a catch-all rule is still refused. A create (no `editingId`)
-    // already carries its category from `recordManual`, so it is excluded.
-    if (editingId !== null && categoryChanged && selectedCategory !== null) {
-      await transactionsRepo.setCategory({
-        transactionId: editingId,
-        category: selectedCategory,
-      });
-    }
-
-    navigation.goBack();
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
