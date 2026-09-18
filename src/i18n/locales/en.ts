@@ -187,13 +187,18 @@ export const en = {
     account: {
       addTitle: 'Add Account',
       bank: 'Bank',
+      bankConnectable: 'Connect and import statements.',
+      bankImportOnly: 'Statement import only — no live connection.',
+      bankType: 'Bank type',
       cash: 'Cash',
       crypto: 'Crypto',
       editTitle: 'Edit Account',
+      importOnlyBankHint: 'You can import a statement for this bank after saving.',
       initialValue: 'Initial value',
       initialValuePlaceholder: '1000.00',
       kind: 'Kind',
       namePlaceholder: 'Monobank',
+      selectBankPlaceholder: 'Select a bank (optional)',
     },
     contribution: {
       addTitle: 'Add Contribution',

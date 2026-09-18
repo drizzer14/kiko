@@ -172,13 +172,18 @@ export const uk: typeof en = {
     account: {
       addTitle: 'Додати рахунок',
       bank: 'Банк',
+      bankConnectable: 'Підключення та імпорт виписок.',
+      bankImportOnly: 'Лише імпорт виписки — без підключення.',
+      bankType: 'Тип банку',
       cash: 'Готівка',
       crypto: 'Крипто',
       editTitle: 'Редагувати рахунок',
+      importOnlyBankHint: 'Виписку цього банку можна імпортувати після збереження.',
       initialValue: 'Початкова сума',
       initialValuePlaceholder: '1 000,00',
       kind: 'Вид',
       namePlaceholder: 'Монобанк',
+      selectBankPlaceholder: 'Оберіть банк (необов’язково)',
     },
     contribution: {
       addTitle: 'Додати внесок',
