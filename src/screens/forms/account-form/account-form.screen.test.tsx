@@ -722,6 +722,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
@@ -748,6 +750,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
@@ -766,6 +770,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -787,6 +793,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(mockSaveToken).toHaveBeenCalledTimes(1));
@@ -808,6 +816,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 
@@ -836,6 +846,60 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
+  it('does not auto-select any bank on a fresh bank create (no auto-jump to Monobank)', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByText('Bank'));
+
+    expect(view.getByText('Select a bank (optional)')).toBeTruthy();
+    expect(view.queryByLabelText('monobank-field')).toBeNull();
+  });
+
+  it('lists all six banks in the picker sheet', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+
+    expect(view.getByTestId('bank-type-option-monobank')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-privatbank')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-sensebank')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-procredit')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-ukrsib')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-alfa')).toBeTruthy();
+  });
+
+  it('creates the bank row tagged with the selected bank id when connecting Monobank', async () => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ bankId: 'monobank' }));
+  });
+
+  it('shows no fake connect field for an import-only bank, and creates the row tagged with its bank id on Save', async () => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My PrivatBank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-privatbank'));
+
+    expect(view.queryByLabelText('monobank-field')).toBeNull();
+    expect(view.getByText('PrivatBank')).toBeTruthy();
+
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My PrivatBank', kind: 'bank', bankId: 'privatbank' }),
+    );
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+  });
+
   it('connecting a bank source locks the kind switch', async () => {
     // Connecting inserts the bank row via the shared latch; switching to crypto
     // afterwards would route Save to a SECOND create and orphan the bank row, so
@@ -844,6 +908,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() =>
@@ -856,6 +922,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
     expect(view.queryByTestId('account-name-error')).toBeNull();
 
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     expect(view.queryByTestId('account-name-error')).toBeTruthy();
@@ -1044,7 +1112,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     // Still exactly one create; the edited name persists through update.
     expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(createdId, { name: 'Renamed', color: null });
+    expect(mockUpdate).toHaveBeenCalledWith(createdId, {
+      name: 'Renamed',
+      color: null,
+      bankId: null,
+    });
   });
 
   it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {

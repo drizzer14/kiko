@@ -27,9 +27,11 @@ import CurrencyField from '../../../design-system/components/currency-field';
 import MonobankConnectField from '../../account-detail/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
+import type { BankId } from '../../../bank-sync/bank-catalog';
 
 import ChipRow from '../chip-row';
 import ColorPicker from '../color-picker';
+import BankTypeField from '../bank-type-field';
 import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
@@ -89,6 +91,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
   // switching kind moves it; once picked, the choice sticks.
   const [color, setColor] = useState<string | null>(null);
+  // The bank the user picked in the sync section's BankTypeField, tagging the
+  // created row for later provider-specific handling (import, connect status).
+  // null = no bank picked — a valid, plain bank account. Never auto-seeded on a
+  // fresh bank create (no auto-jump to Monobank, device-feedback-round-1 item 3).
+  const [bankId, setBankId] = useState<BankId | null>(null);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
   // (setColor(editingAccount.color) / setKind(editingAccount.kind) below): a
@@ -157,6 +164,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // cash path creates through createCashAccount and returns before this.
         kind,
         color,
+        bankId,
       });
       if (icon !== null) {
         await accountsRepo.setIcon(pendingAccountId, icon);
@@ -308,7 +316,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // bank/crypto account is valid; the user connects a source later from its
       // detail screen.
       if (accountCreate.current !== null) {
-        await accountsRepo.update(pendingAccountId, { name: trimmedName, color });
+        await accountsRepo.update(pendingAccountId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(pendingAccountId, icon);
       } else {
         await ensureAccount();
@@ -331,6 +339,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const handleSelectKind = (nextKind: Kind): void => {
     setKind(nextKind);
     setIcon(accountKindSymbol[nextKind]);
+    setBankId(null);
   };
 
   return (
@@ -420,7 +429,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             <Text variant="heading">{t('accountDetail.synchronization')}</Text>
 
-            <MonobankConnectField onConnect={connectMonobank} />
+            <BankTypeField
+              label={t('forms.account.bankType')}
+              selected={bankId}
+              onSelect={setBankId}
+              testID="account-bank-type-field"
+            />
+
+            {bankId === 'monobank' && <MonobankConnectField onConnect={connectMonobank} />}
+
+            {bankId !== null && bankId !== 'monobank' && (
+              <Text variant="caption" tone="textSecondary">
+                {t('forms.account.importOnlyBankHint')}
+              </Text>
+            )}
           </Box>
         )}
 
