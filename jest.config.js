@@ -1,7 +1,7 @@
 // `react-native-dotenv` inlines `@env` from `process.env.ENVFILE || '.env'`
 // at transform time, and `.env` is gitignored, so a Jest run must NOT depend
 // on a local `.env`. Default every Jest run to the committed `.env.test`; an
-// explicit ENVFILE (e.g. the screenshot flows) still wins.
+// explicit `ENVFILE` still wins.
 process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 
 module.exports = {

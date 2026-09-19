@@ -25,9 +25,6 @@ below).
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
-| `npm run check:screenshots` | Maestro + pixelmatch, RICH scenario | deep/manual only — see `docs/harness/screenshots-check.md` |
-| `npm run check:screenshots:empty` | Maestro + pixelmatch, EMPTY scenario | deep/manual only — see `docs/harness/screenshots-check.md` |
-| `npm run check:screenshots:locked` | Maestro + pixelmatch, LOCKED scenario | deep/manual only — see `docs/harness/screenshots-check.md` |
 
 Composite scripts:
 
@@ -80,16 +77,6 @@ lockfile does not. Full mechanism (fingerprint scope per tier, the
 `medium.sh` and `mutation.sh` locks, skip-only-on-PASS) is in
 `docs/harness/checks-internals.md`.
 
-### `check:screenshots` (App Store screenshot visual regression)
-
-The screenshot visual-regression checks (`check:screenshots` and its
-`:empty` / `:locked` siblings, and the separate marketing capture flow)
-are documented IN FULL in **`docs/harness/screenshots-check.md`**. Read
-that file before you touch any `.maestro/*regression*.yaml` flow,
-`scripts/checks/screenshots*.sh`, `scripts/checks/screenshot-diff/*`, or
-a `screenshots/regression*/` baseline. These checks are deep/manual
-only — not in `check:all`/`check:deep`, not hook-wired.
-
 ## Override protocol
 
 A Biome lint rule may only be suppressed with a justified override —
@@ -117,8 +104,8 @@ Every ignore-list / suppression exception in this repo is a real, verified
 usage with a concrete justification — not dead weight. The full inventory
 (`knip.json`, `tsconfig.json` `types`, `.depcheckrc.json`, `.gitleaks.toml`,
 `.jscpd.json`, `rules/fixtures/**`, the Stryker mutate-set and sandbox
-exclusions, `.npmrc` `min-release-age-exclude`, the tracked public-only
-`.env.test`, and the `check:screenshots` diff exclusions) lives in
+exclusions, `.npmrc` `min-release-age-exclude`, and the tracked public-only
+`.env.test`) lives in
 **`docs/harness/documented-exceptions.md`**. Read
 and UPDATE that file when you add, change, or rely on an exception. The
 standing rule holds: a suppression is acceptable only when it names a
