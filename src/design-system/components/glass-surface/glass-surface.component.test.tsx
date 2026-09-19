@@ -69,6 +69,16 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   resetBaseMountCount: () => void;
 };
 
+// STABLE-GLASS regression mode is now a runtime launch-arg read
+// (`isStableGlassCapture()`, `@kiko/test-support/ui-test-capture`), not a
+// build-time `@env` fold — so, unlike before, it CAN be driven directly under
+// Jest by mocking the reader. Defaults to `false` (the live-glass path every
+// other test in this file exercises).
+const mockIsStableGlassCapture = jest.fn(() => false);
+jest.mock('@kiko/test-support/ui-test-capture', () => ({
+  isStableGlassCapture: () => mockIsStableGlassCapture(),
+}));
+
 describe('GlassSurface', () => {
   it('renders its children (falls back to a plain View under Jest, since @callstack/liquid-glass is mocked with isLiquidGlassSupported: false)', async () => {
     const { getByText } = await render(
@@ -790,12 +800,39 @@ describe('GlassSurface', () => {
     });
   });
 
-  // STABLE-GLASS regression surface: a build made against `.env.screenshots*.stable`
-  // renders `StableSurface` (a FIXED OPAQUE View, no LiquidGlass, no bloom) so the
-  // pixelmatch check gets byte-stable pixels. The `SCREENSHOT_MODE === 'true' &&
-  // SCREENSHOT_STABLE_GLASS === 'true'` guard that selects it is a build-time
-  // `@env` fold (stripped from Release, per 5.6), so it cannot be flipped under
-  // Jest — the surface's own rendering is unit-tested directly here instead.
+  // STABLE-GLASS regression surface: a build LAUNCHED with `-kikoStableGlass`
+  // renders `StableSurface` (a FIXED OPAQUE View, no LiquidGlass, no bloom) so
+  // the pixelmatch check gets byte-stable pixels. `GlassSurface` selects it via
+  // `isStableGlassCapture()`, a runtime launch-arg read (mocked above), so this
+  // branch is driven directly through `GlassSurface` itself, in addition to
+  // `StableSurface`'s own unit tests below.
+  describe('GlassSurface selecting StableSurface via isStableGlassCapture', () => {
+    afterEach(() => {
+      mockIsStableGlassCapture.mockReturnValue(false);
+    });
+
+    it('renders the opaque -base and -wash layers instead of live glass when isStableGlassCapture is true', async () => {
+      mockIsStableGlassCapture.mockReturnValue(true);
+      const tint = 'rgba(255, 69, 58, 0.1)';
+
+      const { getByTestId, queryByTestId } = await render(
+        <GlassSurface testID="stable-capture-surface" tint={tint}>
+          <Text>content</Text>
+        </GlassSurface>,
+      );
+
+      const base = getByTestId('stable-capture-surface-base');
+      expect(StyleSheet.flatten(base.props.style).backgroundColor).toBe(darkTheme.colors.surface);
+      expect(base.props.effect).toBeUndefined();
+      expect(
+        StyleSheet.flatten(getByTestId('stable-capture-surface-wash').props.style).backgroundColor,
+      ).toBe(tint);
+      expect(queryByTestId('stable-capture-surface-backdrop')).toBeNull();
+    });
+  });
+
+  // `StableSurface`'s own rendering, unit-tested directly regardless of which
+  // reader selects it.
   describe('StableSurface (opaque regression surface)', () => {
     it('renders a fixed opaque themed base and no live-glass props', async () => {
       const { getByTestId } = await render(

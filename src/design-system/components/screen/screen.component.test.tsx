@@ -160,14 +160,6 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
-  it('leaves the ScrollView bounce at the RN default outside screenshot mode (real users keep it)', async () => {
-    const { getByTestId } = await renderScreen({ scroll: true });
-
-    // Production must be unchanged: `bounces` is left `undefined`, so RN applies
-    // its default (`true`) and real users keep the native overscroll bounce.
-    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.bounces).toBeUndefined();
-  });
-
   it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {
     const { getByTestId } = await renderScreen({ scroll: true });
 

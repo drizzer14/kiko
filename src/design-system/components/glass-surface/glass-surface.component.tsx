@@ -1,5 +1,5 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { SCREENSHOT_MODE, SCREENSHOT_STABLE_GLASS } from '@env';
+import { isStableGlassCapture } from '@kiko/test-support/ui-test-capture';
 import type { FC, ReactNode } from 'react';
 import { StyleSheet as RNStyleSheet, type StyleProp, View, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
@@ -240,15 +240,16 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   const needsResample = isBloom && isLiquidGlassSupported;
   const { remountToken, surfaceRef } = useBloomResample(needsResample);
 
-  // STABLE-GLASS regression mode: a build made against `.env.screenshots.stable`
-  // (or the empty/locked stable variants) sets BOTH `SCREENSHOT_MODE=true` and
-  // `SCREENSHOT_STABLE_GLASS=true`, so this renders a fixed opaque surface with no
-  // live LiquidGlass sampling and no bloom, giving pixelmatch byte-stable pixels.
-  // PRODUCTION SAFETY (5.6): both keys are absent from the committed `.env`, so
-  // react-native-dotenv inlines `undefined` for each, this AND folds to `false`,
-  // and Metro deletes the branch — no screenshot flag reaches the Release bundle,
-  // and the live tree below renders byte-for-byte unchanged.
-  if (SCREENSHOT_MODE === 'true' && SCREENSHOT_STABLE_GLASS === 'true') {
+  // STABLE-GLASS regression mode: a build LAUNCHED with the `-kikoStableGlass`
+  // argument renders a fixed opaque surface with no live LiquidGlass sampling
+  // and no bloom, giving pixelmatch byte-stable pixels — see
+  // `isStableGlassCapture()` (`@kiko/test-support/ui-test-capture`), which
+  // reads the native `KikoTestEnv` constants module. PRODUCTION SAFETY (5.6):
+  // the launch argument is reachable only by a harness (Maestro/Xcode/
+  // devicectl) with dev control of the process launch — never by an App Store
+  // user — so a normally-launched build always renders the live tree below,
+  // byte-for-byte unchanged, and no build-time flag distinguishes the two.
+  if (isStableGlassCapture()) {
     return (
       <StableSurface style={[styles.surface, edge, sizing, style]} tint={tint} testID={testID}>
         {children}

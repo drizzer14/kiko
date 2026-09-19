@@ -15,6 +15,11 @@ jest.mock('./biometrics', () => ({
   authenticate: (...args: unknown[]) => mockAuthenticate(...args),
 }));
 
+const mockIsUiTestCapture = jest.fn();
+jest.mock('@kiko/test-support/ui-test-capture', () => ({
+  isUiTestCapture: () => mockIsUiTestCapture(),
+}));
+
 type SettingsRow = { lockEnabled: boolean };
 const mockLiveQuery: { current: { data: SettingsRow[]; isLoading: boolean } } = {
   current: { data: [], isLoading: true },
@@ -56,6 +61,7 @@ beforeEach(() => {
   );
   mockAuthenticate.mockResolvedValue({ kind: 'success' });
   mockLiveQuery.current = { data: [], isLoading: true };
+  mockIsUiTestCapture.mockReturnValue(false);
 });
 
 describe('useAppLock', () => {
@@ -110,14 +116,16 @@ describe('useAppLock', () => {
     expect(AppState.addEventListener).not.toHaveBeenCalled();
   });
 
-  it('returns promptOnMount true under the committed .env (production auto-prompts on mount)', async () => {
-    // `promptOnMount` is `SCREENSHOT_MODE !== 'true'`, and react-native-dotenv
-    // inlines the absent key as `undefined` under Jest — so production must
-    // auto-prompt. The screenshot-capture (false) path is build-time only and is
-    // covered by check:screenshots:locked, not here (same @env limitation the
-    // screenshot-mode.test.ts header documents).
+  it('returns promptOnMount true on a normal launch (isUiTestCapture false)', async () => {
+    mockIsUiTestCapture.mockReturnValue(false);
     const { result } = await renderHook(() => useAppLock());
     expect(result.current.promptOnMount).toBe(true);
+  });
+
+  it('returns promptOnMount false when launched for UI-test capture (isUiTestCapture true)', async () => {
+    mockIsUiTestCapture.mockReturnValue(true);
+    const { result } = await renderHook(() => useAppLock());
+    expect(result.current.promptOnMount).toBe(false);
   });
 
   it('once unlocked, a background→foreground cycle never re-locks, however long the background', async () => {

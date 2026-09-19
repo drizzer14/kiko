@@ -1,5 +1,5 @@
-import { SCREENSHOT_MODE } from '@env';
 import { settingsRepo } from '@kiko/settings/settings.repo';
+import { isUiTestCapture } from '@kiko/test-support/ui-test-capture';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -15,7 +15,11 @@ type AppLock = {
   isReady: boolean;
   isLocked: boolean;
   unlock: () => Promise<AuthResult>;
-  // True in every real build; false ONLY in a screenshot-capture build, so LockGate does not auto-invoke the biometric sheet during Maestro capture. Build-time constant (react-native-dotenv inlines SCREENSHOT_MODE), stripped from Release.
+  // True in every real launch; false ONLY when the app is launched with the
+  // `-kikoUiTestCapture` argument, so LockGate does not auto-invoke the
+  // biometric sheet during Maestro capture. Read via `isUiTestCapture()`
+  // (`@kiko/test-support/ui-test-capture`) — a runtime launch-arg read, not a
+  // build-time flag, so every build (App Store or capture) ships identical.
   promptOnMount: boolean;
 };
 
@@ -74,10 +78,9 @@ export const useAppLock = (): AppLock => {
     isReady: !APP_LOCK_ENABLED || locked !== undefined,
     isLocked: lockEnabled && locked === true,
     unlock,
-    // `SCREENSHOT_MODE` is inlined by react-native-dotenv at build time
-    // (babel.config.js). The committed `.env` has no such key, so a production
-    // build inlines `undefined` and this folds to a constant `true` — the
-    // screenshot suppression is stripped from the Release binary.
-    promptOnMount: SCREENSHOT_MODE !== 'true',
+    // `isUiTestCapture()` reads the native `KikoTestEnv` launch-arg constant
+    // (absent/false on every real launch — see the module doc), so production
+    // always auto-prompts.
+    promptOnMount: !isUiTestCapture(),
   };
 };
