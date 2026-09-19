@@ -36,11 +36,12 @@ re-derive it here. In short, ask:
 
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
-`npm run check:security`) catches a `SHOW_*`/`HIDE_*` `@env` import and
-a static import whose specifier contains `e2e/`. It does NOT catch a
-differently-named visibility flag (e.g. `ENABLE_*`) or a demo import
-reached through a path alias that omits `e2e/` — that gap is why this
-is still a reviewer question, not only a CI gate.
+`npm run check:security`) catches a `SHOW_*`/`HIDE_*`/`SCREENSHOT_*`
+`@env` import, a static import whose specifier contains `e2e/`, and a
+dynamic `require(...)` whose specifier contains `e2e/`. It does NOT
+catch a differently-named visibility flag (e.g. `ENABLE_*`) or a demo
+import reached through a path alias that omits `e2e/` — that gap is
+why this is still a reviewer question, not only a CI gate.
 
 ## 2.1 completeness / 4.2 minimum functionality
 
@@ -55,9 +56,9 @@ Store screenshot or description promises? App Store Connect metadata
 itself is not tracked in this repo; the drafted reviewer notes and App
 Privacy labels live in the coordinator's `memory/refs/resubmission-kit.md`
 (sections A/B) — flag when a diff would make that draft stale. The
-screenshot regression baselines and capture flow are documented in
-`docs/harness/screenshots-check.md`; flag when a diff changes a screen
-a baseline depicts.
+manual marketing screenshot procedure (there is no automated capture
+any more) is documented in `docs/harness/screenshots-check.md`; flag
+when a diff changes a screen one of the 10 shipped shots depicts.
 
 ## 5.1.1 / 5.1.2 — data collection and privacy
 

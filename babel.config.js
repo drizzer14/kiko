@@ -4,9 +4,7 @@ module.exports = {
     ['module-resolver', { root: ['./src'], alias: { '@kiko': './src' } }],
     ['react-native-unistyles/plugin', { root: 'src' }],
     // `path` selects which env file react-native-dotenv inlines. It defaults to
-    // '.env' (unchanged for production and for Jest, which set no ENVFILE), and
-    // `ENVFILE=.env.screenshots` selects the committed screenshot-mode file for
-    // the DEV/TEST-ONLY App Store screenshot build (see e2e/screenshot/).
+    // '.env' (unchanged for production and for Jest, which set no ENVFILE).
     ['module:react-native-dotenv', { moduleName: '@env', path: process.env.ENVFILE || '.env' }],
     ['inline-import', { extensions: ['.sql'] }],
     // Reanimated 4 processes worklets through its worklets companion's Babel

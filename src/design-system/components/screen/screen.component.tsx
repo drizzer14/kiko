@@ -1,4 +1,3 @@
-import { SCREENSHOT_MODE } from '@env';
 import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
@@ -66,13 +65,6 @@ const Screen: FC<ScreenProps> = ({
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
-          // Screenshot-mode ONLY: turn off the native iOS overscroll bounce so a
-          // bottom-clamped App Store shot lands at a fixed offset. `SCREENSHOT_MODE`
-          // is inlined by react-native-dotenv at build time; the committed `.env`
-          // has no such key, so a production build inlines `undefined`, this folds
-          // to `bounces={undefined}` (RN default `true`, real users unaffected),
-          // and no screenshot code reaches the Release bundle.
-          bounces={SCREENSHOT_MODE === 'true' ? false : undefined}
           contentInsetAdjustmentBehavior="automatic"
           // iOS-only: when the keyboard changes size, iOS adjusts this scroll
           // view's contentInset/scrollIndicatorInsets and scrolls the first

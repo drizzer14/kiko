@@ -10,7 +10,7 @@ import { darkTheme } from '../../theme';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/glass-surface`), not `./glass-surface.component`
 // directly, so this test also exercises index.ts's re-export.
-import GlassSurface, { StableSurface } from '.';
+import GlassSurface from '.';
 import { MAX_SETTLE_ATTEMPTS } from './glass-surface.resample';
 
 // The minimal shape the first-paint re-sample tests below need from a `View`
@@ -787,50 +787,6 @@ describe('GlassSurface', () => {
         </GlassSurface>,
       );
       expect(getByTestId('glass-surface-base').props.colorScheme).toBe('dark');
-    });
-  });
-
-  // STABLE-GLASS regression surface: a build made against `.env.screenshots*.stable`
-  // renders `StableSurface` (a FIXED OPAQUE View, no LiquidGlass, no bloom) so the
-  // pixelmatch check gets byte-stable pixels. The `SCREENSHOT_MODE === 'true' &&
-  // SCREENSHOT_STABLE_GLASS === 'true'` guard that selects it is a build-time
-  // `@env` fold (stripped from Release, per 5.6), so it cannot be flipped under
-  // Jest — the surface's own rendering is unit-tested directly here instead.
-  describe('StableSurface (opaque regression surface)', () => {
-    it('renders a fixed opaque themed base and no live-glass props', async () => {
-      const { getByTestId } = await render(
-        <StableSurface testID="stable" style={undefined} tint={undefined}>
-          <Text>content</Text>
-        </StableSurface>,
-      );
-      const base = getByTestId('stable-base');
-      expect(StyleSheet.flatten(base.props.style).backgroundColor).toBe(darkTheme.colors.surface);
-      expect(base.props.effect).toBeUndefined();
-      expect(base.props.tintColor).toBeUndefined();
-    });
-
-    it('paints the entity tint as a flat wash over the opaque base', async () => {
-      const tint = 'rgba(255, 69, 58, 0.1)';
-      const { getByTestId } = await render(
-        <StableSurface testID="stable-tint" style={undefined} tint={tint}>
-          <Text>content</Text>
-        </StableSurface>,
-      );
-      expect(StyleSheet.flatten(getByTestId('stable-tint-base').props.style).backgroundColor).toBe(
-        darkTheme.colors.surface,
-      );
-      expect(StyleSheet.flatten(getByTestId('stable-tint-wash').props.style).backgroundColor).toBe(
-        tint,
-      );
-    });
-
-    it('renders no wash when no tint is set', async () => {
-      const { queryByTestId } = await render(
-        <StableSurface testID="stable-plain" style={undefined} tint={undefined}>
-          <Text>content</Text>
-        </StableSurface>,
-      );
-      expect(queryByTestId('stable-plain-wash')).toBeNull();
     });
   });
 });

@@ -1,7 +1,8 @@
 # Functional flow for the in-app document-picker statement-import entry
 # point (Phase 1b, entry point 1 — see docs/plans/statement-import.md section
-# B/B.1). NOT a screenshot-diff check — no `takeScreenshot` step, no baseline,
-# not wired into `check:screenshots`. This asserts real end-to-end BEHAVIOR:
+# B/B.1). NOT a screenshot-diff check — no `takeScreenshot` step, no
+# baseline; there is no automated screenshot check of any kind any more
+# (2026-09-19, Guideline 5.6 remediation). This asserts real end-to-end BEHAVIOR:
 # picking the committed uabean Monobank CSV fixture, seeing its preview,
 # choosing a holding, importing, and seeing the success count.
 #

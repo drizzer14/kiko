@@ -9,8 +9,7 @@ import { buildScreenshotDataset } from './screenshot-seed';
 // module unavailable under Jest), so a real-DB "insert then count rows" smoke
 // test is not feasible here without faking the database, which would prove
 // nothing. Instead the DETERMINISM and SHAPE of the dataset are proven directly
-// against the pure `buildScreenshotDataset` builder below, and the writer's
-// ordering/repo-wiring is proven with mocked repos in the second describe.
+// against the pure `buildScreenshotDataset` builder below.
 
 const sumBalance = (transactions: { amountMinorUnits: number }[]): number =>
   transactions.reduce((total, transaction) => total + transaction.amountMinorUnits, 0);
@@ -110,34 +109,15 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(history).toHaveLength(3 * 27);
   });
 
-  it('defaults to the rich dataset when no scenario is passed', () => {
-    expect(buildScreenshotDataset('uk')).toEqual(buildScreenshotDataset('uk', 'rich'));
-  });
-
-  it('rich scenario carries the app lock OFF so no gate fronts the screenshots', () => {
-    expect(buildScreenshotDataset('uk', 'rich').lockEnabled).toBe(false);
-  });
-
-  it('empty scenario seeds zero accounts, no rates, no history, lock off — the empty states show', () => {
-    const dataset = buildScreenshotDataset('uk', 'empty');
-
-    expect(dataset.accounts).toHaveLength(0);
-    expect(dataset.rates).toHaveLength(0);
-    expect(dataset.history).toHaveLength(0);
-    expect(dataset.baseCurrency).toBe('UAH');
-    expect(dataset.language).toBe('uk');
-    expect(dataset.lockEnabled).toBe(false);
-  });
-
-  it('locked scenario seeds the SAME rich dataset but enables the app lock', () => {
-    const locked = buildScreenshotDataset('uk', 'locked');
-    const rich = buildScreenshotDataset('uk', 'rich');
-
-    expect(locked.accounts).toEqual(rich.accounts);
-    expect(locked.rates).toEqual(rich.rates);
-    expect(locked.history).toEqual(rich.history);
-    expect(locked.baseCurrency).toBe('UAH');
-    expect(locked.lockEnabled).toBe(true);
+  it('exposes no scenario or lock dimension — one dataset, parameterized only by language', () => {
+    const dataset = buildScreenshotDataset('uk');
+    expect(Object.keys(dataset).sort()).toEqual([
+      'accounts',
+      'baseCurrency',
+      'history',
+      'language',
+      'rates',
+    ]);
   });
 
   it('produces a healthy, positive net worth in UAH from its own pinned rates', () => {
