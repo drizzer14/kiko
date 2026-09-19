@@ -1,6 +1,14 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, useEffect } from 'react';
-import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -164,19 +172,39 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // its overflow; `scrollable={false}` opts a sheet that needs its own
   // pinned header/footer/ref-controlled scroll region out of this (see the
   // prop's own docs).
+  // DEVICE BUG fix: CurrencyField's search TextField is the app's only
+  // focusable input hosted inside a sheet, and the sheet had no keyboard
+  // handling of its own — only `Screen`'s ScrollView (behind the sheet) reacts
+  // to the keyboard. Wrapping the body in a `KeyboardAvoidingView` lets a
+  // sheet with a live input reposition its OWN content above the keyboard.
+  // `behavior="padding"` is a no-op with no keyboard shown, so every other
+  // input-less sheet is unaffected.
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
   const body = scrollable ? (
-    <ScrollView
-      style={styles.scrollBody}
-      contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
-      showsVerticalScrollIndicator={false}
-      testID={testID && `${testID}-scroll`}
+    <KeyboardAvoidingView
+      behavior={keyboardBehavior}
+      style={styles.keyboardAvoiding}
+      testID={testID && `${testID}-keyboard`}
     >
-      {children}
-    </ScrollView>
+      <ScrollView
+        style={styles.scrollBody}
+        contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
+        showsVerticalScrollIndicator={false}
+        testID={testID && `${testID}-scroll`}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   ) : (
-    <Box gap={gap} style={styles.box}>
-      {children}
-    </Box>
+    <KeyboardAvoidingView
+      behavior={keyboardBehavior}
+      style={styles.keyboardAvoiding}
+      testID={testID && `${testID}-keyboard`}
+    >
+      <Box gap={gap} style={styles.box}>
+        {children}
+      </Box>
+    </KeyboardAvoidingView>
   );
 
   return (

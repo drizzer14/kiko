@@ -32,8 +32,20 @@ describe('DateField', () => {
 
     await fireEvent.press(getByLabelText('Start Date'));
 
-    // Walk up from the calendar itself to the sheet Box that wraps it.
-    const node = ancestorWithStyle(getByTestId('Start Date calendar'), 'paddingBottom');
+    // Walk up from the calendar itself. The NEAREST ancestor with a defined
+    // `paddingBottom` is now BottomSheet's own KeyboardAvoidingView wrapper
+    // (see `bottom-sheet.component.tsx`'s keyboard-avoidance fix): React
+    // Native's own 'padding'-behavior implementation always composes a
+    // `paddingBottom` key onto its rendered style (0 here, since no keyboard
+    // is shown under test), so it is found before the sheet card's OWN
+    // base+inset padding this test actually cares about. Skip past that
+    // artifact to the next ancestor that defines `paddingBottom` — the sheet
+    // card itself.
+    const keyboardAvoiding = ancestorWithStyle(getByTestId('Start Date calendar'), 'paddingBottom');
+    const node =
+      keyboardAvoiding.parent === null
+        ? keyboardAvoiding
+        : ancestorWithStyle(keyboardAvoiding.parent, 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the sheet's own base spacing(4) = 16 — this only proves the

@@ -73,6 +73,18 @@ const Screen: FC<ScreenProps> = ({
           // accessory's height is part of the native keyboard frame, so this
           // one inset clears BOTH the keyboard and the accessory (no
           // hand-rolled accessory-height math). Harmlessly ignored on Android.
+          //
+          // KNOWN LIMITATION: this prop has no per-responder scoping — it
+          // reacts to ANY focused input, including one hosted inside a
+          // BottomSheet floating above this ScrollView (CurrencyField's
+          // search TextField is the one such case in the app today), which
+          // can still visibly scroll this background form while the sheet is
+          // open. `BottomSheet` itself now wraps its own body in a
+          // `KeyboardAvoidingView` (see `bottom-sheet.component.tsx`) so the
+          // sheet's own content repositions correctly; if the background
+          // form is ever seen to shift too, the fix is to gate this prop off
+          // for the duration the sheet is open (thread a boolean through
+          // `ScreenProps`), not attempted here.
           automaticallyAdjustKeyboardInsets={true}
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`

@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 import '../../unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
@@ -103,6 +104,50 @@ describe('CurrencyField', () => {
     await search(utils, 'AED');
 
     expect(utils.getByTestId('currency-option-AED')).toBeTruthy();
+  });
+
+  // DEVICE BUG: the search TextField inside the sheet leaves the keyboard up
+  // (and the background form scrolled) after a currency is picked, because
+  // neither `handleSelect` nor the sheet's dismiss ever called
+  // `Keyboard.dismiss()`.
+  it('dismisses the keyboard when a currency is selected', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+    await search(utils, 'USD');
+    await fireEvent.press(utils.getByTestId('currency-option-USD'));
+
+    expect(dismissSpy).toHaveBeenCalled();
+
+    dismissSpy.mockRestore();
+  });
+
+  // Same device bug: dismissing the sheet WITHOUT picking a currency (the
+  // scrim/back dismiss) must also drop the keyboard, or a search left focused
+  // keeps the background scrolled even after the sheet itself closes.
+  it('dismisses the keyboard when the sheet is dismissed without a selection', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+    await fireEvent.press(utils.getByTestId('currency-picker-sheet-backdrop'));
+
+    expect(dismissSpy).toHaveBeenCalled();
+
+    dismissSpy.mockRestore();
   });
 
   it('does not open the sheet when disabled', async () => {

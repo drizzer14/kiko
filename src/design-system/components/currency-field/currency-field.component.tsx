@@ -1,4 +1,4 @@
-import { FlatList } from 'react-native';
+import { FlatList, Keyboard } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
@@ -116,7 +116,18 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   const visible = visibleCurrencies(options, t, i18n.language, query);
 
   const handleSelect = (code: Currency): void => {
+    // DEVICE BUG fix: the search TextField above is the app's only
+    // focusable input inside a sheet — nothing ever dismissed the keyboard
+    // on selection, so it stayed up (and the background form stayed
+    // scrolled, per Screen's automaticallyAdjustKeyboardInsets) even after
+    // the sheet closed.
+    Keyboard.dismiss();
     onSelect(code);
+    setOpen(false);
+  };
+
+  const handleDismiss = (): void => {
+    Keyboard.dismiss();
     setOpen(false);
   };
 
@@ -152,11 +163,12 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
           avoids the "VirtualizedLists nested in plain ScrollViews" warning. */}
       <BottomSheet
         visible={open}
-        onDismiss={() => setOpen(false)}
+        onDismiss={handleDismiss}
         gap={2}
         scrollable={false}
         header={<Text variant="heading">{label}</Text>}
         testID="currency-picker-sheet"
+        backdropTestID="currency-picker-sheet-backdrop"
       >
         <TextField
           value={query}
