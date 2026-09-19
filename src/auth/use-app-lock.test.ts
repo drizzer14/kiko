@@ -15,11 +15,6 @@ jest.mock('./biometrics', () => ({
   authenticate: (...args: unknown[]) => mockAuthenticate(...args),
 }));
 
-const mockIsUiTestCapture = jest.fn();
-jest.mock('@kiko/test-support/ui-test-capture', () => ({
-  isUiTestCapture: () => mockIsUiTestCapture(),
-}));
-
 type SettingsRow = { lockEnabled: boolean };
 const mockLiveQuery: { current: { data: SettingsRow[]; isLoading: boolean } } = {
   current: { data: [], isLoading: true },
@@ -61,7 +56,6 @@ beforeEach(() => {
   );
   mockAuthenticate.mockResolvedValue({ kind: 'success' });
   mockLiveQuery.current = { data: [], isLoading: true };
-  mockIsUiTestCapture.mockReturnValue(false);
 });
 
 describe('useAppLock', () => {
@@ -116,16 +110,9 @@ describe('useAppLock', () => {
     expect(AppState.addEventListener).not.toHaveBeenCalled();
   });
 
-  it('returns promptOnMount true on a normal launch (isUiTestCapture false)', async () => {
-    mockIsUiTestCapture.mockReturnValue(false);
+  it('always returns promptOnMount true, so LockGate auto-prompts on every launch', async () => {
     const { result } = await renderHook(() => useAppLock());
     expect(result.current.promptOnMount).toBe(true);
-  });
-
-  it('returns promptOnMount false when launched for UI-test capture (isUiTestCapture true)', async () => {
-    mockIsUiTestCapture.mockReturnValue(true);
-    const { result } = await renderHook(() => useAppLock());
-    expect(result.current.promptOnMount).toBe(false);
   });
 
   it('once unlocked, a background→foreground cycle never re-locks, however long the background', async () => {

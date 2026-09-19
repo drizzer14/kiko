@@ -1,5 +1,4 @@
 import { settingsRepo } from '@kiko/settings/settings.repo';
-import { isUiTestCapture } from '@kiko/test-support/ui-test-capture';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -15,11 +14,7 @@ type AppLock = {
   isReady: boolean;
   isLocked: boolean;
   unlock: () => Promise<AuthResult>;
-  // True in every real launch; false ONLY when the app is launched with the
-  // `-kikoUiTestCapture` argument, so LockGate does not auto-invoke the
-  // biometric sheet during Maestro capture. Read via `isUiTestCapture()`
-  // (`@kiko/test-support/ui-test-capture`) — a runtime launch-arg read, not a
-  // build-time flag, so every build (App Store or capture) ships identical.
+  // Always `true` — LockGate auto-invokes the biometric prompt on mount.
   promptOnMount: boolean;
 };
 
@@ -78,9 +73,10 @@ export const useAppLock = (): AppLock => {
     isReady: !APP_LOCK_ENABLED || locked !== undefined,
     isLocked: lockEnabled && locked === true,
     unlock,
-    // `isUiTestCapture()` reads the native `KikoTestEnv` launch-arg constant
-    // (absent/false on every real launch — see the module doc), so production
-    // always auto-prompts.
-    promptOnMount: !isUiTestCapture(),
+    // Always `true`: LockGate auto-invokes the biometric prompt on mount in
+    // every build. The screenshot-capture suppression this used to carry was
+    // removed outright (Guideline 5.6) — there is no capture mode any more, and
+    // no flag, env key, or launch argument makes this false.
+    promptOnMount: true,
   };
 };

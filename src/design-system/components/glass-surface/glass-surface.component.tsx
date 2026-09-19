@@ -1,7 +1,6 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { isStableGlassCapture } from '@kiko/test-support/ui-test-capture';
 import type { FC, ReactNode } from 'react';
-import { StyleSheet as RNStyleSheet, type StyleProp, View, type ViewStyle } from 'react-native';
+import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 import type { GlassSurfaceProps } from './glass-surface.props';
@@ -65,42 +64,6 @@ const resolveWashFill = (tint: string | undefined, isStrong: boolean, isGlassPat
 // sites below for what each variant means on its own.
 const isActiveVariant = (flag: boolean, tint: string | undefined): boolean =>
   flag && tint === undefined;
-
-// The OPAQUE stable-glass surface, rendered ONLY when `isStableGlass()` is true
-// (the pixelmatch regression build — see the branch in GlassSurface and the
-// `isStableGlass` doc). No live LiquidGlass, no bloom: a fixed design-system
-// `surface` fill (`styles.opaqueBase`, the same token the tinted-card backdrop
-// and non-glass fallback use — never a hardcoded color) with the entity `tint`
-// painted as a flat wash over it, so a tinted card keeps its color but pinned.
-// Layer testIDs mirror the live path (`-base`, `-wash`) so a single test can
-// assert either branch. Split out purely to keep GlassSurface's cognitive
-// complexity under budget.
-export const StableSurface: FC<{
-  children: ReactNode;
-  style: StyleProp<ViewStyle>;
-  tint: string | undefined;
-  testID: string | undefined;
-}> = ({ children, style, tint, testID }) => {
-  const wash: ReactNode = tint !== undefined && (
-    <View
-      style={[RNStyleSheet.absoluteFill, { backgroundColor: tint }]}
-      testID={testID && `${testID}-wash`}
-    />
-  );
-
-  return (
-    <View style={style} testID={testID}>
-      <View
-        style={[RNStyleSheet.absoluteFill, styles.opaqueBase]}
-        testID={testID && `${testID}-base`}
-      />
-
-      {wash}
-
-      {children}
-    </View>
-  );
-};
 
 // A shared surface for card-like grouping (accounts list, settings sections):
 // real Liquid Glass material on iOS 26+, a themed flat surface everywhere
@@ -240,22 +203,6 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   const needsResample = isBloom && isLiquidGlassSupported;
   const { remountToken, surfaceRef } = useBloomResample(needsResample);
 
-  // STABLE-GLASS regression mode: a build LAUNCHED with the `-kikoStableGlass`
-  // argument renders a fixed opaque surface with no live LiquidGlass sampling
-  // and no bloom, giving pixelmatch byte-stable pixels — see
-  // `isStableGlassCapture()` (`@kiko/test-support/ui-test-capture`), which
-  // reads the native `KikoTestEnv` constants module. PRODUCTION SAFETY (5.6):
-  // the launch argument is reachable only by a harness (Maestro/Xcode/
-  // devicectl) with dev control of the process launch — never by an App Store
-  // user — so a normally-launched build always renders the live tree below,
-  // byte-for-byte unchanged, and no build-time flag distinguishes the two.
-  if (isStableGlassCapture()) {
-    return (
-      <StableSurface style={[styles.surface, edge, sizing, style]} tint={tint} testID={testID}>
-        {children}
-      </StableSurface>
-    );
-  }
   // `transparent` is a NEUTRAL-surface variant, so a `tint` (an entity card)
   // always wins over it — the two are contradictory and a tinted card must stay
   // opaque.
