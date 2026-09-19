@@ -22,8 +22,12 @@ import { entityColorsDark } from '../../../src/design-system/palette';
 
 const DAY_MS = 86_400_000;
 
-/** The fixed "now" the whole dataset is anchored to: 2026-09-10 09:00 UTC. */
-const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
+/**
+ * The fixed "now" the whole dataset is anchored to: 2026-09-10 09:00 UTC.
+ * Exported so `fixtures/build-demo-snapshot.ts` can stamp every row's
+ * `createdAt` from the same fixed instant instead of `Date.now()`.
+ */
+export const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
 
 /** UTC midnight of ANCHOR's day — the epoch convention `currency_rate_history.day` uses. */
 const ANCHOR_DAY = Date.UTC(2026, 8, 10);
@@ -87,7 +91,7 @@ type SeedHistoryRow = {
   source: 'monobank' | 'coingecko' | 'nbu';
 };
 
-type ScreenshotDataset = {
+export type ScreenshotDataset = {
   language: AppLanguage;
   baseCurrency: Currency;
   accounts: SeedAccount[];
