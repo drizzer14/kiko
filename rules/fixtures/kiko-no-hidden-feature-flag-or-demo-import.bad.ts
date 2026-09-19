@@ -20,10 +20,14 @@ declare module '@env' {
 import { SHOW_UNREADY_FEATURE } from '@env';
 
 // EXPECT-FINDING
-import { seedScreenshotData } from '../../e2e/screenshot/seed/screenshot-seed';
+import { buildScreenshotDataset } from '../../e2e/screenshot/seed/screenshot-seed';
 
 export const isFeatureVisible = (): boolean => SHOW_UNREADY_FEATURE === 'true';
 
-export const runSeed = async (): Promise<void> => {
-  await seedScreenshotData();
-};
+// `seedScreenshotData` (the writer half of screenshot-seed.ts) was deleted in
+// the same commit that slimmed the module to the pure dataset builder — this
+// now imports the surviving export so the fixture keeps compiling. The
+// pinned finding is unchanged: it is still a static `import` reaching from
+// `rules/fixtures/` into `e2e/`, which is what the rule's second arm matches
+// regardless of which member is imported.
+export const runSeed = (): unknown => buildScreenshotDataset('uk');

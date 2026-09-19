@@ -1,37 +1,13 @@
 // DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 5.6
 // remediation, 2026-09-18): the fabricated real-brand demo dataset this module
 // builds (Сільпо, Rozetka, Монобанк, ПриватБанк, and other real Ukrainian
-// merchant/bank names) must not sit in app source at all, not merely be
-// build-time-folded out of the Release bundle. It is reached only from
-// `MigrationsGate`'s single gated, dead-branched `require` — see that file's
-// `seedScreenshotDataIfEnabled` — and from its own colocated Jest tests; no
-// app `src/` module imports it. It still imports app repos/schema/theme
-// (`@kiko/*` and `../../../src/*`) because it writes through the same
-// sanctioned repositories a real app write would use.
-import { ratesRepo } from '@kiko/rates/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
-
-import {
-  type ScreenshotScenario,
-  screenshotLanguage,
-  screenshotScenario,
-} from '../screenshot-mode';
-import {
-  type AccountRow,
-  accounts,
-  categoryOverrides,
-  currencyRateHistory,
-  currencyRates,
-  type HoldingRow,
-  holdings,
-  syncState,
-  transactions,
-} from '../../../src/db/schema';
-import { write } from '../../../src/db/client';
+// merchant/bank names) must not sit in app source at all. This is now a PURE
+// dataset builder — no DB, no repos, no `@env` — whose only consumer is the
+// demo-`.kiko` generator under `e2e/screenshot/fixtures/`, reached through
+// Jest and never through the app. It still imports `../../../src/*` type
+// helpers (schema row types, `Currency`, `AppLanguage`, the palette) because
+// the shape it builds mirrors the real app's own types.
+import type { AccountRow, HoldingRow } from '../../../src/db/schema';
 import type { AppLanguage } from '../../../src/i18n';
 import type { Currency } from '../../../src/currency/currency';
 import { entityColorsDark } from '../../../src/design-system/palette';
@@ -117,11 +93,6 @@ type ScreenshotDataset = {
   accounts: SeedAccount[];
   rates: SeedRate[];
   history: SeedHistoryRow[];
-  // Whether the app lock starts on. `false` for the marketing/rich and empty
-  // sets (no gate in front of the screenshots); `true` only for the `locked`
-  // scenario, which captures the cold-launch LockGate. Persisted via
-  // `settingsRepo.setLockEnabled` in `applySettings`.
-  lockEnabled: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -535,128 +506,16 @@ const buildAccounts = (): SeedAccount[] => [
 ];
 
 /**
- * The complete deterministic screenshot dataset. Pure: it reads no clock and no
- * database, so its shape (counts, sums, fixed times, pinned rates) is fully
- * unit-testable. `seedScreenshotData` is the thin writer that persists it.
- *
- * Scenario (defaults to `'rich'`):
- * - `'rich'`: the full marketing/regression dataset (accounts, ledger, rates,
- *   history), lock OFF. Unchanged from before the scenario switch existed.
- * - `'empty'`: NO accounts, rates, or history, lock OFF — the app renders its
- *   empty states (empty accounts, home, statistics). Base currency and language
- *   still apply.
- * - `'locked'`: the SAME rich dataset, but lock ON, so the cold-launch LockGate
- *   shows the lock screen for capture.
+ * The complete deterministic screenshot dataset. Pure: it reads no clock, no
+ * `@env`, and no database, so its shape (counts, sums, fixed times, pinned
+ * rates) is fully unit-testable. Its only consumer is the demo-`.kiko`
+ * generator under `e2e/screenshot/fixtures/`, reached through Jest and never
+ * through the app.
  */
-export const buildScreenshotDataset = (
-  language: AppLanguage,
-  scenario: ScreenshotScenario = 'rich',
-): ScreenshotDataset => {
-  if (scenario === 'empty') {
-    return {
-      language,
-      baseCurrency: BASE_CURRENCY,
-      accounts: [],
-      rates: [],
-      history: [],
-      lockEnabled: false,
-    };
-  }
-
-  return {
-    language,
-    baseCurrency: BASE_CURRENCY,
-    accounts: buildAccounts(),
-    rates: buildRates(),
-    history: buildHistory(),
-    lockEnabled: scenario === 'locked',
-  };
-};
-
-// ---------------------------------------------------------------------------
-// Writer. Uses the existing repos + the sanctioned write() path only.
-// ---------------------------------------------------------------------------
-
-/**
- * Delete every row the seed owns, in foreign-key order (children before
- * parents), inside ONE sanctioned write transaction — so re-running the seed
- * yields identical state. The 10 default categories (migration 0002) and the
- * single settings row are KEPT; everything else is rebuilt.
- */
-const purge = (): Promise<void> =>
-  write(async (tx) => {
-    await tx.delete(transactions);
-    await tx.delete(syncState);
-    await tx.delete(holdings);
-    await tx.delete(accounts);
-    await tx.delete(currencyRates);
-    await tx.delete(currencyRateHistory);
-    await tx.delete(categoryOverrides);
-  });
-
-const applySettings = async (dataset: ScreenshotDataset): Promise<void> => {
-  await settingsRepo.setBaseCurrency(dataset.baseCurrency);
-  await settingsRepo.setLanguage(dataset.language);
-  // Set the lock explicitly from the dataset every run: the rich and empty
-  // scenarios force it OFF (a re-seed over a DB where the user enabled the lock
-  // must not leave a Face ID gate in front of the screenshots), while the
-  // `locked` scenario forces it ON to capture the cold-launch LockGate.
-  await settingsRepo.setLockEnabled(dataset.lockEnabled);
-};
-
-const seedHolding = async (accountId: string, holding: SeedHolding): Promise<void> => {
-  const holdingId = await holdingsRepo.create({
-    accountId,
-    name: holding.name,
-    type: holding.type,
-    currency: holding.currency,
-    color: holding.color,
-  });
-
-  for (const transaction of holding.transactions) {
-    // recordManual adjusts the holding balance by the amount, so the holding's
-    // final balance is the sum of its seeded transactions (the holding was
-    // created with a zero opening balance, emitting no clock-stamped opening
-    // row of its own). Each row persists a realistic merchant/operation
-    // description so the ledger reads like a real account rather than the
-    // generic "expense/income" fallback used when the description is blank.
-    await transactionsRepo.recordManual({
-      holdingId,
-      amountMinorUnits: transaction.amountMinorUnits,
-      time: transaction.time,
-      category: transaction.category ?? undefined,
-      description: transaction.description,
-    });
-  }
-};
-
-const seedAccounts = async (dataset: ScreenshotDataset): Promise<void> => {
-  for (const account of dataset.accounts) {
-    const accountId = await accountsRepo.create({
-      name: account.name,
-      kind: account.kind,
-      color: account.color,
-    });
-
-    for (const holding of account.holdings) {
-      await seedHolding(accountId, holding);
-    }
-  }
-};
-
-/**
- * DEV/TEST-ONLY. Rebuild a deterministic, attractive demo dataset for App Store
- * marketing screenshots, idempotently. Called from `MigrationsGate` ONLY when
- * `isScreenshotMode()` is true (a dead branch in production). Order: purge, then
- * settings, then accounts + holdings + ledger, then the pinned live rates and
- * the rate history the charts need.
- */
-export const seedScreenshotData = async (): Promise<void> => {
-  const dataset = buildScreenshotDataset(screenshotLanguage(), screenshotScenario());
-
-  await purge();
-  await applySettings(dataset);
-  await seedAccounts(dataset);
-  await ratesRepo.upsertMany(dataset.rates);
-  await rateHistoryRepo.upsertMany(dataset.history);
-};
+export const buildScreenshotDataset = (language: AppLanguage): ScreenshotDataset => ({
+  language,
+  baseCurrency: BASE_CURRENCY,
+  accounts: buildAccounts(),
+  rates: buildRates(),
+  history: buildHistory(),
+});
