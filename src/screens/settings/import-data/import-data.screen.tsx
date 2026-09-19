@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer/import-data';
+import { i18n } from '@kiko/i18n';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -109,8 +110,23 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
 
     try {
       const summary = await importData({ fileUri, keyBase64 });
+
+      // The imported settings row can carry a different language than the
+      // one currently active. Apply it BEFORE resolving the success
+      // message's copy so that message renders in the restored language,
+      // not the pre-import one — `useSyncLanguageWithSettings` would
+      // otherwise apply it only later, asynchronously, off a live query.
+      // See import-data.ts's `languageRestored` doc comment. The hook's own
+      // `t` is a FIXED-language function snapshotted at this render (see
+      // react-i18next's `getFixedT`), so it would still resolve to the
+      // PRE-import language even after `changeLanguage` resolves — the raw
+      // `i18n.t` reads the current language dynamically instead.
+      if (summary.languageRestored != null && summary.languageRestored !== i18n.language) {
+        await i18n.changeLanguage(summary.languageRestored);
+      }
+
       setResultMessage(
-        t('settings.dataImport.successMessage', { count: summary.accountsRestored }),
+        i18n.t('settings.dataImport.successMessage', { count: summary.accountsRestored }),
       );
     } catch (error) {
       const message =

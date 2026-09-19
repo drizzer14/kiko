@@ -19,6 +19,15 @@ type ImportSummary = {
   accountsRestored: number;
   holdingsRestored: number;
   transactionsRestored: number;
+  /**
+   * The imported settings row's `language`, or `null` when the row carries
+   * none (or there is no settings row at all). A plain string code, not the
+   * app's `AppLanguage` type — this layer must not import i18n. The caller
+   * (`import-data.screen.tsx`) applies it via `i18n.changeLanguage` BEFORE
+   * resolving the success alert's `t()` copy, so that alert renders in the
+   * language the import just restored, not the pre-import one.
+   */
+  languageRestored: string | null;
 };
 
 const isExportEnvelope = (value: unknown): value is ExportEnvelope =>
@@ -142,5 +151,6 @@ export const importData = async (options: {
     accountsRestored: payload.tables.accounts.length,
     holdingsRestored: payload.tables.holdings.length,
     transactionsRestored: payload.tables.transactions.length,
+    languageRestored: payload.tables.settings.at(0)?.language ?? null,
   };
 };

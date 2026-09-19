@@ -1,12 +1,6 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-// Side-effect import: src/i18n/index.ts calls `i18next.init()` at module
-// load. Every test file gets its own fresh module registry, so without this
-// import `useTranslation`'s `t()` returns the raw key (e.g.
-// "settings.dataImport.keyPlaceholder") instead of the real English string
-// this suite asserts on — the same reason
-// src/screens/settings/settings/settings.screen.test.tsx imports it.
-import '../../../i18n';
+import { i18n } from '../../../i18n';
 import {
   asNavigationProp,
   asRouteProp,
@@ -52,10 +46,17 @@ const renderScreen = () =>
 const VALID_KEY = 'a'.repeat(44);
 
 describe('ImportDataScreen', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockPick.mockReset();
     mockImportData.mockReset();
     mockKeepLocalCopy.mockReset();
+    // The "restored language" test below drives a REAL i18n.changeLanguage
+    // call (only importData is mocked); reset it before every test so a
+    // language switch never leaks into a later test's assertions — same
+    // convention as settings.screen.test.tsx's localization describe block.
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
     // Default: the local copy succeeds, returning a sandbox path RNFS can read.
     // Keyed off the input so each test's imported uri is predictable.
     mockKeepLocalCopy.mockImplementation(
@@ -232,6 +233,31 @@ describe('ImportDataScreen', () => {
 
     expect(await findByText('kiko-demo-uk.kiko')).toBeTruthy();
     expect(queryByText(/private\/var/)).toBeNull();
+  });
+
+  // A `.kiko` export made in one language can be imported on a device
+  // running another — the imported `settings` row's language must apply
+  // BEFORE the success message is composed, so it renders in the restored
+  // language, not the pre-import one.
+  it('shows the success message in the language restored by the import, not the pre-import language', async () => {
+    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+    mockImportData.mockResolvedValue({
+      accountsRestored: 2,
+      holdingsRestored: 3,
+      transactionsRestored: 10,
+      languageRestored: 'uk',
+    });
+
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+    await fireEvent.press(await findByText('Replace Data'));
+
+    expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
   });
 
   it('shows a wrong-key-specific error when importData throws a decrypt-prefixed error', async () => {

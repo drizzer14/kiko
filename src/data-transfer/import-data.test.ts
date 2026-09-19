@@ -55,7 +55,33 @@ describe('importData', () => {
 
     expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(payload.tables);
     expect(mockRestoreExportSecrets).toHaveBeenCalledWith(undefined);
-    expect(summary).toEqual({ accountsRestored: 1, holdingsRestored: 1, transactionsRestored: 1 });
+    expect(summary).toEqual({
+      accountsRestored: 1,
+      holdingsRestored: 1,
+      transactionsRestored: 1,
+      languageRestored: null,
+    });
+  });
+
+  // The success alert is built from `t()` right after `importData` resolves
+  // (import-data.screen.tsx `runImport`) — if the imported settings row
+  // carries a different language, the caller needs it BEFORE building that
+  // alert so it can switch i18n first. See the file header comment.
+  it('returns the imported settings row language as languageRestored', async () => {
+    const key = generateExportKey();
+    const payloadWithLanguage = {
+      ...payload,
+      tables: { ...payload.tables, settings: [{ id: 1, language: 'uk' }] },
+    };
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(payloadWithLanguage)), key);
+    mockReadFile.mockResolvedValue(JSON.stringify(envelope));
+
+    const summary = await importData({
+      fileUri: '/tmp/x.kiko',
+      keyBase64: encodeBytesToBase64(key),
+    });
+
+    expect(summary.languageRestored).toBe('uk');
   });
 
   // The document picker / `keepLocalCopy` hand back a percent-encoded
