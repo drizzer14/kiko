@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer/import-data';
-import { pick, types } from '@react-native-documents/picker';
+import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import Box from '../../../design-system/components/box';
@@ -32,6 +32,21 @@ const KIKO_FILE_EXTENSION = '.kiko';
 // than surfacing as a confusing "wrong key" error after a real import attempt.
 const MIN_KEY_LENGTH = 44;
 
+// The picker returns a display name, but on some sources it hands back only a
+// URI (or a full path). Reduce either to just the file's own name — the last
+// path segment, percent-decoded, minus any query/fragment — so the button
+// shows `kiko-demo.kiko`, not a `file://…/Documents/kiko-demo.kiko` path.
+const fileNameFrom = (value: string): string => {
+  const path = value.split(/[?#]/)[0] ?? value;
+  const segment = path.slice(path.lastIndexOf('/') + 1) || path;
+
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { t } = useTranslation();
   const [fileUri, setFileUri] = useState<string | undefined>(undefined);
@@ -52,7 +67,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
         return;
       }
 
-      const name = picked.name ?? picked.uri;
+      const name = fileNameFrom(picked.name ?? picked.uri);
 
       if (!name.toLowerCase().endsWith(KIKO_FILE_EXTENSION)) {
         setFileUri(undefined);
@@ -61,9 +76,20 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
         return;
       }
 
+      // The picker hands back a security-scoped external URI (iCloud / Files /
+      // an AirDropped file) that `RNFS.readFile` cannot read directly — the
+      // read yields nothing and import fails as "invalid file"
+      // (device-feedback: an AirDropped demo `.kiko` would not import). Copy
+      // the file into the app's cache first and read that local copy; fall
+      // back to the original uri only if the copy fails.
+      const [copied] = await keepLocalCopy({
+        files: [{ uri: picked.uri, fileName: name }],
+        destination: 'cachesDirectory',
+      });
+
       setWrongFileTypeError(false);
       setNoFileError(false);
-      setFileUri(picked.uri);
+      setFileUri(copied.status === 'success' ? copied.localUri : picked.uri);
       setFileName(name);
     } catch {
       // A cancelled picker rejects — the expected "user backed out" case

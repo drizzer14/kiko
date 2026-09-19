@@ -14,8 +14,10 @@ import {
 } from '../../../test-support/navigation-props';
 
 const mockPick = jest.fn();
+const mockKeepLocalCopy = jest.fn();
 jest.mock('@react-native-documents/picker', () => ({
   pick: (...args: unknown[]) => mockPick(...args),
+  keepLocalCopy: (...args: unknown[]) => mockKeepLocalCopy(...args),
   types: { allFiles: '*/*', json: 'application/json' },
 }));
 
@@ -53,6 +55,19 @@ describe('ImportDataScreen', () => {
   beforeEach(() => {
     mockPick.mockReset();
     mockImportData.mockReset();
+    mockKeepLocalCopy.mockReset();
+    // Default: the local copy succeeds, returning a sandbox path RNFS can read.
+    // Keyed off the input so each test's imported uri is predictable.
+    mockKeepLocalCopy.mockImplementation(
+      (options: { files: { uri: string; fileName: string }[] }) =>
+        Promise.resolve([
+          {
+            status: 'success',
+            sourceUri: options.files[0].uri,
+            localUri: `file:///local/${options.files[0].fileName}`,
+          },
+        ]),
+    );
   });
 
   it('renders the Import button enabled even before a file or key are provided', async () => {
@@ -159,12 +174,64 @@ describe('ImportDataScreen', () => {
     expect(mockImportData).not.toHaveBeenCalled();
     await fireEvent.press(await findByText('Replace Data'));
 
+    // Imports the SANDBOX-LOCAL copy (`keepLocalCopy`'s `localUri`), never the
+    // raw picked uri — reading the external URI directly is what made an
+    // AirDropped .kiko fail as "invalid file".
     await waitFor(() =>
       expect(mockImportData).toHaveBeenCalledWith({
-        fileUri: 'file:///picked.kiko',
+        fileUri: 'file:///local/picked.kiko',
         keyBase64: VALID_KEY,
       }),
     );
+  });
+
+  // The real device bug: a picked file (AirDrop / Files / iCloud) is a
+  // security-scoped external URI RNFS cannot read directly. The screen must
+  // copy it into the app sandbox first and import THAT local path.
+  it('copies the picked file into the sandbox and imports the local copy', async () => {
+    const externalUri = 'file:///private/var/mobile/Containers/Shared/kiko-demo-en.kiko';
+    mockPick.mockResolvedValue([{ uri: externalUri, name: 'kiko-demo-en.kiko' }]);
+    mockImportData.mockResolvedValue({
+      accountsRestored: 1,
+      holdingsRestored: 1,
+      transactionsRestored: 1,
+    });
+
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+    await waitFor(() => expect(mockPick).toHaveBeenCalled());
+
+    expect(mockKeepLocalCopy).toHaveBeenCalledWith({
+      files: [{ uri: externalUri, fileName: 'kiko-demo-en.kiko' }],
+      destination: 'cachesDirectory',
+    });
+
+    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
+    await fireEvent.press(getByTestId('settings-button-import'));
+    await fireEvent.press(await findByText('Replace Data'));
+
+    await waitFor(() =>
+      expect(mockImportData).toHaveBeenCalledWith({
+        fileUri: 'file:///local/kiko-demo-en.kiko',
+        keyBase64: VALID_KEY,
+      }),
+    );
+  });
+
+  // device feedback: the file button showed the whole path/URI. It must show
+  // only the file's own name, even when the picker returns no display name.
+  it('shows only the file name on the button, not the full path', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///private/var/mobile/Containers/Shared/kiko-demo-uk.kiko', name: undefined },
+    ]);
+
+    const { getByTestId, findByText, queryByText } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-button-pick-file'));
+
+    expect(await findByText('kiko-demo-uk.kiko')).toBeTruthy();
+    expect(queryByText(/private\/var/)).toBeNull();
   });
 
   it('shows a wrong-key-specific error when importData throws a decrypt-prefixed error', async () => {
