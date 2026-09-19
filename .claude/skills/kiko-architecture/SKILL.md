@@ -45,8 +45,11 @@ build-a-bundle CI gate:
   bundle grep below is a required acceptance check, not a nicety. KNOWN
   LIMITS, documented so a reader trusts human review as the backstop
   rather than the rule alone: it does NOT catch a differently-named
-  visibility flag (e.g. `ENABLE_*`), and it does NOT catch a demo/seed
-  import reached through a path alias that omits the `e2e/` substring.
+  visibility flag (e.g. `ENABLE_*`), it does NOT catch a demo/seed
+  import reached through a path alias that omits the `e2e/` substring, and
+  it does NOT catch a namespace import of `@env` (e.g.
+  `import * as env from '@env'; ... env.SCREENSHOT_MODE`) — the flag regex
+  only matches the named-import form.
 - A one-time archive-time grep of the built Release `main.jsbundle` for
   the capture/demo symbols and fake-data literals, run by ops against
   build 9's embedded bundle — required, not optional, precisely because

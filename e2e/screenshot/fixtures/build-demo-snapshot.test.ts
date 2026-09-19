@@ -1,7 +1,7 @@
-import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-
-import { buildScreenshotDataset } from '../seed/screenshot-seed';
 import { buildDemoSnapshot } from './build-demo-snapshot';
+import { buildScreenshotDataset } from '../seed/screenshot-seed';
+import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
+import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 describe('buildDemoSnapshot', () => {
   const dataset = buildScreenshotDataset('uk');
@@ -47,6 +47,19 @@ describe('buildDemoSnapshot', () => {
     );
     expect(snapshot.syncState).toEqual([]);
     expect(snapshot.categoryOverrides).toEqual([]);
+  });
+
+  it('seeds every category color from the branded-colors migration, matching a real fresh install', () => {
+    const seedColors = new Map(readSeedCategoryColors().map((seed) => [seed.key, seed.color]));
+
+    // Mirrors 0017's own comment: `utilities` and `entertainment` are
+    // intentionally left uncolored on a real fresh install too, so they fall
+    // back to the same hashed `categoryColor` both here and in production.
+    expect(seedColors.size).toBe(8);
+
+    for (const category of snapshot.categories) {
+      expect(category.color).toBe(seedColors.get(category.key) ?? null);
+    }
   });
 
   it('carries one settings row with the dataset language, UAH, and the lock OFF', () => {

@@ -8,7 +8,7 @@ import type { AppLanguage } from '../i18n';
 import type { TrendFilter } from '../statistics/trend-filter';
 
 /** Settings is a single row, keyed at id = 1. */
-const SETTINGS_ID = 1;
+export const SETTINGS_ID = 1;
 
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),

@@ -24,7 +24,7 @@ import {
   EXPORT_VERSION,
 } from '../../../src/data-transfer/crypto/envelope';
 import type { AppLanguage } from '../../../src/i18n';
-import { buildScreenshotDataset } from '../seed/screenshot-seed';
+import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
 import type { ExportPayload } from '../../../src/data-transfer/payload';
 import { generateExportKey } from '../../../src/data-transfer/crypto/generate-key';
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../../../src/data-transfer/base64/base64';
@@ -51,6 +51,21 @@ const readOrCreateKey = (): Uint8Array => {
 
   return key;
 };
+
+describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not just the committed artefacts)', () => {
+  it('round-trips a snapshot through the real export crypto with no drift', () => {
+    const snapshot = buildDemoSnapshot(buildScreenshotDataset('uk'));
+    const key = generateExportKey();
+    const envelope: ExportEnvelope = JSON.parse(buildDemoEnvelopeJson(snapshot, key));
+    const plaintext = decryptEnvelope(envelope, key);
+    const payload: ExportPayload = JSON.parse(new TextDecoder().decode(plaintext));
+
+    expect(payload.tables).toEqual(snapshot);
+    expect(payload.exportedAt).toBe(ANCHOR);
+    expect(payload.appVersion).toBe('1.0.0');
+    expect(payload.secrets).toBeUndefined();
+  });
+});
 
 if (process.env.KIKO_REGEN_DEMO === '1') {
   describe('regenerate the committed demo .kiko fixtures', () => {

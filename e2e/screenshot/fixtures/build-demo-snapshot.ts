@@ -6,31 +6,40 @@
 // leave the imported app with no categories and no settings row.
 import type {
   AccountRow,
-  CategoryOverrideRow,
   CategoryRow,
   HoldingRow,
   SettingsRow,
-  SyncStateRow,
   TransactionRow,
 } from '../../../src/db/schema';
 
 import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
+import { SETTINGS_ID } from '../../../src/settings/settings.repo';
 import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
+import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snapshot';
 
-// Mirrors `SETTINGS_ID` in `src/settings/settings.repo.ts` — the single
-// settings row's fixed primary key.
-const SETTINGS_ID = 1;
+/**
+ * The 10 default categories, sourced from the same fixture the repo tests
+ * use, with each `color` taken from the same branded-colors migration
+ * (`drizzle/migrations/0017_default_category_colors.sql`, parsed by
+ * `readSeedCategoryColors`) that a real fresh install seeds. Importing the
+ * demo `.kiko` REPLACES the whole `categories` table (see the module
+ * comment above), so leaving `color: null` here would overwrite the
+ * migration's branded colors with `resolveCategoryColor`'s hashed
+ * fallback — different colors than the committed App Store screenshots
+ * were shot with.
+ */
+const buildCategories = (): CategoryRow[] => {
+  const seedColors = new Map(readSeedCategoryColors().map((seed) => [seed.key, seed.color]));
 
-/** The 10 default categories, sourced from the same fixture the repo tests use. */
-const buildCategories = (): CategoryRow[] =>
-  SEEDED_CATEGORIES.map((category, index) => ({
+  return SEEDED_CATEGORIES.map((category, index) => ({
     key: category.key,
     title: category.title,
     icon: category.icon,
-    color: null,
+    color: seedColors.get(category.key) ?? null,
     sortOrder: index,
   }));
+};
 
 /** The single settings row: the dataset's language/currency, lock always OFF. */
 const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
@@ -142,8 +151,6 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
 
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
-  const syncState: SyncStateRow[] = [];
-  const categoryOverrides: CategoryOverrideRow[] = [];
 
   return {
     accounts: ledger.accounts,
@@ -152,8 +159,8 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     currencyRates: dataset.rates,
     currencyRateHistory: dataset.history,
     settings: buildSettings(dataset),
-    syncState,
+    syncState: [],
     categories: buildCategories(),
-    categoryOverrides,
+    categoryOverrides: [],
   };
 };

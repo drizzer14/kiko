@@ -14,8 +14,6 @@ type AppLock = {
   isReady: boolean;
   isLocked: boolean;
   unlock: () => Promise<AuthResult>;
-  // Always `true` — LockGate auto-invokes the biometric prompt on mount.
-  promptOnMount: boolean;
 };
 
 /**
@@ -73,10 +71,5 @@ export const useAppLock = (): AppLock => {
     isReady: !APP_LOCK_ENABLED || locked !== undefined,
     isLocked: lockEnabled && locked === true,
     unlock,
-    // Always `true`: LockGate auto-invokes the biometric prompt on mount in
-    // every build. The screenshot-capture suppression this used to carry was
-    // removed outright (Guideline 5.6) — there is no capture mode any more, and
-    // no flag, env key, or launch argument makes this false.
-    promptOnMount: true,
   };
 };

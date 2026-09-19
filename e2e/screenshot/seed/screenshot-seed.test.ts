@@ -9,8 +9,7 @@ import { buildScreenshotDataset } from './screenshot-seed';
 // module unavailable under Jest), so a real-DB "insert then count rows" smoke
 // test is not feasible here without faking the database, which would prove
 // nothing. Instead the DETERMINISM and SHAPE of the dataset are proven directly
-// against the pure `buildScreenshotDataset` builder below, and the writer's
-// ordering/repo-wiring is proven with mocked repos in the second describe.
+// against the pure `buildScreenshotDataset` builder below.
 
 const sumBalance = (transactions: { amountMinorUnits: number }[]): number =>
   transactions.reduce((total, transaction) => total + transaction.amountMinorUnits, 0);

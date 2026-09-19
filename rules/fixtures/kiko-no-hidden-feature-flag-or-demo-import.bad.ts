@@ -1,10 +1,12 @@
 // Semgrep fixture (POSITIVE): the Guideline 5.6 "hidden feature" pattern —
 // App Store rejected build 7 for "features intentionally hidden during
 // review". `kiko-no-hidden-feature-flag-or-demo-import` MUST report a
-// finding on each pinned line below: importing a SHOW_*/HIDE_*
-// visibility-control @env flag, and a static `import` reaching from app
-// source into the dev-only `e2e/` tree (where the screenshot/demo/seed
-// dataset now lives). Never "fix" this file.
+// finding on each of the four pinned lines below: importing a
+// SHOW_*/HIDE_*-style visibility-control @env flag, a static `import`
+// reaching from app source into the dev-only `e2e/` tree (where the
+// screenshot/demo/seed dataset now lives), importing a SCREENSHOT_* @env
+// flag, and a dynamic `require(...)` reaching into `e2e/`. Never "fix" this
+// file.
 //
 // The `declare module '@env'` block below is a fixture-local TYPE-CHECK-ONLY
 // augmentation (ambient module declarations merge across the program) — it

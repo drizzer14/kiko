@@ -1,10 +1,8 @@
 # App Store screenshots — manual marketing procedure
 
-> Reference detail moved out of CLAUDE.md (2026-09-15) to keep the root
-> harness doc lean. This file kept its name across the 2026-09-19 purge
-> below (renaming buys nothing and breaks cross-links from
-> `.claude/skills/kiko-compliance/SKILL.md` and
-> `docs/harness/documented-exceptions.md`), but its content is now a
+> This file kept its name across the 2026-09-19 purge below (renaming buys
+> nothing and breaks cross-links from `.claude/skills/kiko-compliance/SKILL.md`
+> and `docs/harness/documented-exceptions.md`), but its content is now a
 > checklist, not a check spec.
 
 ## 2026-09-19 — the automated subsystem was deleted (Guideline 5.6)
@@ -46,7 +44,7 @@ App Store screenshots by hand, following this checklist.
 2. **Clock.** Set the simulator's device clock to **2026-09-10** before
    importing data. The demo dataset's `ANCHOR`
    (`e2e/screenshot/seed/screenshot-seed.ts`) is fixed at that date and its
-   63 transactions span roughly the 6 months ending there — every "last 30
+   66 transactions span roughly the 6 months ending there — every "last 30
    days" chart needs the device clock at or after `ANCHOR` to render full.
 3. **Data.** Fresh install (or wipe existing data), launch the app, go to
    Settings → Import data, pick `e2e/screenshot/fixtures/kiko-demo-uk.kiko`,

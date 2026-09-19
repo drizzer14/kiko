@@ -110,11 +110,6 @@ describe('useAppLock', () => {
     expect(AppState.addEventListener).not.toHaveBeenCalled();
   });
 
-  it('always returns promptOnMount true, so LockGate auto-prompts on every launch', async () => {
-    const { result } = await renderHook(() => useAppLock());
-    expect(result.current.promptOnMount).toBe(true);
-  });
-
   it('once unlocked, a background→foreground cycle never re-locks, however long the background', async () => {
     settled(true);
     const { result } = await renderHook(() => useAppLock());

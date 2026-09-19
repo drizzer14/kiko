@@ -49,7 +49,7 @@ const unlockLabel = (
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
-  const { isReady, isLocked, unlock, promptOnMount } = useAppLock();
+  const { isReady, isLocked, unlock } = useAppLock();
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
   const attemptUnlock = useCallback((): void => {
@@ -63,18 +63,8 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
       return;
     }
 
-    // `promptOnMount` is true in every real build, so production auto-invokes the
-    // biometric/passcode sheet on cold launch exactly as before. It is false only
-    // in a screenshot-capture build (see `useAppLock`), where auto-invoking would
-    // block Maestro on a system dialog (or SIGABRT on a Keychain read with no
-    // enrolled biometrics) while the lock frame is captured. The manual Unlock
-    // button below still calls `attemptUnlock` in every build.
-    if (!promptOnMount) {
-      return;
-    }
-
     attemptUnlock();
-  }, [isLocked, attemptUnlock, promptOnMount]);
+  }, [isLocked, attemptUnlock]);
 
   if (!isReady) {
     return <Box style={styles.fill} />;
