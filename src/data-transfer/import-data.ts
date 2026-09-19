@@ -63,6 +63,31 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
 
+const FILE_URI_SCHEME = 'file://';
+
+// The document picker's `pick`/`keepLocalCopy` hand back a percent-encoded
+// `file://…` URI, but `RNFS.readFile` wants a plain filesystem path — handed
+// the URI literally, it treats it as a nonexistent path and throws, which
+// surfaces as this screen's generic "not a valid Kiko export file" alert on
+// EVERY import, including the user's own freshly-exported file.
+// `export-data.ts` writes with a scheme-less path already (see `joinPath`
+// there), so only this read side needs the strip. `decodeURIComponent` can
+// throw on a malformed escape sequence — guarded, falling back to the
+// un-decoded (but still scheme-stripped) path rather than crashing the read.
+const toFilePath = (uri: string): string => {
+  if (!uri.startsWith(FILE_URI_SCHEME)) {
+    return uri;
+  }
+
+  const stripped = uri.slice(FILE_URI_SCHEME.length);
+
+  try {
+    return decodeURIComponent(stripped);
+  } catch {
+    return stripped;
+  }
+};
+
 /**
  * Reads, decrypts, and restores a `.kiko` export. Every failure mode — an
  * unparseable file, a wrong/garbled key, a tampered ciphertext, or a valid
@@ -77,7 +102,7 @@ export const importData = async (options: {
   fileUri: string;
   keyBase64: string;
 }): Promise<ImportSummary> => {
-  const fileText = await RNFS.readFile(options.fileUri, 'utf8');
+  const fileText = await RNFS.readFile(toFilePath(options.fileUri), 'utf8');
 
   let envelope: unknown;
   try {

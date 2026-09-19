@@ -58,6 +58,35 @@ describe('importData', () => {
     expect(summary).toEqual({ accountsRestored: 1, holdingsRestored: 1, transactionsRestored: 1 });
   });
 
+  // The document picker / `keepLocalCopy` hand back a percent-encoded
+  // `file://…` URI, but `RNFS.readFile` wants a plain filesystem path —
+  // handed the URI literally, the real module throws and every import fails
+  // as "invalid file". Assert the scheme is stripped and the rest
+  // percent-decoded before `RNFS.readFile` is ever called.
+  it('reads a percent-encoded file:// uri as a decoded, scheme-less path', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({
+      fileUri: 'file:///var/mobile/Containers/Data/tmp/kiko%20export.kiko',
+      keyBase64,
+    });
+
+    expect(mockReadFile).toHaveBeenCalledWith(
+      '/var/mobile/Containers/Data/tmp/kiko export.kiko',
+      'utf8',
+    );
+  });
+
+  it('passes a plain, scheme-less path through unchanged', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(mockReadFile).toHaveBeenCalledWith('/tmp/x.kiko', 'utf8');
+  });
+
   it('throws a decrypt-prefixed error on the wrong key and never restores anything', async () => {
     const { fileText } = encryptedFixture();
     mockReadFile.mockResolvedValue(fileText);
