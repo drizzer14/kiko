@@ -32,19 +32,32 @@ build-a-bundle CI gate:
 - A Semgrep SOURCE rule, `kiko-no-hidden-feature-flag-or-demo-import`
   (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
   `npm run check:security`; its fixture pair is verified by
-  `npm run check:rules`). It flags (a) importing a `SHOW_*`/`HIDE_*`
-  `@env` flag, and (b) a static `import` whose specifier contains the
-  literal `e2e/` segment. KNOWN LIMITS, documented so a reader trusts
-  human review as the backstop rather than the rule alone: it does
-  NOT catch a differently-named visibility flag (e.g. `ENABLE_*`), and
-  it does NOT catch a demo/seed import reached through a path alias
-  that omits the `e2e/` substring.
-- A one-time archive-time grep of the built Release `main.jsbundle`
-  for the screenshot/demo symbols and fake-data literals — recorded as
-  a one-time acceptance check in
-  `docs/superpowers/plans/2026-09-15-strip-screenshot-subsystem-5.6-fix.md`.
-  It is NOT currently a standing step in the `release` skill (that
-  skill's Part B "Verify the archive invariants" lists only
+  `npm run check:rules`). It flags three shapes: (a) importing a
+  `SHOW_*`/`HIDE_*`/`SCREENSHOT_*` `@env` flag, (b) a static `import`
+  whose specifier contains the literal `e2e/` segment, and (c) a dynamic
+  `require(...)` whose specifier contains `e2e/`. `src/` has zero `e2e/`
+  crossings of any kind. **Metro dead-code elimination is not
+  trusted as a substitute for (c):** build 8 shipped
+  `seedScreenshotData` inside `main.jsbundle` despite it sitting behind
+  a dead `if (SCREENSHOT_MODE === 'true')` branch that DCE was supposed
+  to fold out — which is why a dead-branched dynamic `require` reaching
+  `e2e/` is now a finding with no exemption, and why the archive-time
+  bundle grep below is a required acceptance check, not a nicety. KNOWN
+  LIMITS, documented so a reader trusts human review as the backstop
+  rather than the rule alone: it does NOT catch a differently-named
+  visibility flag (e.g. `ENABLE_*`), and it does NOT catch a demo/seed
+  import reached through a path alias that omits the `e2e/` substring.
+- A one-time archive-time grep of the built Release `main.jsbundle` for
+  the capture/demo symbols and fake-data literals, run by ops against
+  build 9's embedded bundle — required, not optional, precisely because
+  DCE was proven untrustworthy (build 8, above). Precedent and full
+  needle list: `docs/superpowers/plans/2026-09-15-strip-screenshot-subsystem-5.6-fix.md`
+  (its Task 6) and the "Handoff to ops" section of
+  `docs/superpowers/plans/2026-09-19-screenshot-purge-e2e-only-v2.md`
+  (`AC-BUNDLE-GREP`), which also corrects the 2026-09-15 needle list —
+  do not grep for `Binance` or `Монобанк`, both legitimate shipped
+  strings. It is NOT currently a standing step in the `release` skill
+  (that skill's Part B "Verify the archive invariants" lists only
   `UIDeviceFamily`, signing identity, App Group, and `get-task-allow`).
   Wiring this grep into the `release` skill as a standing archive step
   is a recommended, not-yet-done follow-up.

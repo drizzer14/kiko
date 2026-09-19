@@ -70,10 +70,10 @@ worktree, or CI has a working `.env` with no manual step. It never
 overwrites an existing `.env`, so a hand-edited file or a `.env.local`
 override survives `npm install`.
 
-`.env.test` is a tracked, public-only variant of `.env` (the same class as
-the tracked `.env.screenshots*` files). `jest.config.js` defaults `ENVFILE`
-to it, so a fresh checkout runs hermetic Jest tests; an explicit `ENVFILE`
-still wins. See `documented-exceptions.md` for the full justification.
+`.env.test` is a tracked, public-only variant of `.env`. `jest.config.js`
+defaults `ENVFILE` to it, so a fresh checkout runs hermetic Jest tests; an
+explicit `ENVFILE` still wins. See `documented-exceptions.md` for the full
+justification.
 
 ## Known dependency CVEs
 
