@@ -1,9 +1,10 @@
-import { bytesToUtf8, utf8ToBytes } from '@noble/ciphers/utils.js';
+import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import { decodeBase64ToBytes, encodeBytesToBase64 } from './base64/base64';
 import { decryptEnvelope, encryptEnvelope } from './crypto/envelope';
 import { generateExportKey } from './crypto/generate-key';
 import type { ExportPayload } from './payload';
+import { utf8Decode } from './utf8/utf8';
 
 const fixturePayload = (): ExportPayload => ({
   exportedAt: 1700000000000,
@@ -122,7 +123,7 @@ describe('data-transfer full-pipeline round trip', () => {
     const payload = fixturePayload();
 
     const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(payload)), key);
-    const roundTripped = JSON.parse(bytesToUtf8(decryptEnvelope(envelope, key))) as ExportPayload;
+    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
 
     expect(roundTripped).toEqual(payload);
   });

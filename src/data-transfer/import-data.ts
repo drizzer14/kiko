@@ -1,5 +1,4 @@
 import * as RNFS from 'react-native-fs';
-import { bytesToUtf8 } from '@noble/ciphers/utils.js';
 
 import {
   decryptEnvelope,
@@ -11,6 +10,7 @@ import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
+import { utf8Decode } from './utf8/utf8';
 
 // Not exported: nothing outside this file imports it yet (the Import Data
 // screen, Task 13, currently consumes only `importData`'s inferred return
@@ -126,7 +126,7 @@ export const importData = async (options: {
 
   let payload: unknown;
   try {
-    payload = JSON.parse(bytesToUtf8(plaintext));
+    payload = JSON.parse(utf8Decode(plaintext));
   } catch {
     throw new Error(INVALID_FILE_MESSAGE);
   }

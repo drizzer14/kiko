@@ -1,5 +1,4 @@
 import * as RNFS from 'react-native-fs';
-import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import pkg from '../../package.json';
 
@@ -9,6 +8,7 @@ import { encodeBytesToBase64 } from './base64/base64';
 import { generateExportKey } from './crypto/generate-key';
 import { readExportSecrets } from './secrets/read-secrets';
 import { readDataSnapshot } from './snapshot/read-snapshot';
+import { utf8Encode } from './utf8/utf8';
 
 // Not exported: nothing outside this file imports it yet (the Export Data
 // screen, Task 12, currently consumes only `exportData`'s inferred return
@@ -49,7 +49,7 @@ export const exportData = async (options: { includeSecrets: boolean }): Promise<
     secrets: options.includeSecrets ? await readExportSecrets(tables.accounts) : undefined,
   };
 
-  const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(payload)), key);
+  const envelope = encryptEnvelope(utf8Encode(JSON.stringify(payload)), key);
   const fileUri = joinPath(RNFS.TemporaryDirectoryPath, exportFileName());
 
   await RNFS.writeFile(fileUri, JSON.stringify(envelope), 'utf8');
