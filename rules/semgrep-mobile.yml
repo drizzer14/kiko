@@ -105,14 +105,23 @@ rules:
         - "*.swift"
     pattern-regex: (?s)\A(?=.*\.write\(to:)(?!.*isExcludedFromBackup)(?!.*protectionKey).*forSecurityApplicationGroupIdentifier
   # Guideline 5.6 (App Store rejection of build 7: "features intentionally
-  # hidden during review"). Two shapes, one rule: importing a SHOW_*/HIDE_*
-  # visibility-control @env flag (any flag named that way IS a
-  # visibility-control switch by the project's own naming convention — see
-  # CLAUDE.md/documented-exceptions.md), and a static `import` reaching from
-  # app source into the dev-only `e2e/` tree, where the fabricated
-  # screenshot/demo/seed dataset now lives. Both are deterministic,
-  # always-a-bug shapes, so ERROR: a 5.6 violation blocks a release outright,
-  # there is no legitimate reason to ship either.
+  # hidden during review"). Three shapes, one rule: importing a
+  # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
+  # that way IS a visibility-control switch by the project's own naming
+  # convention — see CLAUDE.md/documented-exceptions.md), a static `import`
+  # reaching from app source into the dev-only `e2e/` tree, and a dynamic
+  # `require(...)` reaching the same `e2e/` tree. All three are
+  # deterministic, always-a-bug shapes, so ERROR: a 5.6 violation blocks a
+  # release outright, there is no legitimate reason to ship any of them.
+  #
+  # The dynamic `require` arm exists because Metro's dead-code elimination
+  # was empirically proven UNTRUSTWORTHY: build 8 shipped `seedScreenshotData`
+  # in the `main.jsbundle` despite it sitting behind a dead
+  # `SCREENSHOT_MODE === 'true'` branch in `migrations.gate.tsx` — the exact
+  # `require(...)` this rule used to exempt on the theory that DCE would
+  # delete it. That branch (and the flag) is deleted outright now (this
+  # track), so there is no longer any exempted crossing of any kind: a
+  # `require` reaching `e2e/` is a finding, exactly like a static import.
   #
   # No `paths.include` scope here on purpose, unlike most file-scoped rules.
   # A path-prefixed include (e.g. "src/**") is the exact gotcha the Swift
@@ -122,34 +131,34 @@ rules:
   # fixture is not nested under a `src/` segment) — a rule that stops firing
   # on its own fixture is the exact failure this whole harness exists to
   # prevent. Scoping is achieved with content specificity instead: the
-  # `e2e/` regex only matches a specifier that literally spells out an
+  # `e2e/` regexes only match a specifier that literally spells out an
   # `e2e/` path segment, which a file INSIDE `e2e/` never needs to do for
   # its own relative imports (verified empirically —
   # `e2e/screenshot/seed/screenshot-seed.test.ts` imports
-  # `'./screenshot-seed'`, not `'.../e2e/screenshot/...'`); the SHOW_/HIDE_
-  # regex keys on the imported flag's own name, which is unambiguous
-  # wherever it appears. Verified zero findings on the real tree today
-  # (`src/` and `e2e/` both), and it does not flag the one documented,
-  # dead-branched dynamic `require(...)` in `migrations.gate.tsx` — that is
-  # a `require` call, never a static `import`.
+  # `'./screenshot-seed'`, not `'.../e2e/screenshot/...'`); the
+  # SHOW_/HIDE_/SCREENSHOT_ regex keys on the imported flag's own name, which
+  # is unambiguous wherever it appears. Verified zero findings on the real
+  # tree today (`src/` and `e2e/` both).
   - id: kiko-no-hidden-feature-flag-or-demo-import
     languages: [typescript, javascript]
     severity: ERROR
     message: >
       Guideline 5.6 hidden-feature pattern: this either imports a
-      SHOW_*/HIDE_* visibility-control @env flag to gate what UI renders, or
-      statically imports a dev-only module from `e2e/` (screenshot/demo/seed
-      data) into app source. Neither can be trusted to strip from the
-      shipping bundle the way the one documented, dead-branched
-      `require(...)` behind `SCREENSHOT_MODE === 'true'` in
-      `migrations.gate.tsx` can — Metro's constant-folding only deletes a
-      dead `if` branch, never a static import, which is always collected.
-      Remove the flag/import outright, or ship the feature fully and
+      SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag to gate what UI
+      renders, statically imports a dev-only module from `e2e/`
+      (screenshot/demo/seed data) into app source, or dynamically
+      `require()`s the same `e2e/` tree. None of these can be trusted to
+      strip from the shipping bundle — build 8 shipped `seedScreenshotData`
+      in the `main.jsbundle` despite it sitting behind a dead
+      `SCREENSHOT_MODE === 'true'` branch, so Metro's constant-folding is
+      NOT a defense a dynamic `require` can rely on either. Remove the
+      flag/import/require outright, or ship the feature fully and
       unconditionally; never behind a visibility switch.
     patterns:
       - pattern-either:
-          - pattern-regex: import\s*\{[^}]*\b(SHOW_[A-Z0-9_]*|HIDE_[A-Z0-9_]*)\b[^}]*\}\s*from\s*['"]@env['"]
+          - pattern-regex: import\s*\{[^}]*\b(SHOW_[A-Z0-9_]*|HIDE_[A-Z0-9_]*|SCREENSHOT_[A-Z0-9_]*)\b[^}]*\}\s*from\s*['"]@env['"]
           - pattern-regex: import\s[^;]*from\s*['"][^'"]*\be2e/[^'"]*['"]
+          - pattern-regex: require\s*\(\s*['"][^'"]*\be2e/[^'"]*['"]\s*\)
   # ---- Class A: code-style conventions (deterministic hard-fail) ----
   - id: kiko-repo-no-class
     languages: [typescript]

@@ -14,6 +14,7 @@
 // prove the rule fires.
 declare module '@env' {
   export const SHOW_UNREADY_FEATURE: string | undefined;
+  export const SCREENSHOT_MODE: string | undefined;
 }
 
 // EXPECT-FINDING
@@ -31,3 +32,16 @@ export const isFeatureVisible = (): boolean => SHOW_UNREADY_FEATURE === 'true';
 // `rules/fixtures/` into `e2e/`, which is what the rule's second arm matches
 // regardless of which member is imported.
 export const runSeed = (): unknown => buildScreenshotDataset('uk');
+
+// EXPECT-FINDING
+import { SCREENSHOT_MODE } from '@env';
+
+export const isCaptureBuild = (): boolean => SCREENSHOT_MODE === 'true';
+
+export const lazySeed = async (): Promise<void> => {
+  const { buildScreenshotDataset } =
+    // EXPECT-FINDING
+    require('../../e2e/screenshot/seed/screenshot-seed') as typeof import('../../e2e/screenshot/seed/screenshot-seed');
+
+  buildScreenshotDataset('uk');
+};
