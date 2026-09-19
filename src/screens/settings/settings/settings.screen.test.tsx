@@ -226,15 +226,17 @@ describe('SettingsScreen', () => {
     ]);
   });
 
-  it('insets the Import/Export divider to align with the row LABEL, not edge-to-edge (device-feedback-round-4 item 6)', async () => {
+  it("insets the Import/Export divider to the row LABEL's first letter, past the icon (device-feedback round-4 item 6, round-8)", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
     const marginLeft = StyleSheet.flatten(divider.props.style).marginLeft;
 
-    // Aligned with the label — the leading icon's own width (the default
-    // `SettingsRow` icon size) plus the icon-to-label gap, NOT 0 (edge-to-edge).
-    expect(marginLeft).toBe(darkTheme.iconSizes.body + darkTheme.spacing(3));
+    // Lands on the label's first letter: it must clear the row's OWN left
+    // padding, then the leading icon's width, then the icon-to-label gap — the
+    // same three spans the row lays the label out behind. Omitting the row's
+    // own padding lands it on the icon's RIGHT EDGE instead (round-8 fix).
+    expect(marginLeft).toBe(darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3));
   });
 
   it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding (round-7 device feedback item 1)", async () => {

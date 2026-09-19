@@ -46,6 +46,20 @@ describe('SettingsRow', () => {
     expect(chevron.props.accessibilityElementsHidden).toBe(true);
   });
 
+  // Round-8 device feedback: the round-7 shrink left the (now title-sized,
+  // shorter) chevron top-aligned by the header's `flex-start`, so it rode
+  // ABOVE the title's center. Its own box now carries the row's first-line
+  // height (the leading icon's size) and centers the glyph, so it lands on the
+  // title's center while `flex-start` still keeps it on the first line on wrap.
+  it("centers the trailing chevron on the title's first line, not top-aligned above it", async () => {
+    const { getByTestId } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
+    const chevron = getByTestId('settings-row-chevron', { includeHiddenElements: true });
+    const chevronStyle = StyleSheet.flatten(chevron.props.style);
+
+    expect(chevronStyle.height).toBe(darkTheme.iconSizes.body);
+    expect(chevronStyle.justifyContent).toBe('center');
+  });
+
   it('calls onPress when a navigating row is pressed', async () => {
     const onPress = jest.fn();
     const { getByText } = await render(<SettingsRow label="Categories" onPress={onPress} />);

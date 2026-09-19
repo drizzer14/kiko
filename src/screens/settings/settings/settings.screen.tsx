@@ -76,10 +76,13 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // card gets for free from its own `Card` padding, since this card's own
   // padding drops to 0 below) so each row reads as a normal native
   // grouped-list row rather than a shorter one squeezed by an outer `Box`
-  // gap. The divider's LEFT inset is the leading icon's own width
-  // (`iconSizes.body`, the default `SettingsRow` icon size) plus the
-  // icon-to-label gap (`theme.spacing(3)`), so it aligns with the row LABEL
-  // rather than running edge-to-edge.
+  // gap. The divider's LEFT inset lands on the row LABEL's first letter, so it
+  // must clear THREE spans, mirroring how the row itself lays the label out:
+  // the row's OWN left `paddingHorizontal` (`theme.spacing(3)`), the leading
+  // icon's width (`iconSizes.body`, the default `SettingsRow` icon size), and
+  // the icon-to-label gap (another `theme.spacing(3)`). Omitting the row's own
+  // padding lands the divider on the icon's RIGHT EDGE instead of the label
+  // (device-feedback round-8).
   //
   // The RIGHT inset (round-7 item 1) terminates the divider at the visible
   // right edge of the trailing ">" glyph, not the row's raw padding: it is
@@ -96,7 +99,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   };
   const dataTransferChevronSize = chevronSize(theme);
   const dataTransferDividerStyle = {
-    marginLeft: theme.iconSizes.body + theme.spacing(3),
+    marginLeft: theme.spacing(3) + theme.iconSizes.body + theme.spacing(3),
     marginRight: theme.spacing(3) + chevronTrailingWhitespace(dataTransferChevronSize, theme),
   };
 

@@ -7,8 +7,10 @@ export const styles = StyleSheet.create((theme) => ({
   // carries no padding or divider of its own.
   header: {
     justifyContent: 'space-between',
-    // Top-align the trailing chevron to the label's FIRST line, not the
-    // label's full (possibly multi-line, once wrapped) height.
+    // Keep the trailing chevron on the label's FIRST line, not centered on the
+    // label's full (possibly multi-line, once wrapped) height. The chevron's
+    // OWN box (`chevron` below) then centers the glyph vertically within that
+    // first line, so `flex-start` here does not make it ride high.
     alignItems: 'flex-start',
   },
   // The leading cluster of a row: icon + label, kept together on the left so
@@ -34,5 +36,16 @@ export const styles = StyleSheet.create((theme) => ({
   // it from crowding a long label that wraps up against it.
   trailing: {
     marginLeft: theme.spacing(3),
+  },
+  // The trailing chevron's own box. The glyph is sized to the title's fontSize
+  // (`settings-row.chevron.ts`), so it is SHORTER than the leading icon and the
+  // title's line box. Without a box of its own it would top-align (header
+  // `flex-start`) and sit ABOVE the title's optical center. Giving the box the
+  // row's first-line height (the leading icon's size, `iconSizes.body`) and
+  // centering the glyph lands it on the title's center; the fixed height keeps
+  // it on the FIRST line when the label wraps.
+  chevron: {
+    height: theme.iconSizes.body,
+    justifyContent: 'center',
   },
 }));
