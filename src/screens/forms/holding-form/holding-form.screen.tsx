@@ -10,7 +10,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
-  creatableHoldingTypesForAccountKind,
+  creatableHoldingTypesForAccount,
   type HoldingType,
   holdingTypes,
   holdingTypesForAccountKind,
@@ -32,7 +32,7 @@ import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
-import { isSyncedHolding } from '../../../holdings/deletable';
+import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import Divider from '../../../design-system/components/divider';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -329,15 +329,24 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // The account this holding is created under; its `kind` constrains which
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
   const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
-  const accountKind = accounts.at(0)?.kind;
+  const account = accounts.at(0);
+  const accountKind = account?.kind;
+  // Whether THIS account is a live sync connection (see `isSyncedAccount` in
+  // `../../../holdings/deletable`) — an unresolved account (query still
+  // loading) is treated as not-yet-synced.
+  const isSynced = account !== undefined && isSyncedAccount(account);
   // The full set of types this account kind may hold — used in EDIT mode so an
   // existing synced (card/jar) row's type still renders read-only.
   const allowedTypes = accountKind ? holdingTypesForAccountKind[accountKind] : holdingTypes;
-  // The types a user may MANUALLY create here: the full set minus the sync-only
-  // types (card/jar under a bank, which Monobank creates itself). The create form
-  // offers only these; edit mode keeps the full set (above).
+  // The types a user may MANUALLY create here: the full set minus whichever
+  // sync-only types THIS account's sync actually owns. A live-synced (Monobank)
+  // bank excludes both card and jar (its sync creates them); a non-synced,
+  // statement-import-only bank has no sync to own a card, so card is offered —
+  // jar stays excluded regardless (see `creatableHoldingTypesForAccount`'s
+  // comment). The create form offers only these; edit mode keeps the full set
+  // (above).
   const creatableTypes = accountKind
-    ? creatableHoldingTypesForAccountKind[accountKind]
+    ? creatableHoldingTypesForAccount(accountKind, isSynced)
     : holdingTypes;
   // Create mode offers the manually-creatable subset; edit mode shows the full
   // set (its chip is read-only) so a synced card/jar row still displays.
