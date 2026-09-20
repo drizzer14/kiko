@@ -212,15 +212,6 @@ export const styles = StyleSheet.create((theme) => ({
   scrollBody: {
     flexShrink: 1,
   },
-  // The KeyboardAvoidingView wrapping the body (either branch below): the
-  // direct child of the sheet card that must itself shrink to fit the 66%
-  // cap, the same `flexShrink: 1` `scrollBody`/`box` already carry — without
-  // it a plain KeyboardAvoidingView sizes to its content's natural height,
-  // ignoring the card's own `maxHeight`. Inert with no keyboard shown, so
-  // every sheet with no focusable input inside it is unaffected.
-  keyboardAvoiding: {
-    flexShrink: 1,
-  },
   // The top drag region: the grabber pill (and, when a call site passes one, an
   // optional header node under it) in a hit area the vertical Pan is attached to
   // (and ONLY here, never the scrollable body, so the drag never fights the

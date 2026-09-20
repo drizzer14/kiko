@@ -160,6 +160,21 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
+  it('defaults automaticallyAdjustKeyboardInsets to true so a focused input scrolls clear of the keyboard', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true });
+
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
+  });
+
+  it('forwards automaticallyAdjustKeyboardInsets={false} so a caller can suspend it while a sheet above it can be focused', async () => {
+    const { getByTestId } = await renderScreen({
+      scroll: true,
+      automaticallyAdjustKeyboardInsets: false,
+    });
+
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(false);
+  });
+
   it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {
     const { getByTestId } = await renderScreen({ scroll: true });
 

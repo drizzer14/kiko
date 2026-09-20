@@ -100,10 +100,24 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   disabled,
   hideLabel,
   testID,
+  onOpenChange,
 }) => {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+
+  // DEVICE BUG fix (root cause): a hosting Screen's
+  // `automaticallyAdjustKeyboardInsets` misfires a scroll/inset adjustment
+  // on its OWN background ScrollView when this sheet's search field gets
+  // focus, even though that ScrollView does not contain the responder — and
+  // it never self-corrects. `updateOpen` notifies `onOpenChange` at every
+  // open/close site (synchronously with the state update, so a caller can
+  // gate that prop off before the search field can be focused) instead of
+  // calling `setOpen` directly.
+  const updateOpen = (next: boolean): void => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
 
   // Reset the query each time the sheet closes so a reopen starts fresh
   // rather than replaying the previous search.
@@ -123,12 +137,12 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     // the sheet closed.
     Keyboard.dismiss();
     onSelect(code);
-    setOpen(false);
+    updateOpen(false);
   };
 
   const handleDismiss = (): void => {
     Keyboard.dismiss();
-    setOpen(false);
+    updateOpen(false);
   };
 
   // The trigger's value mirrors the option rows exactly: the currency NAME
@@ -149,7 +163,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         required={required}
         disabled={disabled}
         testID={testID}
-        onPress={() => setOpen(true)}
+        onPress={() => updateOpen(true)}
         leadingText={selected === undefined ? undefined : currencySymbol[selected]}
         value={triggerValue}
         valueTone={selected === undefined ? 'textSecondary' : 'textPrimary'}

@@ -24,6 +24,7 @@ const Screen: FC<ScreenProps> = ({
   bleedTop = false,
   scrollableRef,
   onContentSizeChange,
+  automaticallyAdjustKeyboardInsets = true,
 }) => {
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
@@ -74,18 +75,18 @@ const Screen: FC<ScreenProps> = ({
           // one inset clears BOTH the keyboard and the accessory (no
           // hand-rolled accessory-height math). Harmlessly ignored on Android.
           //
-          // KNOWN LIMITATION: this prop has no per-responder scoping — it
-          // reacts to ANY focused input, including one hosted inside a
-          // BottomSheet floating above this ScrollView (CurrencyField's
-          // search TextField is the one such case in the app today), which
-          // can still visibly scroll this background form while the sheet is
-          // open. `BottomSheet` itself now wraps its own body in a
-          // `KeyboardAvoidingView` (see `bottom-sheet.component.tsx`) so the
-          // sheet's own content repositions correctly; if the background
-          // form is ever seen to shift too, the fix is to gate this prop off
-          // for the duration the sheet is open (thread a boolean through
-          // `ScreenProps`), not attempted here.
-          automaticallyAdjustKeyboardInsets={true}
+          // This prop has no per-responder scoping — it reacts to ANY
+          // focused input, including one hosted inside a BottomSheet
+          // floating above this ScrollView (CurrencyField's search
+          // TextField is the one such case in the app today), which
+          // misfires a scroll/inset adjustment on THIS background
+          // ScrollView for a responder it does not even contain, and never
+          // self-corrects. `automaticallyAdjustKeyboardInsets` is therefore
+          // a real escape hatch (see `ScreenProps`): a caller that hosts
+          // such a sheet gates it off for the duration the sheet is open
+          // (`CurrencyField`'s `onOpenChange`; see account-form/holding-form)
+          // and back on once it closes.
+          automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
           // RN's `scrollTo` clamps a programmatic negative y back to `0`, so the
           // scroll-to-top hook's negative target — more negative than that `0`
           // top edge — would be clamped away and the collapsed large title would

@@ -67,4 +67,16 @@ export type ScreenProps = {
   // catch an over-large programmatic target. Only meaningful in `scroll`
   // mode; ignored otherwise.
   onContentSizeChange?: (contentWidth: number, contentHeight: number) => void;
+  // Escape hatch for the `scroll`-mode ScrollView's `automaticallyAdjustKeyboardInsets`
+  // (see `screen.component.tsx`). Defaults to `true`, its long-standing
+  // behavior. That prop has no per-responder scoping — it reacts to ANY
+  // focused input, including one hosted inside a BottomSheet floating above
+  // this ScrollView (e.g. `CurrencyField`'s search TextField), which
+  // misfires a scroll/inset adjustment on THIS background ScrollView for a
+  // responder it does not even contain, and never self-corrects. A caller
+  // that hosts such a sheet flips this to `false` for the duration the
+  // sheet is open (e.g. via `CurrencyField`'s `onOpenChange`), then back to
+  // `true` once it closes. Only meaningful in `scroll` mode; ignored
+  // otherwise.
+  automaticallyAdjustKeyboardInsets?: boolean;
 };

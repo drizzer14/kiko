@@ -20,6 +20,16 @@
 //   stable mutable box, `useAnimatedStyle` evaluates its factory once per render,
 //   the animation helpers resolve to their target value, and `runOnJS` returns
 //   the function unwrapped so a JS-thread callback just runs.
+// - `useAnimatedKeyboard` — `BottomSheet`'s keyboard-aware lift. Returns a
+//   single MODULE-SCOPED `mockKeyboardHeight` box (exported below) rather than
+//   a fresh one per call, so a test can mutate `.value` directly to simulate
+//   the keyboard being shown, then assert the sheet's animated style reacts —
+//   the same "expose a mutable flag for a describe block to flip" pattern
+//   `bottom-sheet.component.test.tsx` already uses for
+//   `liquidGlass.isLiquidGlassSupported`. Defaults to `0` (no keyboard),
+//   matching the real hook's real-device default; a test that mutates it must
+//   reset it back to `0` afterwards so the change never leaks into another
+//   test in the same file.
 //
 // Any other accessed member still resolves to a no-op through the Proxy, so a
 // stray reanimated import can never crash a test.
@@ -41,12 +51,17 @@ const withTiming = (toValue) => toValue;
 const runOnJS = (fn) => fn;
 const noop = () => undefined;
 
+const mockKeyboardHeight = { value: 0 };
+const useAnimatedKeyboard = () => ({ height: mockKeyboardHeight, state: { value: 0 } });
+
 const base = {
   __esModule: true,
   useAnimatedRef,
   useSharedValue,
   useScrollOffset,
   useAnimatedStyle,
+  useAnimatedKeyboard,
+  mockKeyboardHeight,
   withSpring,
   withTiming,
   runOnJS,

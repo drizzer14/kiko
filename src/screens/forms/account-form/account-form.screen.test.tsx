@@ -189,6 +189,23 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
+  // DEVICE BUG fix (root cause): the currency sheet's search field lives
+  // inside a Modal above this Screen's background ScrollView, which
+  // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
+  // it does not contain. `CurrencyField`'s `onOpenChange` must gate that
+  // prop off for exactly the window the sheet is open.
+  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+    const { getByTestId, getByText } = await renderForm();
+
+    await fireEvent.press(getByText('Cash'));
+
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
+
+    await fireEvent.press(getByTestId('account-currency-field'));
+
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+  });
+
   it('separates the color picker and the synchronization sub-heading with form dividers', async () => {
     // Default create mode is a bank account, so the "Synchronization" sub-heading
     // renders: one divider sits after the color picker and one before that

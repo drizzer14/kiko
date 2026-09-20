@@ -145,6 +145,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // reason stays hidden until the user actually tries to Connect or Save with
   // an empty name, rather than showing as a standing hint the whole time.
   const [showNameError, setShowNameError] = useState(false);
+  // DEVICE BUG fix (root cause): while the currency sheet's search field can
+  // be focused, this screen's background ScrollView must NOT react to the
+  // keyboard's frame change — it does not contain that responder, but
+  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
+  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
+  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   // The scrollable content root and the name field's own wrapper — passed to
   // `scrollToField` so a blocked Connect/Save (empty name) scrolls the field
@@ -387,6 +393,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={(_width, height) => {
         contentHeightRef.current = height;
       }}
@@ -451,6 +458,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               selected={currency}
               onSelect={setCurrency}
               options={fiatCurrencyOptions}
+              onOpenChange={setIsCurrencySheetOpen}
               testID="account-currency-field"
             />
 

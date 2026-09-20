@@ -366,6 +366,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // an edit seeds the real type from the row.
   const [type, setType] = useState<HoldingType>('card');
   const [currency, setCurrency] = useState<Currency>('UAH');
+  // DEVICE BUG fix (root cause): while the currency sheet's search field can
+  // be focused, this screen's background ScrollView must NOT react to the
+  // keyboard's frame change — it does not contain that responder, but
+  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
+  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
+  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   const [openingBalance, setOpeningBalance] = useState('');
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (holdingTypeSymbol[type]) and
@@ -862,6 +868,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={(_width, height) => {
         contentHeightRef.current = height;
       }}
@@ -917,6 +924,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           selected={currency}
           onSelect={setCurrency}
           disabled={isEdit}
+          onOpenChange={setIsCurrencySheetOpen}
           testID="holding-currency-field"
         />
 

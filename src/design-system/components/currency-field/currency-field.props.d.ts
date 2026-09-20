@@ -26,4 +26,12 @@ export type CurrencyFieldProps = {
   disabled?: boolean;
   /** testID for the trigger, so a flow can open the sheet. */
   testID?: string;
+  /**
+   * Notifies a hosting Screen when this field's sheet opens or closes, so it
+   * can suspend its own `automaticallyAdjustKeyboardInsets` while the sheet's
+   * search field can be focused — that background ScrollView otherwise
+   * misfires a scroll/inset adjustment for a responder it does not even
+   * contain (see `screen.component.tsx`).
+   */
+  onOpenChange?: (open: boolean) => void;
 };

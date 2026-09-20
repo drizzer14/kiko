@@ -1,16 +1,13 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, useEffect } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -18,6 +15,7 @@ import Box from '../box';
 import GlassSurface from '../glass-surface';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
+import { resolveKeyboardAwareMaxHeight } from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { styles } from './bottom-sheet.styles';
 
@@ -134,8 +132,31 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // dismiss threshold (a fraction of it). Seeded to the resolved cap so the
   // very first drag — before onLayout has fired — still has a sane threshold.
   const sheetHeight = useSharedValue(resolvedMaxHeight);
+  // DEVICE BUG fix: a `KeyboardAvoidingView` around the sheet's OWN body
+  // (attempt B) does nothing for a Modal-anchored sheet like this one — a KAV
+  // repositions its own subtree within its PARENT's layout, but this sheet's
+  // parent is the Modal's own transparent root, which never resizes for the
+  // keyboard, so the KAV had zero effect on device. What actually needs to
+  // move is the CARD itself: `useAnimatedKeyboard()` exposes the live
+  // keyboard height as a shared value, so the card's own translateY (already
+  // driven by the drag gesture below) also subtracts it, lifting the whole
+  // sheet — its top-pinned search field AND its own shrinking result list —
+  // clear of the keyboard. `resolveKeyboardAwareMaxHeight` shrinks the 66%
+  // cap by the same live height so the lifted sheet still fits above the
+  // keyboard instead of merely sliding up while staying capped against the
+  // FULL (keyboard-occluded) window height. Both terms are exactly 0 with no
+  // keyboard shown, so every one of the 12+ keyboard-less sheet consumers
+  // (date-field, filter-menu, confirm-sheet, etc.) sees no layout change at
+  // all — see `bottom-sheet.keyboard.ts`'s own no-op doc.
+  const keyboard = useAnimatedKeyboard();
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.value - keyboard.height.value }],
+    maxHeight: resolveKeyboardAwareMaxHeight(
+      windowHeight,
+      keyboard.height.value,
+      MAX_HEIGHT_RATIO,
+      maxHeight,
+    ),
   }));
 
   // A reopened sheet must start at rest even if it was left mid-drag when it
@@ -172,39 +193,19 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // its overflow; `scrollable={false}` opts a sheet that needs its own
   // pinned header/footer/ref-controlled scroll region out of this (see the
   // prop's own docs).
-  // DEVICE BUG fix: CurrencyField's search TextField is the app's only
-  // focusable input hosted inside a sheet, and the sheet had no keyboard
-  // handling of its own — only `Screen`'s ScrollView (behind the sheet) reacts
-  // to the keyboard. Wrapping the body in a `KeyboardAvoidingView` lets a
-  // sheet with a live input reposition its OWN content above the keyboard.
-  // `behavior="padding"` is a no-op with no keyboard shown, so every other
-  // input-less sheet is unaffected.
-  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
   const body = scrollable ? (
-    <KeyboardAvoidingView
-      behavior={keyboardBehavior}
-      style={styles.keyboardAvoiding}
-      testID={testID && `${testID}-keyboard`}
+    <ScrollView
+      style={styles.scrollBody}
+      contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
+      showsVerticalScrollIndicator={false}
+      testID={testID && `${testID}-scroll`}
     >
-      <ScrollView
-        style={styles.scrollBody}
-        contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
-        showsVerticalScrollIndicator={false}
-        testID={testID && `${testID}-scroll`}
-      >
-        {children}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {children}
+    </ScrollView>
   ) : (
-    <KeyboardAvoidingView
-      behavior={keyboardBehavior}
-      style={styles.keyboardAvoiding}
-      testID={testID && `${testID}-keyboard`}
-    >
-      <Box gap={gap} style={styles.box}>
-        {children}
-      </Box>
-    </KeyboardAvoidingView>
+    <Box gap={gap} style={styles.box}>
+      {children}
+    </Box>
   );
 
   return (

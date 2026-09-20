@@ -232,17 +232,11 @@ describe('BottomSheet', () => {
     expect(getByText('sheet body')).toBeTruthy();
 
     // The glass background paints BEHIND the grabber and body — it is the
-    // first child of the sheet card, in render order. The body itself is now
-    // wrapped in a KeyboardAvoidingView (see the "keyboard avoidance" describe
-    // block below), so the ScrollView is nested inside it rather than a
-    // direct sibling.
+    // first child of the sheet card, in render order.
     const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
     const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
-    const keyboardAvoiding = getByTestId(`${SHEET_TEST_ID}-keyboard`);
-    expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, keyboardAvoiding]);
-
     const scrollView = getByTestId(`${SHEET_TEST_ID}-scroll`);
-    expect(within(keyboardAvoiding).getByTestId(`${SHEET_TEST_ID}-scroll`)).toBe(scrollView);
+    expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
   });
 
   it('labels the scrim as a dismiss button when a backdrop label is given', async () => {
@@ -347,13 +341,12 @@ describe('BottomSheet', () => {
 
       expect(flat.flexShrink).toBe(1);
       // The sheet card lays out exactly three children in order: the glass
-      // background, the top grabber handle, then the KeyboardAvoidingView
-      // wrapping the ScrollView body. The sheet itself still never lays the
-      // call site's children out directly — they live inside that ScrollView.
+      // background, the top grabber handle, then the ScrollView body. The
+      // sheet itself still never lays the call site's children out directly —
+      // they live inside that ScrollView.
       const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
       const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
-      const keyboardAvoiding = getByTestId(`${SHEET_TEST_ID}-keyboard`);
-      expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, keyboardAvoiding]);
+      expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
     });
 
     it('applies the call-site gap to the ScrollView content container, not the sheet card', async () => {
@@ -399,46 +392,56 @@ describe('BottomSheet', () => {
     });
   });
 
-  // DEVICE BUG fix: a sheet hosting a live input (CurrencyField's search
-  // TextField, the ONLY focusable input inside a sheet in this app) had no
-  // keyboard handling of its own, so the sheet's own content never
-  // repositioned above the keyboard. Both the `scrollable` ScrollView branch
-  // and the `scrollable={false}` Box branch wrap their body in a
-  // KeyboardAvoidingView so this is fixed for every sheet, input or not — the
-  // wrapper is inert (a no-op) while no keyboard is shown, which the other
-  // structural tests above prove by still passing unchanged.
-  describe('keyboard avoidance', () => {
-    // `KeyboardAvoidingView` consumes its own `behavior` prop internally
-    // (React Native's implementation destructures it off before spreading the
-    // rest onto the rendered View, so it never appears as a host-node prop) —
-    // asserting real behavior means asserting what `behavior="padding"`
-    // itself DOES: merge `paddingBottom: <keyboard height>` onto the node's
-    // own style (0 here, since no keyboard is shown under test), which only
-    // the `'padding'`/`'height'` cases apply at all. A `behavior` of
-    // `undefined` (the non-iOS path) never adds `paddingBottom`, so finding
-    // it present and `0` proves `'padding'` was actually wired through.
-    it('wraps the scrollable body in a KeyboardAvoidingView using the iOS padding behavior', async () => {
+  // DEVICE BUG fix: a `KeyboardAvoidingView` wrapping the sheet's OWN body
+  // (attempt B) had ZERO effect on device — a KAV repositions its subtree
+  // within its PARENT's layout, but this sheet's parent is the Modal's own
+  // transparent root, which never resizes for the keyboard. The real fix
+  // lifts the CARD itself: `useAnimatedKeyboard()`'s live height feeds both
+  // the card's own `translateY` (so it rises clear of the keyboard) and a
+  // shrunk ratio cap (`resolveKeyboardAwareMaxHeight`, unit-tested on its own
+  // in `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list
+  // still fits entirely above the keyboard rather than merely sliding
+  // upward while capped against the full, keyboard-occluded window height.
+  describe('keyboard-aware lift', () => {
+    afterEach(() => {
+      // Reset the module-scoped mock keyboard height so a mutation in one
+      // test never leaks into the next (see `jest/reanimated-mock.js`).
+      const { mockKeyboardHeight } = jest.requireMock('react-native-reanimated') as {
+        mockKeyboardHeight: { value: number };
+      };
+      mockKeyboardHeight.value = 0;
+    });
+
+    it('is a no-op with no keyboard shown — no translateY offset, and the plain 66% ratio cap', async () => {
       const { getByTestId } = await render(
         <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
           <Text>sheet body</Text>
         </BottomSheet>,
       );
 
-      const flat = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-keyboard`).props.style);
-      expect(flat.paddingBottom).toBe(0);
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.transform).toEqual([{ translateY: 0 }]);
+      expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
     });
 
-    it('wraps the scrollable={false} body in a KeyboardAvoidingView too', async () => {
+    it('lifts the card above the keyboard by its live height, and shrinks the ratio cap to match', async () => {
+      const { mockKeyboardHeight } = jest.requireMock('react-native-reanimated') as {
+        mockKeyboardHeight: { value: number };
+      };
+      const keyboardHeight = 250;
+      mockKeyboardHeight.value = keyboardHeight;
+
       const { getByTestId } = await render(
-        <BottomSheet visible onDismiss={jest.fn()} scrollable={false} testID={SHEET_TEST_ID}>
+        <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
           <Text>sheet body</Text>
         </BottomSheet>,
       );
 
-      const keyboardAvoiding = getByTestId(`${SHEET_TEST_ID}-keyboard`);
-      const flat = StyleSheet.flatten(keyboardAvoiding.props.style);
-      expect(flat.paddingBottom).toBe(0);
-      expect(within(keyboardAvoiding).getByText('sheet body')).toBeTruthy();
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.transform).toEqual([{ translateY: -keyboardHeight }]);
+      expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - keyboardHeight) * MAX_HEIGHT_RATIO);
     });
   });
 

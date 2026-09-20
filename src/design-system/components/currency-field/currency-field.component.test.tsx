@@ -150,6 +150,64 @@ describe('CurrencyField', () => {
     dismissSpy.mockRestore();
   });
 
+  // DEVICE BUG (root cause, see debugger findings): a hosting Screen's
+  // `automaticallyAdjustKeyboardInsets` misfires on the sheet's search field
+  // focus even though it does not contain that responder. `onOpenChange`
+  // lets the host gate that prop off for exactly the window the sheet is
+  // open, so it must fire synchronously with every open/close transition.
+  it('calls onOpenChange with true when the sheet opens', async () => {
+    const onOpenChange = jest.fn();
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        onOpenChange={onOpenChange}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('calls onOpenChange with false when a currency is selected', async () => {
+    const onOpenChange = jest.fn();
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        onOpenChange={onOpenChange}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+    onOpenChange.mockClear();
+    await search(utils, 'USD');
+    await fireEvent.press(utils.getByTestId('currency-option-USD'));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('calls onOpenChange with false when the sheet is dismissed without a selection', async () => {
+    const onOpenChange = jest.fn();
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        onOpenChange={onOpenChange}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+    onOpenChange.mockClear();
+    await fireEvent.press(utils.getByTestId('currency-picker-sheet-backdrop'));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('does not open the sheet when disabled', async () => {
     const utils = await render(
       <CurrencyField
