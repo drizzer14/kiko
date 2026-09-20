@@ -33,6 +33,28 @@ import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
 // each used to hand-roll their own, looser cap.
 const MAX_HEIGHT_RATIO = 0.66;
 
+// The iOS system keyboard's own top corners are rounded (a redesigned,
+// continuous-corner keyboard shape, iOS 26+) — a curve the keyboard itself
+// draws, not something this app controls. The sheet's card, by contrast, has
+// a perfectly FLAT bottom edge (see `bottom-sheet.styles.ts`'s `sheet`), so
+// once that flat edge lands exactly at the top of the keys
+// (`resolveKeyboardLift`), the keyboard's own corner curve exposes a small
+// triangular sliver of whatever sits BEHIND both of them at the top-left/
+// top-right corners — the dark modal scrim, not the sheet's glass, reading as
+// two small black notches (device bug, on-device review). Folding this extra
+// distance into the SAME "accessory height" both `resolveKeyboardLift` and
+// `resolveKeyboardAwareBottomPadding` already take (see `sheetAnimatedStyle`
+// below) lifts the sheet LESS (its bottom edge now extends this far PAST the
+// top of the keys, behind them, where its own glass fills the notch) while
+// growing the bottom padding by the exact same amount, so the content's own
+// position — and the symmetric gap around the Done pill
+// (`resolveKeyboardAwareBottomPadding`'s own doc) — stays pixel-identical.
+// Measured on an iOS 27 sim Release build (`Maestro` view-hierarchy dump plus
+// a pixel-level fit of the corner curve, ~80px on a 3x device -> ~27pt);
+// rounded up to a clean spacing step for a small safety margin so the curve
+// is always fully covered rather than landing exactly on its edge.
+export const KEYBOARD_CORNER_OVERLAP = 28;
+
 // The spring the sheet settles back on when a drag is released short of the
 // dismiss threshold: a snappy, non-bouncy return to rest (translateY 0).
 const SHEET_SPRING = { damping: 20, stiffness: 220 } as const;
@@ -215,7 +237,15 @@ const BottomSheet: FC<BottomSheetProps> = ({
     };
   }, [keyboardHeight, windowHeight]);
   const sheetAnimatedStyle = useAnimatedStyle(() => {
-    const keyboardLift = resolveKeyboardLift(keyboardHeight.value, KEYBOARD_ACCESSORY_HEIGHT);
+    // `KEYBOARD_CORNER_OVERLAP` folds into the SAME "accessory height" both
+    // `resolveKeyboardLift` and `resolveKeyboardAwareBottomPadding` take (see
+    // that constant's own doc): it lifts the sheet less, extending its glass
+    // this far PAST the top of the keys to cover the keyboard's own rounded
+    // top corners, while growing the bottom padding by the exact same amount
+    // so the content's position (and the symmetric Done-pill gap) is
+    // unaffected.
+    const effectiveAccessoryHeight = KEYBOARD_ACCESSORY_HEIGHT + KEYBOARD_CORNER_OVERLAP;
+    const keyboardLift = resolveKeyboardLift(keyboardHeight.value, effectiveAccessoryHeight);
 
     return {
       transform: [{ translateY: translateY.value - keyboardLift }],
@@ -229,7 +259,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
         sheetBasePadding,
         insets.bottom,
         keyboardHeight.value,
-        KEYBOARD_ACCESSORY_HEIGHT,
+        effectiveAccessoryHeight,
       ),
     };
   });

@@ -301,6 +301,23 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
+  // DEVICE BUG fix (root cause, same as the account/holding forms —
+  // `holding-form.screen.test.tsx`'s own test of this name): the currency
+  // sheet's search field lives inside a Modal above this Screen's background
+  // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
+  // for a responder it does not contain. This screen's base-currency
+  // `CurrencyField` had no `onOpenChange` wiring at all, so the fix that
+  // already covered the account/holding forms never reached Settings.
+  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
+
+    await fireEvent.press(getByTestId('settings-row-base-currency'));
+
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+  });
+
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
     const navigation = navigationSpy();
     const { getByTestId } = await renderScreen(navigation);

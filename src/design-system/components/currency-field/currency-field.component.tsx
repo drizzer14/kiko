@@ -210,7 +210,18 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
           initialNumToRender={15}
           windowSize={5}
           showsVerticalScrollIndicator={false}
+          // DEVICE BUG fix: the search TextField above keeps the keyboard up
+          // while this list is on screen, and a FlatList's default
+          // `keyboardShouldPersistTaps` ("never") swallows the FIRST tap on a
+          // row as a keyboard-dismiss instead of delivering it to the row's
+          // `onPress` — a second tap was needed to actually select. "handled"
+          // (the same fix `screen.component.tsx`'s own background ScrollView
+          // already uses) fires the row's `onPress` on the first tap while
+          // still dismissing the keyboard on a tap to an inert area of the
+          // list.
+          keyboardShouldPersistTaps="handled"
           style={styles.scroll}
+          testID="currency-picker-list"
         />
       </BottomSheet>
     </Box>

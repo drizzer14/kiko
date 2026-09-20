@@ -129,6 +129,30 @@ describe('CurrencyField', () => {
     dismissSpy.mockRestore();
   });
 
+  // DEVICE BUG: with the keyboard up (the search field focused), the FIRST
+  // tap on a currency row only dismissed the keyboard — the list's default
+  // `keyboardShouldPersistTaps` ("never") swallows that first tap as a
+  // keyboard-dismiss instead of delivering it to the row's `onPress`, so a
+  // SECOND tap was needed to actually select. "handled" (the same fix
+  // `screen.component.tsx`'s own background ScrollView already uses) fires
+  // the row's `onPress` on the first tap while still dismissing the keyboard
+  // on a tap to an inert area of the list.
+  it('lets a single tap select a currency row while the keyboard is still up', async () => {
+    const utils = await render(
+      <CurrencyField
+        label="Currency"
+        selected="UAH"
+        onSelect={jest.fn()}
+        testID="currency-field"
+      />,
+    );
+    await open(utils);
+
+    expect(utils.getByTestId('currency-picker-list').props.keyboardShouldPersistTaps).toBe(
+      'handled',
+    );
+  });
+
   // Same device bug: dismissing the sheet WITHOUT picking a currency (the
   // scrim/back dismiss) must also drop the keyboard, or a search left focused
   // keeps the background scrolled even after the sheet itself closes.

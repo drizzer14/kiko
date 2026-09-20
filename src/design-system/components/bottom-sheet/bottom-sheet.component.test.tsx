@@ -10,7 +10,7 @@ import { darkTheme } from '../../theme';
 import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import BottomSheet from '.';
-import { SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
+import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
 
 // The global jest/setup.js mock renders LiquidGlassView as a plain View and
 // pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
@@ -456,11 +456,18 @@ describe('BottomSheet', () => {
       </BottomSheet>
     );
 
-    it('lifts the card by the keyboard height MINUS the accessory strip height, and shrinks the ratio cap to match', async () => {
+    // `KEYBOARD_CORNER_OVERLAP` folds into the same "accessory height" as an
+    // extra amount subtracted from the lift (and added to the padding, in the
+    // next test): the sheet's glass extends this far PAST the top of the keys
+    // to cover the keyboard's own rounded top corners (device bug — small
+    // black notches where the sheet's flat corner met the keyboard's curve).
+    const EFFECTIVE_ACCESSORY_HEIGHT = KEYBOARD_ACCESSORY_HEIGHT + KEYBOARD_CORNER_OVERLAP;
+
+    it('lifts the card by the keyboard height MINUS the effective accessory height, and shrinks the ratio cap to match', async () => {
       const { getByTestId, rerender } = await render(renderSheet());
 
       const keyboardHeight = 250;
-      const expectedLift = keyboardHeight - KEYBOARD_ACCESSORY_HEIGHT;
+      const expectedLift = keyboardHeight - EFFECTIVE_ACCESSORY_HEIGHT;
       const willChangeFrame = listeners.get('keyboardWillChangeFrame');
       expect(willChangeFrame).toBeDefined();
       willChangeFrame?.({
@@ -494,11 +501,13 @@ describe('BottomSheet', () => {
     // carries its own fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
     // `SHEET_PADDING_STEP` token as `SHEET_BASE_PADDING` here) beneath its
     // last row, which stacks UNDER this outer padding — subtracting it here
-    // cancels that stack so the two together total exactly the accessory
-    // height, landing the content flush with the strip's own top edge (see
-    // `resolveKeyboardAwareBottomPadding`'s own doc for the full gap-symmetry
-    // reasoning).
-    it('grows the sheet padding to the accessory strip height minus the base step while the keyboard is shown', async () => {
+    // cancels that stack so the two together total exactly the (effective)
+    // accessory height, landing the content flush with the strip's own top
+    // edge (see `resolveKeyboardAwareBottomPadding`'s own doc for the full
+    // gap-symmetry reasoning). `KEYBOARD_CORNER_OVERLAP` on top of the base
+    // accessory height keeps the corner-notch fix (previous test) from
+    // shifting the content's own position at all.
+    it('grows the sheet padding to the effective accessory height minus the base step while the keyboard is shown', async () => {
       const { getByTestId, rerender } = await render(renderSheet());
 
       listeners.get('keyboardWillChangeFrame')?.({
@@ -509,7 +518,7 @@ describe('BottomSheet', () => {
 
       const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
-      expect(sheetStyle.paddingBottom).toBe(KEYBOARD_ACCESSORY_HEIGHT - SHEET_BASE_PADDING);
+      expect(sheetStyle.paddingBottom).toBe(EFFECTIVE_ACCESSORY_HEIGHT - SHEET_BASE_PADDING);
     });
 
     it('resets the lift back to zero when the keyboard hides', async () => {
