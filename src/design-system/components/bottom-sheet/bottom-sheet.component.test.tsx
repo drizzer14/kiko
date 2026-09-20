@@ -7,6 +7,7 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import { darkTheme } from '../../theme';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import BottomSheet from '.';
 import { SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
@@ -455,10 +456,11 @@ describe('BottomSheet', () => {
       </BottomSheet>
     );
 
-    it('lifts the card above the keyboard by its live height, and shrinks the ratio cap to match', async () => {
+    it('lifts the card by the keyboard height MINUS the accessory strip height, and shrinks the ratio cap to match', async () => {
       const { getByTestId, rerender } = await render(renderSheet());
 
       const keyboardHeight = 250;
+      const expectedLift = keyboardHeight - KEYBOARD_ACCESSORY_HEIGHT;
       const willChangeFrame = listeners.get('keyboardWillChangeFrame');
       expect(willChangeFrame).toBeDefined();
       willChangeFrame?.({
@@ -473,17 +475,30 @@ describe('BottomSheet', () => {
 
       const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
-      expect(sheetStyle.transform).toEqual([{ translateY: -keyboardHeight }]);
-      expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - keyboardHeight) * MAX_HEIGHT_RATIO);
+      // `endCoordinates` includes the keyboard's own `InputAccessoryView` (the
+      // floating "Done" pill strip) sitting above the real keys — lifting by
+      // the FULL keyboard height would land the sheet's bottom edge at the
+      // TOP of that strip instead of the top of the keys, leaving the strip's
+      // transparent container over the dark modal scrim (the black-band bug,
+      // builds 17/18). See `resolveKeyboardLift`.
+      expect(sheetStyle.transform).toEqual([{ translateY: -expectedLift }]);
+      expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - expectedLift) * MAX_HEIGHT_RATIO);
     });
 
-    // VISUAL fix (build 18): the bottom safe-area inset stacked on top of the
-    // sheet's own base padding is redundant once the keyboard covers the home
-    // indicator — confirmed on-device to read as an oversized black band
-    // between the sheet's last row and the keyboard's floating Done pill (see
-    // `bottom-sheet.component.tsx`'s own doc comment). Dropping it leaves only
-    // the base step while the keyboard is up.
-    it('drops the redundant bottom safe-area inset from the sheet padding while the keyboard is shown', async () => {
+    // VISUAL fix (build 19): build 18 dropped the bottom safe-area inset,
+    // leaving only the base padding step — the wrong direction. The sheet's
+    // bottom edge now lands at the BOTTOM of the accessory strip
+    // (`resolveKeyboardLift`), so the strip's own height sits BEHIND the
+    // sheet's last content row. Padding set to the FULL accessory height
+    // (first pass) still read wrong on device: every sheet's content ALSO
+    // carries its own fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
+    // `SHEET_PADDING_STEP` token as `SHEET_BASE_PADDING` here) beneath its
+    // last row, which stacks UNDER this outer padding — subtracting it here
+    // cancels that stack so the two together total exactly the accessory
+    // height, landing the content flush with the strip's own top edge (see
+    // `resolveKeyboardAwareBottomPadding`'s own doc for the full gap-symmetry
+    // reasoning).
+    it('grows the sheet padding to the accessory strip height minus the base step while the keyboard is shown', async () => {
       const { getByTestId, rerender } = await render(renderSheet());
 
       listeners.get('keyboardWillChangeFrame')?.({
@@ -494,7 +509,7 @@ describe('BottomSheet', () => {
 
       const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
-      expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING);
+      expect(sheetStyle.paddingBottom).toBe(KEYBOARD_ACCESSORY_HEIGHT - SHEET_BASE_PADDING);
     });
 
     it('resets the lift back to zero when the keyboard hides', async () => {

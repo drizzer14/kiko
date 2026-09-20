@@ -1,10 +1,36 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+import { darkTheme } from '../../theme';
+
 // The Done pill's minimum height (and tap target) — the iOS HIG 44pt minimum
 // touch target (`kiko-design-system`'s "Touch targets" HIG axis), the same
 // floor `button.styles.ts`'s `COMPACT_MIN_HEIGHT` and `bottom-sheet.styles.ts`'s
-// `GRABBER_REGION_MIN_HEIGHT` restore for their own controls.
+// `GRABBER_REGION_MIN_HEIGHT` restore for their own controls. Also the pill's
+// actual rendered height, not just its floor: its only content is the single
+// short `t('common.done')` label, well under 44pt tall, so `minHeight` is what
+// binds — see `KEYBOARD_ACCESSORY_HEIGHT` below, which relies on this being
+// the pill's real height, not merely a lower bound.
 const DONE_PILL_MIN_SIZE = 44;
+
+// The accessory container's own top/bottom padding step (`accessoryContainer`
+// below applies it via `paddingVertical`, i.e. both edges) — pulled out so
+// `KEYBOARD_ACCESSORY_HEIGHT` derives from the SAME token the container
+// itself uses, rather than a second, drifting copy of "2".
+const ACCESSORY_VERTICAL_PADDING_STEP = 2;
+
+// The accessory's total on-screen height: the Done pill's own height
+// (`DONE_PILL_MIN_SIZE`) plus the container's top AND bottom padding
+// (`ACCESSORY_VERTICAL_PADDING_STEP`, doubled for both edges). Exported for
+// `BottomSheet` (`bottom-sheet.component.tsx` / `bottom-sheet.keyboard.ts`)
+// to lift its sheet to the BOTTOM of this strip — the real top of the
+// keyboard's keys — rather than the strip's top, which left the dark modal
+// scrim showing through the strip's own transparent container as a black
+// band (device bug, builds 17/18). A statically-known constant, not an
+// `onLayout` measurement, because both of its inputs are themselves fixed
+// design tokens rather than measured/dynamic content (see `DONE_PILL_MIN_SIZE`'s
+// own doc for why the pill's height is exactly its floor).
+export const KEYBOARD_ACCESSORY_HEIGHT =
+  DONE_PILL_MIN_SIZE + 2 * darkTheme.spacing(ACCESSORY_VERTICAL_PADDING_STEP);
 
 export const styles = StyleSheet.create((theme) => ({
   // The InputAccessoryView host. REDESIGN (2026-09-14): this used to be a
@@ -21,7 +47,7 @@ export const styles = StyleSheet.create((theme) => ({
   accessoryContainer: {
     alignItems: 'flex-end',
     paddingHorizontal: theme.spacing(4),
-    paddingVertical: theme.spacing(2),
+    paddingVertical: theme.spacing(ACCESSORY_VERTICAL_PADDING_STEP),
   },
   // The Done pill itself: a `Pressable` sized to hug its own label (intrinsic
   // width) rather than stretching full width, with comfortable horizontal

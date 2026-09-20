@@ -13,11 +13,13 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
 import GlassSurface from '../glass-surface';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 import {
   resolveKeyboardAwareBottomPadding,
   resolveKeyboardAwareMaxHeight,
+  resolveKeyboardLift,
 } from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
@@ -157,19 +159,34 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // (date-field, filter-menu, confirm-sheet, etc.) sees no layout change at
   // all — see `bottom-sheet.keyboard.ts`'s own no-op doc.
   //
-  // VISUAL fix (build 18): `sheetAnimatedStyle` below ALSO overrides the
-  // card's own `paddingBottom` the same live height drives, via
-  // `resolveKeyboardAwareBottomPadding`. Confirmed on an iOS 27 sim Release
-  // build (real on-screen keyboard, not this environment's default
-  // hardware-keyboard passthrough): the sheet's own bottom padding
-  // (`styles.sheet`'s base step PLUS the bottom safe-area inset) stacks on
-  // top of the lifted sheet unconditionally, even though the keyboard
-  // already covers the home indicator — the inset alone measured 34pt of a
-  // ~58pt empty band between the sheet's last row and the keyboard's
-  // floating Done pill, reading as an oversized black void. Dropping the
-  // inset while `keyboardHeight` is nonzero leaves only the base step (plus
-  // the Done accessory's own small floating gap), a tidy, intentional-
-  // looking spacer instead. Again a no-op with no keyboard shown.
+  // VISUAL fix (build 19): `endCoordinates` (what `keyboardHeight` reads)
+  // covers the WHOLE keyboard frame on iOS, including the attached
+  // `InputAccessoryView` — the floating "Done" pill strip
+  // (`use-keyboard-done-accessory.tsx`) rendered directly above the real
+  // keys. Lifting the sheet by that FULL height (builds 17/18) put the
+  // sheet's own bottom edge at the TOP of the accessory strip, leaving the
+  // strip's own transparent container sitting between the sheet and the
+  // keys — the dark modal scrim behind the sheet showed straight through it
+  // as a solid black band. `resolveKeyboardLift` lifts by the keys' own
+  // height instead (the raw keyboard height minus the accessory's fixed
+  // height, `KEYBOARD_ACCESSORY_HEIGHT`), landing the sheet's bottom edge at
+  // the BOTTOM of the strip — the real top of the keys — so the accessory now
+  // floats directly over the sheet's own glass. `resolveKeyboardAwareMaxHeight`
+  // and `sheetAnimatedStyle`'s `paddingBottom` (via
+  // `resolveKeyboardAwareBottomPadding`) both take this SAME lift/accessory
+  // height so the cap and the padding never drift out of sync with the lift:
+  // the padding grows to the accessory's own height MINUS `sheetBasePadding`
+  // (build 18 instead dropped the bottom safe-area inset — the wrong
+  // direction; a first build-19 pass then set it to the FULL accessory
+  // height, which still read wrong — every sheet's content carries its own
+  // fixed bottom buffer, the SAME base-padding token, stacked underneath this
+  // one, so subtracting it here is what makes the gap above the Done pill
+  // match its own fixed gap below to the keys — confirmed on an iOS 27 sim
+  // Release build; see `resolveKeyboardAwareBottomPadding`'s own doc for the
+  // full derivation). Both reduce to a no-op with no keyboard shown
+  // (`keyboardHeight` 0 -> `resolveKeyboardLift` 0), so every one of the 12+
+  // keyboard-less sheet consumers (date-field, filter-menu, confirm-sheet,
+  // etc.) sees no layout change at all.
   //
   // CRASH fix: this used to read reanimated's own `useAnimatedKeyboard()`,
   // whose native observer (`REAKeyboardEventObserver`) reaches for
@@ -197,20 +214,25 @@ const BottomSheet: FC<BottomSheetProps> = ({
       willHide.remove();
     };
   }, [keyboardHeight, windowHeight]);
-  const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value - keyboardHeight.value }],
-    maxHeight: resolveKeyboardAwareMaxHeight(
-      windowHeight,
-      keyboardHeight.value,
-      MAX_HEIGHT_RATIO,
-      maxHeight,
-    ),
-    paddingBottom: resolveKeyboardAwareBottomPadding(
-      sheetBasePadding,
-      insets.bottom,
-      keyboardHeight.value,
-    ),
-  }));
+  const sheetAnimatedStyle = useAnimatedStyle(() => {
+    const keyboardLift = resolveKeyboardLift(keyboardHeight.value, KEYBOARD_ACCESSORY_HEIGHT);
+
+    return {
+      transform: [{ translateY: translateY.value - keyboardLift }],
+      maxHeight: resolveKeyboardAwareMaxHeight(
+        windowHeight,
+        keyboardLift,
+        MAX_HEIGHT_RATIO,
+        maxHeight,
+      ),
+      paddingBottom: resolveKeyboardAwareBottomPadding(
+        sheetBasePadding,
+        insets.bottom,
+        keyboardHeight.value,
+        KEYBOARD_ACCESSORY_HEIGHT,
+      ),
+    };
+  });
 
   // A reopened sheet must start at rest even if it was left mid-drag when it
   // dismissed (the Modal keeps this subtree mounted while hidden), so snap the
