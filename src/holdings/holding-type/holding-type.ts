@@ -49,13 +49,30 @@ export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
 export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
   type === 'term_deposit' || type === 'bond';
 
-// The holding types a user may MANUALLY CREATE under each account kind: the
-// kind's full set minus the sync-only types above. For a bank this drops card
-// and jar, leaving term_deposit and bond; cash and crypto are unchanged (their
-// single type is not sync-only). Derived from the two maps above so the rule has
-// one source of truth.
-export const creatableHoldingTypesForAccountKind: Record<AccountKind, readonly HoldingType[]> = {
-  bank: holdingTypesForAccountKind.bank.filter((type) => !isSyncOnlyHoldingType(type)),
-  cash: holdingTypesForAccountKind.cash.filter((type) => !isSyncOnlyHoldingType(type)),
-  crypto: holdingTypesForAccountKind.crypto.filter((type) => !isSyncOnlyHoldingType(type)),
-};
+// The holding types a user may MANUALLY CREATE under a given account kind AND
+// synced state: the kind's full set minus whichever sync-only types that
+// PARTICULAR account has a sync owning.
+//
+// `jar` is ALWAYS excluded, synced or not: it is a Monobank-API-specific
+// concept (a sub-account the Monobank API itself exposes) with no equivalent
+// in a bank statement, so a statement-import account has nothing to name a
+// manually-created "jar" after — keep it sync-only regardless of `isSynced`.
+//
+// `card` is different: it is sync-only ONLY because the Monobank sync
+// pipeline auto-creates one per bank card for a LIVE-CONNECTED account. The 5
+// import-only banks (`isSynced` false — no `accounts.institution`, see
+// `isSyncedAccount` in `src/holdings/deletable/`) have no such sync, so a
+// statement-import user needs to manually create the `card` holding their
+// imported card transactions attach to — dropping it there left no holding
+// type to use at all, which was the bug. `cash`/`crypto` are unaffected by
+// `isSynced`: their single type is never sync-only.
+export const creatableHoldingTypesForAccount = (
+  kind: AccountKind,
+  isSynced: boolean,
+): readonly HoldingType[] =>
+  holdingTypesForAccountKind[kind].filter((type) => {
+    if (type === 'jar') {
+      return false;
+    }
+    return !isSynced || !isSyncOnlyHoldingType(type);
+  });

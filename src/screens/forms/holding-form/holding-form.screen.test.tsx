@@ -55,8 +55,12 @@ jest.mock('@kiko/holdings/repo', () => ({
 let mockAccountKind = 'bank';
 // The account's live sync connection. A holding only counts as synced while its
 // account is still connected: a disconnect KEEPS the holding's sync key (so a
-// reconnect re-adopts the row), so the institution is what decides.
-let mockAccountInstitution: string | null = null;
+// reconnect re-adopts the row), so the institution is what decides. Defaults to
+// a SYNCED (Monobank) account so the many tests below that don't care about
+// sync status keep exercising the pre-existing term_deposit-default bank
+// behavior; only the tests exercising the non-synced (statement-import-only)
+// path override this to null.
+let mockAccountInstitution: string | null = 'monobank';
 // The holding the edit-mode form loads through useLiveQuery. Empty by default
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
@@ -91,7 +95,7 @@ const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 
 beforeEach(() => {
   mockAccountKind = 'bank';
-  mockAccountInstitution = null;
+  mockAccountInstitution = 'monobank';
   mockEditHoldings = [];
 });
 
@@ -989,17 +993,35 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
 });
 
 describe('HoldingFormScreen type chips are constrained by the account kind', () => {
-  it('offers only the manually-creatable bank types (term_deposit, bond), excluding sync-only card and jar', async () => {
+  it('offers only the manually-creatable types (term_deposit, bond) on a SYNCED bank, excluding sync-only card and jar', async () => {
     mockAccountKind = 'bank';
+    mockAccountInstitution = 'monobank';
 
     const screen = await renderScreen();
 
     // Monobank owns card + jar (its sync creates them), so the manual create form
-    // drops both; a bank create offers only term_deposit and bond. Cash and
-    // crypto_asset are forbidden under a bank regardless.
+    // drops both; a synced bank create offers only term_deposit and bond. Cash
+    // and crypto_asset are forbidden under a bank regardless.
     expect(screen.getByText('Deposit')).toBeTruthy();
     expect(screen.getByText('Bond')).toBeTruthy();
     expect(screen.queryByText('Card')).toBeNull();
+    expect(screen.queryByText('Jar')).toBeNull();
+    expect(screen.queryByText('Cash')).toBeNull();
+    expect(screen.queryByText('Crypto Asset')).toBeNull();
+  });
+
+  it('offers Card on a NON-synced (statement-import-only) bank — no sync owns it there — while still excluding Jar', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+
+    const screen = await renderScreen();
+
+    // No Monobank connection means no sync creates a card for this account, so
+    // the user must be able to create one manually. Jar stays sync-only always
+    // (a Monobank-API-specific concept with no import equivalent).
+    expect(screen.getByText('Card')).toBeTruthy();
+    expect(screen.getByText('Deposit')).toBeTruthy();
+    expect(screen.getByText('Bond')).toBeTruthy();
     expect(screen.queryByText('Jar')).toBeNull();
     expect(screen.queryByText('Cash')).toBeNull();
     expect(screen.queryByText('Crypto Asset')).toBeNull();
