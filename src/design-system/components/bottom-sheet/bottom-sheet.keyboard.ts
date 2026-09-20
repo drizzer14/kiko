@@ -29,6 +29,8 @@ export const resolveKeyboardAwareMaxHeight = (
   ratio: number,
   callerMaxHeight: number | undefined,
 ): number => {
+  'worklet';
+
   const dynamicRatioCap = (windowHeight - keyboardHeight) * ratio;
 
   return callerMaxHeight === undefined
