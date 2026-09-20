@@ -477,6 +477,26 @@ describe('BottomSheet', () => {
       expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - keyboardHeight) * MAX_HEIGHT_RATIO);
     });
 
+    // VISUAL fix (build 18): the bottom safe-area inset stacked on top of the
+    // sheet's own base padding is redundant once the keyboard covers the home
+    // indicator — confirmed on-device to read as an oversized black band
+    // between the sheet's last row and the keyboard's floating Done pill (see
+    // `bottom-sheet.component.tsx`'s own doc comment). Dropping it leaves only
+    // the base step while the keyboard is up.
+    it('drops the redundant bottom safe-area inset from the sheet padding while the keyboard is shown', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      listeners.get('keyboardWillChangeFrame')?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - 250 },
+        duration: 250,
+      });
+      await rerender(renderSheet());
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING);
+    });
+
     it('resets the lift back to zero when the keyboard hides', async () => {
       const { getByTestId, rerender } = await render(renderSheet());
 
@@ -491,6 +511,7 @@ describe('BottomSheet', () => {
 
       expect(sheetStyle.transform).toEqual([{ translateY: 0 }]);
       expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
+      expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
     });
   });
 

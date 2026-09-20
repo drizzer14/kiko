@@ -15,9 +15,12 @@ import Box from '../box';
 import GlassSurface from '../glass-surface';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
-import { resolveKeyboardAwareMaxHeight } from './bottom-sheet.keyboard';
+import {
+  resolveKeyboardAwareBottomPadding,
+  resolveKeyboardAwareMaxHeight,
+} from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
-import { styles } from './bottom-sheet.styles';
+import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
 
 // Every sheet caps at 66% of the current window height, no exceptions — a
 // tall sheet scrolls past that point instead of growing over the status bar /
@@ -123,6 +126,11 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // only tighten it further, never loosen it past 66%.
   const capHeight = windowHeight * MAX_HEIGHT_RATIO;
   const resolvedMaxHeight = maxHeight === undefined ? capHeight : Math.min(maxHeight, capHeight);
+  // The sheet's own base bottom-padding step (no safe-area inset) — resolved
+  // once, on the JS thread, from the same token `styles.sheet` uses, so the
+  // keyboard-aware override below (`resolveKeyboardAwareBottomPadding`) never
+  // re-derives it as a second, drifting magic number on the UI thread.
+  const sheetBasePadding = theme.spacing(SHEET_PADDING_STEP);
 
   // The sheet card's live vertical offset, driven by the top grabber's Pan. It
   // rests at 0; a downward drag follows the finger (clamped so it never rises
@@ -148,6 +156,20 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // keyboard shown, so every one of the 12+ keyboard-less sheet consumers
   // (date-field, filter-menu, confirm-sheet, etc.) sees no layout change at
   // all — see `bottom-sheet.keyboard.ts`'s own no-op doc.
+  //
+  // VISUAL fix (build 18): `sheetAnimatedStyle` below ALSO overrides the
+  // card's own `paddingBottom` the same live height drives, via
+  // `resolveKeyboardAwareBottomPadding`. Confirmed on an iOS 27 sim Release
+  // build (real on-screen keyboard, not this environment's default
+  // hardware-keyboard passthrough): the sheet's own bottom padding
+  // (`styles.sheet`'s base step PLUS the bottom safe-area inset) stacks on
+  // top of the lifted sheet unconditionally, even though the keyboard
+  // already covers the home indicator — the inset alone measured 34pt of a
+  // ~58pt empty band between the sheet's last row and the keyboard's
+  // floating Done pill, reading as an oversized black void. Dropping the
+  // inset while `keyboardHeight` is nonzero leaves only the base step (plus
+  // the Done accessory's own small floating gap), a tidy, intentional-
+  // looking spacer instead. Again a no-op with no keyboard shown.
   //
   // CRASH fix: this used to read reanimated's own `useAnimatedKeyboard()`,
   // whose native observer (`REAKeyboardEventObserver`) reaches for
@@ -182,6 +204,11 @@ const BottomSheet: FC<BottomSheetProps> = ({
       keyboardHeight.value,
       MAX_HEIGHT_RATIO,
       maxHeight,
+    ),
+    paddingBottom: resolveKeyboardAwareBottomPadding(
+      sheetBasePadding,
+      insets.bottom,
+      keyboardHeight.value,
     ),
   }));
 

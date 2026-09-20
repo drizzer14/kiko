@@ -1,4 +1,7 @@
-import { resolveKeyboardAwareMaxHeight } from './bottom-sheet.keyboard';
+import {
+  resolveKeyboardAwareBottomPadding,
+  resolveKeyboardAwareMaxHeight,
+} from './bottom-sheet.keyboard';
 
 const WINDOW_HEIGHT = 900;
 const RATIO = 0.66;
@@ -43,5 +46,24 @@ describe('resolveKeyboardAwareMaxHeight', () => {
     expect(resolveKeyboardAwareMaxHeight(WINDOW_HEIGHT, keyboardHeight, RATIO, looserCap)).toBe(
       (WINDOW_HEIGHT - keyboardHeight) * RATIO,
     );
+  });
+});
+
+const BASE_PADDING = 16;
+const BOTTOM_INSET = 34;
+
+describe('resolveKeyboardAwareBottomPadding', () => {
+  it('is a no-op with no keyboard shown, keeping the base step plus the safe-area inset', () => {
+    expect(resolveKeyboardAwareBottomPadding(BASE_PADDING, BOTTOM_INSET, 0)).toBe(
+      BASE_PADDING + BOTTOM_INSET,
+    );
+  });
+
+  it('drops the redundant safe-area inset once the keyboard is shown', () => {
+    expect(resolveKeyboardAwareBottomPadding(BASE_PADDING, BOTTOM_INSET, 300)).toBe(BASE_PADDING);
+  });
+
+  it('drops the inset for any nonzero keyboard height, not just a specific threshold', () => {
+    expect(resolveKeyboardAwareBottomPadding(BASE_PADDING, BOTTOM_INSET, 1)).toBe(BASE_PADDING);
   });
 });

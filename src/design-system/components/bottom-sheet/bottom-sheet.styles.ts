@@ -10,7 +10,10 @@ import { StyleSheet } from 'react-native-unistyles';
 // internal gaps); the filter menu used spacing(4) but dropped the safe-area
 // inset entirely (bug A2) — this one owner adds `insets.bottom` for every sheet
 // so neither drift can recur.
-const SHEET_PADDING_STEP = 4;
+// Exported so the component can resolve the SAME base step for its own
+// keyboard-aware `paddingBottom` override (`resolveKeyboardAwareBottomPadding`
+// in `bottom-sheet.keyboard.ts`) rather than a second, drifting copy of "4".
+export const SHEET_PADDING_STEP = 4;
 
 // An EXTRA buffer kept at the very end of a sheet's own content, on top of
 // `sheet`'s own bottom padding below. Bug A: the Home filter menu (short,
