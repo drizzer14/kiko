@@ -15,21 +15,15 @@
 //   stays at its initial `0`.
 // - the shared-value + animated-style set the shared `BottomSheet` uses for its
 //   drag-down-to-close (`useSharedValue`, `useAnimatedStyle`, `withSpring`,
-//   `runOnJS`, and the animated `View`). The Pan runs `.runOnJS(true)`, so its
-//   handlers are plain JS in both prod and test; here `useSharedValue` returns a
-//   stable mutable box, `useAnimatedStyle` evaluates its factory once per render,
-//   the animation helpers resolve to their target value, and `runOnJS` returns
-//   the function unwrapped so a JS-thread callback just runs.
-// - `useAnimatedKeyboard` — `BottomSheet`'s keyboard-aware lift. Returns a
-//   single MODULE-SCOPED `mockKeyboardHeight` box (exported below) rather than
-//   a fresh one per call, so a test can mutate `.value` directly to simulate
-//   the keyboard being shown, then assert the sheet's animated style reacts —
-//   the same "expose a mutable flag for a describe block to flip" pattern
-//   `bottom-sheet.component.test.tsx` already uses for
-//   `liquidGlass.isLiquidGlassSupported`. Defaults to `0` (no keyboard),
-//   matching the real hook's real-device default; a test that mutates it must
-//   reset it back to `0` afterwards so the change never leaks into another
-//   test in the same file.
+//   `withTiming`, `runOnJS`, and the animated `View`). The Pan runs
+//   `.runOnJS(true)`, so its handlers are plain JS in both prod and test; here
+//   `useSharedValue` returns a stable mutable box, `useAnimatedStyle`
+//   evaluates its factory once per render, the animation helpers resolve to
+//   their target value, and `runOnJS` returns the function unwrapped so a
+//   JS-thread callback just runs. `BottomSheet`'s keyboard-aware lift now
+//   drives its own `useSharedValue(0)` from RN core `Keyboard` events (see
+//   `bottom-sheet.component.tsx`) rather than reanimated's own
+//   `useAnimatedKeyboard`, so this stub no longer needs to expose that hook.
 //
 // Any other accessed member still resolves to a no-op through the Proxy, so a
 // stray reanimated import can never crash a test.
@@ -51,17 +45,12 @@ const withTiming = (toValue) => toValue;
 const runOnJS = (fn) => fn;
 const noop = () => undefined;
 
-const mockKeyboardHeight = { value: 0 };
-const useAnimatedKeyboard = () => ({ height: mockKeyboardHeight, state: { value: 0 } });
-
 const base = {
   __esModule: true,
   useAnimatedRef,
   useSharedValue,
   useScrollOffset,
   useAnimatedStyle,
-  useAnimatedKeyboard,
-  mockKeyboardHeight,
   withSpring,
   withTiming,
   runOnJS,

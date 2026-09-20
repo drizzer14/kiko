@@ -1,5 +1,6 @@
+import type { ReactElement } from 'react';
 import { State } from 'react-native-gesture-handler';
-import { Dimensions, StyleSheet, Text } from 'react-native';
+import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
@@ -396,20 +397,38 @@ describe('BottomSheet', () => {
   // (attempt B) had ZERO effect on device — a KAV repositions its subtree
   // within its PARENT's layout, but this sheet's parent is the Modal's own
   // transparent root, which never resizes for the keyboard. The real fix
-  // lifts the CARD itself: `useAnimatedKeyboard()`'s live height feeds both
-  // the card's own `translateY` (so it rises clear of the keyboard) and a
-  // shrunk ratio cap (`resolveKeyboardAwareMaxHeight`, unit-tested on its own
-  // in `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list
-  // still fits entirely above the keyboard rather than merely sliding
-  // upward while capped against the full, keyboard-occluded window height.
+  // lifts the CARD itself, driven by RN core `Keyboard` events (not
+  // reanimated's own `useAnimatedKeyboard`, whose native observer crashes
+  // under this app's iOS UIScene lifecycle — see `bottom-sheet.component.tsx`'s
+  // CRASH fix comment): the live height feeds both the card's own
+  // `translateY` (so it rises clear of the keyboard) and a shrunk ratio cap
+  // (`resolveKeyboardAwareMaxHeight`, unit-tested on its own in
+  // `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list still
+  // fits entirely above the keyboard rather than merely sliding upward while
+  // capped against the full, keyboard-occluded window height.
   describe('keyboard-aware lift', () => {
+    // Captures the handler each `Keyboard.addListener` call registers, keyed
+    // by event name, so a test can simulate a native keyboard notification by
+    // invoking it directly — the same "spy on the real RN module" approach as
+    // driving the gesture handler above, since RN ships no keyboard-event
+    // test utility of its own.
+    let addListenerSpy: jest.SpyInstance;
+    const listeners = new Map<string, (event: unknown) => void>();
+
+    beforeEach(() => {
+      listeners.clear();
+      addListenerSpy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+        eventType: string,
+        handler: (event: unknown) => void,
+      ) => {
+        listeners.set(eventType, handler);
+
+        return { remove: jest.fn() };
+      }) as typeof Keyboard.addListener);
+    });
+
     afterEach(() => {
-      // Reset the module-scoped mock keyboard height so a mutation in one
-      // test never leaks into the next (see `jest/reanimated-mock.js`).
-      const { mockKeyboardHeight } = jest.requireMock('react-native-reanimated') as {
-        mockKeyboardHeight: { value: number };
-      };
-      mockKeyboardHeight.value = 0;
+      addListenerSpy.mockRestore();
     });
 
     it('is a no-op with no keyboard shown — no translateY offset, and the plain 66% ratio cap', async () => {
@@ -425,23 +444,53 @@ describe('BottomSheet', () => {
       expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
     });
 
-    it('lifts the card above the keyboard by its live height, and shrinks the ratio cap to match', async () => {
-      const { mockKeyboardHeight } = jest.requireMock('react-native-reanimated') as {
-        mockKeyboardHeight: { value: number };
-      };
-      const keyboardHeight = 250;
-      mockKeyboardHeight.value = keyboardHeight;
+    // A fresh element per call (never the SAME element object reused across
+    // `render`/`rerender`) — reusing one referentially-identical element lets
+    // the renderer bail out of re-invoking the function component entirely,
+    // which would never pick up the mutation the listener just wrote to the
+    // shared value.
+    const renderSheet = (): ReactElement => (
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>
+    );
 
-      const { getByTestId } = await render(
-        <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
-          <Text>sheet body</Text>
-        </BottomSheet>,
-      );
+    it('lifts the card above the keyboard by its live height, and shrinks the ratio cap to match', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      const keyboardHeight = 250;
+      const willChangeFrame = listeners.get('keyboardWillChangeFrame');
+      expect(willChangeFrame).toBeDefined();
+      willChangeFrame?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - keyboardHeight },
+        duration: 250,
+      });
+      // The mock `useAnimatedStyle` (unlike the real, worklet-driven one) only
+      // re-evaluates its factory on a React render pass, not on a bare shared
+      // value mutation — see `jest/reanimated-mock.js` — so force one here to
+      // pick up the height the listener just wrote.
+      await rerender(renderSheet());
 
       const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
       expect(sheetStyle.transform).toEqual([{ translateY: -keyboardHeight }]);
       expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - keyboardHeight) * MAX_HEIGHT_RATIO);
+    });
+
+    it('resets the lift back to zero when the keyboard hides', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      listeners.get('keyboardWillChangeFrame')?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - 250 },
+        duration: 250,
+      });
+      listeners.get('keyboardWillHide')?.({});
+      await rerender(renderSheet());
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.transform).toEqual([{ translateY: 0 }]);
+      expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
     });
   });
 

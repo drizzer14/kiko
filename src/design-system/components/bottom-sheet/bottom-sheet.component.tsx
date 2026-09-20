@@ -1,12 +1,12 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, useEffect } from 'react';
-import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
-  useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
@@ -137,23 +137,49 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // repositions its own subtree within its PARENT's layout, but this sheet's
   // parent is the Modal's own transparent root, which never resizes for the
   // keyboard, so the KAV had zero effect on device. What actually needs to
-  // move is the CARD itself: `useAnimatedKeyboard()` exposes the live
-  // keyboard height as a shared value, so the card's own translateY (already
-  // driven by the drag gesture below) also subtracts it, lifting the whole
-  // sheet — its top-pinned search field AND its own shrinking result list —
-  // clear of the keyboard. `resolveKeyboardAwareMaxHeight` shrinks the 66%
-  // cap by the same live height so the lifted sheet still fits above the
-  // keyboard instead of merely sliding up while staying capped against the
-  // FULL (keyboard-occluded) window height. Both terms are exactly 0 with no
+  // move is the CARD itself: a live keyboard-height shared value, so the
+  // card's own translateY (already driven by the drag gesture below) also
+  // subtracts it, lifting the whole sheet — its top-pinned search field AND
+  // its own shrinking result list — clear of the keyboard.
+  // `resolveKeyboardAwareMaxHeight` shrinks the 66% cap by the same live
+  // height so the lifted sheet still fits above the keyboard instead of
+  // merely sliding up while staying capped against the FULL
+  // (keyboard-occluded) window height. Both terms are exactly 0 with no
   // keyboard shown, so every one of the 12+ keyboard-less sheet consumers
   // (date-field, filter-menu, confirm-sheet, etc.) sees no layout change at
   // all — see `bottom-sheet.keyboard.ts`'s own no-op doc.
-  const keyboard = useAnimatedKeyboard();
+  //
+  // CRASH fix: this used to read reanimated's own `useAnimatedKeyboard()`,
+  // whose native observer (`REAKeyboardEventObserver`) reaches for
+  // `[[UIApplication sharedApplication] delegate] window]` — a legacy
+  // AppDelegate-owns-the-window assumption. This app runs the iOS UIScene
+  // lifecycle (`SceneDelegate` owns the window, `AppDelegate` has none), so
+  // that call hit an unrecognized selector and crashed on cold launch, on
+  // every screen that renders a `BottomSheet` (all of them, via this one
+  // shared primitive). RN core's `Keyboard` events read the frame straight
+  // off the notification's `userInfo` — no AppDelegate/window lookup, so it
+  // is Scene-safe — and drive the same shared value by hand instead.
+  const keyboardHeight = useSharedValue(0);
+  useEffect(() => {
+    const willChange = Keyboard.addListener('keyboardWillChangeFrame', (event) => {
+      keyboardHeight.value = withTiming(Math.max(0, windowHeight - event.endCoordinates.screenY), {
+        duration: event.duration ?? 250,
+      });
+    });
+    const willHide = Keyboard.addListener('keyboardWillHide', () => {
+      keyboardHeight.value = withTiming(0, { duration: 250 });
+    });
+
+    return () => {
+      willChange.remove();
+      willHide.remove();
+    };
+  }, [keyboardHeight, windowHeight]);
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value - keyboard.height.value }],
+    transform: [{ translateY: translateY.value - keyboardHeight.value }],
     maxHeight: resolveKeyboardAwareMaxHeight(
       windowHeight,
-      keyboard.height.value,
+      keyboardHeight.value,
       MAX_HEIGHT_RATIO,
       maxHeight,
     ),
