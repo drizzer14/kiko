@@ -1037,7 +1037,7 @@ describe('HomeScreen', () => {
       Dimensions.set({ window: NORMAL_IPHONE_WINDOW_FRAME, screen: NORMAL_IPHONE_WINDOW_FRAME });
     });
 
-    it('ignores the poisoned tab-bar height, drops the list clearance to 0, and anchors the FAB clear of the right sidebar inset — the exact measured Duo primary-panel geometry', async () => {
+    it('ignores the poisoned tab-bar height, drops the list clearance to 0, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
       mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
       Dimensions.set({ window: DUO_WINDOW_FRAME, screen: DUO_WINDOW_FRAME });
@@ -1054,8 +1054,12 @@ describe('HomeScreen', () => {
       const fab = getByLabelText('Add transaction');
       const flattened = StyleSheet.flatten(fab.props.style);
 
-      // The usual spacing(4) = 16 gap, PLUS the 84pt sidebar inset.
-      expect(flattened.right).toBe(16 + 84);
+      // The enclosing Screen's SafeAreaView already reserves the 84pt right
+      // sidebar inset itself, so the FAB's own container sits clear of the
+      // sidebar without any extra offset — the usual spacing(4) = 16 gap,
+      // unchanged. Adding the inset again here flung the FAB into the middle
+      // of the screen — the bug the real-device screenshots caught.
+      expect(flattened.right).toBe(16);
     });
 
     it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when the tab bar is NOT a sidebar', async () => {

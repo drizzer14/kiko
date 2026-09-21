@@ -50,9 +50,6 @@ const Screen: FC<ScreenProps> = ({
   // not a bottom bar" (a regular-width scene — the iPhone Duo primary panel,
   // or a landscape Plus/Max-class iPhone). See `sidebar-mode.ts`.
   const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
-  const horizontalClearance = isSidebarMode
-    ? { left: insets.left, right: insets.right }
-    : { left: 0, right: 0 };
   // Both `SafeAreaView` branches below already reserve `insets.bottom`
   // themselves as real padding — `edges` includes `'bottom'` in the scroll
   // branch's explicit list, and in the plain branch's default (an unset
@@ -123,12 +120,12 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent(footer !== undefined, horizontalClearance)}
+          contentContainerStyle={styles.scrollContent(footer !== undefined)}
         >
           {children}
         </ScrollView>
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance, horizontalClearance)}>
+          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
             {footer}
           </View>
         ) : null}
@@ -161,7 +158,7 @@ const Screen: FC<ScreenProps> = ({
       <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
         {children}
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance, horizontalClearance)}>
+          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
             {footer}
           </View>
         ) : null}
@@ -177,14 +174,11 @@ const Screen: FC<ScreenProps> = ({
   // always a headerless screen that keeps the default all-edges reservation.
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View
-        testID="screen-content"
-        style={styles.content(contentOwnsClearance, bottomClearance, horizontalClearance)}
-      >
+      <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
         {children}
       </View>
       {footer ? (
-        <View testID="screen-footer" style={styles.footer(bottomClearance, horizontalClearance)}>
+        <View testID="screen-footer" style={styles.footer(bottomClearance)}>
           {footer}
         </View>
       ) : null}

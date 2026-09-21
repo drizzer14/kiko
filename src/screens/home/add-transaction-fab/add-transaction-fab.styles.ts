@@ -9,9 +9,9 @@ export const styles = StyleSheet.create((theme) => ({
   // `GlassSurface` child, never a flat paint on the touch target itself.
   // Runtime `bottomOffset`, so this is a style FUNCTION rather than a static
   // entry.
-  fab: (bottomOffset: number, rightOffset: number) => ({
+  fab: (bottomOffset: number) => ({
     position: 'absolute' as const,
-    right: rightOffset + theme.spacing(4),
+    right: theme.spacing(4),
     bottom: bottomOffset + theme.spacing(4),
     width: theme.spacing(14),
     height: theme.spacing(14),

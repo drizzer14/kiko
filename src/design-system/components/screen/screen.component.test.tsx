@@ -448,7 +448,7 @@ describe('Screen', () => {
       });
     });
 
-    it('ignores the poisoned tab-bar height and pads content clear of the right sidebar inset — the exact measured Duo primary-panel geometry', async () => {
+    it('ignores the poisoned tab-bar height and leaves horizontal padding unchanged — the exact measured Duo primary-panel geometry', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(678);
       mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
 
@@ -460,9 +460,13 @@ describe('Screen', () => {
       // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
       // the ~676pt footer that used to cover the screen.
       expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
-      // Padded clear of the 84pt right sidebar inset, on top of the base
-      // spacing(4) = 16 step, so the sidebar chrome no longer paints over it.
-      expect(footerStyle.paddingRight).toBe(16 + 84);
+      // The enclosing SafeAreaView already reserves the 84pt right sidebar
+      // inset itself (`edges` includes 'right' in every branch — see
+      // `screen.component.tsx`), so the footer's OWN horizontal padding stays
+      // exactly the base spacing(4) = 16 step. Adding the inset again here
+      // would double-count it — the 100pt dead gap the real-device
+      // screenshots caught.
+      expect(footerStyle.paddingHorizontal).toBe(16);
     });
 
     it("keeps today's horizontal padding unchanged when the tab bar is NOT a sidebar", async () => {
@@ -470,7 +474,7 @@ describe('Screen', () => {
 
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
-      expect(footerStyle.paddingRight).toBe(16);
+      expect(footerStyle.paddingHorizontal).toBe(16);
     });
   });
 });
