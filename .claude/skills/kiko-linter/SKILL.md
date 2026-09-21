@@ -207,6 +207,25 @@ is excluded from Biome/Knip/jscpd/the real Semgrep scan, each
 independently verified as load-bearing by probing with a deliberately
 bad file and confirming the check would otherwise fire on it.
 
+## Backlog: a rule for a plain function called inside a worklet
+
+A proposed but NOT YET IMPLEMENTED Semgrep rule (documentation only —
+do not implement without a dedicated pass): flag a plain,
+non-`'worklet'`-tagged function called synchronously inside a
+reanimated worklet hook (`useAnimatedStyle`, `useDerivedValue`,
+`useAnimatedReaction`, `useAnimatedScrollHandler`, a `Gesture.*`
+worklet callback). This is a real, previously-shipped bug class (see
+`kiko-gestures`'s "Every function called inside a worklet needs its
+own `'worklet'` directive" and memory
+`worklet-directive-debug-swallows-release-aborts`): the missing
+directive is invisible to `tsc` and to Jest (reanimated's worklet
+runtime is mocked there, and Debug builds only warn), and only
+SIGABRTs in a RELEASE build — exactly the class of finding this
+harness exists to mechanize so it stops depending on a reviewer
+happening to notice it. Needs a `rules/fixtures/<rule-id>.bad.ts` /
+`.good.ts` pair per the fixture contract above before it can land;
+tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
+
 ## Every mechanized finding gets an inventory row
 
 `docs/harness/review-to-biome-inventory.md` tracks every review

@@ -39,6 +39,49 @@ If a hold on-device sometimes opens the wrong thing, this is the first
 place to look: read both files' current constants, not what this skill
 used to say.
 
+## Every function called inside a worklet needs its own `'worklet'` directive
+
+Any function — imported from another module or defined locally — that is
+called SYNCHRONOUSLY inside a reanimated worklet hook (`useAnimatedStyle`,
+`useDerivedValue`, `useAnimatedReaction`, `useAnimatedScrollHandler`, or a
+`Gesture.*` worklet callback) MUST carry its own `'worklet'` directive at
+its definition, or be defined inline in the worklet — otherwise the
+worklets runtime captures it as a "remote function." See
+`src/design-system/components/bottom-sheet/bottom-sheet.keyboard.ts`'s
+`resolveKeyboardLift`/`resolveKeyboardAwareMaxHeight`/
+`resolveKeyboardAwareBottomPadding` for the worked example: each carries
+its own `'worklet'` directive precisely because `bottom-sheet.component.tsx`
+calls them from inside its `useAnimatedStyle`.
+
+**Why this is a landmine, and why Jest/Debug cannot catch it:**
+react-native-worklets' native runtime only throws-and-catches a missing-
+directive call `#ifndef NDEBUG` — so a DEBUG build (or a Debug simulator)
+shows nothing worse than a LogBox warning, and Jest never runs the real
+worklet runtime at all (reanimated is mocked there). A RELEASE build has no
+catch: the uncaught throw becomes a Hermes JSError and an instant SIGABRT
+the moment the worklet first runs. This shipped in builds 15/16 (every
+screen crashed on first `BottomSheet` render) before the missing directive
+was added. **Verify any worklet-touching fix on a RELEASE build, never
+Debug or Jest** — see memory `worklet-directive-debug-swallows-release-aborts`.
+
+## `useAnimatedKeyboard()` is banned — use RN core `Keyboard` events instead
+
+Reanimated's `useAnimatedKeyboard()` is banned in this codebase: its native
+observer reads `[[UIApplication sharedApplication] delegate] window]`, a
+legacy AppDelegate-owns-the-window assumption. This app runs the iOS
+UIScene lifecycle (`SceneDelegate` owns the `UIWindow`; `AppDelegate` has
+none), so that call sends an unrecognized selector and SIGABRTs on cold
+launch — it hit every screen once, since the shared `BottomSheet` calls
+whatever drives its keyboard height. `bottom-sheet.component.tsx` instead
+drives its `keyboardHeight` shared value by hand from RN core's `Keyboard`
+events (`keyboardWillChangeFrame` / `keyboardWillHide`); read that file's
+`useEffect` for the exact listener wiring rather than restating it here.
+Do not reach for `useAnimatedKeyboard()` in any new worklet-driven
+animation — see memory `scene-lifecycle-appdelegate-window-crash` for the
+full crash chain, and the "Every function called inside a worklet..."
+rule above for the RELEASE-vs-Debug verification gap this class of bug
+shares.
+
 ## `runOnJS(true)` for non-worklet callbacks
 
 `CardContextMenu`'s (`src/design-system/components/card-context-menu/`)

@@ -140,11 +140,25 @@ pipeline (`src/monobank/sync/`, which creates those rows
 programmatically) and must never appear as an option on the manual
 create form — a bank's create form offers only the remaining,
 non-sync types. Per Layer 2, this rule's exact type membership is not
-restated here: read `src/holdings/`
+restated here: read `src/holdings/holding-type/holding-type.ts`
 (`syncOnlyHoldingTypes`, `isSyncOnlyHoldingType`,
-`creatableHoldingTypesForAccountKind`) for the current sync-only set
+`creatableHoldingTypesForAccount`) for the current sync-only set
 and the derived creatable-per-account-kind set, and cross-check
 against `sync.ts` for which types it actually writes.
+
+The creatable set additionally depends on whether THAT PARTICULAR
+account is live-synced, not just its kind:
+`creatableHoldingTypesForAccount(kind, isSynced)` takes both — read
+that file directly for the exact filter. `jar` is excluded
+UNCONDITIONALLY, synced or not (it's a Monobank-API-specific
+sub-account concept with no equivalent in a bank statement, so an
+import-only account has nothing to name a manual "jar" after); `card`
+is excluded ONLY when `isSynced` is true — an import-only bank account
+(`isSynced` false, one of the 5 statement-import-only banks) CAN
+manually create a `card` holding, since there is no sync pipeline
+already owning one for it. Do not assume "sync-only type" means
+"excluded regardless of `isSynced`" — `jar` and `card` behave
+differently for exactly this reason.
 
 ## Entity glyphs: one source of truth
 

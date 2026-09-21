@@ -55,6 +55,12 @@ mechanize well; keep in the skill).
 | Components never hardcode raw color/spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone) |
 | Full unabbreviated variable names | kiko-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
 
+### Candidates — currency-fix round (2026-09-21, not yet enforced)
+
+| Rule | Source | Enforce via | Tier |
+|---|---|---|---|
+| A plain, non-`'worklet'`-tagged function called synchronously inside a reanimated worklet hook (`useAnimatedStyle`/`useDerivedValue`/`useAnimatedReaction`/`useAnimatedScrollHandler`/`Gesture.*`) | kiko-gestures ("Every function called inside a worklet needs its own `'worklet'` directive"), memory `worklet-directive-debug-swallows-release-aborts` | Semgrep (TS, likely ERROR — deterministic, RELEASE-only SIGABRT, invisible to tsc/Jest) | Needs design + a `rules/fixtures/<rule-id>.bad.ts`/`.good.ts` pair before it can land; not yet implemented |
+
 ### Candidates — kiko-ux-round review (2026-09-04, not yet enforced)
 
 | Rule | Source | Enforce via | Tier |

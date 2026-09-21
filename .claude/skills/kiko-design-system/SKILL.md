@@ -440,6 +440,43 @@ new component can land between reviews of this skill:
   fix can never bleed into the scrollable body that starts only once the
   region ends — see "Touch targets" under the standing HIG reference
   above for the general rule this follows.
+
+  **Keyboard-aware sheet geometry.** A sheet whose content includes a
+  focusable input (e.g. `CurrencyField`'s search) must not let the
+  keyboard cover its own content or the floating keyboard accessory —
+  `bottom-sheet.keyboard.ts` (`src/design-system/components/bottom-sheet/`)
+  holds the pure, worklet-tagged math this needs: `resolveKeyboardLift`
+  (how far the sheet rises — the keys' own height, not the raw keyboard
+  frame), `resolveKeyboardAwareMaxHeight` (the 66% height cap re-measured
+  against the currently-visible window once the keyboard has lifted the
+  sheet), and `resolveKeyboardAwareBottomPadding` (the sheet's bottom
+  padding while the keyboard shows, so its own glass — not the modal
+  scrim — sits behind the floating accessory strip). `bottom-sheet.
+  component.tsx` wires all three into its `useAnimatedStyle` alongside
+  `KEYBOARD_ACCESSORY_HEIGHT` (`keyboard-done-accessory.styles.ts`, the
+  accessory's fixed height) and its own `KEYBOARD_CORNER_OVERLAP`
+  constant (extends the lift/padding pair to also cover the keyboard's
+  rounded top corners). Every one of these functions carries its own
+  `'worklet'` directive since `useAnimatedStyle` calls them directly —
+  see `kiko-gestures`'s "Every function called inside a worklet needs
+  its own `'worklet'` directive" rule before touching any of them, and
+  read the file directly for the current derivation rather than trusting
+  the numbers restated here; they drift with each device-feedback round.
+  All three reduce to a no-op with no keyboard shown, so every
+  keyboard-less sheet consumer sees no layout change. Reanimated's own
+  `useAnimatedKeyboard()` is NOT used to drive any of this — see
+  `kiko-gestures`'s "`useAnimatedKeyboard()` is banned" rule.
+
+  **A scrollable list inside a sheet that can host a keyboard needs
+  `keyboardShouldPersistTaps="handled"`.** A `FlatList`/`ScrollView`'s
+  default `keyboardShouldPersistTaps` ("never") swallows the FIRST tap on
+  a row while the keyboard is up — the tap dismisses the keyboard instead
+  of hitting the row. `CurrencyField`'s search results list
+  (`currency-field.component.tsx`) sets `keyboardShouldPersistTaps="handled"`
+  for exactly this reason (the same fix `Screen`'s own background
+  `ScrollView` applies for its search field, per that file's comment); any
+  new sheet content that combines a focusable input with a tappable list
+  below it needs the same prop.
 - **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
   the themed confirm-or-cancel `BottomSheet`: a title, an optional
   body `message` (omitted for a bare title-only confirm), a `confirmLabel`,
