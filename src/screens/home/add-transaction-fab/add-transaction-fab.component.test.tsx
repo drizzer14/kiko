@@ -102,4 +102,28 @@ describe('AddTransactionFab', () => {
     expect(base.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
     expect(base.backgroundColor).not.toBe(darkTheme.colors.surface);
   });
+
+  it('keeps the right anchor unchanged when rightOffset is omitted (an ordinary bottom tab bar)', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    const fab = getByLabelText('Add transaction');
+    const flattened = StyleSheet.flatten(fab.props.style);
+
+    expect(flattened.right).toBe(16);
+  });
+
+  it('anchors clear of the right safe-area inset when given a nonzero rightOffset (a sidebar tab bar)', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} rightOffset={84} />,
+    );
+
+    const fab = getByLabelText('Add transaction');
+    const flattened = StyleSheet.flatten(fab.props.style);
+
+    // The usual spacing(4) = 16 gap, PLUS the 84pt sidebar inset — clear of
+    // the native sidebar chrome, never underneath it.
+    expect(flattened.right).toBe(16 + 84);
+  });
 });

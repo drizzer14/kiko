@@ -20,14 +20,21 @@ import type { AddTransactionFabProps } from './add-transaction-fab.props';
 // Pressable stays the positioned, sized touch target and navigation is
 // injected through `onPress` so the component stays presentational and
 // decoupled from any stack's param typing.
-const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottomOffset }) => {
+const AddTransactionFab: FC<AddTransactionFabProps> = ({
+  onPress,
+  bottomOffset,
+  rightOffset = 0,
+}) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
 
-  // `bottomOffset` is a runtime value, so the positioned base style is a
-  // function call — memoized so a Home re-render (e.g. a reactive fire during a
-  // sync) does not rebuild an identical style object each time.
-  const fabStyle = useMemo(() => styles.fab(bottomOffset), [bottomOffset]);
+  // `bottomOffset`/`rightOffset` are runtime values, so the positioned base
+  // style is a function call — memoized so a Home re-render (e.g. a reactive
+  // fire during a sync) does not rebuild an identical style object each time.
+  const fabStyle = useMemo(
+    () => styles.fab(bottomOffset, rightOffset),
+    [bottomOffset, rightOffset],
+  );
 
   return (
     <Pressable

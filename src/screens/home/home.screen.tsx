@@ -101,6 +101,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
   const listBottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode);
 
+  // The FAB is a positioned sibling, not a Screen `footer`/`content` child, so
+  // it needs its own explicit clearance from the SAME `isSidebarMode` signal
+  // — the sidebar's own width (the right safe-area inset) when present, `0`
+  // otherwise (today's unchanged fixed anchor).
+  const fabRightOffset = isSidebarMode ? insets.right : 0;
+
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
@@ -509,7 +515,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
             its scroll content, pinned bottom-right and lifted clear of the
             floating tab bar by the same `listBottomClearance` the list uses. */}
-        <AddTransactionFab onPress={handleAddTransaction} bottomOffset={listBottomClearance} />
+        <AddTransactionFab
+          onPress={handleAddTransaction}
+          bottomOffset={listBottomClearance}
+          rightOffset={fabRightOffset}
+        />
       </Box>
     </Screen>
   );

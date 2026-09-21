@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import '../../design-system/unistyles';
 
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
@@ -36,17 +36,32 @@ jest.mock('../../design-system/components/text', () => ({
 // bar height" formula indistinguishable from the correct one, which is
 // exactly how the double-counting regression shipped unnoticed.
 const MOCK_TAB_BAR_HEIGHT = 80;
+// Mutable so the dedicated "Duo sidebar mode" cases below can override it
+// per test and restore it afterwards — see `mockUseSafeAreaInsets` just
+// below for the identical treatment and rationale.
+const mockUseBottomTabBarHeight = jest.fn(() => MOCK_TAB_BAR_HEIGHT);
 jest.mock('react-native-bottom-tabs', () => ({
-  useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+  useBottomTabBarHeight: () => mockUseBottomTabBarHeight(),
 }));
 
 const MOCK_BOTTOM_INSET = 34;
+// A plain arrow-returning factory can't be overridden per test, so this is a
+// mutable `jest.fn()` wrapper instead — its default return value is exactly
+// what every existing test in this file expects (a bottom-tab-bar iPhone,
+// zero horizontal inset); only the dedicated "Duo sidebar mode" tests at the
+// end of this file override it, restoring it in their own `afterEach`.
+const mockUseSafeAreaInsets = jest.fn(() => ({
+  top: 0,
+  right: 0,
+  bottom: MOCK_BOTTOM_INSET,
+  left: 0,
+}));
 jest.mock('react-native-safe-area-context', () => {
   const actual = jest.requireActual('react-native-safe-area-context');
 
   return {
     ...actual,
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
+    useSafeAreaInsets: () => mockUseSafeAreaInsets(),
   };
 });
 
@@ -1102,5 +1117,65 @@ describe('HomeScreen — localization', () => {
     const { getByText } = await renderHome();
 
     expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
+  });
+});
+
+describe('Duo sidebar mode (regular-width scene, native right-edge sidebar)', () => {
+  // The primary panel's measured live geometry — see the duo-adaptive
+  // design doc's "Context" section.
+  const DUO_TAB_BAR_HEIGHT = 678;
+  const DUO_WINDOW_FRAME = { width: 466, height: 678, scale: 3, fontScale: 1 };
+  const DUO_INSETS = { top: 0, right: 84, bottom: MOCK_BOTTOM_INSET, left: 0 };
+  const NORMAL_IPHONE_WINDOW_FRAME = { width: 393, height: 852, scale: 3, fontScale: 1 };
+
+  afterEach(() => {
+    mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+    mockUseSafeAreaInsets.mockReturnValue({
+      top: 0,
+      right: 0,
+      bottom: MOCK_BOTTOM_INSET,
+      left: 0,
+    });
+    Dimensions.set({ window: NORMAL_IPHONE_WINDOW_FRAME, screen: NORMAL_IPHONE_WINDOW_FRAME });
+  });
+
+  it('ignores the poisoned tab-bar height, drops the list clearance to 0, and anchors the FAB clear of the right sidebar inset — the exact measured Duo primary-panel geometry', async () => {
+    mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
+    mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
+    Dimensions.set({ window: DUO_WINDOW_FRAME, screen: DUO_WINDOW_FRAME });
+
+    const { getByTestId, getByLabelText } = await renderHome();
+
+    const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+
+    // Not 678 - 34 = 644 (the bug) — sidebar mode distrusts the tab-bar
+    // height entirely.
+    expect(listPadding).toBe(0);
+
+    const fab = getByLabelText('Add transaction');
+    const flattened = StyleSheet.flatten(fab.props.style);
+
+    // The usual spacing(4) = 16 gap, PLUS the 84pt sidebar inset.
+    expect(flattened.right).toBe(16 + 84);
+  });
+
+  it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when the tab bar is NOT a sidebar', async () => {
+    mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+    mockUseSafeAreaInsets.mockReturnValue({
+      top: 0,
+      right: 0,
+      bottom: MOCK_BOTTOM_INSET,
+      left: 0,
+    });
+    Dimensions.set({ window: NORMAL_IPHONE_WINDOW_FRAME, screen: NORMAL_IPHONE_WINDOW_FRAME });
+
+    const { getByTestId, getByLabelText } = await renderHome();
+
+    const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
+
+    const fab = getByLabelText('Add transaction');
+    const flattened = StyleSheet.flatten(fab.props.style);
+    expect(flattened.right).toBe(16);
   });
 });
