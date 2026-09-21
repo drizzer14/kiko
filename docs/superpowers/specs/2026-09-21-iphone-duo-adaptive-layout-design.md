@@ -47,11 +47,13 @@ a ~676 pt footer `View` that covers the screen.
 
 Three reported bugs, all this one cause:
 
-1. **Add-transaction FAB "missing" on Home** — the FAB is present and
-   correct, but anchored `right: 16` for a bottom bar
-   (`src/screens/home/add-transaction-fab/add-transaction-fab.styles.ts:14`);
-   the sidebar now sits at the right edge and the native tab-bar chrome
-   paints over it.
+1. **Add-transaction FAB "missing" on Home** — the FAB was not covered
+   by the native sidebar chrome. The same poisoned `bottomClearance`
+   pushed it off-screen: `bottom: bottomOffset + 16` with
+   `bottomOffset = 644` put the 56 pt circle at roughly y = -38 on a
+   678 pt-tall window, above the top edge
+   (`src/screens/home/add-transaction-fab/add-transaction-fab.styles.ts:14`).
+   Confirmed on the Duo simulator.
 2. **Settings shows only the title** — the cards render correctly and
    are correctly positioned; the giant ~676 pt footer sibling `View`
    (`screen.component.tsx:119-123`) covers them (later JSX sibling =
@@ -90,21 +92,39 @@ Three reported bugs, all this one cause:
    bar is not at the bottom" from geometry (implausible tab-bar height,
    and/or a nonzero horizontal safe-area inset). `Screen` and the FAB
    both key off this one helper so they never disagree.
-3. **FAB position**: when the tab bar is a right sidebar, anchor the FAB
-   clear of the right safe-area inset (respect the 84 pt) so it no
-   longer sits under the sidebar. When the tab bar is at the bottom,
-   keep today's behavior exactly.
+3. ~~**FAB position**~~ — DROPPED as unnecessary. `Screen`'s
+   `SafeAreaView` already reserves the left/right safe-area insets
+   (`edges={['left','right','bottom']}` at
+   `src/design-system/components/screen/screen.component.tsx:18`, used
+   at :76 and :161; the plain branch at :179 has no `edges` prop, which
+   defaults to all edges), and the FAB is positioned relative to that
+   already-inset content. Confirmed on-device: adding an app-level
+   right-inset offset on top of it floated the FAB in the middle of the
+   screen (128-182 pt) instead of at the content's right edge. Reverted
+   in commit `e505081`.
 4. **Zero header height**: stop the footer/clearance depending on a
    header height that reports 0 on the active stack; floor it or read a
    robust value.
-5. **Horizontal insets**: make `Screen` respect the left/right
-   safe-area insets so content is not hidden under the sidebar.
+5. ~~**Horizontal insets**~~ — DROPPED as unnecessary, same root cause
+   as item 3: `Screen`'s `SafeAreaView` already reserves the left/right
+   safe-area insets, so having `Screen` apply them again double-counted
+   them. Confirmed on-device: content shrank from 350 pt wide to
+   266 pt. Reverted in commit `e505081`.
+
+The real Phase 1 fix is items 1 and 2 — robust clearance that ignores
+the poisoned tab-bar height, behind one shared sidebar-detection
+helper — plus item 4, the zero-header-height floor. Items 3 and 5 were
+unnecessary and reverted, as noted above.
 
 **Testing**: unit tests feeding the real measured case (466x678, right
 84, tabBar 678); Duo-sim screenshot verification; regression check that
 a normal iPhone (bottom bar) is unchanged.
 
 ## Design — Phase 2 (adaptive layout)
+
+Note: the sidebar does **not** require app-level horizontal-inset
+handling — `Screen`'s `SafeAreaView` already covers it (see Phase 1
+item 3/5 above). Phase 2 must not re-introduce that.
 
 1. Re-apply the `ipad-adaptive` pattern onto `next` (do **not** merge
    that branch): the breakpoints scale, `useIsAtLeastBreakpoint` runtime
