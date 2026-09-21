@@ -145,6 +145,26 @@ describe('BankTypeField', () => {
     );
   });
 
+  it('shows the not-a-bank disclaimer as a caption on the bank-selection sheet', async () => {
+    const onSelect = jest.fn();
+    const { getByTestId, getByText } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected={null}
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(
+      getByText(
+        'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.',
+      ),
+    ).toBeTruthy();
+  });
+
   it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(
     "shows %s's description with the statements icon ONLY (no sync icon, honest import-only)",
     async (bankId) => {

@@ -175,6 +175,8 @@ export const uk: typeof en = {
       addTitle: 'Додати рахунок',
       bank: 'Банк',
       bankConnectable: 'Автоматична синхронізація та імпорт виписок.',
+      bankDisclaimer:
+        'Кіко — незалежний застосунок. Це не банк, і він не пов’язаний з жодним банком та не має його підтримки.',
       bankImportOnly: 'Імпорт виписок.',
       bankType: 'Тип банку',
       cash: 'Готівка',
@@ -322,6 +324,8 @@ export const uk: typeof en = {
     binanceApiKeyPlaceholder: 'API ключ Binance',
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
+    binanceKeychainDisclosure:
+      'Ваш API-ключ Binance зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Binance і ніколи не надсилається до Кіко чи на будь-який сервер.',
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',
     checking: 'Перевірка…',
@@ -348,6 +352,8 @@ export const uk: typeof en = {
     invalidBTCAddress: 'Недійсна BTC-адреса',
     invalidToken: 'Недійсний токен',
     lastSync: 'Остання синхронізація: {{time}}',
+    monobankKeychainDisclosure:
+      'Ваш токен зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Monobank і ніколи не надсилається до Кіко чи на будь-який сервер.',
     monobankRateLimited:
       'Monobank дозволяє не більше одного запиту на 60 секунд. Зачекайте хвилину й спробуйте ще раз.',
     monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',

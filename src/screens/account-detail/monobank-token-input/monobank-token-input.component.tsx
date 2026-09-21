@@ -46,6 +46,12 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
         secureTextEntry
       />
+
+      {/* Guideline 5.6 data-handling disclosure: the token never leaves the
+          device except straight to Monobank's own API. */}
+      <Text variant="caption" tone="textSecondary">
+        {t('accountDetail.monobankKeychainDisclosure')}
+      </Text>
     </Box>
   );
 };

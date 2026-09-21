@@ -208,6 +208,19 @@ describe('BinanceCredentialsField', () => {
     expect(await findByText('Could not connect Binance')).toBeTruthy();
   });
 
+  it('shows the Keychain-only data-handling disclosure as a secondary caption', async () => {
+    const { getByText } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+
+    const disclosure = getByText(
+      "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
+    );
+
+    expect(disclosure).toBeTruthy();
+    expect(disclosure.props.testID).toBe('text-tone-textSecondary');
+  });
+
   it('clears a stale status when either field is edited afterward', async () => {
     mockFetchAccount.mockRejectedValue(new Error('Binance request failed: 401'));
     const { getByPlaceholderText, getByText, findByText, queryByText } = await render(

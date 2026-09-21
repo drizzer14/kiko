@@ -50,6 +50,14 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
         header={<Text variant="heading">{label}</Text>}
         testID="bank-type-sheet"
       >
+        {/* Guideline 5.6 "not a bank" disclaimer: a footer caption visible
+            while the user is actively choosing a bank, the least-intrusive
+            spot on this surface per the design system's existing hint
+            pattern (see `forms.account.importOnlyBankHint`). */}
+        <Text variant="caption" tone="textSecondary">
+          {t('forms.account.bankDisclaimer')}
+        </Text>
+
         {bankCatalog.map((entry) => {
           const isSelected = entry.id === selected;
           const caption = entry.connectable

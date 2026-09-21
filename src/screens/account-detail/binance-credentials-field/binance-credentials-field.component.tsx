@@ -110,6 +110,12 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         secureTextEntry
       />
 
+      {/* Guideline 5.6 data-handling disclosure: the key pair never leaves the
+          device except straight to Binance's own API. */}
+      <Text variant="caption" tone="textSecondary">
+        {t('accountDetail.binanceKeychainDisclosure')}
+      </Text>
+
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
           variant="secondaryTonal"

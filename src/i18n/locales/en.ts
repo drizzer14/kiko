@@ -190,6 +190,8 @@ export const en = {
       addTitle: 'Add Account',
       bank: 'Bank',
       bankConnectable: 'Connect and import statements.',
+      bankDisclaimer:
+        'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.',
       bankImportOnly: 'Statement import only — no live connection.',
       bankType: 'Bank type',
       cash: 'Cash',
@@ -344,6 +346,8 @@ export const en = {
     binanceApiKeyPlaceholder: 'Binance API key',
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
+    binanceKeychainDisclosure:
+      "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
     checking: 'Checking…',
@@ -372,6 +376,8 @@ export const en = {
     invalidBTCAddress: 'Invalid BTC address',
     invalidToken: 'Invalid token',
     lastSync: 'Last sync: {{time}}',
+    monobankKeychainDisclosure:
+      "Your token is stored only in your device's Keychain, used only to fetch your own data directly from Monobank, and is never sent to Kiko or any server.",
     monobankRateLimited:
       'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',

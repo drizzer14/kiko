@@ -106,6 +106,17 @@ describe('MonobankTokenInput', () => {
 
     expect(onChangeText).toHaveBeenCalledWith('typed');
   });
+
+  it('shows the Keychain-only data-handling disclosure as a secondary caption', async () => {
+    const { getByText } = await render(<MonobankTokenInput value="" onChangeText={jest.fn()} />);
+
+    const disclosure = getByText(
+      "Your token is stored only in your device's Keychain, used only to fetch your own data directly from Monobank, and is never sent to Kiko or any server.",
+    );
+
+    expect(disclosure).toBeTruthy();
+    expect(disclosure.props.testID).toBe('text-tone-textSecondary');
+  });
 });
 
 describe('MonobankTokenInput — localization', () => {
