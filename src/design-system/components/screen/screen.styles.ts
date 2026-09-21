@@ -13,6 +13,14 @@ import { StyleSheet } from 'react-native-unistyles';
 // above it, kept equal to the room above the button.
 const FOOTER_GAP_STEP = 4;
 
+// Extra left/right padding, on top of the base spacing step, added ONLY on a
+// regular-width scene where the native tab bar is a right-edge sidebar (see
+// `isSidebarTabBarMode`, `sidebar-mode.ts`) — `{ left: 0, right: 0 }` on
+// every ordinary bottom-tab-bar iPhone, which reduces every padding value
+// below to exactly today's, byte-for-byte. Computed once in
+// `screen.component.tsx` from `useSafeAreaInsets()`, never re-derived here.
+type HorizontalClearance = { left: number; right: number };
+
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
     flex: 1,
@@ -34,7 +42,11 @@ export const styles = StyleSheet.create((theme) => ({
   // actually adjacent to the true bottom edge, not to this container as well,
   // or the gap below the last row/action would be counted twice. Horizontal
   // and top padding stay at the base spacing step regardless.
-  content: (ownsClearance: boolean, bottomClearance: number) => ({
+  content: (
+    ownsClearance: boolean,
+    bottomClearance: number,
+    horizontalClearance: HorizontalClearance,
+  ) => ({
     flex: 1,
     // A large-title `bleedTop` screen never reaches this wrapper — it renders
     // its scrollable child directly under the SafeAreaView (see
@@ -43,7 +55,8 @@ export const styles = StyleSheet.create((theme) => ({
     // the base top padding for the headerless/non-scrolling screens that DO use
     // it.
     paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
+    paddingLeft: theme.spacing(4) + horizontalClearance.left,
+    paddingRight: theme.spacing(4) + horizontalClearance.right,
     paddingBottom: ownsClearance
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
@@ -61,8 +74,10 @@ export const styles = StyleSheet.create((theme) => ({
   // box to collapse the stacked padding. With no `footer`, this container
   // legitimately owns the scroll content's own trailing edge, so it keeps the
   // base bottom padding.
-  scrollContent: (hasFooter: boolean) => ({
-    padding: theme.spacing(4),
+  scrollContent: (hasFooter: boolean, horizontalClearance: HorizontalClearance) => ({
+    paddingTop: theme.spacing(4),
+    paddingLeft: theme.spacing(4) + horizontalClearance.left,
+    paddingRight: theme.spacing(4) + horizontalClearance.right,
     paddingBottom: hasFooter ? 0 : theme.spacing(4),
   }),
   // The pinned footer slot: sits outside the scrollable surface (a
@@ -81,9 +96,10 @@ export const styles = StyleSheet.create((theme) => ({
   // routing through this slot (e.g. Home's SectionList, via `bleedBottom`)
   // should add this same step for a consistent gap. Horizontal and top padding
   // stay at the base spacing step.
-  footer: (bottomClearance: number) => ({
+  footer: (bottomClearance: number, horizontalClearance: HorizontalClearance) => ({
     paddingTop: theme.spacing(4),
-    paddingHorizontal: theme.spacing(4),
+    paddingLeft: theme.spacing(4) + horizontalClearance.left,
+    paddingRight: theme.spacing(4) + horizontalClearance.right,
     paddingBottom: theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
   }),
 }));

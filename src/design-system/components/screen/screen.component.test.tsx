@@ -15,8 +15,13 @@ import Screen from '.';
 // against (the global manual mock returns 0, which would make the assertion
 // indistinguishable from "no clearance applied").
 const MOCK_TAB_BAR_HEIGHT = 80;
+// A mutable `jest.fn()` wrapper (not a plain arrow factory) so the dedicated
+// "Duo sidebar mode" cases at the end of this file can override it per test
+// and restore it afterwards — every other test here never touches it, so it
+// keeps returning this exact default throughout.
+const mockUseBottomTabBarHeight = jest.fn(() => MOCK_TAB_BAR_HEIGHT);
 jest.mock('react-native-bottom-tabs', () => ({
-  useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
+  useBottomTabBarHeight: () => mockUseBottomTabBarHeight(),
 }));
 
 // A device with a home indicator reports a non-zero bottom safe-area inset.
@@ -30,6 +35,14 @@ jest.mock('react-native-bottom-tabs', () => ({
 // not double-counted (with a zero inset the two formulas are indistinguishable,
 // which is exactly why the earlier over-padding shipped unnoticed).
 const MOCK_BOTTOM_INSET = 34;
+// Same mutable-wrapper treatment as `mockUseBottomTabBarHeight` above, for
+// the same reason.
+const mockUseSafeAreaInsets = jest.fn(() => ({
+  top: 0,
+  right: 0,
+  bottom: MOCK_BOTTOM_INSET,
+  left: 0,
+}));
 // A trimmed stand-in for the real `SafeAreaView`: the real native layout
 // (`RNCSafeAreaViewShadowNode`'s `'additive'` edge mode) adds `insets.bottom`
 // as real padding directly on the `SafeAreaView` itself, for every edge
@@ -70,7 +83,7 @@ jest.mock('react-native-safe-area-context', () => {
   return {
     SafeAreaView: mockSafeAreaView,
     SafeAreaProvider: View,
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: MOCK_BOTTOM_INSET, left: 0 }),
+    useSafeAreaInsets: () => mockUseSafeAreaInsets(),
   };
 });
 
@@ -420,5 +433,44 @@ describe('Screen', () => {
     expect(footerStyle.paddingTop).toBe(footerButtonTopMargin);
     expect(totalBottomOffset(footer) - MOCK_TAB_BAR_HEIGHT).toBe(footerButtonTopMargin);
     expect(totalBottomOffset(footer) - MOCK_TAB_BAR_HEIGHT).toBe(FOOTER_GAP);
+  });
+
+  describe('Duo sidebar mode (regular-width scene, native right-edge sidebar)', () => {
+    const DUO_INSETS = { top: 0, right: 84, bottom: MOCK_BOTTOM_INSET, left: 0 };
+
+    afterEach(() => {
+      mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+      mockUseSafeAreaInsets.mockReturnValue({
+        top: 0,
+        right: 0,
+        bottom: MOCK_BOTTOM_INSET,
+        left: 0,
+      });
+    });
+
+    it('ignores the poisoned tab-bar height and pads content clear of the right sidebar inset — the exact measured Duo primary-panel geometry', async () => {
+      mockUseBottomTabBarHeight.mockReturnValue(678);
+      mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
+
+      const { getByTestId } = await renderScreen({ footer: footerNode });
+
+      const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
+
+      // Sidebar mode distrusts the tab-bar height entirely: the footer's own
+      // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
+      // the ~676pt footer that used to cover the screen.
+      expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
+      // Padded clear of the 84pt right sidebar inset, on top of the base
+      // spacing(4) = 16 step, so the sidebar chrome no longer paints over it.
+      expect(footerStyle.paddingRight).toBe(16 + 84);
+    });
+
+    it("keeps today's horizontal padding unchanged when the tab bar is NOT a sidebar", async () => {
+      const { getByTestId } = await renderScreen({ footer: footerNode });
+
+      const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
+
+      expect(footerStyle.paddingRight).toBe(16);
+    });
   });
 });
