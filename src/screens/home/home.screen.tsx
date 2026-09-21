@@ -11,7 +11,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshControl, SectionList } from 'react-native';
+import { RefreshControl, SectionList, useWindowDimensions } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,7 +29,10 @@ import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 import MoneyText from '../../design-system/components/money-text';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
+import Screen, {
+  isSidebarTabBarMode,
+  resolveBottomClearance,
+} from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
@@ -89,7 +92,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // shared computation, in `resolveBottomClearance`.
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const listBottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom);
+  const windowHeight = useWindowDimensions().height;
+  // The ONE shared signal Screen itself uses (see `sidebar-mode.ts`) — Home
+  // computes its own clearance because it opts out of Screen's own bottom
+  // handling with `bleedBottom`, so it must key off the identical function,
+  // never re-derive the rule. Task 4 (`AddTransactionFab`'s right anchor)
+  // reuses this same `isSidebarMode` value below.
+  const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
+  const listBottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode);
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab

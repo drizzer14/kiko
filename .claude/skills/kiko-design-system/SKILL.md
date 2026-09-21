@@ -173,10 +173,17 @@ new component can land between reviews of this skill:
   native glass tab bar's measured height. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
   must compute that same clearance with the shared
-  `resolveBottomClearance(tabBarHeight, insetBottom)` helper exported
-  from `src/design-system/components/screen/bottom-clearance.ts` —
-  never re-derive it inline, or it double-counts the bottom safe-area
-  inset Screen's `SafeAreaView` already reserves. Its `scroll`
+  `resolveBottomClearance(tabBarHeight, insetBottom, isSidebarMode)`
+  helper exported from
+  `src/design-system/components/screen/bottom-clearance.ts` — never
+  re-derive it inline, or it double-counts the bottom safe-area inset
+  Screen's `SafeAreaView` already reserves. `isSidebarMode` comes from
+  the shared `isSidebarTabBarMode` (`sidebar-mode.ts`, same folder):
+  on a regular-width scene where the native tab bar renders as a
+  right-edge sidebar (the iPhone Duo primary panel, or a landscape
+  Plus/Max-class iPhone), the tab bar misreports its own height as
+  the full window height, so `resolveBottomClearance` ignores it
+  entirely and returns `0` extra clearance in that mode. Its `scroll`
   ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see

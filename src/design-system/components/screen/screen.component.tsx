@@ -1,9 +1,10 @@
 import type { FC } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resolveBottomClearance } from './bottom-clearance';
+import { isSidebarTabBarMode } from './sidebar-mode';
 import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
 
@@ -44,14 +45,21 @@ const Screen: FC<ScreenProps> = ({
   // both on one render, since `scroll` selects exactly one return path.
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const windowHeight = useWindowDimensions().height;
+  // The ONE shared signal for "the native tab bar is a right-edge sidebar,
+  // not a bottom bar" (a regular-width scene — the iPhone Duo primary panel,
+  // or a landscape Plus/Max-class iPhone). See `sidebar-mode.ts`.
+  const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
   // Both `SafeAreaView` branches below already reserve `insets.bottom`
   // themselves as real padding — `edges` includes `'bottom'` in the scroll
   // branch's explicit list, and in the plain branch's default (an unset
   // `edges` prop reserves every edge). Adding the FULL tab-bar height again
   // on top of that reservation double-counts the inset. See
   // `bottom-clearance.ts` for the shared arithmetic (also used by every
-  // `bleedBottom` child, e.g. Home's transaction list) and its full rationale.
-  const bottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom);
+  // `bleedBottom` child, e.g. Home's transaction list) and its full
+  // rationale, including why `isSidebarMode` makes the tab-bar height
+  // untrusted entirely in that mode.
+  const bottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode);
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a

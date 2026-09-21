@@ -8,7 +8,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TFunction } from 'i18next';
 import { type FC, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable } from 'react-native';
+import { FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -33,7 +33,10 @@ import CardContextMenu from '../../design-system/components/card-context-menu';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
+import Screen, {
+  isSidebarTabBarMode,
+  resolveBottomClearance,
+} from '../../design-system/components/screen';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -469,8 +472,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // height is not double-counted.
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const windowHeight = useWindowDimensions().height;
+  const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
   const listBottomClearance =
-    footerAction === 'none' ? resolveBottomClearance(tabBarHeight, insets.bottom) : 0;
+    footerAction === 'none'
+      ? resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode)
+      : 0;
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.

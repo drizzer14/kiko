@@ -934,7 +934,7 @@ describe('HomeScreen', () => {
     // as its own clearance on top of the bottom inset Screen's SafeAreaView
     // already reserves (see `home.screen.tsx`), leaving 130pt of dead space
     // under the last row instead of the 96pt every other screen has.
-    expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET));
+    expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET, false));
 
     // Total dead space under the last row must match every other screen's 96:
     // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
