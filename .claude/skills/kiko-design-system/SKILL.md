@@ -607,13 +607,13 @@ a related security UI rather than inventing a new screen pattern.
 An account or holding's color is never a raw hex literal at the call
 site — it goes through one shared pipeline so a swatch reads
 identically everywhere that entity appears (its card, its icon tint,
-its chart legend). Read `src/holdings/entity-colors.ts` and
+its chart legend). Read `src/holdings/entity-colors/entity-colors.ts` and
 `src/design-system/entity-tint.ts` directly for the exact functions
 and their current shape; do not copy their signatures into prose here
 where they can drift. As of this writing the pipeline is:
 
 - `defaultAccountColor` / `defaultHoldingColor`
-  (`src/holdings/entity-colors.ts`) — the kind/type-keyed default
+  (`src/holdings/entity-colors/entity-colors.ts`) — the kind/type-keyed default
   swatch a newly-created entity gets before a user overrides it.
 - `resolveEntityColor` (`entity-tint.ts`) — the one function that
   picks an entity's EFFECTIVE color: the stored override if it is a

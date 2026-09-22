@@ -150,7 +150,7 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
 ## Semgrep facts verified on 1.175 — don't relearn these the hard way
 
 - `paths.include` must be a **basename** pattern (e.g. `"*.swift"`),
-  never path-prefixed (e.g. `"ios/KikoWidget/*.swift"`). A
+  never path-prefixed (e.g. `"ios/Kiko/*.swift"`). A
   path-prefixed include silently matches **nothing** when the fixture
   runner scans `rules/fixtures/` directly (the fixture isn't under
   that prefix) — verified by sabotage: the prefixed form drew zero
@@ -257,5 +257,5 @@ named assertions (e.g. every credential-bearing host resolved from
 `src/` + `.env` must appear in `NSPinnedDomains`). Add a new plist
 invariant there as another named assertion in that same script, not as
 a new standalone wrapper — `plist.sh` already owns `plutil -lint` on
-both `ios/Kiko/Info.plist` and `ios/KikoWidget/Info.plist` plus the
-fail-closed proofs for a missing file or a broken `plutil`.
+`ios/Kiko/Info.plist` plus the fail-closed proofs for a missing file
+or a broken `plutil`.
