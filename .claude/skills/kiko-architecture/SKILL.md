@@ -833,10 +833,29 @@ null `externalId` and is never namespaced.
 
 ## Price data
 
-- Fiat cross rates: `GET /bank/currency` (public Monobank endpoint,
-  cached upstream about every 5 minutes).
+- Fiat cross rates, live: Monobank's `GET /bank/currency` (public,
+  cert-pinned host, cached upstream about every 5 minutes) is the
+  PREFERRED source, tried with a bounded retry. Only if that fails
+  entirely does `src/rates/rates-refresh/rates-refresh.ts` fall back
+  to NBU's current-rate feed (`src/rates/nbu-rates/nbu-rates.ts`,
+  `bank.gov.ua`, deliberately UNPINNED, fewer currencies than
+  Monobank). It's a sequential fallback, not a second concurrent
+  source — only one provider's rows are composed and written per
+  refresh; both failing writes nothing.
+- Fiat cross rates, offline floor: a bundled STATIC seed,
+  `src/rates/fiat-rate-seed/fiat-rate-seed.ts`, covers all 107 fiat
+  currencies vs UAH from a Monobank snapshot (see the file for the
+  capture date — it is a real, fixed date, not "current"). In
+  `buildRateTable` (`src/rates/net-worth-view/net-worth-view.ts`) the
+  seed is overlaid by live DB rows — `{ ...FIAT_RATE_SEED_TABLE,
+  ...liveRows }` — so a live rate always wins per pair and the seed
+  only fills a gap. This is a read-time overlay, never written to the
+  DB, and is why a non-UAH fiat holding values correctly immediately,
+  even fully offline on a fresh install before any live refresh has
+  ever run. Crypto has no seed entry — see below.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
-  from it.
-- Store results in `CurrencyRate`. Refresh on sync, throttled to
+  from it. No offline seed for crypto; an unrated crypto holding is
+  excluded until a live CoinGecko price lands.
+- Store live results in `CurrencyRate`. Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
