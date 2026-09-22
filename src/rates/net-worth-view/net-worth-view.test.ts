@@ -6,29 +6,72 @@ import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from '.
 const NOW = Date.UTC(2026, 0, 1);
 
 describe('buildRateTable', () => {
+  // Parse/drop behavior for the LIVE rows themselves is unit-tested in full
+  // isolation (exact `toEqual` on the whole object) by
+  // `rateTableFromRows` in `conversion.test.ts` — `buildRateTable` now also
+  // merges the bundled fiat seed underneath every live row (Part A), so an
+  // exact whole-object `toEqual` here would break on the seed's own many
+  // entries. These cases instead target only the keys the passed rows touch.
   it('parses the string rate column into a numeric RateTable', () => {
     const table = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '40.5' }]);
-    expect(table).toEqual({ 'USD:UAH': 40.5 });
+    expect(table['USD:UAH']).toBe(40.5);
   });
 
-  it('drops rows whose rate does not parse to a finite number', () => {
+  it('drops a row whose rate does not parse to a finite number, without corrupting the fiat seed fallback', () => {
     const table = buildRateTable([
       { base: 'USD', quote: 'UAH', rate: '40' },
       { base: 'EUR', quote: 'UAH', rate: 'not-a-number' },
     ]);
-    expect(table).toEqual({ 'USD:UAH': 40 });
+    expect(table['USD:UAH']).toBe(40);
+    // The invalid EUR row must not overwrite the seed's EUR:UAH with NaN —
+    // EUR:UAH still resolves through the seed fallback beneath it.
+    expect(Number.isFinite(table['EUR:UAH'])).toBe(true);
   });
 
   // P1: a stored rate of "0" is not a usable rate — admitting it into the
   // table would let `canConvert` treat it as present (0 !== undefined) and
   // convert a holding to 0, while the breakdown still shows it at full
   // own-currency value. Drop it at the single source instead.
-  it('drops a row whose rate parses to zero', () => {
+  it('drops a row whose rate parses to zero, without corrupting the fiat seed fallback', () => {
     const table = buildRateTable([
       { base: 'USD', quote: 'UAH', rate: '40' },
       { base: 'EUR', quote: 'UAH', rate: '0' },
     ]);
-    expect(table).toEqual({ 'USD:UAH': 40 });
+    expect(table['USD:UAH']).toBe(40);
+    // The zero EUR row must not overwrite the seed's EUR:UAH with 0.
+    expect(table['EUR:UAH']).not.toBe(0);
+    expect(table['EUR:UAH']).toBeGreaterThan(0);
+  });
+
+  // Part A — the bundled fiat rate seed is a FALLBACK LAYER: with an EMPTY
+  // `currency_rates` table (a fresh install, before any live sync ever
+  // succeeded), a supported fiat currency must still convert, rather than
+  // silently dropping out of net worth until the first live fetch lands.
+  describe('fiat rate seed fallback', () => {
+    it('falls back to the bundled fiat seed when the DB has no rows at all', () => {
+      const table = buildRateTable([]);
+
+      expect(table['USD:UAH']).toBeGreaterThan(0);
+    });
+
+    it('lets a live DB row override the seed value for the same pair', () => {
+      const table = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '999.5' }]);
+
+      expect(table['USD:UAH']).toBe(999.5);
+    });
+
+    it('keeps every OTHER seeded pair intact when only one live row is stored', () => {
+      const table = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '999.5' }]);
+
+      expect(table['EUR:UAH']).toBeGreaterThan(0);
+      expect(table['EUR:UAH']).not.toBe(999.5);
+    });
+
+    it('does not seed a crypto pair — fiat only, crypto stays a separate live-only path', () => {
+      const table = buildRateTable([]);
+
+      expect(table['BTC:UAH']).toBeUndefined();
+    });
   });
 });
 
@@ -231,5 +274,69 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
 
     expect(breakdown.map((money) => money.currency)).toEqual(['UAH']);
     expect(breakdown.reduce((sum, money) => sum + money.minorUnits, 0)).toBe(total.minorUnits);
+  });
+});
+
+// Part A end-to-end proof: the root-cause bug was that `currency_rates` is
+// EMPTY until the first live Monobank fetch succeeds, so `refreshRates` never
+// writes a row on a fresh, offline install and a non-UAH holding silently
+// dropped out of net worth (`canConvert`) with no live rate ever cached. The
+// bundled fiat seed fixes this offline, before any sync — going through the
+// REAL `buildRateTable` (not a hand-built `rates` object) is what proves the
+// fallback layer, not just the guard functions in isolation.
+describe('offline-first-run regression — empty currency_rates DB (Part A)', () => {
+  it('counts a USD holding in the headline total with a completely empty rates table', () => {
+    const table = buildRateTable([]); // simulates an empty `currency_rates` table
+    const holdings = [
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+
+    const total = guardedNetWorth(holdings, 'UAH', table, NOW);
+
+    expect(total.currency).toBe('UAH');
+    expect(total.minorUnits).toBeGreaterThan(0);
+  });
+
+  it('counts a USD holding in the per-currency breakdown with a completely empty rates table', () => {
+    const table = buildRateTable([]);
+    const holdings = [
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+
+    const breakdown = guardedBreakdown(holdings, 'UAH', table, NOW);
+
+    expect(breakdown.map((money) => money.currency)).toEqual(['USD']);
+    expect(breakdown[0].minorUnits).toBeGreaterThan(0);
+  });
+
+  it('prefers a live USD:UAH rate over the seed once one is stored', () => {
+    const seeded = buildRateTable([]);
+    const live = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.23' }]);
+    const holdings = [
+      {
+        currency: 'USD' as const,
+        balanceMinorUnits: 10_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+
+    const seededTotal = guardedNetWorth(holdings, 'UAH', seeded, NOW);
+    const liveTotal = guardedNetWorth(holdings, 'UAH', live, NOW);
+
+    // 100.00 USD * 41.23 = 4,123.00 UAH exactly — proves the LIVE rate, not
+    // the approximate seed, drove this total.
+    expect(liveTotal.minorUnits).toBe(412_300);
+    expect(liveTotal.minorUnits).not.toBe(seededTotal.minorUnits);
   });
 });

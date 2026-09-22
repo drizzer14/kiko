@@ -2309,7 +2309,11 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    // leave Value In blank
+    // Part A: picking a destination now PREFILLS an approximate value through
+    // the bundled fiat rate seed (`buildRateTable`'s fallback layer, proven in
+    // the "convert counterpart prefill" describe block below) — explicitly
+    // blank the field to exercise the validation guard this test targets.
+    await fireEvent.changeText(getByLabelText('Value In'), '');
     await fireEvent.press(getByText('Save'));
 
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
@@ -2328,6 +2332,10 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
+    // Part A: picking a destination now PREFILLS an approximate value through
+    // the bundled fiat rate seed — blank it explicitly so this still exercises
+    // the "blocked until valid" guard (see the note on the test above).
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '');
     await fireEvent.press(utils.getByText('Save'));
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
@@ -2349,6 +2357,10 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
+    // Part A: picking a destination now PREFILLS an approximate value through
+    // the bundled fiat rate seed — blank it explicitly to still reach the
+    // "amount must be greater than 0" reason this test targets.
+    await fireEvent.changeText(utils.getByLabelText('Value In'), '');
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(
       within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
@@ -2882,15 +2894,26 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('leaves the counterpart amount blank when no rate for the pair is cached', async () => {
+  // Part A (bug-hunt fix): `buildRateTable` now falls back to the bundled fiat
+  // rate seed when `currency_rates` has no live row for a pair — a supported
+  // fiat pair therefore ALWAYS resolves, never `null`, so this no longer proves
+  // the blank-field path (see `exchange-prefill.test.ts`'s own "returns null
+  // when no cached rate exists", unaffected by the seed since it hand-builds
+  // its `RateTable` rather than going through `buildRateTable`). This proves
+  // the offline/fresh-install case instead: an EMPTY `currency_rates` table
+  // still prefills an approximate value through the seed, rather than leaving
+  // the field blank until the first live sync ever completes.
+  it('prefills the counterpart amount from the bundled fiat seed when no live rate is cached', async () => {
     const utils = await renderConvert([]);
 
     await fireEvent.press(utils.getByText('Exchange'));
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash UAH'));
 
-    // No USD:UAH rate → seedCounterpartMinorUnits returns null → the field stays
-    // blank and editable rather than being overwritten.
-    expect(utils.getByLabelText('Value In').props.value).toBe('');
+    // 20.00 USD × the seed's USD:UAH (44.6) = 892.00 UAH — an APPROXIMATE
+    // value until a live rate replaces it, unlike the exact 830 the live-rate
+    // test above locks in for the same holdings at a different (live) rate.
+    await waitFor(() => expect(utils.getByLabelText('Value In').props.value).toBe('892'));
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

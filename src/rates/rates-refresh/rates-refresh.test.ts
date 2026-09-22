@@ -21,6 +21,10 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
       captured.push(rates);
     },
     now: () => 1000,
+    // A no-op, instant sleep by default so a test that doesn't care about the
+    // retry backoff (Part B) never actually waits on the real timers the
+    // production default (`setTimeout`) would use.
+    sleep: async () => {},
     ...overrides,
   };
   return { deps, captured };
@@ -187,5 +191,70 @@ describe('refreshRates', () => {
     expect(canConvert('GBP', 'USD', table)).toBe(true);
     expect(canConvert('CHF', 'USD', table)).toBe(true);
     expect(canConvert('GBP', 'CHF', table)).toBe(true);
+  });
+});
+
+// Part B: a failed live fetch retries with a small bounded backoff before
+// giving up, so a transient network blip or a single 429 doesn't leave live
+// rates stuck behind the (approximate) fiat seed fallback for the whole
+// 5-minute throttle window.
+describe('refreshRates — retry on a failed live fetch (Part B)', () => {
+  it('retries a failing fiat fetch and stores the rows once it succeeds', async () => {
+    let callCount = 0;
+    const sleepDelays: number[] = [];
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          throw new Error('network blip');
+        }
+        return fiat;
+      },
+      sleep: async (ms: number) => {
+        sleepDelays.push(ms);
+      },
+    });
+
+    await refreshRates(deps);
+
+    expect(callCount).toBe(2);
+    expect(sleepDelays.length).toBeGreaterThan(0);
+    expect(captured).toHaveLength(1);
+    expect(
+      captured[0].some((pair) => pair.base === 'USD' && pair.quote === 'UAH' && pair.rate === '40'),
+    ).toBe(true);
+  });
+
+  it('gives up and resolves (not rejects) once every retry is exhausted', async () => {
+    let callCount = 0;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: async () => {
+        callCount += 1;
+        throw new Error('persistently offline');
+      },
+    });
+
+    await expect(refreshRates(deps)).resolves.toBeUndefined();
+
+    // The initial attempt plus every retry, and no row written (the stale DB
+    // rates are left untouched, exactly like the pre-existing both-fail case).
+    expect(callCount).toBeGreaterThan(1);
+    expect(captured).toHaveLength(0);
+  });
+
+  it('respects the throttle — never retries (or fetches at all) inside the cache window', async () => {
+    let callCount = 0;
+    const { deps } = makeDeps({
+      fetchFiatRates: async () => {
+        callCount += 1;
+        throw new Error('should never be called');
+      },
+      now: () => 1000 + 60_000, // 1 minute after the last refresh
+      lastRefreshAt: 1000,
+    });
+
+    await refreshRates(deps);
+
+    expect(callCount).toBe(0);
   });
 });
