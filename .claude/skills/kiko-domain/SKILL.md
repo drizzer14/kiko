@@ -370,10 +370,14 @@ assume a specific convention for it without one.
 Net worth is **assets-only** — liabilities and debt are out of scope
 for this sub-project. It is the sum of every non-archived holding's
 balance, each converted to the user's selected base currency (stored
-in `Settings.baseCurrency`) using the latest cached `CurrencyRate`.
-An archived account's or closed holding's balance is excluded. The
-headline total (`guardedNetWorth`) and the per-currency breakdown
-shown beneath it (`guardedBreakdown`) share one `canConvert` filter
-in `src/rates/`, so a currency with no cached rate
-(e.g. BTC on a first run, before any sync) is dropped from both —
-never included in the breakdown after being excluded from the total.
+in `Settings.baseCurrency`). An archived account's or closed holding's
+balance is excluded. The headline total (`guardedNetWorth`) and the
+per-currency breakdown shown beneath it (`guardedBreakdown`) share one
+`canConvert` filter in `src/rates/`, so a currency with no resolvable
+rate is dropped from both — never included in the breakdown after
+being excluded from the total. See kiko-architecture's "Price data"
+section for how a rate is resolved (Monobank → NBU → bundled fiat
+seed); today CRYPTO is the only currency class that can still hit
+this silent-drop path (no offline seed, so an unrated crypto holding
+is excluded until a live CoinGecko price lands) — every fiat currency
+is covered by the bundled seed and effectively never drops.
