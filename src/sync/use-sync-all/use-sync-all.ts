@@ -14,20 +14,27 @@ type UseSyncAll = {
 
 /**
  * Run one whole fan-out and refresh rates once, returning the names of the
- * accounts whose job rejected (empty on full success).
+ * accounts whose job rejected (empty on full success). Only the sync
+ * FAN-OUT is gated on having jobs; the rate refresh is decoupled from it so
+ * a manual-only account list (no Monobank/crypto connected) still gets
+ * cross-rates cached — mirroring `useAutoSync`'s identical fix. Running it
+ * unconditionally is safe: `refreshRates` is self-throttled by
+ * `lastRefreshAt` and hits only the PUBLIC, tokenless endpoint.
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
-  // Cap CONCURRENT syncs so a many-connection pull never fires N provider
-  // requests at once (device load / provider rate limits). Results come back in
-  // job order, so `results[index]` still aligns to `jobs[index]` for naming the
-  // failed accounts — see `settleAllLimited`.
-  const results = await settleAllLimited(
-    jobs.map((job) => job.run),
-    SYNC_CONCURRENCY_LIMIT,
-  );
-  const failed = jobs
-    .filter((_, index) => results[index].status === 'rejected')
-    .map((job) => job.name);
+  let failed: string[] = [];
+
+  if (jobs.length > 0) {
+    // Cap CONCURRENT syncs so a many-connection pull never fires N provider
+    // requests at once (device load / provider rate limits). Results come back in
+    // job order, so `results[index]` still aligns to `jobs[index]` for naming the
+    // failed accounts — see `settleAllLimited`.
+    const results = await settleAllLimited(
+      jobs.map((job) => job.run),
+      SYNC_CONCURRENCY_LIMIT,
+    );
+    failed = jobs.filter((_, index) => results[index].status === 'rejected').map((job) => job.name);
+  }
 
   // One rate refresh for the whole fan-out (not per account), mirroring the
   // single refresh a lone sync does. Wrapped so a rate-refresh failure — not
@@ -83,9 +90,6 @@ export const useSyncAll = (accounts: SyncableAccount[]): UseSyncAll => {
 
   const syncAll = async (): Promise<void> => {
     const jobs = accounts.flatMap(syncJobsFor);
-    if (jobs.length === 0) {
-      return;
-    }
 
     setFailures([]);
     const failed = await runSyncAllOnce(jobs);

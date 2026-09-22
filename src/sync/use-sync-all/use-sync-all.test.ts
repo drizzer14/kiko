@@ -184,7 +184,7 @@ describe('useSyncAll', () => {
     expect(mockRunCryptoSync).toHaveBeenCalledTimes(4);
   });
 
-  it('is a no-op when nothing is syncable', async () => {
+  it('skips the sync fan-out but still refreshes rates when nothing is syncable', async () => {
     const { result } = await renderHook(() => useSyncAll([MANUAL]));
 
     await act(async () => {
@@ -193,7 +193,11 @@ describe('useSyncAll', () => {
 
     expect(mockRunSync).not.toHaveBeenCalled();
     expect(mockRunCryptoSync).not.toHaveBeenCalled();
-    expect(mockRefreshRates).not.toHaveBeenCalled();
+    // Regression: a manual-only account list has no sync jobs, but rates must
+    // still refresh so a non-UAH manual holding still converts to the base
+    // currency — see `useAutoSync`'s identical fix.
+    expect(mockRefreshRates).toHaveBeenCalledTimes(1);
+    expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
     expect(result.current.failures).toEqual([]);
   });
 });
