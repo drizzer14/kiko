@@ -1,10 +1,11 @@
 import { ratesRepo } from '@kiko/rates/repo';
 
-import type { RateEntry } from '../conversion';
-import { fetchCryptoPrices } from '../coingecko';
-import { fetchFiatRates } from '../monobank-rates';
 import type { Currency } from '../../currency/currency';
 import { currencyOptions, isCrypto } from '../../currency/currency';
+import { fetchCryptoPrices } from '../coingecko';
+import type { RateEntry } from '../conversion';
+import { fetchFiatRates } from '../monobank-rates';
+import { fetchNbuFiatRates } from '../nbu-rates';
 
 // Monobank's `/bank/currency` is cached upstream ~5 minutes, so refreshing more
 // often than that only re-fetches identical data.
@@ -22,12 +23,17 @@ type StoredRate = {
   base: Currency;
   quote: Currency;
   rate: string;
-  source: 'monobank' | 'coingecko';
+  source: 'monobank' | 'coingecko' | 'nbu';
   fetchedAt: number;
 };
 
 export type RefreshDeps = {
   fetchFiatRates?: () => Promise<RateEntry[]>;
+  /**
+   * NBU's unpinned current-rate fallback (`nbu-rates.ts`), tried only once
+   * `fetchFiatRates` has failed every retry — see `refreshRates` below.
+   */
+  fetchNbuRates?: () => Promise<RateEntry[]>;
   fetchCryptoPrices?: () => Promise<RateEntry[]>;
   upsertMany?: (rates: StoredRate[]) => Promise<void>;
   now?: () => number;
@@ -97,19 +103,33 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
   return price;
 };
 
-const pairSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
-  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'monobank';
+const pairSource = (
+  base: Currency,
+  quote: Currency,
+  fiatSource: 'monobank' | 'nbu',
+): StoredRate['source'] => (isCrypto(base) || isCrypto(quote) ? 'coingecko' : fiatSource);
 
 /**
  * Compose every ordered distinct pair from the UAH-anchored prices. A rate is
  * stored as a string, never a float, to match the CurrencyRate column contract.
+ *
+ * `fiatSource` labels every composed fiat-fiat pair with whichever provider's
+ * UAH-anchored prices actually fed `price` — `refreshRates` below passes
+ * `'nbu'` when the Monobank fetch failed and NBU's fallback rows supplied the
+ * pivot instead, so a stored row's provenance stays accurate. Defaults to
+ * `'monobank'` for every other caller (a live Monobank-sourced run, and
+ * `fiat-rate-seed.ts`'s static snapshot, which was itself captured from Monobank).
  *
  * Exported so `fiat-rate-seed.ts` composes the bundled offline fiat fallback
  * table through this SAME logic, from a static UAH-price snapshot instead of
  * a live fetch — the seed's shape is then guaranteed identical to what a live
  * refresh would have produced, rather than a second, drift-prone reimplementation.
  */
-export const buildPairs = (price: UahPrice, fetchedAt: number): StoredRate[] => {
+export const buildPairs = (
+  price: UahPrice,
+  fetchedAt: number,
+  fiatSource: 'monobank' | 'nbu' = 'monobank',
+): StoredRate[] => {
   const pairs: StoredRate[] = [];
   for (const base of allCurrencies) {
     for (const quote of allCurrencies) {
@@ -122,7 +142,7 @@ export const buildPairs = (price: UahPrice, fetchedAt: number): StoredRate[] => 
         base,
         quote,
         rate: String(from / to),
-        source: pairSource(base, quote),
+        source: pairSource(base, quote, fiatSource),
         fetchedAt,
       });
     }
@@ -143,27 +163,45 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<void> => {
     return;
   }
   const loadFiat = deps.fetchFiatRates ?? (() => fetchFiatRates());
+  const loadNbuFiat = deps.fetchNbuRates ?? (() => fetchNbuFiatRates());
   const loadCrypto = deps.fetchCryptoPrices ?? (() => fetchCryptoPrices());
   const upsertMany = deps.upsertMany ?? ratesRepo.upsertMany;
   const sleep =
     deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-  // Settle the two providers independently, exactly as `runBackfill` does
-  // (rates/history-backfill.ts). `Promise.all` discarded a successful Monobank
-  // fiat fetch whenever CoinGecko 429'd or returned a malformed body, left the
-  // stale rate table in place, and propagated the rejection through
-  // `useSyncAction` — so a Monobank import that fully succeeded was reported
-  // to the user as a failed sync. Whichever provider survives still
-  // contributes its anchors. Each fetch RETRIES on failure first (Part B,
-  // `withRetry`) — only a fetch that is STILL failing after every retry
-  // reaches `allSettled` as a rejection.
+  // Monobank's `/bank/currency` host is certificate-pinned
+  // (`ios/Kiko/Info.plist`'s `NSPinnedDomains`) and stays the PREFERRED fiat
+  // source (its bank-BUY-rate choice, `monobank-rates.ts`). NBU (`bank.gov.ua`,
+  // deliberately UNPINNED) is the live fallback, reached for only once
+  // Monobank's own bounded retry (Part B, `withRetry`) is exhausted — a
+  // SEQUENTIAL fallback, not a second concurrent provider: only ONE source's
+  // rows are ever composed and stored per run. `fiatSource` tracks which one
+  // answered so the composed pairs are labeled with accurate provenance
+  // (`pairSource`/`buildPairs` above).
+  let fiatSource: 'monobank' | 'nbu' = 'monobank';
+  const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
+    try {
+      return await withRetry(loadFiat, sleep);
+    } catch {
+      fiatSource = 'nbu';
+      return loadNbuFiat();
+    }
+  };
+
+  // Settle the fiat (with its NBU fallback) and crypto pipelines
+  // independently, exactly as `runBackfill` does (rates/history-backfill.ts).
+  // `Promise.all` discarded a successful fiat fetch whenever CoinGecko 429'd
+  // or returned a malformed body, left the stale rate table in place, and
+  // propagated the rejection through `useSyncAction` — so a fiat import that
+  // fully succeeded was reported to the user as a failed sync. Whichever
+  // pipeline survives still contributes its anchors.
   const [fiatResult, cryptoResult] = await Promise.allSettled([
-    withRetry(loadFiat, sleep),
+    loadFiatWithFallback(),
     withRetry(loadCrypto, sleep),
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
-  const pairs = buildPairs(buildUahPrice(fiat, crypto), at);
+  const pairs = buildPairs(buildUahPrice(fiat, crypto), at, fiatSource);
 
   if (pairs.length > 0) {
     await upsertMany(pairs);

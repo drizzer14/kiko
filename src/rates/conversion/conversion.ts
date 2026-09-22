@@ -10,7 +10,7 @@ export type RateEntry = {
   base: Currency;
   quote: Currency;
   rate: number;
-  source: 'monobank' | 'coingecko';
+  source: 'monobank' | 'coingecko' | 'nbu';
 };
 
 const rateKey = (base: Currency, quote: Currency) => `${base}:${quote}`;

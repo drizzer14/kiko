@@ -171,7 +171,7 @@ export const currencyRates = sqliteTable(
     base: text('base', { enum: currencyOptions }).notNull(),
     quote: text('quote', { enum: currencyOptions }).notNull(),
     rate: text('rate').notNull(),
-    source: text('source', { enum: ['monobank', 'coingecko'] }).notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
   (table) => ({

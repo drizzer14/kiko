@@ -22,7 +22,7 @@ availability risk for little.
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
 | `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
-| `bank.gov.ua` | `src/rates/` (`nbu-history`) | no | no | Public NBU historical fiat rates, no auth header. |
+| `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`) | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. |
 
 ### Current chains (verified 2026-09-06)
 

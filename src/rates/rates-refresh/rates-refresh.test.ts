@@ -16,6 +16,10 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
   const captured: StoredRate[][] = [];
   const deps: RefreshDeps = {
     fetchFiatRates: async () => fiat,
+    // Defaults to empty so a test that never touches the Monobank->NBU
+    // fallback (below) doesn't accidentally hit the real network — only a
+    // test that overrides `fetchFiatRates` to fail exercises this.
+    fetchNbuRates: async () => [],
     fetchCryptoPrices: async () => btc,
     upsertMany: async (rates: StoredRate[]) => {
       captured.push(rates);
@@ -256,5 +260,88 @@ describe('refreshRates — retry on a failed live fetch (Part B)', () => {
     await refreshRates(deps);
 
     expect(callCount).toBe(0);
+  });
+});
+
+// Monobank's `/bank/currency` host is certificate-pinned (`ios/Kiko/Info.plist`),
+// which never resolves on the reporting device. NBU (`bank.gov.ua`, unpinned) is
+// the live fallback fiat source, tried only once Monobank's own retries are
+// exhausted — so live rates still refresh when Monobank is unreachable.
+describe('refreshRates — NBU fallback when Monobank is unreachable', () => {
+  const nbuFiat: RateEntry[] = [
+    { base: 'USD', quote: 'UAH', rate: 41, source: 'nbu' },
+    { base: 'EUR', quote: 'UAH', rate: 44, source: 'nbu' },
+  ];
+
+  it('fetches NBU and stores its rows once every Monobank retry has failed', async () => {
+    let nbuCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('cert pinning blocked')),
+      fetchNbuRates: async () => {
+        nbuCalled = true;
+        return nbuFiat;
+      },
+    });
+
+    await refreshRates(deps);
+
+    expect(nbuCalled).toBe(true);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toContainEqual({
+      base: 'USD',
+      quote: 'UAH',
+      rate: '41',
+      source: 'nbu',
+      fetchedAt: 1000,
+    });
+    // Only ONE fiat source's rows land per run — no leftover 'monobank'-labeled
+    // composed pair sneaks in alongside the NBU-sourced ones (the crypto pivot,
+    // labeled 'coingecko', is unaffected by which fiat source answered).
+    expect(captured[0].every((pair) => pair.source !== 'monobank')).toBe(true);
+  });
+
+  it('never calls NBU when the Monobank fetch succeeds', async () => {
+    let nbuCalled = false;
+    const { deps, captured } = makeDeps({
+      fetchNbuRates: async () => {
+        nbuCalled = true;
+        return nbuFiat;
+      },
+    });
+
+    await refreshRates(deps);
+
+    expect(nbuCalled).toBe(false);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].every((pair) => pair.source !== 'nbu')).toBe(true);
+  });
+
+  it('writes nothing when both Monobank and NBU fail', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('offline')),
+      fetchNbuRates: () => Promise.reject(new Error('nbu also offline')),
+    });
+
+    await expect(refreshRates(deps)).resolves.toBeUndefined();
+
+    expect(captured).toHaveLength(0);
+  });
+
+  it('does not touch the crypto pipeline: BTC still composes against the NBU fiat anchor', async () => {
+    const { deps, captured } = makeDeps({
+      fetchFiatRates: () => Promise.reject(new Error('cert pinning blocked')),
+      fetchNbuRates: async () => nbuFiat,
+    });
+
+    await refreshRates(deps);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toContainEqual({
+      base: 'BTC',
+      quote: 'USD',
+      rate: '65000',
+      source: 'coingecko',
+      fetchedAt: 1000,
+    });
   });
 });
