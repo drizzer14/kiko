@@ -69,6 +69,15 @@ const malformedDateInput = {
   fileName: 'malformed-date.csv',
 };
 
+// Money-safety guard (mirrors `business-csv`'s Дебет XOR Кредит guard): a row
+// carrying BOTH a debit AND a credit amount is not a valid single-amount
+// row — silently preferring one side (the old `||` fallback) would drop the
+// other without a trace, so this must throw rather than guess.
+const bothDebitAndCreditInput = {
+  text: `${preambleLines}\n09.01.00 00:58;виконано;Інше;Both Amounts Row;Kyiv, UKR;;-150,00;1000,00`,
+  fileName: 'both-debit-and-credit.csv',
+};
+
 const noAccountLineInput = {
   text: [
     SENSEBANK_PREAMBLE,
@@ -260,5 +269,9 @@ describe('sensebankCsvFormat.parse', () => {
 
   it('throws a StatementParseError when no "Рахунок … (…)" account line is present', () => {
     expect(() => sensebankCsvFormat.parse(noAccountLineInput)).toThrow(StatementParseError);
+  });
+
+  it('throws a StatementParseError instead of silently dropping the credit when both debit and credit are populated', () => {
+    expect(() => sensebankCsvFormat.parse(bothDebitAndCreditInput)).toThrow(StatementParseError);
   });
 });

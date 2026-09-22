@@ -14,7 +14,7 @@ export const buildRateTable = (
 
   for (const row of rows) {
     const rate = Number(row.rate);
-    if (Number.isFinite(rate)) {
+    if (Number.isFinite(rate) && rate > 0) {
       table[`${row.base}:${row.quote}`] = rate;
     }
   }
@@ -23,12 +23,21 @@ export const buildRateTable = (
 
 /**
  * `convert`/`netWorth` throw on a missing rate pair (RULING R2). A holding is
- * convertible only when it is already in the base currency or a base rate
- * exists — otherwise it is excluded from any sum so a first-run (no rates yet)
- * render never crashes.
+ * convertible only when it is already in the base currency or a POSITIVE,
+ * finite base rate exists — otherwise it is excluded from any sum so a
+ * first-run (no rates yet) render never crashes. A rate of 0 (a bad provider
+ * tick) must be treated the same as a missing rate: `0 !== undefined` would
+ * otherwise let `guardedNetWorth` convert the holding to 0 while
+ * `guardedBreakdown` kept showing it at full own-currency value.
  */
-export const canConvert = (currency: Currency, base: Currency, rates: RateTable): boolean =>
-  currency === base || rates[`${currency}:${base}`] !== undefined;
+export const canConvert = (currency: Currency, base: Currency, rates: RateTable): boolean => {
+  if (currency === base) {
+    return true;
+  }
+  const rate = rates[`${currency}:${base}`];
+
+  return rate !== undefined && Number.isFinite(rate) && rate > 0;
+};
 
 /** Sum the given holdings in the base currency, excluding any that cannot convert. */
 export const guardedNetWorth = (

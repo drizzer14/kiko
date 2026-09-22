@@ -132,9 +132,22 @@ const parseSensebankDateSeconds = (raw: string): number => {
 // leading minus sign (e.g. "-150,00"); the credit cell is unsigned positive —
 // no manual negation anywhere. Controller ruling 5 (Task 3 review precedent):
 // guards against ever computing a `NaN` `amountMinorUnits` — an empty or
-// malformed debit/credit pair throws rather than silently writing `NaN`.
+// malformed debit/credit pair throws rather than silently writing `NaN`. A
+// row carrying BOTH a debit AND a credit is not a valid single-amount row at
+// all (money-safety review, mirrors `business-csv`'s Дебет/Кредит guard) —
+// silently preferring the debit side would drop the credit amount without a
+// trace, so this throws instead of guessing.
 const parseRowAmountMinorUnits = (row: string[], currency: Currency): number => {
-  const raw = row[COLUMN.debit] || row[COLUMN.credit];
+  const debitRaw = row[COLUMN.debit];
+  const creditRaw = row[COLUMN.credit];
+
+  if (debitRaw && creditRaw) {
+    throw new StatementParseError(
+      `Sensebank row carries both a "Cума списання" ("${debitRaw}") and a "Cума зарахування" ("${creditRaw}") amount`,
+    );
+  }
+
+  const raw = debitRaw || creditRaw;
   const major = parseAmount(raw);
 
   if (!Number.isFinite(major)) {

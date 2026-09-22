@@ -18,6 +18,18 @@ describe('buildRateTable', () => {
     ]);
     expect(table).toEqual({ 'USD:UAH': 40 });
   });
+
+  // P1: a stored rate of "0" is not a usable rate — admitting it into the
+  // table would let `canConvert` treat it as present (0 !== undefined) and
+  // convert a holding to 0, while the breakdown still shows it at full
+  // own-currency value. Drop it at the single source instead.
+  it('drops a row whose rate parses to zero', () => {
+    const table = buildRateTable([
+      { base: 'USD', quote: 'UAH', rate: '40' },
+      { base: 'EUR', quote: 'UAH', rate: '0' },
+    ]);
+    expect(table).toEqual({ 'USD:UAH': 40 });
+  });
 });
 
 describe('canConvert', () => {
@@ -33,6 +45,13 @@ describe('canConvert', () => {
 
   it('is false when no rate to the base currency exists', () => {
     expect(canConvert('EUR', 'UAH', rates)).toBe(false);
+  });
+
+  // P1: a rate of 0 is not a usable rate — treating it as present (0 !==
+  // undefined) let `guardedNetWorth` convert a holding to 0 while
+  // `guardedBreakdown` still showed it at full own-currency value.
+  it('is false when the stored rate to the base currency is zero', () => {
+    expect(canConvert('EUR', 'UAH', { 'EUR:UAH': 0 })).toBe(false);
   });
 });
 
@@ -184,5 +203,33 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
     expect(breakdown.map((money) => money.currency).sort()).toEqual(['UAH', 'USD']);
     expect(breakdown.find((money) => money.currency === 'UAH')?.minorUnits).toBe(100_000);
     expect(breakdown.find((money) => money.currency === 'USD')?.minorUnits).toBe(10_000);
+  });
+
+  // P1: a stored rate of 0 (e.g. a bad provider tick) must exclude the
+  // holding from BOTH the total and the breakdown, exactly like a MISSING
+  // rate — never convert it to 0 in the total while the breakdown still
+  // shows it at full own-currency value.
+  it('drops a holding from both the total and the breakdown when its rate to the base currency is zero', () => {
+    const holdings = [
+      {
+        currency: 'UAH' as const,
+        balanceMinorUnits: 100_00,
+        type: 'cash' as const,
+        metadata: null,
+      },
+      {
+        currency: 'EUR' as const,
+        balanceMinorUnits: 5_000,
+        type: 'cash' as const,
+        metadata: null,
+      },
+    ];
+    const rates = { 'EUR:UAH': 0 };
+
+    const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
+    const breakdown = guardedBreakdown(holdings, 'UAH', rates, NOW);
+
+    expect(breakdown.map((money) => money.currency)).toEqual(['UAH']);
+    expect(breakdown.reduce((sum, money) => sum + money.minorUnits, 0)).toBe(total.minorUnits);
   });
 });

@@ -77,4 +77,45 @@ describe('runCryptoSync', () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  // P2: an account-detail Connect overlapping a pull-to-refresh fan-out can
+  // both trigger a Binance sync for the SAME account while the first is still
+  // in flight. `runBalanceSync` is already per-account single-flight-locked
+  // (`src/crypto-sync/sync/sync.ts`), but the transaction import that runs
+  // AFTER it was not, so a second overlapping trigger re-ran
+  // `syncBinanceTransactions` — wasted requests and a possible swallowed 429.
+  // The whole binance arm (balance + transaction import) must join one
+  // in-flight run per account.
+  describe('single-flight join over the whole Binance arm (P2)', () => {
+    it('runs syncBinanceTransactions once when two overlapping triggers target the SAME Binance account', async () => {
+      const [a, b] = await Promise.all([
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+      ]);
+
+      expect(a).toEqual(b);
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(1);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs independently for two DIFFERENT Binance accounts', async () => {
+      await Promise.all([
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-3' }),
+      ]);
+
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-2' });
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-3' });
+    });
+
+    it('releases the lock after settling so a later, non-overlapping sync runs fresh', async () => {
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
+    });
+  });
 });
