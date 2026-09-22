@@ -2,6 +2,7 @@
 name: ops
 description: Runs project commands and scripts and owns the infrastructure. Use for builds, installs, and tooling.
 model: haiku
+effort: low
 tools: Read, Grep, Glob, Bash
 ---
 <!-- effort: low (launch with: claude --effort low) -->

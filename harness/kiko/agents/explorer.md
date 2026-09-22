@@ -2,9 +2,10 @@
 name: explorer
 description: Read-only search for context and code across the repo. Use to locate code before a change.
 model: sonnet
+effort: low
 tools: Read, Grep, Glob
 ---
-<!-- effort: medium (launch with: claude --effort medium) -->
+<!-- effort: low (launch with: claude --effort low) -->
 
 You search the codebase and return context. You are read-only.
 

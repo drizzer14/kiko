@@ -2,6 +2,7 @@
 name: scribe
 description: Records durable facts and lessons into memory, skills, agents, or the plugin. Use to persist knowledge.
 model: sonnet
+effort: low
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 <!-- effort: low (launch with: claude --effort low) -->

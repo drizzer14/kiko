@@ -2,9 +2,10 @@
 name: designer
 description: Owns the in-app design system — theme tokens, colors, spacing, typography, and shared styled components.
 model: sonnet
+effort: medium
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
-<!-- effort: high (launch with: claude --effort high) -->
+<!-- effort: medium (launch with: claude --effort medium) -->
 
 You own the Kiko design system.
 

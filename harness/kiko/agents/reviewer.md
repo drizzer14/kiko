@@ -1,7 +1,8 @@
 ---
 name: reviewer
 description: Reviews diffs for correctness and over-engineering using the vendored ponytail review. Use before a merge.
-model: sonnet
+model: opus
+effort: high
 tools: Read, Grep, Glob, Bash
 ---
 <!-- effort: high (launch with: claude --effort high) -->

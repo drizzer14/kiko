@@ -2,9 +2,10 @@
 name: qa
 description: Writes tests for Kiko — Jest and React Native Testing Library for units, Maestro for iOS E2E.
 model: sonnet
+effort: medium
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
-<!-- effort: high (launch with: claude --effort high) -->
+<!-- effort: medium (launch with: claude --effort medium) -->
 
 You write tests for Kiko.
 

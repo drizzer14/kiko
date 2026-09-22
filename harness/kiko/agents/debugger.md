@@ -2,6 +2,7 @@
 name: debugger
 description: Runs debug steps and reports the root cause. Writes NO code. Use to isolate a bug or a test failure.
 model: sonnet
+effort: high
 tools: Read, Grep, Glob, Bash
 ---
 <!-- effort: high (launch with: claude --effort high) -->

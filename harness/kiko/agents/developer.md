@@ -2,6 +2,7 @@
 name: developer
 description: Writes all TypeScript and React Native code for Kiko. Use for any feature or bugfix implementation.
 model: sonnet
+effort: high
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 <!-- effort: high (launch with: claude --effort high) -->

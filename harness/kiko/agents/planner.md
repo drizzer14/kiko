@@ -1,7 +1,8 @@
 ---
 name: planner
 description: Writes implementation plans for Kiko. Use to turn a spec or a feature request into a step-by-step plan.
-model: sonnet
+model: opus
+effort: medium
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 <!-- effort: medium (launch with: claude --effort medium) -->

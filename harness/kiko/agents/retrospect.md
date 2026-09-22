@@ -2,6 +2,7 @@
 name: retrospect
 description: Gathers durable lessons after each run and verifies skill drift, then hands both to the scribe. Use at the end of a task.
 model: sonnet
+effort: medium
 tools: Read, Grep, Glob, Bash
 ---
 <!-- effort: medium (launch with: claude --effort medium) -->

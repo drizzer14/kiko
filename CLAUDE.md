@@ -250,21 +250,22 @@ gap — it does not do the task itself.
 | Agent | Role | model | effort | Spawn command |
 |---|---|---|---|---|
 | developer | Writes all TypeScript/React Native code | sonnet | high | `claude --agent developer --effort high` |
-| planner | Writes implementation plans from a spec or feature request | sonnet | medium | `claude --agent planner --effort medium` |
+| planner | Writes implementation plans from a spec or feature request | opus | medium | `claude --agent planner --effort medium` |
 | debugger | Isolates faults, writes no code | sonnet | high | `claude --agent debugger --effort high` |
-| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | sonnet | high | `claude --agent reviewer --effort high` |
-| qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | high | `claude --agent qa --effort high` |
-| designer | Owns theme tokens and shared styled components | sonnet | high | `claude --agent designer --effort high` |
-| explorer | Read-only codebase search | sonnet | medium | `claude --agent explorer --effort medium` |
+| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
+| qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | medium | `claude --agent qa --effort medium` |
+| designer | Owns theme tokens and shared styled components | sonnet | medium | `claude --agent designer --effort medium` |
+| explorer | Read-only codebase search | sonnet | low | `claude --agent explorer --effort low` |
 | retrospect | Gathers durable lessons after a run | sonnet | medium | `claude --agent retrospect --effort medium` |
 | scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
 | ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
-| pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | medium | `claude --agent pm --effort medium` |
+| pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | low | `claude --agent pm --effort low` |
 | auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | sonnet | medium | `claude --agent auditor --effort medium` |
 
-Agent frontmatter sets only `model` (there is no per-agent effort
-field); the coordinator applies the recorded effort with `--effort`
-at spawn time, per the table above.
+Agent frontmatter sets both `model` and `effort`; the Agent tool
+applies both on dispatch. Passing `--effort` at spawn time is only
+needed for a standalone `claude --agent` session, and must match the
+frontmatter, per the table above.
 
 ### Ponytail isolation
 
