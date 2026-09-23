@@ -42,7 +42,7 @@ const selectedSwatchHex = (
 // press.
 const selectKind = async (
   getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property',
+  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals',
 ): Promise<void> => {
   await fireEvent.press(getByTestId('account-kind-field'));
   await fireEvent.press(getByTestId(`account-kind-option-${kind}`));
@@ -263,7 +263,7 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Broker')).toBeNull();
   });
 
-  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property', async () => {
+  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals', async () => {
     const { getByTestId, getAllByTestId } = await renderForm();
 
     await fireEvent.press(getByTestId('account-kind-field'));
@@ -276,7 +276,7 @@ describe('AccountFormScreen', () => {
       (node.props.testID as string).replace('account-kind-option-', ''),
     );
 
-    expect(order).toEqual(['bank', 'cash', 'crypto', 'property']);
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals']);
   });
 
   it('shows a subtitle under every kind option in the sheet', async () => {
@@ -324,6 +324,29 @@ describe('AccountFormScreen', () => {
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My House', kind: 'property', color: null }),
+    );
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
+    // Metals has no extra creation fields yet (the metal-section form is T20),
+    // so it shares the generic create path with bank/crypto/property: the row
+    // inserts with just name/kind/color/icon, and neither the cash currency
+    // fields nor the bank/crypto sync sections render for it.
+    const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Gold');
+    await selectKind(getByTestId, 'metals');
+
+    expect(queryByTestId('account-currency-field')).toBeNull();
+    expect(queryByText('Synchronization')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Gold', kind: 'metals', color: null }),
     );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();

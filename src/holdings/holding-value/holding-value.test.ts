@@ -1,7 +1,7 @@
 import { Money } from '../../currency/money';
 import { asBondMeta } from '../holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 import {
   bondExpectedProfitMinor,
@@ -446,6 +446,77 @@ describe('holdingValueBreakdown — property_item (priced)', () => {
 
   it('reports no interest or tax — a priced holding never accrues either', () => {
     const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
+  });
+});
+
+// Metal lots and price points key on the same `dayKeyOf`-style UTC-anchored
+// convention as property's above.
+const goldBar = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'gold-1',
+  type: 'metal',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    metal: 'XAU',
+    form: 'bar',
+    unit: 'g',
+    purity: '1',
+    lots: [{ day: propertyDay2024, quantityDelta: '31.1034768', costMinorUnits: 8_500_000 }],
+    ...over,
+  },
+});
+
+describe('holdingValueBreakdown — metal (priced, T17)', () => {
+  it('values a gold bar at its NBU point at-or-before now', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: propertyDay2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    // 31.1034768g at purity 1 is exactly one troy ounce.
+    expect(breakdown.gross.minorUnits).toBe(9_000_000);
+    expect(breakdown.net.minorUnits).toBe(9_000_000);
+  });
+
+  it('falls back to the lots cost basis when there is no price point yet (Review Focus 5)', () => {
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.gross.minorUnits).toBe(8_500_000);
+    expect(breakdown.net.minorUnits).toBe(8_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
+
+  it('reports the lots cost basis as principalOrCost even when a price point exists', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: propertyDay2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.minorUnits).toBe(9_000_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(8_500_000);
+  });
+
+  it('reports no interest or tax — a priced holding never accrues either', () => {
+    const holding = goldBar();
 
     const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
     expect(breakdown.interest.minorUnits).toBe(0);

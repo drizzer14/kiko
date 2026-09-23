@@ -61,6 +61,11 @@ let mockAccountKind = 'bank';
 // behavior; only the tests exercising the non-synced (statement-import-only)
 // path override this to null.
 let mockAccountInstitution: string | null = 'monobank';
+// The account's `bankId` (T17): gates the `metal` holding type under a
+// `bank`-kind account (see `creatableHoldingTypesForAccount`'s allow-list).
+// `null` by default (no bank picked); only the metal-allow-list tests below
+// override it.
+let mockAccountBankId: string | null = null;
 // The holding the edit-mode form loads through useLiveQuery. Empty by default
 // (create mode); edit-mode tests seed it before rendering.
 let mockEditHoldings: unknown[] = [];
@@ -71,7 +76,16 @@ jest.mock('../../../db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
     keys[0] === 'holdings'
       ? { data: mockEditHoldings }
-      : { data: [{ id: 'acc-1', kind: mockAccountKind, institution: mockAccountInstitution }] },
+      : {
+          data: [
+            {
+              id: 'acc-1',
+              kind: mockAccountKind,
+              institution: mockAccountInstitution,
+              bankId: mockAccountBankId,
+            },
+          ],
+        },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
@@ -96,6 +110,7 @@ const updateDeltaMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
 beforeEach(() => {
   mockAccountKind = 'bank';
   mockAccountInstitution = 'monobank';
+  mockAccountBankId = null;
   mockEditHoldings = [];
 });
 
@@ -1187,6 +1202,47 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     // resets to the first allowed type (crypto_asset) — proven by the shown
     // default icon following to the crypto_asset glyph.
     expect(screen.getByLabelText('Icon bitcoinsign.circle')).toBeTruthy();
+  });
+
+  it('offers only the metal holding type on a metals account', async () => {
+    mockAccountKind = 'metals';
+    mockAccountInstitution = null;
+
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Precious metal')).toBeTruthy();
+    expect(screen.queryByText('Card')).toBeNull();
+    expect(screen.queryByText('Deposit')).toBeNull();
+  });
+
+  it('drops metal from a bank account with no bankId (T17 allow-list)', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+    mockAccountBankId = null;
+
+    const screen = await renderScreen();
+
+    expect(screen.queryByText('Precious metal')).toBeNull();
+  });
+
+  it('drops metal from a bank account whose bankId is not allow-listed (monobank)', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = 'monobank';
+    mockAccountBankId = 'monobank';
+
+    const screen = await renderScreen();
+
+    expect(screen.queryByText('Precious metal')).toBeNull();
+  });
+
+  it('offers metal on a bank account whose bankId is allow-listed (privatbank)', async () => {
+    mockAccountKind = 'bank';
+    mockAccountInstitution = null;
+    mockAccountBankId = 'privatbank';
+
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Precious metal')).toBeTruthy();
   });
 });
 

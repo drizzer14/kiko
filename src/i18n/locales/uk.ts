@@ -190,8 +190,10 @@ export const uk: typeof en = {
         bank: 'Синхронізується або імпортується з виписки банку.',
         cash: 'Готівка поза банком.',
         crypto: 'Гаманець або обліковий запис біржі.',
+        metals: 'Золото, срібло, платина, паладій',
         property: 'Нерухомість, авто, цінності, позики іншим',
       },
+      metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
       property: 'Майно',
       selectBankPlaceholder: 'Оберіть банк (необов’язково)',
@@ -241,6 +243,7 @@ export const uk: typeof en = {
       jar: 'Банка',
       maturityDate: 'Дата погашення',
       maturityDateError: 'Дата погашення має бути пізніше дати придбання.',
+      metal: 'Дорогоцінний метал',
       monthly: 'Щомісяця',
       namePlaceholder: 'Акції Apple',
       propertyCategory: {

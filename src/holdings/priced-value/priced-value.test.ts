@@ -1,5 +1,5 @@
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 import {
   isPricedHoldingType,
@@ -23,10 +23,26 @@ const property = (over: Record<string, unknown> = {}): PricedHolding => ({
   },
 });
 
+const goldBar = (over: Record<string, unknown> = {}): PricedHolding => ({
+  id: 'm1',
+  type: 'metal',
+  currency: 'UAH',
+  metadata: {
+    metal: 'XAU',
+    form: 'bar',
+    unit: 'g',
+    purity: '1',
+    lots: [{ day: day2024, quantityDelta: '31.1034768', costMinorUnits: 5_000_000 }],
+    ...over,
+  },
+});
+
 describe('pricedHoldingTypes / isPricedHoldingType', () => {
-  it('includes property_item', () => {
+  it('includes property_item and metal', () => {
     expect(pricedHoldingTypes).toContain('property_item');
+    expect(pricedHoldingTypes).toContain('metal');
     expect(isPricedHoldingType('property_item')).toBe(true);
+    expect(isPricedHoldingType('metal')).toBe(true);
   });
 
   it('excludes an interest-based ledgerless type (bond)', () => {
@@ -95,5 +111,95 @@ describe('pricedValueMinor', () => {
     ]);
 
     expect(pricedValueMinor(withoutId, book, day2024)).toBeNull();
+  });
+
+  it('values a gram-denominated metal lot by converting to troy ounces (31.1034768g at purity 1 = 1oz x price)', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: day2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar();
+
+    // 31.1034768g at purity 1 is exactly 1 troy ounce, so the value is exactly
+    // one unit of the per-ounce NBU price.
+    expect(pricedValueMinor(holding, book, day2024)).toBe(9_000_000);
+  });
+
+  it('values an ounce-denominated metal lot with no unit conversion', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAG'),
+        day: day2024,
+        price: '1000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar({
+      metal: 'XAG',
+      unit: 'oz',
+      lots: [{ day: day2024, quantityDelta: '2', costMinorUnits: 200_000 }],
+    });
+
+    expect(pricedValueMinor(holding, book, day2024)).toBe(200_000);
+  });
+
+  it('scales a metal value by purity below 1', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: day2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar({ purity: '0.5' });
+
+    expect(pricedValueMinor(holding, book, day2024)).toBe(4_500_000);
+  });
+
+  it('fixes a metal value to UAH regardless of the holding currency field', () => {
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: day2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+    const holding = goldBar();
+    const usdHolding: PricedHolding = { ...holding, currency: 'USD' };
+
+    expect(pricedValueMinor(usdHolding, book, day2024)).toBe(
+      pricedValueMinor(holding, book, day2024),
+    );
+  });
+
+  it('returns null for a metal holding with no stored price point yet', () => {
+    const holding = goldBar();
+
+    expect(pricedValueMinor(holding, EMPTY_PRICE_BOOK, day2024)).toBeNull();
+  });
+
+  it('returns null for a metal holding with no valid metal metadata', () => {
+    const holding = goldBar({ metal: 'nonsense' });
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: day2024,
+        price: '90000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    expect(pricedValueMinor(holding, book, day2024)).toBeNull();
   });
 });

@@ -13,7 +13,7 @@ export const exchangeReceivePath = (type: HoldingType): ExchangeReceivePath =>
   match(type)
     .with('cash', 'card', 'crypto_asset', () => 'plain' as const)
     .with('term_deposit', () => 'contribution' as const)
-    .with('bond', 'jar', 'property_item', () => 'excluded' as const)
+    .with('bond', 'jar', 'property_item', 'metal', () => 'excluded' as const)
     .exhaustive();
 
 // A type is an eligible Exchange destination when it has any receive path other
@@ -26,7 +26,7 @@ export const isExchangeDestinationType = (type: HoldingType): boolean =>
 export const isExchangeSourceType = (type: HoldingType): boolean =>
   match(type)
     .with('cash', 'card', () => true)
-    .with('term_deposit', 'bond', 'crypto_asset', 'jar', 'property_item', () => false)
+    .with('term_deposit', 'bond', 'crypto_asset', 'jar', 'property_item', 'metal', () => false)
     .exhaustive();
 
 // CREATE-mode eligibility (Requirement B, device review 2026-09-06): a NEW
@@ -40,11 +40,29 @@ export const isExchangeSourceType = (type: HoldingType): boolean =>
 export const isExchangeCreateSourceType = (type: HoldingType): boolean =>
   match(type)
     .with('cash', () => true)
-    .with('card', 'term_deposit', 'bond', 'crypto_asset', 'jar', 'property_item', () => false)
+    .with(
+      'card',
+      'term_deposit',
+      'bond',
+      'crypto_asset',
+      'jar',
+      'property_item',
+      'metal',
+      () => false,
+    )
     .exhaustive();
 
 export const isExchangeCreateDestinationType = (type: HoldingType): boolean =>
   match(type)
     .with('cash', () => true)
-    .with('card', 'term_deposit', 'bond', 'crypto_asset', 'jar', 'property_item', () => false)
+    .with(
+      'card',
+      'term_deposit',
+      'bond',
+      'crypto_asset',
+      'jar',
+      'property_item',
+      'metal',
+      () => false,
+    )
     .exhaustive();

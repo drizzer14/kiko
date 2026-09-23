@@ -5,7 +5,13 @@ import { startOfLocalDay } from '../../dates/local-day';
 import type { HoldingRow } from '../../db/schema';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
-import { asBondMeta, asPropertyMeta, asTermDepositMeta, type BondMeta } from '../holding-metadata';
+import {
+  asBondMeta,
+  asMetalMeta,
+  asPropertyMeta,
+  asTermDepositMeta,
+  type BondMeta,
+} from '../holding-metadata';
 import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
 
 /**
@@ -158,23 +164,34 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   };
 };
 
-// A priced holding's (currently only `property_item` — `isPricedHoldingType`)
-// gross/net are its `pricedValueMinor` (a `PriceBook` lookup), falling back to
-// its lots' cost basis when there is no stored price point yet — Review Focus
-// 5: never 0. `principalOrCost` is ALWAYS the cost basis (not the priced
-// value), so the holding-detail breakdown can show a live gain/loss against
-// it. It never accrues interest or withholds tax, so both stay zero.
+// A priced holding's (`property_item`, `metal` — `isPricedHoldingType`) own
+// `lots` array, whichever metadata shape its type carries (kiko-domain:
+// `PropertyMeta`/`MetalMeta` differ in every OTHER field, but both carry
+// `lots`). `undefined` for invalid/absent metadata, so `pricedBreakdown`
+// below falls back to the flat stored balance the same way an unparsed
+// property always has.
+const pricedLotsOf = (holding: ValuableHolding) =>
+  holding.type === 'metal'
+    ? asMetalMeta(holding.metadata)?.lots
+    : asPropertyMeta(holding.metadata)?.lots;
+
+// A priced holding's gross/net are its `pricedValueMinor` (a `PriceBook`
+// lookup), falling back to its lots' cost basis when there is no stored price
+// point yet — Review Focus 5: never 0. `principalOrCost` is ALWAYS the cost
+// basis (not the priced value), so the holding-detail breakdown can show a
+// live gain/loss against it. It never accrues interest or withholds tax, so
+// both stay zero.
 const pricedBreakdown = (
   holding: ValuableHolding,
   now: number,
   book: PriceBook,
 ): HoldingValueBreakdown => {
-  const meta = asPropertyMeta(holding.metadata);
-  if (meta === null) {
+  const lots = pricedLotsOf(holding);
+  if (lots === undefined) {
     return flat(holding.currency, holding.balanceMinorUnits);
   }
   const { currency } = holding;
-  const costBasisMinor = costBasisMinorAt(meta.lots, now);
+  const costBasisMinor = costBasisMinorAt(lots, now);
   const valueMinor = pricedValueMinor(holding, book, now) ?? costBasisMinor;
   const zero = Money.of(currency, 0);
 

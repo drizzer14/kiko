@@ -250,3 +250,73 @@ export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
 
   return { category, lots: parsedLots };
 };
+
+// The closed set of precious metals Kiko prices via NBU (T17), keyed by the
+// same slug `metalInstrument` namespaces its `price_points.instrument` under
+// (`metal:<XAU|XAG|XPT|XPD>` — `src/prices/instrument/`). Exported so a
+// future metal-section form (T20) can build its metal ChipRow's `options`
+// directly, mirroring `propertyCategories`.
+export const preciousMetals = ['XAU', 'XAG', 'XPT', 'XPD'] as const;
+
+export type Metal = (typeof preciousMetals)[number];
+
+const isMetal = (value: unknown): value is Metal =>
+  typeof value === 'string' && (preciousMetals as readonly string[]).includes(value);
+
+// How the metal is physically held. Exported for the same T20 ChipRow reason
+// as `preciousMetals` above.
+export const metalForms = ['bar', 'coin', 'bank_account'] as const;
+
+export type MetalForm = (typeof metalForms)[number];
+
+const isMetalForm = (value: unknown): value is MetalForm =>
+  typeof value === 'string' && (metalForms as readonly string[]).includes(value);
+
+// The unit a lot's `quantityDelta` is denominated in. 'g' values convert to
+// troy ounces (the unit NBU quotes against) via the fixed constant
+// `priced-value.ts` multiplies by; 'oz' needs no conversion.
+export const metalUnits = ['g', 'oz'] as const;
+
+export type MetalUnit = (typeof metalUnits)[number];
+
+const isMetalUnit = (value: unknown): value is MetalUnit =>
+  typeof value === 'string' && (metalUnits as readonly string[]).includes(value);
+
+// A plain (unsigned) decimal string, matching the `quantityDelta`/`purity`
+// money-precision rule (kiko-domain): a scaled decimal STRING, never a
+// `number`, so an arbitrary-precision purity fraction never drifts through
+// float math. Unlike `lots.ts`'s `SIGNED_DECIMAL_PATTERN`, a purity can never
+// be negative, so no leading '-' is accepted.
+const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+
+const isPlainDecimalString = (value: unknown): value is string =>
+  typeof value === 'string' && PLAIN_DECIMAL_PATTERN.test(value);
+
+export type MetalMeta = {
+  metal: Metal;
+  form: MetalForm;
+  unit: MetalUnit;
+  purity: string;
+  lots: Lot[];
+};
+
+export const asMetalMeta = (value: unknown): MetalMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { metal, form, unit, purity, lots } = value;
+  const parsedLots = asLots(lots);
+
+  if (
+    !isMetal(metal) ||
+    !isMetalForm(form) ||
+    !isMetalUnit(unit) ||
+    !isPlainDecimalString(purity) ||
+    parsedLots === null
+  ) {
+    return null;
+  }
+
+  return { metal, form, unit, purity, lots: parsedLots };
+};

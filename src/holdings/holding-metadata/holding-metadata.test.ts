@@ -1,13 +1,18 @@
 import type {
   BondMeta,
   CompoundingFrequency,
+  MetalMeta,
   PropertyMeta,
   TermDepositMeta,
 } from './holding-metadata';
 import {
   asBondMeta,
+  asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
+  metalForms,
+  metalUnits,
+  preciousMetals,
   syncedAtOf,
   walletAddressOf,
 } from './holding-metadata';
@@ -234,5 +239,72 @@ describe('asPropertyMeta', () => {
 
   it('returns null for null', () => {
     expect(asPropertyMeta(null)).toBeNull();
+  });
+});
+
+describe('asMetalMeta', () => {
+  const valid = {
+    metal: 'XAU' as const,
+    form: 'bar' as const,
+    unit: 'g' as const,
+    purity: '0.9999',
+    lots: [{ day: 1_700_000_000_000, quantityDelta: '10', costMinorUnits: 5_000_000 }],
+  };
+
+  it('returns the typed object for a valid shape', () => {
+    const result: MetalMeta | null = asMetalMeta(valid);
+    expect(result).toEqual(valid);
+  });
+
+  it('accepts every metal in the closed set', () => {
+    for (const metal of preciousMetals) {
+      expect(asMetalMeta({ ...valid, metal })?.metal).toBe(metal);
+    }
+  });
+
+  it('accepts every form in the closed set', () => {
+    for (const form of metalForms) {
+      expect(asMetalMeta({ ...valid, form })?.form).toBe(form);
+    }
+  });
+
+  it('accepts every unit in the closed set', () => {
+    for (const unit of metalUnits) {
+      expect(asMetalMeta({ ...valid, unit })?.unit).toBe(unit);
+    }
+  });
+
+  it('rejects an unknown metal', () => {
+    expect(asMetalMeta({ ...valid, metal: 'nonsense' })).toBeNull();
+  });
+
+  it('rejects an unknown form', () => {
+    expect(asMetalMeta({ ...valid, form: 'nonsense' })).toBeNull();
+  });
+
+  it('rejects an unknown unit', () => {
+    expect(asMetalMeta({ ...valid, unit: 'lb' })).toBeNull();
+  });
+
+  it('rejects a non-decimal purity', () => {
+    expect(asMetalMeta({ ...valid, purity: 'abc' })).toBeNull();
+    expect(asMetalMeta({ ...valid, purity: -1 })).toBeNull();
+  });
+
+  it('rejects a missing metal', () => {
+    const { metal, ...rest } = valid;
+    expect(asMetalMeta(rest)).toBeNull();
+  });
+
+  it('rejects an invalid lots array', () => {
+    expect(asMetalMeta({ ...valid, lots: [{ day: 1, quantityDelta: 'abc' }] })).toBeNull();
+  });
+
+  it('accepts an empty lots array', () => {
+    expect(asMetalMeta({ ...valid, lots: [] })?.lots).toEqual([]);
+  });
+
+  it('returns null for null', () => {
+    expect(asMetalMeta(null)).toBeNull();
   });
 });

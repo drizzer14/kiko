@@ -1,4 +1,11 @@
-import { bankCatalog, bankIds, isBankId, isConnectableBank, statementFormatIdForBank } from '.';
+import {
+  bankCatalog,
+  bankIds,
+  bankSellsMetals,
+  isBankId,
+  isConnectableBank,
+  statementFormatIdForBank,
+} from '.';
 
 describe('bankCatalog', () => {
   it('lists exactly the six banks, Monobank first', () => {
@@ -62,5 +69,26 @@ describe('bankCatalog', () => {
     expect(isConnectableBank(null)).toBe(true);
     expect(isConnectableBank(undefined)).toBe(true);
     expect(isConnectableBank('not-a-bank')).toBe(true);
+  });
+
+  it('marks only PrivatBank as selling metals; every other entry is false', () => {
+    const sellsMetals = bankCatalog.filter((entry) => entry.sellsMetals).map((entry) => entry.id);
+
+    expect(sellsMetals).toEqual(['privatbank']);
+  });
+
+  it('bankSellsMetals is true for privatbank, false for every other known bank', () => {
+    expect(bankSellsMetals('privatbank')).toBe(true);
+    expect(bankSellsMetals('monobank')).toBe(false);
+    expect(bankSellsMetals('sensebank')).toBe(false);
+    expect(bankSellsMetals('procredit')).toBe(false);
+    expect(bankSellsMetals('ukrsib')).toBe(false);
+    expect(bankSellsMetals('alfa')).toBe(false);
+  });
+
+  it('bankSellsMetals defaults to false — UNLIKE isConnectableBank — for an unset or unrecognized bankId', () => {
+    expect(bankSellsMetals(null)).toBe(false);
+    expect(bankSellsMetals(undefined)).toBe(false);
+    expect(bankSellsMetals('not-a-bank')).toBe(false);
   });
 });

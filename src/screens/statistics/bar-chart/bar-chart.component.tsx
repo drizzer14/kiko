@@ -43,6 +43,7 @@ const holdingTypeLabel = (type: HoldingType, t: ReturnType<typeof useTranslation
     .with('crypto_asset', () => t('forms.holding.cryptoAsset'))
     .with('jar', () => t('forms.holding.jar'))
     .with('property_item', () => t('forms.holding.propertyItem'))
+    .with('metal', () => t('forms.holding.metal'))
     .exhaustive();
 
 // One bar row: the type name and its converted amount above a bar whose width

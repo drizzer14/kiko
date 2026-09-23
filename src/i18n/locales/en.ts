@@ -205,8 +205,10 @@ export const en = {
         bank: 'Synced or imported from a bank statement.',
         cash: 'Cash you hold outside a bank.',
         crypto: 'A wallet or exchange account.',
+        metals: 'Gold, silver, platinum, palladium',
         property: 'Real estate, car, valuables, money you lent',
       },
+      metals: 'Precious metals',
       namePlaceholder: 'Monobank',
       property: 'Property',
       selectBankPlaceholder: 'Select a bank (optional)',
@@ -258,6 +260,7 @@ export const en = {
       jar: 'Jar',
       maturityDate: 'Maturity Date',
       maturityDateError: 'Maturity date must be after the purchase date.',
+      metal: 'Precious metal',
       monthly: 'Monthly',
       namePlaceholder: 'Apple shares',
       propertyCategory: {

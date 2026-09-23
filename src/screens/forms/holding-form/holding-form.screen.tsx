@@ -391,6 +391,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     crypto_asset: t('forms.holding.cryptoAsset'),
     jar: t('forms.holding.jar'),
     property_item: t('forms.holding.propertyItem'),
+    metal: t('forms.holding.metal'),
   };
   const bondKindLabels: Record<BondKind, string> = {
     government: t('forms.holding.government'),
@@ -432,10 +433,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // bank excludes both card and jar (its sync creates them); a non-synced,
   // statement-import-only bank has no sync to own a card, so card is offered —
   // jar stays excluded regardless (see `creatableHoldingTypesForAccount`'s
-  // comment). The create form offers only these; edit mode keeps the full set
-  // (above).
+  // comment). `account?.bankId` additionally gates `metal` under a `bank`
+  // account (T17's allow-list; undefined for a `metals`-kind account, which
+  // never gates on it). The create form offers only these; edit mode keeps
+  // the full set (above).
   const creatableTypes = accountKind
-    ? creatableHoldingTypesForAccount(accountKind, isSynced)
+    ? creatableHoldingTypesForAccount(accountKind, isSynced, account?.bankId)
     : holdingTypes;
   // Create mode offers the manually-creatable subset; edit mode shows the full
   // set (its chip is read-only) so a synced card/jar row still displays.
@@ -858,7 +861,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('term_deposit', isTermDepositValid)
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
-      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
+      // `metal` has no create-form section yet (T20 owns it, mirroring
+      // property_item's own T13 -> T16 gap) — grouped with the other
+      // no-extra-fields types until then.
+      .with('card', 'cash', 'crypto_asset', 'jar', 'metal', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);

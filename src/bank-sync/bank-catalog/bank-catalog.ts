@@ -38,39 +38,60 @@ type BankCatalogEntry = {
   /** The `statement-import` format this bank's account scopes import
    * recognition to (see `statementFormatIdForBank` below). */
   statementFormatId: StatementFormatId;
+  /** Whether a `bank`-kind account at this bank may hold a `metal` holding
+   * (T17 — a bank-held precious-metal account, distinct from the standalone
+   * `metals` account kind, which never gates on this field). Always-rendered
+   * DATA on this fully-rendered static array — never a build/runtime
+   * visibility gate (Guideline 5.6): every row always renders regardless of
+   * this value, and only the CREATABLE holding-type set differs
+   * (`creatableHoldingTypesForAccount`, `src/holdings/holding-type/`). Only
+   * PrivatBank today; PUMB/Oschadbank/Ukrgasbank get `true` in P3 once they
+   * enter the catalog, Monobank stays `false` (it has no such product). */
+  sellsMetals: boolean;
 };
 
 export const bankCatalog: readonly BankCatalogEntry[] = [
-  { id: 'monobank', displayName: 'Monobank', connectable: true, statementFormatId: 'monobank-csv' },
+  {
+    id: 'monobank',
+    displayName: 'Monobank',
+    connectable: true,
+    statementFormatId: 'monobank-csv',
+    sellsMetals: false,
+  },
   {
     id: 'privatbank',
     displayName: 'PrivatBank',
     connectable: false,
     statementFormatId: 'privatbank-xlsx',
+    sellsMetals: true,
   },
   {
     id: 'sensebank',
     displayName: 'Sensebank',
     connectable: false,
     statementFormatId: 'sensebank-csv',
+    sellsMetals: false,
   },
   {
     id: 'procredit',
     displayName: 'ProCredit Bank',
     connectable: false,
     statementFormatId: 'procredit-business-csv',
+    sellsMetals: false,
   },
   {
     id: 'ukrsib',
     displayName: 'UKRSIBBANK',
     connectable: false,
     statementFormatId: 'ukrsib-business-csv',
+    sellsMetals: false,
   },
   {
     id: 'alfa',
     displayName: 'Alfa-Bank',
     connectable: false,
     statementFormatId: 'alfa-business-csv',
+    sellsMetals: false,
   },
 ];
 
@@ -97,3 +118,13 @@ export const statementFormatIdForBank = (
  * which must show NO sync/connect affordance — only its statement import. */
 export const isConnectableBank = (bankId: string | null | undefined): boolean =>
   isBankId(bankId) ? (bankCatalog.find((entry) => entry.id === bankId)?.connectable ?? true) : true;
+
+/** Resolves a stored `accounts.bankId` to whether that bank sells precious
+ * metals (T17's `metal` holding allow-list): `false` for an unset/
+ * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
+ * unknown bank must not silently unlock the `metal` holding type — and for
+ * every catalog entry except PrivatBank. */
+export const bankSellsMetals = (bankId: string | null | undefined): boolean =>
+  isBankId(bankId)
+    ? (bankCatalog.find((entry) => entry.id === bankId)?.sellsMetals ?? false)
+    : false;

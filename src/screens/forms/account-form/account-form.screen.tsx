@@ -47,12 +47,13 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 // The account kinds this form offers, derived from `accountKindSymbol` — a
 // `Record<AccountKind, string>` typed over the FULL `accounts.kind` schema
 // union (see entity-symbols.ts's own exhaustiveness doc comment) — rather
-// than a hand-copied array, so a later schema widening (metals, debt, broker)
-// is a compile error here until this form (and the symbol/color/subtitle maps
-// it already forces) accounts for the new kind. A crypto account is created
+// than a hand-copied array, so a later schema widening (debt, broker) is a
+// compile error here until this form (and the symbol/color/subtitle maps it
+// already forces) accounts for the new kind. A crypto account is created
 // like a bank account — no initial holding/currency at creation; holdings are
 // added later — so only cash needs the currency + initial-value fields below;
-// property has no extra creation fields yet (the holding section is T16).
+// property and metals have no extra creation fields yet (the property
+// holding section is T16; the metal one is T20).
 const kinds = Object.keys(accountKindSymbol) as AccountRow['kind'][];
 type Kind = (typeof kinds)[number];
 
@@ -96,6 +97,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     cash: t('forms.account.cash'),
     crypto: t('forms.account.crypto'),
     property: t('forms.account.property'),
+    metals: t('forms.account.metals'),
   };
   // The one-line "which kind is this?" hint shown under each row in the
   // AccountKindField sheet (device-feedback: a bare label does not say what
@@ -105,6 +107,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     cash: t('forms.account.kindSubtitle.cash'),
     crypto: t('forms.account.kindSubtitle.crypto'),
     property: t('forms.account.kindSubtitle.property'),
+    metals: t('forms.account.kindSubtitle.metals'),
   };
 
   const [name, setName] = useState('');
@@ -226,9 +229,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       await accountsRepo.create({
         id: pendingAccountId,
         name: trimmedName,
-        // The current kind — 'bank', 'crypto', or 'property' is reachable here,
-        // since the cash path creates through createCashAccount and returns
-        // before this.
+        // The current kind — 'bank', 'crypto', 'property', or 'metals' is
+        // reachable here, since the cash path creates through
+        // createCashAccount and returns before this.
         kind,
         color,
         bankId,
@@ -380,15 +383,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // Bank, crypto, and property share one create path now — `kind` here is
-      // 'bank', 'crypto', or 'property' (cash returned above). A field's own
-      // Connect may already have inserted the row via ensureAccount (Option A);
-      // if so, persist any name/color/icon edited AFTER connecting rather than
-      // inserting a DUPLICATE account (the field already handled the credential
-      // + first sync). Otherwise this Save is the first write, so create the row
-      // now — an unconnected bank/crypto account is valid (the user connects a
-      // source later from its detail screen), and a property account has no
-      // source to connect at all — it always takes this branch.
+      // Bank, crypto, property, and metals share one create path now — `kind`
+      // here is 'bank', 'crypto', 'property', or 'metals' (cash returned
+      // above). A field's own Connect may already have inserted the row via
+      // ensureAccount (Option A); if so, persist any name/color/icon edited
+      // AFTER connecting rather than inserting a DUPLICATE account (the field
+      // already handled the credential + first sync). Otherwise this Save is
+      // the first write, so create the row now — an unconnected bank/crypto
+      // account is valid (the user connects a source later from its detail
+      // screen), and a property or metals account has no source to connect at
+      // all — it always takes this branch.
       if (accountCreate.current !== null) {
         await accountsRepo.update(pendingAccountId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(pendingAccountId, icon);

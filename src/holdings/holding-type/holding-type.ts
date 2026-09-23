@@ -1,4 +1,5 @@
 import type { AccountRow, HoldingRow } from '../../db/schema';
+import { bankSellsMetals } from '../../bank-sync/bank-catalog';
 
 // Runtime tuple mirroring the `holdings.type` enum in db/schema.ts. The
 // `satisfies` ties it to the schema: adding a type to the schema enum is a
@@ -13,6 +14,7 @@ export const holdingTypes = [
   'crypto_asset',
   'jar',
   'property_item',
+  'metal',
 ] as const satisfies readonly HoldingRow['type'][];
 
 export type HoldingType = (typeof holdingTypes)[number];
@@ -27,10 +29,11 @@ type AccountKind = AccountRow['kind'];
 // an impossible pairing can never be created. This is the FULL set (used for
 // edit mode and as the source for the create-only subset below).
 export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingType[]> = {
-  bank: ['card', 'term_deposit', 'bond', 'jar'],
+  bank: ['card', 'term_deposit', 'bond', 'jar', 'metal'],
   cash: ['cash'],
   crypto: ['crypto_asset'],
   property: ['property_item'],
+  metals: ['metal'],
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per
@@ -60,7 +63,7 @@ export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
 // disagree on which types are ledgerless. T17, T26, and T35 extend this set as
 // metals, loans, and shares land.
 export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
-  type === 'term_deposit' || type === 'bond' || type === 'property_item';
+  type === 'term_deposit' || type === 'bond' || type === 'property_item' || type === 'metal';
 
 // The holding types a user may MANUALLY CREATE under a given account kind AND
 // synced state: the kind's full set minus whichever sync-only types that
@@ -79,12 +82,25 @@ export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
 // imported card transactions attach to — dropping it there left no holding
 // type to use at all, which was the bug. `cash`/`crypto` are unaffected by
 // `isSynced`: their single type is never sync-only.
+//
+// `metal` (T17) is allow-listed rather than sync-gated: `holdingTypesForAccountKind`
+// lists it under BOTH `bank` (a bank-held precious-metal account) and `metals`
+// (the standalone kind, always eligible — physical possession has no bank to
+// gate on). Under a `bank`-kind account it additionally requires
+// `bankSellsMetals(bankId)` — the catalog allow-list (`src/bank-sync/bank-catalog/`,
+// Guideline 5.6: always-rendered DATA, never a visibility flag), currently
+// only PrivatBank. `bankId` is optional (nullable) for every existing caller
+// that has none to pass.
 export const creatableHoldingTypesForAccount = (
   kind: AccountKind,
   isSynced: boolean,
+  bankId?: string | null,
 ): readonly HoldingType[] =>
   holdingTypesForAccountKind[kind].filter((type) => {
     if (type === 'jar') {
+      return false;
+    }
+    if (type === 'metal' && kind === 'bank' && !bankSellsMetals(bankId)) {
       return false;
     }
     return !isSynced || !isSyncOnlyHoldingType(type);

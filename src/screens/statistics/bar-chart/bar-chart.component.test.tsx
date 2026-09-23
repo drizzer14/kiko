@@ -46,6 +46,14 @@ describe('BarChart', () => {
     expect(getByText('Property')).toBeTruthy();
   });
 
+  it('renders the metal label', async () => {
+    const { getByText } = await render(
+      <BarChart data={[{ type: 'metal', amount: 100_00 }]} baseCurrency="USD" />,
+    );
+
+    expect(getByText('Precious metal')).toBeTruthy();
+  });
+
   it('scales each bar width to the largest entry', async () => {
     const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
 

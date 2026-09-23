@@ -7,13 +7,14 @@ import '../../../design-system/unistyles';
 import AccountKindField from '.';
 import type { AccountKind } from './account-kind-field.props';
 
-const options: readonly AccountKind[] = ['bank', 'cash', 'crypto', 'property'];
+const options: readonly AccountKind[] = ['bank', 'cash', 'crypto', 'property', 'metals'];
 
 const labels: Record<AccountKind, string> = {
   bank: 'Bank',
   cash: 'Cash',
   crypto: 'Crypto',
   property: 'Property',
+  metals: 'Precious metals',
 };
 
 const subtitles: Record<AccountKind, string> = {
@@ -21,6 +22,7 @@ const subtitles: Record<AccountKind, string> = {
   cash: 'Cash you hold outside a bank.',
   crypto: 'A wallet or exchange account.',
   property: 'Real estate, car, valuables, money you lent',
+  metals: 'Gold, silver, platinum, palladium',
 };
 
 const icons: Record<AccountKind, string> = {
@@ -28,6 +30,7 @@ const icons: Record<AccountKind, string> = {
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
   property: 'house.fill',
+  metals: 'cube.fill',
 };
 
 const setup = async (overrides: Partial<Parameters<typeof AccountKindField>[0]> = {}) => {
