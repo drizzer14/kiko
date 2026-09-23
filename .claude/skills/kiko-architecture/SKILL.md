@@ -859,3 +859,56 @@ null `externalId` and is never namespaced.
 - Store live results in `CurrencyRate`. Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
+
+## Statement import — column mapping
+
+A generic fallback for any file a dedicated `StatementFormat` doesn't
+recognize, so an account not covered by a shipped bank parser can still
+import: `src/statement-import/column-mapping/` reads the file into plain
+`TableCell[][]` rows (`table-rows.ts`'s `readTableRows`, shared by both a
+delimited CSV/TSV text via `papaparse` and a pre-parsed
+`StatementFormatInput.sheetRows`), then turns a user-picked `ColumnMapping`
+plus those rows into the SAME `ParsedStatement` shape a dedicated format
+produces (`apply-column-mapping.ts`'s `applyColumnMapping`,
+`formatId: 'column-mapping'`), so the rest of the pipeline treats a mapped
+file identically to a recognized bank export. A dedicated format is tried
+FIRST and still wins whenever it matches — column mapping is offered only
+once `detectFormat` fails or the account's `bankId` disagrees with the
+detected format (see `statement-import.screen.tsx`).
+
+Every date-format preset in `date-formats.ts` reads UTC wall-clock parts
+(`Date.UTC(...)`), the same convention `parseDateTimeSeconds` already uses
+for a dedicated format — a real spreadsheet `Date` cell is read off its own
+UTC parts into that identical combined `'YYYY-MM-DD HH:MM:SS'` string
+(`table-rows.ts`'s `formatUtcDateTime`) before parsing, so a mapping
+pointed at an Excel date column behaves exactly like one pointed at a text
+date column. An XLSX number cell is used as-is (no reformatting) — only a
+`Date` cell gets this wall-clock conversion.
+
+The mapped `ParsedStatement` reaches the DB through the SAME
+`importParsedStatement` (`src/statement-import/import-statement/`) every
+dedicated format uses — it excludes any row whose currency doesn't match
+the target holding's, dedups, and writes via `transactionsRepo.addManyDedup`.
+Column mapping has no dedicated `StatementFormat` to detect/parse through,
+so it builds its own `ParsedStatement` directly and calls
+`importParsedStatement` rather than `importStatement`.
+
+A confirmed mapping is saved to `settings.statementMappings`
+(`src/statement-import/column-mapping/saved-mapping.ts`, migration `0034`)
+so a later import can pre-fill instead of asking the user to remap every
+column. It's keyed by `mappingKeyFor`: a known catalog bank uses
+`bank:<bankId>` (one shared mapping per bank, checked for an EXACT
+fingerprint match against the file's actual header row before being
+trusted as exact); any other account ("Other") is keyed by
+`header:<fingerprint>` instead and matched by scanning every `header:`
+entry for a fingerprint hit. Either way, `findSavedMapping` only PRE-FILLS
+the mapping form — a saved mapping never imports a file without the user
+tapping Import.
+
+Two entry points reach the column-mapping screen: "Import statement" now
+shows on every bank account in account-detail (not gated on a recognized
+`bankId`/format), and "Map columns manually" in
+`statement-import.screen.tsx` offers a manual escape hatch from the
+generic statement-import screen whenever a file was read at all (including
+an unrecognized-format or bank-mismatch preview), routing to
+`src/screens/column-mapping/column-mapping.screen.tsx`.

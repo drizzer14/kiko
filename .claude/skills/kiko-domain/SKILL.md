@@ -35,8 +35,14 @@ absent** — this skill states the shape and non-enum facts only:
   copied here. It is **identity-only, independent of `institution`**:
   only Monobank has a live API Connect today (`connectable: true` in
   the catalog), the other 5 entries are import-only, scoping which
-  `statement-import` parser applies. `bankId` is deliberately **never
-  read** by `isSyncedAccount`/`isSyncedHolding`
+  `statement-import` parser applies. That parser is only ever a
+  PREFERENCE, not a gate: "Import statement" is offered on every bank
+  account regardless of `bankId`, and a file that doesn't match its
+  dedicated format (or has none) falls through to the generic
+  column-mapping import (`kiko-architecture`'s "Statement import —
+  column mapping" section) — a dedicated format still wins whenever it
+  actually matches. `bankId` is deliberately **never read** by
+  `isSyncedAccount`/`isSyncedHolding`
   (`src/holdings/deletable/`) or any provider-registry lookup — those
   stay keyed on `institution` alone, so tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
