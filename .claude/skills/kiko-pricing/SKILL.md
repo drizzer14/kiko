@@ -183,6 +183,35 @@ cost basis) — never a runtime error. Apply the same optional-`id`-on-a-
 `Pick` pattern the next time a capability needs a holding's identity
 threaded through one of these narrowed read types.
 
+## Recording a lot: LotForm and the sell cost rule
+
+`src/screens/forms/lot-form/lot-form.screen.tsx` (T18) records one
+buy/sell lot against a `isLotFormHoldingType` holding (`metal` only —
+see `kiko-domain`'s "Sync-only holding types" section for that
+grouping), reached from holding-detail's `addLot` footer action. It
+writes NO `Transaction` row and NO `price_points` row for either
+direction — a buy/sell only appends to `holding.metadata.lots` via
+`holdingsRepo.update`, since the holding is ledgerless and priced off
+the shared `metal:<XAU|...>` instrument, not a per-holding series.
+
+**Sell cost rule: proportional average cost, not FIFO/LIFO.** On a
+sell, the removed cost basis is `costBasisBeforeMajor * quantitySold /
+heldQuantity` — `costBasisMinorAt(existingLots, date)` shifted from
+minor to major (`shiftDecimal`), then run through
+`multiplyToMinorUnits([costBasisBeforeMajor, quantity], currency,
+heldQuantity)` (the BigInt-backed decimal helper, `src/currency/decimal/`).
+Stored as a NEGATIVE `costMinorUnits` on the new lot entry, mirroring
+`quantityDelta`'s own negative-on-sale sign (`lots.ts`'s documented
+contract). A sell whose quantity exceeds `quantityAt(lots, date)` is
+rejected client-side before save (the `sellExceeds` check) and never
+written.
+
+A metal holding's lots also surface as ledger-display rows: `metalEntries`
+(`src/holdings/derived-entries/derived-entries.ts`) turns each lot into a
+`DerivedEntry`, reusing the `'purchase'`/`'sale'` `DerivedEntryKind`s
+previously bond-only (a buy lot → `'purchase'`, a sell lot →
+`'sale'`) — do not assume those kinds mean "bond" when reading that file.
+
 ## Creating and clearing a priced holding's price series
 
 `holdingsRepo.create`'s `NewHolding` type takes an optional

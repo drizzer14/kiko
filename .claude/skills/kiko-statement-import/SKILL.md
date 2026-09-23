@@ -203,14 +203,15 @@ a P0 UI fix round driven by device feedback:
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
   `textSecondary` caption, so it reads clearly above the grid.
-- **Encoding/delimiter/decimal-separator use the app's existing
-  compact `ChipRow`** (`src/screens/forms/chip-row/`), not
-  `OptionPills` — `OptionPills`' 44pt-minimum centered pill reads as
-  oversized for a single character/short code ("," / ";" / "UTF-8").
-  The amount-mode and currency-mode toggles (inside `AmountFields`/
-  `CurrencyFields`) keep `OptionPills` — their longer descriptive
-  labels ("One amount column", "Debit and credit columns") are not the
-  flagged "too-large chips".
+- **Every mode toggle on this screen uses the app's existing compact
+  `ChipRow`** (`src/screens/forms/chip-row/`), not `OptionPills` —
+  `OptionPills`' 44pt-minimum centered pill reads as oversized for a
+  short code/label. This covers encoding, delimiter,
+  decimal-separator (flagged "too-large chips" originally), and, as of
+  21d53cc, the amount-mode and currency-mode toggles inside
+  `AmountFields`/`CurrencyFields` too (`amount-fields.component.tsx`,
+  `currency-fields.component.tsx`) — `OptionPills` is fully gone from
+  this screen.
 - **Fields are grouped with the shared `Divider`** between: (a)
   encoding/separators, (b) dates, (c) amounts/currency, (d)
   description/counterparty (moved to the BOTTOM, in their own group,

@@ -40,7 +40,15 @@ absent** — this skill states the shape and non-enum facts only:
 
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
-  `src/screens/forms/bank-type-field/`), backed by the catalog at
+  `src/screens/forms/bank-type-field/`), rendered in BOTH create and
+  edit mode (423b6a6 — edit used to skip it entirely) with an explicit
+  "No bank" row (`onSelect(null)`) so a Bank account can be created or
+  returned to on purpose with no bank identity at all — the intended
+  target for the generic column-mapping import when no dedicated
+  parser applies. The live-sync Connect field (Monobank) stays
+  create-only; editing `bankId` on an already-connected account never
+  writes `institution`, so its sync is untouched regardless of which
+  identity is picked. Backed by the catalog at
   `src/bank-sync/bank-catalog/` — read that file for the current
   6-bank set (`BankId`/`bankCatalog`) rather than trusting a list
   copied here. It is **identity-only, independent of `institution`**:
@@ -208,6 +216,15 @@ manually create a `card` holding, since there is no sync pipeline
 already owning one for it. Do not assume "sync-only type" means
 "excluded regardless of `isSynced`" — `jar` and `card` behave
 differently for exactly this reason.
+
+A separate, unrelated grouping in the same file — `lotFormHoldingTypes`/
+`isLotFormHoldingType` (T18) — marks which holding types record their
+buy/sell history through the dedicated Lot form
+(`src/screens/forms/lot-form/`, reached from holding-detail's `addLot`
+footer action) rather than a fixed one-time lot or a sync. Only `metal`
+is a member today; read `holding-type.ts` directly rather than trusting
+that as a restated list. See `kiko-pricing`'s "Recording a lot: LotForm
+and the sell cost rule" section for the form itself.
 
 ## Entity glyphs: one source of truth
 

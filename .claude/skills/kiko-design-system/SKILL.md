@@ -615,9 +615,15 @@ new component can land between reviews of this skill:
   among a small fixed set instead.
 - **OptionPills** (`src/design-system/components/option-pills/`) — a
   shared row of selectable pill options; read that folder directly
-  for its current props and consumers (`LanguageSwitch`, the
-  Statistics trend-filter sheet, the icon-picker modal — grep
-  `OptionPills` for the live set) rather than assuming a fixed shape.
+  for its current props and consumers (grep `OptionPills` for the live
+  set — includes `LanguageSwitch`, the Statistics trend-filter sheet,
+  the icon-picker modal, and the Lot form's buy/sell toggle) rather
+  than assuming a fixed shape. `ChipRow` (`src/screens/forms/chip-row/`
+  — outside this folder by design, not yet promoted to
+  `design-system/components/`) is the compact sibling for a short
+  code/label where a 44pt pill reads oversized; see
+  `kiko-statement-import`'s column-mapping section for the fullest
+  worked comparison of the two.
   Its grid defaults to an always-2-column wrap (`LanguageSwitch`'s 2
   options) via an optional `columns` prop (default `2`); a consumer
   with a different, known option count that must render as a single
