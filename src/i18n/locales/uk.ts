@@ -191,7 +191,7 @@ export const uk: typeof en = {
         cash: 'Готівка поза банком.',
         crypto: 'Гаманець або обліковий запис біржі.',
         metals: 'Золото, срібло, платина, паладій',
-        property: 'Нерухомість, авто, цінності, позики іншим',
+        property: 'Нерухомість, авто, цінності, позики',
       },
       metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
@@ -248,7 +248,7 @@ export const uk: typeof en = {
       namePlaceholder: 'Акції Apple',
       propertyCategory: {
         businessShare: 'Частка в бізнесі',
-        loanGiven: 'Позика іншим',
+        loanGiven: 'Позика',
         other: 'Інше',
         realEstate: 'Нерухомість',
         valuable: 'Цінність',
