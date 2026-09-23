@@ -297,4 +297,18 @@ verified usage, not dead weight:
   `e2e/screenshot/**/*.test.ts` (the dataset builder's, the snapshot
   mapper's, and the `.kiko` generator's colocated tests) keeps the whole
   subsystem in Knip's reachable graph without any repo-wide edit.
+- **`ios/Kiko/Kiko.entitlements`'s `com.apple.security.application-groups`
+  (`group.com.dmytro-vasylkivskyi.kiko`) is kept on purpose although
+  currently unused (2026-09-23, user decision).** The net-worth home-screen
+  widget and its `WidgetBridge` native module were removed
+  (`f54ce63`, `bba473f`) and nothing in the app writes to the App Group
+  today. The entitlement stays because removing it needs a NEW
+  provisioning profile, and a future Share Extension entry point
+  (`docs/plans/forms-bank-model.md`'s Share Extension step) is expected to
+  need the same App Group to hand data to the main app. The two Semgrep
+  ERROR rules that used to guard widget/App-Group Swift code
+  (`kiko-widget-money-view-needs-privacysensitive`,
+  `kiko-appgroup-write-needs-protection`) and their fixtures were removed
+  2026-09-23 (`4e66dd7`) as dead — re-add both, with fixtures, the moment
+  any code (a Share Extension or otherwise) writes to the App Group again.
 
