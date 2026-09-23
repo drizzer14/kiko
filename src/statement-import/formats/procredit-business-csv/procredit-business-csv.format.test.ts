@@ -123,6 +123,15 @@ describe('procreditBusinessCsvFormat.parse', () => {
     expect(parsed.transactions).toHaveLength(6);
   });
 
+  // No balance/closing-balance column exists in `FOP_BUSINESS_COLUMN_BASE`'s
+  // 17-column layout — see `ParsedStatement.closingBalance`'s doc comment in
+  // `parser.ts`, which names the three FOP/business CSVs explicitly.
+  it('never sets a closingBalance (no balance column in this format)', () => {
+    const parsed = procreditBusinessCsvFormat.parse(fixtureInput);
+
+    expect(parsed.closingBalance).toBeUndefined();
+  });
+
   // Row 1: "...;UAH;15.01.2000 09:08:00;...;100.00;;Сплата комісії...;100.00"
   // — a DEBIT-only row (money out); the raw `Дебет` cell is UNSIGNED
   // (`100.00`, no leading minus), unlike Sensebank's own debit cell — this

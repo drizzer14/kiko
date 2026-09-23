@@ -175,6 +175,15 @@ describe('sensebankCsvFormat.parse', () => {
     expect(parsed.account.currency).toBe('UAH');
   });
 
+  // No balance/closing-balance column exists anywhere in this format's real
+  // fixture (`HEADER_ROW` above has none) — see `ParsedStatement.closingBalance`'s
+  // doc comment in `parser.ts`, which names Sensebank explicitly.
+  it('never sets a closingBalance (no balance column in this format)', () => {
+    const parsed = sensebankCsvFormat.parse(fixtureInput);
+
+    expect(parsed.closingBalance).toBeUndefined();
+  });
+
   // The real fixture has TWO repeated header+rows blocks under one account
   // (one "за рахунком" block with 2 rows, one "за карткою" block with 4
   // rows) — 6 transactions total, neither a section/footer line nor either

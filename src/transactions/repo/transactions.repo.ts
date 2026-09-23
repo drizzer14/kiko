@@ -13,7 +13,7 @@ import {
   type TransactionRow,
   transactions,
 } from '../../db/schema';
-import { isSyncedTransaction } from '../../holdings/deletable';
+import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
 import { exchangeReceivePath } from '../../holdings/exchange-destination';
 import type { DepositContribution } from '../../holdings/holding-metadata';
@@ -189,17 +189,24 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
 };
 
 /**
- * How many of these rows the upsert will INSERT rather than refresh. Read inside
- * the caller's own transaction, so the count can never disagree with the write
- * it describes.
+ * The subset of these rows the upsert will INSERT rather than refresh. Read
+ * inside the caller's own transaction, so the result can never disagree with
+ * the write it describes. `addManyDedup` uses only its `.length`; the
+ * statement-import balance write (`importRows` below) additionally needs the
+ * actual rows, to sum their `amountMinorUnits` — a refreshed (already
+ * imported) row must contribute 0 to that sum, not just be excluded from the
+ * count.
  */
-const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Promise<number> => {
+const partitionNewRows = async (
+  tx: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
   const externalIds = inputs
     .map((input) => input.externalId)
     .filter((externalId): externalId is string => Boolean(externalId));
 
   if (externalIds.length === 0) {
-    return inputs.length;
+    return inputs;
   }
 
   const sources = Array.from(
@@ -221,7 +228,83 @@ const countNewRows = async (tx: typeof database, inputs: NewTransaction[]): Prom
     const key = conflictKeyOf(input);
 
     return key === null || !known.has(key);
-  }).length;
+  });
+};
+
+/**
+ * Apply name->category override rules and upsert a batch of imported rows on
+ * the `(source, external_id)` unique index — the shared core `addManyDedup`
+ * and `importRows` (statement import's balance-write path, below) both run
+ * inside their own `write(...)` transaction. Returns how many rows were
+ * genuinely NEW (`imported`) and those rows themselves (`newRows`) — a
+ * refreshed (already-imported) row is in neither.
+ */
+const insertDedupRowsTx = async (
+  tx: typeof database,
+  inputs: NewTransaction[],
+): Promise<{ imported: number; newRows: NewTransaction[] }> => {
+  if (inputs.length === 0) {
+    return { imported: 0, newRows: [] };
+  }
+
+  const batch = dedupByConflictKey(inputs);
+  // Apply name→category override rules at insert time. Normalize each
+  // incoming description in JS (never SQL) and look the rules up by exact
+  // equality on the already-normalized key.
+  const keys = Array.from(
+    new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
+  ).filter((key) => key !== '');
+  const rules =
+    keys.length > 0
+      ? await tx
+          .select()
+          .from(categoryOverrides)
+          .where(inArray(categoryOverrides.normalizedName, keys))
+      : [];
+  const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
+  const withOverrides = batch.map((input) => {
+    const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+
+    return override ? { ...input, category: override } : input;
+  });
+  const newRows = await partitionNewRows(tx, batch);
+  // Upsert on the `(source, external_id)` unique index: a re-fetched
+  // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
+  // imports at its PROVISIONAL amount and re-syncs at the settled one, which
+  // `onConflictDoNothing` silently discarded — freezing the wrong amount
+  // forever. `excluded` is SQLite's alias for the row that would have been
+  // inserted.
+  //
+  // The update set names only the BANK-owned columns. `category` (which may
+  // be the user's own override, or a name rule's rewrite) and `comment` (the
+  // user's note) are deliberately absent, as is every structural column
+  // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
+  //
+  // Manual rows are untouched either way: they carry a null `external_id`,
+  // and SQLite treats each NULL in a unique index as distinct, so two of
+  // them never conflict.
+  await tx
+    .insert(transactions)
+    .values(withOverrides.map((input) => ({ id: id(), ...input })))
+    .onConflictDoUpdate({
+      target: [transactions.source, transactions.externalId],
+      set: {
+        amountMinorUnits: sql`excluded.amount_minor_units`,
+        description: sql`excluded.description`,
+        hold: sql`excluded.hold`,
+        mcc: sql`excluded.mcc`,
+        counterIban: sql`excluded.counter_iban`,
+        time: sql`excluded.time`,
+      },
+    });
+
+  return { imported: newRows.length, newRows };
+};
+
+type ImportClosingBalance = {
+  minorUnits: number;
+  currency: HoldingRow['currency'];
+  asOfSeconds: number;
 };
 
 export const transactionsRepo = {
@@ -584,61 +667,90 @@ export const transactionsRepo = {
    * to the user as "imported".
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (tx): Promise<number> => {
-      if (inputs.length === 0) {
-        return 0;
+    write(async (tx) => (await insertDedupRowsTx(tx, inputs)).imported),
+  /**
+   * Statement import's ONE write: upsert the parsed rows (the same
+   * `(source, external_id)` dedup as `addManyDedup`) AND move the target
+   * holding's `balanceMinorUnits`, in a SINGLE op-sqlite transaction — see
+   * `kiko-domain`'s "Statement import" section for the full rule this
+   * implements (`F1-networth-debug-2.md`: before this, `importStatement`
+   * only ever wrote `transactions`, so an import-only holding's displayed
+   * balance stayed 0 forever).
+   *
+   * The balance move is Rule B: `base + sum(newRows.amountMinorUnits)` — ONLY
+   * the genuinely new rows (from `insertDedupRowsTx`) count, so a re-import
+   * of an already-imported file (every row refreshed, none new) leaves the
+   * balance untouched, exactly like a second identical import must. UNLESS
+   * `closingBalance` is given, is in the holding's OWN currency, and is AS
+   * OF a time at or after the holding's newest PRE-EXISTING transaction
+   * (read before the new rows land) — then the closing balance is written
+   * outright instead of the net delta, correcting for any drift the ledger
+   * delta alone can't see. A statement OLDER than what the holding already
+   * has falls back to the net-delta rule instead, so an out-of-order
+   * re-import can never regress the balance to a stale closing figure.
+   *
+   * A SYNCED holding (`isSyncedHolding`) is the one exception: its balance is
+   * already owned by the live sync pipeline (`upsertMonobank` et al.), so this
+   * never touches it here, even when the statement carries new rows or a
+   * fresher closing balance — the rows still import as real ledger history,
+   * they just don't move the display balance a second, competing way.
+   */
+  importRows: (input: {
+    holdingId: string;
+    rows: NewTransaction[];
+    closingBalance?: ImportClosingBalance;
+  }): Promise<number> =>
+    write(async (tx) => {
+      const holdingRows = await tx
+        .select()
+        .from(holdings)
+        .where(eq(holdings.id, input.holdingId))
+        .limit(1);
+      const holding = holdingRows.at(0);
+
+      if (!holding) {
+        return (await insertDedupRowsTx(tx, input.rows)).imported;
       }
-      const batch = dedupByConflictKey(inputs);
-      // Apply name→category override rules at insert time. Normalize each
-      // incoming description in JS (never SQL) and look the rules up by exact
-      // equality on the already-normalized key.
-      const keys = Array.from(
-        new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
-      ).filter((key) => key !== '');
-      const rules =
-        keys.length > 0
-          ? await tx
-              .select()
-              .from(categoryOverrides)
-              .where(inArray(categoryOverrides.normalizedName, keys))
-          : [];
-      const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
-      const withOverrides = batch.map((input) => {
-        const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
 
-        return override ? { ...input, category: override } : input;
-      });
-      const newRows = await countNewRows(tx, batch);
-      // Upsert on the `(source, external_id)` unique index: a re-fetched
-      // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
-      // imports at its PROVISIONAL amount and re-syncs at the settled one, which
-      // `onConflictDoNothing` silently discarded — freezing the wrong amount
-      // forever. `excluded` is SQLite's alias for the row that would have been
-      // inserted.
-      //
-      // The update set names only the BANK-owned columns. `category` (which may
-      // be the user's own override, or a name rule's rewrite) and `comment` (the
-      // user's note) are deliberately absent, as is every structural column
-      // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
-      //
-      // Manual rows are untouched either way: they carry a null `external_id`,
-      // and SQLite treats each NULL in a unique index as distinct, so two of
-      // them never conflict.
-      await tx
-        .insert(transactions)
-        .values(withOverrides.map((input) => ({ id: id(), ...input })))
-        .onConflictDoUpdate({
-          target: [transactions.source, transactions.externalId],
-          set: {
-            amountMinorUnits: sql`excluded.amount_minor_units`,
-            description: sql`excluded.description`,
-            hold: sql`excluded.hold`,
-            mcc: sql`excluded.mcc`,
-            counterIban: sql`excluded.counter_iban`,
-            time: sql`excluded.time`,
-          },
-        });
+      const accountRows = await tx
+        .select({ institution: accounts.institution })
+        .from(accounts)
+        .where(eq(accounts.id, holding.accountId))
+        .limit(1);
+      const synced = isSyncedHolding(holding, accountRows.at(0));
 
-      return newRows;
+      // Read BEFORE the new rows are upserted below, so this reflects the
+      // holding's ledger as it stood going into this import — never a row
+      // this very import is about to add.
+      const newestExistingRows = await tx
+        .select({ time: sql<number | null>`max(${transactions.time})` })
+        .from(transactions)
+        .where(eq(transactions.holdingId, input.holdingId));
+      const newestExistingTime = newestExistingRows.at(0)?.time ?? null;
+
+      const { imported, newRows } = await insertDedupRowsTx(tx, input.rows);
+
+      if (synced) {
+        return imported;
+      }
+
+      const netDelta = newRows.reduce((sum, row) => sum + row.amountMinorUnits, 0);
+      const closingBalance = input.closingBalance;
+      const useClosingBalance =
+        closingBalance !== undefined &&
+        closingBalance.currency === holding.currency &&
+        (newestExistingTime === null || closingBalance.asOfSeconds * 1000 >= newestExistingTime);
+      const nextBalance = useClosingBalance
+        ? closingBalance.minorUnits
+        : holding.balanceMinorUnits + netDelta;
+
+      if (nextBalance !== holding.balanceMinorUnits) {
+        await tx
+          .update(holdings)
+          .set({ balanceMinorUnits: nextBalance })
+          .where(eq(holdings.id, input.holdingId));
+      }
+
+      return imported;
     }),
 } satisfies Repository;

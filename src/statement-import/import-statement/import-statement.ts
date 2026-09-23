@@ -22,10 +22,14 @@ export type ImportResult = {
  * Detect the format, parse it, exclude any row whose currency doesn't match
  * the TARGET HOLDING's own currency (see `ImportResult.skippedWrongCurrency`
  * above), build the per-parse dedup occurrence map over the remaining rows,
- * map each through `mapParsedTransaction`, and hand the whole batch to the
- * EXISTING `transactionsRepo.addManyDedup` in one call — see
- * `docs/plans/statement-import.md` section A.4. Takes already-read file TEXT,
- * not a path; file reading is the caller's job.
+ * map each through `mapParsedTransaction`, and hand the whole batch —
+ * plus the format's own `closingBalance`, when it has one — to
+ * `transactionsRepo.importRows` in one call, which upserts the rows AND
+ * moves the target holding's `balanceMinorUnits` in a SINGLE db transaction
+ * (see that function's own doc comment, and `kiko-domain`'s "Statement
+ * import" section, for the exact balance rule). See
+ * `docs/plans/statement-import.md` section A.4 for the row-mapping shape.
+ * Takes already-read file TEXT, not a path; file reading is the caller's job.
  */
 export const importStatement = async (
   input: { text: string; fileName: string },
@@ -66,7 +70,11 @@ export const importStatement = async (
 
     return mapParsedTransaction(transaction, holdingId, occurrenceIndex);
   });
-  const imported = await transactionsRepo.addManyDedup(rows);
+  const imported = await transactionsRepo.importRows({
+    holdingId,
+    rows,
+    closingBalance: parsed.closingBalance,
+  });
 
   return {
     formatId: format.id,

@@ -145,6 +145,19 @@ describe('privatbankXlsxFormat.parse', () => {
     expect(parsed.formatId).toBe('privatbank-xlsx');
   });
 
+  // Deliberate exclusion (see `ParsedStatement.closingBalance`'s doc comment,
+  // `parser.ts`): the fixture's own `balance`/`balanceCurrency` columns exist
+  // per-row, but a PrivatBank export can mix MULTIPLE cards in one file (this
+  // very fixture's two resolved rows carry DIFFERENT `maskedCardHint`s, see
+  // below), so a single closing balance can't be attributed to one target
+  // holding without also matching which card each row belongs to — never
+  // guessed.
+  it('never sets a closingBalance (a multi-card export has no single unambiguous balance)', async () => {
+    const parsed = privatbankXlsxFormat.parse(await fixtureInput());
+
+    expect(parsed.closingBalance).toBeUndefined();
+  });
+
   it('skips the merged A1:J1 title row and the row-2 header, starting data at row 3', async () => {
     const parsed = privatbankXlsxFormat.parse(await fixtureInput());
 

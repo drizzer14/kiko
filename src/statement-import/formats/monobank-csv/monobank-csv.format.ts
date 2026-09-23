@@ -4,6 +4,7 @@
 import Papa from 'papaparse';
 
 import type {
+  ClosingBalance,
   ParsedStatement,
   ParsedTransaction,
   StatementFormat,
@@ -32,6 +33,7 @@ const COLUMN = {
   description: 1,
   mcc: 2,
   amount: 3,
+  balanceAfter: 9,
 } as const;
 
 const isAbsentColumn = (value: string | undefined): boolean =>
@@ -95,14 +97,41 @@ const resolveAccountCurrency = (headerRow: string[] | undefined): Currency => {
   return currencyCode;
 };
 
+// The fixture's own "Залишок після операції" (balance after transaction)
+// column — a genuine running balance, unlike every other format shipped so
+// far. Monobank's own export is single-card/single-account per file, so the
+// LAST data row's balance-after is unambiguous: the closing balance of the
+// whole statement, as of that row's own time (see `ClosingBalance`'s doc
+// comment in `parser.ts` for why `asOfSeconds` is that row's time, not "now").
+// Returns `undefined` for a file with no data rows at all (nothing to close
+// against) rather than a synthetic zero.
+const resolveClosingBalance = (
+  dataRows: string[][],
+  currency: Currency,
+): ClosingBalance | undefined => {
+  const lastRow = dataRows.at(-1);
+
+  if (!lastRow) {
+    return undefined;
+  }
+
+  return {
+    minorUnits: Money.fromMajor(currency, parseAmount(lastRow[COLUMN.balanceAfter])).minorUnits,
+    currency,
+    asOfSeconds: parseDateTimeSeconds(lastRow[COLUMN.date], 'Monobank'),
+  };
+};
+
 const parse = (input: StatementFormatInput): ParsedStatement => {
   const [headerRow, ...dataRows] = readRows(input);
   const currency = resolveAccountCurrency(headerRow);
+  const closingBalance = resolveClosingBalance(dataRows, currency);
 
   return {
     formatId: 'monobank-csv',
     account: { currency },
     transactions: dataRows.map((row) => parseRow(row, currency)),
+    ...(closingBalance ? { closingBalance } : {}),
   };
 };
 
