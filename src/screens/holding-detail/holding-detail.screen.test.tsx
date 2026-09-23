@@ -6,6 +6,8 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
+import { formatMoney } from '../../currency/format';
+import { Money } from '../../currency/money';
 import { formatDate } from '../../dates/format';
 import {
   DELETE_ACTION_TEST_ID,
@@ -683,6 +685,53 @@ describe('HoldingDetailScreen', () => {
     const { queryByTestId } = await renderScreen();
 
     expect(queryByTestId('holding-detail-value-as-of')).toBeNull();
+  });
+
+  it('shows a "Price as of <date>" caption for a metal holding, reading the SHARED metal:XAU instrument', async () => {
+    // metal (T17/T20) is priced through the shared metal:<XAU|...> instrument,
+    // never a per-holding one (kiko-pricing) — so its caption reads the
+    // LATEST point on `metal:XAU`, not `holding:h-1`, and uses its own wording
+    // ("Price as of") distinct from property_item's "Value as of".
+    const day = Date.UTC(2026, 5, 1);
+    seed(metalHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      { instrument: 'metal:XAU', day, price: '2500000.00', currency: 'UAH', source: 'nbu' },
+    ]);
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    const expectedCaption = `Price as of ${formatDate(day, { timeZone: 'UTC' })}`;
+    expect(getByText(expectedCaption)).toBeTruthy();
+    expect(
+      within(getByTestId('holding-value-header')).getByTestId('holding-detail-value-as-of'),
+    ).toBeTruthy();
+  });
+
+  it('shows no "Price as of" caption for a metal holding with no stored metal:XAU price point yet', async () => {
+    seed(metalHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('holding-detail-value-as-of')).toBeNull();
+  });
+
+  it('renders a metal holding at its priced value once a metal:XAU price point exists, not its lots’ cost basis', async () => {
+    // metalHolding holds 10g at purity 0.999; the priced value (quantity *
+    // purity * price / troy-ounce-grams) must override the cost-basis
+    // fallback (50 000,00 ₴, from its stored lot) the instant a shared
+    // metal:XAU point lands.
+    seed(metalHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      {
+        instrument: 'metal:XAU',
+        day: Date.UTC(2024, 0, 1),
+        price: '2500000.00',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText(formatMoney(Money.of('UAH', 80_296_490)))).toBeTruthy();
   });
 
   it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {

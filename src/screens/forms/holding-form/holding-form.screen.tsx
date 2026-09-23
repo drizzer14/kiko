@@ -18,10 +18,14 @@ import {
 } from '../../../holdings/holding-type';
 import {
   asBondMeta,
+  asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
   type BondKind,
   type BondMeta,
+  type Metal,
+  type MetalForm,
+  type MetalUnit,
   type PropertyCategory,
   type CompoundingFrequency,
   type TermDepositMeta,
@@ -30,8 +34,8 @@ import type { Lot } from '../../../holdings/lots';
 import { Money } from '../../../currency/money';
 import type { HoldingRow } from '../../../db/schema';
 import { dayKeyOf } from '../../../prices/price-book';
-import { shiftDecimal } from '../../../currency/decimal';
 import { parseAmount } from '../../../currency/parse';
+import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
@@ -54,6 +58,7 @@ import ChipRow from '../chip-row';
 import DateField from '../date-field';
 import ColorPicker from '../color-picker';
 import HoldingIdentityField from '../holding-identity-field';
+import MetalSection from './metal-section';
 import PropertySection from './property-section';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
@@ -85,6 +90,12 @@ type BondReasonKey =
 // src/i18n/locales/en.ts) accepts it.
 type PropertyReasonKey = 'forms.holding.propertyCostError';
 
+// The literal i18n keys `metalReasonKey` may return — reusing the SAME
+// generic quantity error the bond form already carries, and the Lot form's
+// own total-cost error, rather than minting a metal-specific duplicate of
+// either message.
+type MetalReasonKey = 'forms.holding.quantityError' | 'forms.lot.totalCostError';
+
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added in
 // this session. Only unsaved rows may be removed — a persisted contribution is
@@ -106,6 +117,36 @@ const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribut
     saved: true,
   }));
 
+// Seeds term_deposit's edit-mode fields from stored metadata. A no-op for
+// invalid/absent metadata. Extracted out of the seed effect below (the same
+// cognitive-complexity reason `seedPropertyFields`/`seedMetalFields` further
+// down are their own functions rather than an inline `if (meta) {...}`).
+const seedTermDepositFields = (
+  holding: HoldingRow,
+  setters: {
+    setContributions: (rows: Contribution[]) => void;
+    setNextContributionId: (id: number) => void;
+    setAnnualRate: (value: string) => void;
+    setTermMonths: (value: string) => void;
+    setRecap: (value: boolean) => void;
+    setCompounding: (value: CompoundingFrequency) => void;
+  },
+): void => {
+  const meta = asTermDepositMeta(holding.metadata);
+
+  if (meta === null) {
+    return;
+  }
+
+  const rows = seedContributions(meta, holding.currency);
+  setters.setContributions(rows);
+  setters.setNextContributionId(rows.length);
+  setters.setAnnualRate(String(meta.annualRatePct));
+  setters.setTermMonths(String(meta.termMonths));
+  setters.setRecap(meta.recapitalization);
+  setters.setCompounding(meta.compounding);
+};
+
 // Seed the bond number/date fields from stored metadata. Minor-unit money
 // fields (face value, purchase price) convert back to grouped major strings;
 // plain-number fields (quantity, coupon %) render verbatim.
@@ -119,6 +160,38 @@ const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   bondKind: meta.bondKind,
   couponFrequency: meta.couponFrequency,
 });
+
+// Seeds bond's edit-mode fields from stored metadata, the same extraction
+// reason as `seedTermDepositFields` above.
+const seedBondMetaFields = (
+  holding: HoldingRow,
+  setters: {
+    setQuantity: (value: string) => void;
+    setFaceValue: (value: string) => void;
+    setCouponPct: (value: string) => void;
+    setPurchasePrice: (value: string) => void;
+    setPurchaseDate: (value: number) => void;
+    setMaturityDate: (value: number) => void;
+    setBondKind: (value: BondKind) => void;
+    setCouponFrequency: (value: BondMeta['couponFrequency']) => void;
+  },
+): void => {
+  const meta = asBondMeta(holding.metadata);
+
+  if (meta === null) {
+    return;
+  }
+
+  const fields = seedBondFields(meta, holding.currency);
+  setters.setQuantity(fields.quantity);
+  setters.setFaceValue(fields.faceValue);
+  setters.setCouponPct(fields.couponPct);
+  setters.setPurchasePrice(fields.purchasePrice);
+  setters.setPurchaseDate(fields.purchaseDate);
+  setters.setMaturityDate(fields.maturityDate);
+  setters.setBondKind(fields.bondKind);
+  setters.setCouponFrequency(fields.couponFrequency);
+};
 
 // Seeds property_item's two edit-mode fields (category + the ORIGINAL lots,
 // carried through unchanged on save — cost/quantity history is fixed at
@@ -143,6 +216,34 @@ const seedPropertyFields = (
 
   setters.setPropertyCategory(meta.category);
   setters.setPropertyLots(meta.lots);
+};
+
+// Seeds metal's edit-mode fields (metal/form/unit/purity + the ORIGINAL lots,
+// carried through unchanged on save — quantity/cost history is fixed at
+// creation, MetalSection hides its first-lot fields in edit mode; a later
+// buy/sell goes through the dedicated Lot form instead) from stored metadata.
+// A no-op for invalid/absent metadata, mirroring `seedPropertyFields` above.
+const seedMetalFields = (
+  holding: HoldingRow,
+  setters: {
+    setMetalMetal: (metal: Metal) => void;
+    setMetalForm: (form: MetalForm) => void;
+    setMetalUnit: (unit: MetalUnit) => void;
+    setMetalPurity: (purity: string) => void;
+    setMetalLots: (lots: Lot[]) => void;
+  },
+): void => {
+  const meta = asMetalMeta(holding.metadata);
+
+  if (meta === null) {
+    return;
+  }
+
+  setters.setMetalMetal(meta.metal);
+  setters.setMetalForm(meta.form);
+  setters.setMetalUnit(meta.unit);
+  setters.setMetalPurity(meta.purity);
+  setters.setMetalLots(meta.lots);
 };
 
 // The partial row an edit-mode save writes: always the editable identity fields
@@ -216,6 +317,100 @@ const buildPropertyCreatePayload = (params: {
   };
 };
 
+// The pre-filled purity — the standard bar/coin fineness (T20's own default).
+// Shared by the initial form state and the create-payload's fallback below,
+// so an emptied/garbled purity field never reaches `asMetalMeta` broken.
+const DEFAULT_METAL_PURITY = '0.9999';
+
+// The metal CREATE payload (T20): a `metal` holding writes a zero stored
+// balance (its value lives entirely in `metadata.lots` / the SHARED
+// `metal:<XAU|XAG|XPT|XPD>` price series — kiko-pricing) and one lot dated
+// today for the entered quantity/cost. Unlike `buildPropertyCreatePayload`,
+// no `firstPricePoint` is written: a metal's price comes from the metal-wide
+// instrument (backfilled by `refreshMetalPrices`), never a per-holding one —
+// see `asMetalMeta`'s own contract for why `quantityDelta`/`purity` are kept
+// as the exact decimal STRINGS the user typed (`normalizeDecimal`), never
+// round-tripped through a parsed `number`.
+const buildMetalCreatePayload = (params: {
+  metal: Metal;
+  form: MetalForm;
+  unit: MetalUnit;
+  purity: string;
+  quantity: string;
+  cost: string;
+}): { balanceMinorUnits: number; metadata: Record<string, unknown> } => {
+  const { metal, form, unit, purity, quantity, cost } = params;
+  const day = dayKeyOf(Date.now());
+  const lot: Lot = {
+    day,
+    quantityDelta: normalizeDecimal(quantity) ?? '0',
+    costMinorUnits: Money.fromMajor('UAH', parseAmount(cost) || 0).minorUnits,
+  };
+
+  return {
+    balanceMinorUnits: 0,
+    metadata: {
+      metal,
+      form,
+      unit,
+      purity: normalizeDecimal(purity) ?? DEFAULT_METAL_PURITY,
+      lots: [lot],
+    },
+  };
+};
+
+// The type-specific CREATE payload: `property_item` and `metal` (T20) each
+// seed their own first lot (`buildPropertyCreatePayload`/
+// `buildMetalCreatePayload` above) instead of a plain opening balance +
+// generic metadata. Grouped here — rather than a nested ternary in `save`'s
+// create call, which the project's `noNestedTernary` lint rule forbids — so
+// `save` keeps a single flat spread.
+const createPayloadFor = (params: {
+  type: HoldingType;
+  currency: Currency;
+  openingBalance: string;
+  metadata: Record<string, unknown> | undefined;
+  propertyCategory: PropertyCategory;
+  propertyCost: string;
+  metal: Metal;
+  metalForm: MetalForm;
+  metalUnit: MetalUnit;
+  metalPurity: string;
+  metalQuantity: string;
+  metalCost: string;
+}): {
+  balanceMinorUnits: number;
+  metadata: Record<string, unknown> | undefined;
+  firstPricePoint?: { day: number; price: string };
+} => {
+  const { type } = params;
+
+  if (type === 'property_item') {
+    return buildPropertyCreatePayload({
+      category: params.propertyCategory,
+      currency: params.currency,
+      cost: params.propertyCost,
+    });
+  }
+
+  if (type === 'metal') {
+    return buildMetalCreatePayload({
+      metal: params.metal,
+      form: params.metalForm,
+      unit: params.metalUnit,
+      purity: params.metalPurity,
+      quantity: params.metalQuantity,
+      cost: params.metalCost,
+    });
+  }
+
+  return {
+    balanceMinorUnits: Money.fromMajor(params.currency, parseAmount(params.openingBalance) || 0)
+      .minorUnits,
+    metadata: params.metadata,
+  };
+};
+
 const bondKinds: readonly BondKind[] = ['government', 'corporate'];
 
 const compoundingOptions: readonly CompoundingFrequency[] = [
@@ -258,8 +453,8 @@ const saveReasonsFor = (params: {
 const fieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
-  reasonKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey | null,
-  expectedKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey,
+  reasonKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey | MetalReasonKey | null,
+  expectedKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey | MetalReasonKey,
 ): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
 
 // The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
@@ -276,6 +471,8 @@ type ValidatedFieldRefs = {
   couponPctFieldRef: RefObject<FieldInstance | null>;
   maturityDateFieldRef: RefObject<FieldInstance | null>;
   propertyCostFieldRef: RefObject<FieldInstance | null>;
+  metalQuantityFieldRef: RefObject<FieldInstance | null>;
+  metalCostFieldRef: RefObject<FieldInstance | null>;
 };
 
 // A blocked Save's FOCUS action for each TEXT-backed validated field — called
@@ -292,6 +489,8 @@ type ValidatedFieldFocus = {
   faceValue: () => void;
   couponPct: () => void;
   propertyCost: () => void;
+  metalQuantity: () => void;
+  metalCost: () => void;
 };
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
@@ -309,11 +508,20 @@ const firstInvalidFieldRef = (params: {
   termDepositReasonKey: TermDepositReasonKey | null;
   bondReasonKey: BondReasonKey | null;
   propertyReasonKey: PropertyReasonKey | null;
+  metalReasonKey: MetalReasonKey | null;
   refs: ValidatedFieldRefs;
   focus: ValidatedFieldFocus;
 }): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
-  const { name, type, termDepositReasonKey, bondReasonKey, propertyReasonKey, refs, focus } =
-    params;
+  const {
+    name,
+    type,
+    termDepositReasonKey,
+    bondReasonKey,
+    propertyReasonKey,
+    metalReasonKey,
+    refs,
+    focus,
+  } = params;
 
   const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
     { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
@@ -366,6 +574,20 @@ const firstInvalidFieldRef = (params: {
             invalid: propertyReasonKey === 'forms.holding.propertyCostError',
             ref: refs.propertyCostFieldRef,
             focus: focus.propertyCost,
+          },
+        ]
+      : []),
+    ...(type === 'metal'
+      ? [
+          {
+            invalid: metalReasonKey === 'forms.holding.quantityError',
+            ref: refs.metalQuantityFieldRef,
+            focus: focus.metalQuantity,
+          },
+          {
+            invalid: metalReasonKey === 'forms.lot.totalCostError',
+            ref: refs.metalCostFieldRef,
+            focus: focus.metalCost,
           },
         ]
       : []),
@@ -542,6 +764,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const couponPctFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
   const propertyCostFieldRef = useRef<FieldInstance>(null);
+  const metalQuantityFieldRef = useRef<FieldInstance>(null);
+  const metalCostFieldRef = useRef<FieldInstance>(null);
   // The TEXT-backed validated fields' own inner TextInput/name-input, so a
   // blocked Save can focus the first-invalid one imperatively once it has
   // scrolled into view — mirrors `TextField`'s own `inputRef` /
@@ -557,6 +781,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
   const propertyCostInputRef = useRef<TextInputInstance>(null);
+  const metalQuantityInputRef = useRef<TextInputInstance>(null);
+  const metalCostInputRef = useRef<TextInputInstance>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -590,6 +816,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const [propertyCost, setPropertyCost] = useState('');
   const [propertyLots, setPropertyLots] = useState<Lot[]>([]);
 
+  // metal state (T20). `metalQuantity`/`metalCost` are CREATE-only
+  // (MetalSection hides its first-lot fields in edit mode — quantity/cost
+  // history is fixed at creation; a later buy/sell goes through the
+  // dedicated Lot form instead). `metalLots` holds the ORIGINAL (hydrated)
+  // lots in edit mode, carried through unchanged on save.
+  const [metalMetal, setMetalMetal] = useState<Metal>('XAU');
+  const [metalForm, setMetalForm] = useState<MetalForm>('bar');
+  const [metalUnit, setMetalUnit] = useState<MetalUnit>('oz');
+  const [metalPurity, setMetalPurity] = useState(DEFAULT_METAL_PURITY);
+  const [metalQuantity, setMetalQuantity] = useState('');
+  const [metalCost, setMetalCost] = useState('');
+  const [metalLots, setMetalLots] = useState<Lot[]>([]);
+
+  // A `metal` holding's value is hard-fixed to UAH regardless of currency
+  // (NBU quotes precious metals only in UAH — kiko-pricing), so the currency
+  // field is hidden for it (below) and this effect forces the state back to
+  // UAH whenever the type is (or becomes) `metal` — covering a user who
+  // picked a different currency before switching the type chip to Precious
+  // metal.
+  useEffect(() => {
+    if (type === 'metal' && currency !== 'UAH') {
+      setCurrency('UAH');
+    }
+  }, [type, currency]);
+
   // Seed the form once from the loaded holding (edit mode only). `useLiveQuery`
   // resolves asynchronously, so the initial render precedes the data; a one-shot
   // ref guards against re-seeding (and clobbering in-progress edits) on every
@@ -609,37 +860,46 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setColor(holding.color);
 
     if (holding.type === 'term_deposit') {
-      const meta = asTermDepositMeta(holding.metadata);
-      if (meta) {
-        const rows = seedContributions(meta, holding.currency);
-        setContributions(rows);
-        nextContributionId.current = rows.length;
-        setAnnualRate(String(meta.annualRatePct));
-        setTermMonths(String(meta.termMonths));
-        setRecap(meta.recapitalization);
-        setCompounding(meta.compounding);
-      }
+      seedTermDepositFields(holding, {
+        setContributions,
+        setNextContributionId: (id) => {
+          nextContributionId.current = id;
+        },
+        setAnnualRate,
+        setTermMonths,
+        setRecap,
+        setCompounding,
+      });
       return;
     }
 
     if (holding.type === 'bond') {
-      const meta = asBondMeta(holding.metadata);
-      if (meta) {
-        const fields = seedBondFields(meta, holding.currency);
-        setQuantity(fields.quantity);
-        setFaceValue(fields.faceValue);
-        setCouponPct(fields.couponPct);
-        setPurchasePrice(fields.purchasePrice);
-        setPurchaseDate(fields.purchaseDate);
-        setMaturityDate(fields.maturityDate);
-        setBondKind(fields.bondKind);
-        setCouponFrequency(fields.couponFrequency);
-      }
+      seedBondMetaFields(holding, {
+        setQuantity,
+        setFaceValue,
+        setCouponPct,
+        setPurchasePrice,
+        setPurchaseDate,
+        setMaturityDate,
+        setBondKind,
+        setCouponFrequency,
+      });
       return;
     }
 
     if (holding.type === 'property_item') {
       seedPropertyFields(holding, { setPropertyCategory, setPropertyLots });
+      return;
+    }
+
+    if (holding.type === 'metal') {
+      seedMetalFields(holding, {
+        setMetalMetal,
+        setMetalForm,
+        setMetalUnit,
+        setMetalPurity,
+        setMetalLots,
+      });
       return;
     }
 
@@ -768,6 +1028,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     if (type === 'property_item' && isEdit) {
       return { category: propertyCategory, lots: propertyLots };
     }
+    // A metal's CREATE metadata is built separately (see `save`'s create
+    // branch, `buildMetalCreatePayload`) — this branch covers EDIT mode only:
+    // metal/form/unit/purity stay user-editable, but the ORIGINAL (hydrated)
+    // lots are carried through unchanged, since quantity/cost history is
+    // fixed at creation (a later buy/sell goes through the dedicated Lot form
+    // instead, never through this metadata patch).
+    if (type === 'metal' && isEdit) {
+      return {
+        metal: metalMetal,
+        form: metalForm,
+        unit: metalUnit,
+        purity: normalizeDecimal(metalPurity) ?? DEFAULT_METAL_PURITY,
+        lots: metalLots,
+      };
+    }
     return undefined;
   };
 
@@ -855,16 +1130,43 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // exactly when there is no reason to reject.
   const isPropertyValid = (): boolean => propertyReasonKey() === null;
 
+  // The first-lot Quantity/Total cost fields only apply at CREATE time
+  // (MetalSection hides them in edit mode: quantity/cost history is fixed at
+  // creation, a later buy/sell goes through the dedicated Lot form instead),
+  // so this only rejects on create — an edit always passes. Purity carries a
+  // valid default and is never itself a rejection reason (`buildMetalCreatePayload`/
+  // `buildMetadata`'s edit branch both fall back to the default for a
+  // cleared/garbled value, so a save can never write a broken MetalMeta).
+  const metalReasonKey = (): MetalReasonKey | null => {
+    if (isEdit) {
+      return null;
+    }
+
+    const normalizedQuantity = normalizeDecimal(metalQuantity);
+
+    if (normalizedQuantity === null || compareDecimal(normalizedQuantity, '0') <= 0) {
+      return 'forms.holding.quantityError';
+    }
+
+    if (!(parseAmount(metalCost) > 0)) {
+      return 'forms.lot.totalCostError';
+    }
+
+    return null;
+  };
+
+  // Derived from `metalReasonKey` so the two can never disagree: valid
+  // exactly when there is no reason to reject.
+  const isMetalValid = (): boolean => metalReasonKey() === null;
+
   const isValid =
     name.trim().length > 0 &&
     match(type)
       .with('term_deposit', isTermDepositValid)
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
-      // `metal` has no create-form section yet (T20 owns it, mirroring
-      // property_item's own T13 -> T16 gap) — grouped with the other
-      // no-extra-fields types until then.
-      .with('card', 'cash', 'crypto_asset', 'jar', 'metal', () => true)
+      .with('metal', isMetalValid)
+      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);
@@ -881,6 +1183,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         termDepositReasonKey: termDepositReasonKey(),
         bondReasonKey: bondReasonKey(),
         propertyReasonKey: propertyReasonKey(),
+        metalReasonKey: metalReasonKey(),
         refs: {
           nameFieldRef,
           contributionsFieldRef,
@@ -891,6 +1194,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           couponPctFieldRef,
           maturityDateFieldRef,
           propertyCostFieldRef,
+          metalQuantityFieldRef,
+          metalCostFieldRef,
         },
         focus: {
           name: () => nameInputRef.current?.focus(),
@@ -900,6 +1205,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           faceValue: () => faceValueInputRef.current?.focus(),
           couponPct: () => couponPctInputRef.current?.focus(),
           propertyCost: () => propertyCostInputRef.current?.focus(),
+          metalQuantity: () => metalQuantityInputRef.current?.focus(),
+          metalCost: () => metalCostInputRef.current?.focus(),
         },
       });
 
@@ -957,12 +1264,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // A property's create payload is built separately (`buildPropertyCreatePayload`):
-      // a zero stored balance, one lot, and a first manual price point equal
-      // to the entered cost, all written in the SAME transaction
-      // (`holdingsRepo.create`'s `firstPricePoint` param) — every other type
-      // writes its entered opening balance and the metadata `buildMetadata`
-      // built above.
+      // A property's or a metal's create payload is built separately
+      // (`createPayloadFor`, delegating to `buildPropertyCreatePayload` /
+      // `buildMetalCreatePayload`): a zero stored balance and one lot each —
+      // property additionally writes a first manual price point equal to the
+      // entered cost, in the SAME transaction (`holdingsRepo.create`'s
+      // `firstPricePoint` param); metal writes none (kiko-pricing: its price
+      // comes from the SHARED metal instrument, never a per-holding one).
+      // Every other type writes its entered opening balance and the metadata
+      // `buildMetadata` built above.
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,
@@ -972,13 +1282,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...(type === 'property_item'
-          ? buildPropertyCreatePayload({ category: propertyCategory, currency, cost: propertyCost })
-          : {
-              balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0)
-                .minorUnits,
-              metadata,
-            }),
+        ...createPayloadFor({
+          type,
+          currency,
+          openingBalance,
+          metadata,
+          propertyCategory,
+          propertyCost,
+          metal: metalMetal,
+          metalForm,
+          metalUnit,
+          metalPurity,
+          metalQuantity,
+          metalCost,
+        }),
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -1075,14 +1392,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           disabled={isEdit}
         />
 
-        <CurrencyField
-          label={t('forms.fields.currency')}
-          selected={currency}
-          onSelect={setCurrency}
-          disabled={isEdit}
-          onOpenChange={setIsCurrencySheetOpen}
-          testID="holding-currency-field"
-        />
+        {/* A metal holding's value is hard-fixed to UAH (NBU quotes precious
+            metals only in UAH — kiko-pricing), so it offers no currency
+            picker at all — the state effect above keeps `currency` at 'UAH'
+            underneath regardless of what this field would otherwise show. */}
+        {type !== 'metal' && (
+          <CurrencyField
+            label={t('forms.fields.currency')}
+            selected={currency}
+            onSelect={setCurrency}
+            disabled={isEdit}
+            onOpenChange={setIsCurrencySheetOpen}
+            testID="holding-currency-field"
+          />
+        )}
 
         {!isLedgerlessHoldingType(type) && !isSyncedEdit && (
           <TextField
@@ -1382,6 +1705,47 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               )}
               costFieldRef={propertyCostFieldRef}
               costInputRef={propertyCostInputRef}
+            />
+          </Box>
+        )}
+
+        {type === 'metal' && (
+          <Box gap={4}>
+            <Divider testID="form-divider" />
+
+            <Text variant="heading">{t('forms.holding.details')}</Text>
+
+            <MetalSection
+              metal={metalMetal}
+              onSelectMetal={setMetalMetal}
+              form={metalForm}
+              onSelectForm={setMetalForm}
+              unit={metalUnit}
+              onSelectUnit={setMetalUnit}
+              purity={metalPurity}
+              onChangePurity={setMetalPurity}
+              showFirstLot={!isEdit}
+              quantity={metalQuantity}
+              onChangeQuantity={(text) => setMetalQuantity(groupAmount(text))}
+              cost={metalCost}
+              onChangeCost={(text) => setMetalCost(groupAmount(text))}
+              currencySuffix={currencySymbol.UAH}
+              quantityError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                metalReasonKey(),
+                'forms.holding.quantityError',
+              )}
+              costError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                metalReasonKey(),
+                'forms.lot.totalCostError',
+              )}
+              quantityFieldRef={metalQuantityFieldRef}
+              quantityInputRef={metalQuantityInputRef}
+              costFieldRef={metalCostFieldRef}
+              costInputRef={metalCostInputRef}
             />
           </Box>
         )}

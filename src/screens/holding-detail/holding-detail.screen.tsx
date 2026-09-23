@@ -24,7 +24,7 @@ import { usePriceBook } from '../../prices/use-price-book';
 import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
 import { formatDate, formatTime } from '../../dates/format';
-import { holdingInstrument } from '../../prices/instrument';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 import { startOfLocalDay } from '../../dates/local-day';
 import { isPricedHoldingType } from '../../holdings/priced-value';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
@@ -46,7 +46,7 @@ import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holdings/derived-entries';
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
-import { asBondMeta } from '../../holdings/holding-metadata';
+import { asBondMeta, asMetalMeta } from '../../holdings/holding-metadata';
 import {
   isLedgerlessHoldingType,
   isLotFormHoldingType,
@@ -211,14 +211,22 @@ const footerActionFor = (
   return 'transaction';
 };
 
-// The "Value as of <date>" caption for a priced holding (property_item —
-// isPricedHoldingType): the LATEST stored price point's own day, so the user
-// sees how current its revaluation is. Undefined for a non-priced holding, or
-// a priced one with no stored point yet (its value still falls back to cost
-// basis — kiko-domain). `point.day` is a UTC-midnight epoch standing for a
-// LOCAL calendar day (`dayKeyOf`'s convention), so it is formatted with the
-// matching `{ timeZone: 'UTC' }` option — reading it with the LOCAL getters
-// could land on the previous calendar day in a negative-UTC-offset timezone.
+// The "Value as of <date>" / "Price as of <date>" caption for a priced
+// holding (isPricedHoldingType): the LATEST stored price point's own day, so
+// the user sees how current the figure is. Undefined for a non-priced
+// holding, or a priced one with no stored point yet (its value still falls
+// back to cost basis — kiko-domain). `point.day` is a UTC-midnight epoch
+// standing for a LOCAL calendar day (`dayKeyOf`'s convention), so it is
+// formatted with the matching `{ timeZone: 'UTC' }` option — reading it with
+// the LOCAL getters could land on the previous calendar day in a
+// negative-UTC-offset timezone.
+//
+// `metal` (T20) reads a DIFFERENT instrument than every other priced type: it
+// shares `metal:<XAU|...>` across every holding of that metal (kiko-pricing),
+// never a per-holding `holding:<id>` series the way `property_item` uses —
+// and carries its own wording ("Price as of") since it is the metal's market
+// price, not a per-holding manual revaluation. An invalid/absent MetalMeta
+// resolves no instrument, matching the "no stored point yet" case below.
 const priceAsOfCaption = (
   holding: HoldingRow | undefined,
   priceBook: PriceBook,
@@ -226,6 +234,15 @@ const priceAsOfCaption = (
 ): string | undefined => {
   if (holding === undefined || !isPricedHoldingType(holding.type)) {
     return undefined;
+  }
+
+  if (holding.type === 'metal') {
+    const meta = asMetalMeta(holding.metadata);
+    const point = meta === null ? undefined : latestPoint(priceBook, metalInstrument(meta.metal));
+
+    return point === undefined
+      ? undefined
+      : t('holdingDetail.priceAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
   }
 
   const point = latestPoint(priceBook, holdingInstrument(holding.id));

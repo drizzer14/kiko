@@ -1014,6 +1014,176 @@ describe('HoldingFormScreen property', () => {
   });
 });
 
+describe('HoldingFormScreen metal', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    setIconMock.mockClear();
+    navigation.goBack.mockClear();
+    updateDeltaMock.mockClear();
+    mockAccountKind = 'metals';
+    mockAccountInstitution = null;
+    mockAccountBankId = null;
+  });
+
+  it('creates a metal holding with a zero balance and a full MetalMeta (one lot, no firstPricePoint)', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fill(screen, 'Quantity', '31.1');
+    await fill(screen, 'Total cost', '80000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'metal',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'oz',
+          purity: '0.9999',
+          lots: [{ day: expect.any(Number), quantityDelta: '31.1', costMinorUnits: 8_000_000 }],
+        },
+      }),
+    );
+    // Unlike property_item, no per-holding `firstPricePoint` is written — a
+    // metal's price comes from the SHARED `metal:<XAU|...>` instrument
+    // (kiko-pricing), never a per-holding series.
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('writes no balance TextField for a metal holding (it is ledgerless)', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByLabelText('Balance')).toBeNull();
+  });
+
+  it('hides the currency field for a metal holding, forcing UAH', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByTestId('holding-currency-field')).toBeNull();
+  });
+
+  it('forces the currency back to UAH when switching to metal from a non-UAH selection', async () => {
+    mockAccountKind = 'bank';
+    mockAccountBankId = 'privatbank';
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByTestId('holding-currency-field'));
+    // Narrow by search first: unfiltered, USD sorts well outside the
+    // virtualized FlatList's initial window (mirrors CurrencyField's own
+    // tests).
+    await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'USD');
+    await fireEvent.press(screen.getByTestId('currency-option-USD'));
+    await fireEvent.press(screen.getByText('Precious metal'));
+    await fill(screen, 'Name', 'Gold bar');
+    await fill(screen, 'Quantity', '1');
+    await fill(screen, 'Total cost', '80000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ currency: 'UAH' }));
+  });
+
+  it('shows the metal-section fields once Precious metal is selected on an allow-listed bank account', async () => {
+    mockAccountKind = 'bank';
+    mockAccountBankId = 'privatbank';
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Precious metal'));
+
+    expect(screen.getByText('Form')).toBeTruthy();
+    expect(screen.getByText('Unit')).toBeTruthy();
+    expect(screen.getByLabelText('Purity')).toBeTruthy();
+  });
+
+  it('blocks save and shows an error for an empty quantity and cost', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Gold bar');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('edits a metal holding without Quantity/Total cost fields, preserving its stored lots', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '0.9999',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+      },
+    });
+
+    expect(screen.queryByLabelText('Quantity')).toBeNull();
+    expect(screen.queryByLabelText('Total cost')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'oz',
+          purity: '0.9999',
+          lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+        },
+      }),
+      expect.any(Number),
+    );
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+  });
+
+  it('edits a metal holding onto a different metal element, preserving its stored lots', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Gold bar',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '0.9999',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+      },
+    });
+
+    await fireEvent.press(screen.getByText('Silver'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          metal: 'XAG',
+          lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 8_000_000 }],
+        }),
+      }),
+      expect.any(Number),
+    );
+  });
+});
+
 describe('HoldingFormScreen icon', () => {
   beforeEach(() => {
     createMock.mockClear();

@@ -262,6 +262,24 @@ export const en = {
       maturityDate: 'Maturity Date',
       maturityDateError: 'Maturity date must be after the purchase date.',
       metal: 'Precious metal',
+      metalForm: 'Form',
+      metalFormBankAccount: 'Bank metal account',
+      metalFormBar: 'Bar',
+      metalFormCoin: 'Coin',
+      metalKind: {
+        gold: 'Gold',
+        palladium: 'Palladium',
+        platinum: 'Platinum',
+        silver: 'Silver',
+      },
+      // The metal-element ChipRow's own field label (MetalSection) — distinct
+      // from `metal` above (the Type chip's OWN chip-text label "Precious
+      // metal"), since both render on screen together the instant metal is
+      // selected and an identical string would read as a duplicate.
+      metalKindLabel: 'Metal',
+      metalUnit: 'Unit',
+      metalUnitG: 'Grams',
+      metalUnitOz: 'Troy ounces',
       monthly: 'Monthly',
       namePlaceholder: 'Apple shares',
       propertyCategory: {
@@ -279,6 +297,7 @@ export const en = {
       purchaseDate: 'Purchase Date',
       purchasePrice: 'Purchase Price (total paid)',
       purchasePricePlaceholder: 'Defaults to nominal',
+      purity: 'Purity',
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
@@ -466,6 +485,7 @@ export const en = {
     interestEarned: 'Interest earned',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
+    priceAsOf: 'Price as of {{date}}',
     principal: 'Principal',
     projected: 'Projected',
     purchase: 'Purchase',
