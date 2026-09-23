@@ -677,48 +677,88 @@ export const transactionsRepo = {
    * `holdings`, so an import-only holding's displayed balance stayed 0
    * forever even though its transaction list showed the real imported rows.
    *
-   * The balance move is Rule B: `base + sum(newRows.amountMinorUnits)` — ONLY
-   * the genuinely new rows (from `insertDedupRowsTx`) count, so a re-import
-   * of an already-imported file (every row refreshed, none new) leaves the
-   * balance untouched, exactly like a second identical import must. UNLESS
-   * `closingBalance` is given, is in the holding's OWN currency, and is AS
-   * OF a time at or after the holding's newest PRE-EXISTING transaction
-   * (read before the new rows land) — then the closing balance is written
-   * outright instead of the net delta, correcting for any drift the ledger
-   * delta alone can't see. A statement OLDER than what the holding already
-   * has falls back to the net-delta rule instead, so an out-of-order
+   * THE BOUNDARY (user ruling, I2): every decision below is relative to one
+   * "as-of" instant — the LATER of (a) the holding's newest PRE-EXISTING
+   * transaction time (`newestExistingTime`, read below, BEFORE the new rows
+   * land) and (b) the time the user last set this holding's balance BY HAND
+   * (a create with a typed opening balance, or a later manual balance edit).
+   * In code this reduces to (a) ALONE: `holdingsRepo.create` writes a
+   * 'manual' transaction at create time for any NON-ZERO typed opening
+   * balance, and `holdingsRepo.updateWithBalanceDelta` writes one at edit
+   * time for a manual balance edit (`holdings/repo/holdings.repo.ts`) — both
+   * hand-set events are therefore ALREADY a transaction row, already
+   * included in "the holding's newest existing transaction." No separate
+   * signal or schema column is needed, and none was added. A holding whose
+   * opening balance was typed as an explicit 0 is indistinguishable in code
+   * from one whose balance field was left blank (both skip that insert, per
+   * `openingBalance !== 0` in `holdingsRepo.create`) — both are treated as
+   * "never hand-set", i.e. contribute nothing to the boundary. Do NOT use
+   * `holdings.createdAt` as a stand-in boundary: a brand-new, never-hand-set
+   * holding must have NO boundary at all (see below), and `createdAt` would
+   * wrongly impose one, bringing back the original bug (an import-only
+   * holding's own rows would count as "history" and move nothing).
+   *
+   * `newestExistingTime === null` (no prior transaction AND no hand-set
+   * balance) means the holding has NO boundary: every genuinely new row
+   * moves the balance regardless of its own date, and a `closingBalance` is
+   * always eligible — this is the original bug-fix case (an import-only
+   * holding must show the statement's net/closing balance, not 0).
+   *
+   * With a boundary, each genuinely new row (from `insertDedupRowsTx`) is
+   * split by its OWN `time` against it: a row dated BEFORE the boundary is
+   * HISTORY — it still inserts as a real ledger row, but contributes 0 to
+   * `netDelta` (order independence: re-importing an older statement AFTER a
+   * newer one is already in the ledger can never move the balance a second
+   * time for events the ledger has already moved past). A row dated AT/AFTER
+   * the boundary is CURRENT and counts at its full amount.
+   *
+   * The balance move is `base + netDelta` — the sum of only the CURRENT new
+   * rows — so a re-import of an already-imported file (every row refreshed,
+   * none new) leaves the balance untouched, exactly like a second identical
+   * import must. UNLESS `closingBalance` is given, is in the holding's OWN
+   * currency, and is AS OF a time at or after the boundary — then the
+   * closing balance is written outright PLUS the net of any new rows dated
+   * STRICTLY AFTER the closing balance's own as-of (normally none, since a
+   * statement's closing balance is drawn from its own newest row — see
+   * `resolveClosingBalance`, `monobank-csv.format.ts`), correcting for any
+   * drift the ledger delta alone can't see. A statement OLDER than the
+   * boundary falls back to the net-delta rule instead (where its own rows
+   * are, by construction, all history and add 0 too), so an out-of-order
    * re-import can never regress the balance to a stale closing figure.
    *
-   * The closing-balance write is `nextBalance = closingBalance.minorUnits`
-   * OUTRIGHT, not `base + netDelta` — the implicit adjustment this makes,
-   * `D = closingBalance.minorUnits - (base + netDelta)`, is never recorded as
-   * a ledger row, it just overwrites `base`. For a holding with NO prior
-   * transaction (`base` is always 0, and this statement's own rows are the
-   * WHOLE history) this is exact: nothing is left unaccounted for. For a
-   * holding with pre-existing history, `D` silently absorbs whatever
+   * The closing-balance write is `nextBalance = closingBalance.minorUnits +
+   * postClosingNet`, not `base + netDelta` — the implicit adjustment this
+   * makes, `D = closingBalance.minorUnits - (base + netDelta)`, is never
+   * recorded as a ledger row, it just overwrites `base`. For a holding with
+   * NO prior transaction (`base` is always 0, and this statement's own rows
+   * are the WHOLE history) this is exact: nothing is left unaccounted for.
+   * For a holding with pre-existing history, `D` silently absorbs whatever
    * happened before this statement's own coverage started — a prior manual
    * entry error, an out-of-band transfer, or a real gap this particular
    * statement predates — the resulting balance is correct as of
    * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere.
    *
-   * The eligibility comparison (`asOfSeconds * 1000 >= newestExistingTime`)
-   * is itself imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads
-   * a bank export's wall-clock timestamp with `Date.UTC(...)` directly, with
-   * no timezone offset applied — Ukraine is UTC+2/UTC+3, so every
-   * `asOfSeconds` (and every imported row's own `time`) is actually 2-3
-   * hours EARLIER than the transaction's true UTC instant. Comparisons
-   * between two statement-derived times stay self-consistent (both carry the
-   * same skew), but a comparison against a genuinely-UTC time (e.g. a manual
-   * entry timestamped with the real `Date.now()`) can land on the wrong side
-   * of this gate when the two times are within that 2-3 hour window.
+   * The eligibility comparison (`asOfSeconds * 1000 >= boundary`) is itself
+   * imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads a bank
+   * export's wall-clock timestamp with `Date.UTC(...)` directly, with no
+   * timezone offset applied — Ukraine is UTC+2/UTC+3, so every `asOfSeconds`
+   * (and every imported row's own `time`) is actually 2-3 hours EARLIER than
+   * the transaction's true UTC instant. Comparisons between two
+   * statement-derived times stay self-consistent (both carry the same
+   * skew), but a comparison against a genuinely-UTC boundary (e.g. a manual
+   * entry or edit timestamped with the real `Date.now()`) can land on the
+   * wrong side of this gate when the two times are within that 2-3 hour
+   * window.
    *
    * `insertDedupRowsTx`'s `(source, external_id)` dedup key includes
    * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
    * sync row) that happens to represent the same real-world transaction as
    * an imported row is NOT a dedup hit; it is a genuinely new `import`-
-   * sourced row, and its amount counts fully in `netDelta`. Importing a
-   * statement that covers a transaction the user already entered manually
-   * therefore double-counts that amount in the net-delta path (the
+   * sourced row, and its amount counts fully in `netDelta` PROVIDED it is
+   * also dated at/after the boundary — exactly like any other genuinely new
+   * row. Importing a statement that covers a transaction the user already
+   * entered manually therefore double-counts that amount in the net-delta
+   * path when both land on the current side of the boundary (the
    * closing-balance path is unaffected, since it overwrites rather than
    * adds).
    *
@@ -727,6 +767,12 @@ export const transactionsRepo = {
    * never touches it here, even when the statement carries new rows or a
    * fresher closing balance — the rows still import as real ledger history,
    * they just don't move the display balance a second, competing way.
+   *
+   * NO MIGRATION was written for holdings a pre-fix build already wrote a
+   * wrong (0 or under-counted) balance into (user ruling, I3): `1.0.0` is
+   * not published — build 25 was still in App Store review when this fix
+   * landed — so no real user has broken data to repair; a corrected build
+   * simply starts applying this rule to every import going forward.
    */
   importRows: (input: {
     holdingId: string;
@@ -758,12 +804,14 @@ export const transactionsRepo = {
 
       // Read BEFORE the new rows are upserted below, so this reflects the
       // holding's ledger as it stood going into this import — never a row
-      // this very import is about to add.
+      // this very import is about to add. This IS the I2 boundary: see the
+      // doc comment above for why a hand-set balance needs no separate
+      // signal here.
       const newestExistingRows = await tx
         .select({ time: sql<number | null>`max(${transactions.time})` })
         .from(transactions)
         .where(eq(transactions.holdingId, input.holdingId));
-      const newestExistingTime = newestExistingRows.at(0)?.time ?? null;
+      const boundary = newestExistingRows.at(0)?.time ?? null;
 
       const newRows = await insertDedupRowsTx(tx, input.rows);
 
@@ -771,14 +819,21 @@ export const transactionsRepo = {
         return newRows.length;
       }
 
-      const netDelta = newRows.reduce((sum, row) => sum + row.amountMinorUnits, 0);
+      const isAtOrAfterBoundary = (rowTime: number): boolean =>
+        boundary === null || rowTime >= boundary;
+      const netDelta = newRows
+        .filter((row) => isAtOrAfterBoundary(row.time))
+        .reduce((sum, row) => sum + row.amountMinorUnits, 0);
       const closingBalance = input.closingBalance;
       const useClosingBalance =
         closingBalance !== undefined &&
         closingBalance.currency === holding.currency &&
-        (newestExistingTime === null || closingBalance.asOfSeconds * 1000 >= newestExistingTime);
+        (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
       const nextBalance = useClosingBalance
-        ? closingBalance.minorUnits
+        ? closingBalance.minorUnits +
+          newRows
+            .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
+            .reduce((sum, row) => sum + row.amountMinorUnits, 0)
         : holding.balanceMinorUnits + netDelta;
 
       if (nextBalance !== holding.balanceMinorUnits) {

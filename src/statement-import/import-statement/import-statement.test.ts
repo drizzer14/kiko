@@ -502,10 +502,13 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({ balanceMinorUnits: 10_000_000 });
     });
 
-    it('ignores an OLDER closing balance and adds the net of new rows instead', async () => {
-      // A row newer than every date in the Monobank fixture (which ends
-      // 2023-05-12) — the statement is now the OLDER one, so its own closing
-      // balance must be ignored.
+    // User ruling (I2): a statement entirely OLDER than the holding's newest
+    // existing transaction is history from end to end — its own closing
+    // balance is ignored (as before), and now its rows ALSO contribute 0 to
+    // the balance (they still land as real ledger rows). A row newer than
+    // every date in the Monobank fixture (which ends 2023-05-12) makes the
+    // statement the older one.
+    it('treats an entirely OLDER statement as history: its closing balance is ignored, its rows land but move nothing', async () => {
       const store: { transactions: StoredRow[] } = {
         transactions: [
           {
@@ -521,11 +524,15 @@ describe('importStatement', () => {
       const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
       mockTx = tx;
 
-      await importStatement(monobankInput, 'holding-1');
+      const result = await importStatement(monobankInput, 'holding-1');
 
-      // base 500_000 + net of all 4 rows (-21_794) = 478_206 — the
-      // fixture's own closing balance (10_000_000) is ignored outright.
-      expect(captured.holdingSet).toEqual({ balanceMinorUnits: 478_206 });
+      // All 4 rows still land as ledger history (imported: 4) — the
+      // fixture's own closing balance (10_000_000) is ignored (as before),
+      // and now (I2) every row is also dated before the boundary, so the
+      // net-delta fallback adds 0: the balance stays exactly 500_000.
+      expect(result.imported).toBe(4);
+      expect(store.transactions).toHaveLength(5);
+      expect(captured.holdingSet).toBeUndefined();
     });
   });
 });
