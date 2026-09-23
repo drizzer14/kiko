@@ -1339,6 +1339,16 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 // same table identity and neither chains `.limit()`. `holdings`/`accounts`
 // reads chain `.limit(1)`; every read here resolves either way, mirroring
 // `makeExchangeTx`'s dual-calling-convention trick.
+//
+// Review follow-up: `import-statement.test.ts` has its own, similarly-shaped
+// `makeImportTx` — deliberately NOT shared with this one. That file's fake
+// applies the upsert for real against a persistent `store` (its re-import
+// test spans TWO `importStatement` calls and asserts the SECOND sees the
+// first's real dedup effect), while every test here needs only a static,
+// per-call answer (`existing`/`newestExistingTime`) to drive one `importRows`
+// decision in isolation — the two fakes solve different fidelity problems,
+// so unifying them would force the simpler suite to carry a live store it
+// never needs.
 type ImportRowsTxOpts = {
   holding?: Record<string, unknown>;
   account?: Record<string, unknown>;
@@ -1413,6 +1423,24 @@ const baseHolding = {
 const unsyncedAccount = { institution: null };
 
 describe('transactionsRepo.importRows', () => {
+  // Review follow-up (ponytail): a missing holding used to fall back to a
+  // plain dedup insert with no balance write — replaced with a throw, since
+  // the real caller (`importStatement`) already validates the holding
+  // exists before this ever runs.
+  it('throws when the target holding cannot be found', async () => {
+    const { tx } = makeImportRowsTx({ account: unsyncedAccount });
+    mockTx = tx;
+
+    await expect(
+      transactionsRepo.importRows({
+        holdingId: 'missing-holding',
+        rows: [
+          { holdingId: 'missing-holding', amountMinorUnits: -1_000, time: 1, source: 'import' },
+        ],
+      }),
+    ).rejects.toThrow('Target holding not found: missing-holding');
+  });
+
   it('moves a 0-balance holding by the net of the imported rows', async () => {
     const { tx, captured } = makeImportRowsTx({ holding: baseHolding, account: unsyncedAccount });
     mockTx = tx;
@@ -1575,9 +1603,36 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1, source: 'import' }],
-      closingBalance: { minorUnits: -1_000, currency: 'UAH', asOfSeconds: 1 },
+      // Review follow-up (M5): deliberately DIFFERENT from base + net
+      // (0 + -1_000 = -1_000) — the old fixture used -1_000 here too, so a
+      // regression that fell back to the net-delta rule would still have
+      // passed this assertion by coincidence.
+      closingBalance: { minorUnits: -5_000, currency: 'UAH', asOfSeconds: 1 },
     });
 
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -1_000 });
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -5_000 });
+  });
+
+  // Review follow-up (M5): the eligibility check is `asOfSeconds * 1000 >=
+  // newestExistingTime` — an exact equality (the statement's own closing
+  // balance is as of precisely the holding's newest existing row) must still
+  // win, not just a strictly-newer statement.
+  it('uses the closing balance when it is exactly as of the newest existing transaction (the >= boundary)', async () => {
+    const { tx, captured } = makeImportRowsTx({
+      holding: { ...baseHolding, balanceMinorUnits: -5_000 },
+      account: unsyncedAccount,
+      newestExistingTime: 2_000,
+    });
+    mockTx = tx;
+
+    await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 2_000, source: 'import' }],
+      closingBalance: { minorUnits: -50_000, currency: 'UAH', asOfSeconds: 2 },
+    });
+
+    // asOfSeconds 2 -> 2_000ms === newestExistingTime 2_000: the closing
+    // balance wins outright instead of base + net (-6_000).
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -50_000 });
   });
 });

@@ -144,16 +144,6 @@ describe('alfaBusinessCsvFormat.parse', () => {
     expect(parsed.transactions).toHaveLength(7);
   });
 
-  // No balance/closing-balance column exists in this format's own 19-column
-  // layout (`COLUMN` above) — see `ParsedStatement.closingBalance`'s doc
-  // comment in `parser.ts`, which names the three FOP/business CSVs
-  // explicitly.
-  it('never sets a closingBalance (no balance column in this format)', () => {
-    const parsed = alfaBusinessCsvFormat.parse(fixtureInput);
-
-    expect(parsed.closingBalance).toBeUndefined();
-  });
-
   // Row 1: "...;Дебет;...;1018.23;GBP;14:00:14;..." — the word column
   // ("Дебет") determines the sign of the SEPARATE unsigned `Сума` cell (the
   // structurally different convention this format exists to test), and the

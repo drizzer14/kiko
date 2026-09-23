@@ -36,8 +36,8 @@ import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 import { StatementParseError } from '../parser';
-import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 import { ukrsibBusinessFixtureInput } from '../formats/format-test-fixtures';
+import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { importStatement } from './import-statement';
 

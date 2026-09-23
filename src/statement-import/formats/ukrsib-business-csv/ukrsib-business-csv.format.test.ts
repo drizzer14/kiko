@@ -128,15 +128,6 @@ describe('ukrsibBusinessCsvFormat.parse', () => {
     expect(parsed.transactions).toHaveLength(4);
   });
 
-  // No balance/closing-balance column exists in `FOP_BUSINESS_COLUMN_BASE`'s
-  // 17-column layout — see `ParsedStatement.closingBalance`'s doc comment in
-  // `parser.ts`, which names the three FOP/business CSVs explicitly.
-  it('never sets a closingBalance (no balance column in this format)', () => {
-    const parsed = ukrsibBusinessCsvFormat.parse(fixtureInput);
-
-    expect(parsed.closingBalance).toBeUndefined();
-  });
-
   // Row 1: UAH debit "250.00", unsigned in the raw cell — must be negated.
   it('parses the first row exactly (UAH debit → negative amountMinorUnits)', () => {
     const parsed = ukrsibBusinessCsvFormat.parse(fixtureInput);

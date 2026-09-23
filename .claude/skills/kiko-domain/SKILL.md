@@ -157,44 +157,21 @@ an extra ledger row (like a manual adjustment does): the imported rows
 THEMSELVES already explain the balance move, the same way a Monobank
 sync's own upsert does. Everything (the row upsert AND the balance
 write) happens in ONE db transaction, so a partial failure can never
-leave the ledger and the balance disagreeing. This was a real,
-shipped production bug (App Store build 25): `importStatement` used
-to call only `transactionsRepo.addManyDedup`, which upserts
-`transactions` and never touches `holdings` — an import-only holding
-(created purely to receive a statement, opening balance 0, never
-touched by anything else) stayed at `balanceMinorUnits: 0` forever, so
-the Home headline and that holding's own card showed 0 even though
-its transaction list showed the real imported rows (see
-`F1-networth-debug-2.md` for the full trace).
+leave the ledger and the balance disagreeing. This was a real, shipped
+production bug (App Store build 25): `importStatement` used to call
+only `transactionsRepo.addManyDedup`, which upserts `transactions` and
+never touches `holdings` — an import-only holding (created purely to
+receive a statement, opening balance 0, never touched by anything
+else) stayed at `balanceMinorUnits: 0` forever, so the Home headline
+and that holding's own card showed 0 even though its transaction list
+showed the real imported rows.
 
-The rule `importRows` applies, read `transactions.repo.ts`'s own doc
-comment on that function for the exact logic rather than trusting a
-restated summary here — in short: the balance moves by the net of
-only the GENUINELY NEW rows (a re-import that only refreshes
-already-imported rows changes nothing), UNLESS the parsed statement
-carries a `closingBalance` (see `ParsedStatement.closingBalance`,
-`src/statement-import/parser/`) that is in the holding's own currency
-and is as-of a time at or after the holding's newest PRE-EXISTING
-transaction — then the closing balance is written outright instead,
-correcting for any drift the ledger delta alone can't see. A holding
-with NO prior transactions (the common "created purely to receive an
-import" case) is always eligible for the closing balance. Today only
-Monobank CSV's own per-row running balance ("Залишок після операції")
-qualifies as a real `closingBalance` source — PrivatBank XLSX has a
-`balance` column too, but a PrivatBank export can mix MULTIPLE cards
-in one file, so a single closing balance can't be attributed to one
-target holding without also matching which card each row belongs to,
-and is deliberately left unset; Sensebank CSV and the three
-FOP/business CSVs (ProCredit/Ukrsibbank/Alfa) carry no balance field
-at all on their committed fixtures.
-
-A SYNCED holding (`isSyncedHolding`, `src/holdings/deletable/`) is the
-one exception: `importRows` never moves its balance, even when the
-statement carries new rows or a fresher closing balance — the rows
-still import as real ledger history, but the live sync pipeline
-(`upsertMonobank` et al.) stays the sole owner of that holding's
-displayed balance, so an import can never compete with it over the
-same number.
+`importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
+full statement of the exact rule — the net-of-new-rows default, the
+closing-balance override and its eligibility gate, the drift a
+closing-balance write can silently absorb, the wall-clock-as-UTC skew
+in that gate, and the synced-holding exception — read it there rather
+than trusting a restated summary here.
 
 ## Sync-only holding types are not manually creatable
 
