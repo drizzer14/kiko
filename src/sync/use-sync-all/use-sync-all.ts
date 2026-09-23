@@ -3,6 +3,7 @@ import either from 'fnts/either';
 import { useState } from 'react';
 
 import { refreshRates } from '../../rates/rates-refresh';
+import { refreshMetalPrices } from '../../prices/metal-refresh';
 import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
 import { type SyncableAccount, type SyncJob, syncJobsFor } from '../sync-jobs';
 
@@ -42,6 +43,7 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   await either(async () => {
     const lastRefreshAt = await ratesRepo.latestFetchedAt();
     await refreshRates({ lastRefreshAt });
+    await refreshMetalPrices();
   });
 
   return failed;

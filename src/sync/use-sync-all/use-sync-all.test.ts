@@ -5,6 +5,7 @@ import type { AccountRow } from '../../db/schema';
 const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();
 const mockRefreshRates = jest.fn();
+const mockRefreshMetalPrices = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 
 jest.mock('../../monobank/sync', () => ({
@@ -15,6 +16,9 @@ jest.mock('../../crypto-sync/run-crypto-sync', () => ({
 }));
 jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+}));
+jest.mock('../../prices/metal-refresh', () => ({
+  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: {
@@ -54,6 +58,7 @@ describe('useSyncAll', () => {
     mockRunSync.mockResolvedValue({ importedTransactions: 0 });
     mockRunCryptoSync.mockResolvedValue({ syncedHoldings: 1 });
     mockRefreshRates.mockResolvedValue(undefined);
+    mockRefreshMetalPrices.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(1_700_000_000_000);
   });
 
@@ -76,6 +81,7 @@ describe('useSyncAll', () => {
     });
     expect(mockRefreshRates).toHaveBeenCalledTimes(1);
     expect(mockRefreshRates).toHaveBeenCalledWith({ lastRefreshAt: 1_700_000_000_000 });
+    expect(mockRefreshMetalPrices).toHaveBeenCalledTimes(1);
     expect(result.current.failures).toEqual([]);
   });
 

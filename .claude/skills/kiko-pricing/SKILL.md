@@ -278,11 +278,55 @@ above) — do not poll faster than the upstream cache refreshes. No
 dedicated quota-guard or once-per-day scheduler exists yet as of T17;
 do not assume one when reading a refresh call site.
 
+## NBU metal prices — current and history (T19)
+
+`src/prices/nbu-metals/` is the metals client, mirroring `nbu-rates.ts`/
+`nbu-history.ts`'s pattern (fetch + `guard`-based validation + recorded
+JSON fixtures, no network in tests) but living under `src/prices/`
+rather than `src/rates/`, since it feeds `price_points`, not
+`CurrencyRate`. Both functions read `bank.gov.ua` — no new host, no
+new pinning (kiko-compliance: this host stays keyless and unpinned).
+
+- `fetchNbuMetalsCurrent(fetchImpl)` reads the SAME current-exchange
+  URL `nbu-rates.ts`'s `EXCHANGE_ENDPOINT` reads for fiat — a live
+  probe (2026-09-24) confirmed XAU/XAG/XPT/XPD rows ride in that same
+  payload, with no `units` divisor ever observed on a metal row — so
+  no second "current" endpoint is needed. Returns `{ metal, price }[]`
+  (a decimal string in UAH, via `decimalFromJsonNumber`); it carries
+  no day of its own — the caller stamps "today"'s local day on it.
+- `fetchNbuMetalHistory(metal, start, end, fetchImpl)` reads the SAME
+  range URL `nbu-history.ts`'s `RANGE_ENDPOINT` reads for USD/EUR, one
+  call per metal (`valcode=xau` etc., lowercased) — the same live
+  probe confirmed the range endpoint returns one row PER DAY for a
+  metal (weekend/holiday days carry forward the last banking day's
+  rate), so the range path applies rather than a weekly-sample
+  fallback. Returns `{ metal, day, price }[]`.
+
+`src/prices/metal-refresh/refreshMetalPrices({ now, fetchImpl, ... })`
+is the scheduler, called next to `refreshRates` from both
+`useAutoSync` and `useSyncAll` (failures swallowed the same way, via
+the SAME `either(...)` wrapper each hook already uses around
+`refreshRates`). It refreshes ONLY currently held metals — scanned
+from every `metal` holding's `asMetalMeta(...).metal`, never a metal
+nobody owns — at most once per LOCAL day per metal, resolved by
+comparing `dayKeyOf(now())` against the latest stored `metal:<X>`
+`price_points.day`. A metal with no stored point yet is backfilled in
+ONE `fetchNbuMetalHistory` call spanning its earliest lot day (the
+minimum `day` across that metal's holdings' `metadata.lots`) through
+today; an already-priced metal instead takes a single SHARED
+`fetchNbuMetalsCurrent` call for just today's point, regardless of how
+many metals need it that run. Every row is accumulated in memory
+first and written through exactly ONE final `pricePointsRepo.upsertMany`
+call — a fetch failure for any held metal rejects before that call is
+ever reached, so a failed run writes NOTHING (never a partial write),
+matching the "fails closed" convention `kiko-pricing`'s "Refresh
+throttles" section already documents for rates.
+
 ## Later (not built yet — do not invent detail)
 
-NBU's dedicated precious-metals feed, an EODHD quotes client for
-shares, a request-quota guard, and a scheduled backfill are planned
-for T19/T38-T41 but do not exist in code yet. When one of those lands,
-extend this skill's "Currency-rate fallback chain" / "`price_points`"
+An EODHD quotes client for shares, a request-quota guard, and a
+scheduled backfill for non-metal instruments are planned for
+T38-T41 but do not exist in code yet. When one of those lands, extend
+this skill's "Currency-rate fallback chain" / "`price_points`"
 sections rather than writing a new one — do not leave the future work
 as a stale placeholder once it ships.

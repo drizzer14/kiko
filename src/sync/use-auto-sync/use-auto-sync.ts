@@ -5,6 +5,7 @@ import either from 'fnts/either';
 import { useEffect, useRef } from 'react';
 
 import { refreshRates } from '../../rates/rates-refresh';
+import { refreshMetalPrices } from '../../prices/metal-refresh';
 import { bankProviderRegistry } from '../../bank-sync/registry';
 import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
 
@@ -141,6 +142,7 @@ export const useAutoSync = (): void => {
       }
       const lastRefreshAt = await ratesRepo.latestFetchedAt();
       await refreshRates({ lastRefreshAt });
+      await refreshMetalPrices();
     });
   }, []);
 };

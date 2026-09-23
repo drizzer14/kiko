@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 
 const mockRefreshRates = jest.fn();
+const mockRefreshMetalPrices = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
 const mockListQuery = jest.fn();
@@ -30,6 +31,9 @@ jest.mock('../../bank-sync/registry', () => ({
 }));
 jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
+}));
+jest.mock('../../prices/metal-refresh', () => ({
+  refreshMetalPrices: (...args: unknown[]) => mockRefreshMetalPrices(...args),
 }));
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: {
@@ -71,6 +75,7 @@ describe('useAutoSync', () => {
     mockMonobankRun.mockResolvedValue(undefined);
     mockCryptoRun.mockResolvedValue(undefined);
     mockRefreshRates.mockResolvedValue(undefined);
+    mockRefreshMetalPrices.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(null);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
     mockListQuery.mockResolvedValue([]);
@@ -92,6 +97,14 @@ describe('useAutoSync', () => {
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
+  });
+
+  it('refreshes metal prices next to rates, same as the fan-out flow', async () => {
+    mockListQuery.mockResolvedValue([]);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockRefreshMetalPrices).toHaveBeenCalled());
   });
 
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
