@@ -5,13 +5,12 @@ import { useTranslation } from 'react-i18next';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
+  ParsedStatement,
   SpreadsheetCellValue,
   StatementFormat,
   StatementFormatId,
   StatementFormatInput,
 } from '../../statement-import/parser';
-import { formatDate } from '../../dates/format';
-import { holdingsRepo } from '../../holdings/repo';
 import {
   fileNameOf,
   isXlsxFile,
@@ -19,11 +18,9 @@ import {
   readSheetRowsSafely,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
-import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
-import { accountsRepo } from '../../accounts/accounts.repo';
 import type { AccountsStackParamList } from '../../navigation/types';
 import {
   detectFormat,
@@ -36,7 +33,8 @@ import ImportOutcome from './import-outcome';
 import { styles } from './statement-import.styles';
 import PreviewDetailList from './preview-detail-list';
 import TargetHoldingSheet from './target-holding-sheet';
-import type { TargetHoldingOption } from './target-holding-sheet/target-holding-sheet.props';
+import { previewStats } from './preview-stats/preview-stats';
+import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
 
@@ -71,33 +69,6 @@ const formatFor = (
   return detectFormat(input);
 };
 
-type PreviewStats = {
-  displayName: string;
-  transactionCount: number;
-  currency: string;
-  dateSpan: string;
-  // Distinct masked-card hints across every parsed row, in first-seen order.
-  // PrivatBank XLSX is the only format that ever produces one (section C.1,
-  // a multi-card export) — every other shipped format's rows carry none, so
-  // this is always `[]` for them.
-  maskedCardHints: string[];
-  // Rows this format's parse could not resolve (e.g. an unmapped PrivatBank
-  // currency word) — excluded from `transactionCount` above, but surfaced
-  // here rather than silently dropped (controller ruling 2).
-  unresolvedRowCount: number;
-  // Distinct currencies across every parsed row, in first-seen order (Task 3
-  // review, CRITICAL fix) — a multi-card PrivatBank export can mix
-  // currencies per row, and `importStatement` excludes any row whose
-  // currency doesn't match the target holding's, so the user needs this
-  // BEFORE picking a holding to pick one that actually matches.
-  detectedCurrencies: string[];
-};
-
-// The preview's transaction-count/date-span/currency block, derived from a
-// RECOGNIZED parse. `timeSeconds` reduces to the min/max across every row —
-// not just the first/last row's on-file order — so an out-of-order export
-// still reports its true span.
-//
 // `detect()` is a cheap header/signature sniff — it does NOT validate every
 // data row, so a format it accepted can still throw `StatementParseError`
 // out of `parse()` on a bad row (a truncated export, a reformatted date
@@ -108,35 +79,12 @@ type PreviewStats = {
 // parse failure — not just the documented `StatementParseError` case — so a
 // future format's unexpected throw degrades the same way rather than
 // crashing.
-const previewStats = (
+const parseFormatSafely = (
   format: StatementFormat,
   input: StatementFormatInput,
-): PreviewStats | undefined => {
+): ParsedStatement | undefined => {
   try {
-    const parsed = format.parse(input);
-    const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
-    const minSeconds = Math.min(...times);
-    const maxSeconds = Math.max(...times);
-    const maskedCardHints = Array.from(
-      new Set(
-        parsed.transactions
-          .map((transaction) => transaction.maskedCardHint)
-          .filter((hint): hint is string => hint !== undefined),
-      ),
-    );
-    const detectedCurrencies = Array.from(
-      new Set(parsed.transactions.map((transaction) => transaction.currency)),
-    );
-
-    return {
-      displayName: format.displayName,
-      transactionCount: parsed.transactions.length,
-      currency: parsed.account.currency,
-      dateSpan: `${formatDate(minSeconds * 1000)} – ${formatDate(maxSeconds * 1000)}`,
-      maskedCardHints,
-      unresolvedRowCount: parsed.unresolvedRows?.length ?? 0,
-      detectedCurrencies,
-    };
+    return format.parse(input);
   } catch {
     // Any parse failure here — the documented `StatementParseError` a bad
     // data row throws, or anything else unexpected — degrades to the same
@@ -145,24 +93,16 @@ const previewStats = (
   }
 };
 
-// Joins the holding rows this screen is scoped to (per `accountId`, or every
-// holding when absent) against the account rows this device knows about, so
-// `TargetHoldingSheet` gets a fully-formed `accountName` per row without
-// owning any repo dependency of its own.
-const useTargetHoldingOptions = (accountId: string | undefined): TargetHoldingOption[] => {
-  const { data: holdingRows } = useLiveQuery(
-    accountId ? holdingsRepo.listByAccountQuery(accountId) : holdingsRepo.allQuery(),
-    ['holdings'],
-  );
-  const { data: accountRows } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const accountNameById = new Map(accountRows.map((row) => [row.id, row.name] as const));
+// Combines `parseFormatSafely` and `previewStats` into the one derivation
+// the component needs, keeping that component's own cognitive complexity
+// under the project's Biome cap.
+const statsFor = (
+  format: StatementFormat | undefined,
+  input: StatementFormatInput | undefined,
+): ReturnType<typeof previewStats> | undefined => {
+  const parsed = format && input ? parseFormatSafely(format, input) : undefined;
 
-  return holdingRows.map((holding) => ({
-    id: holding.id,
-    name: holding.name,
-    accountId: holding.accountId,
-    accountName: accountNameById.get(holding.accountId) ?? '',
-  }));
+  return format && parsed ? previewStats(parsed, format.displayName) : undefined;
 };
 
 // The file-read pipeline's own state — kept separate from the derived
@@ -255,7 +195,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // Scoped recognition (device-feedback-round-1 item 5) — see `formatFor`'s
   // doc comment above for the full rule.
   const format = formatFor(input, expectedFormat);
-  const stats = format && input ? previewStats(format, input) : undefined;
+  const stats = statsFor(format, input);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
   // Covers every "this file cannot be imported as-is" outcome EXCEPT the
   // bank-mismatch case (which renders its own, more specific message below):

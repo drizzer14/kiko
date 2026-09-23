@@ -9,6 +9,7 @@ import ContributionFormScreen from '../screens/forms/contribution-form/contribut
 import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
 import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
+import ColumnMappingScreen from '../screens/column-mapping/column-mapping.screen';
 import StatementImportScreen from '../screens/statement-import/statement-import.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
@@ -71,6 +72,11 @@ const AccountsStack: FC = () => {
         name="StatementImport"
         component={StatementImportScreen}
         options={{ title: t('statementImport.previewHeading') }}
+      />
+      <Stack.Screen
+        name="ColumnMapping"
+        component={ColumnMappingScreen}
+        options={{ title: t('columnMapping.title') }}
       />
     </Stack.Navigator>
   );

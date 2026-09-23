@@ -575,6 +575,61 @@ export const en = {
     // specific state than the generic `unrecognizedFormat`, so the user
     // knows WHY (wrong bank's export), not just that the file failed.
     bankMismatch: "This doesn't look like a {{bank}} statement. Pick the matching file.",
+    // The generic column-mapping import's own entry point (T7): offered
+    // under a recognized preview AND in the unrecognized/bank-mismatch
+    // states, so a file no shipped parser recognizes can still be imported.
+    mapColumnsManually: 'Map columns manually',
+  },
+  // The generic column-mapping import screen (T6,
+  // src/screens/column-mapping/column-mapping.screen.tsx): lets a user map
+  // an unrecognized (or bank-mismatched) statement's own columns onto the
+  // fields every import needs, rather than being limited to a shipped
+  // dedicated bank format.
+  columnMapping: {
+    title: 'Map columns',
+    rawPreview: 'Tap the row with the column names',
+    encoding: 'Encoding',
+    delimiter: 'Separator',
+    delimiterTab: 'Tab',
+    decimalSeparator: 'Decimal separator',
+    dateFormat: 'Date format',
+    dateColumn: 'Date',
+    amountModeSingle: 'One amount column',
+    amountModeDebitCredit: 'Debit and credit columns',
+    amountColumn: 'Amount',
+    debitColumn: 'Debit (money out)',
+    creditColumn: 'Credit (money in)',
+    descriptionColumn: 'Description',
+    currencyColumn: 'Currency column',
+    fixedCurrency: 'Currency for all rows',
+    counterpartyColumn: 'Counterparty (optional)',
+    notUsed: 'Not used',
+    // The generic placeholder a column/date-format picker field shows before
+    // the user has made a choice — not part of the task brief's own literal
+    // key list, but unavoidable: every FieldTrigger in this screen needs
+    // SOME "nothing chosen yet" text, distinct from `notUsed` (an explicit
+    // opt-out for an OPTIONAL role, not "not yet picked").
+    selectValue: 'Select',
+    result: 'Result',
+    incomplete: 'Choose the date, amount, and description columns',
+    rowError: {
+      date: 'Row {{row}}: the date does not match the format',
+      amount: 'Row {{row}}: the amount is not a number',
+      debitAndCredit: 'Row {{row}}: both debit and credit are filled',
+      currency: 'Row {{row}}: unknown currency “{{value}}”',
+    },
+    // The row-error list truncates to the first 20 entries; this reports the
+    // remaining overflow count below them. English selects _one/_other; the
+    // _few/_many forms exist only to mirror Ukrainian's plural set (see
+    // uk.ts), so the two catalogues keep an identical key set and `typeof
+    // en` still types uk.
+    rowsSkipped_one: '{{count}} row will be skipped',
+    rowsSkipped_few: '{{count}} rows will be skipped',
+    rowsSkipped_many: '{{count}} rows will be skipped',
+    rowsSkipped_other: '{{count}} rows will be skipped',
+    savedApplied: 'Your saved column mapping is applied. Check the result before importing.',
+    xlsNotSupported:
+      'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

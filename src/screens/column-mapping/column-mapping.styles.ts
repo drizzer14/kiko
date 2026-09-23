@@ -1,0 +1,13 @@
+import { StyleSheet } from 'react-native-unistyles';
+
+export const styles = StyleSheet.create((theme) => ({
+  // Separates each field group from the next, the same rhythm
+  // `statement-import.styles.ts`'s `previewBlock` uses for its own preview
+  // block below the format heading.
+  fieldGroup: {
+    paddingTop: theme.spacing(1),
+  },
+  resultBlock: {
+    paddingTop: theme.spacing(2),
+  },
+}));

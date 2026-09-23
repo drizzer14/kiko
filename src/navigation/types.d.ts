@@ -69,6 +69,14 @@ export type AccountsStackParamList = {
   // falls back to the existing multi-format auto-detect (an account with no
   // `bankId`, or the accountId-less Share Extension entry point).
   StatementImport: { filePath: string; accountId?: string; expectedFormatId?: StatementFormatId };
+  // The generic column-mapping import screen (T6), reached from
+  // `StatementImportScreen`'s "Map columns manually" entry point (T7) — or
+  // navigated to directly when an exact saved mapping is found for a file no
+  // shipped parser recognized. `accountId` is required here (unlike
+  // `StatementImport` above): a column mapping always saves under this
+  // account's own bank/header key, so there is no accountId-less entry point
+  // for this screen.
+  ColumnMapping: { filePath: string; accountId: string };
 };
 
 export type SettingsStackParamList = {
