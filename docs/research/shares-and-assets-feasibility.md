@@ -196,7 +196,7 @@ Every new host sends a credential → it must be in `NSPinnedDomains` with ≥2 
 
 ### 3.4 Share holding
 
-- Account kind `broker` (see §7) — also allowed under `bank` for a bank that sells shares [inferred need: Revolut is a bank].
+- Account kind `broker` only (see §7). Revolut is in the broker catalog (§7.2), and no catalog bank sells shares, so `share` is NOT creatable under `bank` (resolved in the plan).
 - Holding type `share`, metadata `ShareMeta`: `symbol` (provider form, for example `AAPL.US`), `isin?`, `exchange`, `name`, `lots[]`, `quoteSource` (`eodhd | broker | manual`).
 - Value = §2.4. Show market value, cost basis, unrealized gain, and "price as of".
 - Dividends: from broker sync as income transactions on the broker cash holding. Manual users add them as income.
@@ -227,6 +227,8 @@ Every new host sends a credential → it must be in `NSPinnedDomains` with ≥2 
 | Raiffeisen (`raiffeisen`, new) | **not confirmed** — only a tariff note about metal sale limits found | — | [raiffeisen.ua document](https://raiffeisen.ua/storage/files/infomaciya-shcho-ye-bankivskoyu-tayemniceyu_1539242347.pdf) [unverified] | no (until confirmed) |
 | Monobank (`monobank`) | **not found** — finance.ua shows no metals data for Monobank | — | [finance.ua](https://finance.ua/ua/banks/monobank/metals) | no — **the user can check this on the device** |
 | Sensebank, UKRSIBBANK, ProCredit, Alfa (business) | not found | — | searches on 2026-09-23 | no |
+
+Build order note (resolved in the plan): P2 sets the flag on PrivatBank; the flag on PUMB, Oschadbank, and Ukrgasbank is set in P3, when those banks enter the catalog.
 
 The allow-list is a static data field on the bank catalog entry (for example `sellsMetals: true`), always rendered. It is not a visibility flag (Guideline 5.6). A metal holding under an allow-listed bank means bars or coins bought at that bank. The same metal kept at home goes under the Metals kind.
 
