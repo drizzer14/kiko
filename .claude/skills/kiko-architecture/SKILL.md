@@ -55,11 +55,11 @@ build-a-bundle CI gate:
   build 9's embedded bundle — required, not optional, precisely because
   DCE was proven untrustworthy (build 8, above). Precedent and full
   needle list: `docs/superpowers/plans/2026-09-15-strip-screenshot-subsystem-5.6-fix.md`
-  (its Task 6) and the "Handoff to ops" section of
-  `docs/superpowers/plans/2026-09-19-screenshot-purge-e2e-only-v2.md`
-  (`AC-BUNDLE-GREP`), which also corrects the 2026-09-15 needle list —
-  do not grep for `Binance` or `Монобанк`, both legitimate shipped
-  strings. It is NOT currently a standing step in the `release` skill
+  (its Task 6, the acceptance grep) — do not grep for `Binance` or
+  `Монобанк`, both legitimate shipped strings. The subsequent full
+  screenshot-subsystem purge is documented in
+  `docs/harness/screenshots-check.md` (the automated capture path was
+  deleted outright; screenshots are now a manual procedure). It is NOT currently a standing step in the `release` skill
   (that skill's Part B "Verify the archive invariants" lists only
   `UIDeviceFamily`, signing identity, App Group, and `get-task-allow`).
   Wiring this grep into the `release` skill as a standing archive step
@@ -283,9 +283,13 @@ a restated list:
   (`src/transactions/`).
 - The first-ever sync fetches every card (`shouldFullFetch`).
 
-Safety net: a new `settings.lastFullSyncAt` column (migration
-`0021`, schema in `src/db/schema.ts`) forces a periodic FULL fetch of
-every card regardless of balance — `shouldFullFetch` decides when,
+Safety net: `syncState.lastFullSyncAt` (per-connection; schema in
+`src/db/schema.ts` — originally added as the global `settings.lastFullSyncAt`
+in migration `0021`, de-globalized to `syncState` by the 2026-09-11
+multi-account plan, migrations `0027`/`0028`; the old `settings` column
+is retained-but-dead, per that column's own comment in `schema.ts`)
+forces a periodic FULL fetch of every card regardless of balance —
+`shouldFullFetch` decides when,
 against the `FULL_FETCH_INTERVAL_MS` constant in `sync.ts` (read it
 there, not restated here). This catches a net-zero same-window
 transaction pair (a `+X` and a `-X` that leaves the balance unchanged)
@@ -300,16 +304,16 @@ is a deliberate DIVERGENCE from `lastSyncAt`'s own partial-failure
 discipline (see "Partial-progress resilience across cards" below), not
 a copy of it.
 
-Migration `0021` adds `lastFullSyncAt` as NULL with no backfill, which
-would otherwise force every already-synced user into one slow,
-full-every-card fetch on their very next sync. Migration `0022`
-(`drizzle/migrations/0022_backfill_last_full_sync_at.sql`) is a
-data-only follow-up (no schema change, no snapshot — same class as
-`0014_lowercase_categories.sql`) that backfills
-`settings.lastFullSyncAt = settings.lastSyncAt` for a user who already
-has a non-null sync cursor, so they land straight on the fast
-balance-diff path; read the migration file for its exact guard rather
-than restating it here.
+Migration `0021` originally added `lastFullSyncAt` (on `settings`) as
+NULL with no backfill, which would otherwise force every already-synced
+user into one slow, full-every-card fetch on their very next sync;
+migration `0022` backfilled it from the sync cursor. Migration `0028`
+(`drizzle/migrations/0028_backfill_sync_state.sql`) is the equivalent
+data-only backfill for the current `syncState` table — it seeds each
+connected account's `syncState.lastFullSyncAt` (and the other
+`syncState` columns) from the retired global `settings` values, so an
+existing user lands straight on the fast balance-diff path; read the
+migration file for its exact guard rather than restating it here.
 
 This does not add a per-card cursor — see the note at the end of
 "Partial-progress resilience across cards": `lastFullSyncAt` is a
@@ -365,8 +369,10 @@ kept returning true past `FULL_FETCH_INTERVAL_MS`, and every run became
 a full N×60s fetch of every card — the balance-diff skip never got a
 chance to engage again.
 
-The fix is `settings.failedSyncMonobankIds` (migration `0023`, schema
-in `src/db/schema.ts`): a persisted set of Monobank account ids whose
+The fix is `syncState.failedSyncMonobankIds` (per-connection; schema in
+`src/db/schema.ts` — originally added as global `settings.failedSyncMonobankIds`
+in migration `0023`, de-globalized to `syncState` by migrations `0027`/`0028`,
+same as `lastFullSyncAt` above): a persisted set of Monobank account ids whose
 statement fetch FAILED on the last run. The next run force-fetches
 exactly those ids regardless of balance — the same carve-out shape as
 the outstanding-hold case in "Balance-diff skip" above — while
@@ -378,7 +384,7 @@ client-info (so a removed card is not force-fetched forever). Read
 the exact set algebra rather than a restated one here.
 
 This is a genuine divergence, not a relaxation of the existing
-discipline: the statement CURSOR (`settings.lastSyncAt`) still advances
+discipline: the statement CURSOR (`syncState.lastSyncAt`) still advances
 **only** on a fully clean run (unchanged "Partial-progress resilience
 across cards" behavior below), so a force-fetched card's window is
 re-derived from that un-advanced cursor and re-covered idempotently
@@ -439,7 +445,7 @@ EXACTLY the pull-to-refresh set — the connected Monobank account (only
 when a token is stored) PLUS every connected crypto account — under
 `Promise.allSettled`. So a crypto balance + Binance transaction import
 now happens on app open, not only on pull. `useAutoSync` is throttled by
-`throttleElapsed(settings.lastSyncAt)` and never touches the pull spinner
+`throttleElapsed(syncState.lastSyncAt)` and never touches the pull spinner
 signal (it reads no `fastPhaseDone`), so an app-open sync drives only the
 determinate progress bar.
 
@@ -595,7 +601,7 @@ bar — it lists no transactions, only charts.
 transient failure (a 429/timeout) no longer aborts the whole run —
 every other card still imports (each `importAccount` -> `addTransactions`
 is its own `db.transaction()`, so a completed card's rows are durable
-regardless). The shared `settings.lastSyncAt` cursor advances **only on
+regardless). The per-connection `syncState.lastSyncAt` cursor advances **only on
 a fully clean run**; on a partial failure it stays put and `runSync`
 re-throws, so the failed card's window is re-covered next time. A
 re-fetch is idempotent (the `(source, external_id)` upsert refreshes
@@ -604,16 +610,22 @@ re-imported. Kiko has no per-CARD cursor — that would need a schema
 change — so a partial failure does re-fetch the cards that already
 finished; the dedup layer keeps that correct, only slower.
 
-## DB encryption + flag gate
+## DB encryption + app lock (always on)
 
-The SQLCipher database-encryption migration (cluster 2) is flag-gated
-off by default. Read these files directly rather than trusting a
-restated summary here, since the flag values and the migration's exact
-steps are the kind of thing that changes as the rollout progresses:
+The SQLCipher database-encryption migration and the app-lock gate are
+**always on** — `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED`
+(`src/db/db-config.ts`) are both `true` today, not a rollout flag a
+build can ship off. This is a security invariant, not a feature toggle
+(Guideline 5.6 sensitivity: a build/env flag that changes what a user's
+data protection looks like must never ship in the "off"/hidden state).
+Read these files directly rather than trusting a restated summary here,
+since the exact migration steps are the kind of thing that can still
+change:
 
 - `src/db/db-config.ts` — `DB_ENCRYPTION_ENABLED` and
-  `APP_LOCK_ENABLED`, the two master switches. Read the comment above
-  each for what stays inert while its flag is off.
+  `APP_LOCK_ENABLED`, the two master switches; read the live values
+  there rather than trusting this line if it drifts. Read the comment
+  above each for what it gates.
 - `src/db/encrypted-database.ts` — `openEncryptedDatabase()`, the
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete
@@ -650,28 +662,9 @@ steps are the kind of thing that changes as the rollout progresses:
 
 ## Spending-exclusion pipeline
 
-A transaction that is really an internal money movement (a cash-out,
-an own-account transfer, one leg of a same-user transfer) must not
-count as spending on the category chart. Two files own this, read
-them directly rather than restating their exact MCC/matching logic
-here:
-
-- the transfer-exclusion module (`src/statistics/`) — the MCC/description-based
-  rule (own-IBAN-aware; backed by `transactions.counterIban` and
-  `settings.defaultCategoryKey`).
-- the internal-transfers module (`src/statistics/`) — the matched-pair fallback
-  for transfers the MCC rule can't see (paired by amount/time/holding).
-- the exchange-exclusion module (`src/statistics/`) — the Exchange/Convert rule,
-  keyed on the structural marker column
-  `transactions.exchangeCounterpartHoldingId` (see `src/db/schema.ts`
-  and `recordExchange` / `recordExchangeCounterpart` in
-  `src/transactions/`, which write it on both legs).
-  It catches what the other two structurally cannot: a cross-currency
-  pair, and the single debit leg of an exchange into a term deposit.
-  The legs persist no description — the label is resolved at render time
-  through `t` (`exchangeLegDescription`, `src/transactions/`), applied by
-  `transactionRowDescription` (`src/transactions/`), so a marker column and a
-  persisted sentence are not interchangeable here. See `kiko-domain`.
+See `kiko-domain`'s "Spending-exclusion pipeline" section for the
+transfer-exclusion/internal-transfers/exchange-exclusion module
+pointers — read it there rather than a duplicated list here.
 
 ## Binance exchange sync — every wallet, three holdings (Spot / Funding / Earn)
 
