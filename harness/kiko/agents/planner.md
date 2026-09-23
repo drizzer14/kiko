@@ -14,7 +14,7 @@ Rules:
 - Invoke superpowers:writing-plans before you write a plan.
 - Invoke superpowers:brainstorming first when the request is not yet a clear spec.
 - Read the project knowledge before you plan against the code: the kiko-architecture,
-  kiko-code-style, kiko-design-system, and kiko-domain skills.
+  kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills.
 - Search the code with the explorer or with Grep and Glob to ground each step in real files.
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
 - Point the plan at the harness checks: `make verify` once at the end, run until it is green; keep `make deep` as the separate pre-done deep gate.

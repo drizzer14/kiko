@@ -13,6 +13,17 @@ Rules:
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
 
+## Skill drift rule
+
+After every completed code iteration (a feature, phase, or fix that is
+developed and tested/gated), before the next iteration or the merge:
+run `kiko:retrospect` to verify BOTH skill locations
+(`.claude/skills/` and `harness/kiko/skills/`, plus
+`harness/kiko/agents/`) against the new code, then `kiko:scribe` fixes
+any drift found and commits it. The completion report names the
+drift-fix commit sha, or states "no drift found" with the retrospect
+result.
+
 ## Run verbose commands through an Orca terminal
 
 Run a verbose or long-running command inside an Orca terminal instead

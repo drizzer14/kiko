@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, CurrencySwitch, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -288,22 +288,33 @@ new component can land between reviews of this skill:
   `Button` usage pattern at each call site, not a separate shared
   component — a new paste affordance follows the same prop set rather
   than inventing its own.
-- **GlassSurface** — the shared card-grouping surface: real Liquid
-  Glass on iOS 26+, a themed flat fallback everywhere else, an
-  optional `bordered` edge, and neutral/tinted variants of the
-  backdrop under the glass. A `tint` (an entity card) paints an OPAQUE
-  `surface` backdrop and an entity-color wash — see "Entity color and
-  tint" below. A `transparent` (a neutral frosted see-through PANEL —
-  the settings, system, and category cards, the Statistics screen's
-  chart cards, the Home net-worth card, and the holding-detail ledger
-  list rows — the Home transaction row now takes the live-blur
-  `material` variant instead, see below) paints a TRANSLUCENT
+- **Card** (`src/design-system/components/card/`) — the shared
+  CONTENT-layer surface: a solid, opaque themed fill with a defined
+  hairline border, no glass/blur material at all. Every content card,
+  list row, and chart container that used to be a neutral (non-tint)
+  `GlassSurface` now renders through this component instead — read
+  its header comment (`card.component.tsx`) for the HIG rationale
+  (Liquid Glass is reserved for the NAVIGATION layer, not content).
+- **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
+  bottom sheets, the FAB, and the keyboard-done accessory (grep
+  `<GlassSurface` for the current consumer list; content cards use
+  `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat
+  fallback everywhere else, an optional `bordered` edge, and
+  neutral/tinted variants of the backdrop under the glass. A `tint`
+  (an entity card, e.g. the FAB) paints an OPAQUE `surface` backdrop
+  and an entity-color wash — see "Entity color and tint" below. A
+  `transparent` variant paints a TRANSLUCENT
   `surfaceTranslucent` backdrop and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
-  over it. The `transparent`-vs-`tint` split is the rule for a new
-  surface: a neutral card (settings, a chart, a summary, a list row)
-  reads well as a frosted panel and takes `transparent`; an entity card
-  (account, holding) keeps its opaque `tint`. A list row wrapped in
+  over it. `transparent`/`bloom`/`material` are NAV-LAYER variants now
+  — a new CONTENT surface (a settings row, a chart card, a summary, a
+  list row) is `Card` above, not `GlassSurface transparent`; an entity
+  card (account, holding) keeps `GlassSurface`'s opaque `tint`. The
+  historical detail below (the categories-screen `bloom` bug, the
+  `CardContextMenu`/BottomSheet consumers) predates the `Card`
+  migration and documents `GlassSurface`'s own variant mechanics —
+  read it for how `transparent`/`bloom`/`material` behave, not as a
+  current list of content-card consumers. A list row wrapped in
   `CardContextMenu` (the holding-detail ledger's manual-transaction
   rows — see `CardContextMenu` below) takes `transparent bloom` too;
   there is no swipe-reveal layer to clip a radius around any more — the
@@ -542,22 +553,21 @@ new component can land between reviews of this skill:
   the cash-account form passes fiat-only, the holding form the full
   set). Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
-  a `disabled` read-only state. Not `CurrencySwitch` below — a field
-  opens a picker sheet for one selection among many options, a switch
-  toggles inline among a small fixed set.
-- **CurrencySwitch** — a segmented base-currency toggle pill; not a
-  `Button` (it is a selection control, not an action, and needs a
-  transparent selected-state fill `Button` does not support).
+  a `disabled` read-only state. A field opens a picker sheet for one
+  selection among many options; `OptionPills` below toggles inline
+  among a small fixed set instead.
 - **OptionPills** (`src/design-system/components/option-pills/`) — a
   shared row of selectable pill options; read that folder directly
-  for its current props rather than assuming it matches
-  `CurrencySwitch`'s shape. Its grid defaults to an always-2-column
-  wrap (`CurrencySwitch`'s 4 options, `LanguageSwitch`'s 2) via an
-  optional `columns` prop (default `2`); a consumer with a different,
-  known option count that must render as a single equal-width row
-  instead of wrapping passes an explicit `columns={n}` matching its own
-  option count. Do not add a second, parallel way to force a row count;
-  extend/override `columns` instead. The SELECTED pill reads as a
+  for its current props and consumers (`LanguageSwitch`, the
+  Statistics trend-filter sheet, the icon-picker modal — grep
+  `OptionPills` for the live set) rather than assuming a fixed shape.
+  Its grid defaults to an always-2-column wrap (`LanguageSwitch`'s 2
+  options) via an optional `columns` prop (default `2`); a consumer
+  with a different, known option count that must render as a single
+  equal-width row instead of wrapping passes an explicit `columns={n}`
+  matching its own option count (the trend-filter sheet's amount/measure
+  rows do this). Do not add a second, parallel way to force a row
+  count; extend/override `columns` instead. The SELECTED pill reads as a
   FILLED accent control: an `accent` background with an `onAccent`
   label+icon and a semibold label, mirroring `ChipRow`'s selected chip
   — not a low-contrast raised surface, so the selection stays clear on
@@ -565,8 +575,8 @@ new component can land between reviews of this skill:
   with a `textSecondary` label. The pill content is centered and the
   pill holds the 44pt HIG minimum touch target. The pill label's `Text`
   variant defaults to `body` (the original hardcoded size — every
-  existing consumer that omits the prop, `CurrencySwitch` and
-  `LanguageSwitch`, is unaffected) and takes an optional `labelVariant`
+  existing consumer that omits the prop, e.g. `LanguageSwitch`, is
+  unaffected) and takes an optional `labelVariant`
   override for a caller whose value sits under its own larger section
   label and must read as visually subordinate to it — the Statistics
   trend-filter sheet (`trend-filter-field.component.tsx`) passes
@@ -624,22 +634,18 @@ where they can drift. As of this writing the pipeline is:
   since-removed enum member), both of which throw downstream instead
   of silently falling back. The gray fallback resolves from the single
   dark palette (`entityColorsDark` in `palette.ts`).
-- `entityCardBackground` (`entity-tint.ts`) — a card's flat, OPAQUE
-  `#RRGGBB` background (never an `rgba(...)` string; it does not go
-  through `entityTintBackground`'s alpha compositing): the resolved
-  color darkened toward black, fed straight to `GlassSurface`'s `tint`
-  prop — darkening keeps white body text legible on the dark theme.
-  Replaced a 45deg two-stop gradient wash
-  (design review: a plain darker solid reads calmer than a diagonal
-  blend of two near-identical hues), then a translucent flat wash
-  (a device bug: darkening a color that is then stamped at low alpha
-  only shifts the final pixel imperceptibly).
-- `entityTintBackground` / `darkenHex` / `lightenHex`
-  (`entity-tint.ts`) — the lower-level building blocks
-  `entityCardBackground` composes; reach for them directly only when
-  you need one flat (non-darkened) translucent tint, or one
-  darkened/lightened opaque hex on its own, not the composed card
-  background.
+- `resolveEntityColor`'s result feeds `EntityIconTile`
+  (`src/design-system/components/entity-icon-tile/`), the shared
+  squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
+  derives its two vertical-gradient stops (lighter top, darker bottom)
+  from the one resolved hue via `lightenHex`/`darkenHex`, and
+  `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
+  check, not a naive brightness average) picks a white or dark glyph
+  tint so the SF Symbol on top stays legible on every palette swatch.
+  `entityCardBackground`/`entityTintBackground` do not exist in the
+  current module — read `entity-tint.ts` directly for the live
+  exported function set (it changes; do not restate it here) rather
+  than assuming either name.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
@@ -677,6 +683,9 @@ the same conversion itself.
 
 ## GlassSurface `isLiquidGlassSupported` branch
 
+This section documents `GlassSurface` itself — now a NAV-LAYER-only
+component (tab bar, sheets, FAB, keyboard accessory; content cards use
+`Card` — see "Entity color and tint" above and `Card`'s own bullet).
 `GlassSurface` renders two structurally different trees, not one tree
 with a conditional prop: `isLiquidGlassSupported` (from
 `@callstack/liquid-glass`) picks between a real `LiquidGlassView` (iOS
