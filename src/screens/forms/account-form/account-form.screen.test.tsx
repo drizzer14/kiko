@@ -772,6 +772,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(mockUpdate).toHaveBeenCalledWith('acc-1', {
       name: 'Renamed account',
       color: entityColors.teal,
+      bankId: null,
     });
     expect(mockSetIcon).toHaveBeenCalledWith('acc-1', 'banknote');
     expect(mockCreate).not.toHaveBeenCalled();
@@ -802,6 +803,115 @@ describe('AccountFormScreen edit mode', () => {
     const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
 
     expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
+  });
+
+  it('edit-hydrates bankId from the stored row and shows it pre-selected in the bank picker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
+  });
+
+  it('edit form’s bank picker lists the same six banks the create form does, plus "No bank"', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+
+    expect(getByTestId('bank-type-option-none')).toBeTruthy();
+    expect(getByTestId('bank-type-option-monobank')).toBeTruthy();
+    expect(getByTestId('bank-type-option-privatbank')).toBeTruthy();
+    expect(getByTestId('bank-type-option-sensebank')).toBeTruthy();
+    expect(getByTestId('bank-type-option-procredit')).toBeTruthy();
+    expect(getByTestId('bank-type-option-ukrsib')).toBeTruthy();
+    expect(getByTestId('bank-type-option-alfa')).toBeTruthy();
+  });
+
+  it('opens with "No bank" selected for an account with no bankId', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+
+    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('persists a newly-picked bankId on Save (null -> privatbank)', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-privatbank'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'privatbank' }),
+    );
+  });
+
+  it('persists clearing a picked bankId back to null on Save (privatbank -> "No bank")', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-none'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: null }));
+  });
+
+  it('saves fine leaving bankId null when the picker is never touched (no forced selection)', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: null }));
+  });
+
+  it('keeps a live-connected Monobank account’s sync intact when its bankId is edited', async () => {
+    // bankId is identity-only and deliberately never read by isSyncedAccount
+    // or the provider registry (kiko-domain) — the picker stays fully
+    // editable even for a connected account, and the update patch it drives
+    // never carries `institution`, so the live connection can never be
+    // touched from here.
+    mockAccounts = [
+      {
+        id: 'acc-1',
+        name: 'Monobank Card',
+        kind: 'bank',
+        icon: null,
+        color: null,
+        bankId: 'monobank',
+        institution: 'monobank',
+      },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-privatbank'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', {
+      name: 'Monobank Card',
+      color: null,
+      bankId: 'privatbank',
+    });
+    const patch = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect('institution' in patch).toBe(false);
   });
 });
 

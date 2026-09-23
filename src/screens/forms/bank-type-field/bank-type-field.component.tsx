@@ -33,6 +33,11 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
     setOpen(false);
   };
 
+  const handleSelectNone = (): void => {
+    onSelect(null);
+    setOpen(false);
+  };
+
   return (
     <Box gap={1}>
       <FieldTrigger
@@ -56,6 +61,18 @@ const BankTypeField: FC<BankTypeFieldProps> = ({ label, selected, onSelect, test
         <Text variant="caption" tone="textSecondary">
           {t('forms.account.bankDisclaimer')}
         </Text>
+
+        {/* The explicit "no bank" row (F2 fix): a plain manual bank account
+            with no specific bank identity is a valid, tested state
+            (kiko-domain: `bankId` is identity-only, independent of
+            `institution`) — this is how a user PICKS that state on purpose,
+            or returns to it from an already-tagged account in edit mode. */}
+        <SelectableRow
+          selected={selected === null}
+          onPress={handleSelectNone}
+          label={t('forms.account.noBank')}
+          testID="bank-type-option-none"
+        />
 
         {bankCatalog.map((entry) => {
           const isSelected = entry.id === selected;

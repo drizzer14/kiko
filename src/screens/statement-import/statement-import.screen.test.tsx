@@ -305,6 +305,23 @@ describe('StatementImportScreen', () => {
     expect(getByTestId('target-holding-field')).toBeTruthy();
   });
 
+  // F2 fix regression guard: `account-detail.screen.tsx` resolves this
+  // route's `expectedFormatId` via `statementFormatIdForBank(account.bankId)`,
+  // which is `undefined` for a bank-less Bank account (`bankId: null` — a
+  // valid, tested state the account-form edit picker can now return an
+  // account to). With no `expectedFormatId` at all this screen must still
+  // fall back to the multi-format `detectFormat` auto-detect AND still offer
+  // the "Map columns manually" escape hatch, exactly as it does today for the
+  // Share Extension entry point (which also carries no `expectedFormatId`).
+  it('detects a dedicated format via multi-format auto-detect, and still offers "Map columns manually", with no expectedFormatId at all', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getByText } = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(getByText('Monobank (CSV)')).toBeTruthy());
+    expect(getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy();
+  });
+
   it('still recognizes the real file when expectedFormatId matches its actual format', async () => {
     mockReadFile.mockResolvedValue(fixtureBase64);
 

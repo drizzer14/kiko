@@ -210,6 +210,7 @@ export const en = {
       },
       metals: 'Precious metals',
       namePlaceholder: 'Monobank',
+      noBank: 'No bank',
       property: 'Property',
       selectBankPlaceholder: 'Select a bank (optional)',
     },

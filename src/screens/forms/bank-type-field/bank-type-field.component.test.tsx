@@ -53,6 +53,43 @@ describe('BankTypeField', () => {
     expect(getAllByText('Statement import only — no live connection.')).toHaveLength(5);
   });
 
+  it('offers a "No bank" option that is selected by default and reports null when pressed', async () => {
+    const onSelect = jest.fn();
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected={null}
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(true);
+
+    await fireEvent.press(getByTestId('bank-type-option-none'));
+
+    expect(onSelect).toHaveBeenCalledWith(null);
+  });
+
+  it('marks "No bank" unselected once a real bank is picked', async () => {
+    const onSelect = jest.fn();
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        selected="monobank"
+        onSelect={onSelect}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(false);
+    expect(getByTestId('bank-type-option-monobank').props.accessibilityState.selected).toBe(true);
+  });
+
   it('reports the picked bank id when a row is pressed', async () => {
     const onSelect = jest.fn();
     const { getByTestId } = await render(

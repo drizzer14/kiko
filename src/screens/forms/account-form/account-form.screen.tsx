@@ -28,7 +28,7 @@ import MonobankConnectField from '../../account-detail/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 import type { AccountRow } from '../../../db/schema';
-import type { BankId } from '../../../bank-sync/bank-catalog';
+import { type BankId, isBankId } from '../../../bank-sync/bank-catalog';
 
 import ColorPicker from '../color-picker';
 import BankTypeField from '../bank-type-field';
@@ -324,6 +324,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
+    // F2 fix: the edit form used to never seed `bankId` at all (the picker
+    // below simply didn't render), leaving no way to view or change an
+    // account's bank identity after create. `isBankId` guards against a
+    // stored value from a since-removed catalog entry, mirroring
+    // `isSupportedKind` above.
+    setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
   }, [isEdit, editingAccount]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
@@ -359,8 +365,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // through setIcon (so a cleared icon persists an explicit null), the same
         // split the create path uses. Kind is read-only, and the cash currency +
         // initial value belong to the create-time initial holding, so neither is
-        // touched here.
-        await accountsRepo.update(editId, { name: trimmedName, color });
+        // touched here. `bankId` (F2 fix) is now editable too — this patch never
+        // carries `institution`, so a live-connected account's sync stays
+        // untouched no matter what bank identity is picked here.
+        await accountsRepo.update(editId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
 
@@ -506,15 +514,25 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           </>
         )}
 
-        {/* Optional sync credentials, offered only on a bank/crypto CREATE. The
-            fields are NOT required (no asterisk): an account still creates with
-            no credentials. A secret is masked and write-only — on save it goes
-            straight to the Keychain, never into a stored row or a log. */}
-        {!isEdit && kind === 'bank' && (
+        {/* The "which bank does this account represent" identity picker
+            (Option A) — shown in BOTH create and edit mode (F2 fix: the edit
+            form used to have no way at all to view or change `bankId`). The
+            live-sync Connect field stays CREATE-ONLY — editing an already-
+            connected account's real connection is BankSyncSection's job on
+            the account-detail screen (Monobank-only, Guideline 5.6),
+            untouched here. Changing `bankId` in this field never writes
+            `institution`/the Keychain/sync state (kiko-domain: `bankId` is
+            deliberately never read by `isSyncedAccount`), so it stays safe
+            to edit even on an already-connected Monobank account. The
+            credential field itself is NOT required (no asterisk): an
+            account still creates with no credentials — a secret is masked
+            and write-only, going straight to the Keychain on save, never
+            into a stored row or a log. */}
+        {kind === 'bank' && (
           <Box gap={4}>
             <Divider testID="form-divider" />
 
-            <Text variant="heading">{t('accountDetail.synchronization')}</Text>
+            {!isEdit && <Text variant="heading">{t('accountDetail.synchronization')}</Text>}
 
             <BankTypeField
               label={t('forms.account.bankType')}
@@ -523,7 +541,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               testID="account-bank-type-field"
             />
 
-            {bankId === 'monobank' && <MonobankConnectField onConnect={connectMonobank} />}
+            {!isEdit && bankId === 'monobank' && (
+              <MonobankConnectField onConnect={connectMonobank} />
+            )}
 
             {bankId !== null && bankId !== 'monobank' && (
               <Text variant="caption" tone="textSecondary">
