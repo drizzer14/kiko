@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react-native';
 
-import '../../../design-system/unistyles';
+import '../../unistyles';
 
 import FieldTrigger from '.';
 
@@ -16,7 +16,7 @@ import FieldTrigger from '.';
 // cannot produce. Kept in its own file (rather than inside
 // `field-trigger.component.test.tsx`) so this file-wide module mock never
 // touches that file's other assertions, which render the real `Text`.
-jest.mock('../../../design-system/components/text', () => {
+jest.mock('../text', () => {
   const React = require('react');
   const { Text: RNText } = require('react-native');
 

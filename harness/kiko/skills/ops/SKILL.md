@@ -91,3 +91,34 @@ motivated it. Summary — every step is required, not optional:
 6. Use an external `-derivedDataPath`, never an in-worktree `build/` or
    `ios/DerivedData` — those trip the repo's gitleaks secrets scan (see
    root `CLAUDE.md`'s "Documented exceptions").
+
+## Device verification checklist
+
+Ops owns device builds, so this checklist lives here; the orchestrator
+copies it into the device-test request it sends the user.
+
+- **Build type.** Release, not Debug, for anything touching a
+  worklet directive or Hermes-only behavior (`TextDecoder`, etc.) —
+  these crash classes reproduce ONLY in Release (see `kiko-architecture`'s
+  "Native iOS shell" section). Use the EMBEDDED-bundle Release recipe
+  (`FORCE_BUNDLING=1`, no Metro) unless the task specifically needs a
+  Debug/Metro session.
+- **Install/launch.** Follow the Device-deploy recipe above — do not
+  re-derive the steps.
+- **Standing regression list** (derived from real app areas; run the
+  subset relevant to the change, the full list before a release):
+  - First launch + migrations gate on a fresh install.
+  - App lock (Face ID) unlock + grace period.
+  - Monobank sync: pull-to-refresh, and the sync throttle (a second
+    immediate refresh should not re-hit the API).
+  - Binance sync, if a Binance account is connected.
+  - Statement import with a known file.
+  - Export → import round trip (`.kiko` file).
+  - Net worth + statistics screens render correctly.
+  - Base currency switch.
+  - Ukrainian locale pass: strings render, app name shows as "Кіко".
+  - Offline launch (no network) — the bundled rate seed should still
+    value holdings.
+- **Network rule.** Any TLS, certificate-pinning, rate-limit, or
+  migration-behavior change is device-verified BEFORE archiving, not
+  after — Jest cannot see real network/device behavior.

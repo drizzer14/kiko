@@ -1,6 +1,6 @@
 ---
 name: kiko-architecture
-description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, or the Monobank sync pipeline. Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, or any code that reads the Monobank API or the Keychain token.
+description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, or any `.kiko` export/import code.
 ---
 
 # Kiko architecture
@@ -852,3 +852,81 @@ null `externalId` and is never namespaced.
 - Store live results in `CurrencyRate`. Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
+
+## Data transfer (backup export/import)
+
+`src/data-transfer/` implements the encrypted `.kiko` export/import feature:
+`export-data.ts` / `import-data.ts` at the top, `crypto/envelope.ts` (AES-256-GCM
+via `@noble/ciphers`), `snapshot/{read,restore}-snapshot.ts`,
+`secrets/{read,restore}-secrets.ts`, `payload.d.ts` for the plaintext JSON
+shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
+
+- **Every schema table must be in the snapshot.** `snapshot/data-snapshot.d.ts`
+  (`DataSnapshot`) is the one list every table `db/schema.ts` exports must
+  appear in. This is mechanized, not prose: `src/data-transfer/snapshot/
+  snapshot-covers-every-table.test.ts` derives BOTH sides at runtime (Drizzle's
+  `is(x, SQLiteTable)` over `schema.ts`'s exports vs. the live keys
+  `readDataSnapshot()` returns) and fails the moment a new table is added to
+  one side but not the other. Read that file for the current field list and
+  its (currently empty) documented-exclusion array — do not copy the table
+  list here.
+- **Every Keychain secret class is read and restored — except one, on
+  purpose.** `payload.d.ts`'s `ExportSecrets` covers `dbKeyHex`,
+  `monobankTokens`, and `binanceCredentials`. `secrets/read-secrets.ts` reads
+  all three from the Keychain (skipping an account with no stored secret).
+  `secrets/restore-secrets.ts` restores ONLY the Monobank tokens and Binance
+  credentials, each back to its original account id — never `dbKeyHex`. Read
+  the safety comment on `restoreExportSecrets` for why: the exported DB key is
+  display-only; re-storing a FOREIGN device's SQLCipher key into this device's
+  own `kiko.db.key` Keychain item would not affect the already-open session,
+  but would brick the importing device's own encrypted database on its very
+  next launch (wrong key at `resolveDbKey()`).
+- **A legacy export missing a newer field must still restore.**
+  `restoreExportSecrets` treats an entirely absent `secrets` object (an export
+  written before the credentials toggle, or with it off) as a no-op, not an
+  error — `import-data.ts` still restores `payload.tables` regardless. Follow
+  the same pattern for any future field added to `ExportPayload`: make its
+  absence in an older file a no-op, never a hard failure.
+- **No `TextDecoder`/`TextEncoder`.** Hermes has no working `TextDecoder`
+  (confirmed on device — see `utf8/utf8.ts`'s header comment); use the
+  hand-rolled `utf8Encode`/`utf8Decode` and `encodeBytesToBase64`/
+  `decodeBase64ToBytes` instead. This is a Semgrep ERROR rule
+  (`kiko-no-textdecoder-textencoder` in `rules/semgrep-mobile.yml`), not prose
+  only.
+- **Encryption envelope:** `crypto/envelope.ts` encrypts the JSON payload with
+  AES-256-GCM under a fresh random 12-byte nonce per export; `decryptEnvelope`
+  rejects an unrecognized `format`/`version` header before attempting to
+  decrypt, and relies on `@noble/ciphers`' GCM tag verification to fail closed
+  on a wrong key or tampered ciphertext — see the file for the exact error
+  strings. State nothing about the envelope beyond what `envelope.ts` shows.
+
+## Native iOS shell
+
+`ios/Kiko/AppDelegate.swift` + `ios/Kiko/SceneDelegate.swift` implement the
+mandatory UIScene lifecycle: `AppDelegate` builds the single `RCTReactNativeFactory`
+and captures `launchOptions`, but `SceneDelegate` owns the actual `UIWindow` — it
+constructs the window FROM the connected `UIWindowScene` and calls
+`factory.startReactNative(withModuleName:in:launchOptions:)` from
+`scene(_:willConnectTo:options:)`. A `UIWindow` not bound to a scene is never
+displayed under this lifecycle. `applicationWillResignActive` /
+`applicationDidEnterBackground` / `applicationDidBecomeActive` do NOT fire once
+the app adopts the scene lifecycle — the privacy-overlay and backup-exclusion
+logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
+`sceneDidEnterBackground`, `sceneDidBecomeActive`) instead. See
+`ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
+in memory for the crash history this fixed.
+
+- **Biometric Keychain reads need `NSFaceIDUsageDescription`.** A
+  `BIOMETRY_CURRENT_SET` Keychain read SIGABRTs without it. Verify the key is
+  present in `ios/Kiko/Info.plist` before adding or changing any biometric
+  Keychain call (see memory `biometric-keychain-needs-nsfaceidusagedescription`).
+- **`useAnimatedKeyboard()` is banned** — see `kiko-gestures`'s "`useAnimatedKeyboard()`
+  is banned" section for why, and the Semgrep ERROR rule
+  `kiko-no-use-animated-keyboard` (`rules/semgrep-mobile.yml`) that enforces it.
+- **Release-only crash classes.** Some crashes reproduce ONLY in a Release
+  build, not Debug: a plain function used inside a worklet without the
+  `'worklet'` directive (Debug swallows the mismatch, Release SIGABRTs — see
+  memory `worklet-directive-debug-swallows-release-aborts`), and any code path
+  Hermes handles differently from Debug's JSC-like behavior (see the Data
+  transfer section above on `TextDecoder`/`TextEncoder`). Verify a fix for
+  either class on an actual Release build, not just Debug/Jest.

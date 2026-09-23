@@ -2,10 +2,10 @@ import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import FieldLabel from '../../../design-system/components/field-label';
+import Box from '../box';
+import Text from '../text';
+import SymbolIcon from '../symbol';
+import FieldLabel from '../field-label';
 
 import { styles } from './field-trigger.styles';
 import type { FieldTriggerProps } from './field-trigger.props';

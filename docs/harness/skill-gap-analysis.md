@@ -47,6 +47,39 @@ cost only. Effort: S < 1 h, M = 1–3 h, L = more than 3 h.
 | 24 | Drift | `qa` agent cites `src/holdings/holdings.repo.test.ts`; the file is `src/holdings/repo/holdings.repo.test.ts`. | `harness/kiko/agents/qa.md` (repository-test bullet) | L | Fix the path. | scribe | S |
 | 25 | Cost | The two biggest skills load in full on most work: `kiko-architecture` 861 lines, `kiko-design-system` 734, `kiko-code-style` 558. `kiko-code-style` fires on "any .ts or .tsx". The branch adds about 200 more lines. | `wc -l .claude/skills/*/SKILL.md` | L | The splits in #7 and #8 cut about 250 lines from `kiko-architecture`. Move narrative incident history (for example the 5.6 screenshot saga, `:12-70`) to `docs/`, and keep the rule plus a pointer. | scribe | M |
 
+## Status (2026-09-23)
+
+Resolved on this branch (`skill-gap-analysis`), shas from `git log --oneline`
+on this branch:
+
+- #1, #2, #3, #4, #5, #9, #20, #22, #23, #24 — `097b07d`, `aedb1b3`,
+  `6cb5b00`, `f6a543b`.
+- #14, #16, #21 — `ad4d713`, `0f8428a`, `67ab4d0`, `4e66dd7`.
+- #15 — `e8362d1`.
+- #17 (mechanized test) — `e7e8985`; #17 (skill content, uk apostrophe/app
+  name rules + the deploy-review workflow rule) — `0ed3d9d`.
+- #6 (data-transfer coverage) — `36b8d64`; #19 (native iOS shell) — `4714c94`.
+- #18 (bank catalog and provider registry) — `493c71f`.
+- #10 (researcher agent) — `16323ff`.
+- #11 (device verification checklist) — `a6efac2`.
+- Codegraph section 4 (navigation-reachability grep in `kiko:release`) —
+  `6166cb8`.
+- #21's App-Group entitlement follow-up (documented-exceptions entry) —
+  `fc82467`.
+
+Open:
+
+- #7 (`kiko-statement-import` skill), #8 (`kiko-pricing` skill), #12
+  (`kiko-architecture` trigger split), #25 (narrative-history trim) — owned
+  by the `feat/assets-debts` track; out of scope here per this track's
+  cross-track rule (do not touch statement-import, rates/price, or create
+  those two skills).
+- #13 (plugin `design-system` skill vs `kiko-design-system` duplication) —
+  not in scope for this track.
+
+Standing drift rule already landed: `a932fef` (harness), `bef3f45`
+(`CLAUDE.md`, owned by the coordinator, not this track).
+
 ## 2. Coverage map — `src/` area to skill
 
 File count = non-test `.ts`/`.tsx` files. Depth: DEEP = rules and invariants

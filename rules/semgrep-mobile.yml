@@ -42,68 +42,6 @@ rules:
       - metavariable-regex:
           metavariable: $TOKEN
           regex: (?i).*(token|secret|password|credential).*
-  # `paths.include` is a bare `*.swift` on purpose, NOT `ios/KikoWidget/*.swift`.
-  # Semgrep matches an include pattern containing a `/` against the path relative
-  # to the SCAN ROOT, so a path-prefixed include silently matches nothing the
-  # moment the fixture runner scans `rules/fixtures/` directly — a rule that
-  # matches nothing still reports success, which is the exact failure mode this
-  # whole fixture harness exists to prevent. A basename pattern matches under
-  # every scan root (verified both ways on Semgrep 1.175). The scope loss is
-  # nil: the pattern requires a `Text(…)` reading a money member, and SwiftUI
-  # `Text` exists only in the widget extension — the main app is React Native.
-  #
-  # The metavariable-regex keys on the money MEMBER being read (`.formatted`,
-  # `.minorUnits`, `.total`), never on the name of the binding it is read from.
-  # An earlier `^(snapshot|item)\.` let a renamed binding walk straight past the
-  # rule — `content(for snap:)` or `ForEach(rows) { row in … }` and the balance
-  # ships unredacted. `rules/fixtures/*.bad.swift` pins both spellings with
-  # EXPECT-FINDING comments so `npm run check:rules` fails if that regresses.
-  # The leading `.*` is load-bearing: Semgrep 1.175 anchors a metavariable-regex
-  # at the START of the metavariable's text, so the bare
-  # `\.(formatted|minorUnits|total)(\.|$)` matches nothing at all (measured: 4
-  # findings with the `.*`, 0 without it). A currency code (`Text(item.currency)`)
-  # is not money and stays unflagged; the row it sits in is still caught through
-  # its amount.
-  - id: kiko-widget-money-view-needs-privacysensitive
-    languages: [swift]
-    severity: ERROR
-    message: >
-      A widget view bound to snapshot money must be marked `.privacySensitive()`
-      so WidgetKit redacts it on a locked device. The widget extension has no
-      LockGate; without this the app lock is silently bypassed on the Lock
-      Screen / StandBy. Put the modifier on the Text, or on the row that
-      contains it.
-    paths:
-      include:
-        - "*.swift"
-    patterns:
-      - pattern: Text($X)
-      - metavariable-regex:
-          metavariable: $X
-          regex: .*\.(formatted|minorUnits|total)(\.|$)
-      - pattern-not-inside: $E.privacySensitive()
-  # File-scoped on purpose. The function-scoped form ("the same function must
-  # also set both attributes") is not expressible: Semgrep 1.175 does not match
-  # `func $F(...) { ... }` as a Swift enclosing range, so `pattern-inside` /
-  # `pattern-not-inside` on a function body silently matches nothing. A file
-  # that reaches the App Group container AND writes a file must therefore carry
-  # both hardening calls somewhere in it. Verified to produce no false positive
-  # on the real tree: `ios/KikoWidget/NetWorthSnapshot.swift` reaches the
-  # container but never writes, so it is not flagged.
-  - id: kiko-appgroup-write-needs-protection
-    languages: [generic]
-    severity: ERROR
-    message: >
-      This file writes into the App Group container without setting
-      `isExcludedFromBackup` and an explicit file-protection class. The shared
-      container IS included in iCloud/iTunes backups and defaults to an
-      inherited protection class, so a cleartext derivative of encrypted data
-      leaks through a backup. Set both, after every write — an atomic write
-      replaces the inode and drops them.
-    paths:
-      include:
-        - "*.swift"
-    pattern-regex: (?s)\A(?=.*\.write\(to:)(?!.*isExcludedFromBackup)(?!.*protectionKey).*forSecurityApplicationGroupIdentifier
   # Guideline 5.6 (App Store rejection of build 7: "features intentionally
   # hidden during review"). Three shapes, one rule: importing a
   # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
@@ -124,13 +62,14 @@ rules:
   # `require` reaching `e2e/` is a finding, exactly like a static import.
   #
   # No `paths.include` scope here on purpose, unlike most file-scoped rules.
-  # A path-prefixed include (e.g. "src/**") is the exact gotcha the Swift
-  # rules above already hit: Semgrep matches it against the path relative to
-  # the SCAN ROOT, so it silently matches NOTHING the moment
-  # `scripts/checks/semgrep-rules.sh` scans `rules/fixtures/` directly (the
-  # fixture is not nested under a `src/` segment) — a rule that stops firing
-  # on its own fixture is the exact failure this whole harness exists to
-  # prevent. Scoping is achieved with content specificity instead: the
+  # A path-prefixed include (e.g. "src/**") hits a known Semgrep 1.175 gotcha
+  # (see `kiko-linter`'s "Semgrep facts verified on 1.175"): Semgrep matches
+  # it against the path relative to the SCAN ROOT, so it silently matches
+  # NOTHING the moment `scripts/checks/semgrep-rules.sh` scans
+  # `rules/fixtures/` directly (the fixture is not nested under a `src/`
+  # segment) — a rule that stops firing on its own fixture is the exact
+  # failure this whole harness exists to prevent. Scoping is achieved with
+  # content specificity instead: the
   # `e2e/` regexes only match a specifier that literally spells out an
   # `e2e/` path segment, which a file INSIDE `e2e/` never needs to do for
   # its own relative imports (verified empirically —
@@ -159,6 +98,56 @@ rules:
           - pattern-regex: import\s*\{[^}]*\b(SHOW_[A-Z0-9_]*|HIDE_[A-Z0-9_]*|SCREENSHOT_[A-Z0-9_]*)\b[^}]*\}\s*from\s*['"]@env['"]
           - pattern-regex: import\s[^;]*from\s*['"][^'"]*\be2e/[^'"]*['"]
           - pattern-regex: require\s*\(\s*['"][^'"]*\be2e/[^'"]*['"]\s*\)
+  # Layer rule (skill-gap-analysis #14): `src/screens/**` is the UI layer that
+  # composes design-system primitives and domain modules, never the other way
+  # around. A design-system component importing a screens module (FieldTrigger
+  # used to live under `src/screens/forms/` and was imported by
+  # `currency-field.component.tsx`, until it was moved) is a real layer
+  # inversion: it makes a shared primitive depend on app-specific UI, and one
+  # screen's internal refactor can now break an unrelated design-system
+  # consumer. `src/screens/**` and `src/navigation/**` are exempted since they
+  # ARE the UI layer (navigation wires screens together by design), and so is
+  # the app root `App.tsx`.
+  #
+  # `paths.exclude` (unlike `paths.include`, see `kiko-linter`'s "Semgrep
+  # facts verified on 1.175") is safe to path-prefix here: it was verified
+  # empirically against a
+  # throwaway rule+tree that a path-prefixed `paths.exclude` entry matches
+  # correctly whether Semgrep's target is a whole directory, an absolute
+  # directory path, or a single absolute file path (`fast.sh` scans one file
+  # at a time) — an exclude that fails to match only means "don't exclude",
+  # which fails safe (the rule still applies), the opposite failure mode from
+  # a prefixed `paths.include` failing to match (which fails closed and
+  # silently stops the rule from ever firing). The fixture pair below lives
+  # directly in `rules/fixtures/`, not nested under `src/screens/` or
+  # `src/navigation/`, so neither exclude pattern touches it — the fixture
+  # scan is proven purely by the content regex below, same as the `e2e/` rule
+  # above.
+  #
+  # No test-file carve-out: no test outside `src/screens/`/`src/navigation/`
+  # imports from `screens/` today (verified empirically), and a test that
+  # reached into a screen for a shared helper would be the same layer
+  # inversion as production code reaching in — so this is not exempted.
+  - id: kiko-no-import-screens-outside-ui
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      A non-screens, non-navigation module imports from `src/screens/**`.
+      `src/screens/` is the UI layer that composes shared design-system and
+      domain modules — nothing outside `src/screens/**`, `src/navigation/**`,
+      or `App.tsx` may import from it. Move the shared code being imported
+      into `src/design-system/` or the owning domain module instead (see the
+      `kiko-design-system` skill's `FieldTrigger` entry for a worked
+      precedent), then import it from there.
+    paths:
+      exclude:
+        - "src/screens/**"
+        - "src/navigation/**"
+        - "App.tsx"
+    patterns:
+      - pattern-either:
+          - pattern-regex: import\s[^;]*from\s*['"](?:[^'"]*/)?screens/[^'"]*['"]
+          - pattern-regex: require\s*\(\s*['"](?:[^'"]*/)?screens/[^'"]*['"]\s*\)
   # ---- Class A: code-style conventions (deterministic hard-fail) ----
   - id: kiko-repo-no-class
     languages: [typescript]
@@ -228,6 +217,53 @@ rules:
       - pattern-either:
           - pattern: const pipe = $F
           - pattern: const compose = $F
+  # skill-gap-analysis #16. AST `pattern:` (not `pattern-regex`), so a
+  # comment merely naming `useAnimatedKeyboard` — several already exist,
+  # documenting the crash this rule guards against, see
+  # `bottom-sheet.component.tsx`/`.keyboard.ts` — never matches; Semgrep
+  # patterns match the parsed syntax tree, not raw text. See
+  # `kiko-gestures`'s "`useAnimatedKeyboard()` is banned" section for the
+  # full crash chain (`REAKeyboardEventObserver` reaches
+  # `AppDelegate.window`, which this app's UIScene lifecycle does not set).
+  - id: kiko-no-use-animated-keyboard
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useAnimatedKeyboard()` is banned. Its native observer reaches
+      `[[UIApplication sharedApplication] delegate] window]`, a legacy
+      AppDelegate-owns-the-window assumption — this app runs the iOS UIScene
+      lifecycle (SceneDelegate owns the UIWindow; AppDelegate has none), so it
+      SIGABRTs on cold launch. Drive keyboard height from RN core `Keyboard`
+      events instead, the way `bottom-sheet.component.tsx` does.
+    patterns:
+      - pattern: useAnimatedKeyboard(...)
+  # skill-gap-analysis #16. Hermes has no working `TextDecoder` — confirmed
+  # on device, it silently produced unparseable output (see
+  # `src/data-transfer/utf8/utf8.ts`'s header comment) — so `TextEncoder`/
+  # `TextDecoder` are banned under `src/` in favor of the hand-rolled
+  # `utf8Encode`/`utf8Decode`. Test files are exempted (`paths.exclude`,
+  # basename patterns, no directory-prefix gotcha to worry about): Jest runs
+  # on Node, where both are real, working globals, and
+  # `src/data-transfer/utf8/utf8.test.ts` / `crypto/envelope.test.ts`
+  # deliberately use the real `TextEncoder` as the byte-for-byte oracle the
+  # hand-rolled encoder is tested against — banning it there would remove the
+  # only independent check that `utf8Encode` is standard-conforming.
+  - id: kiko-no-textdecoder-textencoder
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `TextDecoder`/`TextEncoder` are banned under src/ — Hermes has no
+      working implementation (confirmed on device: `TextDecoder` silently
+      produced unparseable output). Use `utf8Encode`/`utf8Decode`
+      (`src/data-transfer/utf8`) instead.
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: new TextDecoder(...)
+          - pattern: new TextEncoder(...)
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]

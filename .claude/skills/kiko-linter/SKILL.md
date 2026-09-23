@@ -174,6 +174,18 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   total)(\.|$)`) to match anywhere in the text. Verified empirically:
   the anchored form drew 0 findings, the `.*`-prefixed form drew the
   expected 4.
+- `paths.exclude`, unlike `paths.include` above, IS safe to path-prefix
+  (e.g. `"src/screens/**"`) — verified empirically against a throwaway
+  rule+tree that a path-prefixed exclude matches correctly whether
+  Semgrep's target is a whole directory, an absolute directory path, or
+  a single absolute file path (`fast.sh`'s per-file scan). The failure
+  modes are asymmetric: an `include` that fails to match fails CLOSED
+  (the rule silently never fires — the `rules/fixtures/` gotcha above),
+  while an `exclude` that fails to match fails OPEN (the rule still
+  applies) — which is exactly why `kiko-no-import-screens-outside-ui`
+  (`rules/semgrep-mobile.yml`) uses a path-prefixed `paths.exclude` for
+  `src/screens/**`/`src/navigation/**` instead of trying to scope the
+  rule down with `paths.include`.
 
 ## Class A vs Class B
 
