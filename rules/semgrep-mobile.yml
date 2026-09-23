@@ -277,6 +277,53 @@ rules:
       - pattern-either:
           - pattern: const pipe = $F
           - pattern: const compose = $F
+  # skill-gap-analysis #16. AST `pattern:` (not `pattern-regex`), so a
+  # comment merely naming `useAnimatedKeyboard` — several already exist,
+  # documenting the crash this rule guards against, see
+  # `bottom-sheet.component.tsx`/`.keyboard.ts` — never matches; Semgrep
+  # patterns match the parsed syntax tree, not raw text. See
+  # `kiko-gestures`'s "`useAnimatedKeyboard()` is banned" section for the
+  # full crash chain (`REAKeyboardEventObserver` reaches
+  # `AppDelegate.window`, which this app's UIScene lifecycle does not set).
+  - id: kiko-no-use-animated-keyboard
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `useAnimatedKeyboard()` is banned. Its native observer reaches
+      `[[UIApplication sharedApplication] delegate] window]`, a legacy
+      AppDelegate-owns-the-window assumption — this app runs the iOS UIScene
+      lifecycle (SceneDelegate owns the UIWindow; AppDelegate has none), so it
+      SIGABRTs on cold launch. Drive keyboard height from RN core `Keyboard`
+      events instead, the way `bottom-sheet.component.tsx` does.
+    patterns:
+      - pattern: useAnimatedKeyboard(...)
+  # skill-gap-analysis #16. Hermes has no working `TextDecoder` — confirmed
+  # on device, it silently produced unparseable output (see
+  # `src/data-transfer/utf8/utf8.ts`'s header comment) — so `TextEncoder`/
+  # `TextDecoder` are banned under `src/` in favor of the hand-rolled
+  # `utf8Encode`/`utf8Decode`. Test files are exempted (`paths.exclude`,
+  # basename patterns, no directory-prefix gotcha to worry about): Jest runs
+  # on Node, where both are real, working globals, and
+  # `src/data-transfer/utf8/utf8.test.ts` / `crypto/envelope.test.ts`
+  # deliberately use the real `TextEncoder` as the byte-for-byte oracle the
+  # hand-rolled encoder is tested against — banning it there would remove the
+  # only independent check that `utf8Encode` is standard-conforming.
+  - id: kiko-no-textdecoder-textencoder
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `TextDecoder`/`TextEncoder` are banned under src/ — Hermes has no
+      working implementation (confirmed on device: `TextDecoder` silently
+      produced unparseable output). Use `utf8Encode`/`utf8Decode`
+      (`src/data-transfer/utf8`) instead.
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: new TextDecoder(...)
+          - pattern: new TextEncoder(...)
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]
