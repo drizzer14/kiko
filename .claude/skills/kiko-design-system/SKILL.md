@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -570,6 +570,28 @@ new component can land between reviews of this skill:
   it.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
+- **SummaryTable** (`src/design-system/components/summary-table/`) — the
+  one shared "label left, value right" summary block: an optional `title`
+  heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
+  testID? }`), each split `space-between`. Extracted from the
+  holding-detail deposit/bond value-breakdown block (device-feedback-
+  round-F1 item 3) — `HoldingDetailScreen` now renders its own
+  principal/gross/interest/tax/expected-profit rows through this, passing
+  `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
+  visual change from before the extraction. The statement-import preview
+  (`StatementPreviewBlock`, `statement-import.screen.tsx`) and the
+  column-mapping result section (`MappingResult`) reuse the SAME row
+  layout/alignment/styling for their own summary rows (transaction count,
+  currency, date span) — never the deposit table's value/percent/tax
+  COLUMNS, only its layout. `value` is always a caller-rendered `ReactNode`
+  (a plain `Text` or a `MoneyText`) — `SummaryTable` itself never formats a
+  value. A row's own `testID` wraps ONLY that row's value (never its
+  label), so a caller migrating an existing row's testID (e.g.
+  `statement-import-transaction-count`) keeps the exact same
+  `toHaveTextContent` assertion it had before, scoped to the value text
+  alone — RNTL's `toHaveTextContent` matcher requires an EXACT match by
+  default (unlike jest-dom's substring default on web), so a testID
+  spanning both label and value would break every such assertion.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
