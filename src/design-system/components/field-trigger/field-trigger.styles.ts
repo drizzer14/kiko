@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { disabledFieldStyle } from '../../../design-system/disabled-field-style';
+import { disabledFieldStyle } from '../../disabled-field-style';
 
 export const styles = StyleSheet.create((theme) => ({
   // The tappable field showing the current selection: a bordered chip matching

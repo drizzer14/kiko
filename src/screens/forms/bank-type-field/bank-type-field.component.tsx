@@ -7,9 +7,8 @@ import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import { bankCatalog, type BankId } from '../../../bank-sync/bank-catalog';
+import FieldTrigger from '../../../design-system/components/field-trigger';
 import SelectableRow from '../../../design-system/components/selectable-row';
-
-import FieldTrigger from '../field-trigger';
 
 import type { BankTypeFieldProps } from './bank-type-field.props';
 

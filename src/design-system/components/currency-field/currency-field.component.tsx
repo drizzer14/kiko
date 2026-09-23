@@ -14,8 +14,8 @@ import {
 } from '../../../currency/currency';
 import TextField from '../text-field';
 import BottomSheet from '../bottom-sheet';
+import FieldTrigger from '../field-trigger';
 import SelectableRow from '../selectable-row';
-import FieldTrigger from '../../../screens/forms/field-trigger';
 
 import { styles } from './currency-field.styles';
 import type { CurrencyFieldProps } from './currency-field.props';

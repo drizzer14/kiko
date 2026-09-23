@@ -2,11 +2,11 @@ import { Pressable } from 'react-native';
 import { type ReactElement, useState } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 
-import FieldTrigger from '../field-trigger';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SymbolIcon from '../../../design-system/components/symbol';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import FieldTrigger from '../../../design-system/components/field-trigger';
 
 import { styles } from './holding-select-field.styles';
 import type { HoldingSelectFieldProps } from './holding-select-field.props';
