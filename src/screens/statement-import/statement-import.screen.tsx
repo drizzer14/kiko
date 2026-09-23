@@ -25,6 +25,7 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
+import SummaryTable from '../../design-system/components/summary-table';
 import type { AccountsStackParamList } from '../../navigation/types';
 import {
   detectFormat,
@@ -36,8 +37,9 @@ import { importStatement, type ImportResult } from '../../statement-import/impor
 import ImportOutcome from './import-outcome';
 import { styles } from './statement-import.styles';
 import PreviewDetailList from './preview-detail-list';
-import TargetHoldingSheet from './target-holding-sheet';
+import ExampleTransaction from './example-transaction';
 import { previewStats } from './preview-stats/preview-stats';
+import TargetHoldingField from './target-holding-field';
 import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
@@ -118,6 +120,135 @@ type LoadState =
   | { kind: 'unreadable' }
   | { kind: 'ready'; text: string; sheetRows?: SpreadsheetCellValue[][] };
 
+// The screen's shared footer slot content (device-feedback-round-F1, items
+// 1/4): Import and "Map columns manually" both moved out of the scrolling
+// body into `Screen`'s own `footer`, the same slot every other main-action
+// button in the app uses. Import only shows once a recognized preview
+// (`hasStats`) exists; Map-columns-manually shows anywhere `input` resolved
+// at all (mirroring its former inline gate). Renders `null` when NEITHER
+// applies, so the caller passes `undefined` to `Screen` instead of an empty
+// footer — a module-scope component (mirroring `ValueHeaderSecondary` in
+// `holding-detail.screen.tsx`) so this branching doesn't count against the
+// screen component's own cognitive-complexity budget.
+const StatementImportFooter: FC<{
+  hasStats: boolean;
+  hasInput: boolean;
+  canImport: boolean;
+  onImport: () => void;
+  onMapColumnsManually: () => void;
+}> = ({ hasStats, hasInput, canImport, onImport, onMapColumnsManually }) => {
+  const { t } = useTranslation();
+
+  if (!hasStats && !hasInput) {
+    return null;
+  }
+
+  return (
+    <Box gap={2}>
+      {hasStats && (
+        <Button variant="primary" onPress={onImport} disabled={!canImport}>
+          {t('statementImport.importButton')}
+        </Button>
+      )}
+
+      {hasInput && (
+        <Button variant="secondaryTonal" onPress={onMapColumnsManually}>
+          {t('statementImport.mapColumnsManually')}
+        </Button>
+      )}
+    </Box>
+  );
+};
+
+// The recognized-preview block (device-feedback-round-F1, items 2/3/14): the
+// shared `SummaryTable` (the deposit/bond value-breakdown table's own
+// layout, never its columns), the shared `ExampleTransaction`, the optional
+// masked-card/unresolved-row/multi-currency details, the holding SELECT
+// field, and the import outcome — a module-scope component (mirroring
+// `StatementImportFooter` above) so this branching doesn't count against the
+// screen component's own cognitive-complexity budget.
+const StatementPreviewBlock: FC<{
+  stats: ReturnType<typeof previewStats>;
+  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
+  accountId: string | undefined;
+  selectedHoldingId: string | undefined;
+  onSelectHolding: (holdingId: string) => void;
+  onCreateNewHolding: () => void;
+  importError: string | undefined;
+  importResult: ImportResult | undefined;
+}> = ({
+  stats,
+  holdingOptions,
+  accountId,
+  selectedHoldingId,
+  onSelectHolding,
+  onCreateNewHolding,
+  importError,
+  importResult,
+}) => {
+  const { t } = useTranslation();
+
+  return (
+    <Box gap={3} style={styles.previewBlock}>
+      <SummaryTable
+        title={stats.displayName}
+        rows={[
+          {
+            key: 'transactionCount',
+            label: t('statementImport.transactionCountLabel'),
+            value: <Text variant="body">{stats.transactionCount}</Text>,
+            testID: 'statement-import-transaction-count',
+          },
+          {
+            key: 'currency',
+            label: t('statementImport.currencyLabel'),
+            value: <Text variant="body">{stats.currency}</Text>,
+            testID: 'statement-import-currency',
+          },
+          {
+            key: 'dateSpan',
+            label: t('statementImport.dateSpanLabel'),
+            value: <Text variant="body">{stats.dateSpan}</Text>,
+            testID: 'statement-import-date-span',
+          },
+        ]}
+      />
+
+      {stats.firstTransaction && <ExampleTransaction transaction={stats.firstTransaction} />}
+
+      {stats.maskedCardHints.length > 0 && (
+        <PreviewDetailList items={stats.maskedCardHints} testID="statement-import-masked-cards" />
+      )}
+
+      {stats.unresolvedRowCount > 0 && (
+        <Text variant="body" tone="textSecondary">
+          {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
+        </Text>
+      )}
+
+      {stats.detectedCurrencies.length > 1 && (
+        <PreviewDetailList
+          items={stats.detectedCurrencies}
+          label={t('statementImport.detectedCurrenciesLabel')}
+          testID="statement-import-detected-currencies"
+        />
+      )}
+
+      <TargetHoldingField
+        label={t('statementImport.chooseHolding')}
+        holdings={holdingOptions}
+        accountId={accountId}
+        selectedId={selectedHoldingId}
+        onSelect={onSelectHolding}
+        onCreateNew={onCreateNewHolding}
+        testID="target-holding-field"
+      />
+
+      <ImportOutcome error={importError} result={importResult} />
+    </Box>
+  );
+};
+
 /**
  * The shared preview + target-holding screen both statement-import entry
  * points converge on — see docs/plans/statement-import.md section B. Reads
@@ -130,7 +261,6 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const { filePath, accountId, expectedFormatId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
-  const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
@@ -263,7 +393,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // T7's manual entry point into the generic column-mapping screen. Only
   // navigates when `accountId` is known — the Share Extension entry point
   // (no `accountId`) has no defined "map for which account" behavior yet,
-  // same carve-out `TargetHoldingSheet`'s own `onCreateNew` below already
+  // same carve-out `TargetHoldingField`'s own `onCreateNew` below already
   // makes, so this stays a harmless no-op rather than crashing on a missing
   // required `accountId`.
   const handleMapColumnsManually = (): void => {
@@ -272,8 +402,35 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     }
   };
 
+  // Entry point 2 (the Share Extension, no known `accountId`) has no defined
+  // "create a holding for which account" behavior yet — see
+  // `.superpowers/sdd/statement-import/task-2-report.md` concern 1/2 — so
+  // "Create new holding" only navigates in the scoped (entry point 1) case;
+  // it stays a harmless no-op otherwise rather than crashing on a missing
+  // required `accountId`.
+  const handleCreateNewHolding = (): void => {
+    if (accountId) {
+      navigation.navigate('HoldingForm', { accountId });
+    }
+  };
+
+  // `Screen`'s own `footer` prop treats ANY defined node (even one that
+  // itself renders null) as "has a footer" and reserves the clearance for
+  // it — so this stays `undefined` rather than an always-defined element,
+  // exactly mirroring the FORMER inline `input !== undefined` gate below.
+  const footer =
+    stats !== undefined || input !== undefined ? (
+      <StatementImportFooter
+        hasStats={stats !== undefined}
+        hasInput={input !== undefined}
+        canImport={selectedHoldingId !== undefined && !importing}
+        onImport={handleImport}
+        onMapColumnsManually={handleMapColumnsManually}
+      />
+    ) : undefined;
+
   return (
-    <Screen scroll>
+    <Screen scroll footer={footer}>
       <Box gap={4} testID="statement-import-content">
         {loadState.kind === 'loading' && (
           <Text variant="body" tone="textSecondary">
@@ -294,91 +451,18 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         )}
 
         {stats && (
-          <Box gap={3} style={styles.previewBlock}>
-            <Text variant="heading">{stats.displayName}</Text>
-            {/* `Text` (the design-system wrapper) does not forward `testID` —
-                each data row's testID lives on a wrapping `Box` instead. */}
-            <Box testID="statement-import-transaction-count">
-              <Text variant="body">{stats.transactionCount}</Text>
-            </Box>
-            <Box testID="statement-import-currency">
-              <Text variant="body">{stats.currency}</Text>
-            </Box>
-            <Box testID="statement-import-date-span">
-              <Text variant="body">{stats.dateSpan}</Text>
-            </Box>
-
-            {stats.maskedCardHints.length > 0 && (
-              <PreviewDetailList
-                items={stats.maskedCardHints}
-                testID="statement-import-masked-cards"
-              />
-            )}
-
-            {stats.unresolvedRowCount > 0 && (
-              <Text variant="body" tone="textSecondary">
-                {t('statementImport.unresolvedRowsSkipped', { count: stats.unresolvedRowCount })}
-              </Text>
-            )}
-
-            {stats.detectedCurrencies.length > 1 && (
-              <PreviewDetailList
-                items={stats.detectedCurrencies}
-                label={t('statementImport.detectedCurrenciesLabel')}
-                testID="statement-import-detected-currencies"
-              />
-            )}
-
-            <Button
-              variant="secondaryTonal"
-              fullWidth={false}
-              onPress={() => setSheetVisible(true)}
-            >
-              {t('statementImport.chooseHolding')}
-            </Button>
-
-            <Button
-              variant="primary"
-              onPress={handleImport}
-              disabled={selectedHoldingId === undefined || importing}
-            >
-              {t('statementImport.importButton')}
-            </Button>
-
-            <ImportOutcome error={importError} result={importResult} />
-          </Box>
-        )}
-
-        {/* The generic column-mapping entry point (T7): offered under a
-            recognized preview (`stats` above), AND in the unrecognized/
-            bank-mismatch states — anywhere `input` resolved at all — but
-            never during the unreadable-read state (`input` stays
-            `undefined` there). */}
-        {input !== undefined && (
-          <Button variant="secondaryTonal" fullWidth={false} onPress={handleMapColumnsManually}>
-            {t('statementImport.mapColumnsManually')}
-          </Button>
+          <StatementPreviewBlock
+            stats={stats}
+            holdingOptions={holdingOptions}
+            accountId={accountId}
+            selectedHoldingId={selectedHoldingId}
+            onSelectHolding={setSelectedHoldingId}
+            onCreateNewHolding={handleCreateNewHolding}
+            importError={importError}
+            importResult={importResult}
+          />
         )}
       </Box>
-
-      <TargetHoldingSheet
-        visible={sheetVisible}
-        onDismiss={() => setSheetVisible(false)}
-        holdings={holdingOptions}
-        accountId={accountId}
-        onSelect={setSelectedHoldingId}
-        // Entry point 2 (the Share Extension, no known `accountId`) has no
-        // defined "create a holding for which account" behavior yet — see
-        // `.superpowers/sdd/statement-import/task-2-report.md` concern 1/2 —
-        // so "Create new holding" only navigates in the scoped (entry point
-        // 1) case; it stays a harmless no-op otherwise rather than crashing
-        // on a missing required `accountId`.
-        onCreateNew={() => {
-          if (accountId) {
-            navigation.navigate('HoldingForm', { accountId });
-          }
-        }}
-      />
     </Screen>
   );
 };

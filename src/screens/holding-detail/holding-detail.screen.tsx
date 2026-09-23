@@ -38,6 +38,7 @@ import EditHeaderButton from '../../design-system/components/edit-header-button'
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
+import SummaryTable from '../../design-system/components/summary-table';
 import SymbolIcon from '../../design-system/components/symbol';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -619,15 +620,19 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             }
           />
           {showBreakdown && (
-            <Box gap={1} style={styles.breakdown}>
-              {breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => (
-                <Box key={detail.label} direction="row" style={styles.breakdownDetailRow}>
-                  <Text variant="caption" tone="textSecondary">
-                    {detail.label}
-                  </Text>
-                  <MoneyText money={detail.money} tone={detail.tone} />
-                </Box>
-              ))}
+            <Box style={styles.breakdown}>
+              {/* The one shared "label left, value right" row layout
+                  (`SummaryTable`, device-feedback-round-F1 item 3) — this is
+                  the table the statement-import preview and column-mapping
+                  result section now reuse the LAYOUT of, never these
+                  value/percent/tax COLUMNS themselves. */}
+              <SummaryTable
+                rows={breakdownRows(breakdown, holding.type, expectedProfit, t).map((detail) => ({
+                  key: detail.label,
+                  label: detail.label,
+                  value: <MoneyText money={detail.money} tone={detail.tone} />,
+                }))}
+              />
             </Box>
           )}
         </Box>
@@ -816,15 +821,10 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   // Extra space above the value breakdown so the headline number sits clearly
-  // apart from the principal/gross/interest/tax rows beneath it.
+  // apart from the principal/gross/interest/tax rows beneath it — the row
+  // layout itself now lives in the shared `SummaryTable`.
   breakdown: {
     marginTop: theme.spacing(3),
-  },
-  // One breakdown detail line (principal/gross/interest/tax/expected-profit):
-  // label on the left, amount on the right, split by space-between. The row
-  // direction comes from the `Box direction="row"` prop.
-  breakdownDetailRow: {
-    justifyContent: 'space-between',
   },
   // A hairline rule separating the Value block from the Transactions list — the
   // same standard hairline treatment the account-detail sections use

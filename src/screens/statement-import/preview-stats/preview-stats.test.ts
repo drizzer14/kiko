@@ -31,6 +31,21 @@ describe('previewStats', () => {
     expect(stats.maskedCardHints).toEqual([]);
     expect(stats.unresolvedRowCount).toBe(0);
     expect(stats.detectedCurrencies).toEqual(['UAH']);
+    // The FIRST parsed row (on-file order — 'Coffee', not the earlier-dated
+    // one), powering the shared ExampleTransaction component.
+    expect(stats.firstTransaction?.description).toBe('Coffee');
+  });
+
+  it('reports undefined firstTransaction for an empty parse', () => {
+    const parsed: ParsedStatement = {
+      formatId: 'monobank-csv',
+      account: { currency: 'UAH' },
+      transactions: [],
+    };
+
+    const stats = previewStats(parsed, 'Monobank (CSV)');
+
+    expect(stats.firstTransaction).toBeUndefined();
   });
 
   it('reduces the min/max timeSeconds to a date span regardless of on-file row order', () => {

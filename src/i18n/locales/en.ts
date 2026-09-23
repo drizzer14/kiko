@@ -629,6 +629,17 @@ export const en = {
     // under a recognized preview AND in the unrecognized/bank-mismatch
     // states, so a file no shipped parser recognizes can still be imported.
     mapColumnsManually: 'Map columns manually',
+    // The heading above the shared `ExampleTransaction` row (device-feedback-
+    // round-F1, items 9/14) — the first parsed row, shown under the summary
+    // table on both this screen and the column-mapping result section so the
+    // user sees what will actually be written before tapping Import.
+    exampleTransaction: 'Example transaction',
+    // The shared `SummaryTable`'s row labels (device-feedback-round-F1, item
+    // 3) — the statement's own summary rows, reusing the deposit table's
+    // LAYOUT only, never its value/percent/tax columns.
+    transactionCountLabel: 'Transactions',
+    currencyLabel: 'Currency',
+    dateSpanLabel: 'Date range',
   },
   // The generic column-mapping import screen (T6,
   // src/screens/column-mapping/column-mapping.screen.tsx): lets a user map
@@ -652,7 +663,11 @@ export const en = {
     descriptionColumn: 'Description',
     currencyColumn: 'Currency column',
     fixedCurrency: 'Currency for all rows',
-    counterpartyColumn: 'Counterparty (optional)',
+    // No longer suffixed "(optional)" (device-feedback-round-F1, item 11) —
+    // the field's own FieldTrigger/FieldLabel carries no `required` marker,
+    // which now reads as the one "this field is optional" signal, matching
+    // every other optional field in the app.
+    counterpartyColumn: 'Counterparty',
     notUsed: 'Not used',
     // The generic placeholder a column/date-format picker field shows before
     // the user has made a choice — not part of the task brief's own literal

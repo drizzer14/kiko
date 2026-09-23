@@ -1,5 +1,5 @@
 import { formatDate } from '../../../dates/format';
-import type { ParsedStatement } from '../../../statement-import/parser';
+import type { ParsedStatement, ParsedTransaction } from '../../../statement-import/parser';
 
 export type PreviewStats = {
   displayName: string;
@@ -21,6 +21,14 @@ export type PreviewStats = {
   // currency doesn't match the target holding's, so the user needs this
   // BEFORE picking a holding to pick one that actually matches.
   detectedCurrencies: string[];
+  // The FIRST parsed row (on-file order, not chronological) — powers the
+  // shared `ExampleTransaction` component (device-feedback-round-F1, items
+  // 9/14), so the user sees a real example of what this statement/mapping
+  // will actually write BEFORE tapping Import. Optional (rather than a
+  // required `| undefined` field) so an existing test object literal built
+  // before this field existed still type-checks; absent for an empty parse
+  // (0 transactions), which renders nothing.
+  firstTransaction?: ParsedTransaction;
 };
 
 /**
@@ -62,5 +70,6 @@ export const previewStats = (parsed: ParsedStatement, displayName: string): Prev
     maskedCardHints,
     unresolvedRowCount: parsed.unresolvedRows?.length ?? 0,
     detectedCurrencies,
+    firstTransaction: parsed.transactions.at(0),
   };
 };

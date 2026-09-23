@@ -298,7 +298,11 @@ describe('StatementImportScreen', () => {
     const dateSpan = getByTestId('statement-import-date-span');
     expect(dateSpan).toHaveTextContent(/2022/);
     expect(dateSpan).toHaveTextContent(/2023/);
-    expect(getByText(i18n.t('statementImport.chooseHolding'))).toBeTruthy();
+    // "Choose a holding" is now a SELECT FIELD (device-feedback-round-F1,
+    // item 2) — its caption AND its unselected placeholder value both show
+    // this text, so two matches are expected; the field itself is asserted
+    // by testID.
+    expect(getByTestId('target-holding-field')).toBeTruthy();
   });
 
   it('still recognizes the real file when expectedFormatId matches its actual format', async () => {
