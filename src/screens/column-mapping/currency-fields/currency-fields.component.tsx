@@ -2,14 +2,16 @@ import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import OptionPills from '../../../design-system/components/option-pills';
-import CurrencyField from '../../../design-system/components/currency-field';
+import ChipRow from '../../forms/chip-row';
 import ColumnSelectField from '../column-select-field';
+import CurrencyField from '../../../design-system/components/currency-field';
 
 import type { CurrencyFieldsProps, CurrencyMode } from './currency-fields.props';
 
-const currencyModeLabel = (t: TFunction, mode: CurrencyMode): string =>
-  t(mode === 'column' ? 'columnMapping.currencyColumn' : 'columnMapping.fixedCurrency');
+const currencyModeLabels = (t: TFunction): Record<CurrencyMode, string> => ({
+  column: t('columnMapping.currencyColumn'),
+  fixed: t('columnMapping.fixedCurrency'),
+});
 
 /**
  * The column-mapping screen's own currency fields: the column-vs-fixed mode
@@ -32,11 +34,11 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
 
   return (
     <>
-      <OptionPills<CurrencyMode>
+      <ChipRow<CurrencyMode>
         options={['column', 'fixed']}
         selected={mode}
         onSelect={onModeChange}
-        label={(option) => currencyModeLabel(t, option)}
+        labels={currencyModeLabels(t)}
       />
 
       {mode === 'column' && (

@@ -2,13 +2,15 @@ import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import OptionPills from '../../../design-system/components/option-pills';
+import ChipRow from '../../forms/chip-row';
 import ColumnSelectField from '../column-select-field';
 
 import type { AmountFieldsProps, AmountMode } from './amount-fields.props';
 
-const amountModeLabel = (t: TFunction, mode: AmountMode): string =>
-  t(mode === 'single' ? 'columnMapping.amountModeSingle' : 'columnMapping.amountModeDebitCredit');
+const amountModeLabels = (t: TFunction): Record<AmountMode, string> => ({
+  single: t('columnMapping.amountModeSingle'),
+  debitCredit: t('columnMapping.amountModeDebitCredit'),
+});
 
 /**
  * The column-mapping screen's own amount fields: the single-vs-debit/credit
@@ -31,11 +33,11 @@ const AmountFields: FC<AmountFieldsProps> = ({
 
   return (
     <>
-      <OptionPills<AmountMode>
+      <ChipRow<AmountMode>
         options={['single', 'debitCredit']}
         selected={mode}
         onSelect={onModeChange}
-        label={(option) => amountModeLabel(t, option)}
+        labels={amountModeLabels(t)}
       />
 
       {mode === 'single' && (
