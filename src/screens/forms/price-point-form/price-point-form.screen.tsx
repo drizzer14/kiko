@@ -1,0 +1,146 @@
+import { holdingsRepo } from '@kiko/holdings/repo';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+
+import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
+import { shiftDecimal } from '../../../currency/decimal';
+import { Money } from '../../../currency/money';
+import { parseAmount } from '../../../currency/parse';
+import { useLiveQuery } from '../../../db/use-live-query';
+import Box from '../../../design-system/components/box';
+import Button from '../../../design-system/components/button';
+import Screen from '../../../design-system/components/screen';
+import TextField from '../../../design-system/components/text-field';
+import { holdingInstrument } from '../../../prices/instrument';
+import { dayKeyOf } from '../../../prices/price-book';
+import { pricePointsRepo } from '../../../prices/price-points-repo';
+import type { AccountsStackParamList } from '../../../navigation/types';
+
+import DateField from '../date-field';
+import { groupAmount } from '../amount-format/amount-format';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
+
+type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
+
+// Local midnight of today, matching DateField's own reported timestamp for a
+// picked day — the sensible default ("value as of today"). Mirrors
+// contribution-form's identical helper.
+const startOfToday = (): number => {
+  const now = new Date();
+
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+};
+
+// Records a new `manual` price point for a priced holding (property_item,
+// T16 — `isPricedHoldingType`), reached from holding-detail's "Update value"
+// footer action. Mirrors contribution-form's shape: a grouped-amount TextField
+// plus the shared calendar DateField, writing through the same
+// `pricePointsRepo.upsertMany` the PriceBook itself reads.
+const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation }) => {
+  const { holdingId } = route.params;
+  // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
+  // (needed to convert the entered major value to a decimal-string price)
+  // comes from filtering the full holdings list — the same approach the
+  // sibling forms use.
+  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const holding = holdings.find((candidate) => candidate.id === holdingId);
+  const currency: Currency = holding?.currency ?? 'UAH';
+
+  const { t } = useTranslation();
+  const [value, setValue] = useState('');
+  const [date, setDate] = useState<number>(startOfToday);
+  const [attemptedSave, setAttemptedSave] = useState(false);
+
+  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+  const scrollOffset = useScrollOffset(scrollableRef);
+  const valueFieldRef = useRef<FieldInstance>(null);
+  const valueInputRef = useRef<TextInputInstance>(null);
+  const headerInset = useHeaderInset();
+  const contentHeightRef = useRef(0);
+
+  const save = async (): Promise<void> => {
+    if (!holding) {
+      return;
+    }
+    const majorValue = parseAmount(value);
+    if (!(majorValue > 0)) {
+      setAttemptedSave(true);
+      scrollToField(
+        scrollableRef,
+        valueFieldRef,
+        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
+        () => valueInputRef.current?.focus(),
+      );
+
+      return;
+    }
+    const minorUnits = Money.fromMajor(currency, majorValue).minorUnits;
+    const price = shiftDecimal(String(minorUnits), -currencyScale[currency]);
+    try {
+      await pricePointsRepo.upsertMany([
+        {
+          instrument: holdingInstrument(holding.id),
+          day: dayKeyOf(date),
+          price,
+          currency,
+          source: 'manual',
+        },
+      ]);
+    } catch {
+      // Mirrors contribution-form's Alert pattern: a write failure keeps the
+      // screen open with the entered values intact.
+      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      return;
+    }
+    navigation.goBack();
+  };
+
+  const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
+  return (
+    <Screen
+      scroll
+      scrollableRef={scrollableRef}
+      onContentSizeChange={(_width, height) => {
+        contentHeightRef.current = height;
+      }}
+      footer={
+        <Button onPress={onSave} disabled={isSubmitting}>
+          {t('forms.pricePoint.save')}
+        </Button>
+      }
+    >
+      <Box gap={4}>
+        <View ref={valueFieldRef}>
+          <TextField
+            label={t('forms.pricePoint.value')}
+            value={value}
+            onChangeText={(text) => setValue(groupAmount(text))}
+            keyboardType="decimal-pad"
+            placeholder={t('forms.pricePoint.valuePlaceholder')}
+            suffix={currencySymbol[currency]}
+            required
+            error={
+              attemptedSave && !(parseAmount(value) > 0)
+                ? t('forms.pricePoint.valueError')
+                : undefined
+            }
+            inputRef={valueInputRef}
+          />
+        </View>
+
+        <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
+      </Box>
+    </Screen>
+  );
+};
+
+export default PricePointFormScreen;

@@ -8,11 +8,19 @@ const toDate = (input: number | Date): Date => {
   return input instanceof Date ? input : new Date(input);
 };
 
-// "DD.MM.YYYY" in the device's local timezone, every field zero-padded.
-export const formatDate = (input: number | Date): string => {
+// "DD.MM.YYYY" in the device's local timezone, every field zero-padded. Pass
+// `{ timeZone: 'UTC' }` when the caller's own instant is a UTC-midnight value
+// standing for a LOCAL calendar date (e.g. `price_points.day` — see
+// `formatDayMonth`'s matching option, and `dayKeyOf` in
+// `src/prices/price-book/`): reading such a value with the LOCAL getters can
+// land on the previous calendar day in a negative-UTC-offset timezone.
+export const formatDate = (input: number | Date, options?: { timeZone?: 'UTC' }): string => {
   const date = toDate(input);
+  const day = options?.timeZone === 'UTC' ? date.getUTCDate() : date.getDate();
+  const month = options?.timeZone === 'UTC' ? date.getUTCMonth() : date.getMonth();
+  const year = options?.timeZone === 'UTC' ? date.getUTCFullYear() : date.getFullYear();
 
-  return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}`;
+  return `${pad2(day)}.${pad2(month + 1)}.${year}`;
 };
 
 // "DD.MM", zero-padded day-then-month with no year — a compact numeric label

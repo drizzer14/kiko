@@ -20,7 +20,7 @@ jest.mock('../../db/client', () => {
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetTx } from '@kiko/db/capture-set-tx';
 
-import { accounts, holdings } from '../../db/schema';
+import { accounts, holdings, pricePoints } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';
 
 import { holdingsRepo } from './holdings.repo';
@@ -33,7 +33,11 @@ const tableNameOf = (table: unknown): string => {
     return 'holdings';
   }
 
-  return table === accounts ? 'accounts' : 'transactions';
+  if (table === accounts) {
+    return 'accounts';
+  }
+
+  return table === pricePoints ? 'price_points' : 'transactions';
 };
 
 // A fake write-transaction handle for the create paths. `create` (and the
@@ -74,6 +78,7 @@ type Store = {
   accounts: Record<string, unknown>[];
   holdings: Record<string, unknown>[];
   transactions: Record<string, unknown>[];
+  pricePoints: Record<string, unknown>[];
 };
 
 const makeTx = (store: Store) => {
@@ -82,7 +87,11 @@ const makeTx = (store: Store) => {
       return 'accounts';
     }
 
-    return table === holdings ? 'holdings' : 'transactions';
+    if (table === holdings) {
+      return 'holdings';
+    }
+
+    return table === pricePoints ? 'pricePoints' : 'transactions';
   };
   return {
     select: () => ({
@@ -233,6 +242,45 @@ describe('holdingsRepo', () => {
     expect(inserts[0]).toMatchObject({ sortOrder: 0 });
   });
 
+  // A priced holding (property_item, T16) writes its first `manual` price
+  // point on `holding:<id>` in the SAME transaction as the insert, so it
+  // never reads as "no price yet" the moment it is created.
+  it('create writes the first price point in the same transaction, keyed on the new holding id', async () => {
+    const { tx, inserts, insertTables } = makeCreateTx();
+    mockTx = tx;
+
+    const holdingId = await holdingsRepo.create({
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500000 }],
+      },
+      firstPricePoint: { day: 1000, price: '5000.00' },
+    });
+
+    expect(insertTables).toEqual(['holdings', 'price_points']);
+    expect(inserts[1]).toEqual({
+      instrument: `holding:${holdingId}`,
+      day: 1000,
+      price: '5000.00',
+      currency: 'UAH',
+      source: 'manual',
+    });
+  });
+
+  it('create writes no price point when firstPricePoint is omitted', async () => {
+    const { tx, insertTables } = makeCreateTx();
+    mockTx = tx;
+
+    await holdingsRepo.create({ accountId: 'acc-1', name: 'Card', type: 'card', currency: 'EUR' });
+
+    expect(insertTables).toEqual(['holdings']);
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
     const { captured, tx } = captureSetTx();
     mockTx = tx;
@@ -322,6 +370,7 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { ...depositMeta } }],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -350,6 +399,7 @@ describe('appendDepositContribution', () => {
         },
       ],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -364,6 +414,7 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'card', metadata: null }],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -378,6 +429,7 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { ...depositMeta } }],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -392,6 +444,7 @@ describe('appendDepositContribution', () => {
       accounts: [],
       holdings: [{ id: 'h1', type: 'term_deposit', metadata: { nonsense: true } }],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -602,6 +655,7 @@ describe('holdings remove', () => {
         { id: 't1', holdingId: 'h1' },
         { id: 't2', holdingId: 'h1' },
       ],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -611,6 +665,24 @@ describe('holdings remove', () => {
     expect(store.transactions).toEqual([]);
   });
 
+  // A property_item (T16) has no transactions, but it does have a price
+  // series keyed on `holding:<id>` — remove must clear that series too, in
+  // the SAME transaction, or a deleted holding leaves an orphaned series
+  // behind.
+  it("deletes the holding's price-point series in the same transaction", async () => {
+    const store: Store = {
+      accounts: [{ id: 'acc-1', institution: null }],
+      holdings: [{ id: 'h1', accountId: 'acc-1', type: 'property_item', metadata: null }],
+      transactions: [],
+      pricePoints: [{ instrument: 'holding:h1', day: 1000, price: '5000.00' }],
+    };
+    mockTx = makeTx(store);
+
+    await holdingsRepo.remove('h1');
+
+    expect(store.pricePoints).toEqual([]);
+  });
+
   it('refuses a synced holding under a connected account and leaves the row', async () => {
     const store: Store = {
       accounts: [{ id: 'acc-1', institution: 'monobank' }],
@@ -618,6 +690,7 @@ describe('holdings remove', () => {
         { id: 'h1', accountId: 'acc-1', type: 'card', metadata: { monobankId: 'mono-1' } },
       ],
       transactions: [{ id: 't1', holdingId: 'h1' }],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -636,6 +709,7 @@ describe('holdings remove', () => {
         { id: 'h1', accountId: 'acc-1', type: 'card', metadata: { monobankId: 'mono-1' } },
       ],
       transactions: [{ id: 't1', holdingId: 'h1' }],
+      pricePoints: [],
     };
     mockTx = makeTx(store);
 
@@ -695,6 +769,7 @@ describe('disconnect then reconnect', () => {
       accounts: [{ id: 'acc-1', institution: 'monobank' }],
       holdings: [],
       transactions: [],
+      pricePoints: [],
     };
     mockTx = makeSharedTx(
       store,

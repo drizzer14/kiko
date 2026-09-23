@@ -873,6 +873,132 @@ describe('HoldingFormScreen save validation', () => {
   });
 });
 
+describe('HoldingFormScreen property', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    setIconMock.mockClear();
+    navigation.goBack.mockClear();
+    updateDeltaMock.mockClear();
+    mockAccountKind = 'property';
+    mockAccountInstitution = null;
+  });
+
+  it('creates a property holding with a zero balance, one lot, and a first manual price point equal to the cost', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apartment');
+    await fill(screen, 'Cost', '5000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'property_item',
+        balanceMinorUnits: 0,
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: expect.any(Number), quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+        firstPricePoint: { day: expect.any(Number), price: '5000.00' },
+      }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('writes no balance TextField for a property holding (it is ledgerless)', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.queryByLabelText('Balance')).toBeNull();
+  });
+
+  it('creates the holding under the tapped category', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My car');
+    await fireEvent.press(screen.getByText('Vehicle'));
+    await fill(screen, 'Cost', '5000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ category: 'vehicle' }) }),
+    );
+  });
+
+  it('blocks save and shows an error for a cost of 0', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apartment');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a cost greater than 0.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('edits a property holding without a Cost field, preserving its stored lots', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    expect(screen.queryByLabelText('Cost')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      }),
+      expect.any(Number),
+    );
+    expect(updateDeltaMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
+  });
+
+  it('edits a property holding onto a different category, preserving its stored lots', async () => {
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apartment',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+      },
+    });
+
+    await fireEvent.press(screen.getByText('Vehicle'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(updateDeltaMock).toHaveBeenCalledWith(
+      'h1',
+      expect.objectContaining({
+        metadata: {
+          category: 'vehicle',
+          lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      }),
+      expect.any(Number),
+    );
+  });
+});
+
 describe('HoldingFormScreen icon', () => {
   beforeEach(() => {
     createMock.mockClear();

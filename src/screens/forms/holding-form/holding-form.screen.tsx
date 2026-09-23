@@ -13,18 +13,24 @@ import {
   creatableHoldingTypesForAccount,
   type HoldingType,
   holdingTypes,
+  isLedgerlessHoldingType,
   holdingTypesForAccountKind,
 } from '../../../holdings/holding-type';
 import {
   asBondMeta,
+  asPropertyMeta,
   asTermDepositMeta,
   type BondKind,
   type BondMeta,
+  type PropertyCategory,
   type CompoundingFrequency,
   type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
+import type { Lot } from '../../../holdings/lots';
 import { Money } from '../../../currency/money';
 import type { HoldingRow } from '../../../db/schema';
+import { dayKeyOf } from '../../../prices/price-book';
+import { shiftDecimal } from '../../../currency/decimal';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
@@ -40,14 +46,15 @@ import { defaultHoldingColor } from '../../../holdings/entity-colors';
 import FieldError from '../../../design-system/components/field-error';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
-import { type Currency, currencySymbol } from '../../../currency/currency';
 import CurrencyField from '../../../design-system/components/currency-field';
+import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 import ChipRow from '../chip-row';
 import DateField from '../date-field';
 import ColorPicker from '../color-picker';
 import HoldingIdentityField from '../holding-identity-field';
+import PropertySection from './property-section';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import {
@@ -73,6 +80,10 @@ type BondReasonKey =
   | 'forms.holding.faceValueError'
   | 'forms.holding.couponPctError'
   | 'forms.holding.maturityDateError';
+
+// The literal i18n key `propertyReasonKey` may return, so `t()` (typed from
+// src/i18n/locales/en.ts) accepts it.
+type PropertyReasonKey = 'forms.holding.propertyCostError';
 
 // `saved` marks a contribution that is already persisted in the holding's
 // stored metadata (an edit-mode hydrated row) versus one the user just added in
@@ -109,6 +120,31 @@ const seedBondFields = (meta: BondMeta, currency: Currency) => ({
   couponFrequency: meta.couponFrequency,
 });
 
+// Seeds property_item's two edit-mode fields (category + the ORIGINAL lots,
+// carried through unchanged on save — cost/quantity history is fixed at
+// creation, PropertySection hides its Cost field in edit mode) from stored
+// metadata. A no-op for invalid/absent metadata. Extracted out of the seed
+// effect below (rather than an inline `if (meta) {...}`, the shape
+// `seedContributions`/`seedBondFields` themselves don't need since THEY are
+// pure builders, not setters) so that effect's own branching stays under the
+// cognitive-complexity budget.
+const seedPropertyFields = (
+  holding: HoldingRow,
+  setters: {
+    setPropertyCategory: (category: PropertyCategory) => void;
+    setPropertyLots: (lots: Lot[]) => void;
+  },
+): void => {
+  const meta = asPropertyMeta(holding.metadata);
+
+  if (meta === null) {
+    return;
+  }
+
+  setters.setPropertyCategory(meta.category);
+  setters.setPropertyLots(meta.lots);
+};
+
 // The partial row an edit-mode save writes: always the editable identity fields
 // (name, color), plus the one value field that belongs to the type — a
 // deposit/bond's value derives from its metadata (its balance is not stored), so
@@ -126,7 +162,13 @@ const buildHoldingPatch = (params: {
 }): Partial<HoldingRow> => {
   const { name, color, type, currency, openingBalance, metadata, isSynced } = params;
 
-  if (type === 'term_deposit' || type === 'bond') {
+  // A ledgerless type (term_deposit, bond, property_item — see kiko-domain)
+  // never writes a balance here: its value derives from its own metadata, not
+  // a raw stored balance. A property's `metadata` on this edit path is always
+  // `{ category, lots }` with the ORIGINAL (hydrated) lots preserved verbatim
+  // — see `buildMetadata`'s own `property_item` branch — so an edit never
+  // rewrites cost/quantity history; only category is user-editable here.
+  if (isLedgerlessHoldingType(type)) {
     return { name, color, metadata };
   }
 
@@ -138,6 +180,39 @@ const buildHoldingPatch = (params: {
     name,
     color,
     balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
+  };
+};
+
+// The property CREATE payload (T16): a `property_item` writes a zero stored
+// balance (its value lives entirely in `metadata.lots` / `price_points` —
+// kiko-domain), one lot dated today for a quantity of "1" at the entered
+// cost, and a first `manual` price point equal to that same cost, so the
+// holding never reads as "no price yet" before the user records a real
+// revaluation. The lot's day and the price point's day share the SAME
+// `dayKeyOf` normalization `PriceBook` itself reads price points by, and the
+// point's `price` is derived from the SAME minor-units cost the lot carries
+// (never re-parsed from the raw text field), so the two can never disagree.
+const buildPropertyCreatePayload = (params: {
+  category: PropertyCategory;
+  currency: Currency;
+  cost: string;
+}): {
+  balanceMinorUnits: number;
+  metadata: Record<string, unknown>;
+  firstPricePoint: { day: number; price: string };
+} => {
+  const { category, currency, cost } = params;
+  const costMinorUnits = Money.fromMajor(currency, parseAmount(cost) || 0).minorUnits;
+  const day = dayKeyOf(Date.now());
+  const lot: Lot = { day, quantityDelta: '1', costMinorUnits };
+
+  return {
+    balanceMinorUnits: 0,
+    metadata: { category, lots: [lot] },
+    firstPricePoint: {
+      day,
+      price: shiftDecimal(String(costMinorUnits), -currencyScale[currency]),
+    },
   };
 };
 
@@ -183,8 +258,8 @@ const saveReasonsFor = (params: {
 const fieldErrorMessage = (
   t: TFunction,
   attemptedSave: boolean,
-  reasonKey: TermDepositReasonKey | BondReasonKey | null,
-  expectedKey: TermDepositReasonKey | BondReasonKey,
+  reasonKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey | null,
+  expectedKey: TermDepositReasonKey | BondReasonKey | PropertyReasonKey,
 ): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
 
 // The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
@@ -200,6 +275,7 @@ type ValidatedFieldRefs = {
   faceValueFieldRef: RefObject<FieldInstance | null>;
   couponPctFieldRef: RefObject<FieldInstance | null>;
   maturityDateFieldRef: RefObject<FieldInstance | null>;
+  propertyCostFieldRef: RefObject<FieldInstance | null>;
 };
 
 // A blocked Save's FOCUS action for each TEXT-backed validated field — called
@@ -215,6 +291,7 @@ type ValidatedFieldFocus = {
   quantity: () => void;
   faceValue: () => void;
   couponPct: () => void;
+  propertyCost: () => void;
 };
 
 // The first still-invalid field's own wrapper ref (plus its FOCUS action,
@@ -231,10 +308,12 @@ const firstInvalidFieldRef = (params: {
   type: HoldingType;
   termDepositReasonKey: TermDepositReasonKey | null;
   bondReasonKey: BondReasonKey | null;
+  propertyReasonKey: PropertyReasonKey | null;
   refs: ValidatedFieldRefs;
   focus: ValidatedFieldFocus;
 }): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
-  const { name, type, termDepositReasonKey, bondReasonKey, refs, focus } = params;
+  const { name, type, termDepositReasonKey, bondReasonKey, propertyReasonKey, refs, focus } =
+    params;
 
   const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
     { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
@@ -278,6 +357,15 @@ const firstInvalidFieldRef = (params: {
           {
             invalid: bondReasonKey === 'forms.holding.maturityDateError',
             ref: refs.maturityDateFieldRef,
+          },
+        ]
+      : []),
+    ...(type === 'property_item'
+      ? [
+          {
+            invalid: propertyReasonKey === 'forms.holding.propertyCostError',
+            ref: refs.propertyCostFieldRef,
+            focus: focus.propertyCost,
           },
         ]
       : []),
@@ -450,6 +538,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const faceValueFieldRef = useRef<FieldInstance>(null);
   const couponPctFieldRef = useRef<FieldInstance>(null);
   const maturityDateFieldRef = useRef<FieldInstance>(null);
+  const propertyCostFieldRef = useRef<FieldInstance>(null);
   // The TEXT-backed validated fields' own inner TextInput/name-input, so a
   // blocked Save can focus the first-invalid one imperatively once it has
   // scrolled into view — mirrors `TextField`'s own `inputRef` /
@@ -464,6 +553,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const quantityInputRef = useRef<TextInputInstance>(null);
   const faceValueInputRef = useRef<TextInputInstance>(null);
   const couponPctInputRef = useRef<TextInputInstance>(null);
+  const propertyCostInputRef = useRef<TextInputInstance>(null);
 
   // term deposit state
   const nextContributionId = useRef(1);
@@ -486,6 +576,16 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // Semiannual coupons are the common case for the government/corporate bonds
   // this tracks (the Monobank statement default), so the picker starts there.
   const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
+
+  // property_item state. `propertyCost` is CREATE-only (PropertySection hides
+  // its field in edit mode — cost/quantity history is fixed at creation; a
+  // later revaluation goes through the dedicated "Update value" form
+  // instead). `propertyLots` holds the ORIGINAL (hydrated) lots in edit mode,
+  // carried through unchanged on save so an edit never rewrites cost/quantity
+  // history — only `propertyCategory` is user-editable there.
+  const [propertyCategory, setPropertyCategory] = useState<PropertyCategory>('real_estate');
+  const [propertyCost, setPropertyCost] = useState('');
+  const [propertyLots, setPropertyLots] = useState<Lot[]>([]);
 
   // Seed the form once from the loaded holding (edit mode only). `useLiveQuery`
   // resolves asynchronously, so the initial render precedes the data; a one-shot
@@ -532,6 +632,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         setBondKind(fields.bondKind);
         setCouponFrequency(fields.couponFrequency);
       }
+      return;
+    }
+
+    if (holding.type === 'property_item') {
+      seedPropertyFields(holding, { setPropertyCategory, setPropertyLots });
       return;
     }
 
@@ -651,6 +756,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     if (type === 'bond') {
       return buildBondMetadata();
     }
+    // A property's CREATE metadata is built separately (see `save`'s create
+    // branch, `buildPropertyCreatePayload`) — this branch covers EDIT mode
+    // only: category is user-editable, but the ORIGINAL (hydrated) lots are
+    // carried through unchanged, since cost/quantity history is fixed at
+    // creation (a later revaluation goes through the "Update value" form
+    // instead, never through this metadata patch).
+    if (type === 'property_item' && isEdit) {
+      return { category: propertyCategory, lots: propertyLots };
+    }
     return undefined;
   };
 
@@ -727,17 +841,24 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     return null;
   };
 
+  // The cost field only applies at CREATE time (PropertySection hides it in
+  // edit mode: cost/quantity history is fixed at creation, a later
+  // revaluation goes through the dedicated "Update value" form instead), so
+  // this only rejects on create — an edit always passes.
+  const propertyReasonKey = (): PropertyReasonKey | null =>
+    !isEdit && !(parseAmount(propertyCost) > 0) ? 'forms.holding.propertyCostError' : null;
+
+  // Derived from `propertyReasonKey` so the two can never disagree: valid
+  // exactly when there is no reason to reject.
+  const isPropertyValid = (): boolean => propertyReasonKey() === null;
+
   const isValid =
     name.trim().length > 0 &&
     match(type)
       .with('term_deposit', isTermDepositValid)
       .with('bond', isBondValid)
-      // `property_item` (T13) has no dedicated create-form section yet — that
-      // lands in T16 alongside its own validation. Until then it is not
-      // reachable from this form's Type picker (no account-kind picker offers
-      // `property` yet either), so it is grouped with the other
-      // no-extra-fields types purely to satisfy `match`'s exhaustiveness.
-      .with('card', 'cash', 'crypto_asset', 'jar', 'property_item', () => true)
+      .with('property_item', isPropertyValid)
+      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);
@@ -753,6 +874,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         type,
         termDepositReasonKey: termDepositReasonKey(),
         bondReasonKey: bondReasonKey(),
+        propertyReasonKey: propertyReasonKey(),
         refs: {
           nameFieldRef,
           contributionsFieldRef,
@@ -762,6 +884,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           faceValueFieldRef,
           couponPctFieldRef,
           maturityDateFieldRef,
+          propertyCostFieldRef,
         },
         focus: {
           name: () => nameInputRef.current?.focus(),
@@ -770,6 +893,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           quantity: () => quantityInputRef.current?.focus(),
           faceValue: () => faceValueInputRef.current?.focus(),
           couponPct: () => couponPctInputRef.current?.focus(),
+          propertyCost: () => propertyCostInputRef.current?.focus(),
         },
       });
 
@@ -827,17 +951,28 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
+      // A property's create payload is built separately (`buildPropertyCreatePayload`):
+      // a zero stored balance, one lot, and a first manual price point equal
+      // to the entered cost, all written in the SAME transaction
+      // (`holdingsRepo.create`'s `firstPricePoint` param) — every other type
+      // writes its entered opening balance and the metadata `buildMetadata`
+      // built above.
       const newHoldingId = await holdingsRepo.create({
         accountId,
         name,
         type,
         currency,
-        balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-        metadata,
         // Persist the color only when the user picked one (dirty). Left null, the
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
+        ...(type === 'property_item'
+          ? buildPropertyCreatePayload({ category: propertyCategory, currency, cost: propertyCost })
+          : {
+              balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0)
+                .minorUnits,
+              metadata,
+            }),
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -943,7 +1078,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           testID="holding-currency-field"
         />
 
-        {type !== 'term_deposit' && type !== 'bond' && !isSyncedEdit && (
+        {!isLedgerlessHoldingType(type) && !isSyncedEdit && (
           <TextField
             label={t('forms.holding.balance')}
             value={openingBalance}
@@ -1216,6 +1351,31 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               selected={couponFrequency}
               onSelect={setCouponFrequency}
               labels={couponFrequencyLabels}
+            />
+          </Box>
+        )}
+
+        {type === 'property_item' && (
+          <Box gap={4}>
+            <Divider testID="form-divider" />
+
+            <Text variant="heading">{t('forms.holding.details')}</Text>
+
+            <PropertySection
+              category={propertyCategory}
+              onSelectCategory={setPropertyCategory}
+              showCost={!isEdit}
+              cost={propertyCost}
+              onChangeCost={(text) => setPropertyCost(groupAmount(text))}
+              currencySuffix={currencySymbol[currency]}
+              costError={fieldErrorMessage(
+                t,
+                attemptedSave,
+                propertyReasonKey(),
+                'forms.holding.propertyCostError',
+              )}
+              costFieldRef={propertyCostFieldRef}
+              costInputRef={propertyCostInputRef}
             />
           </Box>
         )}

@@ -213,6 +213,11 @@ const seed = (
   // The holding's owning account, so the footer's sync gate can read its
   // `institution`. Default to none, so a manual holding keeps its add action.
   account: unknown = undefined,
+  // The stored price_points rows `usePriceBook()` reads — a priced holding's
+  // (property_item) "Value as of" caption and its Value amount both derive
+  // from these. Default to none, so an existing test that doesn't care stays
+  // unaffected (a priced holding with no points falls back to cost basis).
+  pricePoints: unknown[] = [],
 ): void => {
   mockUseLiveQuery.mockImplementation((_query: unknown, keys: string[]) => {
     if (keys[0] === 'holdings') {
@@ -233,6 +238,10 @@ const seed = (
 
     if (keys[0] === 'accounts') {
       return { data: account === undefined ? [] : [account] };
+    }
+
+    if (keys[0] === 'price_points') {
+      return { data: pricePoints };
     }
 
     // SQLite returns NULL, never undefined, for a column a row does not set, so
@@ -635,6 +644,32 @@ describe('HoldingDetailScreen', () => {
     expect(queryByTestId('holding-detail-converted')).toBeNull();
   });
 
+  it('shows a "Value as of <date>" caption for a priced holding with a stored price point', async () => {
+    // property_item (T16) is a priced holding (isPricedHoldingType) — its
+    // Value header shows the LATEST stored price point's own day, so the user
+    // sees how current the figure is.
+    const day = Date.UTC(2026, 5, 1);
+    seed(propertyHolding, [], [], [], [], [{ baseCurrency: 'UAH' }], undefined, [
+      { instrument: 'holding:h-1', day, price: '2500000.00', currency: 'UAH', source: 'manual' },
+    ]);
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    const expectedCaption = `Value as of ${formatDate(day, { timeZone: 'UTC' })}`;
+    expect(getByText(expectedCaption)).toBeTruthy();
+    expect(
+      within(getByTestId('holding-value-header')).getByTestId('holding-detail-value-as-of'),
+    ).toBeTruthy();
+  });
+
+  it('shows no "Value as of" caption for a priced holding with no stored price point yet', async () => {
+    seed(propertyHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('holding-detail-value-as-of')).toBeNull();
+  });
+
   it('renders the resolved category icon on a transaction row, tinted with its category color', async () => {
     seed(
       cardHolding,
@@ -905,16 +940,29 @@ describe('HoldingDetailScreen', () => {
     expect(queryByText('Add contribution')).toBeNull();
   });
 
-  it('hides the footer add action for a property_item (ledgerless)', async () => {
+  it('offers "Update value" instead of a manual add action for a property_item', async () => {
+    // property_item is ledgerless (isLedgerlessHoldingType) AND priced
+    // (isPricedHoldingType, T16) — it takes neither the generic "Add
+    // transaction" nor a deposit "Add contribution"; instead its footer opens
+    // the dedicated price-point form to record a revaluation.
     seed(propertyHolding);
 
-    const { queryByTestId, queryByText } = await renderScreen();
+    const { getByTestId, queryByText } = await renderScreen();
 
-    // property_item is ledgerless (isLedgerlessHoldingType) — its value derives
-    // from metadata lots, so it offers no manual add action, the same as a bond.
-    expect(queryByTestId('screen-footer')).toBeNull();
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Update value')).toBeTruthy();
     expect(queryByText('Add transaction')).toBeNull();
     expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('navigates to PricePointForm on "Update value"', async () => {
+    seed(propertyHolding);
+
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Update value'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
   });
 
   it('hides the footer add action for a synced Monobank holding', async () => {

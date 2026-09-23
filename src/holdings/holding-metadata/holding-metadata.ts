@@ -214,10 +214,10 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
 // The closed set of `property_item` categories (T13). A `const` tuple, per
 // kiko-code-style: the derived union type sits directly after it, and
 // membership is tested on the tuple itself rather than a parallel `Set` —
-// this set is small, so a second runtime structure would be redundant. Not
-// exported: `PropertyCategory` (the derived type) is the public surface a
-// consumer needs; nothing outside this module reads the raw tuple.
-const propertyCategories = [
+// this set is small, so a second runtime structure would be redundant.
+// Exported (T16): the property-section form reads it directly to build its
+// category ChipRow's `options`.
+export const propertyCategories = [
   'real_estate',
   'vehicle',
   'valuable',

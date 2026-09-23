@@ -23,14 +23,17 @@ import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
-import { formatTime } from '../../dates/format';
+import { formatDate, formatTime } from '../../dates/format';
+import { holdingInstrument } from '../../prices/instrument';
 import { startOfLocalDay } from '../../dates/local-day';
+import { isPricedHoldingType } from '../../holdings/priced-value';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
 import Button from '../../design-system/components/button';
 import Card from '../../design-system/components/card';
 import CardContextMenu from '../../design-system/components/card-context-menu';
+import { latestPoint, type PriceBook } from '../../prices/price-book';
 import EditHeaderButton from '../../design-system/components/edit-header-button';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextTone } from '../../design-system/components/money-text/money-text.props';
@@ -156,17 +159,21 @@ const convertedBaseValue = (
 };
 
 // Which add action the screen's footer offers.
-type FooterAction = 'contribution' | 'transaction' | 'none';
+type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'none';
 
 // A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. A ledgerless type (bond, property_item —
-// see `isLedgerlessHoldingType`) carries no manual ledger — its value derives
-// from metadata (kiko-domain) — and a synced (Monobank) holding's ledger is
-// owned by the sync, so neither offers an add action. `isSyncedHolding`
-// requires BOTH a connected synced institution AND the sync key in metadata, so
-// a disconnected former-Monobank holding counts as manual again and keeps its
-// add action. Extracted to module scope so the branch chain does not count
-// against the screen component's cognitive-complexity budget.
+// holding takes a manual transaction. A PRICED type (property_item —
+// `isPricedHoldingType`) takes neither: it opens the dedicated price-point
+// form to record a revaluation instead — checked BEFORE the ledgerless guard
+// below, since a priced type is also ledgerless. Every OTHER ledgerless type
+// (bond — see `isLedgerlessHoldingType`) carries no manual ledger at all — its
+// value derives from metadata (kiko-domain) — and a synced (Monobank)
+// holding's ledger is owned by the sync, so neither offers an add action.
+// `isSyncedHolding` requires BOTH a connected synced institution AND the sync
+// key in metadata, so a disconnected former-Monobank holding counts as manual
+// again and keeps its add action. Extracted to module scope so the branch
+// chain does not count against the screen component's cognitive-complexity
+// budget.
 const footerActionFor = (
   holding: HoldingRow | undefined,
   account: AccountRow | undefined,
@@ -179,11 +186,74 @@ const footerActionFor = (
     return 'contribution';
   }
 
+  if (isPricedHoldingType(holding.type)) {
+    return 'updateValue';
+  }
+
   if (isLedgerlessHoldingType(holding.type) || isSyncedHolding(holding, account)) {
     return 'none';
   }
 
   return 'transaction';
+};
+
+// The "Value as of <date>" caption for a priced holding (property_item —
+// isPricedHoldingType): the LATEST stored price point's own day, so the user
+// sees how current its revaluation is. Undefined for a non-priced holding, or
+// a priced one with no stored point yet (its value still falls back to cost
+// basis — kiko-domain). `point.day` is a UTC-midnight epoch standing for a
+// LOCAL calendar day (`dayKeyOf`'s convention), so it is formatted with the
+// matching `{ timeZone: 'UTC' }` option — reading it with the LOCAL getters
+// could land on the previous calendar day in a negative-UTC-offset timezone.
+const priceAsOfCaption = (
+  holding: HoldingRow | undefined,
+  priceBook: PriceBook,
+  t: TFunction,
+): string | undefined => {
+  if (holding === undefined || !isPricedHoldingType(holding.type)) {
+    return undefined;
+  }
+
+  const point = latestPoint(priceBook, holdingInstrument(holding.id));
+
+  return point === undefined
+    ? undefined
+    : t('holdingDetail.valueAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
+};
+
+// The Value header's secondary caption slot (`EntityAmountHeader`'s
+// `secondary` prop): the converted-to-base line, the "Value as of <date>"
+// line, or both stacked — a module-scope component (mirroring `LedgerRowItem`
+// below) so the conditional JSX does not count against the screen component's
+// own cognitive-complexity budget. Renders nothing (null) when neither
+// applies, the same as the screen previously passing `secondary={undefined}`.
+const ValueHeaderSecondary: FC<{
+  convertedToBase: Money | null;
+  valueAsOf: string | undefined;
+}> = ({ convertedToBase, valueAsOf }) => {
+  if (!convertedToBase && !valueAsOf) {
+    return null;
+  }
+
+  return (
+    <Box gap={1}>
+      {convertedToBase && (
+        <Box testID="holding-detail-converted">
+          <Text variant="caption" tone="textSecondary">
+            {formatMoney(convertedToBase, activeLocale())}
+          </Text>
+        </Box>
+      )}
+
+      {valueAsOf && (
+        <Box testID="holding-detail-value-as-of">
+          <Text variant="caption" tone="textSecondary">
+            {valueAsOf}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
 };
 
 // One merged ledger row — either a real stored transaction or a computed
@@ -415,6 +485,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = buildRateTable(rates);
   const convertedToBase = convertedBaseValue(holding, breakdown, baseCurrency, rateTable);
+  // A priced holding's (property_item) "Value as of <date>" caption, from its
+  // latest stored price point — undefined for every other type, or a priced
+  // one with no point yet.
+  const valueAsOf = priceAsOfCaption(holding, priceBook, t);
 
   // The transaction ledger merges the holding's real (stored) transactions with
   // the computed entries a deposit/bond accrues (contributions, interest, tax,
@@ -528,13 +602,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // breakdown, detached from the value it converts (feedback round-2,
             // item 3).
             secondary={
-              convertedToBase ? (
-                <Box testID="holding-detail-converted">
-                  <Text variant="caption" tone="textSecondary">
-                    {formatMoney(convertedToBase, activeLocale())}
-                  </Text>
-                </Box>
-              ) : undefined
+              <ValueHeaderSecondary convertedToBase={convertedToBase} valueAsOf={valueAsOf} />
             }
           />
           {showBreakdown && (
@@ -611,8 +679,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // A large, full-width primary action, shown for the holdings that take
         // one. A term_deposit opens the dedicated Contribution form ("Add
         // contribution"); a plain holding opens the shared Transaction form
-        // ("Add transaction"). A bond and a synced holding take no manual add
-        // action, so they render no footer at all.
+        // ("Add transaction"); a priced holding (property_item) opens the
+        // dedicated price-point form ("Update value") to record a
+        // revaluation. A bond and a synced holding take no manual add action,
+        // so they render no footer at all.
         match(footerAction)
           .with('contribution', () => (
             <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
@@ -622,6 +692,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           .with('transaction', () => (
             <Button onPress={() => navigation.navigate('TransactionForm', { holdingId })}>
               {t('holdingDetail.addTransaction')}
+            </Button>
+          ))
+          .with('updateValue', () => (
+            <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
+              {t('holdingDetail.updateValue')}
             </Button>
           ))
           .with('none', () => undefined)

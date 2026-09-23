@@ -1,0 +1,69 @@
+import type { FC } from 'react';
+import { View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+
+import { propertyCategories, type PropertyCategory } from '../../../../holdings/holding-metadata';
+import Box from '../../../../design-system/components/box';
+import TextField from '../../../../design-system/components/text-field';
+
+import ChipRow from '../../chip-row';
+
+import type { PropertySectionProps } from './property-section.props';
+
+// The `property_item` create-form section (T16): a category ChipRow (editable
+// in both create and edit mode) and a Cost field (create-only — see
+// `PropertySectionProps.showCost`'s own doc comment). One lot + one manual
+// price point equal to this cost is what `holding-form.screen.tsx` builds
+// from it on save; this component only collects and reports the two fields.
+const PropertySection: FC<PropertySectionProps> = ({
+  category,
+  onSelectCategory,
+  showCost,
+  cost,
+  onChangeCost,
+  currencySuffix,
+  costError,
+  costFieldRef,
+  costInputRef,
+}) => {
+  const { t } = useTranslation();
+
+  const categoryLabels: Record<PropertyCategory, string> = {
+    real_estate: t('forms.holding.propertyCategory.realEstate'),
+    vehicle: t('forms.holding.propertyCategory.vehicle'),
+    valuable: t('forms.holding.propertyCategory.valuable'),
+    loan_given: t('forms.holding.propertyCategory.loanGiven'),
+    business_share: t('forms.holding.propertyCategory.businessShare'),
+    other: t('forms.holding.propertyCategory.other'),
+  };
+
+  return (
+    <Box gap={4}>
+      <ChipRow
+        label={t('forms.holding.category')}
+        options={propertyCategories}
+        selected={category}
+        onSelect={onSelectCategory}
+        labels={categoryLabels}
+      />
+
+      {showCost && (
+        <View ref={costFieldRef}>
+          <TextField
+            label={t('forms.holding.propertyCost')}
+            value={cost}
+            onChangeText={onChangeCost}
+            keyboardType="decimal-pad"
+            placeholder={t('forms.holding.propertyCostPlaceholder')}
+            suffix={currencySuffix}
+            required
+            error={costError}
+            inputRef={costInputRef}
+          />
+        </View>
+      )}
+    </Box>
+  );
+};
+
+export default PropertySection;

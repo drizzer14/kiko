@@ -1,7 +1,10 @@
+import type { TFunction } from 'i18next';
 import { Pressable } from 'react-native';
 import type { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { HoldingRow } from '../../../db/schema';
+import { formatDate } from '../../../dates/format';
 import { formatMoney } from '../../../currency/format';
 import Box from '../../../design-system/components/box';
 import Card from '../../../design-system/components/card';
@@ -10,7 +13,9 @@ import { activeLocale } from '../../../i18n/active-locale';
 import { canConvert } from '../../../rates/net-worth-view';
 import type { Currency } from '../../../currency/currency';
 import { holdingValue } from '../../../holdings/holding-value';
-import type { PriceBook } from '../../../prices/price-book';
+import { holdingInstrument } from '../../../prices/instrument';
+import { isPricedHoldingType } from '../../../holdings/priced-value';
+import { latestPoint, type PriceBook } from '../../../prices/price-book';
 import { convert, type RateTable } from '../../../rates/conversion';
 import MoneyText from '../../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -19,6 +24,29 @@ import { resolveEntityColor } from '../../../design-system/entity-tint';
 import EntityIconTile from '../../../design-system/components/entity-icon-tile';
 
 import { styles } from './holding-card.styles';
+
+// The "Value as of <date>" caption for a priced holding (property_item —
+// isPricedHoldingType): the LATEST stored price point's own day, mirroring
+// holding-detail's identical helper. Undefined for a non-priced holding, or a
+// priced one with no stored point yet (its value still falls back to cost
+// basis — kiko-domain). `point.day` is a UTC-midnight epoch standing for a
+// LOCAL calendar day, so it is formatted with the matching
+// `{ timeZone: 'UTC' }` option.
+const priceAsOfCaption = (
+  holding: HoldingRow,
+  priceBook: PriceBook,
+  t: TFunction,
+): string | undefined => {
+  if (!isPricedHoldingType(holding.type)) {
+    return undefined;
+  }
+
+  const point = latestPoint(priceBook, holdingInstrument(holding.id));
+
+  return point === undefined
+    ? undefined
+    : t('holdingDetail.valueAsOf', { date: formatDate(point.day, { timeZone: 'UTC' }) });
+};
 
 // One holding rendered as a wide row card, mirroring the accounts-list card: its
 // icon + name on the left, its computed value on the right. A plain tap opens the
@@ -47,6 +75,7 @@ const HoldingCard: FC<{
   priceBook: PriceBook;
   onOpen: () => void;
 }> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
+  const { t } = useTranslation();
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
   const value = holdingValue(holding, now, priceBook);
   // The smaller base-currency figure below the value, shown ONLY for a holding
@@ -57,6 +86,9 @@ const HoldingCard: FC<{
     holding.currency !== baseCurrency && canConvert(holding.currency, baseCurrency, rateTable)
       ? convert(value, baseCurrency, rateTable)
       : null;
+  // A priced holding's (property_item) "Value as of <date>" caption, from its
+  // latest stored price point.
+  const valueAsOf = priceAsOfCaption(holding, priceBook, t);
 
   return (
     <Card testID="holding-card" padding={4}>
@@ -77,6 +109,14 @@ const HoldingCard: FC<{
             <Box testID="holding-card-converted">
               <Text variant="caption" tone="textSecondary">
                 {formatMoney(convertedToBase, activeLocale())}
+              </Text>
+            </Box>
+          )}
+
+          {valueAsOf && (
+            <Box testID="holding-card-value-as-of">
+              <Text variant="caption" tone="textSecondary">
+                {valueAsOf}
               </Text>
             </Box>
           )}

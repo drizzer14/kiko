@@ -69,6 +69,10 @@ describe('AccountsStack', () => {
     expect(titles.ContributionForm).toBe('Add Contribution');
   });
 
+  it('gives the price-point form a static "Update Value" title', () => {
+    expect(titleByScreen().PricePointForm).toBe('Update Value');
+  });
+
   it('leaves the detail screens without a static title (they set it dynamically)', () => {
     const titles = titleByScreen();
     expect(titles.AccountDetail).toBeUndefined();

@@ -3,7 +3,8 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { database, write } from '../../db/client';
 import { id } from '../../db/id';
-import { accounts, type HoldingRow, holdings, transactions } from '../../db/schema';
+import { holdingInstrument } from '../../prices/instrument';
+import { accounts, type HoldingRow, holdings, pricePoints, transactions } from '../../db/schema';
 import { isSyncedHolding } from '../deletable';
 import {
   asTermDepositMeta,
@@ -27,7 +28,15 @@ const nextSortOrder = async (tx: typeof database, accountId: string): Promise<nu
 };
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
-  Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>>;
+  Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder' | 'color'>> & {
+    // A priced holding's (property_item, T16) first manual price point,
+    // written on the holding's own `holding:<id>` instrument in the SAME
+    // transaction as the insert (kiko-domain's PriceBook) — so it never reads
+    // as "no price yet" the instant it is created. `day`/`price` follow the
+    // same `price_points` convention every other write to that table uses
+    // (`dayKeyOf`-normalized day, a decimal-string price).
+    firstPricePoint?: { day: number; price: string };
+  };
 
 /**
  * A synced holding carries its source key in `metadata[metadataField]`:
@@ -176,7 +185,7 @@ export const holdingsRepo = {
    * `upsertExchange`), not this function, that write a provider-owned balance,
    * so no sync path is affected.
    */
-  create: (input: NewHolding): Promise<string> =>
+  create: ({ firstPricePoint, ...input }: NewHolding): Promise<string> =>
     write(async (tx) => {
       const holdingId = id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(tx, input.accountId));
@@ -192,6 +201,16 @@ export const holdingsRepo = {
           time: Date.now(),
           description: '',
           category: null,
+          source: 'manual',
+        });
+      }
+
+      if (firstPricePoint) {
+        await tx.insert(pricePoints).values({
+          instrument: holdingInstrument(holdingId),
+          day: firstPricePoint.day,
+          price: firstPricePoint.price,
+          currency: input.currency,
           source: 'manual',
         });
       }
@@ -330,6 +349,12 @@ export const holdingsRepo = {
         throw new Error('remove: cannot delete a synced holding');
       }
       await tx.delete(transactions).where(eq(transactions.holdingId, holdingId));
+      // A priced holding (property_item, T16) has no transactions, but it may
+      // have its own price series on `holding:<id>` — cleared here, inline on
+      // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
+      // its own transaction), so a deleted holding never leaves an orphaned
+      // series behind.
+      await tx.delete(pricePoints).where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
       await tx.delete(holdings).where(eq(holdings.id, holdingId));
     }),
   /**

@@ -58,6 +58,13 @@ export type AccountsStackParamList = {
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
   // instead; only deposits take a dedicated contribution form.
   ContributionForm: { holdingId: string };
+  // Record a new `manual` price point for a priced holding (property_item,
+  // T16 — `isPricedHoldingType`), reached from the holding-detail screen's
+  // "Update value" footer action. A dedicated form, mirroring
+  // ContributionForm's shape, rather than a plain TransactionForm entry: a
+  // revaluation moves no ledger balance, only the holding's `price_points`
+  // series (kiko-domain).
+  PricePointForm: { holdingId: string };
   // The shared statement-import preview + target-holding screen (Phase 1b), reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
