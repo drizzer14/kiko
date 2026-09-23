@@ -899,3 +899,34 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   decrypt, and relies on `@noble/ciphers`' GCM tag verification to fail closed
   on a wrong key or tampered ciphertext — see the file for the exact error
   strings. State nothing about the envelope beyond what `envelope.ts` shows.
+
+## Native iOS shell
+
+`ios/Kiko/AppDelegate.swift` + `ios/Kiko/SceneDelegate.swift` implement the
+mandatory UIScene lifecycle: `AppDelegate` builds the single `RCTReactNativeFactory`
+and captures `launchOptions`, but `SceneDelegate` owns the actual `UIWindow` — it
+constructs the window FROM the connected `UIWindowScene` and calls
+`factory.startReactNative(withModuleName:in:launchOptions:)` from
+`scene(_:willConnectTo:options:)`. A `UIWindow` not bound to a scene is never
+displayed under this lifecycle. `applicationWillResignActive` /
+`applicationDidEnterBackground` / `applicationDidBecomeActive` do NOT fire once
+the app adopts the scene lifecycle — the privacy-overlay and backup-exclusion
+logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
+`sceneDidEnterBackground`, `sceneDidBecomeActive`) instead. See
+`ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
+in memory for the crash history this fixed.
+
+- **Biometric Keychain reads need `NSFaceIDUsageDescription`.** A
+  `BIOMETRY_CURRENT_SET` Keychain read SIGABRTs without it. Verify the key is
+  present in `ios/Kiko/Info.plist` before adding or changing any biometric
+  Keychain call (see memory `biometric-keychain-needs-nsfaceidusagedescription`).
+- **`useAnimatedKeyboard()` is banned** — see `kiko-gestures`'s "`useAnimatedKeyboard()`
+  is banned" section for why, and the Semgrep ERROR rule
+  `kiko-no-use-animated-keyboard` (`rules/semgrep-mobile.yml`) that enforces it.
+- **Release-only crash classes.** Some crashes reproduce ONLY in a Release
+  build, not Debug: a plain function used inside a worklet without the
+  `'worklet'` directive (Debug swallows the mismatch, Release SIGABRTs — see
+  memory `worklet-directive-debug-swallows-release-aborts`), and any code path
+  Hermes handles differently from Debug's JSC-like behavior (see the Data
+  transfer section above on `TextDecoder`/`TextEncoder`). Verify a fix for
+  either class on an actual Release build, not just Debug/Jest.
