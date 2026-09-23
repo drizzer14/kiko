@@ -1,5 +1,6 @@
+import type { Currency } from '../../currency/currency';
 import { buildPriceBook } from '../../prices/price-book';
-import { holdingInstrument } from '../../prices/instrument';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from './net-worth-view';
 
@@ -7,6 +8,24 @@ import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from '.
 // `type`), so `holdingValue` takes its flat branch and the instant cannot
 // affect a total — it is pinned only to keep the call deterministic.
 const NOW = Date.UTC(2026, 0, 1);
+
+// A plain cash holding — the flat-balance shape most fixtures below need;
+// only its currency and balance vary per case.
+const cash = (currency: Currency, balanceMinorUnits: number) => ({
+  currency,
+  balanceMinorUnits,
+  type: 'cash' as const,
+  metadata: null,
+});
+
+// A plain crypto_asset holding, the same flat shape as `cash` above, for the
+// BTC-conversion-guard cases.
+const crypto = (currency: Currency, balanceMinorUnits: number) => ({
+  currency,
+  balanceMinorUnits,
+  type: 'crypto_asset' as const,
+  metadata: null,
+});
 
 describe('buildRateTable', () => {
   // Parse/drop behavior for the LIVE rows themselves is unit-tested in full
@@ -106,21 +125,9 @@ describe('guardedNetWorth', () => {
 
   it('sums only the holdings that can convert to the base currency', () => {
     const holdings = [
-      // 100.00 USD -> 4000.00 UAH
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      // no rate, excluded
-      { currency: 'EUR' as const, balanceMinorUnits: 5_000, type: 'cash' as const, metadata: null },
+      cash('USD', 10_000), // 100.00 USD -> 4000.00 UAH
+      cash('UAH', 100_000),
+      cash('EUR', 5_000), // no rate, excluded
     ];
     const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
@@ -128,9 +135,7 @@ describe('guardedNetWorth', () => {
   });
 
   it('returns zero in the base currency when nothing is convertible', () => {
-    const holdings = [
-      { currency: 'EUR' as const, balanceMinorUnits: 5_000, type: 'cash' as const, metadata: null },
-    ];
+    const holdings = [cash('EUR', 5_000)];
     const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(0);
@@ -164,24 +169,45 @@ describe('guardedNetWorth', () => {
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW).minorUnits).toBe(500_000);
     expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(700_000);
   });
+
+  // T21: a metal holding is priced through the SHARED `metal:<XAU|...>`
+  // instrument (kiko-pricing), not a per-holding one — `guardedNetWorth`
+  // reaches that value the same way it reaches property_item's above, end to
+  // end from a real `PriceBook`.
+  it('values a metal holding at its priced value when a book is passed, through the shared metal:XAU instrument', () => {
+    const holdings = [
+      {
+        id: 'gold',
+        currency: 'UAH' as const,
+        type: 'metal' as const,
+        balanceMinorUnits: 0,
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'oz',
+          purity: '1',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      },
+    ];
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: NOW,
+        price: '9000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    expect(guardedNetWorth(holdings, 'UAH', rates, NOW).minorUnits).toBe(500_000);
+    expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(900_000);
+  });
 });
 
 describe('guardedBreakdown', () => {
   it('omits a currency the total could not convert', () => {
-    const holdings = [
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_00,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'BTC' as const,
-        balanceMinorUnits: 50_000_000,
-        type: 'crypto_asset' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('UAH', 100_00), crypto('BTC', 50_000_000)];
     const rates = {};
 
     const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
@@ -192,20 +218,7 @@ describe('guardedBreakdown', () => {
   });
 
   it('keeps every currency once the rates are cached', () => {
-    const holdings = [
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_00,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'BTC' as const,
-        balanceMinorUnits: 50_000_000,
-        type: 'crypto_asset' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('UAH', 100_00), crypto('BTC', 50_000_000)];
     const rates = { 'BTC:UAH': 2_500_000 };
 
     expect(guardedBreakdown(holdings, 'UAH', rates, NOW)).toHaveLength(2);
@@ -225,20 +238,8 @@ describe('guardedBreakdown', () => {
 describe('guardedNetWorth / guardedBreakdown — base-currency flip regression', () => {
   it('drops a UAH holding from the USD-base total and breakdown when no UAH:USD rate is cached (base-currency flip)', () => {
     const holdings = [
-      // 100.00 USD
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      // 1000.00 UAH, unconvertible without a rate
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
+      cash('USD', 10_000), // 100.00 USD
+      cash('UAH', 100_000), // 1000.00 UAH, unconvertible without a rate
     ];
     const rates: Record<string, number> = {};
 
@@ -251,20 +252,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
   });
 
   it('includes a UAH holding in the USD-base total and breakdown once UAH:USD is cached (base-currency flip)', () => {
-    const holdings = [
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('USD', 10_000), cash('UAH', 100_000)];
     const rates = { 'UAH:USD': 0.025 };
 
     const total = guardedNetWorth(holdings, 'USD', rates, NOW);
@@ -285,20 +273,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
   // rate — never convert it to 0 in the total while the breakdown still
   // shows it at full own-currency value.
   it('drops a holding from both the total and the breakdown when its rate to the base currency is zero', () => {
-    const holdings = [
-      {
-        currency: 'UAH' as const,
-        balanceMinorUnits: 100_00,
-        type: 'cash' as const,
-        metadata: null,
-      },
-      {
-        currency: 'EUR' as const,
-        balanceMinorUnits: 5_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('UAH', 100_00), cash('EUR', 5_000)];
     const rates = { 'EUR:UAH': 0 };
 
     const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
@@ -319,14 +294,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
 describe('offline-first-run regression — empty currency_rates DB (Part A)', () => {
   it('counts a USD holding in the headline total with a completely empty rates table', () => {
     const table = buildRateTable([]); // simulates an empty `currency_rates` table
-    const holdings = [
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('USD', 10_000)];
 
     const total = guardedNetWorth(holdings, 'UAH', table, NOW);
 
@@ -336,14 +304,7 @@ describe('offline-first-run regression — empty currency_rates DB (Part A)', ()
 
   it('counts a USD holding in the per-currency breakdown with a completely empty rates table', () => {
     const table = buildRateTable([]);
-    const holdings = [
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('USD', 10_000)];
 
     const breakdown = guardedBreakdown(holdings, 'UAH', table, NOW);
 
@@ -354,14 +315,7 @@ describe('offline-first-run regression — empty currency_rates DB (Part A)', ()
   it('prefers a live USD:UAH rate over the seed once one is stored', () => {
     const seeded = buildRateTable([]);
     const live = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.23' }]);
-    const holdings = [
-      {
-        currency: 'USD' as const,
-        balanceMinorUnits: 10_000,
-        type: 'cash' as const,
-        metadata: null,
-      },
-    ];
+    const holdings = [cash('USD', 10_000)];
 
     const seededTotal = guardedNetWorth(holdings, 'UAH', seeded, NOW);
     const liveTotal = guardedNetWorth(holdings, 'UAH', live, NOW);

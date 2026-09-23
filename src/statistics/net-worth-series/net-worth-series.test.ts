@@ -8,7 +8,7 @@ import type { MonobankStatementItem } from '../../monobank/monobank.types';
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { mapStatementItem } from '../../monobank/sync';
-import { holdingInstrument } from '../../prices/instrument';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 import type { SeriesHolding } from '../holding-value-at';
 import { buildPriceBook } from '../../prices/price-book';
 
@@ -47,6 +47,48 @@ const uahUsd = (day: number, rate: string): HistoryRow => ({
   day,
   rate,
 });
+
+// Shared by every card->bond funding-recognition test below: the built
+// series' own point at bucket `t`, or a descriptive throw if that bucket is
+// missing (a `buildNetWorthSeries` bug, never expected against these
+// fixtures' own ranges).
+const amountAt = (series: NetWorthSeries, t: number): number => {
+  const point = series.points.find((candidate) => candidate.t === t);
+
+  if (point === undefined) {
+    throw new Error(`no bucket at ${t}`);
+  }
+
+  return point.amount;
+};
+
+// The same government-bond shape every card->bond funding-recognition test
+// below builds (quantity 1, no coupon, a fixed 2027 maturity) — only the
+// face value, purchase day, and purchase price vary per scenario (a
+// premium/discount, a cross-day gap, or an unmatched funding debit).
+const bondFor = (params: {
+  id: string;
+  currency: HoldingRow['currency'];
+  faceValueMinorUnits: number;
+  purchaseDate: number;
+  purchasePriceMinorUnits: number;
+}): SeriesHolding =>
+  holding({
+    id: params.id,
+    currency: params.currency,
+    type: 'bond',
+    balanceMinorUnits: 0,
+    metadata: {
+      quantity: 1,
+      faceValueMinorUnits: params.faceValueMinorUnits,
+      couponPct: 0,
+      couponFrequency: 'annually',
+      bondKind: 'government',
+      purchaseDate: params.purchaseDate,
+      purchasePriceMinorUnits: params.purchasePriceMinorUnits,
+      maturityDate: Date.UTC(2027, 0, 1),
+    },
+  });
 
 describe('buildNetWorthSeries', () => {
   it('converts holdings across currencies at each day’s historical rate', () => {
@@ -182,21 +224,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000,
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
     });
 
     const series = buildNetWorthSeries({
@@ -207,17 +240,9 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Day D (bond bought, card debited) must equal day D-1 (card still full): $100.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(100);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(100);
   });
 
   it('stays flat across a same-day card->bond move for a PREMIUM bond (valued at cost)', () => {
@@ -232,21 +257,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $107.87 and was debited $107.87, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
     });
 
     const series = buildNetWorthSeries({
@@ -257,18 +273,10 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Day D (bond bought at cost, card debited the same price) must equal day D-1
     // (card still full): $107.87.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(107.87);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(107.87);
   });
 
   it('stays flat across a same-day card->bond move when the synced debit ≠ the typed price', () => {
@@ -286,21 +294,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $1100.00 and was debited $1100.00, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 100_000, // nominal $1000.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 107_868, // user typed $1078.68 (roughly the price)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 100_000, // nominal $1000.00
+      purchaseDate,
+      purchasePriceMinorUnits: 107_868, // user typed $1078.68 (roughly the price)
     });
 
     const series = buildNetWorthSeries({
@@ -312,19 +311,10 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-
-      return point.amount;
-    };
-
     // Day D (bond bought, card debited Q) must equal day D-1 (card still full): the
     // bond is recognized at the matched debit's amount Q = $1100.00, so no dip.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(1100);
   });
 
   it('stays flat through the REAL monobank statement->transaction mapping when the synced debit ≠ the typed price', () => {
@@ -402,21 +392,12 @@ describe('buildNetWorthSeries', () => {
     // Card started with $1100.00 and was debited $1100.00 (via the real mapped
     // transaction), so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 100_000, // nominal $1000.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 107_868, // P: user typed $1078.68 (roughly the price)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 100_000, // nominal $1000.00
+      purchaseDate,
+      purchasePriceMinorUnits: 107_868, // P: user typed $1078.68 (roughly the price)
     });
 
     const series = buildNetWorthSeries({
@@ -429,19 +410,11 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Net worth must be FLAT across the purchase day: day D-1 (card still full,
     // bond not yet recognized) must equal day D (bond bought, card debited by
     // the real synced Q) — no permanent (Q - P) = $21.32 dip.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(1100);
   });
 
   it('does not treat an unrelated same-currency debit far from the price as the funding outflow', () => {
@@ -455,21 +428,12 @@ describe('buildNetWorthSeries', () => {
     const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
     // Card started with $400 and was debited $400 on D0 (unrelated spend), balance 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000,
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // $100.00 — the $400 debit is 4× this, outside tolerance
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // $100.00 — the $400 debit is 4× this, outside tolerance
     });
 
     const series = buildNetWorthSeries({
@@ -480,22 +444,13 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-
-      return point.amount;
-    };
-
     // D0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
     // debit's day/amount (that would inflate this bucket to $600).
-    expect(amountAt(D0)).toBe(200);
+    expect(amountAt(series, D0)).toBe(200);
     // D1 (typed purchase day) and D2: the bond turns on at its typed price and
     // STEPS net worth up by $100, unaffected by the unrelated debit — $300.
-    expect(amountAt(D1)).toBe(300);
-    expect(amountAt(D2)).toBe(300);
+    expect(amountAt(series, D1)).toBe(300);
+    expect(amountAt(series, D2)).toBe(300);
   });
 
   it('stays flat across a card->bond move sampled at LOCAL MIDNIGHT buckets (premium, at cost)', () => {
@@ -512,21 +467,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $107.87 and was debited $107.87, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate: dayD, // UTC/local midnight of day D
-        purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate: dayD, // UTC/local midnight of day D
+      purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
     });
 
     const series = buildNetWorthSeries({
@@ -537,18 +483,10 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D0 + 2 * DAY }, // buckets at D0, D1 (=dayD), D2 — all midnight
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Day-D midnight bucket (bond bought at cost, card debited the same price) must
     // equal the day-(D-1) midnight bucket (card still full): $107.87.
-    expect(amountAt(dayD)).toBe(amountAt(D0));
-    expect(amountAt(dayD)).toBe(107.87);
+    expect(amountAt(series, dayD)).toBe(amountAt(series, D0));
+    expect(amountAt(series, dayD)).toBe(107.87);
   });
 
   it('stays flat across a CROSS-day card->bond move (funding debit dated BEFORE purchaseDate)', () => {
@@ -568,21 +506,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
@@ -593,21 +522,13 @@ describe('buildNetWorthSeries', () => {
       range: { from: dayDm1, to: dayD2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Every bucket from the gap day D through the typed purchase day D+2 must equal
     // the pre-move net worth ($100): the money left on day D, so the bond's cost
     // is recognized from day D and there is no dip on D or D+1.
-    expect(amountAt(dayDm1)).toBe(100);
-    expect(amountAt(dayD)).toBe(100);
-    expect(amountAt(dayD1)).toBe(100);
-    expect(amountAt(dayD2)).toBe(100);
+    expect(amountAt(series, dayDm1)).toBe(100);
+    expect(amountAt(series, dayD)).toBe(100);
+    expect(amountAt(series, dayD1)).toBe(100);
+    expect(amountAt(series, dayD2)).toBe(100);
   });
 
   it('stays flat across a CROSS-day card->bond move (funding debit dated AFTER purchaseDate)', () => {
@@ -625,21 +546,12 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
@@ -650,20 +562,12 @@ describe('buildNetWorthSeries', () => {
       range: { from: dayDm1, to: dayD2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // No bump between the typed purchase day D and the later funding day D+2: the
     // bond's cost is recognized only from day D+2, when the money actually left.
-    expect(amountAt(dayDm1)).toBe(100);
-    expect(amountAt(dayD)).toBe(100);
-    expect(amountAt(dayD1)).toBe(100);
-    expect(amountAt(dayD2)).toBe(100);
+    expect(amountAt(series, dayDm1)).toBe(100);
+    expect(amountAt(series, dayD)).toBe(100);
+    expect(amountAt(series, dayD1)).toBe(100);
+    expect(amountAt(series, dayD2)).toBe(100);
   });
 
   it('turns a bond on at its typed purchaseDate when no funding debit matches (fallback, no regression)', () => {
@@ -676,21 +580,12 @@ describe('buildNetWorthSeries', () => {
     const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day D1
 
     const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000,
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
@@ -701,21 +596,13 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0, to: D2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // D0 (before purchaseDate's local day): the bond has not turned on yet.
-    expect(amountAt(D0)).toBe(200);
+    expect(amountAt(series, D0)).toBe(200);
     // D1 (purchaseDate's local day) and D2 (after): the bond turns ON at its
     // typed day and STEPS net worth up, since there is no offsetting debit to
     // net it against — the manual-bond path is unchanged by the fix.
-    expect(amountAt(D1)).toBe(300);
-    expect(amountAt(D2)).toBe(300);
+    expect(amountAt(series, D1)).toBe(300);
+    expect(amountAt(series, D2)).toBe(300);
   });
 
   describe('under an explicit non-host timezone (Kiritimati, UTC+14)', () => {
@@ -744,21 +631,12 @@ describe('buildNetWorthSeries', () => {
       const purchaseDate = purchaseDay + 18 * HOUR;
 
       const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
-      const bond = holding({
+      const bond = bondFor({
         id: 'bond',
         currency: 'USD',
-        type: 'bond',
-        balanceMinorUnits: 0,
-        metadata: {
-          quantity: 1,
-          faceValueMinorUnits: 10_000,
-          couponPct: 0,
-          couponFrequency: 'annually',
-          bondKind: 'government',
-          purchaseDate,
-          purchasePriceMinorUnits: 10_000,
-          maturityDate: Date.UTC(2027, 0, 1),
-        },
+        faceValueMinorUnits: 10_000,
+        purchaseDate,
+        purchasePriceMinorUnits: 10_000,
       });
 
       const series = buildNetWorthSeries({
@@ -769,19 +647,11 @@ describe('buildNetWorthSeries', () => {
         range: { from: debitDay, to: purchaseDay },
       });
 
-      const at = (t: number): number => {
-        const point = series.points.find((candidate) => candidate.t === t);
-        if (point === undefined) {
-          throw new Error(`no bucket at ${t}`);
-        }
-        return point.amount;
-      };
-
       // The money left on the debit day, so the bond's cost is recognized from
       // there and net worth is $100 flat on both the debit day and the typed
       // purchase day — no dip, even under this far-flung timezone.
-      expect(at(debitDay)).toBe(100);
-      expect(at(purchaseDay)).toBe(100);
+      expect(amountAt(series, debitDay)).toBe(100);
+      expect(amountAt(series, purchaseDay)).toBe(100);
     });
   });
 
@@ -858,5 +728,97 @@ describe('buildNetWorthSeries', () => {
     });
 
     expect(series.points[0]?.amount).toBe(25_000);
+  });
+
+  // T21: a metal holding (T17/T20) is priced through the SHARED
+  // `metal:<XAU|...>` instrument, not a per-holding `holding:<id>` series —
+  // its series must FOLLOW that instrument's own day-to-day NBU points
+  // (quantity * purity * price / troy-ounce-grams for 'g'), unlike
+  // property_item's flat cost-basis-fallback series above.
+  it('follows the NBU metal:XAU points day to day for a gold bar holding', () => {
+    const goldBar = holding({
+      id: 'gold',
+      currency: 'UAH',
+      type: 'metal',
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '1',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 7_000_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: D0,
+        price: '80000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+      {
+        instrument: metalInstrument('XAU'),
+        day: D1,
+        price: '81000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [goldBar],
+      txByHolding: new Map(),
+      // `historyRows` gates the WHOLE series (empty -> "nothing accurate to
+      // draw yet"), even though a same-currency holding needs no cross-rate
+      // conversion — a row is required to get past that gate, same as the
+      // property tests above.
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D1 },
+      book,
+    });
+
+    // 1 oz * purity 1 * price -> the NBU price itself, in major units.
+    expect(series.points.map((point) => point.amount)).toEqual([80_000, 81_000]);
+  });
+
+  // T21: `quantityAt` reads 0 before a lot's own day, so a metal holding
+  // contributes exactly 0 to net worth at any bucket before its first lot —
+  // even though the shared metal:XAU instrument already carries a price
+  // point that far back (Review Focus 5 does not apply here: this is a
+  // REAL zero quantity, not "no price yet").
+  it('contributes 0 to net worth before its first lot day', () => {
+    const goldBar = holding({
+      id: 'gold',
+      currency: 'UAH',
+      type: 'metal',
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '1',
+        lots: [{ day: D1, quantityDelta: '1', costMinorUnits: 8_000_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: D0,
+        price: '80000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [goldBar],
+      txByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(0);
   });
 });
