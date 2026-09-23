@@ -11,6 +11,7 @@ jest.mock('../db/client', () => {
 });
 
 import { database } from '../db/client';
+import type { SavedColumnMapping } from '../statement-import/column-mapping';
 
 import { settingsRepo } from './settings.repo';
 
@@ -40,6 +41,11 @@ const makeSettingsRowTx = (store: Record<string, unknown>[]): unknown => ({
           Object.assign(row, values);
         }
       },
+    }),
+  }),
+  select: () => ({
+    from: () => ({
+      where: async () => store,
     }),
   }),
 });
@@ -150,5 +156,43 @@ describe('settingsRepo', () => {
 
     await settingsRepo.setTrendFilter(null);
     expect(store[0].trendFilter).toBeNull();
+  });
+
+  const buildMapping = (headerRowIndex: number): SavedColumnMapping => ({
+    headerRowIndex,
+    decimalSeparator: '.',
+    dateColumn: 0,
+    dateFormat: 'DD.MM.YYYY HH:MM:SS',
+    amount: { mode: 'single', column: 2 },
+    descriptionColumn: 1,
+    currency: { mode: 'fixed', currency: 'UAH' },
+    fingerprint: 'Date␟Description␟Amount',
+    savedAt: 1_700_000_000_000,
+  });
+
+  it('saveStatementMapping keeps both when saving two different keys', async () => {
+    const store: Record<string, unknown>[] = [{ id: 1 }];
+    mockTx = makeSettingsRowTx(store);
+
+    const bankMapping = buildMapping(0);
+    const otherMapping = buildMapping(1);
+    await settingsRepo.saveStatementMapping('bank:monobank', bankMapping);
+    await settingsRepo.saveStatementMapping('header:abc123', otherMapping);
+
+    expect(store[0].statementMappings).toEqual({
+      'bank:monobank': bankMapping,
+      'header:abc123': otherMapping,
+    });
+  });
+
+  it('saveStatementMapping overwrites an existing key with the same name', async () => {
+    const store: Record<string, unknown>[] = [{ id: 1 }];
+    mockTx = makeSettingsRowTx(store);
+
+    await settingsRepo.saveStatementMapping('bank:monobank', buildMapping(0));
+    const replacement = buildMapping(2);
+    await settingsRepo.saveStatementMapping('bank:monobank', replacement);
+
+    expect(store[0].statementMappings).toEqual({ 'bank:monobank': replacement });
   });
 });

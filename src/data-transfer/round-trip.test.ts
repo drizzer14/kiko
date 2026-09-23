@@ -86,6 +86,7 @@ const fixturePayload = (): ExportPayload => ({
         trendCategoryKeys: null,
         trendFilter: null,
         failedSyncMonobankIds: null,
+        statementMappings: null,
       } as never,
     ],
     syncState: [
@@ -139,6 +140,24 @@ describe('data-transfer full-pipeline round trip', () => {
     const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(fixturePayload())), key);
 
     expect(() => decryptEnvelope(envelope, wrongKey)).toThrow('data-transfer/decrypt');
+  });
+
+  it('round-trips a settings row from a pre-statementMappings export unchanged (the key stays absent)', () => {
+    const key = generateExportKey();
+    const payload = fixturePayload();
+    const legacySettingsRow: Record<string, unknown> = {
+      ...(payload.tables.settings[0] as unknown as Record<string, unknown>),
+    };
+    delete legacySettingsRow.statementMappings;
+    const legacyPayload = {
+      ...payload,
+      tables: { ...payload.tables, settings: [legacySettingsRow] },
+    } as unknown as ExportPayload;
+
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(legacyPayload)), key);
+    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
+
+    expect(roundTripped.tables.settings[0]).not.toHaveProperty('statementMappings');
   });
 
   it('rejects a tampered ciphertext', () => {

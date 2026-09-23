@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 
 import { currencyOptions } from '../currency/currency';
 import type { TrendFilter } from '../statistics/trend-filter';
+import type { SavedColumnMapping } from '../statement-import/column-mapping/saved-mapping';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain
 // text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
@@ -310,6 +311,18 @@ export const settings = sqliteTable('settings', {
   // the balance-diff skip never engages again. Pruned to ids still present in
   // client-info. NULL means the empty set (no card is currently force-retried).
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+  // The user's saved column-mapping imports (T5,
+  // `statement-import/column-mapping/saved-mapping.ts`): a map from
+  // `mappingKeyFor(bankId, fingerprint)` (`bank:<bankId>` for a catalog bank,
+  // else `header:<fingerprint>` for "Other") to the `SavedColumnMapping` last
+  // confirmed for that key. NULL means nothing saved yet. Written (read-
+  // modify-write) by `settingsRepo.saveStatementMapping`; looked up by
+  // `findSavedMapping` to PRE-FILL the mapping form on a later import — the
+  // user still taps Import (Review Focus 3), a saved mapping never applies
+  // itself silently.
+  statementMappings: text('statement_mappings', { mode: 'json' }).$type<
+    Record<string, SavedColumnMapping>
+  >(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

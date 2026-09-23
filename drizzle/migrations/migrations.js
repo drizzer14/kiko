@@ -35,6 +35,7 @@ import m0030 from './0030_add_change_group_id.sql';
 import m0031 from './0031_icon_health_category.sql';
 import m0032 from './0032_icon_crypto_account.sql';
 import m0033 from './0033_add_account_bank_id.sql';
+import m0034 from './0034_add_statement_mappings.sql';
 
 export default {
   journal,
@@ -73,5 +74,6 @@ export default {
     m0031,
     m0032,
     m0033,
+    m0034,
   },
 };

@@ -6,6 +6,7 @@ import { database, write } from '../db/client';
 import { settings } from '../db/schema';
 import type { AppLanguage } from '../i18n';
 import type { TrendFilter } from '../statistics/trend-filter';
+import type { SavedColumnMapping } from '../statement-import/column-mapping';
 
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
@@ -49,4 +50,27 @@ export const settingsRepo = {
     write((tx) =>
       tx.update(settings).set({ trendFilter: filter }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  /**
+   * Saves (or overwrites) one column-mapping under `key`
+   * (`mappingKeyFor(bankId, fingerprint)`,
+   * `statement-import/column-mapping/saved-mapping.ts`), keeping every
+   * OTHER saved key untouched. Read-modify-write inside one `write()`, the
+   * same shape `upsertCategoryOverride` uses for its own select-then-update
+   * (`categories/category-overrides-repo/category-overrides.repo.ts`) — the
+   * column stores the whole map as one JSON blob, so a plain `.set()` would
+   * otherwise clobber every other bank/file's saved mapping.
+   */
+  saveStatementMapping: (key: string, mapping: SavedColumnMapping) =>
+    write(async (tx) => {
+      const rows = await tx
+        .select({ statementMappings: settings.statementMappings })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+      const existing = rows[0]?.statementMappings ?? {};
+
+      await tx
+        .update(settings)
+        .set({ statementMappings: { ...existing, [key]: mapping } })
+        .where(eq(settings.id, SETTINGS_ID));
+    }),
 } satisfies Repository;

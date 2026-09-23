@@ -59,6 +59,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     trendCategoryKeys: null,
     trendFilter: null,
     failedSyncMonobankIds: null,
+    statementMappings: null,
   },
 ];
 
