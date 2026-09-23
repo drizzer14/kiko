@@ -2,9 +2,10 @@ import type { TFunction } from 'i18next';
 import { match } from 'ts-pattern';
 
 import { Money, toMajor } from '../../currency/money';
-import { asBondMeta, asTermDepositMeta } from '../holding-metadata';
+import { asBondMeta, asMetalMeta, asTermDepositMeta } from '../holding-metadata';
 import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
 import { bondCouponDates, bondCouponMajor, depositLedger } from '../interest';
+import { compareDecimal } from '../../currency/decimal';
 import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from '../tax';
 
 export type DerivedEntryKind =
@@ -17,7 +18,8 @@ export type DerivedEntryKind =
   | 'tax'
   | 'purchase'
   | 'coupon'
-  | 'redemption';
+  | 'redemption'
+  | 'sale';
 
 // The ledger tone a derived entry reads in: withholding lines are `negative`
 // (red), interest/coupon accruals are `positive` (green), and the principal
@@ -30,7 +32,7 @@ const toneForKind = (kind: DerivedEntryKind): EntryTone =>
   match(kind)
     .with('income-tax', 'military-levy', 'tax', (): EntryTone => 'negative')
     .with('accrual', 'interest', 'capitalization', 'coupon', (): EntryTone => 'positive')
-    .with('contribution', 'purchase', 'redemption', (): EntryTone => 'neutral')
+    .with('contribution', 'purchase', 'redemption', 'sale', (): EntryTone => 'neutral')
     .exhaustive();
 
 export type DerivedEntry = {
@@ -245,12 +247,47 @@ const bondEntries = (holding: IdentifiedHolding, now: number, t: TFunction): Der
   ];
 };
 
+// A metal holding's buy/sell history (T18's Lot form) as ledger rows: one per
+// stored lot, oldest first with the rest of the list re-sorted by
+// `derivedEntries` below. A buy lot (positive `quantityDelta`) reads as a
+// 'purchase' entry, a sell lot (negative `quantityDelta`) as a 'sale' entry —
+// `compareDecimal` reads the SIGNED decimal string rather than trusting a
+// bare string comparison. Both entries' `amountMinorUnits` is the NEGATION of
+// the lot's own stored `costMinorUnits`: `lots.ts`'s contract stores a buy's
+// `costMinorUnits` positive (money paid) and a sell's negative (cost basis
+// removed), so negating it once here yields the money-out/money-in sign the
+// bond purchase/redemption entries already use, with no separate branch per
+// direction needed.
+const metalEntries = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
+  const meta = asMetalMeta(holding.metadata);
+  if (meta === null) {
+    return [];
+  }
+
+  return meta.lots.map((lot, index) => {
+    const isSale = compareDecimal(lot.quantityDelta, '0') < 0;
+
+    return makeEntry(
+      holding.id,
+      isSale ? 'sale' : 'purchase',
+      index,
+      lot.day,
+      -lot.costMinorUnits,
+      isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
+      now,
+    );
+  });
+};
+
 const entriesForType = (holding: IdentifiedHolding, now: number, t: TFunction): DerivedEntry[] => {
   if (holding.type === 'term_deposit') {
     return depositEntries(holding, now, t);
   }
   if (holding.type === 'bond') {
     return bondEntries(holding, now, t);
+  }
+  if (holding.type === 'metal') {
+    return metalEntries(holding, now, t);
   }
   return [];
 };

@@ -100,6 +100,21 @@ const propertyHolding = {
   },
 };
 
+const metalHolding = {
+  id: 'h-1',
+  name: 'Gold bar',
+  type: 'metal',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    metal: 'XAU',
+    form: 'bar',
+    unit: 'g',
+    purity: '0.999',
+    lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '10', costMinorUnits: 5_000_000 }],
+  },
+};
+
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
@@ -963,6 +978,32 @@ describe('HoldingDetailScreen', () => {
     await fireEvent.press(getByText('Update value'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
+  });
+
+  it('offers "Add lot" instead of a manual add action for a metal holding', async () => {
+    // metal is ledgerless (isLedgerlessHoldingType) AND lot-form-eligible
+    // (isLotFormHoldingType, T18) — unlike property_item it does NOT take
+    // "Update value": its price comes from the shared metal:<XAU|...>
+    // instrument (kiko-pricing), never a per-holding manual price point.
+    seed(metalHolding);
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add lot')).toBeTruthy();
+    expect(queryByText('Update value')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
+    expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('navigates to LotForm on "Add lot"', async () => {
+    seed(metalHolding);
+
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Add lot'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
   });
 
   it('hides the footer add action for a synced Monobank holding', async () => {

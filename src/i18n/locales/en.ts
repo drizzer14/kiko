@@ -293,6 +293,22 @@ export const en = {
       terms: 'Terms',
       type: 'Type',
     },
+    lot: {
+      addTitle: 'Add Lot',
+      buy: 'Buy',
+      errorMessage: 'Please try again.',
+      errorTitle: 'Could not add lot',
+      quantity: 'Quantity',
+      quantityError: 'Enter a quantity greater than 0.',
+      quantityPlaceholder: '10',
+      save: 'Save lot',
+      sell: 'Sell',
+      sellExceedsError: "You can't sell more than you currently hold.",
+      totalCost: 'Total cost',
+      totalCostError: 'Total cost must be greater than 0.',
+      totalCostPlaceholder: '1000.00',
+      type: 'Type',
+    },
     pricePoint: {
       save: 'Save value',
       title: 'Update Value',
@@ -432,6 +448,7 @@ export const en = {
     walletConnected: 'Wallet connected',
   },
   holdingDetail: {
+    addLot: 'Add lot',
     addTransaction: 'Add transaction',
     // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a
     // term-deposit or bond's Holding-detail screen renders inline — a bank
@@ -452,6 +469,7 @@ export const en = {
     projected: 'Projected',
     purchase: 'Purchase',
     redemption: 'Redemption',
+    sale: 'Sale',
     tax: 'Tax',
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',

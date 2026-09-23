@@ -380,4 +380,65 @@ describe('derivedEntries', () => {
       await i18n.changeLanguage('en');
     }
   });
+
+  describe('metal', () => {
+    // T18: a metal holding's lots (kiko-pricing) surface as ledger rows — a
+    // buy lot as a 'purchase' entry (money out, matching the bond purchase
+    // entry's sign convention), a sell lot as a 'sale' entry (money in). Both
+    // entries' `amountMinorUnits` is the NEGATION of the lot's own stored
+    // `costMinorUnits` (positive on a buy, negative on a sell per lots.ts's
+    // own sign contract), so one formula covers both directions.
+    const metalHolding: Holding = {
+      id: 'metal-1',
+      type: 'metal',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'g',
+        purity: '0.999',
+        lots: [
+          { day: local(2025, 0, 1), quantityDelta: '10', costMinorUnits: 500_000 },
+          { day: local(2025, 5, 1), quantityDelta: '-4', costMinorUnits: -200_000 },
+        ],
+      },
+    };
+
+    it('renders a buy lot as a Purchase entry, money out', () => {
+      const entries = derivedEntries(metalHolding, local(2025, 8, 1), i18n.t);
+      const purchase = entries.find((e) => e.kind === 'purchase');
+
+      expect(purchase).toMatchObject({
+        time: local(2025, 0, 1),
+        amountMinorUnits: -500_000,
+        label: 'Purchase',
+        tone: 'neutral',
+      });
+    });
+
+    it('renders a sell lot as a Sale entry, money in', () => {
+      const entries = derivedEntries(metalHolding, local(2025, 8, 1), i18n.t);
+      const sale = entries.find((e) => e.kind === 'sale');
+
+      expect(sale).toMatchObject({
+        time: local(2025, 5, 1),
+        amountMinorUnits: 200_000,
+        label: 'Sale',
+        tone: 'neutral',
+      });
+    });
+
+    it('returns [] for a metal holding with no valid metal metadata', () => {
+      const bareMetal: Holding = {
+        id: 'metal-bare',
+        type: 'metal',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        metadata: null,
+      };
+
+      expect(derivedEntries(bareMetal, T0, i18n.t)).toEqual([]);
+    });
+  });
 });

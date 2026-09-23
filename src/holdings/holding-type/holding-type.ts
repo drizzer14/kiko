@@ -65,6 +65,18 @@ export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
 export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
   type === 'term_deposit' || type === 'bond' || type === 'property_item' || type === 'metal';
 
+// The holding types whose buy/sell history is recorded through the dedicated
+// Lot form (T18 — holding-detail's `addLot` footer action, see
+// `footerActionFor` in holding-detail.screen.tsx), rather than fixed once at
+// creation (`property_item`'s single lot, written by `PropertySection` and
+// never edited again) or owned by a sync. Only `metal` is eligible today; P5
+// is expected to add `share` to this SAME list once that type exists — do
+// NOT add a `'share'` literal until then (kiko-pricing's "Later" section).
+export const lotFormHoldingTypes = ['metal'] as const satisfies readonly HoldingType[];
+
+export const isLotFormHoldingType = (type: HoldingType): boolean =>
+  (lotFormHoldingTypes as readonly HoldingType[]).includes(type);
+
 // The holding types a user may MANUALLY CREATE under a given account kind AND
 // synced state: the kind's full set minus whichever sync-only types that
 // PARTICULAR account has a sync owning.

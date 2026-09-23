@@ -3,8 +3,10 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
   isLedgerlessHoldingType,
+  isLotFormHoldingType,
   isSyncOnlyHoldingType,
   isTimeExemptHoldingType,
+  lotFormHoldingTypes,
   syncOnlyHoldingTypes,
 } from './holding-type';
 
@@ -100,6 +102,24 @@ describe('ledgerless holding types', () => {
     expect(isLedgerlessHoldingType('cash')).toBe(false);
     expect(isLedgerlessHoldingType('crypto_asset')).toBe(false);
     expect(isLedgerlessHoldingType('jar')).toBe(false);
+  });
+});
+
+describe('lot-form holding types', () => {
+  it('lists exactly metal as the lot-form-eligible type', () => {
+    expect([...lotFormHoldingTypes]).toEqual(['metal']);
+  });
+
+  it('marks metal as eligible for the Lot form', () => {
+    expect(isLotFormHoldingType('metal')).toBe(true);
+  });
+
+  it('does not mark any other current holding type as eligible for the Lot form', () => {
+    for (const type of holdingTypes) {
+      if (type !== 'metal') {
+        expect(isLotFormHoldingType(type)).toBe(false);
+      }
+    }
   });
 });
 

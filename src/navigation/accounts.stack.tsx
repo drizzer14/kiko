@@ -8,6 +8,7 @@ import AccountFormScreen from '../screens/forms/account-form/account-form.screen
 import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
 import PricePointFormScreen from '../screens/forms/price-point-form/price-point-form.screen';
 import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
+import LotFormScreen from '../screens/forms/lot-form/lot-form.screen';
 import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
 import ColumnMappingScreen from '../screens/column-mapping/column-mapping.screen';
@@ -73,6 +74,11 @@ const AccountsStack: FC = () => {
         name="PricePointForm"
         component={PricePointFormScreen}
         options={{ title: t('forms.pricePoint.title') }}
+      />
+      <Stack.Screen
+        name="LotForm"
+        component={LotFormScreen}
+        options={{ title: t('forms.lot.addTitle') }}
       />
       <Stack.Screen
         name="StatementImport"

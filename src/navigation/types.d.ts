@@ -65,6 +65,14 @@ export type AccountsStackParamList = {
   // revaluation moves no ledger balance, only the holding's `price_points`
   // series (kiko-domain).
   PricePointForm: { holdingId: string };
+  // Record a buy or sell lot against a lot-form-eligible holding (`metal` as
+  // of T18, `isLotFormHoldingType` — kiko-pricing/holding-type.ts), reached
+  // from the holding-detail screen's "Add lot" footer action. Appends one
+  // entry to `metadata.lots` through `holdingsRepo.update`; unlike
+  // ContributionForm/PricePointForm it never touches a per-holding
+  // `holding:<id>` price series — a metal's price comes from the SHARED
+  // `metal:<XAU|...>` instrument (kiko-pricing).
+  LotForm: { holdingId: string };
   // The shared statement-import preview + target-holding screen (Phase 1b), reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning

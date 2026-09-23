@@ -46,7 +46,11 @@ import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holding
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { asBondMeta } from '../../holdings/holding-metadata';
-import { isLedgerlessHoldingType, isTimeExemptHoldingType } from '../../holdings/holding-type';
+import {
+  isLedgerlessHoldingType,
+  isLotFormHoldingType,
+  isTimeExemptHoldingType,
+} from '../../holdings/holding-type';
 import {
   bondExpectedProfitMinor,
   type HoldingValueBreakdown,
@@ -159,16 +163,21 @@ const convertedBaseValue = (
 };
 
 // Which add action the screen's footer offers.
-type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'none';
+type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
 
 // A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. A PRICED type (property_item —
-// `isPricedHoldingType`) takes neither: it opens the dedicated price-point
-// form to record a revaluation instead — checked BEFORE the ledgerless guard
-// below, since a priced type is also ledgerless. Every OTHER ledgerless type
-// (bond — see `isLedgerlessHoldingType`) carries no manual ledger at all — its
-// value derives from metadata (kiko-domain) — and a synced (Monobank)
-// holding's ledger is owned by the sync, so neither offers an add action.
+// holding takes a manual transaction. A LOT-FORM-eligible type (`metal` as of
+// T18 — `isLotFormHoldingType`) opens the dedicated Lot form to record a
+// buy/sell instead — checked BEFORE the priced-value guard below, since
+// `metal` is ALSO a priced type (`isPricedHoldingType`) but must never offer
+// "Update value": a metal's price comes from the SHARED `metal:<XAU|...>`
+// instrument (kiko-pricing), never a per-holding manual price point the way
+// `property_item` uses. A priced type that is NOT lot-form-eligible
+// (`property_item`) takes neither ledger action: it opens the price-point
+// form instead. Every OTHER ledgerless type (bond — see
+// `isLedgerlessHoldingType`) carries no manual ledger at all — its value
+// derives from metadata (kiko-domain) — and a synced (Monobank) holding's
+// ledger is owned by the sync, so neither offers an add action.
 // `isSyncedHolding` requires BOTH a connected synced institution AND the sync
 // key in metadata, so a disconnected former-Monobank holding counts as manual
 // again and keeps its add action. Extracted to module scope so the branch
@@ -184,6 +193,10 @@ const footerActionFor = (
 
   if (holding.type === 'term_deposit') {
     return 'contribution';
+  }
+
+  if (isLotFormHoldingType(holding.type)) {
+    return 'addLot';
   }
 
   if (isPricedHoldingType(holding.type)) {
@@ -681,8 +694,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // contribution"); a plain holding opens the shared Transaction form
         // ("Add transaction"); a priced holding (property_item) opens the
         // dedicated price-point form ("Update value") to record a
-        // revaluation. A bond and a synced holding take no manual add action,
-        // so they render no footer at all.
+        // revaluation; a lot-form-eligible holding (`metal` as of T18) opens
+        // the dedicated Lot form ("Add lot") to record a buy/sell instead. A
+        // bond and a synced holding take no manual add action, so they
+        // render no footer at all.
         match(footerAction)
           .with('contribution', () => (
             <Button onPress={() => navigation.navigate('ContributionForm', { holdingId })}>
@@ -697,6 +712,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           .with('updateValue', () => (
             <Button onPress={() => navigation.navigate('PricePointForm', { holdingId })}>
               {t('holdingDetail.updateValue')}
+            </Button>
+          ))
+          .with('addLot', () => (
+            <Button onPress={() => navigation.navigate('LotForm', { holdingId })}>
+              {t('holdingDetail.addLot')}
             </Button>
           ))
           .with('none', () => undefined)
