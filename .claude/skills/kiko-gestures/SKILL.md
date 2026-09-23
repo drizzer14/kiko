@@ -72,7 +72,10 @@ legacy AppDelegate-owns-the-window assumption. This app runs the iOS
 UIScene lifecycle (`SceneDelegate` owns the `UIWindow`; `AppDelegate` has
 none), so that call sends an unrecognized selector and SIGABRTs on cold
 launch — it hit every screen once, since the shared `BottomSheet` calls
-whatever drives its keyboard height. `bottom-sheet.component.tsx` instead
+whatever drives its keyboard height. Mechanized as the
+`kiko-no-use-animated-keyboard` Semgrep rule (ERROR,
+`rules/semgrep-mobile.yml`, see `kiko-linter`) — any new call is a hard-fail,
+not just a review comment. `bottom-sheet.component.tsx` instead
 drives its `keyboardHeight` shared value by hand from RN core's `Keyboard`
 events (`keyboardWillChangeFrame` / `keyboardWillHide`); read that file's
 `useEffect` for the exact listener wiring rather than restating it here.

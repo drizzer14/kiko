@@ -56,6 +56,22 @@ uploads to the App Store on the user's behalf.
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
 
+### Navigation reachability for review notes
+
+Zero-dependency, no script file, no new dependency — a single grep run
+fresh at each submission lists every registered screen name from
+`src/navigation/`:
+
+```
+grep -h -oE 'name="[A-Za-z]+"' $(ls src/navigation/*.tsx | grep -v '\.test\.tsx$') | sort -u
+```
+
+Paste the resulting list into the App Store review notes as Guideline
+5.6 evidence that every screen is reachable with no flag or env gate
+(see "Guideline 5.6 — no hidden features" in `kiko-architecture`). Do
+not hardcode the list here — it drifts with every added screen; always
+re-run the grep at submission time.
+
 ## Lessons from past submissions
 
 Read the live `pbxproj` / git tags directly for the current version

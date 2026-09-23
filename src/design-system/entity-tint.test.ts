@@ -118,7 +118,8 @@ describe('resolveEntityColor', () => {
 
   // A bare `stored ?? typeDefault` lets a stored empty string straight through
   // (it is neither `null` nor `undefined`), which used to reach
-  // `entityTintBackground` and throw. This is the "empty string" gap.
+  // `entityIconTileGradient`/`isLightEntityColor` and throw. This is the
+  // "empty string" gap.
   it('falls back to the type default when the stored color is an empty string', () => {
     expect(resolveEntityColor('', darkTheme.colors.entityColors.khaki)).toBe(
       darkTheme.colors.entityColors.khaki,

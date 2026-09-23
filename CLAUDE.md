@@ -144,7 +144,7 @@ periodically and pin the moment a fix ships.
 
 The Kiko agent harness is a local Claude Code plugin at
 `harness/kiko/` (`kiko` in the local
-`harness/.claude-plugin/marketplace.json`). It ships twelve role agents,
+`harness/.claude-plugin/marketplace.json`). It ships thirteen role agents,
 five project skills (four thin-wrap superpowers, plus a `release`
 skill that documents the release-publishing workflow), one vendored
 review command, and the tier hooks documented above.
@@ -172,7 +172,7 @@ fixes the drift and commits, before the next iteration or the merge.
 The completion report names the drift-fix sha (or states "no drift
 found"). The coordinator checks that sha before it merges.
 
-### The twelve agents
+### The thirteen agents
 
 | Agent | Role | model | effort | Spawn command |
 |---|---|---|---|---|
@@ -188,6 +188,7 @@ found"). The coordinator checks that sha before it merges.
 | ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
 | pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | low | `claude --agent pm --effort low` |
 | auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | sonnet | medium | `claude --agent auditor --effort medium` |
+| researcher | Read-only web research and live API probes; returns findings with source URL + check date per claim | sonnet | medium | `claude --agent researcher --effort medium` |
 
 Agent frontmatter sets both `model` and `effort`; the Agent tool
 applies both on dispatch. Passing `--effort` at spawn time is only

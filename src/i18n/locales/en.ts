@@ -496,9 +496,6 @@ export const en = {
     emptyTransactions: 'No transactions',
     filterAccounts: 'Accounts',
     filterCategories: 'Categories',
-    // Also the home-screen widget's headline: it travels inside the snapshot
-    // (src/widget/net-worth-snapshot.ts) rather than a Localizable.strings
-    // bundle, and reuses THIS key so the two can never drift apart.
     netWorth: 'Net worth',
     syncFailedMessage: "Couldn't sync {{accounts}}.",
     // The determinate sync progress bar's label — the whole-run indicator on the

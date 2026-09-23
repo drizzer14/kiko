@@ -14,9 +14,10 @@ const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 // hand-rolling a second copy — every entity-hue derivation lives here, in one
 // place, per the design-system rule. Not exported: nothing outside this
 // module needs a raw RGB triple, only the higher-level derivations built on
-// top of it (`entityTintBackground`, `darkenHex`, etc.). An
-// unparsable input means the caller passed something that was never a theme
-// token — failing loudly beats silently rendering an invisible or wrong tint.
+// top of it (`entityIconTileGradient`, `isLightEntityColor`, `darkenHex`,
+// etc.). An unparsable input means the caller passed something that was
+// never a theme token — failing loudly beats silently rendering an
+// invisible or wrong tint.
 const parseHex = (hex: string): [red: number, green: number, blue: number] => {
   const match = hex.match(HEX_PATTERN);
 
@@ -48,8 +49,8 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //
 // 1. A stored color that is a non-null, non-undefined but still unusable
 //    value — an empty string, most concretely — which `??` lets straight
-//    through (it only guards `null`/`undefined`) and `entityTintBackground`
-//    then throws on.
+//    through (it only guards `null`/`undefined`) and `entityIconTileGradient`/
+//    `isLightEntityColor` (both feeding `EntityIconTile`) then throw on.
 // 2. An unmapped kind/type default lookup. `defaultAccountColor` /
 //    `defaultHoldingColor` are typed `Record<Kind, string>`, which is only a
 //    COMPILE-time guarantee. SQLite enforces no CHECK constraint on the
@@ -59,12 +60,12 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //    default lookup to `undefined` at runtime, with no compiler in the way.
 //
 // Either gap, combined with a null/never-set stored color, used to reach
-// `entityTintBackground` with an unparsable value and throw mid-render — how
-// "a card sometimes has no background at all" actually manifested: not a
-// silently blank tint, but the one throwing card's whole row failing to
-// render. This resolves BOTH gaps and falls back one more level to
-// `FALLBACK_ENTITY_COLOR` so a card's background always has a valid color to
-// resolve.
+// `entityIconTileGradient`/`isLightEntityColor` with an unparsable value and
+// throw mid-render — how "a card sometimes has no background at all"
+// actually manifested: not a silently blank tint, but the one throwing
+// card's whole row (its `EntityIconTile`) failing to render. This resolves
+// BOTH gaps and falls back one more level to `FALLBACK_ENTITY_COLOR` so an
+// entity's tile always has a valid color to resolve.
 export const resolveEntityColor = (
   storedColor: string | null | undefined,
   typeDefault: string | undefined,

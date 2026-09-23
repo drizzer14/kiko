@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '../../unistyles';
 import FieldTrigger from '.';
 
 describe('FieldTrigger', () => {

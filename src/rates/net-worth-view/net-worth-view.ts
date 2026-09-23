@@ -74,9 +74,10 @@ export const guardedNetWorth = (
  * rate — which `guardedNetWorth` had already dropped from the total. With a
  * BTC holding and no BTC:UAH rate yet (a first run, or a CoinGecko outage),
  * the Home card's headline excluded BTC while the breakdown beneath it still
- * listed BTC, so the rows visibly did not add up. The widget's snapshot had
- * the identical divergence, which is why this lives here rather than in either
- * caller.
+ * listed BTC, so the rows visibly did not add up. This guard lives here,
+ * shared with `guardedNetWorth`, rather than duplicated inline in
+ * `home.screen.tsx` (its one current caller), so a future second consumer
+ * of the headline total gets the identical divergence fix for free.
  */
 export const guardedBreakdown = (
   holdings: ConvertibleHolding[],

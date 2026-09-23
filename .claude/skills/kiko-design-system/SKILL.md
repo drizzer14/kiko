@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -568,6 +568,17 @@ new component can land between reviews of this skill:
   composes this instead of hand-rolling its own error caption — see
   `kiko-code-style`'s "Form validation model" section for when to show
   it.
+- **FieldTrigger** (`src/design-system/components/field-trigger/`) —
+  the shared "labeled field that opens a picker sheet" trigger: a
+  caption above a bordered row showing the current icon (or leading
+  text mark) + value, tapping which opens the caller's own
+  `BottomSheet`. `CategoryField`, `HoldingSelectField`,
+  `ModeSelectField`, `BankTypeField` (`src/screens/forms/`) and
+  `CurrencyField` below all compose this rather than re-implementing
+  the same bordered-row JSX. Lives in `design-system/components/`, not
+  `screens/forms/` where it used to sit — a design-system component
+  must never import from `src/screens/**`, enforced by the
+  `kiko-no-import-screens-outside-ui` Semgrep rule (see `kiko-linter`).
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the

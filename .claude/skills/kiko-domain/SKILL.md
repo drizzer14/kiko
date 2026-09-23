@@ -60,6 +60,20 @@ absent** — this skill states the shape and non-enum facts only:
   Guideline 5.6 invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
   check.
+
+## Bank catalog and provider registry
+
+`src/bank-sync/bank-catalog/` is the identity catalog (`bankId` — see the
+paragraph above; do not duplicate its `bankId`-vs-`institution` distinction
+here). `src/bank-sync/provider-catalog/` and `src/bank-sync/registry/registry.ts`
+are the separate LIVE-SYNC layer: `bankProviderRegistry` ties a
+`BankProviderId` to its concrete `runSync`/`hasCredentials`/`disconnect`
+functions (read `registry.ts:28-41`'s comment for the current rationale and
+partiality contract) so that `syncJobsFor` and the account-detail screen never
+hardcode a provider list — adding a new live-sync provider is one registry
+entry, not a change to either caller. The registry is intentionally
+`Partial`: a `BankProviderId` with no entry here is simply not yet
+implemented, and callers must skip it rather than assume every id resolves.
 - **Holding** — a balance-bearing thing under an account (a card, a
   jar, a term deposit, a crypto asset). `id`, `accountId` (FK),
   `name`, `type` (see `schema.ts`'s `holdings.type` enum), `currency`

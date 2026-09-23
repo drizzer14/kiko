@@ -2,10 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, type ScrollViewInstance } from 'react-native';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 
-import FieldTrigger from '../field-trigger';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import FieldTrigger from '../../../design-system/components/field-trigger';
 import SelectableRow from '../../../design-system/components/selectable-row';
 
 import { styles } from './category-field.styles';
