@@ -1,6 +1,6 @@
 # Shares, property, metals, and debts — design spec
 
-- **Status:** DESIGN SPEC, round 4. All user decisions (rounds 1–4) are in the decision log. No app code changed. Implementation plan: `docs/plans/shares-property-metals-debts.md`.
+- **Status:** DESIGN SPEC, round 5. All user decisions (rounds 1–5) are in the decision log. No app code changed. Implementation plan: `docs/plans/shares-property-metals-debts.md`.
 - **Date checked:** 2026-09-23 (all web sources and live API tests are from this date unless a row says otherwise).
 - **Branch:** `shares-assets-research` (based on `next`, App Store build 25).
 - **Users:** Ukrainians, inside Ukraine and displaced worldwide (EU, UK, North America). Every feature must serve both groups.
@@ -18,7 +18,7 @@ Legend: **[verified]** = read on a primary source or tested live. **[secondary]*
 | D3 | Share prices | **Auto-priced.** Manual-only price rejected. Quotes come from a user-supplied key (BYOK) or from broker sync | user, round 2 |
 | D4 | Precious metals | **Own asset type and own picker.** Not in the currency list. Not only inside Property | user, round 2 |
 | D5 | Debts, mortgage | **In scope.** The net-worth rule changes from "assets only" to "assets minus debts" | user, round 2 |
-| D6 | Broker import/sync | **All brokers covered** where a route exists: IBKR, Trading 212, Freedom24, plus Revolut and Ukrainian brokers | user, round 2 |
+| D6 | Broker import/sync | ~~All brokers covered~~ — **narrowed by D26**: catalog + manual shares + EODHD only | user, round 2 → 5 |
 | D7 | BYOK (user pastes a quote-API key) | **Accepted**, same pattern as the Monobank token | user, round 2 |
 | D8 | Bond by ISIN | **"ISIN / Manual" mode chips** in the Bond form, validated against the NBU register — see §6 | user request, feasible |
 | D9 | Non-bank institutions (Diia, brokers) | **New account kind "Broker / Брокер"**. Diia is NOT an institution — see §7 | spec recommendation |
@@ -31,11 +31,26 @@ Legend: **[verified]** = read on a primary source or tested live. **[secondary]*
 | D16 | Release shape | **One feature line, shipped together.** P1–P9 are build order inside one integration branch, not staged releases. P8 (Freedom24) and P9 (Revolut) are gated tasks with a go/no-go | user, round 3 |
 | D17 | New banks in the catalog | **Add PUMB, Oschadbank, Raiffeisen, Ukrgasbank.** Statement imports only where the format is known — see §13 | user, round 3 |
 | D18 | Monobank metals | **No.** Monobank stays off the metal allow-list | user, round 4 |
-| D19 | PUMB importer | **Yes, with a synthetic fixture**, labelled "not verified on a real file" | user, round 4 |
-| D20 | ProCredit personal `.xls` | **Yes.** A hand-rolled OLE2 + BIFF reader; no candidate library passed the safety bar — see §14 | user approved a dependency in principle, round 4; choice recorded in §14 |
+| D19 | PUMB importer | ~~Yes, with a synthetic fixture~~ — **deferred by D25** | user, round 4 → 5 |
+| D20 | ProCredit personal `.xls` | ~~Hand-rolled OLE2 + BIFF reader~~ — **deferred by D25**; the §14 library evaluation stays valid for later | user, round 4 → 5 |
 | D21 | Loan-payment linking | **Automatic linking with high confidence**, a visible "Linked automatically" state with Undo, manual link as the fallback — see §5.4 | user asked, round 4; feasible |
 | D22 | EODHD licence | **Closed.** Same BYOK model as the Monobank token and the Binance keys: the user's own key, the user's own data use. Kiko does not redistribute data and does not ship a key | user, round 4 |
-| D23 | IBKR Flex XML | **`saxen` 11.1.1** as a direct dependency (already installed through `read-excel-file`) — see §14 | user approved "if safe and easy", round 4 |
+| D23 | IBKR Flex XML | ~~`saxen` 11.1.1~~ — **superseded by D24/D26** (IBKR deferred, so no XML dependency) | user, round 4 → 5 |
+| D24 | Scope rule | **No integration ships without a real sample file or a real account to test against.** The user has only a Monobank account and no broker accounts | user, round 5 |
+| D25 | Bank importers | **Keep every existing importer** in `src/statement-import`. **Defer** PUMB XLSX (was D19), the `.xls` reader and ProCredit personal (was D20). Banks without a real sample use the generic importer (D27) + manual entry | user, round 5 |
+| D26 | Broker integrations | **Defer** Trading 212 sync, IBKR sync and Flex import, Freedom24, Revolut import. Brokers stay as a catalog + Broker kind with **manual** share holdings, auto-priced by **EODHD BYOK** (the user can test with a free key). `saxen` is dropped; the `plist.sh` widening keeps only EODHD `api_token` | user, round 5 |
+| D27 | Generic import | **New first phase: generic column-mapping statement import (POC)**, tested by the user on the device before the rest — see §15 | user, round 5 |
+
+**Deferred until a real account or a real sample exists (D24).** These are not rejected. The research for each stays in this spec (§3.1, §3.3, §13, §14):
+- Trading 212 sync (read-only key, `live.trading212.com`).
+- Interactive Brokers Flex sync and Flex XML/CSV file import (and the `saxen` dependency).
+- Freedom24 sync (Tradernet API spike).
+- Revolut trading statement import.
+- PUMB XLSX importer (format documented by uabean `pumb_xls.py`).
+- Legacy `.xls` reader (OLE2 + BIFF) and the ProCredit personal importer.
+- Dedicated importers for Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal.
+
+Resume one when the user (or a tester) has a real account or a real anonymized export. Until then, these banks and brokers work through the generic importer (§15) and manual entry.
 
 **Rejected options** (kept here so they are not proposed again):
 - Manual-only share price (D3).
@@ -380,7 +395,7 @@ Catalog gap: `bankCatalog` has no PUMB, Oschadbank, Raiffeisen, or Ukrgasbank. A
 
 - **Account kind** `broker` — en "Broker", uk "Брокер".
 - Allowed holding types: `share`, `bond`, `cash` (broker cash, one holding per currency).
-- **Broker catalog** (same shape as `bankCatalog`): `trading212`, `ibkr`, `freedom24` (connectable once each sync ships), `revolut`, `icu`, `univer`, `dragon`, and "Other broker" (free-text name). Plain text names only; no logos (compliance: third-party trademarks). No sanctioned brokers (EXANTE, Freedom Finance Ukraine).
+- **Broker catalog** (same shape as `bankCatalog`): `trading212`, `ibkr`, `freedom24`, `revolut` (all plain, non-connectable entries — sync deferred, D26), `icu`, `univer`, `dragon`, and "Other broker" (free-text name). Plain text names only; no logos (compliance: third-party trademarks). No sanctioned brokers (EXANTE, Freedom Finance Ukraine).
 - `accounts.institution` marks a live-connected broker, as it marks Monobank today.
 
 **Rejected:** a generic "Institution" kind (loses type gating); putting brokers under `bank` (a broker is not a bank, and bank-only types such as `card`/`jar` would be offered).
@@ -400,33 +415,29 @@ Catalog gap: `bankCatalog` has no PUMB, Oschadbank, Raiffeisen, or Ukrgasbank. A
 ## 9. Compliance
 
 - **Guideline 5.6:** the whole feature line ships together, complete and visible (D16). No flag, no "coming soon" entry. A gated task that gets NO-GO leaves no trace in the UI: the broker stays a plain, non-connectable catalog entry (manual holdings only), which is a complete feature, not a hidden one.
-- **ATS pinning:** new credential hosts — `eodhd.com`, `live.trading212.com`, the IBKR Flex host, the Tradernet host — each need ≥2 CA SPKI pins. `bank.gov.ua` stays keyless and unpinned. Widen the `plist.sh` credential detection for query-param keys (§3.3).
-- **Privacy policy:** each new third party (EODHD, Trading 212, IBKR, Freedom24 if it passes its gate) is named in the bilingual policy on `gh-pages` before the release.
+- **ATS pinning:** new credential host — `eodhd.com` only (D26) — needs ≥2 CA SPKI pins. `bank.gov.ua` stays keyless and unpinned. Widen the `plist.sh` credential detection for query-param keys (§3.3).
+- **Privacy policy:** the new third party (EODHD) is named in the bilingual policy on `gh-pages` before the release.
 - **Trademarks:** plain text broker/provider names; no logos; no wording that suggests a partnership.
 - **No financial advice:** values, gains, and dates only.
 - **Translations:** every new en/uk key is reviewed by the user before a deploy.
 
 ---
 
-## 10. Build order (one feature line, D16)
+## 10. Build order (one feature line, D16; scope from D24–D27)
 
-All work lands on ONE integration branch and ships in ONE release. The order below is build order only.
+All work lands on ONE integration branch (`feat/assets-debts`) and ships in ONE release. P0 is built first and the user tests it on the device before P1 starts.
 
-| Step | Scope | New host | Size |
-|---|---|---|---|
-| **P1** | Price-series foundation (`price_points`, carry-forward lookup, `lots`, value branch in `holdingValueBreakdown` + `holdingValueAt`) + **Property / Майно** with manual value updates | none | M |
-| **P2** | **Precious metals** kind + `metal` type + NBU current and historical prices + metal allow-list on the bank catalog (§4.1) | none | S |
-| **P3** | **Bank catalog**: add PUMB, Oschadbank, Raiffeisen, Ukrgasbank + **Bond ISIN mode** + register cache + Diia hint | none | S |
-| **P4** | **Debts / Борг** + loan schedules + net-worth rule change + interest-only spending (§5.3) + pie/accounts UI + kiko-domain skill update | none | L |
-| **P5** | **Broker** kind + catalog + `share` type + **EODHD BYOK quotes** + quota guard + `plist.sh` detection fix | `eodhd.com` | L |
-| **P6** | **Trading 212** sync | `live.trading212.com` | M |
-| **P7** | **IBKR** Flex sync + Flex XML/CSV file import (fixture: uabean `tests/importers/ib/beancount.xml`, MIT, anonymized) | IBKR Flex host | M |
-| **P8** | **GATED — Freedom24** sync. GO only if a spike confirms: documented key auth, a read-only or portfolio-only scope, a stable host that can be pinned. NO-GO → Freedom24 stays a manual catalog entry | Tradernet host | M |
-| **P9** | **GATED — Revolut** statement import. GO only if a real Revolut trading CSV (or an official column spec) is available. NO-GO → Revolut stays a manual catalog entry | none | S |
-| **P10** | **Bank statement imports** per §13: PUMB XLSX (GO with a synthetic fixture from the documented header, marked "not verified on a real file"); others gated on a sample | none | S each |
-| Later | exact OVDP coupon schedule from `payments[]`; accrued coupon (dirty value) | none | S |
+| Step | Scope | New host |
+|---|---|---|
+| **P0** | **Generic column-mapping statement import (POC)** — §15 | none |
+| **P1** | Price-series foundation + **Property / Майно** | none |
+| **P2** | **Precious metals** kind + `metal` type + NBU prices + bank metal allow-list | none |
+| **P3** | Bank catalog: PUMB, Oschadbank, Raiffeisen, Ukrgasbank (caption "Import with column mapping"; no dedicated importer) + **Bond ISIN mode** + Diia hint | none |
+| **P4** | **Debts / Борг** + schedules + net-worth rule + interest-only spending + automatic loan-payment linking | none |
+| **P5** | **Broker / Брокер** kind + plain catalog + manual `share` holdings + **EODHD BYOK** quotes + `plist.sh` `api_token` detection | `eodhd.com` |
+| Deferred | everything in the "Deferred" list in §0 | — |
 
-P1 comes first because P2, P4 (informal debts), and P5 reuse its price series.
+The plan (`docs/plans/shares-property-metals-debts.md`) holds the task list and count.
 
 ---
 
@@ -456,7 +467,7 @@ Current importers: `monobank-csv`, `privatbank-xlsx`, `sensebank-csv`, `procredi
 - GitHub code search (Ukrainian and English bank names + "виписка", "statement", "csv", "xlsx"): no importer with a real sample file.
 - [zenmoney/ZenPlugins](https://github.com/zenmoney/ZenPlugins) has `oschadbank`, `pumb`, `ukrsibbank`, `raiffeisen-rs` plugins, but they call the banks' private APIs (for example `online.oschadbank.ua/mobile/api/v2/...`, `online.ukrsibbank.com/clientendpoint`) with the user's login, not statement files. GPL-3.0. Rejected.
 - [fiks9/FinanceOS-Bot `ai/csv_parser.py`](https://github.com/fiks9/FinanceOS-Bot) (MIT, 1 star) lists header guesses: Oschadbank `Дата операції, Найменування контрагента, Призначення платежу, Дебет, Кредит, Залишок`; Raiffeisen "iBank2" `OPERATION DATE, DOCUMENT AMOUNT, TRANSACTION DESCRIPTION, DEBIT/CREDIT`. Each header has several fallback aliases and there are no sample files, so these are **[unverified]** leads, not a basis for a strict `detect`. iBank2 is a business client-bank system.
-- Result: **no new importer tasks.** The four banks keep the "Manual holdings only" caption (accepted by the user).
+- Result: **no new importer tasks.** Round 5 (D27) replaces the accepted "Manual holdings only" caption with "Import with column mapping": the generic importer (§15) now serves these banks.
 
 **How to handle importers without a real file:**
 1. Build a parser only when a column spec exists from a working open-source importer (PUMB) or from an official document.
@@ -493,4 +504,24 @@ Criteria from the user: maintained, no open CVEs (OSV), works in Hermes/React Na
 | `cfb` 1.2.2 | Last release 2022-06-13. Contains `require('fs')` and `require("zlib")`. OSV: none. | Rejected (unmaintained; Metro resolves those requires). |
 | `read-excel-file` 9.3.10 (existing) | Reads `.xlsx` only; throws `XLS_FILE_NOT_SUPPORTED` for OLE2 `.xls` (its README). | Not enough for ProCredit. |
 | Hand-rolled `.xls` reader | OLE2 container (header, FAT, DIFAT, directory, mini stream) + BIFF5/BIFF8 cell records; cp1251 through the existing `windows-1251` dependency; strict bounds and loop checks. | **Chosen for ProCredit (D20).** Plan task T49. |
+
+---
+
+## 15. Generic column-mapping statement import (D27, POC)
+
+**Why:** most Ukrainian banks have no public statement format, and the user cannot supply samples (D24). A generic importer lets any user import any CSV/XLSX statement by telling Kiko which column is which. It covers PUMB, ProCredit personal (after a re-save as `.xlsx`), Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK, and banks abroad.
+
+**Flow:**
+1. Pick a CSV or XLSX file (existing `papaparse` / `read-excel-file`; `.xls` is not supported — `read-excel-file` reports `XLS_FILE_NOT_SUPPORTED`, so the message asks the user to re-save as `.xlsx`).
+2. Preview the first rows as a raw grid.
+3. Map columns: **date** (required); **amount**, OR a **debit/credit** pair (required); **description** (required); currency (optional); counterparty (optional). Choose the date format, the decimal separator, the header row, and the encoding (UTF-8 or windows-1251; `windows-1251` support exists).
+4. Parsed preview with per-row errors (a bad date, a bad amount).
+5. Confirm → import through the EXISTING pipeline: the same dedupe (`source = 'import'` + `externalId`), the same target-account selection.
+6. Save the mapping per bank/institution, so the next import of the same shape is one step (the preview still shows).
+
+**Rules:**
+- A complete, visible feature (Guideline 5.6): reachable from the existing statement import, offered when no known format matches, and also as an explicit "Map columns manually" entry. No flag.
+- Existing dedicated importers stay and still win when they detect their format (D25).
+- Tests use real-shaped files only: the existing fixtures (Monobank CSV, Sensebank cp1251 CSV, PrivatBank XLSX, ProCredit business CSV) go through the generic mapper, and the result must equal what the dedicated importer produces for the same file (parity tests). No invented bank formats.
+- Device test by the user: a real Monobank CSV export and a PrivatBank-style XLSX.
 
