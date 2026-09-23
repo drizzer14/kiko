@@ -42,68 +42,6 @@ rules:
       - metavariable-regex:
           metavariable: $TOKEN
           regex: (?i).*(token|secret|password|credential).*
-  # `paths.include` is a bare `*.swift` on purpose, NOT `ios/KikoWidget/*.swift`.
-  # Semgrep matches an include pattern containing a `/` against the path relative
-  # to the SCAN ROOT, so a path-prefixed include silently matches nothing the
-  # moment the fixture runner scans `rules/fixtures/` directly — a rule that
-  # matches nothing still reports success, which is the exact failure mode this
-  # whole fixture harness exists to prevent. A basename pattern matches under
-  # every scan root (verified both ways on Semgrep 1.175). The scope loss is
-  # nil: the pattern requires a `Text(…)` reading a money member, and SwiftUI
-  # `Text` exists only in the widget extension — the main app is React Native.
-  #
-  # The metavariable-regex keys on the money MEMBER being read (`.formatted`,
-  # `.minorUnits`, `.total`), never on the name of the binding it is read from.
-  # An earlier `^(snapshot|item)\.` let a renamed binding walk straight past the
-  # rule — `content(for snap:)` or `ForEach(rows) { row in … }` and the balance
-  # ships unredacted. `rules/fixtures/*.bad.swift` pins both spellings with
-  # EXPECT-FINDING comments so `npm run check:rules` fails if that regresses.
-  # The leading `.*` is load-bearing: Semgrep 1.175 anchors a metavariable-regex
-  # at the START of the metavariable's text, so the bare
-  # `\.(formatted|minorUnits|total)(\.|$)` matches nothing at all (measured: 4
-  # findings with the `.*`, 0 without it). A currency code (`Text(item.currency)`)
-  # is not money and stays unflagged; the row it sits in is still caught through
-  # its amount.
-  - id: kiko-widget-money-view-needs-privacysensitive
-    languages: [swift]
-    severity: ERROR
-    message: >
-      A widget view bound to snapshot money must be marked `.privacySensitive()`
-      so WidgetKit redacts it on a locked device. The widget extension has no
-      LockGate; without this the app lock is silently bypassed on the Lock
-      Screen / StandBy. Put the modifier on the Text, or on the row that
-      contains it.
-    paths:
-      include:
-        - "*.swift"
-    patterns:
-      - pattern: Text($X)
-      - metavariable-regex:
-          metavariable: $X
-          regex: .*\.(formatted|minorUnits|total)(\.|$)
-      - pattern-not-inside: $E.privacySensitive()
-  # File-scoped on purpose. The function-scoped form ("the same function must
-  # also set both attributes") is not expressible: Semgrep 1.175 does not match
-  # `func $F(...) { ... }` as a Swift enclosing range, so `pattern-inside` /
-  # `pattern-not-inside` on a function body silently matches nothing. A file
-  # that reaches the App Group container AND writes a file must therefore carry
-  # both hardening calls somewhere in it. Verified to produce no false positive
-  # on the real tree: `ios/KikoWidget/NetWorthSnapshot.swift` reaches the
-  # container but never writes, so it is not flagged.
-  - id: kiko-appgroup-write-needs-protection
-    languages: [generic]
-    severity: ERROR
-    message: >
-      This file writes into the App Group container without setting
-      `isExcludedFromBackup` and an explicit file-protection class. The shared
-      container IS included in iCloud/iTunes backups and defaults to an
-      inherited protection class, so a cleartext derivative of encrypted data
-      leaks through a backup. Set both, after every write — an atomic write
-      replaces the inode and drops them.
-    paths:
-      include:
-        - "*.swift"
-    pattern-regex: (?s)\A(?=.*\.write\(to:)(?!.*isExcludedFromBackup)(?!.*protectionKey).*forSecurityApplicationGroupIdentifier
   # Guideline 5.6 (App Store rejection of build 7: "features intentionally
   # hidden during review"). Three shapes, one rule: importing a
   # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
@@ -124,13 +62,14 @@ rules:
   # `require` reaching `e2e/` is a finding, exactly like a static import.
   #
   # No `paths.include` scope here on purpose, unlike most file-scoped rules.
-  # A path-prefixed include (e.g. "src/**") is the exact gotcha the Swift
-  # rules above already hit: Semgrep matches it against the path relative to
-  # the SCAN ROOT, so it silently matches NOTHING the moment
-  # `scripts/checks/semgrep-rules.sh` scans `rules/fixtures/` directly (the
-  # fixture is not nested under a `src/` segment) — a rule that stops firing
-  # on its own fixture is the exact failure this whole harness exists to
-  # prevent. Scoping is achieved with content specificity instead: the
+  # A path-prefixed include (e.g. "src/**") hits a known Semgrep 1.175 gotcha
+  # (see `kiko-linter`'s "Semgrep facts verified on 1.175"): Semgrep matches
+  # it against the path relative to the SCAN ROOT, so it silently matches
+  # NOTHING the moment `scripts/checks/semgrep-rules.sh` scans
+  # `rules/fixtures/` directly (the fixture is not nested under a `src/`
+  # segment) — a rule that stops firing on its own fixture is the exact
+  # failure this whole harness exists to prevent. Scoping is achieved with
+  # content specificity instead: the
   # `e2e/` regexes only match a specifier that literally spells out an
   # `e2e/` path segment, which a file INSIDE `e2e/` never needs to do for
   # its own relative imports (verified empirically —
@@ -170,8 +109,9 @@ rules:
   # ARE the UI layer (navigation wires screens together by design), and so is
   # the app root `App.tsx`.
   #
-  # `paths.exclude` (unlike `paths.include`, see the widget rule's comment
-  # above) is safe to path-prefix here: it was verified empirically against a
+  # `paths.exclude` (unlike `paths.include`, see `kiko-linter`'s "Semgrep
+  # facts verified on 1.175") is safe to path-prefix here: it was verified
+  # empirically against a
   # throwaway rule+tree that a path-prefixed `paths.exclude` entry matches
   # correctly whether Semgrep's target is a whole directory, an absolute
   # directory path, or a single absolute file path (`fast.sh` scans one file
