@@ -50,7 +50,7 @@ describe('MetalSection', () => {
     expect(getByText('Form')).toBeTruthy();
     expect(getByText('Bar')).toBeTruthy();
     expect(getByText('Coin')).toBeTruthy();
-    expect(getByText('Bank metal account')).toBeTruthy();
+    expect(getByText('Metal account')).toBeTruthy();
   });
 
   it('reports the tapped form', async () => {

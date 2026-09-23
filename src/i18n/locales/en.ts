@@ -263,7 +263,7 @@ export const en = {
       maturityDateError: 'Maturity date must be after the purchase date.',
       metal: 'Precious metal',
       metalForm: 'Form',
-      metalFormBankAccount: 'Bank metal account',
+      metalFormBankAccount: 'Metal account',
       metalFormBar: 'Bar',
       metalFormCoin: 'Coin',
       metalKind: {

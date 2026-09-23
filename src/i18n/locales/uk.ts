@@ -246,7 +246,7 @@ export const uk: typeof en = {
       maturityDateError: 'Дата погашення має бути пізніше дати придбання.',
       metal: 'Дорогоцінний метал',
       metalForm: 'Форма',
-      metalFormBankAccount: 'Металевий банківський рахунок',
+      metalFormBankAccount: 'Металевий рахунок',
       metalFormBar: 'Злиток',
       metalFormCoin: 'Монета',
       metalKind: {
