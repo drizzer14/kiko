@@ -107,6 +107,14 @@ correctly-pinned clients. That is a noisy rule, not a check. The shell
 assertion above carries the whole intent, and it is strictly more precise
 because it can compare against the actual pinned set.
 
+### Enforced — 2026-09-23 skill-gap-analysis pass (#14, #16)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-import-screens-outside-ui` | #14 — `currency-field.component.tsx` imported `FieldTrigger` from `src/screens/forms/`, a design-system-into-screens layer inversion (fixed by moving `FieldTrigger` into `src/design-system/components/`) | Semgrep (TS/JS, ERROR) | `paths.exclude: ["src/screens/**", "src/navigation/**", "App.tsx"]` — screens and navigation ARE the UI layer and are allowed to import from `src/screens/**`. `paths.exclude` (unlike `paths.include`) was verified to path-prefix safely: it matches correctly against a whole-directory, absolute-directory, or single-absolute-file Semgrep target (the last is what `fast.sh` uses), and failing to match only fails OPEN (rule still applies), not closed. Content regex requires a `/screens/` (or leading `screens/`) path segment, so `react-native-screens` (no `/` after the name) and any `<x>-screens/…`-suffixed segment do not false-positive. |
+| `kiko-no-use-animated-keyboard` | #16 — `useAnimatedKeyboard()` was prose-only banned in `kiko-gestures` (its native observer reaches `AppDelegate.window`, which SIGABRTs under this app's UIScene lifecycle) | Semgrep (TS/JS, ERROR) | Flags any `useAnimatedKeyboard(` call. `bottom-sheet.component.tsx` drives its keyboard height from RN core `Keyboard` events instead — see `kiko-gestures`. |
+| `kiko-no-textdecoder-textencoder` | #16 — Hermes has no working `TextDecoder`/`TextEncoder`; `src/data-transfer/utf8`/`base64` hand-roll the equivalent, prose-only in `kiko-code-style`'s dependency notes | Semgrep (TS/JS, ERROR) | Flags `new TextDecoder(` / `new TextEncoder(` anywhere under `src/`. A comment merely mentioning the names does not match — the pattern requires the `new …(` call syntax. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

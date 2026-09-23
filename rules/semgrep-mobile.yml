@@ -159,6 +159,55 @@ rules:
           - pattern-regex: import\s*\{[^}]*\b(SHOW_[A-Z0-9_]*|HIDE_[A-Z0-9_]*|SCREENSHOT_[A-Z0-9_]*)\b[^}]*\}\s*from\s*['"]@env['"]
           - pattern-regex: import\s[^;]*from\s*['"][^'"]*\be2e/[^'"]*['"]
           - pattern-regex: require\s*\(\s*['"][^'"]*\be2e/[^'"]*['"]\s*\)
+  # Layer rule (skill-gap-analysis #14): `src/screens/**` is the UI layer that
+  # composes design-system primitives and domain modules, never the other way
+  # around. A design-system component importing a screens module (FieldTrigger
+  # used to live under `src/screens/forms/` and was imported by
+  # `currency-field.component.tsx`, until it was moved) is a real layer
+  # inversion: it makes a shared primitive depend on app-specific UI, and one
+  # screen's internal refactor can now break an unrelated design-system
+  # consumer. `src/screens/**` and `src/navigation/**` are exempted since they
+  # ARE the UI layer (navigation wires screens together by design), and so is
+  # the app root `App.tsx`.
+  #
+  # `paths.exclude` (unlike `paths.include`, see the widget rule's comment
+  # above) is safe to path-prefix here: it was verified empirically against a
+  # throwaway rule+tree that a path-prefixed `paths.exclude` entry matches
+  # correctly whether Semgrep's target is a whole directory, an absolute
+  # directory path, or a single absolute file path (`fast.sh` scans one file
+  # at a time) — an exclude that fails to match only means "don't exclude",
+  # which fails safe (the rule still applies), the opposite failure mode from
+  # a prefixed `paths.include` failing to match (which fails closed and
+  # silently stops the rule from ever firing). The fixture pair below lives
+  # directly in `rules/fixtures/`, not nested under `src/screens/` or
+  # `src/navigation/`, so neither exclude pattern touches it — the fixture
+  # scan is proven purely by the content regex below, same as the `e2e/` rule
+  # above.
+  #
+  # No test-file carve-out: no test outside `src/screens/`/`src/navigation/`
+  # imports from `screens/` today (verified empirically), and a test that
+  # reached into a screen for a shared helper would be the same layer
+  # inversion as production code reaching in — so this is not exempted.
+  - id: kiko-no-import-screens-outside-ui
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      A non-screens, non-navigation module imports from `src/screens/**`.
+      `src/screens/` is the UI layer that composes shared design-system and
+      domain modules — nothing outside `src/screens/**`, `src/navigation/**`,
+      or `App.tsx` may import from it. Move the shared code being imported
+      into `src/design-system/` or the owning domain module instead (see the
+      `kiko-design-system` skill's `FieldTrigger` entry for a worked
+      precedent), then import it from there.
+    paths:
+      exclude:
+        - "src/screens/**"
+        - "src/navigation/**"
+        - "App.tsx"
+    patterns:
+      - pattern-either:
+          - pattern-regex: import\s[^;]*from\s*['"](?:[^'"]*/)?screens/[^'"]*['"]
+          - pattern-regex: require\s*\(\s*['"](?:[^'"]*/)?screens/[^'"]*['"]\s*\)
   # ---- Class A: code-style conventions (deterministic hard-fail) ----
   - id: kiko-repo-no-class
     languages: [typescript]
