@@ -4,20 +4,27 @@ export const styles = StyleSheet.create((theme) => ({
   // One raw-table row: cells laid out in a horizontal Box, the WHOLE grid
   // wrapped in a single horizontal ScrollView by the component (so every
   // row's cells stay column-aligned as the user scrolls sideways).
+  // `paddingVertical` is deliberately generous (device-feedback-round-F1
+  // item 5, "a little more vertical space") — every row also sits under a
+  // `gap={2}` (the component's outer Box), up from `gap={1}`.
   row: {
-    paddingVertical: theme.spacing(1),
+    paddingVertical: theme.spacing(2),
     paddingHorizontal: theme.spacing(2),
     borderRadius: theme.radii.sm,
   },
-  // The tapped-as-header row reads as a raised, selected surface — the same
-  // `surfaceHigh` a selected settings row uses elsewhere.
+  // The tapped-as-header row paints the theme's accent BLUE (device-feedback-
+  // round-F1 item 12) — the same filled-accent selection vocabulary
+  // OptionPills/ChipRow use, replacing the former neutral `surfaceHigh` tint.
+  // Its cell text switches to the always-white `onAccent` tone (the
+  // `SymbolIcon`/`Text`-on-accent-fill rule, `kiko-design-system`'s "The
+  // `onAccent` rule") — done by the component, not here.
   selectedRow: {
-    backgroundColor: theme.colors.surfaceHigh,
+    backgroundColor: theme.colors.accent,
   },
-  // A fixed minimum width per cell keeps every row's columns aligned as the
-  // grid scrolls, regardless of how short an individual cell's own text is.
+  // Each cell's own WIDTH is set inline per column (`computeColumnWidths`,
+  // device-feedback-round-F1 item 6) — this only supplies the shared
+  // trailing gap between columns.
   cell: {
-    minWidth: 96,
     paddingRight: theme.spacing(2),
   },
 }));

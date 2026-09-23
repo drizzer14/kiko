@@ -152,3 +152,75 @@ recognized `bankId`/format), and "Map columns manually" in
 generic statement-import screen whenever a file was read at all
 (including an unrecognized-format or bank-mismatch preview), routing
 to `src/screens/column-mapping/column-mapping.screen.tsx`.
+
+## Screen layout (device-feedback-round-F1)
+
+Both `statement-import.screen.tsx` and `column-mapping.screen.tsx`
+follow the same layout conventions as every other Kiko screen, after
+a P0 UI fix round driven by device feedback:
+
+- **Import (and, on the statement-import screen, "Map columns
+  manually") live in `Screen`'s own `footer` slot**, not inline in the
+  scrolling body — the same footer slot every other screen's main
+  action uses. `statement-import.screen.tsx` extracts a module-scope
+  `StatementImportFooter` for this (gated on `hasStats`/`hasInput`,
+  `undefined` — not an always-defined element that renders `null` —
+  when neither applies, since `Screen.footer` reserves clearance for
+  ANY defined node); `column-mapping.screen.tsx` gates its own footer
+  on `loadState.kind === 'ready'`.
+- **"Choose a holding" is a labeled SELECT FIELD, not a Button.**
+  `src/screens/statement-import/target-holding-field/` wraps the
+  existing `FieldTrigger` + `TargetHoldingSheet` pair (the same
+  field-plus-sheet family `ModeSelectField`/`HoldingSelectField`
+  follow) — shared by both screens, replacing what used to be two
+  independent Button-plus-sheet duplicates. `TargetHoldingSheet` itself
+  (`target-holding-sheet/`) is UNCHANGED.
+- **The preview/result summary reuses `SummaryTable`** (see
+  `kiko-design-system`) — the statement-import preview's own
+  transaction-count/currency/date-span rows
+  (`statementImport.transactionCountLabel`/`currencyLabel`/
+  `dateSpanLabel`), and the column-mapping result section's
+  transaction-count/date-span rows, both go through the SAME shared
+  component the deposit/bond value-breakdown block also uses — never
+  each other's columns, only the row layout.
+- **`ExampleTransaction`** (`src/screens/statement-import/example-
+  transaction/`) is the ONE shared "first parsed row" preview (date,
+  description, amount via `MoneyText`), rendered under the summary
+  table on both screens from `PreviewStats.firstTransaction` (the
+  first `ParsedTransaction` in ON-FILE order, not chronological order
+  — `previewStats` sets it via `parsed.transactions.at(0)`, optional
+  since an existing `PreviewStats` object literal predates the field).
+- **The raw preview grid** (`column-mapping/raw-preview/`) gives each
+  column a CONSISTENT width across every row
+  (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
+  the longest cell text seen in that column across the previewed
+  rows) instead of a flat per-cell minimum, takes more vertical
+  breathing room (`gap={2}` between rows, up from `1`), and paints the
+  tapped header row with the theme's accent BLUE
+  (`theme.colors.accent`) with `onAccent` cell text — replacing the
+  former neutral `surfaceHigh` tint — matching the app's standard
+  filled-accent selection vocabulary (OptionPills/ChipRow/SelectableRow).
+  "Tap the row with the column names" (`columnMapping.rawPreview`)
+  renders at the `heading` type step instead of a muted `body`/
+  `textSecondary` caption, so it reads clearly above the grid.
+- **Encoding/delimiter/decimal-separator use the app's existing
+  compact `ChipRow`** (`src/screens/forms/chip-row/`), not
+  `OptionPills` — `OptionPills`' 44pt-minimum centered pill reads as
+  oversized for a single character/short code ("," / ";" / "UTF-8").
+  The amount-mode and currency-mode toggles (inside `AmountFields`/
+  `CurrencyFields`) keep `OptionPills` — their longer descriptive
+  labels ("One amount column", "Debit and credit columns") are not the
+  flagged "too-large chips".
+- **Fields are grouped with the shared `Divider`** between: (a)
+  encoding/separators, (b) dates, (c) amounts/currency, (d)
+  description/counterparty (moved to the BOTTOM, in their own group,
+  below amounts/currency — description used to sit between the date
+  and amount groups), (e) result.
+- **Required fields show the red asterisk marker** (`FieldLabel`'s
+  `required` prop, forwarded through `ColumnSelectField` and
+  `FieldTrigger`) — date, date format, amount/debit/credit column(s),
+  currency column (when in column mode), and description are marked
+  required; counterparty stays unmarked (optional), and
+  `columnMapping.counterpartyColumn` no longer carries an
+  "(optional)"/"(необов'язково)" suffix — the absent marker IS the
+  optional signal now, matching every other optional field.

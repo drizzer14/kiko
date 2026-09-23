@@ -20,9 +20,9 @@ import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import Divider from '../../design-system/components/divider';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
-import OptionPills from '../../design-system/components/option-pills';
 import type { AccountsStackParamList } from '../../navigation/types';
 import { supportedFormatNames } from '../../statement-import/registry';
 import {
@@ -48,9 +48,10 @@ import { styles } from './column-mapping.styles';
 import CurrencyFields from './currency-fields';
 import MappingResult from './mapping-result';
 import ColumnSelectField from './column-select-field';
+import ChipRow from '../forms/chip-row';
 import ImportOutcome from '../statement-import/import-outcome';
-import TargetHoldingSheet from '../statement-import/target-holding-sheet';
 import { previewStats, type PreviewStats } from '../statement-import/preview-stats/preview-stats';
+import TargetHoldingField from '../statement-import/target-holding-field';
 import type { AmountMode } from './amount-fields/amount-fields.props';
 import type { CurrencyMode } from './currency-fields/currency-fields.props';
 import type { ColumnSelectFieldOption } from './column-select-field/column-select-field.props';
@@ -280,6 +281,277 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
   counterpartyColumn: mapping.counterpartyColumn,
 });
 
+// Every prop the `ready`-state form needs — a module-scope component
+// (mirroring `statement-import.screen.tsx`'s own `StatementPreviewBlock`) so
+// this large, mostly-static form tree doesn't count against the screen
+// component's own cognitive-complexity budget. Groups sections with the
+// shared `Divider` (device-feedback-round-F1, item 8): encoding/separators,
+// dates, amounts/currency, description/counterparty (moved to the bottom,
+// item 10), then the result.
+type ColumnMappingFormProps = {
+  isXlsx: boolean;
+  savedApplied: boolean;
+  rows: TableCell[][];
+  headerRowIndex: number | undefined;
+  onSelectHeaderRow: (rowIndex: number) => void;
+  encoding: Encoding;
+  onEncodingChange: (encoding: Encoding) => void;
+  effectiveDelimiter: TableDelimiter | undefined;
+  onDelimiterChange: (delimiter: TableDelimiter) => void;
+  decimalSeparator: ',' | '.';
+  onDecimalSeparatorChange: (separator: ',' | '.') => void;
+  columnOptions: ColumnSelectFieldOption<number>[];
+  dateColumn: number | undefined;
+  onDateColumnChange: (value: number | undefined) => void;
+  dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[];
+  dateFormat: DateFormatId | undefined;
+  onDateFormatChange: (value: DateFormatId | undefined) => void;
+  amountMode: AmountMode;
+  onAmountModeChange: (mode: AmountMode) => void;
+  amountColumn: number | undefined;
+  onAmountColumnChange: (value: number | undefined) => void;
+  debitColumn: number | undefined;
+  onDebitColumnChange: (value: number | undefined) => void;
+  creditColumn: number | undefined;
+  onCreditColumnChange: (value: number | undefined) => void;
+  currencyMode: CurrencyMode;
+  onCurrencyModeChange: (mode: CurrencyMode) => void;
+  currencyColumn: number | undefined;
+  onCurrencyColumnChange: (value: number | undefined) => void;
+  fixedCurrency: Currency;
+  onFixedCurrencyChange: (currency: Currency) => void;
+  descriptionColumn: number | undefined;
+  onDescriptionColumnChange: (value: number | undefined) => void;
+  counterpartyColumn: number | undefined;
+  onCounterpartyColumnChange: (value: number | undefined) => void;
+  stats: PreviewStats | undefined;
+  rowErrors: ColumnMappingRowError[];
+  holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
+  accountId: string;
+  selectedHoldingId: string | undefined;
+  onSelectHolding: (holdingId: string) => void;
+  onCreateNewHolding: () => void;
+  importError: string | undefined;
+  importResult: ImportResult | undefined;
+};
+
+const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
+  isXlsx,
+  savedApplied,
+  rows,
+  headerRowIndex,
+  onSelectHeaderRow,
+  encoding,
+  onEncodingChange,
+  effectiveDelimiter,
+  onDelimiterChange,
+  decimalSeparator,
+  onDecimalSeparatorChange,
+  columnOptions,
+  dateColumn,
+  onDateColumnChange,
+  dateFormatOptions,
+  dateFormat,
+  onDateFormatChange,
+  amountMode,
+  onAmountModeChange,
+  amountColumn,
+  onAmountColumnChange,
+  debitColumn,
+  onDebitColumnChange,
+  creditColumn,
+  onCreditColumnChange,
+  currencyMode,
+  onCurrencyModeChange,
+  currencyColumn,
+  onCurrencyColumnChange,
+  fixedCurrency,
+  onFixedCurrencyChange,
+  descriptionColumn,
+  onDescriptionColumnChange,
+  counterpartyColumn,
+  onCounterpartyColumnChange,
+  stats,
+  rowErrors,
+  holdingOptions,
+  accountId,
+  selectedHoldingId,
+  onSelectHolding,
+  onCreateNewHolding,
+  importError,
+  importResult,
+}) => {
+  const { t } = useTranslation();
+  const encodingLabels: Partial<Record<Encoding, string>> = {
+    'utf-8': encodingLabel('utf-8'),
+    'windows-1251': encodingLabel('windows-1251'),
+  };
+  const delimiterLabels: Partial<Record<TableDelimiter, string>> = {
+    ',': ',',
+    ';': ';',
+    '\t': delimiterLabel(t, '\t'),
+  };
+
+  return (
+    <Box gap={3}>
+      <Text variant="heading">{t('columnMapping.title')}</Text>
+
+      {savedApplied && (
+        <Text variant="body" tone="textSecondary">
+          {t('columnMapping.savedApplied')}
+        </Text>
+      )}
+
+      <Box gap={1}>
+        {/* A stronger, more visible hint (device-feedback-round-F1 item 12) —
+            `heading` instead of the former muted `body`/`textSecondary`
+            caption. */}
+        <Text variant="heading">{t('columnMapping.rawPreview')}</Text>
+        <RawPreview
+          rows={rows}
+          headerRowIndex={headerRowIndex}
+          onSelectHeaderRow={onSelectHeaderRow}
+        />
+      </Box>
+
+      <Divider testID="column-mapping-divider-encoding" />
+
+      {/* Group (a): encoding/separators. Encoding/delimiter/decimal-separator
+          all switched from the (too-large, device-feedback-round-F1 item 7)
+          `OptionPills` chips to the app's existing compact `ChipRow`. */}
+      <Box gap={3}>
+        {!isXlsx && (
+          <>
+            <Box testID="column-mapping-encoding">
+              <ChipRow<Encoding>
+                label={t('columnMapping.encoding')}
+                options={['utf-8', 'windows-1251']}
+                selected={encoding}
+                onSelect={onEncodingChange}
+                labels={encodingLabels}
+              />
+            </Box>
+
+            <Box testID="column-mapping-delimiter">
+              <ChipRow<TableDelimiter>
+                label={t('columnMapping.delimiter')}
+                options={[',', ';', '\t']}
+                selected={effectiveDelimiter ?? ','}
+                onSelect={onDelimiterChange}
+                labels={delimiterLabels}
+              />
+            </Box>
+          </>
+        )}
+
+        <Box testID="column-mapping-decimal-separator">
+          <ChipRow<',' | '.'>
+            label={t('columnMapping.decimalSeparator')}
+            options={[',', '.']}
+            selected={decimalSeparator}
+            onSelect={onDecimalSeparatorChange}
+          />
+        </Box>
+      </Box>
+
+      <Divider testID="column-mapping-divider-dates" />
+
+      {/* Group (b): dates. */}
+      <Box gap={3} style={styles.fieldGroup}>
+        <ColumnSelectField
+          label={t('columnMapping.dateColumn')}
+          options={columnOptions}
+          selected={dateColumn}
+          onSelect={onDateColumnChange}
+          required
+          testID="column-mapping-date-column"
+        />
+
+        <ColumnSelectField
+          label={t('columnMapping.dateFormat')}
+          options={dateFormatOptions}
+          selected={dateFormat}
+          onSelect={onDateFormatChange}
+          required
+          testID="column-mapping-date-format"
+        />
+      </Box>
+
+      <Divider testID="column-mapping-divider-amounts" />
+
+      {/* Group (c): amounts/currency. */}
+      <Box gap={3} testID="column-mapping-amount-mode" style={styles.fieldGroup}>
+        <AmountFields
+          columnOptions={columnOptions}
+          mode={amountMode}
+          onModeChange={onAmountModeChange}
+          amountColumn={amountColumn}
+          onAmountColumnChange={onAmountColumnChange}
+          debitColumn={debitColumn}
+          onDebitColumnChange={onDebitColumnChange}
+          creditColumn={creditColumn}
+          onCreditColumnChange={onCreditColumnChange}
+        />
+      </Box>
+
+      <Box gap={3} testID="column-mapping-currency-mode" style={styles.fieldGroup}>
+        <CurrencyFields
+          columnOptions={columnOptions}
+          mode={currencyMode}
+          onModeChange={onCurrencyModeChange}
+          currencyColumn={currencyColumn}
+          onCurrencyColumnChange={onCurrencyColumnChange}
+          fixedCurrency={fixedCurrency}
+          onFixedCurrencyChange={onFixedCurrencyChange}
+        />
+      </Box>
+
+      <Divider testID="column-mapping-divider-description" />
+
+      {/* Group (d): description/counterparty — moved to the bottom, in their
+          own divided group (device-feedback-round-F1 item 10). */}
+      <Box style={styles.fieldGroup}>
+        <ColumnSelectField
+          label={t('columnMapping.descriptionColumn')}
+          options={columnOptions}
+          selected={descriptionColumn}
+          onSelect={onDescriptionColumnChange}
+          required
+          testID="column-mapping-description-column"
+        />
+      </Box>
+
+      <Box style={styles.fieldGroup}>
+        <ColumnSelectField
+          label={t('columnMapping.counterpartyColumn')}
+          options={columnOptions}
+          selected={counterpartyColumn}
+          onSelect={onCounterpartyColumnChange}
+          allowNotUsed
+          testID="column-mapping-counterparty-column"
+        />
+      </Box>
+
+      <Divider testID="column-mapping-divider-result" />
+
+      {/* Group (e): result. */}
+      <MappingResult stats={stats} rowErrors={rowErrors} />
+
+      <TargetHoldingField
+        label={t('statementImport.chooseHolding')}
+        holdings={holdingOptions}
+        accountId={accountId}
+        selectedId={selectedHoldingId}
+        onSelect={onSelectHolding}
+        onCreateNew={onCreateNewHolding}
+        testID="target-holding-field"
+      />
+
+      <ImportOutcome error={importError} result={importResult} />
+    </Box>
+  );
+};
+
 /**
  * The generic column-mapping import screen (T6, docs/plans/statement-import.md
  * — see the shares-property-metals-debts P0 brief): lets a user map an
@@ -316,7 +588,6 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [counterpartyColumn, setCounterpartyColumn] = useState<number | undefined>(undefined);
   const [savedApplied, setSavedApplied] = useState(false);
 
-  const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
@@ -474,8 +745,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
+  const footer =
+    loadState.kind === 'ready' ? (
+      <Button variant="primary" onPress={handleImport} disabled={!canImport}>
+        {t('statementImport.importButton')}
+      </Button>
+    ) : undefined;
+
   return (
-    <Screen scroll>
+    <Screen scroll footer={footer}>
       <Box gap={4} testID="column-mapping-content">
         {loadMessageKey !== undefined && (
           <Text variant="body" tone="textSecondary">
@@ -484,152 +762,54 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         )}
 
         {loadState.kind === 'ready' && (
-          <Box gap={3}>
-            <Text variant="heading">{t('columnMapping.title')}</Text>
-
-            {savedApplied && (
-              <Text variant="body" tone="textSecondary">
-                {t('columnMapping.savedApplied')}
-              </Text>
-            )}
-
-            <Box gap={1}>
-              <Text variant="body" tone="textSecondary">
-                {t('columnMapping.rawPreview')}
-              </Text>
-              <RawPreview
-                rows={rows}
-                headerRowIndex={headerRowIndex}
-                onSelectHeaderRow={setHeaderRowIndex}
-              />
-            </Box>
-
-            {!loadState.isXlsx && (
-              <Box gap={3}>
-                <Box gap={1} testID="column-mapping-encoding" style={styles.fieldGroup}>
-                  <Text variant="body">{t('columnMapping.encoding')}</Text>
-                  <OptionPills<Encoding>
-                    options={['utf-8', 'windows-1251']}
-                    selected={encoding}
-                    onSelect={setEncoding}
-                    label={encodingLabel}
-                  />
-                </Box>
-
-                <Box gap={1} testID="column-mapping-delimiter">
-                  <Text variant="body">{t('columnMapping.delimiter')}</Text>
-                  <OptionPills<TableDelimiter>
-                    options={[',', ';', '\t']}
-                    selected={effectiveDelimiter}
-                    onSelect={setDelimiterOverride}
-                    label={(option) => delimiterLabel(t, option)}
-                    columns={3}
-                  />
-                </Box>
-              </Box>
-            )}
-
-            <Box gap={1} testID="column-mapping-decimal-separator" style={styles.fieldGroup}>
-              <Text variant="body">{t('columnMapping.decimalSeparator')}</Text>
-              <OptionPills<',' | '.'>
-                options={[',', '.']}
-                selected={decimalSeparator}
-                onSelect={setDecimalSeparator}
-              />
-            </Box>
-
-            <Box gap={3} style={styles.fieldGroup}>
-              <ColumnSelectField
-                label={t('columnMapping.dateColumn')}
-                options={columnOptions}
-                selected={dateColumn}
-                onSelect={setDateColumn}
-                testID="column-mapping-date-column"
-              />
-
-              <ColumnSelectField
-                label={t('columnMapping.dateFormat')}
-                options={dateFormatOptions}
-                selected={dateFormat}
-                onSelect={setDateFormat}
-                testID="column-mapping-date-format"
-              />
-            </Box>
-
-            <Box gap={3} testID="column-mapping-amount-mode" style={styles.fieldGroup}>
-              <AmountFields
-                columnOptions={columnOptions}
-                mode={amountMode}
-                onModeChange={setAmountMode}
-                amountColumn={amountColumn}
-                onAmountColumnChange={setAmountColumn}
-                debitColumn={debitColumn}
-                onDebitColumnChange={setDebitColumn}
-                creditColumn={creditColumn}
-                onCreditColumnChange={setCreditColumn}
-              />
-            </Box>
-
-            <Box style={styles.fieldGroup}>
-              <ColumnSelectField
-                label={t('columnMapping.descriptionColumn')}
-                options={columnOptions}
-                selected={descriptionColumn}
-                onSelect={setDescriptionColumn}
-                testID="column-mapping-description-column"
-              />
-            </Box>
-
-            <Box gap={3} testID="column-mapping-currency-mode" style={styles.fieldGroup}>
-              <CurrencyFields
-                columnOptions={columnOptions}
-                mode={currencyMode}
-                onModeChange={setCurrencyMode}
-                currencyColumn={currencyColumn}
-                onCurrencyColumnChange={setCurrencyColumn}
-                fixedCurrency={fixedCurrency}
-                onFixedCurrencyChange={setExplicitFixedCurrency}
-              />
-            </Box>
-
-            <Box style={styles.fieldGroup}>
-              <ColumnSelectField
-                label={t('columnMapping.counterpartyColumn')}
-                options={columnOptions}
-                selected={counterpartyColumn}
-                onSelect={setCounterpartyColumn}
-                allowNotUsed
-                testID="column-mapping-counterparty-column"
-              />
-            </Box>
-
-            <MappingResult stats={stats} rowErrors={applyResult?.rowErrors ?? []} />
-
-            <Button
-              variant="secondaryTonal"
-              fullWidth={false}
-              onPress={() => setSheetVisible(true)}
-            >
-              {t('statementImport.chooseHolding')}
-            </Button>
-
-            <Button variant="primary" onPress={handleImport} disabled={!canImport}>
-              {t('statementImport.importButton')}
-            </Button>
-
-            <ImportOutcome error={importError} result={importResult} />
-          </Box>
+          <ColumnMappingForm
+            isXlsx={loadState.isXlsx}
+            savedApplied={savedApplied}
+            rows={rows}
+            headerRowIndex={headerRowIndex}
+            onSelectHeaderRow={setHeaderRowIndex}
+            encoding={encoding}
+            onEncodingChange={setEncoding}
+            effectiveDelimiter={effectiveDelimiter}
+            onDelimiterChange={setDelimiterOverride}
+            decimalSeparator={decimalSeparator}
+            onDecimalSeparatorChange={setDecimalSeparator}
+            columnOptions={columnOptions}
+            dateColumn={dateColumn}
+            onDateColumnChange={setDateColumn}
+            dateFormatOptions={dateFormatOptions}
+            dateFormat={dateFormat}
+            onDateFormatChange={setDateFormat}
+            amountMode={amountMode}
+            onAmountModeChange={setAmountMode}
+            amountColumn={amountColumn}
+            onAmountColumnChange={setAmountColumn}
+            debitColumn={debitColumn}
+            onDebitColumnChange={setDebitColumn}
+            creditColumn={creditColumn}
+            onCreditColumnChange={setCreditColumn}
+            currencyMode={currencyMode}
+            onCurrencyModeChange={setCurrencyMode}
+            currencyColumn={currencyColumn}
+            onCurrencyColumnChange={setCurrencyColumn}
+            fixedCurrency={fixedCurrency}
+            onFixedCurrencyChange={setExplicitFixedCurrency}
+            descriptionColumn={descriptionColumn}
+            onDescriptionColumnChange={setDescriptionColumn}
+            counterpartyColumn={counterpartyColumn}
+            onCounterpartyColumnChange={setCounterpartyColumn}
+            stats={stats}
+            rowErrors={applyResult?.rowErrors ?? []}
+            holdingOptions={holdingOptions}
+            accountId={accountId}
+            selectedHoldingId={selectedHoldingId}
+            onSelectHolding={setSelectedHoldingId}
+            onCreateNewHolding={() => navigation.navigate('HoldingForm', { accountId })}
+            importError={importError}
+            importResult={importResult}
+          />
         )}
       </Box>
-
-      <TargetHoldingSheet
-        visible={sheetVisible}
-        onDismiss={() => setSheetVisible(false)}
-        holdings={holdingOptions}
-        accountId={accountId}
-        onSelect={setSelectedHoldingId}
-        onCreateNew={() => navigation.navigate('HoldingForm', { accountId })}
-      />
     </Screen>
   );
 };

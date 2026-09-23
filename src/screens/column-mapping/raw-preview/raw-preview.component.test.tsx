@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 
+import { darkTheme } from '../../../design-system/theme';
 import type { TableCell } from '../../../statement-import/column-mapping';
 
 import RawPreview from './raw-preview.component';
@@ -53,5 +54,18 @@ describe('RawPreview', () => {
     expect(getByTestId('raw-preview-row-0').props.accessibilityState).toEqual({
       selected: false,
     });
+  });
+
+  it('paints the selected header row with the theme accent blue', async () => {
+    const { getByTestId } = await render(
+      <RawPreview rows={rows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    const { StyleSheet } = require('react-native');
+    const selectedFill = StyleSheet.flatten(getByTestId('raw-preview-row-0-fill').props.style);
+    const unselectedFill = StyleSheet.flatten(getByTestId('raw-preview-row-1-fill').props.style);
+
+    expect(selectedFill.backgroundColor).toBe(darkTheme.colors.accent);
+    expect(unselectedFill.backgroundColor).toBeUndefined();
   });
 });

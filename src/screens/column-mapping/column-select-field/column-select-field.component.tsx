@@ -25,6 +25,7 @@ const ColumnSelectField = <T extends string | number>({
   selected,
   onSelect,
   allowNotUsed = false,
+  required = false,
   testID,
 }: ColumnSelectFieldProps<T>): ReactElement => {
   const { t } = useTranslation();
@@ -40,6 +41,7 @@ const ColumnSelectField = <T extends string | number>({
     <>
       <FieldTrigger
         label={label}
+        required={required}
         onPress={() => setOpen(true)}
         value={selectedOption ? selectedOption.label : t('columnMapping.selectValue')}
         valueTone={selectedOption ? 'textPrimary' : 'textSecondary'}

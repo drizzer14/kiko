@@ -45,6 +45,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
           options={columnOptions}
           selected={currencyColumn}
           onSelect={onCurrencyColumnChange}
+          required
           testID="column-mapping-currency-column"
         />
       )}

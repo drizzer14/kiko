@@ -44,6 +44,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
           options={columnOptions}
           selected={amountColumn}
           onSelect={onAmountColumnChange}
+          required
           testID="column-mapping-amount-column"
         />
       )}
@@ -55,6 +56,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
             options={columnOptions}
             selected={debitColumn}
             onSelect={onDebitColumnChange}
+            required
             testID="column-mapping-debit-column"
           />
 
@@ -63,6 +65,7 @@ const AmountFields: FC<AmountFieldsProps> = ({
             options={columnOptions}
             selected={creditColumn}
             onSelect={onCreditColumnChange}
+            required
             testID="column-mapping-credit-column"
           />
         </>
