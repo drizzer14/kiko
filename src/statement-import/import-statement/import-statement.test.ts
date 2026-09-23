@@ -382,15 +382,15 @@ describe('importStatement', () => {
     });
   });
 
-  // F1-networth-debug-2.md's exact repro: an import-only holding's displayed
-  // balance stayed 0 forever, because the old code never wrote to `holdings`
-  // at all. `holdingValueBreakdown`/`guardedNetWorth` (the Home net-worth
-  // path) read `holding.balanceMinorUnits` verbatim (`holding-value.ts`
-  // `flat()`), so proving the repo's write here is the same proof for Home.
-  describe('balance write (Rule B: net of genuinely new rows, plus the closing-balance override)', () => {
+  // An import-only holding's displayed balance stayed 0 forever, because the
+  // old code never wrote to `holdings` at all. `holdingValueBreakdown`/
+  // `guardedNetWorth` (the Home net-worth path) read
+  // `holding.balanceMinorUnits` verbatim (`holding-value.ts` `flat()`), so
+  // proving the repo's write here is the same proof for Home.
+  describe('balance write (I2 boundary: net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
     // Ukrsibbank business CSV carries no closing balance at all (its own
     // format doc comment; see `ParsedStatement.closingBalance`), so this
-    // isolates Rule B's plain net-delta arithmetic with no closing-balance
+    // isolates the boundary's plain net-delta arithmetic with no closing-balance
     // interference — unlike Monobank CSV, which always carries one and, for
     // a virgin (no-history) holding, is always eligible to apply outright
     // (see the closing-balance tests below and `transactions.repo.test.ts`'s

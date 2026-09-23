@@ -3,8 +3,6 @@ import { appendDepositContributionTx } from '@kiko/holdings/repo';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
 import {
   accounts,
   categoryOverrides,
@@ -13,12 +11,14 @@ import {
   type TransactionRow,
   transactions,
 } from '../../db/schema';
-import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
-import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
-import { exchangeReceivePath } from '../../holdings/exchange-destination';
-import type { DepositContribution } from '../../holdings/holding-metadata';
+import { id } from '../../db/id';
+import { database, write } from '../../db/client';
 import { normalizeTransactionName } from '../normalize-name';
 import type { ClosingBalance } from '../../statement-import/parser';
+import { exchangeReceivePath } from '../../holdings/exchange-destination';
+import type { DepositContribution } from '../../holdings/holding-metadata';
+import { isSyncedHolding, isSyncedTransaction } from '../../holdings/deletable';
+import type { ExchangeConvertDirection } from '../../holdings/exchange-convert';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -679,7 +679,7 @@ export const transactionsRepo = {
    *
    * THE BOUNDARY (user ruling, I2): every decision below is relative to one
    * "as-of" instant — the LATER of (a) the holding's newest PRE-EXISTING
-   * transaction time (`newestExistingTime`, read below, BEFORE the new rows
+   * transaction time (`boundary`, read below, BEFORE the new rows
    * land) and (b) the time the user last set this holding's balance BY HAND
    * (a create with a typed opening balance, or a later manual balance edit).
    * In code this reduces to (a) ALONE: `holdingsRepo.create` writes a
@@ -698,7 +698,7 @@ export const transactionsRepo = {
    * wrongly impose one, bringing back the original bug (an import-only
    * holding's own rows would count as "history" and move nothing).
    *
-   * `newestExistingTime === null` (no prior transaction AND no hand-set
+   * `boundary === null` (no prior transaction AND no hand-set
    * balance) means the holding has NO boundary: every genuinely new row
    * moves the balance regardless of its own date, and a `closingBalance` is
    * always eligible — this is the original bug-fix case (an import-only
@@ -736,19 +736,33 @@ export const transactionsRepo = {
    * happened before this statement's own coverage started — a prior manual
    * entry error, an out-of-band transfer, or a real gap this particular
    * statement predates — the resulting balance is correct as of
-   * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere.
+   * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
+   * history-only import (rows before the boundary, inserted at 0) leaves the
+   * same kind of untracked adjustment one level down: `holdingValueAt`
+   * (`src/statistics/holding-value-at.ts`) derives a holding's opening
+   * balance as `current balance - sum(all transactions)`, so those newly
+   * inserted rows shift that subtraction even though they added 0 to the
+   * current balance, moving every PAST value the net-worth series
+   * reconstructs for this holding by the same untracked amount.
    *
    * The eligibility comparison (`asOfSeconds * 1000 >= boundary`) is itself
    * imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads a bank
    * export's wall-clock timestamp with `Date.UTC(...)` directly, with no
    * timezone offset applied — Ukraine is UTC+2/UTC+3, so every `asOfSeconds`
-   * (and every imported row's own `time`) is actually 2-3 hours EARLIER than
-   * the transaction's true UTC instant. Comparisons between two
-   * statement-derived times stay self-consistent (both carry the same
-   * skew), but a comparison against a genuinely-UTC boundary (e.g. a manual
-   * entry or edit timestamped with the real `Date.now()`) can land on the
-   * wrong side of this gate when the two times are within that 2-3 hour
-   * window.
+   * (and every imported row's own `time`) is actually 2-3 hours LATER than
+   * the transaction's true UTC instant (the wall-clock digits get read as if
+   * they were already UTC, so a Kyiv-local instant is stamped 2-3 hours
+   * ahead of its real UTC value). Comparisons between two statement-derived
+   * times stay self-consistent (both carry the same skew), but a comparison
+   * against a genuinely-UTC boundary (e.g. a manual entry or edit
+   * timestamped with the real `Date.now()`) can land on the wrong side of
+   * this gate when the two times are within that 2-3 hour window: a balance
+   * hand-set at 12:00 Kyiv time, followed by a same-day PrivatBank or
+   * Sensebank import, sees its own 10:00-12:00 Kyiv rows parsed as at/after
+   * the boundary and counted as CURRENT — double-counting an amount the
+   * hand-set balance already reflects. Monobank is safe from this: its
+   * closing balance overwrites the balance outright instead of adding a net
+   * delta on top of an already-correct hand-set figure.
    *
    * `insertDedupRowsTx`'s `(source, external_id)` dedup key includes
    * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
@@ -819,10 +833,8 @@ export const transactionsRepo = {
         return newRows.length;
       }
 
-      const isAtOrAfterBoundary = (rowTime: number): boolean =>
-        boundary === null || rowTime >= boundary;
       const netDelta = newRows
-        .filter((row) => isAtOrAfterBoundary(row.time))
+        .filter((row) => boundary === null || row.time >= boundary)
         .reduce((sum, row) => sum + row.amountMinorUnits, 0);
       const closingBalance = input.closingBalance;
       const useClosingBalance =
