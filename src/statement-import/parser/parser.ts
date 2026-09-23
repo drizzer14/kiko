@@ -65,7 +65,7 @@ export type UnresolvedStatementRow =
   | { reason: 'invalid-amount'; description: string; rawAmount: string };
 
 export type ParsedStatement = {
-  formatId: StatementFormatId;
+  formatId: ParsedStatementSource;
   account: ParsedAccountHint;
   transactions: ParsedTransaction[];
   /** Rows this format's parse could not resolve (see `UnresolvedStatementRow`
@@ -91,6 +91,12 @@ export const statementFormatIds = [
   'alfa-business-csv',
 ] as const;
 export type StatementFormatId = (typeof statementFormatIds)[number];
+
+/** Every source a `ParsedStatement` can carry: a shipped bank format's own
+ * `StatementFormatId`, or `'column-mapping'` — a statement parsed through the
+ * generic column-mapping import path (no dedicated `StatementFormat`) rather
+ * than one of the registry's own formats. */
+export type ParsedStatementSource = StatementFormatId | 'column-mapping';
 
 /** One resolved spreadsheet cell value — mirrors `read-excel-file`'s own
  * `CellValue | null` shape closely enough for this plan's needs, without this

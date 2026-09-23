@@ -38,7 +38,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { StatementParseError } from '../parser';
 import { categoryOverrides, transactions } from '../../db/schema';
 
-import { importStatement } from './import-statement';
+import { importStatement, importParsedStatement } from './import-statement';
 
 const fixtureText = readFileSync(
   path.join(__dirname, '../formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv'),
@@ -238,6 +238,42 @@ describe('importStatement', () => {
     expect(store.transactions).toHaveLength(0);
 
     addManyDedup.mockRestore();
+  });
+
+  describe('importParsedStatement', () => {
+    it('writes rows with source "import" and returns the given formatId for a hand-built column-mapping ParsedStatement, excluding a wrong-currency row', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      mockTx = makeAddManyDedupTx(store);
+      mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
+
+      const parsed = {
+        formatId: 'column-mapping' as const,
+        account: { currency: 'UAH' as const },
+        transactions: [
+          {
+            currency: 'UAH' as const,
+            amountMinorUnits: -1_000,
+            timeSeconds: 1_700_000_000,
+            description: 'Coffee',
+          },
+          {
+            currency: 'USD' as const,
+            amountMinorUnits: 500,
+            timeSeconds: 1_700_000_100,
+            description: 'Wrong currency',
+          },
+        ],
+      };
+
+      const result = await importParsedStatement(parsed, 'holding-1');
+
+      expect(result.formatId).toBe('column-mapping');
+      expect(result.total).toBe(2);
+      expect(result.imported).toBe(1);
+      expect(result.skippedWrongCurrency).toBe(1);
+      expect(store.transactions).toHaveLength(1);
+      expect(store.transactions[0].source).toBe('import');
+    });
   });
 
   // Task 3 review, CRITICAL: a PrivatBank file can mix currencies per row
