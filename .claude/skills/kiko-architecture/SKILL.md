@@ -860,6 +860,31 @@ null `externalId` and is never namespaced.
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
 
+`price_points` (migration `0035`) is a SEPARATE, non-currency price
+store — it does not touch `CurrencyRate`/`currencyRateHistory` at all.
+It prices one instrument (a share ticker, a metal, or one specific
+holding priced directly — the `share:`/`metal:`/`holding:` namespaces in
+`src/prices/instrument/`) per `(instrument, day)` row; see
+`kiko-domain`'s "Price series and priced holdings" section for the table
+shape and the carry-forward lookup contract. `pricePointsRepo`
+(`src/prices/price-points-repo/`) is the repository: `allQuery` (hand to
+`useLiveQuery`), `upsertMany` (chunked at 2000 rows to stay under
+SQLite's bound-parameter limit, upserts on the `(instrument, day)` unique
+index — a re-fetched price overwrites in place), `removeInstrument`.
+`usePriceBook()` (`src/prices/use-price-book/`) wraps `allQuery` in
+`useLiveQuery(..., ['price_points'])` and groups the live row set into a
+`PriceBook` — every value reader (`holdingValueBreakdown`,
+`holdingValueAt`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
+`guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
+`buildAccountContribution`) and every screen that renders a value
+(`home`, `accounts`, `account-detail` + its `HoldingCard`,
+`holding-detail`, `statistics`) calls `usePriceBook()` and threads the
+result through, same pattern as the existing rate-table threading. A
+snapshot export/restore (`src/data-transfer/snapshot/`) includes
+`pricePoints` alongside the other tables; a legacy export with no
+`pricePoints` key restores with an EMPTY `price_points` table (`?? []`
+defensive read in `restore-snapshot.ts`), never an error.
+
 ## Statement import — column mapping
 
 A generic fallback for any file a dedicated `StatementFormat` doesn't

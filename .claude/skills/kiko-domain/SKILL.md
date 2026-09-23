@@ -387,3 +387,90 @@ seed); today CRYPTO is the only currency class that can still hit
 this silent-drop path (no offline seed, so an unrated crypto holding
 is excluded until a live CoinGecko price lands) — every fiat currency
 is covered by the bundled seed and effectively never drops.
+
+## Price series and priced holdings
+
+`price_points` (migration `0035`, `src/db/schema.ts`) is a separate table
+from `CurrencyRate`/`currencyRateHistory` — it prices a non-currency
+INSTRUMENT (a share, a metal, or one specific holding), not a currency
+pair. One row per `(instrument, day)`:
+
+- `instrument` is a free-text key, never an FK, built by one of three
+  namespacing functions in `src/prices/instrument/` — `share:<symbol>`,
+  `metal:<metal>`, `holding:<holdingId>` — so the three kinds can never
+  collide in one table. `holding:<id>` is for a thing priced directly
+  (e.g. a property), not through a market symbol.
+- `day` is a normalized UTC-midnight epoch value of the price's LOCAL
+  calendar date — same convention as `currencyRateHistory.day`. Read via
+  `dayKeyOf` (`src/prices/price-book/`), which reads the DEVICE-LOCAL
+  `Date` getters (not the UTC ones) so a Kyiv-local day keys correctly
+  across a DST transition.
+- `price` is a decimal STRING (never a float), `currency` is the price's
+  own currency, `source` is `manual | nbu | eodhd` — read `schema.ts`
+  directly for the enum rather than trusting this list if it drifts.
+
+`PriceBook` (`src/prices/price-book/`) groups the flat row set by
+`instrument`, sorted `day` ascending. `priceAt(book, instrument, instant)`
+is a CARRY-FORWARD lookup: the nearest point at or before `instant`'s
+local day, falling back to the EARLIEST point when every stored point is
+later than the requested day (mirrors `rateTableAt`/`earliestRateTable` in
+`src/rates/rate-history-repo/`). `usePriceBook()`
+(`src/prices/use-price-book/`) is the reactive, `useLiveQuery`-backed
+entry point every value reader and screen threads through; `EMPTY_PRICE_BOOK`
+is the default for a caller with none available (e.g. an existing test
+fixture), so the default resolves to "no price," never a crash.
+
+A **priced holding type** (`isPricedHoldingType`,
+`pricedHoldingTypes` — `src/holdings/priced-value/`; `property_item` is
+the first member, T17/T26/T35 extend the set for metals and shares — read
+that file rather than trusting a member list restated here) is valued
+through the `PriceBook`, not through an interest engine or its raw stored
+balance. `quantityAt(lots, instant)` and `costBasisMinorAt(lots, instant)`
+(`src/holdings/lots/`) read the holding's `metadata.lots` array — one entry
+per buy/sell, `{ day, quantityDelta, costMinorUnits }` — to derive the
+quantity and cost basis held as of an instant; `quantityAt` never returns
+below `"0"`. `pricedValueMinor(holding, book, instant)`
+(`src/holdings/priced-value/`) multiplies `quantityAt(...)` by the price
+point for the holding's own `holding:<id>` instrument
+(`multiplyToMinorUnits`, the BigInt-backed decimal helper in
+`src/currency/decimal/` — never a float multiply), returning `null` when
+the holding has no `id`, no valid `lots` metadata, or no stored price
+point yet.
+
+**A priced holding with no price point values at its lots' cost basis,
+never 0** — `holdingValueBreakdown`'s `pricedBreakdown` branch
+(`src/holdings/holding-value/`) falls back to `costBasisMinorAt` whenever
+`pricedValueMinor` returns `null`. For a priced type, `gross = net =` the
+resolved value and `principalOrCost` is ALWAYS the cost basis (even when
+gross also equals the cost basis on the no-price-point path) — the
+holding-detail breakdown needs cost basis available separately to show a
+live gain/loss. `interest`/`tax` are always zero: a priced holding never
+accrues interest or withholds tax.
+
+**A priced holding writes no ledger (`Transaction`) rows for its
+revaluations.** Its lots array is the only source of quantity/cost-basis
+history; a price change moves its VALUE without ever touching its
+`balanceMinorUnits` or emitting a transaction. Consequently
+`holdingValueAt` (`src/statistics/holding-value-at.ts`) cannot back-derive
+a priced holding's historical value from `currentBalance -
+sum(transactions)` the way it does for a ledger-backed holding — it
+branches on `isLedgerlessHoldingType` and instead calls
+`holdingValueBreakdown` (with the caller's `PriceBook`) directly for that
+instant. This is why the net-worth series is FLAT for a priced holding
+across every bucket with no matching ledger entries: the series reflects
+the priced value at each bucket's instant, not a ledger reconstruction.
+
+**The optional `id` field pattern.** `ValuableHolding`
+(`src/holdings/holding-value/`) and `PricedHolding`
+(`src/holdings/priced-value/`) both declare `id` as OPTIONAL
+(`{ id?: HoldingRow['id'] }`) on their `Pick<HoldingRow, ...>` read types,
+not required — the standing convention for threading an
+identity-dependent capability (here: resolving a `holding:<id>` instrument
+key) through a `Pick`-based read type without forcing every existing
+literal test fixture across the codebase to gain the field just to
+type-check. A holding value with no `id` (a synthetic fixture, or any
+caller that only has the `Pick`ed fields) simply cannot resolve its own
+instrument key, so `pricedValueMinor` treats it identically to "no stored
+price point yet" (falls back to cost basis) — never a runtime error. Apply
+the same optional-`id`-on-a-Pick pattern the next time a capability needs
+a holding's identity threaded through one of these narrowed read types.
