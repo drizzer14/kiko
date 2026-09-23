@@ -42,7 +42,9 @@ absent** — this skill states the shape and non-enum facts only:
   set from the account-form's bank picker (`BankTypeField`,
   `src/screens/forms/bank-type-field/`), rendered in BOTH create and
   edit mode (423b6a6 — edit used to skip it entirely) with an explicit
-  "No bank" row (`onSelect(null)`) so a Bank account can be created or
+  no-bank row (`onSelect(null)`, `accountForm.noBank` i18n key in
+  `en.ts`/`uk.ts` — cite the key, not the rendered label, since it can
+  drift) so a Bank account can be created or
   returned to on purpose with no bank identity at all — the intended
   target for the generic column-mapping import when no dedicated
   parser applies. The live-sync Connect field (Monobank) stays
@@ -182,13 +184,20 @@ plus one manual price point equal to that cost is what
 `holding-form.screen.tsx` builds from it on save, via
 `holdingsRepo.create`'s `firstPricePoint` param — see `kiko-pricing`'s
 "Creating and clearing a priced holding's price series" section for
-the create/remove symmetry. `metal` has no dedicated create-form
-section yet (T20) — as of T17 it is grouped with the other
-no-extra-fields types in `holding-form.screen.tsx`'s `isValid` match,
-and is `isLedgerlessHoldingType` so the generic Balance field is
-hidden for it. `preciousMetals`/`metalForms`/`metalUnits`
-(`src/holdings/holding-metadata`) are already exported, mirroring
-`propertyCategories`, anticipating that form.
+the create/remove symmetry.
+`src/screens/forms/holding-form/metal-section/metal-section.component.tsx`
+is the `metal` create-form section (T20): a metal-element `ChipRow`, a
+physical-form `ChipRow`, a unit `ChipRow`, a Purity `TextField`
+(pre-filled `"0.9999"`), and the first-lot Quantity/Total-cost fields
+(create-only — see `MetalSectionProps.showFirstLot`'s own doc
+comment). Unlike `property_item`, `metal`'s create payload writes NO
+`firstPricePoint` — its price comes from the shared
+`metal:<XAU|XAG|XPT|XPD>` instrument, not a per-holding one (see
+`kiko-pricing`'s "Creating and clearing a priced holding's price
+series" section, and `holding-form.screen.tsx`'s own comment on the
+metal CREATE payload). The metal/form/unit/purity fields stay
+user-editable in EDIT mode (metadata patch), mirroring
+`property_item`'s category-editable pattern.
 
 ## Sync-only holding types are not manually creatable
 

@@ -231,6 +231,24 @@ NOT clear `metal:<XAU|...>`'s series (nothing else consumes it yet as
 of T17; watch for this the moment a metal-specific remove path is
 added).
 
+A `metal` holding's create payload is the one documented exception
+that never sets `firstPricePoint`: `buildMetalCreatePayload`
+(`holding-form.screen.tsx`) writes a zero stored balance and one lot,
+but no manual price point — a metal's price comes from the shared
+`metal:<XAU|XAG|XPT|XPD>` instrument, priced separately by
+`refreshMetalPrices` (see "NBU metal prices — current and history
+(T19)" below), never a per-holding one. `property_item`, by contrast,
+always writes `firstPricePoint` equal to its entered cost. See
+`holding-form.screen.tsx`'s own comment on the metal CREATE payload
+for the current rationale.
+
+`holding-detail.screen.tsx`'s `priceAsOfCaption` splits its "Value as
+of" / "Price as of" caption on holding type: a `metal` holding reads
+`latestPoint(priceBook, metalInstrument(meta.metal))` and renders the
+`holdingDetail.priceAsOf` wording (distinct from the generic "Value as
+of" caption every other priced holding type uses), since it is showing
+the metal's shared market price, not a holding-specific value.
+
 ## `PricePointForm` — "Update value"
 
 `src/screens/forms/price-point-form/price-point-form.screen.tsx`,

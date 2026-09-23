@@ -219,6 +219,21 @@ is excluded from Biome/Knip/jscpd/the real Semgrep scan, each
 independently verified as load-bearing by probing with a deliberately
 bad file and confirming the check would otherwise fire on it.
 
+## `check:dup`'s changed-file scope can surface PRE-EXISTING duplication
+
+`check:dup`'s jscpd run is scoped to the session's changed source
+files (see `CLAUDE.md`'s "Automatic wiring"), so a new test file
+entering that changed-file set can pull an EXISTING sibling test file
+along with it and cross the 5% threshold together, even though the
+duplication (e.g. repeated fixture-building closures) predated the new
+file and the new file didn't add any of it. The fix is still root-cause
+extraction of the shared helper/builder into one place reused by both
+old and new tests — never an ignore-list entry (the check fired
+correctly; the duplication is real, just older than the diff) — and it
+belongs in the SAME commit as the feature that triggered the check, so
+`git log` shows one coherent change rather than a drive-by refactor
+with no test-behavior delta.
+
 ## Backlog: a rule for a plain function called inside a worklet
 
 A proposed but NOT YET IMPLEMENTED Semgrep rule (documentation only —
