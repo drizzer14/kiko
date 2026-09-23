@@ -6,11 +6,11 @@
 
 **Architecture:** A new `price_points` table stores (instrument, day, price) points. Carry-forward lookup uses the `rateTableAt` rule. A priced holding (property item, metal, share) is valued at read time as `quantityAt(day) × priceAt(day)`. Its `lots[]` sit in holding metadata, so no ledger rows are written, the same way bonds work today. A loan is valued as −outstanding. The outstanding amount comes from an annuity/differentiated schedule or from a manual series. Price sources plug into the same table: manual, NBU (metals), EODHD (BYOK), Trading 212 and IBKR (sync). Everything lands on one integration branch.
 
-**Tech Stack:** React Native 0.87 + TypeScript, op-sqlite + Drizzle (`src/db/schema.ts`, `drizzle-kit generate`, custom runner `src/db/run-migrations.ts`), `react-native-keychain`, `fnts`, `ts-pattern`, i18next (`src/i18n/locales/{en,uk}.ts`), `read-excel-file` (already a dependency), Jest + RNTL, Maestro (`.maestro/`). **No new npm dependency** (see open question N3).
+**Tech Stack:** React Native 0.87 + TypeScript, op-sqlite + Drizzle (`src/db/schema.ts`, `drizzle-kit generate`, custom runner `src/db/run-migrations.ts`), `react-native-keychain`, `fnts`, `ts-pattern`, i18next (`src/i18n/locales/{en,uk}.ts`), `read-excel-file` (already a dependency), Jest + RNTL, Maestro (`.maestro/`). **One new direct dependency: `saxen` 11.1.1** (already installed as a transitive dependency of `read-excel-file`). See "Dependencies" below.
 
 **Spec:** `docs/research/shares-and-assets-feasibility.md` (decision log D1–D17 and rejected options are binding). Read the `kiko-domain`, `kiko-architecture`, `kiko-code-style`, `kiko-design-system`, `kiko-translator`, `kiko-compliance`, `kiko-linter`, and `kiko-charts` skills before each task they touch.
 
-**Task count:** 47 tasks (T1–T47). Four of them are gated: T40 (Freedom24 spike), T41 (Freedom24, GO only), T42 (Revolut gate), and T43 (Revolut, GO only). T36 also has a conditional NO-GO: if the IBKR host cannot be confirmed, IBKR sync is dropped and IBKR file import still ships.
+**Task count:** 50 tasks (T1–T50). T48–T50 were added in round 4 and are numbered after T47 so existing references stay valid; each sits in its phase section in build order. Four of them are gated: T40 (Freedom24 spike), T41 (Freedom24, GO only), T42 (Revolut gate), and T43 (Revolut, GO only). T36 also has a conditional NO-GO: if the IBKR host cannot be confirmed, IBKR sync is dropped and IBKR file import still ships.
 
 ---
 
@@ -24,25 +24,38 @@
 | Tradernet host **[unverified]** | Freedom24 (GO only) | key + signature | **yes** | T41 |
 | `bank.gov.ua` (existing host, new paths `statdirectory/exchange?valcode=XAU…`, `depo_securities?json`) | `src/prices/nbu-metals/`, `src/bonds/nbu-register/` | none | no (unchanged, keyless) | T10, T15 |
 
-## Open questions carried from spec §11 (not answered here)
+## Dependencies
 
-1. **Monobank metals.** Default: `monobank` is NOT on the metal allow-list. The user checks on the device (T47). If Monobank does sell metals, set `sellsMetals: true` on its catalog row as a one-line follow-up.
-2. **PUMB importer without a real file.** Default: GO with a synthetic fixture, labelled "not verified on a real file" (T44, per D17/P10).
-3. **ProCredit personal `.xls`.** Default: left out. No task, no new dependency.
-4. **Manual vs automatic loan-payment linking.** Default: manual linking only (T20–T22). No automatic matching.
+| Package | Version (exact) | Use | Status | Reasons |
+|---|---|---|---|---|
+| `saxen` | `11.1.1` | IBKR Flex XML (T37) | **approved** (user, round 4: "add an XML package if safe and easy") | Already in `package-lock.json` as a dependency of `read-excel-file` (`^11.1.0`), so it adds no code to the bundle. Pure JS, no Node built-ins. MIT, bpmn-io maintainer, releases 2025-12 → 2026-09. OSV: no vulnerabilities (checked 2026-09-23). It never processes a DTD: `<!DOCTYPE …>` goes to the ignored `attention` callback, and it decodes only the 5 predefined and numeric entities → no entity expansion, no XXE. Pin `11.1.1` (the locked version, published 2026-07-27, older than the 7-day `.npmrc` minimum age) so npm dedupes it with `read-excel-file`'s copy. Declared as a direct dependency because Kiko imports it (depcheck). |
+| `fast-xml-parser` | — | — | **evaluated, not chosen** | 5.11.1 has no OSV vulnerabilities and its library entry uses no Node built-ins (`fs`/`path`/`stream` appear only in `src/cli/`). But it adds 6 new packages from one maintainer (`strnum`, `is-unsafe`, `xml-naming`, `fast-xml-builder`, `@nodable/entities`, `path-expression-matcher`) and ~1.1 MB unpacked, and it parses internal DTD entities (guarded by `maxEntitySize`/`maxEntityCount`, but still an expansion path). `saxen` does the job with no new code. |
+| `xlsx` (SheetJS on npm) | — | — | **rejected** | 0.18.5 is the last npm release; OSV: GHSA-4r6h-8v6p-xvw6 (prototype pollution), GHSA-5pgg-2g8v-p4x9 (ReDoS). |
+| `@e965/xlsx` | — | — | **rejected** | A third-party republish of SheetJS 0.20.3 (one maintainer, last release 2024-07-19, 8 MB unpacked). No OSV entry, but the supply chain is a personal republisher. |
+| `cfb` | — | — | **rejected** | Last release 2022-06-13 (not maintained). It contains `require('fs')` and `require("zlib")` calls, which Metro tries to resolve at build time. |
+| `read-excel-file` (existing) | `9.3.10` | PUMB XLSX (T44) | existing | It reads only `.xlsx`. Its README says it throws `XLS_FILE_NOT_SUPPORTED` for legacy binary `.xls`. |
+| **ProCredit `.xls`** | — | T49 | **hand-rolled reader, no dependency** | No candidate passed. A small reader for the OLE2 compound file container + BIFF5/BIFF8 cell records (T49) is enough for a single-sheet bank statement and keeps the attack surface in reviewed code. |
 
-The plan also assumes defaults for these spec §12 items: the IBKR Flex host (verified in T36, with a NO-GO path), the Trading 212 and IBKR field names (verified live in T33 and T37), EODHD symbol search on the free tier (T29 and T31 fall back to manual symbol entry), and the BYOK licence reading (see N8).
+## Round-4 decisions (were open questions)
+
+1. **Monobank metals: NO.** `monobank` stays off the metal allow-list. No device check.
+2. **PUMB importer with a synthetic fixture: YES** (T44), labelled "not verified on a real file".
+3. **ProCredit personal `.xls`: YES** (T49 reader, T50 importer). Dependency choice above.
+4. **Loan payments: automatic linking with high confidence, a visible "Linked automatically" state with Undo, manual link as the fallback** (T20–T22, T48). Design in spec §5.4.
+5. **IBKR XML: `saxen`** (N3 resolved).
+6. **"Manual holdings only" caption** for Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal: accepted. A second search found no reliable personal export format (spec §13), so they get no importer.
+7. **EODHD licence: closed.** Same BYOK model as the Monobank token and Binance keys: the user's own key, the user's own data use; Kiko does not redistribute data and does not ship a key (spec D22).
 
 ## New open questions / spec issues found while planning
 
 - **N1. The IBKR Flex token is also a query param (`t`).** Spec §3.3 only calls out EODHD `api_token`. T24 widens `plist.sh` so that both clients are detected.
 - **N2. The IBKR `GetStatement` URL is returned by `SendRequest`.** It may point at a different host than the pinned one. T37 fails closed unless the returned host equals the pinned host.
-- **N3. IBKR Flex is XML, and no XML dependency exists.** Default: a hand-rolled scanner for self-closing elements and attributes (T37). The alternative is a new dependency, which needs user approval.
+- **N3. [RESOLVED round 4: `saxen`, see Dependencies] IBKR Flex is XML, and no XML dependency exists.** Default: a hand-rolled scanner for self-closing elements and attributes (T37). The alternative is a new dependency, which needs user approval.
 - **N4. Spec contradiction, §3.4 vs §7.2.** §3.4 allows `share` under `bank` ("Revolut is a bank"), but §7.2 puts Revolut in the broker catalog, and no bank in the catalog sells shares. Default: `share` only under `broker`.
 - **N5. Spec build-order contradiction, P2 vs P3.** The P2 metal allow-list names PUMB, Oschadbank, and Ukrgasbank, but those banks are only added to the catalog in P3. Default: T8 allow-lists `privatbank` only, and T13 sets `sellsMetals` on the new banks.
 - **N6. Catalog banks with no statement format.** `BankCatalogEntry.statementFormatId` is required today, and the "Statement import only" caption would be false for Oschadbank, Raiffeisen, and Ukrgasbank. Default: make the field optional and add a "Manual holdings only" caption (T13).
 - **N7. Export and import (`src/data-transfer/`).** `DataSnapshot` must list every table, and the credential export lists every Keychain secret. The spec does not mention either. Default: add `pricePoints` and `bondRegister` to the snapshot. Add the EODHD, Trading 212, and IBKR secrets behind the existing "include saved credentials" toggle. Old `.kiko` files without the new keys still restore.
-- **N8. EODHD daily limit for paid keys.** Default: read `dailyRateLimit` from EODHD `/api/user` **[VERIFY LIVE]** when the key is saved, and fall back to 20. The legal reading of personal-use terms (spec §12) stays open for the user.
+- **N8. EODHD daily limit for paid keys (the licence part is CLOSED, D22).** Default: read `dailyRateLimit` from EODHD `/api/user` **[VERIFY LIVE]** when the key is saved, and fall back to 20. The legal reading of personal-use terms (spec §12) stays open for the user.
 - **N9. Metal history backfill cost.** The verified NBU per-day endpoint costs one call per day. Whether the NBU range endpoint supports `valcode=xau` is unverified. T10 starts with a live probe, and the fallback is capped sampling.
 - **N10. Two loan-schedule rules the spec leaves open.** (a) Correction point: outstanding = the correction value minus the scheduled principal due after the correction day. (b) A linked payment maps to the installment whose due date is nearest to the payment's local day, and the interest counted is `min(installment interest, |payment|)`. Both are pinned in T17 and T21 tests.
 - **N11. Synced broker positions have no quantity history.** Trading 212 and IBKR sync write one lot dated at the first sync day. Net-worth history before that day does not include the position. IBKR file import of Trades (T39) gives full lots.
@@ -234,9 +247,9 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 
 ### Task T20: Loan-payment link column + repo (developer)
 
-**Files:** Modify `src/db/schema.ts` (`transactions.loanHoldingId` text, nullable, with a comment in the `exchangeCounterpartHoldingId` style). Generate `drizzle/migrations/0036_add_loan_holding_id.sql` and create `src/db/schema.loan-link.test.ts`. Modify `src/transactions/repo/transactions.repo.ts` (+test: `setLoanPayment({ transactionId, loanHoldingId: string | null })`, allowed on synced rows because it is a user-owned column like `category`), and `holdings.repo.ts` `remove` (clear links that point at the deleted loan, in the same transaction).
+**Files:** Modify `src/db/schema.ts` (`transactions.loanHoldingId` text, nullable, with a comment in the `exchangeCounterpartHoldingId` style; `transactions.loanLinkSource` text enum `'auto' | 'manual'`, nullable; `transactions.loanLinkRejected` integer boolean, default 0 — set when the user undoes an automatic link, so the matcher never links that row again). Generate `drizzle/migrations/0036_add_loan_link.sql` (all three columns) and create `src/db/schema.loan-link.test.ts`. Modify `src/transactions/repo/transactions.repo.ts` (+test: `setLoanPayment({ transactionId, loanHoldingId: string | null, source: 'auto' | 'manual' })`; `undoAutoLoanLink(transactionId)` clears the link and sets `loanLinkRejected`; a manual link or a manual "None" clears `loanLinkRejected`; allowed on synced rows because it is a user-owned column like `category`), and `holdings.repo.ts` `remove` (clear links that point at the deleted loan, in the same transaction).
 
-- [ ] Failing tests: the column migration is registered; `setLoanPayment` on a `monobank` row persists; **`addManyDedup` re-sync of the same `externalId` keeps `loanHoldingId`**; **Review Focus 4**: deleting the loan clears its links.
+- [ ] Failing tests: the column migration is registered; `setLoanPayment` on a `monobank` row persists with its source; `undoAutoLoanLink` sets `loanLinkRejected`; a re-sync keeps `loanLinkSource` and `loanLinkRejected`; **`addManyDedup` re-sync of the same `externalId` keeps `loanHoldingId`**; **Review Focus 4**: deleting the loan clears its links.
 - [ ] Implement. Run `npx jest src/db src/transactions src/holdings`, then `make typecheck && make lint`.
 
 ### Task T21: Interest-only spending (developer, scribe)
@@ -252,8 +265,19 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 
 **Files:** Create `src/screens/forms/loan-payment-field/` (a `HoldingSelectField` limited to open `loan` holdings, plus a "None" option; saves immediately through `setLoanPayment`). Modify `transaction-form.screen.tsx` (render it for an existing debit row, manual or synced, next to the category field) and `en.ts`/`uk.ts` (`forms.transaction.loanPayment`, `forms.transaction.loanPaymentNone`, and `syncedNotice` → "This was synced, so only the category and loan link can be changed.").
 
-- [ ] Failing tests: the field shows only on debits; picking a loan persists; "None" clears; the field is hidden when no loan holding exists (data-driven, not a flag).
+- [ ] Also: when `loanLinkSource = 'auto'`, the field shows a "Linked automatically" caption and an "Undo" action (calls `undoAutoLoanLink`); the transaction row in lists shows a small loan-link marker for both sources. i18n: `forms.transaction.loanLinkedAuto`, `forms.transaction.loanLinkUndo`.
+- [ ] Failing tests: the field shows only on debits; picking a loan persists as `manual`; "None" clears; an auto link shows the caption and Undo; Undo clears the link and a later matcher run does not re-link; the field is hidden when no loan holding exists (data-driven, not a flag).
 - [ ] Implement. Run `npx jest src/screens/forms`, then `make typecheck && make lint`. Phase check: `make gate`.
+
+### Task T48: Automatic loan-payment matcher (developer, scribe)
+
+**Files:** Create `src/loans/payment-matcher/{payment-matcher.ts,.test.ts,index.ts}` and `src/loans/use-loan-auto-link/` (+test). Modify `LoanMeta` in `holding-metadata.ts` (optional `paymentHoldingId`, `lenderName`, `lenderIban`), the loan form section from T19 (optional "Paid from" holding picker, lender name, lender IBAN), the sync and statement-import completion paths (call the matcher after a successful write), and `en.ts`/`uk.ts`.
+**Produces:** `matchLoanPayments({ transactions, loans, now }): Array<{ transactionId; loanHoldingId; dueDate }>` — a pure function; rules in spec §5.4.
+
+- [ ] Failing tests (one per rule in spec §5.4): exact installment amount + in window + paid from `paymentHoldingId` → linked; amount + window + a keyword ("кредит", "погашення", "іпотек", "loan", "mortgage", the lender name) → linked; amount + window + `counterIban = lenderIban` → linked; amount + window only (no third signal) → NOT linked; amount off by more than the tolerance → not linked; outside the window → not linked; two candidates for one installment → none linked; one transaction matching two loans → not linked; a row with `loanLinkRejected` → never linked; a row that is already linked (auto or manual) → unchanged; an exchange leg or a credit → never linked; a different currency → not linked; an informal (`none`) loan → never matched; a re-run is idempotent; backfill from the loan start date links past payments.
+- [ ] Implement. The hook runs the matcher after sync, after statement import, and when a loan is created or edited; it writes links with `source: 'auto'` in one `db.transaction()`.
+- [ ] (scribe) kiko-domain: document the matcher rules and the undo marker.
+- [ ] Run `npx jest src/loans src/transactions src/statistics`, then `make typecheck && make lint`.
 
 ### Task T23: Maestro flows for P1–P4 (qa)
 
@@ -367,10 +391,10 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 
 ### Task T37: Flex XML scanner + IBKR client (developer)
 
-**Files:** Create `src/broker-sync/ibkr/flex-xml.ts` (+test; a scanner for self-closing elements and their attributes plus `<Tag>text</Tag>` extraction; entity decoding for `&amp; &lt; &gt; &quot; &apos;`; no DTD or external entities), `src/broker-sync/ibkr/flex-statement.ts` (+test; `OpenPosition`, `CashReportCurrency`, `CashTransaction type="Dividends"` → `ParsedBrokerStatement`), `src/broker-sync/ibkr/{ibkr.credentials.ts,ibkr.client.ts}` + tests (`CREDENTIAL_QUERY_PARAM = 't'`), and `__fixtures__/uabean-ib-flex.xml`. Modify `src/statement-import/NOTICE.md` (the uabean credit for this fixture, MIT) and `docs/harness/documented-exceptions.md` (only if gitleaks or jscpd flags the fixture, with the concrete reason).
+**Files:** Modify `package.json` (add `"saxen": "11.1.1"` exact; `npm install`; confirm `package-lock.json` keeps ONE `node_modules/saxen` entry). Create `src/broker-sync/ibkr/flex-xml.ts` (+test; a thin wrapper over `saxen`'s `Parser`: collect `OpenPosition`, `CashReportCurrency`, `CashTransaction` element attributes; `<!DOCTYPE>` is ignored by `saxen`; any parser error → `FlexParseError`), `src/broker-sync/ibkr/flex-statement.ts` (+test; `OpenPosition`, `CashReportCurrency`, `CashTransaction type="Dividends"` → `ParsedBrokerStatement`), `src/broker-sync/ibkr/{ibkr.credentials.ts,ibkr.client.ts}` + tests (`CREDENTIAL_QUERY_PARAM = 't'`), and `__fixtures__/uabean-ib-flex.xml`. Modify `src/statement-import/NOTICE.md` (the uabean credit for this fixture, MIT) and `docs/harness/documented-exceptions.md` (only if gitleaks or jscpd flags the fixture, with the concrete reason).
 
 - [ ] Step 1: fetch uabean `tests/importers/ib/beancount.xml`, confirm the MIT licence, and anonymize account ids. **[VERIFY LIVE]** the attribute names used.
-- [ ] Failing tests: the fixture parses to the expected positions, cash, and dividends; malformed XML throws `FlexParseError`; `SendRequest` → `GetStatement`, where code 1019 ("generation in progress") retries with backoff, max 5; **N2**: a returned `Url` whose host ≠ `IBKR_FLEX_ENDPOINT`'s host → `IbkrHostMismatchError` and no second request; the token never appears in error messages.
+- [ ] Failing tests: the fixture parses to the expected positions, cash, and dividends; malformed XML throws `FlexParseError`; a document with a `<!DOCTYPE>` that declares an entity does not expand it; `SendRequest` → `GetStatement`, where code 1019 ("generation in progress") retries with backoff, max 5; **N2**: a returned `Url` whose host ≠ `IBKR_FLEX_ENDPOINT`'s host → `IbkrHostMismatchError` and no second request; the token never appears in error messages.
 - [ ] Implement. Run `npx jest src/broker-sync/ibkr && make plist`.
 
 ### Task T38: IBKR sync + connect UI with Flex setup steps (developer)
@@ -422,7 +446,26 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 - [ ] Failing tests: `detect` needs an exact header-row match (a one-cell change → rejected); the amounts parse to minor units with the sign; the currency comes from the file name, and when it is missing the existing "confirm currency" path applies; a code comment and NOTICE say "not verified on a real file".
 - [ ] Implement. Run `npx jest src/statement-import src/bank-sync`, then `make typecheck && make lint`. Phase check: `make gate`.
 
-**Deferred, no tasks (NO-GO until an anonymized sample exists):** Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal, ProCredit personal (`.xls`, open question 3). The coordinator adds a sample request to the release notes.
+### Task T49: Legacy `.xls` reader — OLE2 container + BIFF cells (developer)
+
+**Files:** Create `src/statement-import/xls/{cfb.ts,biff.ts,read-xls.ts,index.ts}` + tests, and `src/statement-import/xls/__fixtures__/` (small `.xls` files; commit the `.xls` files, no generator script). **Tooling note (checked 2026-09-23): LibreOffice is NOT installed on this machine.** Options: (ops) `brew install --cask libreoffice` then `soffice --headless --convert-to xls`, or Python `xlwt` in a throwaway venv under the scratchpad. Either install needs the user's approval before T49 starts. A BIFF5 fixture needs a tool that writes BIFF5 (LibreOffice "MS Excel 95" filter).
+**Produces:** `readXlsFirstSheet(bytes: Uint8Array): string[][]` — the first worksheet as rows of cell text.
+
+- [ ] Scope: the OLE2 compound file header, FAT, DIFAT, directory, mini stream, and the `Workbook` (BIFF8) or `Book` (BIFF5) stream. BIFF records: `BOF`, `EOF`, `CODEPAGE`, `BOUNDSHEET`, `SST` + `CONTINUE`, `LABELSST`, `LABEL`, `RSTRING`, `NUMBER`, `RK`, `MULRK`, `FORMULA` (cached number or the following `STRING`), `BLANK`/`MULBLANK`. BIFF5 byte strings decode through the existing `windows-1251` dependency when `CODEPAGE` = 1251. Dates stay as the text the bank wrote or as a serial number converted by the caller.
+- [ ] Safety: every read is bounds-checked; a sector chain that loops or exceeds the file size → `XlsParseError`; a size cap (for example 10 MB) → `XlsParseError`; encrypted files (`FILEPASS`) → `XlsParseError`. No `Number` arithmetic on money here (cell text only).
+- [ ] Failing tests: a BIFF8 fixture with shared strings, numbers, RK/MULRK, and a formula reads back exactly; a BIFF5 cp1251 fixture decodes Cyrillic; a truncated file, a looping FAT, and an encrypted file each throw `XlsParseError`; an `.xlsx` file is rejected (not OLE2).
+- [ ] Implement. Run `npx jest src/statement-import/xls`, then `make typecheck && make lint`.
+
+### Task T50: ProCredit personal `.xls` importer, synthetic fixture (developer, scribe)
+
+**Files:** Create `src/statement-import/formats/procredit-xls/{procredit-xls.format.ts,.test.ts,index.ts,__fixtures__/synthetic-procredit-personal.xls}`. Modify `parser.ts` (`statementFormatIds` += `'procredit-xls'`), `registry.ts`, the statement-import file picker (accept `.xls` / `application/vnd.ms-excel`), `bank-catalog.ts` (ProCredit keeps `procredit-business-csv` and gains `procredit-xls`: make `statementFormatId` accept a list, or detect across both — pick the smaller change), and `NOTICE.md` (format facts from uabean `procredit_xls.py`, MIT; **"not verified on a real file"**).
+
+- [ ] Fixture layout (from uabean): "Рахунок: <number>" at (4,1), "Валюта рахунку: <code>" at (6,1), sections "Операції по рахунку" and "Операції по картам", header rows starting with "Дата ", data rows starting with a `DD.MM.YYYY` date, ending at "Вихідний залишок по рахунку на кінець періоду". Build the CSV, convert it to `.xls` with the T49 tooling.
+- [ ] Failing tests: `detect` accepts only the documented layout; account-section and card-section rows both parse; the currency comes from (6,1); amounts become minor units with the sign; a wrong file is rejected with the existing "unrecognized format" message.
+- [ ] Implement. Run `npx jest src/statement-import src/bank-sync`, then `make typecheck && make lint`. Phase check: `make gate`.
+- [ ] (scribe) kiko-architecture / statement-import notes: the `.xls` reader and the "not verified on a real file" label.
+
+**Deferred, no tasks (NO-GO until an anonymized sample exists):** Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal. A second search (spec §13) found no reliable personal format. The coordinator adds a sample request to the release notes.
 
 ---
 
@@ -452,11 +495,12 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 |---|---|
 | Property: create, update value, net worth and history line | **yes** |
 | Metals under the Metals kind: NBU price loads, "price as of", history backfill | **yes** (public NBU) |
-| Metal under a bank: PrivatBank allowed, Monobank not offered | **yes** (UI only); also check whether Monobank sells metals (open question 1) |
+| Metal under a bank: PrivatBank allowed, Monobank not offered | **yes** (UI only) |
 | New catalog banks render with the right captions | **yes** |
 | Bond ISIN mode: found, not found → Manual, offline with and without cache (Airplane mode) | **yes** (public NBU) |
 | Debt: annuity / informal loan, negative headline, Debts section, pie shows assets only | **yes** |
 | Loan-payment link on a **synced Monobank** debit → interest-only spending | **yes** |
+| Automatic loan-payment link on a synced Monobank debit ("Paid from" = the Monobank card), "Linked automatically" caption, Undo, no re-link | **yes** — needs a real recurring loan payment on the card, or a manual debit that matches the installment |
 | Broker manual share with manual price | **yes** |
 | EODHD BYOK: key check, refresh on open once per day, backfill, quota caption | **only if the user registers a free EODHD key**; otherwise no |
 | BigInt decimal math in a Release (Hermes) build | **yes** (any priced holding value) |
@@ -465,4 +509,5 @@ The plan also assumes defaults for these spec §12 items: the IBKR Flex host (ve
 | IBKR file import | **partly**: import the anonymized uabean fixture through the picker |
 | Freedom24 / Revolut (if GO) | **no** |
 | PUMB XLSX import | **partly**: the synthetic fixture only; **not verified on a real file** |
+| ProCredit `.xls` import | **partly**: the synthetic fixture only; **not verified on a real file** |
 | Pinned hosts (eodhd, T212, IBKR) TLS negative check (corrupt pins → failure) | eodhd only with a key; others **no** |

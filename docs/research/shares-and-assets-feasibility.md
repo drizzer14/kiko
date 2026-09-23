@@ -1,6 +1,6 @@
 # Shares, property, metals, and debts — design spec
 
-- **Status:** DESIGN SPEC, round 3. All user decisions (rounds 1–3) are in the decision log. No app code changed. Implementation plan: `docs/plans/shares-property-metals-debts.md`.
+- **Status:** DESIGN SPEC, round 4. All user decisions (rounds 1–4) are in the decision log. No app code changed. Implementation plan: `docs/plans/shares-property-metals-debts.md`.
 - **Date checked:** 2026-09-23 (all web sources and live API tests are from this date unless a row says otherwise).
 - **Branch:** `shares-assets-research` (based on `next`, App Store build 25).
 - **Users:** Ukrainians, inside Ukraine and displaced worldwide (EU, UK, North America). Every feature must serve both groups.
@@ -30,6 +30,12 @@ Legend: **[verified]** = read on a primary source or tested live. **[secondary]*
 | D15 | Debt label | **"Debt" / "Борг"** | user, round 3 |
 | D16 | Release shape | **One feature line, shipped together.** P1–P9 are build order inside one integration branch, not staged releases. P8 (Freedom24) and P9 (Revolut) are gated tasks with a go/no-go | user, round 3 |
 | D17 | New banks in the catalog | **Add PUMB, Oschadbank, Raiffeisen, Ukrgasbank.** Statement imports only where the format is known — see §13 | user, round 3 |
+| D18 | Monobank metals | **No.** Monobank stays off the metal allow-list | user, round 4 |
+| D19 | PUMB importer | **Yes, with a synthetic fixture**, labelled "not verified on a real file" | user, round 4 |
+| D20 | ProCredit personal `.xls` | **Yes.** A hand-rolled OLE2 + BIFF reader; no candidate library passed the safety bar — see §14 | user approved a dependency in principle, round 4; choice recorded in §14 |
+| D21 | Loan-payment linking | **Automatic linking with high confidence**, a visible "Linked automatically" state with Undo, manual link as the fallback — see §5.4 | user asked, round 4; feasible |
+| D22 | EODHD licence | **Closed.** Same BYOK model as the Monobank token and the Binance keys: the user's own key, the user's own data use. Kiko does not redistribute data and does not ship a key | user, round 4 |
+| D23 | IBKR Flex XML | **`saxen` 11.1.1** as a direct dependency (already installed through `read-excel-file`) — see §14 | user approved "if safe and easy", round 4 |
 
 **Rejected options** (kept here so they are not proposed again):
 - Manual-only share price (D3).
@@ -43,6 +49,10 @@ Legend: **[verified]** = read on a primary source or tested live. **[secondary]*
 - Counting the full loan payment as spending (D14) — the principal part only reduces the debt.
 - Oschadbank sync through its web-banking internal API (`online.oschadbank.ua/wb/api/v2`, used by uabean's `oschad_api.py` with a login or a browser session cookie) — an undocumented private API that needs the user's banking password; rejected for security and App Store reasons.
 - Separate staged releases per phase (D16).
+- `xlsx` (SheetJS on npm, 0.18.5): OSV GHSA-4r6h-8v6p-xvw6 and GHSA-5pgg-2g8v-p4x9 (D20).
+- `@e965/xlsx` (a personal republish of SheetJS 0.20.3) and `cfb` (unmaintained since 2022, `require('fs')`/`require("zlib")` calls) (D20).
+- `fast-xml-parser` for IBKR XML: safe at 5.11.1 but adds 6 packages and parses internal DTD entities; `saxen` needs no new code (D23).
+- ZenPlugins (GPL-3.0) bank plugins for Oschadbank, PUMB, and UKRSIBBANK: they log in to the banks' private mobile/web APIs with the user's banking credentials — same rejection as the Oschadbank internal API.
 - A generic "Institution" account kind — it loses the kind → holding-type gating that the forms rely on.
 - Diia as an institution — Diia does not hold the bonds.
 
@@ -268,7 +278,35 @@ The allow-list is a static data field on the bank catalog entry (for example `se
 - The user links a payment transaction to the loan (a "Loan payment" action on the transaction, like the existing Exchange link that sets `exchangeCounterpartHoldingId`).
 - A linked payment is excluded from spending by a new id-set builder (next to `exchangeExcludedTxIds`). The interest part for that date is added back to spending as a derived entry, under a "Loan interest" category. It is computed on the fly, like bond coupons.
 - A `none`-schedule (informal) debt has no interest → a linked payment counts 0 as spending.
-- An unlinked payment stays normal spending (no automatic matching in this feature line).
+- An unlinked payment stays normal spending.
+
+### 5.4 Automatic loan-payment linking (D21)
+
+**Verdict: feasible.** For a scheduled loan, Kiko knows each installment's amount and due date, so it can find the matching bank debit. Informal (`none`) debts have no installments and are never matched.
+
+**Inputs on the loan (optional, entered in the loan form):** `paymentHoldingId` ("Paid from"), `lenderName`, `lenderIban`.
+
+**Candidate transaction:** a debit (amount < 0), not an exchange leg, not already linked, `loanLinkRejected = false`, same currency as the loan.
+
+**Rules — a link is written only when ALL of these hold:**
+1. **Amount:** |amount| is within the tolerance of the scheduled installment: ±1 % or ±1.00 in the loan currency, whichever is larger (a bank fee or rounding).
+2. **Date:** the transaction day is from 3 days before to 7 days after the due date.
+3. **One more signal, at least one of:**
+   - the transaction is on the loan's `paymentHoldingId`;
+   - `counterIban` equals `lenderIban` (Monobank and imports carry `counterIban`);
+   - the description contains a keyword: `кредит`, `погашення`, `іпотек`, `позик`, `loan`, `mortgage`, `repayment`, or the `lenderName`.
+4. **Uniqueness:** exactly one candidate for the installment, and the candidate matches exactly one installment of one loan. Any tie → no automatic link.
+
+**False-positive handling:**
+- Amount + date alone (for example monthly rent of the same size) never links: rule 3 needs a third signal.
+- The link is visible: the transaction shows "Linked automatically" with an Undo action; the loan detail lists linked payments.
+- Undo clears the link and sets `loanLinkRejected = true`, so the matcher never links that row again. A manual link or a manual "None" clears the flag.
+- Statistics are derived at read time (§5.3), so an undo corrects spending at once. No stored totals must be repaired.
+- A partial or early payment (amount outside the tolerance) is not matched; the user links it manually. The interest counted is the scheduled interest for that installment, capped at the payment amount.
+
+**When it runs:** after a sync, after a statement import, and when a loan is created or edited (backfill from the loan start date). It is a pure, idempotent function; one `db.transaction()` writes the links with `source = 'auto'`.
+
+**Data:** `transactions.loanHoldingId`, `transactions.loanLinkSource` (`'auto' | 'manual'`), `transactions.loanLinkRejected` — one additive migration.
 
 ---
 
@@ -394,12 +432,7 @@ P1 comes first because P2, P4 (informal debts), and P5 reuse its price series.
 
 ## 11. Open questions
 
-Round-2 questions are answered (D10–D17). New questions from round 3:
-
-1. **Monobank metals:** the user can check on the device whether Monobank sells metals. If yes, add `monobank` to the metal allow-list.
-2. **PUMB importer without a real file:** ship it with a synthetic fixture built from the documented header (as done for PrivatBank XLSX and UKRSIB business), or wait for a real sample?
-3. **ProCredit personal statements** are legacy `.xls` (BIFF). Kiko's `read-excel-file` reads only `.xlsx`. Supporting `.xls` needs a new dependency. Leave it out?
-4. **Loan-payment linking** is manual (the user marks a bank transaction as a loan payment). Is manual linking acceptable, or is automatic matching required?
+All questions from rounds 2 and 3 are answered (D10–D23). No open product question remains in this spec. Open technical items are in §12 and in the plan's "New open questions" list.
 
 ---
 
@@ -417,7 +450,13 @@ Current importers: `monobank-csv`, `privatbank-xlsx`, `sensebank-csv`, `procredi
 | **Raiffeisen** | statements in Raiffeisen Online and the app | file format not found | no | **NO-GO until a sample exists** | [raiffeisen.ua](https://raiffeisen.ua/privatnim-osobam/online-servisi/dystantsiine-obsluhovuvannia) |
 | **Ukrgasbank** | the found manual is for business: documents export as XLS/DBF/CSV; the statement print form is PDF | no personal statement spec | no | **NO-GO until a sample exists** | Ukrgasbank user manual `posibnyk_v9.pdf` (read locally with PDFKit) |
 | **UKRSIBBANK** (personal) | UKRSIB online: "сформувати банківську виписку по рахунку" | the user manual names no file format | no | **NO-GO until a sample exists** | [UKRSIB online manual](https://ukrsibbank.com/wp-content/uploads/legal_documents/UKRSIB_online_user_manual.pdf) (read locally) |
-| **ProCredit** (personal) | web interface, legacy `.xls` "Рух по рахунку_…" | account number at (4,1), currency at (6,1); sections "Операції по рахунку" / "Операції по картам"; header row starts with "Дата " | no | **NO-GO**: needs a `.xls` parser (new dependency) — Q3 | [uabean procredit_xls.py](https://github.com/OSadovy/uabean/blob/main/src/uabean/importers/procredit_xls.py) |
+| **ProCredit** (personal) | web interface, legacy `.xls` "Рух по рахунку_…" | account number at (4,1), currency at (6,1); sections "Операції по рахунку" / "Операції по картам"; header row starts with "Дата " | no | **GO (D20)**: hand-rolled `.xls` reader + a synthetic fixture, labelled "not verified on a real file" | [uabean procredit_xls.py](https://github.com/OSadovy/uabean/blob/main/src/uabean/importers/procredit_xls.py) |
+
+**Second search (round 4, 2026-09-23) for Oschadbank, Raiffeisen, Ukrgasbank, UKRSIBBANK personal formats:**
+- GitHub code search (Ukrainian and English bank names + "виписка", "statement", "csv", "xlsx"): no importer with a real sample file.
+- [zenmoney/ZenPlugins](https://github.com/zenmoney/ZenPlugins) has `oschadbank`, `pumb`, `ukrsibbank`, `raiffeisen-rs` plugins, but they call the banks' private APIs (for example `online.oschadbank.ua/mobile/api/v2/...`, `online.ukrsibbank.com/clientendpoint`) with the user's login, not statement files. GPL-3.0. Rejected.
+- [fiks9/FinanceOS-Bot `ai/csv_parser.py`](https://github.com/fiks9/FinanceOS-Bot) (MIT, 1 star) lists header guesses: Oschadbank `Дата операції, Найменування контрагента, Призначення платежу, Дебет, Кредит, Залишок`; Raiffeisen "iBank2" `OPERATION DATE, DOCUMENT AMOUNT, TRANSACTION DESCRIPTION, DEBIT/CREDIT`. Each header has several fallback aliases and there are no sample files, so these are **[unverified]** leads, not a basis for a strict `detect`. iBank2 is a business client-bank system.
+- Result: **no new importer tasks.** The four banks keep the "Manual holdings only" caption (accepted by the user).
 
 **How to handle importers without a real file:**
 1. Build a parser only when a column spec exists from a working open-source importer (PUMB) or from an official document.
@@ -438,3 +477,20 @@ Current importers: `monobank-csv`, `privatbank-xlsx`, `sensebank-csv`, `procredi
 - Monobank personal API: no securities endpoint.
 - NBU press release text for the 2026-08-11 limits (HTTP 403 to automated fetch).
 - Whether BYOK personal-use licences allow display inside a third-party app the user runs for themselves (legal reading of each provider's terms).
+
+---
+
+## 14. Dependency decisions (round 4, checked 2026-09-23)
+
+Criteria from the user: maintained, no open CVEs (OSV), works in Hermes/React Native with no Node built-ins, exact version pin, respects the `.npmrc` 7-day minimum age.
+
+| Package | Checked facts | Verdict |
+|---|---|---|
+| `saxen` 11.1.1 (IBKR XML) | Already in `package-lock.json` through `read-excel-file` (`^11.1.0`). MIT, repo `nikku/saxen`, releases 2025-12-14 … 2026-09-21. OSV: none. No `require`/`import` of Node built-ins. No DTD processing: `<!…>` goes to the `attention` callback; only `&amp; &apos; &gt; &lt; &quot;` and numeric entities are decoded. 11.1.1 was published 2026-07-27 (> 7 days). | **Chosen (D23).** Pin `11.1.1` exact so npm dedupes it. |
+| `fast-xml-parser` 5.11.1 | OSV: none. Library entry has no Node built-ins (only `src/cli/*` imports `fs`/`path`/`stream`). 6 runtime dependencies, all from one maintainer. ~1.1 MB unpacked (`lib/`). Parses internal DTD entities with `maxEntitySize` 10000 / `maxEntityCount` 1000 limits. | Safe, but not needed. |
+| `xlsx` 0.18.5 | OSV: GHSA-4r6h-8v6p-xvw6 (prototype pollution), GHSA-5pgg-2g8v-p4x9 (ReDoS). Newer SheetJS builds are not on the npm registry. | Rejected. |
+| `@e965/xlsx` 0.20.3 | Republish of SheetJS by one person (`e965/sheetjs-npm-publisher`), last release 2024-07-19, 8 MB unpacked. OSV: none. | Rejected (supply chain). |
+| `cfb` 1.2.2 | Last release 2022-06-13. Contains `require('fs')` and `require("zlib")`. OSV: none. | Rejected (unmaintained; Metro resolves those requires). |
+| `read-excel-file` 9.3.10 (existing) | Reads `.xlsx` only; throws `XLS_FILE_NOT_SUPPORTED` for OLE2 `.xls` (its README). | Not enough for ProCredit. |
+| Hand-rolled `.xls` reader | OLE2 container (header, FAT, DIFAT, directory, mini stream) + BIFF5/BIFF8 cell records; cp1251 through the existing `windows-1251` dependency; strict bounds and loop checks. | **Chosen for ProCredit (D20).** Plan task T49. |
+
