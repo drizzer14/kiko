@@ -1,3 +1,5 @@
+import { asLots, type Lot } from '../lots';
+
 export type CompoundingFrequency = 'bi-weekly' | 'monthly' | 'quarterly' | 'annually';
 
 export type DepositContribution = { amountMinorUnits: number; date: number };
@@ -207,4 +209,44 @@ export const asBondMeta = (value: unknown): BondMeta | null => {
     bondKind: bondKind === 'corporate' ? 'corporate' : 'government',
     couponFrequency: asBondCouponFrequency(value.couponFrequency),
   };
+};
+
+// The closed set of `property_item` categories (T13). A `const` tuple, per
+// kiko-code-style: the derived union type sits directly after it, and
+// membership is tested on the tuple itself rather than a parallel `Set` —
+// this set is small, so a second runtime structure would be redundant. Not
+// exported: `PropertyCategory` (the derived type) is the public surface a
+// consumer needs; nothing outside this module reads the raw tuple.
+const propertyCategories = [
+  'real_estate',
+  'vehicle',
+  'valuable',
+  'loan_given',
+  'business_share',
+  'other',
+] as const;
+
+export type PropertyCategory = (typeof propertyCategories)[number];
+
+const isPropertyCategory = (value: unknown): value is PropertyCategory =>
+  typeof value === 'string' && (propertyCategories as readonly string[]).includes(value);
+
+export type PropertyMeta = {
+  category: PropertyCategory;
+  lots: Lot[];
+};
+
+export const asPropertyMeta = (value: unknown): PropertyMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { category, lots } = value;
+  const parsedLots = asLots(lots);
+
+  if (!isPropertyCategory(category) || parsedLots === null) {
+    return null;
+  }
+
+  return { category, lots: parsedLots };
 };

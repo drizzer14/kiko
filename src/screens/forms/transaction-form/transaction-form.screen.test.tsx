@@ -931,8 +931,9 @@ describe('TransactionFormScreen — duplicate mode (D2)', () => {
 
 describe('TransactionFormScreen — empty-create / global add (B)', () => {
   // Two eligible cash holdings on two accounts, plus a synced holding and a
-  // bond that the primary picker must EXCLUDE (the 'transaction' gate:
-  // open, non-synced, non-bond/non-deposit).
+  // bond/property_item that the primary picker must EXCLUDE (the
+  // 'transaction' gate: open, non-synced, non-ledgerless — see
+  // `isLedgerlessHoldingType`).
   const HOLDINGS = [
     {
       id: 'h1',
@@ -963,6 +964,16 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
       accountId: 'a1',
       sortOrder: 1,
       createdAt: 3,
+    },
+    {
+      id: 'h-property',
+      currency: 'UAH' as const,
+      balanceMinorUnits: 0,
+      type: 'property_item',
+      name: 'Flat',
+      accountId: 'a1',
+      sortOrder: 2,
+      createdAt: 4,
     },
   ];
   const ACCOUNTS: Account[] = [
@@ -1018,7 +1029,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     expect(amountSuffixWithin(utils).getByText('₴')).toBeTruthy();
   });
 
-  it('excludes bond holdings from the picker (the transaction gate)', async () => {
+  it('excludes bond and property_item holdings from the picker (the transaction gate)', async () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 
     const { getByLabelText, queryByLabelText } = await renderEmptyCreate();
@@ -1027,11 +1038,13 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     await fireEvent.press(getByLabelText('Holding'));
 
     // The two eligible holdings are offered as option rows (each labeled
-    // "<name>, <account>"); the bond is not — the same 'transaction' gate
+    // "<name>, <account>"); the bond and the property_item are not — both are
+    // ledgerless (isLedgerlessHoldingType), the same 'transaction' gate
     // `footerActionFor` applies.
     expect(getByLabelText('Wallet, Cash')).toBeTruthy();
     expect(getByLabelText('Card, Bank')).toBeTruthy();
     expect(queryByLabelText('War Bond, Cash')).toBeNull();
+    expect(queryByLabelText('Flat, Cash')).toBeNull();
   });
 
   it('writes a create against the PICKED holding via recordManual', async () => {

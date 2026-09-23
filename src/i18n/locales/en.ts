@@ -202,6 +202,7 @@ export const en = {
       initialValuePlaceholder: '1000.00',
       kind: 'Kind',
       namePlaceholder: 'Monobank',
+      property: 'Property',
       selectBankPlaceholder: 'Select a bank (optional)',
     },
     contribution: {
@@ -252,6 +253,7 @@ export const en = {
       maturityDateError: 'Maturity date must be after the purchase date.',
       monthly: 'Monthly',
       namePlaceholder: 'Apple shares',
+      propertyItem: 'Property',
       purchaseDate: 'Purchase Date',
       purchasePrice: 'Purchase Price (total paid)',
       purchasePricePlaceholder: 'Defaults to nominal',

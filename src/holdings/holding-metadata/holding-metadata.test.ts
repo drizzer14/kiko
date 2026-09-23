@@ -1,5 +1,16 @@
-import type { BondMeta, CompoundingFrequency, TermDepositMeta } from './holding-metadata';
-import { asBondMeta, asTermDepositMeta, syncedAtOf, walletAddressOf } from './holding-metadata';
+import type {
+  BondMeta,
+  CompoundingFrequency,
+  PropertyMeta,
+  TermDepositMeta,
+} from './holding-metadata';
+import {
+  asBondMeta,
+  asPropertyMeta,
+  asTermDepositMeta,
+  syncedAtOf,
+  walletAddressOf,
+} from './holding-metadata';
 
 describe('asTermDepositMeta', () => {
   const compounding: CompoundingFrequency = 'monthly';
@@ -176,5 +187,52 @@ describe('syncedAtOf', () => {
     expect(syncedAtOf({ syncedAt: 'yesterday' })).toBeNull();
     expect(syncedAtOf({ syncedAt: Number.NaN })).toBeNull();
     expect(syncedAtOf(null)).toBeNull();
+  });
+});
+
+describe('asPropertyMeta', () => {
+  const valid = {
+    category: 'real_estate' as const,
+    lots: [{ day: 1_700_000_000_000, quantityDelta: '1', costMinorUnits: 5_000_000 }],
+  };
+
+  it('returns the typed object for a valid shape', () => {
+    const result: PropertyMeta | null = asPropertyMeta(valid);
+    expect(result).toEqual(valid);
+  });
+
+  it('accepts every category in the closed set', () => {
+    const categories = [
+      'real_estate',
+      'vehicle',
+      'valuable',
+      'loan_given',
+      'business_share',
+      'other',
+    ];
+    for (const category of categories) {
+      expect(asPropertyMeta({ ...valid, category })?.category).toBe(category);
+    }
+  });
+
+  it('rejects an unknown category', () => {
+    expect(asPropertyMeta({ ...valid, category: 'nonsense' })).toBeNull();
+  });
+
+  it('rejects a missing category', () => {
+    const { category, ...rest } = valid;
+    expect(asPropertyMeta(rest)).toBeNull();
+  });
+
+  it('rejects an invalid lots array', () => {
+    expect(asPropertyMeta({ ...valid, lots: [{ day: 1, quantityDelta: 'abc' }] })).toBeNull();
+  });
+
+  it('accepts an empty lots array', () => {
+    expect(asPropertyMeta({ ...valid, lots: [] })?.lots).toEqual([]);
+  });
+
+  it('returns null for null', () => {
+    expect(asPropertyMeta(null)).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ export const holdingTypes = [
   'cash',
   'crypto_asset',
   'jar',
+  'property_item',
 ] as const satisfies readonly HoldingRow['type'][];
 
 export type HoldingType = (typeof holdingTypes)[number];
@@ -29,6 +30,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
   bank: ['card', 'term_deposit', 'bond', 'jar'],
   cash: ['cash'],
   crypto: ['crypto_asset'],
+  property: ['property_item'],
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per
@@ -48,6 +50,17 @@ export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
 // without the trailing time). Every other type keeps its HH:MM stamp.
 export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
   type === 'term_deposit' || type === 'bond';
+
+// The holding types that write no manual ledger (transaction) rows at all —
+// their value derives entirely from `lots` in metadata (kiko-domain), priced
+// at read time. `term_deposit` and `bond` already work this way; `property_item`
+// (T13) is the same shape. `footerActionFor` (holding-detail.screen.tsx) and
+// `isTransactionEligibleType` (transaction-form.screen.tsx) both gate on this
+// predicate rather than re-deriving their own type list, so the two can never
+// disagree on which types are ledgerless. T17, T26, and T35 extend this set as
+// metals, loans, and shares land.
+export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
+  type === 'term_deposit' || type === 'bond' || type === 'property_item';
 
 // The holding types a user may MANUALLY CREATE under a given account kind AND
 // synced state: the kind's full set minus whichever sync-only types that

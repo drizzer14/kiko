@@ -302,6 +302,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     cash: t('forms.account.cash'),
     crypto_asset: t('forms.holding.cryptoAsset'),
     jar: t('forms.holding.jar'),
+    property_item: t('forms.holding.propertyItem'),
   };
   const bondKindLabels: Record<BondKind, string> = {
     government: t('forms.holding.government'),
@@ -731,7 +732,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     match(type)
       .with('term_deposit', isTermDepositValid)
       .with('bond', isBondValid)
-      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
+      // `property_item` (T13) has no dedicated create-form section yet — that
+      // lands in T16 alongside its own validation. Until then it is not
+      // reachable from this form's Type picker (no account-kind picker offers
+      // `property` yet either), so it is grouped with the other
+      // no-extra-fields types purely to satisfy `match`'s exhaustiveness.
+      .with('card', 'cash', 'crypto_asset', 'jar', 'property_item', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);

@@ -51,6 +51,7 @@ import TextField from '../../../design-system/components/text-field';
 import { isSyncedHolding } from '../../../holdings/deletable';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
+import { isLedgerlessHoldingType } from '../../../holdings/holding-type';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
 import type { TransactionFormParams } from '../../../navigation/types';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
@@ -645,12 +646,13 @@ const buildExchangeOptions = (
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate
 // `footerActionFor` (`holding-detail.screen.tsx`) applies for its `'transaction'`
-// action: a term_deposit takes contributions and a bond carries no manual
-// ledger, so both are excluded; everything else (cash/card/crypto_asset/jar) is
-// eligible. Mirrored here (rather than exported from that screen) so the primary
-// picker and the footer action agree without a cross-screen import.
+// action: a ledgerless type (term_deposit, bond, property_item — see
+// `isLedgerlessHoldingType`) carries no manual ledger and is excluded;
+// everything else (cash/card/crypto_asset/jar) is eligible. Mirrored here
+// (rather than exported from that screen) so the primary picker and the
+// footer action agree without a cross-screen import.
 const isTransactionEligibleType = (type: HoldingRow['type']): boolean =>
-  type !== 'term_deposit' && type !== 'bond';
+  !isLedgerlessHoldingType(type);
 
 // The primary-leg picker's options for the global-add (empty-create) case:
 // every OPEN, non-synced, transaction-eligible holding (mirroring the

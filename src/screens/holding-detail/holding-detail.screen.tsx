@@ -42,7 +42,7 @@ import { type DerivedEntry, derivedEntries, type EntryTone } from '../../holding
 import { defaultHoldingColor } from '../../holdings/entity-colors';
 import { holdingTypeSymbol } from '../../holdings/entity-symbols';
 import { asBondMeta } from '../../holdings/holding-metadata';
-import { isTimeExemptHoldingType } from '../../holdings/holding-type';
+import { isLedgerlessHoldingType, isTimeExemptHoldingType } from '../../holdings/holding-type';
 import {
   bondExpectedProfitMinor,
   type HoldingValueBreakdown,
@@ -158,9 +158,10 @@ const convertedBaseValue = (
 type FooterAction = 'contribution' | 'transaction' | 'none';
 
 // A term_deposit takes contributions (its own deposit lifecycle); a plain
-// holding takes a manual transaction. A bond carries no manual ledger — its
-// value derives from metadata (kiko-domain) — and a synced (Monobank) holding's
-// ledger is owned by the sync, so neither offers an add action. `isSyncedHolding`
+// holding takes a manual transaction. A ledgerless type (bond, property_item —
+// see `isLedgerlessHoldingType`) carries no manual ledger — its value derives
+// from metadata (kiko-domain) — and a synced (Monobank) holding's ledger is
+// owned by the sync, so neither offers an add action. `isSyncedHolding`
 // requires BOTH a connected synced institution AND the sync key in metadata, so
 // a disconnected former-Monobank holding counts as manual again and keeps its
 // add action. Extracted to module scope so the branch chain does not count
@@ -177,7 +178,7 @@ const footerActionFor = (
     return 'contribution';
   }
 
-  if (holding.type === 'bond' || isSyncedHolding(holding, account)) {
+  if (isLedgerlessHoldingType(holding.type) || isSyncedHolding(holding, account)) {
     return 'none';
   }
 

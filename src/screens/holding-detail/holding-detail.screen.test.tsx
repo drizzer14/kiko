@@ -88,6 +88,18 @@ const bondHolding = {
   },
 };
 
+const propertyHolding = {
+  id: 'h-1',
+  name: 'Flat in Kyiv',
+  type: 'property_item',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    category: 'real_estate',
+    lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '1', costMinorUnits: 200_000_000 }],
+  },
+};
+
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('../../db/use-live-query', () => ({
@@ -888,6 +900,18 @@ describe('HoldingDetailScreen', () => {
     // A bond carries no manual ledger — its value derives from metadata — so it
     // offers no add action at all: neither the generic "Add transaction" nor a
     // deposit "Add contribution". The Screen renders no footer slot.
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
+    expect(queryByText('Add contribution')).toBeNull();
+  });
+
+  it('hides the footer add action for a property_item (ledgerless)', async () => {
+    seed(propertyHolding);
+
+    const { queryByTestId, queryByText } = await renderScreen();
+
+    // property_item is ledgerless (isLedgerlessHoldingType) — its value derives
+    // from metadata lots, so it offers no manual add action, the same as a bond.
     expect(queryByTestId('screen-footer')).toBeNull();
     expect(queryByText('Add transaction')).toBeNull();
     expect(queryByText('Add contribution')).toBeNull();

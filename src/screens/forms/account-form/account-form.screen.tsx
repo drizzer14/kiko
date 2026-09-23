@@ -50,6 +50,15 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 const kinds = ['cash', 'bank', 'crypto'] as const;
 type Kind = (typeof kinds)[number];
 
+// `accounts.kind` (db/schema.ts) is wider than this form's own `Kind` — T13
+// added `'property'`, which this ChipRow-based picker does not yet offer as a
+// choice (T15 replaces it with a dedicated `AccountKindField`). Guards the
+// edit-mode hydration below against that wider stored value so hydrating an
+// existing (currently uncreatable-from-this-form) property account's kind
+// never assigns outside `Kind`'s own type.
+const isSupportedKind = (value: string): value is Kind =>
+  (kinds as readonly string[]).includes(value);
+
 // The kind a fresh create form starts on. Its default icon (accountKindSymbol)
 // seeds the icon field so the form opens on a sensible glyph rather than the
 // neutral fallback below.
@@ -292,7 +301,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     }
     hydrated.current = true;
     setName(editingAccount.name);
-    setKind(editingAccount.kind);
+    setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
   }, [isEdit, editingAccount]);

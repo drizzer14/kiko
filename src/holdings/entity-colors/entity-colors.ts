@@ -10,18 +10,20 @@ import type { HoldingType } from '../holding-type';
 
 type AccountKind = AccountRow['kind'];
 
-// bank -> white, cash -> khaki, crypto -> yellow. Typed over the full
-// `AccountKind` union, so adding an account kind is a compile error here until
-// its default color is supplied.
+// bank -> white, cash -> khaki, crypto -> yellow, property -> brown. Typed
+// over the full `AccountKind` union, so adding an account kind is a compile
+// error here until its default color is supplied.
 export const defaultAccountColor: Record<AccountKind, string> = {
   bank: entityColorsDark.white,
   cash: entityColorsDark.khaki,
   crypto: entityColorsDark.yellow,
+  property: entityColorsDark.brown,
 };
 
 // card -> white, term_deposit -> blue, bond -> green, jar -> violet,
-// cash -> khaki, crypto_asset -> yellow. Typed over the full `HoldingType`
-// union for the same exhaustiveness guarantee as the account map above.
+// cash -> khaki, crypto_asset -> yellow, property_item -> brown. Typed over
+// the full `HoldingType` union for the same exhaustiveness guarantee as the
+// account map above.
 export const defaultHoldingColor: Record<HoldingType, string> = {
   card: entityColorsDark.white,
   term_deposit: entityColorsDark.blue,
@@ -29,4 +31,5 @@ export const defaultHoldingColor: Record<HoldingType, string> = {
   jar: entityColorsDark.violet,
   cash: entityColorsDark.khaki,
   crypto_asset: entityColorsDark.yellow,
+  property_item: entityColorsDark.brown,
 };

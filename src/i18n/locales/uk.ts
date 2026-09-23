@@ -187,6 +187,7 @@ export const uk: typeof en = {
       initialValuePlaceholder: '1 000,00',
       kind: 'Вид',
       namePlaceholder: 'Монобанк',
+      property: 'Майно',
       selectBankPlaceholder: 'Оберіть банк (необов’язково)',
     },
     contribution: {
@@ -235,6 +236,7 @@ export const uk: typeof en = {
       maturityDateError: 'Дата погашення має бути пізніше дати придбання.',
       monthly: 'Щомісяця',
       namePlaceholder: 'Акції Apple',
+      propertyItem: 'Майно',
       purchaseDate: 'Дата придбання',
       purchasePrice: 'Ціна придбання (сплачено всього)',
       purchasePricePlaceholder: 'За замовчуванням — номінал',

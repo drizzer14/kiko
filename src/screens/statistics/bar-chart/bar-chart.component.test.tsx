@@ -38,6 +38,14 @@ describe('BarChart', () => {
     expect(getByText(/\$250\.00/)).toBeTruthy();
   });
 
+  it('renders the property_item label', async () => {
+    const { getByText } = await render(
+      <BarChart data={[{ type: 'property_item', amount: 100_00 }]} baseCurrency="USD" />,
+    );
+
+    expect(getByText('Property')).toBeTruthy();
+  });
+
   it('scales each bar width to the largest entry', async () => {
     const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
 
