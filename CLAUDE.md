@@ -161,6 +161,17 @@ app files inline. Complex or parallel work is split into separate
 Orca worktrees. If no agent fits a task, the coordinator reports the
 gap — it does not do the task itself.
 
+### Skill drift rule
+
+This rule applies to every session, at all times. After every
+completed code iteration (a feature, phase, or fix that is developed
+and tested), the session runs `kiko:retrospect` to verify BOTH skill
+locations (`.claude/skills/` and `harness/kiko/skills/`, plus
+`harness/kiko/agents/`) against the new code. Then `kiko:scribe`
+fixes the drift and commits, before the next iteration or the merge.
+The completion report names the drift-fix sha (or states "no drift
+found"). The coordinator checks that sha before it merges.
+
 ### The twelve agents
 
 | Agent | Role | model | effort | Spawn command |
