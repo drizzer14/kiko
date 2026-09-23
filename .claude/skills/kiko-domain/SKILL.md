@@ -21,11 +21,22 @@ an enum list copied into this prose as current. Read
 definitions before relying on a specific member being present or
 absent** — this skill states the shape and non-enum facts only:
 
-- **Account** — a bank, cash stash, or crypto wallet. `id`, `name`,
-  `kind` (see `schema.ts`'s `accounts.kind` enum for the current
-  member set), `institution` (nullable, e.g. `monobank` — marks a LIVE
+- **Account** — a bank, cash stash, crypto wallet, standalone property
+  holder, or standalone precious-metals holder. `id`, `name`, `kind`
+  (see `schema.ts`'s `accounts.kind` enum for the current member set —
+  as of T17 this includes `property` and `metals` alongside `bank`/
+  `cash`/`crypto`; both are manually-created-only kinds with no sync
+  concept), `institution` (nullable, e.g. `monobank` — marks a LIVE
   sync connection), `bankId` (nullable, migration `0033`; see below),
   `icon`, `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+  `holdingTypesForAccountKind` (`src/holdings/holding-type/`) maps
+  each account kind to its allowed `Holding.type` set — `property`
+  maps to `property_item`, `metals` maps to `metal` — read that file
+  rather than trusting a mapping copied here. `metal` is ALSO
+  creatable under a `bank`-kind account, gated by that bank's own
+  `sellsMetals` catalog flag (see `kiko-pricing`'s "Bank metal
+  allow-list" section) — the only holding type creatable under two
+  different account kinds by two different rules.
 
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
@@ -39,8 +50,8 @@ absent** — this skill states the shape and non-enum facts only:
   PREFERENCE, not a gate: "Import statement" is offered on every bank
   account regardless of `bankId`, and a file that doesn't match its
   dedicated format (or has none) falls through to the generic
-  column-mapping import (`kiko-architecture`'s "Statement import —
-  column mapping" section) — a dedicated format still wins whenever it
+  column-mapping import (`kiko-statement-import`'s "Column mapping"
+  section) — a dedicated format still wins whenever it
   actually matches. `bankId` is deliberately **never read** by
   `isSyncedAccount`/`isSyncedHolding`
   (`src/holdings/deletable/`) or any provider-registry lookup — those
@@ -138,6 +149,24 @@ A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
+
+## `property_item` / `metal` create-form sections
+
+`src/screens/forms/holding-form/property-section/` is the
+`property_item` create-form section: a category `ChipRow`
+(`propertyCategories` from `src/holdings/holding-metadata`, editable
+in both create and edit mode) plus a Cost field (create-only). One lot
+plus one manual price point equal to that cost is what
+`holding-form.screen.tsx` builds from it on save, via
+`holdingsRepo.create`'s `firstPricePoint` param — see `kiko-pricing`'s
+"Creating and clearing a priced holding's price series" section for
+the create/remove symmetry. `metal` has no dedicated create-form
+section yet (T20) — as of T17 it is grouped with the other
+no-extra-fields types in `holding-form.screen.tsx`'s `isValid` match,
+and is `isLedgerlessHoldingType` so the generic Balance field is
+hidden for it. `preciousMetals`/`metalForms`/`metalUnits`
+(`src/holdings/holding-metadata`) are already exported, mirroring
+`propertyCategories`, anticipating that form.
 
 ## Sync-only holding types are not manually creatable
 
@@ -366,6 +395,16 @@ isn't zero (this repo's dev machine is Kyiv, UTC+2/+3) — build a new
 test with `local(...)` unless it is specifically exercising a winter
 instant the way the existing `Date.UTC` cases do.
 
+`formatDate`/`formatDayMonth` (`src/dates/format.ts`) take an optional
+`options?: { timeZone?: 'UTC' }` param: pass it when the caller's own
+instant is a UTC-midnight value standing for a LOCAL calendar date
+(e.g. `price_points.day` — see `kiko-pricing`'s `dayKeyOf` convention)
+— reading such a value with the default LOCAL `Date` getters can land
+on the previous calendar day in a negative-UTC-offset timezone. Every
+other date formatter in that file stays local-timezone by default;
+only pass this option for a value that is already a normalized UTC
+calendar day, not for an ordinary wall-clock timestamp.
+
 The recap-OFF first-accrual-day convention (what day a deposit starts
 earning when the recap toggle is off) is unresolved — it needs a real
 bank statement to confirm against, not a guess; do not implement or
@@ -381,96 +420,15 @@ balance is excluded. The headline total (`guardedNetWorth`) and the
 per-currency breakdown shown beneath it (`guardedBreakdown`) share one
 `canConvert` filter in `src/rates/`, so a currency with no resolvable
 rate is dropped from both — never included in the breakdown after
-being excluded from the total. See kiko-architecture's "Price data"
-section for how a rate is resolved (Monobank → NBU → bundled fiat
-seed); today CRYPTO is the only currency class that can still hit
+being excluded from the total. See `kiko-pricing`'s "Currency-rate
+fallback chain" section for how a rate is resolved (Monobank → NBU →
+bundled fiat seed); today CRYPTO is the only currency class that can still hit
 this silent-drop path (no offline seed, so an unrated crypto holding
 is excluded until a live CoinGecko price lands) — every fiat currency
 is covered by the bundled seed and effectively never drops.
 
 ## Price series and priced holdings
 
-`price_points` (migration `0035`, `src/db/schema.ts`) is a separate table
-from `CurrencyRate`/`currencyRateHistory` — it prices a non-currency
-INSTRUMENT (a share, a metal, or one specific holding), not a currency
-pair. One row per `(instrument, day)`:
-
-- `instrument` is a free-text key, never an FK, built by one of three
-  namespacing functions in `src/prices/instrument/` — `share:<symbol>`,
-  `metal:<metal>`, `holding:<holdingId>` — so the three kinds can never
-  collide in one table. `holding:<id>` is for a thing priced directly
-  (e.g. a property), not through a market symbol.
-- `day` is a normalized UTC-midnight epoch value of the price's LOCAL
-  calendar date — same convention as `currencyRateHistory.day`. Read via
-  `dayKeyOf` (`src/prices/price-book/`), which reads the DEVICE-LOCAL
-  `Date` getters (not the UTC ones) so a Kyiv-local day keys correctly
-  across a DST transition.
-- `price` is a decimal STRING (never a float), `currency` is the price's
-  own currency, `source` is `manual | nbu | eodhd` — read `schema.ts`
-  directly for the enum rather than trusting this list if it drifts.
-
-`PriceBook` (`src/prices/price-book/`) groups the flat row set by
-`instrument`, sorted `day` ascending. `priceAt(book, instrument, instant)`
-is a CARRY-FORWARD lookup: the nearest point at or before `instant`'s
-local day, falling back to the EARLIEST point when every stored point is
-later than the requested day (mirrors `rateTableAt`/`earliestRateTable` in
-`src/rates/rate-history-repo/`). `usePriceBook()`
-(`src/prices/use-price-book/`) is the reactive, `useLiveQuery`-backed
-entry point every value reader and screen threads through; `EMPTY_PRICE_BOOK`
-is the default for a caller with none available (e.g. an existing test
-fixture), so the default resolves to "no price," never a crash.
-
-A **priced holding type** (`isPricedHoldingType`,
-`pricedHoldingTypes` — `src/holdings/priced-value/`; `property_item` is
-the first member, T17/T26/T35 extend the set for metals and shares — read
-that file rather than trusting a member list restated here) is valued
-through the `PriceBook`, not through an interest engine or its raw stored
-balance. `quantityAt(lots, instant)` and `costBasisMinorAt(lots, instant)`
-(`src/holdings/lots/`) read the holding's `metadata.lots` array — one entry
-per buy/sell, `{ day, quantityDelta, costMinorUnits }` — to derive the
-quantity and cost basis held as of an instant; `quantityAt` never returns
-below `"0"`. `pricedValueMinor(holding, book, instant)`
-(`src/holdings/priced-value/`) multiplies `quantityAt(...)` by the price
-point for the holding's own `holding:<id>` instrument
-(`multiplyToMinorUnits`, the BigInt-backed decimal helper in
-`src/currency/decimal/` — never a float multiply), returning `null` when
-the holding has no `id`, no valid `lots` metadata, or no stored price
-point yet.
-
-**A priced holding with no price point values at its lots' cost basis,
-never 0** — `holdingValueBreakdown`'s `pricedBreakdown` branch
-(`src/holdings/holding-value/`) falls back to `costBasisMinorAt` whenever
-`pricedValueMinor` returns `null`. For a priced type, `gross = net =` the
-resolved value and `principalOrCost` is ALWAYS the cost basis (even when
-gross also equals the cost basis on the no-price-point path) — the
-holding-detail breakdown needs cost basis available separately to show a
-live gain/loss. `interest`/`tax` are always zero: a priced holding never
-accrues interest or withholds tax.
-
-**A priced holding writes no ledger (`Transaction`) rows for its
-revaluations.** Its lots array is the only source of quantity/cost-basis
-history; a price change moves its VALUE without ever touching its
-`balanceMinorUnits` or emitting a transaction. Consequently
-`holdingValueAt` (`src/statistics/holding-value-at.ts`) cannot back-derive
-a priced holding's historical value from `currentBalance -
-sum(transactions)` the way it does for a ledger-backed holding — it
-branches on `isLedgerlessHoldingType` and instead calls
-`holdingValueBreakdown` (with the caller's `PriceBook`) directly for that
-instant. This is why the net-worth series is FLAT for a priced holding
-across every bucket with no matching ledger entries: the series reflects
-the priced value at each bucket's instant, not a ledger reconstruction.
-
-**The optional `id` field pattern.** `ValuableHolding`
-(`src/holdings/holding-value/`) and `PricedHolding`
-(`src/holdings/priced-value/`) both declare `id` as OPTIONAL
-(`{ id?: HoldingRow['id'] }`) on their `Pick<HoldingRow, ...>` read types,
-not required — the standing convention for threading an
-identity-dependent capability (here: resolving a `holding:<id>` instrument
-key) through a `Pick`-based read type without forcing every existing
-literal test fixture across the codebase to gain the field just to
-type-check. A holding value with no `id` (a synthetic fixture, or any
-caller that only has the `Pick`ed fields) simply cannot resolve its own
-instrument key, so `pricedValueMinor` treats it identically to "no stored
-price point yet" (falls back to cost basis) — never a runtime error. Apply
-the same optional-`id`-on-a-Pick pattern the next time a capability needs
-a holding's identity threaded through one of these narrowed read types.
+See `kiko-pricing` for `price_points`, `PriceBook`, priced-holding
+valuation (`property_item`/`metal`), the create-time `firstPricePoint`
+and remove-time series cleanup, and `PricePointForm` / "Update value".

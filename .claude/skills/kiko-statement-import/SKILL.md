@@ -1,0 +1,154 @@
+---
+name: kiko-statement-import
+description: Invoke whenever you touch src/statement-import/**, src/screens/statement-import/**, or src/screens/column-mapping/**, add or edit a StatementFormat, or debug an "importing a bank statement" issue. Read before writing a format's detect/parse, a column-mapping change, or a saved-mapping key.
+---
+
+# Kiko statement import
+
+Source of truth: `docs/plans/statement-import.md`. This skill summarizes
+the settled contract for both the dedicated-format pipeline and the
+generic column-mapping fallback.
+
+## Format registry and detection
+
+`src/statement-import/registry/registry.ts` holds `statementFormats`,
+the ordered array of every shipped `StatementFormat` — read that file
+directly for the current member set rather than trusting a list
+restated here (it changes every time a bank is added; six formats as
+of T17). `detectFormat(input)` returns the FIRST format whose `detect`
+accepts the input, or `undefined` when nothing matches — that
+`undefined` is a normal "we don't recognize this file" state, not an
+error. `supportedFormatNames` joins every registered format's
+`displayName` for the unrecognized-format message.
+
+## The `StatementFormat` contract
+
+`src/statement-import/parser/parser.ts` is the format-agnostic
+contract every format implements:
+
+- `StatementFormat = { id, displayName, detect, parse }` — `detect` is
+  a cheap, non-throwing header/content-signature sniff; `parse` throws
+  `StatementParseError` on a file `detect` accepted but whose body
+  doesn't actually parse.
+- `ParsedStatement = { formatId, account, transactions,
+  unresolvedRows? }` — `formatId` is a `StatementFormatId` (the
+  registry id) or `'column-mapping'` (see below).
+- `ParsedTransaction.currency` is REQUIRED and is THIS ROW's own
+  currency — a single-currency CSV format sets the same value on every
+  row; PrivatBank XLSX (one row per card) sets each row's own resolved
+  currency. This is what lets `importParsedStatement` exclude a
+  mismatched-currency row rather than silently writing a foreign
+  amount's raw minor units into a differently-denominated holding.
+- `StatementFormatInput.sheetRows` carries PRE-PARSED spreadsheet rows
+  for a binary format (PrivatBank XLSX): `detect`/`parse` must stay
+  synchronous, so the async `read-excel-file` call runs once, ahead of
+  time, in the screen (`read-statement-file.ts`'s
+  `readSheetRowsSafely`), and hands the already-resolved rows through
+  this field. A text format never sets it and keeps reading `text`.
+- `UnresolvedStatementRow` (`'unmapped-currency' | 'invalid-amount'`)
+  surfaces a row a format's `parse` recognized structurally but
+  couldn't resolve, instead of throwing (which would abort the whole
+  file) or silently dropping it.
+
+## Encodings
+
+`read-statement-file.ts`'s `decodeStatementText(base64, encoding)` is
+the one Hermes-safe base64-to-text decode path for a picked file:
+`decodeBase64ToBytes` (table lookup + bit-shifting, no `Buffer`, no
+`atob`) produces a raw byte array shared by both encoding branches —
+`'utf-8'` decodes those bytes with a hand-rolled `decodeUtf8Bytes`
+(1/2/3/4-byte UTF-8, surrogate-pair aware), `'windows-1251'` decodes
+the SAME bytes through the `windows-1251` npm package (Sensebank and
+the FOP/business CSVs are cp1251-encoded, not UTF-8). This module's
+UTF-8 decoder is its own local implementation, not the shared
+`src/data-transfer/utf8/utf8.ts` helper documented for `.kiko`
+export/import Hermes-safety — same reasoning (no `TextDecoder` under
+Hermes), two separate call sites; do not assume touching one updates
+the other.
+
+## Detect → import pipeline
+
+`importStatement(input, holdingId)` (`import-statement.ts`) is the
+dedicated-format path: `detectFormat` → `format.parse` →
+`importParsedStatement`. The column-mapping path has no
+`StatementFormat` to detect/parse through — it builds its own
+`ParsedStatement` (`formatId: 'column-mapping'`) directly via
+`applyColumnMapping` and calls `importParsedStatement` itself,
+skipping `importStatement`. Both converge on the same
+`importParsedStatement`, which excludes any row whose `currency`
+doesn't match the target holding's, dedups, and writes through
+`transactionsRepo.addManyDedup`.
+
+## Dedup
+
+Every studied format ships with no bank-issued per-row id, so
+`mapping.ts`'s `computeDedupKey(holdingId, transaction,
+occurrenceIndex)` derives a deterministic key from `(holdingId, time,
+amount, normalized-description)`, with `occurrenceIndex` (the Nth time
+that exact tuple has been seen in this parse) appended only when
+non-zero, so the common unique case's key stays stable.
+`mapParsedTransaction` writes rows with `source: 'import'` and this
+key as `externalId` (or the format's own `externalId` when one is
+present), and `importParsedStatement` hands the whole batch to
+`transactionsRepo.addManyDedup` in one call — the existing dedup-write
+path every sync route also uses.
+
+## Column mapping
+
+A generic fallback for any file a dedicated `StatementFormat` doesn't
+recognize, so an account not covered by a shipped bank parser can
+still import: `src/statement-import/column-mapping/` reads the file
+into plain `TableCell[][]` rows (`table-rows.ts`'s `readTableRows`,
+shared by both a delimited CSV/TSV text via `papaparse` and a
+pre-parsed `StatementFormatInput.sheetRows`), then turns a user-picked
+`ColumnMapping` plus those rows into the SAME `ParsedStatement` shape a
+dedicated format produces (`apply-column-mapping.ts`'s
+`applyColumnMapping`, `formatId: 'column-mapping'`), so the rest of the
+pipeline treats a mapped file identically to a recognized bank export.
+A dedicated format is tried FIRST and still wins whenever it matches —
+column mapping is offered only once `detectFormat` fails or the
+account's `bankId` disagrees with the detected format (see
+`statement-import.screen.tsx`).
+
+Every date-format preset in `date-formats.ts` reads UTC wall-clock
+parts (`Date.UTC(...)`), the same convention `parseDateTimeSeconds`
+already uses for a dedicated format — a real spreadsheet `Date` cell is
+read off its own UTC parts into that identical combined `'YYYY-MM-DD
+HH:MM:SS'` string (`table-rows.ts`'s `formatUtcDateTime`) before
+parsing, so a mapping pointed at an Excel date column behaves exactly
+like one pointed at a text date column. An XLSX number cell is used
+as-is (no reformatting) — only a `Date` cell gets this wall-clock
+conversion.
+
+The mapped `ParsedStatement` reaches the DB through the SAME
+`importParsedStatement` (`src/statement-import/import-statement/`)
+every dedicated format uses — it excludes any row whose currency
+doesn't match the target holding's, dedups, and writes via
+`transactionsRepo.addManyDedup`. Column mapping has no dedicated
+`StatementFormat` to detect/parse through, so it builds its own
+`ParsedStatement` directly and calls `importParsedStatement` rather
+than `importStatement`.
+
+## Saved mappings
+
+A confirmed mapping is saved to `settings.statementMappings`
+(`src/statement-import/column-mapping/saved-mapping.ts`, migration
+`0034`) so a later import can pre-fill instead of asking the user to
+remap every column. It's keyed by `mappingKeyFor`: a known catalog
+bank uses `bank:<bankId>` (one shared mapping per bank, checked for an
+EXACT fingerprint match against the file's actual header row before
+being trusted as exact); any other account ("Other") is keyed by
+`header:<fingerprint>` instead and matched by scanning every `header:`
+entry for a fingerprint hit. Either way, `findSavedMapping` only
+PRE-FILLS the mapping form — a saved mapping never imports a file
+without the user tapping Import.
+
+## Entry points
+
+Two entry points reach the column-mapping screen: "Import statement"
+shows on every bank account in account-detail (not gated on a
+recognized `bankId`/format), and "Map columns manually" in
+`statement-import.screen.tsx` offers a manual escape hatch from the
+generic statement-import screen whenever a file was read at all
+(including an unrecognized-format or bank-mismatch preview), routing
+to `src/screens/column-mapping/column-mapping.screen.tsx`.
