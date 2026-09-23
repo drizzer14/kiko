@@ -102,3 +102,22 @@ needs for correct thousands/decimal punctuation (`uk-UA` groups
 `1 234,56`; `en-US` groups `1,234.56`). Never hardcode a locale string
 at a `formatMoney` call site — always go through `activeLocale()` so a
 language switch changes number formatting everywhere at once.
+
+## Ukrainian catalogue rules — apostrophe and the app name
+
+Two `uk.ts` rules, enforced at runtime by
+`src/i18n/locales/uk.catalog-rules.test.ts` over every nested string
+value (not the source text, so a template literal or a computed value
+is caught too):
+
+- The apostrophe inside a Ukrainian word must be `’` (U+2019), never
+  the ASCII `'` — e.g. "п’ять", never "п'ять".
+- The app name in `uk` strings is always the Cyrillic "Кіко", never
+  the Latin "Kiko". English strings keep "Kiko" — this rule applies to
+  `uk.ts` only.
+
+## Review new/changed keys before a shipping deploy
+
+Standing workflow rule: any new or changed `en`/`uk` catalogue key is
+reviewed by the user BEFORE a deploy that ships it — not after. Surface
+the diff for review as part of finishing the task, not as a follow-up.
