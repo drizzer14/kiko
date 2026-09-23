@@ -1,33 +1,33 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useMemo } from 'react';
+import { ratesRepo } from '@kiko/rates/repo';
+import Sortable from 'react-native-sortables';
 import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { useUnistyles } from 'react-native-unistyles';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import Sortable from 'react-native-sortables';
-import { useUnistyles } from 'react-native-unistyles';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import type { Currency } from '../../currency/currency';
-import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import GlassSurface from '../../design-system/components/glass-surface';
-import MoneyText from '../../design-system/components/money-text';
-import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
+import Card from '../../design-system/components/card';
+import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
-import { entityCardBackground, resolveEntityColor } from '../../design-system/entity-tint';
-import { onGridDragEnd } from '../../design-system/grid-interaction';
+import type { Currency } from '../../currency/currency';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
-import { defaultAccountColor } from '../../holdings/entity-colors';
+import MoneyText from '../../design-system/components/money-text';
 import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { defaultAccountColor } from '../../holdings/entity-colors';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import { onGridDragEnd } from '../../design-system/grid-interaction';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import EntityIconTile from '../../design-system/components/entity-icon-tile';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
+import CardContextMenu from '../../design-system/components/card-context-menu';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 
 import { styles } from './accounts.styles';
 
@@ -145,11 +145,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                     deletable={!isSyncedAccount(item)}
                     onDelete={() => accountsRepo.remove(item.id)}
                   >
-                    <GlassSurface
+                    <Card
                       testID="account-card"
                       padding={4}
-                      bordered
-                      tint={entityCardBackground(color)}
+                      // The card itself is the shared solid content-layer
+                      // surface — the entity color lives on the icon tile (see
+                      // `EntityIconTile`) instead of the whole card.
                     >
                       <Pressable
                         accessibilityRole="button"
@@ -162,7 +163,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                         style={styles.row}
                       >
                         <Box direction="row" gap={3} style={styles.rowLead}>
-                          <SymbolIcon
+                          <EntityIconTile
                             name={item.icon ?? accountKindSymbol[item.kind]}
                             color={color}
                             accessibilityLabel={t('accounts.icon', { name: item.name })}
@@ -176,7 +177,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                         </Box>
                         <MoneyText money={balance} context="balance" />
                       </Pressable>
-                    </GlassSurface>
+                    </Card>
                   </CardContextMenu>
                 );
               }}

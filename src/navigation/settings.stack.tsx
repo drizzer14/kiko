@@ -2,9 +2,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import CategoriesScreen from '../screens/settings/categories.screen';
-import SettingsScreen from '../screens/settings/settings.screen';
-import SystemScreen from '../screens/settings/system.screen';
+import CategoriesScreen from '../screens/settings/categories/categories.screen';
+import ExportDataScreen from '../screens/settings/export-data/export-data.screen';
+import ImportDataScreen from '../screens/settings/import-data/import-data.screen';
+import SettingsScreen from '../screens/settings/settings/settings.screen';
+import SystemScreen from '../screens/settings/system/system.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { SettingsStackParamList } from './types';
@@ -34,6 +36,16 @@ const SettingsStack: FC = () => {
         name="Categories"
         component={CategoriesScreen}
         options={{ title: t('settings.categories') }}
+      />
+      <Stack.Screen
+        name="ExportData"
+        component={ExportDataScreen}
+        options={{ title: t('settings.dataExport.title') }}
+      />
+      <Stack.Screen
+        name="ImportData"
+        component={ImportDataScreen}
+        options={{ title: t('settings.dataImport.title') }}
       />
     </Stack.Navigator>
   );

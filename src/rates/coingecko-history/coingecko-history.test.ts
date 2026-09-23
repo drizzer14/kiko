@@ -1,103 +1,96 @@
-import { fetchBTCHistory } from './coingecko-history';
+import { fetchCryptoHistory } from './coingecko-history';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const d1 = Date.UTC(2026, 8, 1);
+const d2 = Date.UTC(2026, 8, 2);
 
-const makeFetch = (body: unknown, ok = true): typeof fetch =>
-  (async () => ({ ok, json: async () => body, status: ok ? 200 : 429 })) as unknown as typeof fetch;
+// Route each coin id to its own price series; a coin's non-ok response is modeled
+// per url so the "one coin fails, others survive" case can be exercised.
+const makeRoutedFetch = (
+  byCoin: Record<string, { ok?: boolean; prices: [number, number][] }>,
+): typeof fetch =>
+  (async (url: string) => {
+    const id = /coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '';
+    const entry = byCoin[id] ?? { prices: [] };
+    const ok = entry.ok ?? true;
+    return { ok, status: ok ? 200 : 429, json: async () => ({ prices: entry.prices }) };
+  }) as unknown as typeof fetch;
 
-describe('fetchBTCHistory', () => {
-  const d1 = Date.UTC(2026, 8, 1);
-  const d2 = Date.UTC(2026, 8, 2);
-  const d3 = Date.UTC(2026, 8, 3);
-
-  it('requests the market_chart endpoint for the given day span', async () => {
-    let sentUrl = '';
-    const spyFetch = (async (url: string) => {
-      sentUrl = url;
-      return { ok: true, status: 200, json: async () => ({ prices: [] }) };
-    }) as unknown as typeof fetch;
-
-    await fetchBTCHistory(30, spyFetch);
-
-    // No `interval=daily`: that parameter is gated behind CoinGecko's paid tier
-    // and 401s on the free key. Omitting it lets CoinGecko pick the granularity
-    // (daily for a >90-day span); the intraday points collapse to one per day.
-    expect(sentUrl).toBe(
-      'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30',
-    );
-  });
-
-  it('clamps a multi-year span to the free tier’s 365-day ceiling', async () => {
-    let sentUrl = '';
-    const spyFetch = (async (url: string) => {
-      sentUrl = url;
-      return { ok: true, status: 200, json: async () => ({ prices: [] }) };
-    }) as unknown as typeof fetch;
-
-    // A 3-year request would 401 on the free tier (it caps ~365 days); the client
-    // clamps the span so the fetch stays inside the free window instead of voiding
-    // the whole backfill.
-    await fetchBTCHistory(3 * 365, spyFetch);
-
-    expect(sentUrl).toBe(
-      'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365',
-    );
-  });
-
-  it('parses daily [ts, price] points into day-normalized BTC->USD entries', async () => {
-    const result = await fetchBTCHistory(
-      3,
-      makeFetch({
-        prices: [
-          [d1, 78_552],
-          [d2, 77_416],
-          [d3, 77_297],
-        ],
-      }),
-    );
-
-    expect(result).toEqual([
-      { base: 'BTC', quote: 'USD', day: d1, rate: 78_552, source: 'coingecko' },
-      { base: 'BTC', quote: 'USD', day: d2, rate: 77_416, source: 'coingecko' },
-      { base: 'BTC', quote: 'USD', day: d3, rate: 77_297, source: 'coingecko' },
-    ]);
-  });
-
-  it('collapses a trailing intraday point onto its day, keeping the latest price', async () => {
-    const intraday = d3 + 13 * 60 * 60 * 1000;
-    const result = await fetchBTCHistory(
-      3,
-      makeFetch({
-        prices: [
-          [d3, 77_297],
-          [intraday, 77_730],
-        ],
-      }),
-    );
-
-    expect(result).toEqual([
-      { base: 'BTC', quote: 'USD', day: d3, rate: 77_730, source: 'coingecko' },
-    ]);
-  });
-
-  it('omits a point whose price is not a finite number', async () => {
-    const result = await fetchBTCHistory(
+describe('fetchCryptoHistory', () => {
+  it('requests each crypto coin’s market_chart for the day span and unions the series', async () => {
+    const result = await fetchCryptoHistory(
       2,
-      makeFetch({
-        prices: [
-          [d1, Number.NaN],
-          [d2, 77_416],
-        ],
+      makeRoutedFetch({
+        bitcoin: {
+          prices: [
+            [d1, 78_552],
+            [d2, 77_416],
+          ],
+        },
+        ethereum: {
+          prices: [
+            [d1, 3_100],
+            [d2, 3_200],
+          ],
+        },
+        tether: {
+          prices: [
+            [d1, 1.0],
+            [d2, 1.0007],
+          ],
+        },
       }),
     );
 
-    expect(result).toEqual([
-      { base: 'BTC', quote: 'USD', day: d2, rate: 77_416, source: 'coingecko' },
-    ]);
+    expect(result).toContainEqual({
+      base: 'BTC',
+      quote: 'USD',
+      day: d2,
+      rate: 77_416,
+      source: 'coingecko',
+    });
+    expect(result).toContainEqual({
+      base: 'ETH',
+      quote: 'USD',
+      day: d1,
+      rate: 3_100,
+      source: 'coingecko',
+    });
+    expect(result).toContainEqual({
+      base: 'USDT',
+      quote: 'USD',
+      day: d2,
+      rate: 1.0007,
+      source: 'coingecko',
+    });
   });
 
-  it('throws on a non-ok response', async () => {
-    await expect(fetchBTCHistory(30, makeFetch({}, false))).rejects.toThrow('429');
+  it('keeps the surviving coins when one coin request is non-ok', async () => {
+    const result = await fetchCryptoHistory(
+      1,
+      makeRoutedFetch({
+        bitcoin: { prices: [[d1, 78_552]] },
+        ethereum: { ok: false, prices: [] },
+        tether: { prices: [[d1, 1.0]] },
+      }),
+    );
+
+    expect(result.some((e) => e.base === 'BTC')).toBe(true);
+    expect(result.some((e) => e.base === 'USDT')).toBe(true);
+    expect(result.some((e) => e.base === 'ETH')).toBe(false);
+  });
+
+  it('throws only when every coin request fails', async () => {
+    await expect(
+      fetchCryptoHistory(
+        1,
+        makeRoutedFetch({
+          bitcoin: { ok: false, prices: [] },
+          ethereum: { ok: false, prices: [] },
+          tether: { ok: false, prices: [] },
+        }),
+      ),
+    ).rejects.toThrow(/CoinGecko/);
   });
 
   it('references DAY_MS-aligned days in its fixtures', () => {

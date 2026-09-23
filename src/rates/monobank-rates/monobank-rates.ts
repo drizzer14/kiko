@@ -1,4 +1,5 @@
 import type { Currency } from '../../currency/currency';
+import { fiatCurrencyOptions } from '../../currency/currency';
 import { currencyFromCode } from '../../monobank/currency-code';
 import type { RateEntry } from '../conversion';
 
@@ -14,8 +15,10 @@ type MonobankCurrencyRate = {
   rateCross?: number;
 };
 
-// Our fiat set: BTC is excluded — it is priced separately via CoinGecko.
-const fiatCurrencies = new Set<Currency>(['UAH', 'USD', 'EUR']);
+// Our fiat set is DERIVED from currency.ts so it can never drift from the app's
+// supported currencies. BTC is excluded automatically (it is crypto, priced via
+// CoinGecko, not present in fiatCurrencyOptions).
+const fiatCurrencies = new Set<Currency>(fiatCurrencyOptions);
 
 const isFiat = (currency: Currency | undefined): currency is Currency =>
   currency !== undefined && fiatCurrencies.has(currency);
@@ -57,7 +60,7 @@ const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
 /**
  * Fetch fiat cross rates from Monobank's public, tokenless `/bank/currency`
  * endpoint (cached upstream ~5 minutes). Keeps only pairs where both sides
- * map into our fiat set {UAH, USD, EUR}.
+ * map into our fiat set (derived from currency.ts's `fiatCurrencyOptions`).
  */
 export const fetchFiatRates = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
   const response = await fetchImpl(CURRENCY_ENDPOINT);

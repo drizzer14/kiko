@@ -3,7 +3,6 @@ import { Text } from 'react-native';
 import '../../design-system/unistyles';
 import '../../i18n';
 
-import { i18n } from '@kiko/i18n';
 import MigrationsGate from '@kiko/migration/migrations-gate';
 
 import LockGate from './lock-gate.component';
@@ -22,7 +21,7 @@ jest.mock('../../design-system/components/symbol', () => {
 
 const mockUnlock = jest.fn();
 const mockAppLock = {
-  current: { isReady: true, isLocked: false, unlock: mockUnlock, promptOnMount: true },
+  current: { isReady: true, isLocked: false, unlock: mockUnlock },
 };
 jest.mock('../use-app-lock', () => ({
   useAppLock: () => mockAppLock.current,
@@ -67,7 +66,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: false,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     mockGetSettings.mockResolvedValue([]);
   });
@@ -85,7 +83,6 @@ describe('LockGate', () => {
       isReady: false,
       isLocked: false,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     const { queryByText, queryByTestId } = await renderGate();
 
@@ -99,7 +96,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     const { getByTestId, getByText, queryByText } = await renderGate();
 
@@ -115,7 +111,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     const { getByText } = await renderGate();
 
@@ -128,7 +123,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     const { getByText } = await renderGate();
 
@@ -144,7 +138,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     mockUnlock.mockResolvedValue({ kind: 'lockout' });
     const { findByText } = await renderGate();
@@ -158,7 +151,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     mockUnlock.mockResolvedValue({ kind: 'cancelled' });
     const { findByText, getByText } = await renderGate();
@@ -175,7 +167,6 @@ describe('LockGate', () => {
       isReady: true,
       isLocked: true,
       unlock: mockUnlock,
-      promptOnMount: true,
     };
     mockGetSettings.mockResolvedValue([{ language: 'uk' }]);
 
@@ -189,32 +180,6 @@ describe('LockGate', () => {
 
     await waitFor(() => {
       expect(getByText('Заблоковано')).toBeTruthy();
-    });
-  });
-
-  describe('promptOnMount', () => {
-    it('does NOT auto-invoke on mount when promptOnMount is false, but still shows the lock and unlocks manually', async () => {
-      // An earlier test switches i18n to `uk` (the persisted-language case) and
-      // that change is process-global; reset to the device default so the
-      // 'Unlock' label below reads in English regardless of test order.
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-      mockAppLock.current = {
-        isReady: true,
-        isLocked: true,
-        unlock: mockUnlock,
-        promptOnMount: false,
-      };
-      const { getByTestId, getByText } = await renderGate();
-
-      expect(getByTestId('lock-gate')).toBeTruthy();
-      expect(mockUnlock).not.toHaveBeenCalled();
-
-      await act(async () => {
-        await fireEvent.press(getByText('Unlock'));
-      });
-      expect(mockUnlock).toHaveBeenCalledTimes(1);
     });
   });
 });

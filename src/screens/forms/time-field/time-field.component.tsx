@@ -1,15 +1,16 @@
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { type FC, useState } from 'react';
 import { Pressable } from 'react-native';
+import { type FC, useState } from 'react';
+import { useUnistyles } from 'react-native-unistyles';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { formatTime } from '../../../dates/format';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
 
-import type { TimeFieldProps } from './time-field.props';
 import { styles } from './time-field.styles';
+import type { TimeFieldProps } from './time-field.props';
 
 // Combine the DAY (year/month/date) of the current value with the picked
 // time-of-day (hours/minutes) into a new unix-millis timestamp. Seconds and
@@ -39,8 +40,8 @@ const TimeField: FC<TimeFieldProps> = ({
   placeholder,
   disabled = false,
   testID,
-  backdropTestID,
 }) => {
+  const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
 
   const handleChange = (_event: DateTimePickerEvent, picked?: Date): void => {
@@ -66,7 +67,7 @@ const TimeField: FC<TimeFieldProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
-          <SymbolIcon name="clock" size={18} tone="textSecondary" />
+          <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
             {value === null ? (placeholder ?? label) : formatTime(value)}
@@ -78,10 +79,8 @@ const TimeField: FC<TimeFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
-        backdropTestID={backdropTestID}
+        header={<Text variant="heading">{label}</Text>}
       >
-        <Text variant="heading">{label}</Text>
-
         <DateTimePicker
           testID={`${label} picker`}
           value={value === null ? new Date() : new Date(value)}

@@ -22,7 +22,7 @@ const nextSortOrder = async (tx: typeof database): Promise<number> => {
 };
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'id' | 'institution' | 'sortOrder' | 'color'>>;
+  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color'>>;
 
 type NewCashAccount = {
   name: string;

@@ -34,7 +34,57 @@ export const styles = StyleSheet.create((theme) => ({
     width: theme.spacing(5),
     alignItems: 'center',
   },
+  // A wider leading slot for a TEXT mark (`leadingText`): a 3-4 character
+  // currency mark ("AED", "Mex$") needs more room than the SF Symbol glyph
+  // the plain `icon` slot above is sized for. `leadingTextMark` below still
+  // shrinks to fit as a safety net for the widest marks, so this slot only
+  // needs to comfortably fit the common case, not the absolute worst case.
+  iconText: {
+    width: theme.spacing(11),
+    alignItems: 'center',
+  },
+  // The text mark itself: it renders through the same `variant="body"` Text
+  // as the row's own label (see `selectable-row.component.tsx`), so it must
+  // match the LABEL's text size, not the SF Symbol glyph footprint an
+  // earlier version sized it to (`theme.iconSizes.body` — an icon size,
+  // wrong scale for a text mark sitting beside body text). Leaving `fontSize`
+  // unset lets the mark inherit `theme.typography.body`'s size straight from
+  // the `variant` prop, the same way the label does; only the weight/
+  // alignment are overridden here, bold enough to read as a glyph-like mark
+  // rather than plain body copy. `adjustsFontSizeToFit` +
+  // `minimumFontScale={0.6}` (set on the `Text` itself) remain the shrink
+  // safety net for the widest marks (e.g. "Mex$").
+  leadingTextMark: {
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   label: {
     flex: 1,
+  },
+  // The title line: the label on the left, an optional `trailing` node
+  // (device-feedback-round-3 item 7 — the bank picker's capability icons)
+  // pinned to the far right. Top-aligned so a `trailing` icon lines up with
+  // the label's FIRST line rather than the full label+description height —
+  // the same `alignItems: 'flex-start'` reasoning as `SettingsRow`'s own
+  // header row.
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  // The label's own wrapper inside `titleRow`: `flexShrink: 1` (RN's default
+  // is 0) lets the label give up width to `trailing` instead of pushing it
+  // out past the row.
+  titleText: {
+    flexShrink: 1,
+  },
+  // A small leading gutter so `trailing` never crowds a label that wraps up
+  // against it.
+  trailing: {
+    marginLeft: theme.spacing(2),
+  },
+  // The optional `description` slot's gap from the label line above it.
+  descriptionRow: {
+    marginTop: theme.spacing(1),
   },
 }));

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 
 import { formatDateTime } from '../../../dates/format';
@@ -67,7 +67,7 @@ jest.mock('../binance-credentials-field', () => {
 // either). Mock Button to record the `variant` it receives — following the
 // contribution-buttons precedent — while still rendering the label so every
 // getByText/press assertion is unaffected.
-const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+const mockButtonProps: { variant?: string; children?: ReactNode; icon?: string }[] = [];
 
 jest.mock('../../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -76,15 +76,17 @@ jest.mock('../../../design-system/components/button', () => {
     __esModule: true,
     default: (props: {
       variant?: string;
-      children: ReactNode;
+      children?: ReactNode;
       onPress: () => void;
       disabled?: boolean;
+      icon?: string;
+      testID?: string;
     }) => {
-      mockButtonProps.push({ variant: props.variant, children: props.children });
+      mockButtonProps.push({ variant: props.variant, children: props.children, icon: props.icon });
 
       return (
-        <Pressable onPress={props.onPress} disabled={props.disabled}>
-          <RNText>{props.children}</RNText>
+        <Pressable testID={props.testID} onPress={props.onPress} disabled={props.disabled}>
+          {props.children !== undefined && <RNText>{props.children}</RNText>}
         </Pressable>
       );
     },
@@ -98,6 +100,7 @@ const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   name: 'Cold storage',
   kind: 'crypto',
   institution: null,
+  bankId: null,
   icon: null,
   color: null,
   sortOrder: 0,
@@ -261,6 +264,24 @@ describe('CryptoSyncSection', () => {
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
+  it('uses the Kiko UI sync glyph for Sync and the open-lock glyph for Disconnect', async () => {
+    mockButtonProps.length = 0;
+    await render(
+      <CryptoSyncSection
+        account={account({ institution: 'btc_wallet' })}
+        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
+      />,
+    );
+
+    // Sync-now takes the iOS-26 rotate glyph (the central availability map
+    // hands the iOS-16-safe fallback for free); Disconnect takes the open-lock
+    // glyph mirroring the lock used by the Connect affordance.
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(disconnectEntry?.icon).toBe('lock.open');
+  });
+
   it('shows Never when a connected account has no synced holding yet', async () => {
     const { getByText } = await render(
       <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
@@ -281,25 +302,34 @@ describe('CryptoSyncSection', () => {
     );
   });
 
-  it('confirms before disconnecting Binance, then disconnects with the provider id', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      (buttons ?? []).find((button) => button.style === 'destructive')?.onPress?.();
-    });
-    const { getByText } = await render(
+  it('confirms via the themed sheet before disconnecting Binance, then disconnects with the provider id', async () => {
+    const { getByText, getByTestId } = await render(
       <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
     );
 
     await fireEvent.press(getByText('Disconnect'));
 
-    // The confirm sheet TITLE stays provider-specific ("Disconnect Binance"),
-    // even though the button label itself is the single word "Disconnect".
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Disconnect Binance',
-      expect.stringContaining('stored API key'),
-      expect.any(Array),
-    );
+    // The themed ConfirmSheet (not a native Alert.alert) opens with a
+    // provider-specific TITLE ("Disconnect Binance") and body, even though the
+    // trigger button label itself is the single word "Disconnect".
+    expect(getByText('Disconnect Binance')).toBeTruthy();
+    expect(getByText(/stored API key/)).toBeTruthy();
+    expect(mockDisconnect).not.toHaveBeenCalled();
+
+    await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
+
     await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a', 'binance'));
-    alertSpy.mockRestore();
+  });
+
+  it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {
+    const { getByText } = await render(
+      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
+    );
+
+    await fireEvent.press(getByText('Disconnect'));
+    await fireEvent.press(getByText('Cancel'));
+
+    expect(mockDisconnect).not.toHaveBeenCalled();
   });
 
   it('shows Syncing… while a sync is in flight and surfaces the hook error', async () => {

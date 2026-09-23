@@ -8,7 +8,6 @@ import { useSyncAll } from '@kiko/sync/use-sync-all';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { TFunction } from 'i18next';
 import type { FC, ReactElement } from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -24,12 +23,11 @@ import {
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
 import { defaultDateRange } from '../../dates/default-range';
-import { formatDate } from '../../dates/format';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
+import Card from '../../design-system/components/card';
 import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import GlassSurface from '../../design-system/components/glass-surface';
 import MoneyText from '../../design-system/components/money-text';
 import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
@@ -40,8 +38,10 @@ import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-
 import { activeHoldings } from '../../rates/active-holdings';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
+import { type DaySection, groupByDay } from '../../transactions/group-by-day';
 import { transactionSpan } from '../../transactions/transaction-span';
 
+import AddTransactionFab from './add-transaction-fab';
 import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
 import SyncProgressBar from './sync-progress-bar';
@@ -74,54 +74,6 @@ const withinDateRange = (time: number, from: Date | null, to: Date | null): bool
   }
 
   return true;
-};
-
-// A day's worth of transactions, headed by a human-readable label. The list is
-// a SectionList of these — one section per calendar day, newest day first.
-type DaySection<Row> = { title: string; data: Row[] };
-
-// "Today"/"Yesterday" for the two most recent days, otherwise the shared
-// explicit DD.MM.YYYY format (locale-independent). `now` is passed in rather
-// than read here so the mapping stays pure and testable; `t` is passed in for
-// the same reason (a hook can only be called from the component itself).
-const dayHeader = (dayStart: number, now: number, t: TFunction): string => {
-  const today = startOfLocalDay(now);
-  const yesterdayDate = new Date(today);
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-
-  if (dayStart === today) {
-    return t('home.today');
-  }
-  if (dayStart === yesterdayDate.getTime()) {
-    return t('home.yesterday');
-  }
-
-  return formatDate(dayStart);
-};
-
-// Fold rows (already ordered newest-first by the query) into per-day sections,
-// preserving that order: same-day rows are consecutive, so a section closes as
-// soon as the day changes. Sections therefore come out newest-day-first with
-// each day's rows newest-first.
-const groupByDay = <Row extends { time: number }>(
-  rows: readonly Row[],
-  now: number,
-  t: TFunction,
-): DaySection<Row>[] => {
-  const sections: DaySection<Row>[] = [];
-
-  for (const row of rows) {
-    const dayStart = startOfLocalDay(row.time);
-    const openSection = sections.at(-1);
-
-    if (openSection && startOfLocalDay(openSection.data[0].time) === dayStart) {
-      openSection.data.push(row);
-    } else {
-      sections.push({ title: dayHeader(dayStart, now, t), data: [row] });
-    }
-  }
-
-  return sections;
 };
 
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
@@ -398,6 +350,24 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
+  // Duplicating a row opens the create form pre-filled from it (D2), stateless
+  // via the `duplicateOfTransactionId` route param. Stable across renders (it
+  // closes over `navigation` alone), like `handleRowPress`, so the memoized
+  // rows never re-render on a new handler identity.
+  const handleRowDuplicate = useCallback(
+    (transactionId: string): void => {
+      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId });
+    },
+    [navigation],
+  );
+
+  // The global-add FAB (B) opens the create form with EMPTY params — no holding
+  // fixed by navigation — so the form renders its own primary-leg holding
+  // picker. Stable across renders (closes over `navigation` alone).
+  const handleAddTransaction = useCallback((): void => {
+    navigation.navigate('TransactionForm', {});
+  }, [navigation]);
+
   // A stable `renderItem` identity is what lets the SectionList row bail-out
   // engage: the row body now lives in the memoized `TransactionRow` component,
   // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
@@ -412,10 +382,18 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           holdingNameById={holdingNameById}
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
+          onDuplicate={handleRowDuplicate}
         />
       );
     },
-    [categoryByKey, defaultCategoryKey, holdingNameById, categoryKeyForRow, handleRowPress],
+    [
+      categoryByKey,
+      defaultCategoryKey,
+      holdingNameById,
+      categoryKeyForRow,
+      handleRowPress,
+      handleRowDuplicate,
+    ],
   );
 
   const renderDayHeader = useCallback(
@@ -448,7 +426,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     // to avoid double-counting the gap below the last transaction row.
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
-        <GlassSurface transparent bloom padding={4} radius="lg">
+        <Card padding={4} radius="lg">
           <Box gap={1} style={styles.header}>
             <Text variant="caption" tone="textSecondary">
               {t('home.netWorth')}
@@ -458,7 +436,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
               <CurrencyBreakdown items={breakdown} />
             </Box>
           </Box>
-        </GlassSurface>
+        </Card>
 
         {failures.length > 0 && (
           <Text variant="body" tone="negative">
@@ -517,6 +495,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             </Box>
           }
         />
+
+        {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
+            its scroll content, pinned bottom-right and lifted clear of the
+            floating tab bar by the same `listBottomClearance` the list uses. */}
+        <AddTransactionFab onPress={handleAddTransaction} bottomOffset={listBottomClearance} />
       </Box>
     </Screen>
   );

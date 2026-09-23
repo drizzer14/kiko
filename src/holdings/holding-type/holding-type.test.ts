@@ -1,5 +1,5 @@
 import {
-  creatableHoldingTypesForAccountKind,
+  creatableHoldingTypesForAccount,
   holdingTypes,
   holdingTypesForAccountKind,
   isSyncOnlyHoldingType,
@@ -69,25 +69,44 @@ describe('time-exempt holding types', () => {
   });
 });
 
-describe('creatableHoldingTypesForAccountKind', () => {
-  it('drops the sync-only card and jar from a bank, leaving term_deposit and bond', () => {
-    expect(creatableHoldingTypesForAccountKind.bank).toEqual(['term_deposit', 'bond']);
+describe('creatableHoldingTypesForAccount', () => {
+  it('drops the sync-only card and jar from a SYNCED bank, leaving term_deposit and bond', () => {
+    expect(creatableHoldingTypesForAccount('bank', true)).toEqual(['term_deposit', 'bond']);
   });
 
-  it('leaves the cash and crypto sets unchanged (their type is not sync-only)', () => {
-    expect(creatableHoldingTypesForAccountKind.cash).toEqual(['cash']);
-    expect(creatableHoldingTypesForAccountKind.crypto).toEqual(['crypto_asset']);
+  it('allows card on a NON-synced bank (statement-import-only, no sync to own it), still excluding jar', () => {
+    const creatable = creatableHoldingTypesForAccount('bank', false);
+    expect(creatable).toContain('card');
+    expect(creatable).not.toContain('jar');
+    expect(creatable).toEqual(['card', 'term_deposit', 'bond']);
   });
 
-  it('never offers an empty create set for any account kind', () => {
-    for (const creatable of Object.values(creatableHoldingTypesForAccountKind)) {
-      expect(creatable.length).toBeGreaterThan(0);
+  it('leaves the cash and crypto sets unchanged regardless of synced state', () => {
+    expect(creatableHoldingTypesForAccount('cash', true)).toEqual(['cash']);
+    expect(creatableHoldingTypesForAccount('cash', false)).toEqual(['cash']);
+    expect(creatableHoldingTypesForAccount('crypto', true)).toEqual(['crypto_asset']);
+    expect(creatableHoldingTypesForAccount('crypto', false)).toEqual(['crypto_asset']);
+  });
+
+  it('never offers an empty create set for any account kind or synced state', () => {
+    for (const kind of ['bank', 'cash', 'crypto'] as const) {
+      for (const isSynced of [true, false]) {
+        expect(creatableHoldingTypesForAccount(kind, isSynced).length).toBeGreaterThan(0);
+      }
     }
   });
 
-  it('never offers a sync-only type as manually creatable', () => {
-    for (const creatable of Object.values(creatableHoldingTypesForAccountKind)) {
-      for (const type of creatable) {
+  it('never offers jar as manually creatable, synced or not (Monobank-API-only concept)', () => {
+    for (const kind of ['bank', 'cash', 'crypto'] as const) {
+      for (const isSynced of [true, false]) {
+        expect(creatableHoldingTypesForAccount(kind, isSynced)).not.toContain('jar');
+      }
+    }
+  });
+
+  it('never offers a sync-only type as manually creatable on a SYNCED account', () => {
+    for (const kind of ['bank', 'cash', 'crypto'] as const) {
+      for (const type of creatableHoldingTypesForAccount(kind, true)) {
         expect(isSyncOnlyHoldingType(type)).toBe(false);
       }
     }

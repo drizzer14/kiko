@@ -91,6 +91,35 @@
 	<string>Kiko uses Face ID to unlock the app and your saved credentials.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<!-- iOS 27 traps at launch (EXC_BREAKPOINT in
+	     ___UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption)
+	     without a UIScene manifest; iOS 13-26 only warned. Step 1 added this
+	     manifest alone, which stopped the crash but left AppDelegate's manual,
+	     scene-less UIWindow undisplayed (windowScene == nil is never shown
+	     under the scene lifecycle), producing a black screen. Step 2 (this revision)
+	     wires UISceneDelegateClassName at SceneDelegate.swift, which now owns
+	     window creation: it builds the UIWindow from the connecting
+	     UIWindowScene and starts React Native on it via the AppDelegate-owned
+	     RCTReactNativeFactory. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleDefault</string>
 	<key>UIUserInterfaceStyle</key>

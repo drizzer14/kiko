@@ -1,10 +1,12 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 
-import TextField from '../../../design-system/components/text-field';
-import DateField from '../date-field';
+import DateTimeRow from '../date-time-row';
+import Box from '../../../design-system/components/box';
 import HoldingSelectField from '../holding-select-field';
-import TimeField from '../time-field';
+import TextField from '../../../design-system/components/text-field';
+import FieldError from '../../../design-system/components/field-error';
 
 import type { ConvertExchangeFieldsProps } from './convert-exchange-fields.props';
 
@@ -32,6 +34,10 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   counterpartSuffix,
   time,
   onChangeTime,
+  counterpartError,
+  counterpartAmountError,
+  counterpartFieldRef,
+  counterpartAmountFieldRef,
 }) => {
   const { t } = useTranslation();
 
@@ -46,28 +52,35 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         suffix={fixedSuffix}
       />
 
-      <HoldingSelectField
-        label={counterpartLabel}
-        placeholder={counterpartPlaceholder}
-        options={counterpartOptions}
-        selectedId={counterpartHoldingId}
-        onSelect={onSelectCounterpart}
-        required
-      />
+      <View ref={counterpartFieldRef}>
+        <Box gap={1}>
+          <HoldingSelectField
+            label={counterpartLabel}
+            placeholder={counterpartPlaceholder}
+            options={counterpartOptions}
+            selectedId={counterpartHoldingId}
+            onSelect={onSelectCounterpart}
+            required
+          />
 
-      <TextField
-        label={counterpartAmountLabel}
-        value={counterpartAmount}
-        onChangeText={onChangeCounterpartAmount}
-        keyboardType="decimal-pad"
-        placeholder="0.00"
-        suffix={counterpartSuffix}
-        required
-      />
+          {counterpartError !== undefined && <FieldError message={counterpartError} />}
+        </Box>
+      </View>
 
-      <DateField label={t('forms.fields.date')} value={time} onChange={onChangeTime} />
+      <View ref={counterpartAmountFieldRef}>
+        <TextField
+          label={counterpartAmountLabel}
+          value={counterpartAmount}
+          onChangeText={onChangeCounterpartAmount}
+          keyboardType="decimal-pad"
+          placeholder={t('forms.transaction.convertAmountPlaceholder')}
+          suffix={counterpartSuffix}
+          error={counterpartAmountError}
+          required
+        />
+      </View>
 
-      <TimeField label={t('forms.fields.time')} value={time} onChange={onChangeTime} />
+      <DateTimeRow time={time} onChangeTime={onChangeTime} />
     </>
   );
 };

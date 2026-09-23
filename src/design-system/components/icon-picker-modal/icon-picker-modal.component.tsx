@@ -3,189 +3,32 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import BottomSheet from '../bottom-sheet';
 import Box from '../box';
+import Text from '../text';
 import Button from '../button';
 import SymbolIcon from '../symbol';
-import Text from '../text';
+import BottomSheet from '../bottom-sheet';
+import SheetFooter from '../sheet-footer';
 
-import type { IconPickerModalProps } from './icon-picker-modal.props';
 import { styles } from './icon-picker-modal.styles';
+import type { IconPickerModalProps } from './icon-picker-modal.props';
 
-// A fixed, curated set of SF Symbol names offered by the icon picker. Editing
-// an icon is deliberately a pick from this closed list rather than free text:
-// the app renders every category icon through SymbolIcon/SFSymbolView, whose
-// tint path (see symbol.color.ts) only handles known-good names, so an
-// arbitrary user string could resolve to an invisible/blank glyph. This is
-// the user's final "Kiko" curation (138 symbols; a handful of the original
-// 153 were dropped after rendering empty on device, including 8 very-new SF
-// Symbols — the *.building.classical variants (including
-// building.classical.columns.fill, confirmed invisible on this device),
-// numero.sign, number.sign, and pizza.slice — that render blank on the
-// device's older iOS) — a category seeded with
-// an icon that predates this set (see __fixtures__/seeded-categories) still
-// renders its own icon fine via SymbolIcon; it just will not show as the
-// selected swatch inside this picker's grid. Grouped by theme for
-// readability; every entry is a real SF Symbol identifier. Lives here, the
-// modal that is the pool's only consumer, so the list has one home.
-const CURATED_ICONS = [
-  // Money & finance
-  'building.columns.fill',
-  'banknote',
-  'creditcard',
-  'wallet.bifold',
-  'dollarsign',
-  'eurosign',
-  'hryvniasign',
-  'bitcoinsign',
-  'percent',
-  'paragraphsign',
-  'sum',
-  'receipt',
-  'giftcard',
-  'gift',
-  'arrow.left.arrow.right',
-  // Transport & travel
-  'airplane',
-  'airplane.ticket',
-  'car',
-  'bus',
-  'bicycle',
-  'scooter',
-  'moped',
-  'motorcycle',
-  'tram',
-  'tram.card',
-  'lightrail',
-  'cablecar',
-  'ferry',
-  'sailboat',
-  'truck.box',
-  'fuelpump',
-  'ev.charger',
-  'parkingsign',
-  'skateboard',
-  'ticket',
-  // Shopping & bags
-  'cart',
-  'basket',
-  'bag',
-  'handbag',
-  'duffle.bag',
-  'backpack',
-  'shoe.2',
-  'tshirt',
-  'sunglasses',
-  'eyeglasses',
-  // Home & office
-  'house',
-  'building',
-  'bed.double',
-  'sofa',
-  'key',
-  'lock',
-  'hammer',
-  'lightbulb',
-  'printer',
-  'scanner',
-  'faxmachine',
-  'clipboard',
-  'document',
-  'list.bullet',
-  'shippingbox',
-  'server.rack',
-  'cable.connector',
-  // Tech & electronics
-  'laptopcomputer',
-  'pc',
-  'display',
-  'keyboard',
-  'headphones',
-  'headset',
-  'av.remote',
-  'cellularbars',
-  'simcard',
-  'camera',
-  'mediastick',
-  // Food & drink
-  'fork.knife',
-  'cup.and.saucer',
-  'cup.and.heat.waves',
-  'wineglass',
-  'popcorn',
-  // Health & body
-  'heart',
-  'stethoscope',
-  'pill',
-  'bandage',
-  'cross',
-  'cross.case',
-  'thermometer.variable',
-  'mouth',
-  'mustache',
-  'dumbbell',
-  'figure.run',
-  // Animals
-  'cat',
-  'dog',
-  'bird',
-  'fish',
-  'hare',
-  'pawprint',
-  // Sports & recreation
-  'basketball',
-  'soccerball',
-  'tennisball',
-  'tennis.racket',
-  'volleyball',
-  'hockey.puck',
-  'skis',
-  'snowboard',
-  'dice',
-  'gamecontroller',
-  'formfitting.gamecontroller',
-  'puzzlepiece',
-  'tent',
-  'trophy',
-  // Arts, work & misc.
-  'book.closed',
-  'briefcase',
-  'pencil',
-  'paintbrush',
-  'paintbrush.pointed',
-  'paintpalette',
-  'scissors',
-  'wand.and.sparkles',
-  'movieclapper',
-  'pianokeys',
-  'tv',
-  'phone',
-  'photo',
-  'envelope',
-  'envelope.front',
-  'calendar',
-  'alarm',
-  'hourglass',
-  'clock.arrow.trianglehead.2.counterclockwise.rotate.90',
-  'map',
-  'pin',
-  'person',
-  'person.line.dotted.person',
-  'infinity',
-  'repeat',
-  'trash',
-  'nosign',
-  'scope',
-  'xmark.triangle.circle.square',
-] as const;
-
-// A bottom-sheet modal presenting the full curated icon pool in a scrollable
-// grid. The pool outgrew an inline row-expanding grid, so it lives here behind
-// a real Modal: a dimmed backdrop tap, the Cancel control, and a
+// A bottom-sheet modal presenting the caller-supplied icon pool in a scrollable
+// grid. The picker is POOL-DRIVEN: the caller passes `icons` (KIKO_ENTITIES_ICONS
+// for the account/holding IconEditor, KIKO_CATEGORIES_ICONS for the category
+// picker — see ./icon-pools), rather than the modal hardcoding a single pool.
+// Editing an icon is deliberately a pick from a closed list rather than free
+// text: the app renders every icon through SymbolIcon/SFSymbolView, whose tint
+// path (see symbol.color.ts) only handles known-good names, so an arbitrary user
+// string could resolve to an invisible/blank glyph. A row seeded with a default
+// that predates its pool still renders its own icon fine via SymbolIcon; it just
+// will not show as a selected swatch inside this picker's grid. The pool lives
+// behind a real Modal: a dimmed backdrop tap, the Cancel control, and a
 // hardware/gesture back (onRequestClose) all dismiss without selecting, while
 // tapping a swatch selects it and lets the caller close.
 const IconPickerModal: FC<IconPickerModalProps> = ({
   visible,
+  icons,
   selectedIcon,
   onSelect,
   onDismiss,
@@ -195,37 +38,36 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { t } = useTranslation();
 
   return (
-    // `scrollable={false}`: the Remove/Cancel header below must stay pinned
-    // above the grid regardless of scroll position — BottomSheet's shared
-    // ScrollView (F5 fix) would otherwise sweep the header into the same
-    // scrollable region as the grid below it, along with nesting a second
-    // same-axis ScrollView around this component's own.
+    // No `animationType` override: this used to pass `"slide"`, which drove
+    // BottomSheet's own `Modal` — the SAME native transition presents both the
+    // dismiss-scrim blur and the sheet card, they are not independently
+    // animatable — so the backdrop blur visibly slid in/out with the sheet
+    // instead of fading like every other sheet in the app (every other
+    // `BottomSheet` call site relies on the shared default). Device/on-review
+    // feedback: the blur should fade, matching the rest of the app, so this
+    // sheet now falls back to `BottomSheet`'s own default (`'fade'`) rather
+    // than carrying a one-off override with no stated reason to diverge.
+    //
+    // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
+    // the body end regardless of scroll position — BottomSheet's shared
+    // ScrollView (F5 fix) would otherwise sweep it into the same scrollable
+    // region as the grid above it, along with nesting a second same-axis
+    // ScrollView around this component's own. The title renders through the
+    // shared `header` prop instead (see below); the actions used to sit in a
+    // top-right row beside it (this sheet's former outlier footer pattern —
+    // see `explore-bottomsheet.md`'s action-button inventory) and now render
+    // through the shared `SheetFooter` at the body end instead, the same
+    // placement every other choice sheet uses.
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
-      animationType="slide"
       backdropAccessibilityLabel={t('categories.dismissIconPicker')}
       scrollable={false}
+      header={<Text variant="heading">{t('categories.chooseIconHeading')}</Text>}
     >
-      <Box direction="row" gap={3} style={styles.header}>
-        <Text variant="heading">{t('categories.chooseIconHeading')}</Text>
-
-        <Box direction="row" gap={2}>
-          {onRemove !== undefined && (
-            <Button variant="secondary" size="compact" fullWidth={false} onPress={onRemove}>
-              {t('forms.holding.remove')}
-            </Button>
-          )}
-
-          <Button variant="secondary" size="compact" fullWidth={false} onPress={onDismiss}>
-            {t('common.cancel')}
-          </Button>
-        </Box>
-      </Box>
-
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         <Box direction="row" gap={2} style={styles.grid}>
-          {CURATED_ICONS.map((icon) => {
+          {icons.map((icon) => {
             const isSelected = icon === selectedIcon;
 
             return (
@@ -260,6 +102,18 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
           })}
         </Box>
       </ScrollView>
+
+      <SheetFooter>
+        {onRemove !== undefined && (
+          <Button variant="destructiveTonal" fullWidth={false} onPress={onRemove}>
+            {t('forms.holding.remove')}
+          </Button>
+        )}
+
+        <Button variant="secondary" fullWidth={false} onPress={onDismiss}>
+          {t('common.cancel')}
+        </Button>
+      </SheetFooter>
     </BottomSheet>
   );
 };

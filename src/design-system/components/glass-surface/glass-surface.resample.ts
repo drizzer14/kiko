@@ -1,11 +1,10 @@
 // Pure decision math for the `bloom` first-paint re-sample (see the
 // `needsResample` block in `glass-surface.component.tsx`), extracted the same
-// way `swipeable-row/gesture.ts` and `bottom-sheet/bottom-sheet.gesture.ts`
-// extract their own resting-state/activation-threshold math: plain functions
-// with no dependency on a native ref, `requestAnimationFrame`, or any React
-// state, so the decision itself is synchronously unit-testable with plain
-// numbers, and the component only wires it into the native measure loop as a
-// thin adapter.
+// way `bottom-sheet/bottom-sheet.gesture.ts` extracts its own
+// resting-state/activation-threshold math: plain functions with no dependency
+// on a native ref, `requestAnimationFrame`, or any React state, so the decision
+// itself is synchronously unit-testable with plain numbers, and the component
+// only wires it into the native measure loop as a thin adapter.
 
 export type ScreenPosition = { x: number; y: number };
 

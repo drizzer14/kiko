@@ -55,6 +55,12 @@ mechanize well; keep in the skill).
 | Components never hardcode raw color/spacing/radius; read theme tokens | kiko-design-system | Semgrep | Cleanup-first (false-positive-prone) |
 | Full unabbreviated variable names | kiko-code-style | Semgrep blocklist | Judgment (inherently incomplete) |
 
+### Candidates — currency-fix round (2026-09-21, not yet enforced)
+
+| Rule | Source | Enforce via | Tier |
+|---|---|---|---|
+| A plain, non-`'worklet'`-tagged function called synchronously inside a reanimated worklet hook (`useAnimatedStyle`/`useDerivedValue`/`useAnimatedReaction`/`useAnimatedScrollHandler`/`Gesture.*`) | kiko-gestures ("Every function called inside a worklet needs its own `'worklet'` directive"), memory `worklet-directive-debug-swallows-release-aborts` | Semgrep (TS, likely ERROR — deterministic, RELEASE-only SIGABRT, invisible to tsc/Jest) | Needs design + a `rules/fixtures/<rule-id>.bad.ts`/`.good.ts` pair before it can land; not yet implemented |
+
 ### Candidates — kiko-ux-round review (2026-09-04, not yet enforced)
 
 | Rule | Source | Enforce via | Tier |
@@ -86,6 +92,12 @@ sync boundary only; net-worth assets-only rule.
 | Security master switches stay `true` | S10, H7 | Jest (`src/db/db-config.test.ts`) | One assertion per flag. Converts an accidental "restore the documented default" from a silent shipped regression into a failing test. |
 | `kiko-no-keychain-secret-into-usestate` | S5, H4 | Semgrep (TS, taint mode, WARNING/Class B) | Catches `const x = await readToken(); setX(x)`. Also flags a value *derived* from a secret (e.g. a client-info call using it) — a judgment call, which is why it is Class B rather than a hard fail; the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. |
 | `kiko-no-keychain-secret-through-then` | S5, H4 | Semgrep (TS, WARNING/Class B) | Companion for `readToken().then(...)`, which Semgrep 1.175's taint engine cannot follow (propagators and `focus-metavariable` sources both verified not to work through a `.then` callback parameter); the full rationale is the comment above the rule in `rules/semgrep-mobile.yml`. Proven by its own fixture pair (`kiko-no-keychain-secret-through-then.bad.ts` / `.good.ts`), not the taint rule's — the fixture harness only credits a rule id against the fixture whose filename names it. |
+
+### Enforced — 2026-09-18 Guideline 5.6 remediation
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-hidden-feature-flag-or-demo-import` | App Store rejection of build 7 (Guideline 5.6, "features intentionally hidden during review") | Semgrep (TS/JS, ERROR) | Three deterministic shapes, one rule: importing a SHOW_*/HIDE_*/SCREENSHOT_* visibility-control `@env` flag, a static `import` reaching from app source into the dev-only `e2e/` tree (screenshot/demo/seed), or a dynamic `require(...)` reaching the same `e2e/` tree. The `require` exemption this rule used to carry is gone: it was justified only by trusting Metro's dead-code elimination to strip a dead-branched `require`, and that trust was empirically disproven — build 8 shipped `seedScreenshotData` in the `main.jsbundle` despite it sitting behind a dead `SCREENSHOT_MODE === 'true'` branch. That branch and flag are deleted outright now, so there is no longer any exempted crossing of any kind, and `src/` has zero `e2e/` crossings, static or dynamic. Deliberately carries NO `paths.include` scope — a path-prefixed `"src/**"` would hit the same fixture-scan gotcha the Swift rows above document (matches nothing when `semgrep-rules.sh` scans `rules/fixtures/` directly, since the fixture is not nested under a `src/` segment); scoping is content-only instead (the `e2e/` regexes need a literal `e2e/` path segment, which `e2e/`'s own internal relative imports never spell out — verified empirically), and it is verified to report zero findings on the real tree (`src/` and `e2e/` both). |
 
 **Not mechanized, with reason.** H3's Semgrep half — "flag a `fetch` whose
 headers carry a credential key" — was dropped. Semgrep cannot read

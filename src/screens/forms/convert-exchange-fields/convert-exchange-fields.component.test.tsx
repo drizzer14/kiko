@@ -1,7 +1,9 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
 import '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
@@ -83,5 +85,37 @@ describe('ConvertExchangeFields', () => {
     // The counterpart holding picker and its amount gate save, so each shows
     // the required asterisk; the read-only fixed leg, Date, and Time do not.
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
+  it('renders counterpartError directly after the counterpart picker', async () => {
+    const { getByText } = await render(
+      <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
+    );
+
+    expect(getByText('Select a counterpart account.')).toBeTruthy();
+  });
+
+  it('adds the same vertical gap above the counterpart error that a text field has above its own', async () => {
+    const { getByText } = await render(
+      <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
+    );
+
+    // Round-4 device feedback item 1 — a select field's error lacked the same
+    // gap TextField's own `Box gap={1}` already gives its error line.
+    const errorGroup = getByText('Select a counterpart account.').parent?.parent;
+    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+  });
+
+  it('applies counterpartAmountError to the counterpart amount field', async () => {
+    const { getByLabelText, getByText } = await render(
+      <ConvertExchangeFields
+        {...baseProps}
+        counterpartAmountError="Enter an amount greater than 0."
+      />,
+    );
+
+    expect(getByText('Enter an amount greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 });

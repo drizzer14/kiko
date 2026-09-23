@@ -4,11 +4,12 @@ import { useTranslation } from 'react-i18next';
 
 import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountsScreen from '../screens/accounts/accounts.screen';
-import AccountFormScreen from '../screens/forms/account-form.screen';
-import ContributionFormScreen from '../screens/forms/contribution-form.screen';
-import HoldingFormScreen from '../screens/forms/holding-form.screen';
-import TransactionFormScreen from '../screens/forms/transaction-form.screen';
+import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
+import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
+import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
+import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
+import StatementImportScreen from '../screens/statement-import/statement-import.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { AccountsStackParamList } from './types';
@@ -65,6 +66,11 @@ const AccountsStack: FC = () => {
         name="ContributionForm"
         component={ContributionFormScreen}
         options={{ title: t('forms.contribution.addTitle') }}
+      />
+      <Stack.Screen
+        name="StatementImport"
+        component={StatementImportScreen}
+        options={{ title: t('statementImport.previewHeading') }}
       />
     </Stack.Navigator>
   );

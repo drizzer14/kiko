@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { Text as RNText, StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import GlassSurface from '../../../design-system/components/glass-surface';
+import { darkTheme } from '../../../design-system/theme';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
@@ -24,10 +25,39 @@ describe('SettingsRow', () => {
     expect(queryByTestId('settings-row-chevron', { includeHiddenElements: true })).toBeNull();
   });
 
+  // Round-7 device feedback item 2: the chevron previously fell back to
+  // SymbolIcon's default `iconSizes.body` (fontSize * 1.25), which renders
+  // LARGER than the row's own title. It must instead match the title's
+  // fontSize (the label's `variant="body"` Text) exactly.
+  it("sizes the trailing chevron to match the row title's own fontSize, not the larger default icon size", async () => {
+    const { root } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
+
+    const chevronGlyphs = root?.queryAll((node) => node.props.name === 'chevron.right') ?? [];
+    expect(chevronGlyphs).toHaveLength(1);
+    expect(chevronGlyphs[0].props.size).toBe(darkTheme.typography.body.fontSize);
+    // Guards the premise: this must be a real shrink, not a no-op equal to
+    // the old default.
+    expect(chevronGlyphs[0].props.size).not.toBe(darkTheme.iconSizes.body);
+  });
+
   it('hides the decorative chevron from the accessibility tree', async () => {
     const { getByTestId } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
     const chevron = getByTestId('settings-row-chevron', { includeHiddenElements: true });
     expect(chevron.props.accessibilityElementsHidden).toBe(true);
+  });
+
+  // Round-8 device feedback: the round-7 shrink left the (now title-sized,
+  // shorter) chevron top-aligned by the header's `flex-start`, so it rode
+  // ABOVE the title's center. Its own box now carries the row's first-line
+  // height (the leading icon's size) and centers the glyph, so it lands on the
+  // title's center while `flex-start` still keeps it on the first line on wrap.
+  it("centers the trailing chevron on the title's first line, not top-aligned above it", async () => {
+    const { getByTestId } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
+    const chevron = getByTestId('settings-row-chevron', { includeHiddenElements: true });
+    const chevronStyle = StyleSheet.flatten(chevron.props.style);
+
+    expect(chevronStyle.height).toBe(darkTheme.iconSizes.body);
+    expect(chevronStyle.justifyContent).toBe('center');
   });
 
   it('calls onPress when a navigating row is pressed', async () => {
@@ -95,5 +125,23 @@ describe('SettingsRow', () => {
 
     const header = ancestorWithStyle(label, 'alignItems');
     expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
+  });
+
+  // device-feedback-round-3 item 5: a toggle reads as ONE row with its label
+  // (label left, control right), not stacked below it the way a picker or
+  // segmented control's `children` is.
+  it('renders `trailing` inline on the same line as the label, not stacked below it', async () => {
+    const { getByText, getByTestId } = await render(
+      <SettingsRow
+        label="Include saved passwords & keys"
+        trailing={<RNText testID="trailing-switch">toggle</RNText>}
+      >
+        <RNText>Hint text below the row</RNText>
+      </SettingsRow>,
+    );
+
+    expect(getByText('Include saved passwords & keys')).toBeTruthy();
+    expect(getByTestId('trailing-switch')).toBeTruthy();
+    expect(getByText('Hint text below the row')).toBeTruthy();
   });
 });

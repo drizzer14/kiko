@@ -152,6 +152,16 @@ stays consistent.
 - Store results in CurrencyRate. Refresh on sync with a throttle so
   the app respects each provider's cache window.
 
+  Superseded by implementation: this section describes the original
+  foundation plan only. The shipped pipeline added an NBU live-rate
+  fallback (`src/rates/nbu-rates/nbu-rates.ts`, tried only when
+  Monobank fails) and a bundled static fiat-rate seed covering all
+  107 fiat currencies vs UAH (`src/rates/fiat-rate-seed/fiat-rate-seed.ts`,
+  overlaid by live rows at read time in `buildRateTable`,
+  `src/rates/net-worth-view/net-worth-view.ts`). See the
+  `kiko-architecture` skill's "Price data" section for the current
+  pipeline.
+
 ## Screens (simple)
 
 Navigation uses React Navigation native stack.

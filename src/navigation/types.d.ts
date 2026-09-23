@@ -1,5 +1,7 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
+import type { StatementFormatId } from '../statement-import/parser';
+
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens
  * type their props with `NativeStackScreenProps<TheStackParamList, 'Name'>`.
@@ -7,15 +9,26 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
  * `CompositeScreenProps` with `TabParamList` and the nested screen params.
  */
 /**
- * The Transaction form is reached two ways: with a `holdingId` to ADD a new
- * manual transaction to that holding, or with a `transactionId` to open an
- * existing transaction — editable when it is manual, read-only when it was
- * imported from Monobank. The union makes the two entry points mutually
- * exclusive so a caller can never pass both or neither. It is registered in
- * both the Home and Accounts stacks (Home lists every transaction; Accounts
- * reaches it from a holding), so both param lists carry the same shape.
+ * The Transaction form is reached three ways: with a `holdingId` to ADD a new
+ * manual transaction to that holding, with a `transactionId` to open an
+ * existing transaction (editable when it is manual, read-only when it was
+ * imported from Monobank), or with a `duplicateOfTransactionId` to open the
+ * CREATE form pre-filled from an existing manual row (its amount, description,
+ * category, and holding), dated to now — a new row on save, never an edit of
+ * the source. The union makes the entry points mutually exclusive so a caller
+ * can never pass more than one. It is registered in both the Home and Accounts
+ * stacks (Home lists every transaction; Accounts reaches it from a holding), so
+ * both param lists carry the same shape. The final member — an EMPTY object
+ * (`Record<string, never>`) — is the global-add entry (Bundle B): a create with
+ * NO holding fixed by navigation, so the form renders its own primary-leg
+ * holding picker. `Record<string, never>` admits `{}` alone, keeping every
+ * member mutually exclusive (a caller can pass exactly one id, or none at all).
  */
-export type TransactionFormParams = { holdingId: string } | { transactionId: string };
+export type TransactionFormParams =
+  | { holdingId: string }
+  | { transactionId: string }
+  | { duplicateOfTransactionId: string }
+  | Record<string, never>;
 
 export type HomeStackParamList = {
   Home: undefined;
@@ -45,12 +58,25 @@ export type AccountsStackParamList = {
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
   // instead; only deposits take a dedicated contribution form.
   ContributionForm: { holdingId: string };
+  // The shared statement-import preview + target-holding screen (Phase 1b), reached
+  // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
+  // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
+  // `accountId`. A later entry point (the Share Extension) has no known target
+  // account, hence `accountId` is optional here rather than required.
+  // `expectedFormatId` (device-feedback-round-1 item 5) scopes recognition
+  // to the account's own selected bank when one is known — see
+  // `statementFormatIdForBank` (`src/bank-sync/bank-catalog/`). Undefined
+  // falls back to the existing multi-format auto-detect (an account with no
+  // `bankId`, or the accountId-less Share Extension entry point).
+  StatementImport: { filePath: string; accountId?: string; expectedFormatId?: StatementFormatId };
 };
 
 export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  ExportData: undefined;
+  ImportData: undefined;
 };
 
 export type StatisticsStackParamList = {

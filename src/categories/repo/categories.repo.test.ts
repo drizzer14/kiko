@@ -380,16 +380,20 @@ describe('categories seed migration', () => {
       expect(icon.length).toBeGreaterThan(0);
       expect(sql).toContain(`'${key}'`);
       expect(sql).toContain(`'${title}'`);
-      // The seed's own transport icon is the pre-refinement 'car' (asserted
-      // just below); every other row's seeded icon equals the effective
-      // default this fixture models, so it must appear in the seed SQL.
-      if (key !== 'transport') {
+      // The seed's own transport icon is the pre-refinement 'car' and health
+      // is the pre-refinement 'cross.case' (both asserted just below); every
+      // other row's seeded icon equals the effective default this fixture
+      // models, so it must appear in the seed SQL.
+      if (key !== 'transport' && key !== 'health') {
         expect(sql).toContain(`'${icon}'`);
       }
     }
-    // The transport row is seeded with 'car'; 0014_default_category_colors
+    // The transport row is seeded with 'car'; 0017_default_category_colors
     // later refines it to the effective default 'bus' (asserted separately).
     expect(sql).toContain("'car'");
+    // The health row is seeded with 'cross.case'; 0031_icon_health_category
+    // later refines it to the effective default 'cross' (asserted separately).
+    expect(sql).toContain("'cross.case'");
 
     // `INSERT OR IGNORE` keeps the seed idempotent: re-applying it against a
     // table that already holds some (or all) canonical rows must not throw on

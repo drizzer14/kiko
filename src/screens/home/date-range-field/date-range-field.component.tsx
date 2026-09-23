@@ -1,21 +1,21 @@
-import KikoCalendar from '@kiko/calendar';
 import type { TFunction } from 'i18next';
+import KikoCalendar from '@kiko/calendar';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
-import type { DateData } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
+import type { DateData } from 'react-native-calendars';
 
 import { formatDate } from '../../../dates/format';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SheetFooter from '../../../design-system/components/sheet-footer';
 
-import type { DateRangeFieldProps } from './date-range-field.props';
 import { styles } from './date-range-field.styles';
-import { boundToMove } from './nearer-bound';
+import type { DateRangeFieldProps } from './date-range-field.props';
 
 // A single period-marking entry for one calendar day. `color` fills the day;
 // `startingDay`/`endingDay` round the span's two ends. `selected: true` is
@@ -158,11 +158,6 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
     setOpen(true);
   };
 
-  // A pick moves only the bound nearer to it (by absolute time distance) and
-  // leaves the other bound unchanged, so the range extends or shrinks from the
-  // side closest to the pick rather than resetting the whole selection. The
-  // "which bound moves" decision is the pure `boundToMove` (see nearer-bound.ts);
-  // a valid from <= to range can never invert under it.
   const handleDayPress = (day: DateData): void => {
     const picked = new Date(day.year, day.month - 1, day.day);
 
@@ -172,19 +167,19 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
       return;
     }
 
-    const bound = boundToMove(
-      draftFrom?.getTime() ?? null,
-      draftTo?.getTime() ?? null,
-      picked.getTime(),
-    );
-
-    if (bound === 'from') {
+    // A pick RESETS the range: if there is no start yet, or a complete range
+    // already exists, start a fresh single-date selection at the pick. If only
+    // a start is set, the pick becomes the other bound, ordered so from <= to.
+    if (draftFrom === null || draftTo !== null) {
       setDraftFrom(picked);
+      setDraftTo(null);
 
       return;
     }
 
-    setDraftTo(picked);
+    const pickedIsEarlier = picked.getTime() < draftFrom.getTime();
+    setDraftFrom(pickedIsEarlier ? picked : draftFrom);
+    setDraftTo(pickedIsEarlier ? draftFrom : picked);
   };
 
   // Commit the currently-shown selection directly — a lone start becomes a
@@ -211,7 +206,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         onPress={openModal}
       >
         <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name="calendar" size={18} tone="textPrimary" />
+          <SymbolIcon name="calendar" size={theme.iconSizes.body} tone="textPrimary" />
 
           <Text variant="body" tone="textPrimary">
             {fieldLabel}
@@ -225,14 +220,18 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           this sheet owns its own inner ScrollView around just the heading +
           calendar rather than the shared one BottomSheet would otherwise wrap
           ALL of children in. */}
-      <BottomSheet visible={open} onDismiss={() => setOpen(false)} gap={4} scrollable={false}>
+      <BottomSheet
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        gap={4}
+        scrollable={false}
+        header={<Text variant="heading">{t('home.dateRangeField.heading')}</Text>}
+      >
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text variant="heading">{t('home.dateRangeField.heading')}</Text>
-
           <KikoCalendar
             testID="date-range-calendar"
             markingType="period"
@@ -250,7 +249,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           />
         </ScrollView>
 
-        <Box direction="row" gap={3} style={styles.actions}>
+        <SheetFooter>
           <Button variant="secondary" fullWidth={false} onPress={handleClear}>
             {t('home.dateRangeField.clear')}
           </Button>
@@ -258,7 +257,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           <Button fullWidth={false} onPress={handleApply}>
             {t('home.dateRangeField.apply')}
           </Button>
-        </Box>
+        </SheetFooter>
       </BottomSheet>
     </Box>
   );

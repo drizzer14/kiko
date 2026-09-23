@@ -16,4 +16,8 @@ export type TransactionRowProps = {
   holdingNameById: ReadonlyMap<string, string>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
+  // Open the create form pre-filled from this row (D2). Passed for MANUAL rows
+  // only; a synced row is not duplicable and never receives it, so its
+  // long-press keeps offering nothing.
+  onDuplicate: (transactionId: string) => void;
 };

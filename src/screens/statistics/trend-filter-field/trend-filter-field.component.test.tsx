@@ -45,6 +45,27 @@ afterEach(async () => {
   await setLanguage('en');
 });
 
+describe('TrendFilterField trigger icon', () => {
+  it('shows the ranking chart glyph in top mode', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 3, by: 'contribution' },
+    });
+
+    expect(
+      getByTestId(TEST_ID).queryAll((node) => node.props.name === 'chart.bar.fill'),
+    ).not.toHaveLength(0);
+  });
+
+  it('shows the categories tag glyph in manual mode', async () => {
+    const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: ['groceries'] } });
+
+    expect(getByTestId(TEST_ID).queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
+    expect(
+      getByTestId(TEST_ID).queryAll((node) => node.props.name === 'chart.bar.fill'),
+    ).toHaveLength(0);
+  });
+});
+
 describe('TrendFilterField button label', () => {
   it('reads "Top N by <measure>" in top mode', async () => {
     const { getByTestId } = await renderField({
@@ -298,6 +319,22 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(selection.props.style).backgroundColor).toBeUndefined();
     expect(StyleSheet.flatten(amount.props.style).backgroundColor).toBeUndefined();
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
+  });
+
+  it('renders each mode pill with its decided glyph (Top -> chart.bar.fill, Manual -> tag)', async () => {
+    const { getByTestId } = await renderField();
+    await press(getByTestId(TEST_ID));
+
+    // The Mode OptionPills carry a leading glyph per option (infra item I4):
+    // Top ranks -> chart.bar.fill, Manual pins categories -> tag. Both pills are
+    // rendered at once (only the selected one fills), so both glyphs appear
+    // inside the selection group.
+    const selection = getByTestId(`${TEST_ID}-group-selection`);
+    const topPill = within(selection).getByText('Top').parent;
+    const manualPill = within(selection).getByText('Manual').parent;
+
+    expect(topPill?.queryAll((node) => node.props.name === 'chart.bar.fill')).not.toHaveLength(0);
+    expect(manualPill?.queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
   });
 
   it('renders the Top mode option before Manual in the selection group', async () => {

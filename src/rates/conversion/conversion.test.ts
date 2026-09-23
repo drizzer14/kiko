@@ -1,6 +1,6 @@
 import { Money } from '../../currency/money';
 
-import { convert, netWorth } from './conversion';
+import { convert, netWorth, rateTableFromRows } from './conversion';
 
 // A fixed evaluation instant. Every holding in these cases is plain cash (no
 // `type`), so `holdingValue` takes its flat branch and the instant cannot
@@ -55,5 +55,28 @@ describe('netWorth', () => {
     const total = netWorth([], 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(0);
+  });
+});
+
+describe('rateTableFromRows', () => {
+  it('parses the string rate column into a numeric RateTable', () => {
+    const table = rateTableFromRows([{ base: 'USD', quote: 'UAH', rate: '40.5' }]);
+    expect(table).toEqual({ 'USD:UAH': 40.5 });
+  });
+
+  it('drops a row whose rate does not parse to a finite number', () => {
+    const table = rateTableFromRows([
+      { base: 'USD', quote: 'UAH', rate: '40' },
+      { base: 'EUR', quote: 'UAH', rate: 'not-a-number' },
+    ]);
+    expect(table).toEqual({ 'USD:UAH': 40 });
+  });
+
+  it('drops a row whose rate parses to zero', () => {
+    const table = rateTableFromRows([
+      { base: 'USD', quote: 'UAH', rate: '40' },
+      { base: 'EUR', quote: 'UAH', rate: '0' },
+    ]);
+    expect(table).toEqual({ 'USD:UAH': 40 });
   });
 });

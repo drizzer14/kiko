@@ -1,16 +1,13 @@
-import Clipboard from '@react-native-clipboard/clipboard';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
 
-import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import SymbolIcon from '../../../design-system/components/symbol';
-import TextField from '../../../design-system/components/text-field';
+import SyncStatusLine from '../sync-status-line';
 import { styles } from '../account-detail.styles';
 import type { SyncStatus } from '../sync-status-line';
-import SyncStatusLine from '../sync-status-line';
+import Box from '../../../design-system/components/box';
+import ClipboardTextField from '../clipboard-text-field';
+import Button from '../../../design-system/components/button';
+import { isValidBitcoinAddress } from '../../../crypto-sync/btc-wallet/bitcoin-address';
 
 type WalletAddressFieldProps = {
   /**
@@ -31,16 +28,12 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
 
+  // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
+  // already-trimmed pasted value), so typing and pasting reset the stale
+  // status identically.
   const handleChangeAddress = (value: string): void => {
     setAddress(value);
     setStatus({ kind: 'idle' });
-  };
-
-  const handlePasteAddress = (): void => {
-    Clipboard.getString().then((value) => {
-      setAddress(value.trim());
-      setStatus({ kind: 'idle' });
-    });
   };
 
   const handleConnect = (): void => {
@@ -64,27 +57,13 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
 
   return (
     <Box gap={3}>
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.addressLabel')}
-            value={address}
-            onChangeText={handleChangeAddress}
-            placeholder={t('accountDetail.btcAddressPlaceholder')}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteAddress}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
-        </Pressable>
-      </Box>
+      <ClipboardTextField
+        label={t('accountDetail.addressLabel')}
+        value={address}
+        onChangeText={handleChangeAddress}
+        placeholder={t('accountDetail.btcAddressPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
+      />
 
       <Box direction="row" gap={2} style={styles.statusLine}>
         <Button
@@ -93,7 +72,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect }) => {
           fullWidth={false}
           onPress={handleConnect}
           disabled={status.kind === 'checking' || address.trim() === ''}
-          icon="link"
+          icon="lock"
         >
           {t('accountDetail.connectWallet')}
         </Button>

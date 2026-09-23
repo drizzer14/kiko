@@ -15,11 +15,15 @@
 //   stays at its initial `0`.
 // - the shared-value + animated-style set the shared `BottomSheet` uses for its
 //   drag-down-to-close (`useSharedValue`, `useAnimatedStyle`, `withSpring`,
-//   `runOnJS`, and the animated `View`). The Pan runs `.runOnJS(true)`, so its
-//   handlers are plain JS in both prod and test; here `useSharedValue` returns a
-//   stable mutable box, `useAnimatedStyle` evaluates its factory once per render,
-//   the animation helpers resolve to their target value, and `runOnJS` returns
-//   the function unwrapped so a JS-thread callback just runs.
+//   `withTiming`, `runOnJS`, and the animated `View`). The Pan runs
+//   `.runOnJS(true)`, so its handlers are plain JS in both prod and test; here
+//   `useSharedValue` returns a stable mutable box, `useAnimatedStyle`
+//   evaluates its factory once per render, the animation helpers resolve to
+//   their target value, and `runOnJS` returns the function unwrapped so a
+//   JS-thread callback just runs. `BottomSheet`'s keyboard-aware lift now
+//   drives its own `useSharedValue(0)` from RN core `Keyboard` events (see
+//   `bottom-sheet.component.tsx`) rather than reanimated's own
+//   `useAnimatedKeyboard`, so this stub no longer needs to expose that hook.
 //
 // Any other accessed member still resolves to a no-op through the Proxy, so a
 // stray reanimated import can never crash a test.

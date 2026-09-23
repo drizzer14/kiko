@@ -1,11 +1,20 @@
 // Mirrors Text's tone union (see text.props.ts), including `onAccent` — the
 // always-white foreground for a glyph sitting on a filled accent surface
 // (a selected chip/pill/row's icon), which `textPrimary` cannot provide on
-// the light theme (it flips to black there).
-type SymbolTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary' | 'onAccent';
+// the light theme (it flips to black there) — and `accent` — the systemBlue
+// tone for a glyph paired with a tappable inline accent label (e.g. a
+// disclosure chevron beside a "Show more"/"Show less" toggle).
+type SymbolTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary' | 'onAccent' | 'accent';
 
 export type SymbolProps = {
   name: string;
+  // Optional. The glyph to render if `name` cannot be resolved on the running
+  // iOS (a symbol added in a newer release renders blank on an older device,
+  // and the app floor is iOS 16). Handled by the symbol.availability seam: the
+  // three KNOWN iOS-26 symbols supply their own fallback centrally, so a caller
+  // only passes this to override that default or to guard a symbol not yet in
+  // the central map. See symbol.availability.ts.
+  fallbackName?: string;
   size?: number;
   tone?: SymbolTone;
   // An explicit tint color (any CSS color string; hex or rgba). When set it
@@ -14,4 +23,5 @@ export type SymbolProps = {
   // hex form SFSymbolView needs by the same helper `tone` goes through.
   color?: string;
   accessibilityLabel?: string;
+  testID?: string;
 };

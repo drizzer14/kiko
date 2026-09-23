@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You record durable knowledge.
 
 Rules:
+- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean.
 - Record a fact in the right place: the memory dir, a skill, an agent file, or the plugin.
 - Use superpowers:writing-skills and skill-creator when you edit a skill.
 - Track the vendored ponytail version (4.9.0) and update it when needed.

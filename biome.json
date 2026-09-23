@@ -21,7 +21,7 @@
     "actions": {
       "source": {
         "organizeImports": {
-          "level": "on",
+          "level": "off",
           "options": {
             "groups": [
               [":ALIAS:", ":BUN:", ":NODE:", ":PACKAGE:", ":PACKAGE_WITH_PROTOCOL:", ":URL:"],

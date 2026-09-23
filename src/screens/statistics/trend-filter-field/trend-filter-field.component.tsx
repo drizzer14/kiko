@@ -2,24 +2,25 @@ import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import OptionPills from '../../../design-system/components/option-pills';
-import SelectableRow from '../../../design-system/components/selectable-row';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 import {
   DEFAULT_TREND_FILTER,
   type TrendFilter,
   type TrendMeasure,
   type TrendMode,
 } from '../../../statistics/trend-filter';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import OptionPills from '../../../design-system/components/option-pills';
+import SheetFooter from '../../../design-system/components/sheet-footer';
 import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
+import SelectableRow from '../../../design-system/components/selectable-row';
 import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
 
-import type { TrendFilterFieldProps } from './trend-filter-field.props';
 import { styles } from './trend-filter-field.styles';
+import type { TrendFilterFieldProps } from './trend-filter-field.props';
 
 const MODES: readonly TrendMode[] = ['top', 'manual'];
 const AMOUNTS: readonly number[] = [1, 2, 3, 4, 5];
@@ -196,7 +197,14 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name="line.3.horizontal.decrease.circle" size={18} tone="textPrimary" />
+          {/* The trigger glyph reflects the APPLIED filter mode (the same
+              `filter.mode` the buttonLabel IIFE reads): the categories `tag` in
+              Manual mode, the ranking `chart.bar.fill` in Top mode. */}
+          <SymbolIcon
+            name={filter.mode === 'manual' ? 'tag' : 'chart.bar.fill'}
+            size={18}
+            tone="textPrimary"
+          />
 
           <Text variant="body" tone="textPrimary">
             {buttonLabel}
@@ -234,6 +242,10 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             selected={draft.mode}
             onSelect={setMode}
             label={(mode) => t(`statistics.trendFilter.${mode}`)}
+            // The Mode pills carry a leading glyph per option (infra item I4):
+            // Top ranks by measure -> chart.bar.fill, Manual pins categories ->
+            // tag (the app-wide categories glyph). Amount/Measure stay text-only.
+            icon={(mode) => (mode === 'manual' ? 'tag' : 'chart.bar.fill')}
             columns={2}
             labelVariant="caption"
           />
@@ -306,7 +318,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           </Box>
         )}
 
-        <Box direction="row" gap={3} style={styles.actions}>
+        <SheetFooter>
           {/* Both actions are disabled while the draft equals the applied
               filter: Clear would revert to what is already applied, and Save
               would re-persist it unchanged — neither does anything, so neither is
@@ -329,7 +341,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
           >
             {t('common.save')}
           </Button>
-        </Box>
+        </SheetFooter>
       </BottomSheet>
     </Box>
   );

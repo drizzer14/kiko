@@ -3,8 +3,10 @@ import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { darkTheme as theme } from '../../../design-system/theme';
 
 import HoldingIdentityField from '.';
+import { KIKO_CATEGORIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof HoldingIdentityField>>;
 
@@ -15,6 +17,7 @@ const setup = async (overrides: Overrides = {}) => {
 
   const utils = await render(
     <HoldingIdentityField
+      icons={KIKO_CATEGORIES_ICONS}
       icon={null}
       fallbackIcon="creditcard"
       name="My card"
@@ -119,17 +122,24 @@ describe('HoldingIdentityField', () => {
     expect(getByLabelText('Change Groceries icon')).toBeTruthy();
   });
 
-  it('leaves the name field un-focused by default', async () => {
+  it('leaves the name field un-focused by default (no native autoFocus)', async () => {
     const { getByLabelText } = await setup();
 
-    // No caller opted into autoFocus, so the field must not grab focus on mount.
-    expect(getByLabelText('Name').props.autoFocus).toBe(false);
+    // The field never sets native autoFocus: it races the sibling
+    // InputAccessoryView's registration (see nameInputRef's doc comment). A
+    // caller that needs focus-on-mount uses nameInputRef + an imperative
+    // `.focus()` instead.
+    expect(getByLabelText('Name').props.autoFocus).toBeUndefined();
   });
 
-  it('forwards autoFocus to the name input so an on-demand field focuses on mount', async () => {
-    const { getByLabelText } = await setup({ autoFocus: true });
+  it('forwards nameInputRef to the inner TextInput so a caller can focus it imperatively', async () => {
+    const nameInputRef: ComponentProps<typeof HoldingIdentityField>['nameInputRef'] = {
+      current: null,
+    };
+    await setup({ nameInputRef });
 
-    expect(getByLabelText('Name').props.autoFocus).toBe(true);
+    expect(nameInputRef.current).not.toBeNull();
+    expect(typeof nameInputRef.current?.focus).toBe('function');
   });
 
   it('suppresses the icon Remove control when no onRemoveIcon handler is given', async () => {
@@ -147,6 +157,92 @@ describe('HoldingIdentityField', () => {
     const { getByText } = await setup({ required: true });
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('renders the shared native Done keyboard accessory for the name field on iOS', async () => {
+    // The name field carries the same app-wide native Done every other Kiko
+    // input shows above the keyboard.
+    const { getByText } = await setup();
+
+    expect(getByText('Done')).toBeTruthy();
+  });
+
+  it('sets returnKeyType to done on the name field, matching the shared TextField default', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(getByLabelText('Name').props.returnKeyType).toBe('done');
+  });
+
+  it('renders no error styling or message by default', async () => {
+    const { queryByText } = await setup({});
+
+    expect(queryByText('This field is required.')).toBeNull();
+  });
+
+  it('never applies a border for an invalid name (Option A: no outline) and renders the message below the whole row when error is set (captioned)', async () => {
+    const { getByLabelText, getByText } = await setup({
+      error: 'This field is required.',
+    });
+
+    const flatStyle = StyleSheet.flatten(getByLabelText('Name').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
+    expect(getByText('This field is required.')).toBeTruthy();
+  });
+
+  it('offsets the row-level error to align with the name input, not the icon (round-4 device feedback item 5)', async () => {
+    const { getByTestId } = await setup({
+      error: 'This field is required.',
+      testID: 'holding-identity-name-field',
+    });
+
+    // The icon chip is a fixed theme.spacing(11) square, separated from the
+    // name column by a theme.spacing(3) row gap — the offset must match
+    // BOTH, or the message reads as flush-left under the icon instead of
+    // under the name field it actually describes.
+    const errorNode = getByTestId('holding-identity-name-field-error');
+    const flatStyle = StyleSheet.flatten(errorNode.parent?.props.style);
+    expect(flatStyle.marginLeft).toBe(theme.spacing(11) + theme.spacing(3));
+  });
+
+  it('renders no error node for a bare (uncaptioned) row, even with error set', async () => {
+    const { queryByText } = await setup({ captioned: false, error: 'This field is required.' });
+
+    // A dense list row (category rename, holding-detail rename) never
+    // validates — reserving height there would regress its existing layout.
+    expect(queryByText('This field is required.')).toBeNull();
+  });
+
+  it('renders no error node at all while valid (reflow, not reserve)', async () => {
+    const { queryByTestId } = await setup({ testID: 'holding-identity-name-field' });
+
+    expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
+  });
+
+  it('keeps the icon and name column at the same height whether or not an error is showing', async () => {
+    // The error renders BELOW the whole icon+name row, never inside the
+    // name column beside it, so the icon never shifts relative to the name
+    // field when the error mounts/unmounts — see the component's own doc
+    // comment on the composite-row layout.
+    const { getByLabelText, rerender } = await setup({});
+
+    const heightBefore = StyleSheet.flatten(getByLabelText('Change Icon').props.style).height;
+
+    await rerender(
+      <HoldingIdentityField
+        icons={KIKO_CATEGORIES_ICONS}
+        icon={null}
+        fallbackIcon="creditcard"
+        name="My card"
+        onChangeName={jest.fn()}
+        onSelectIcon={jest.fn()}
+        onRemoveIcon={jest.fn()}
+        error="This field is required."
+      />,
+    );
+
+    const heightAfter = StyleSheet.flatten(getByLabelText('Change Icon').props.style).height;
+
+    expect(heightAfter).toBe(heightBefore);
   });
 
   describe('localization', () => {

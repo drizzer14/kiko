@@ -1,7 +1,12 @@
 import type { AccountRow } from '../../db/schema';
 import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
-import { accountKindSymbol, holdingTypeSymbol } from './entity-symbols';
+import {
+  accountKindSymbol,
+  genericEntitySymbol,
+  genericEntitySymbolFallback,
+  holdingTypeSymbol,
+} from './entity-symbols';
 
 type AccountKind = AccountRow['kind'];
 
@@ -23,10 +28,10 @@ describe('accountKindSymbol', () => {
     }
   });
 
-  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign', () => {
+  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign.circle', () => {
     expect(accountKindSymbol.bank).toBe('building.columns.fill');
     expect(accountKindSymbol.cash).toBe('banknote');
-    expect(accountKindSymbol.crypto).toBe('bitcoinsign');
+    expect(accountKindSymbol.crypto).toBe('bitcoinsign.circle');
   });
 });
 
@@ -39,12 +44,34 @@ describe('holdingTypeSymbol', () => {
     }
   });
 
-  it('assigns card creditcard, term_deposit calendar, bond receipt, jar archivebox, cash banknote, crypto_asset bitcoinsign', () => {
+  it('assigns card creditcard, term_deposit calendar, bond receipt, jar rectangle.portrait, cash banknote, crypto_asset bitcoinsign.circle', () => {
     expect(holdingTypeSymbol.card).toBe('creditcard');
     expect(holdingTypeSymbol.term_deposit).toBe('calendar');
     expect(holdingTypeSymbol.bond).toBe('receipt');
-    expect(holdingTypeSymbol.jar).toBe('archivebox');
+    expect(holdingTypeSymbol.jar).toBe('rectangle.portrait');
     expect(holdingTypeSymbol.cash).toBe('banknote');
-    expect(holdingTypeSymbol.crypto_asset).toBe('bitcoinsign');
+    expect(holdingTypeSymbol.crypto_asset).toBe('bitcoinsign.circle');
+  });
+});
+
+describe('genericEntitySymbol', () => {
+  it('maps each generic entity reference to its decided glyph', () => {
+    expect(genericEntitySymbol.account).toBe('tray');
+    expect(genericEntitySymbol.holding).toBe('text.pad.header');
+    expect(genericEntitySymbol.transaction).toBe('arrow.up.arrow.down');
+  });
+
+  it('maps every generic entity to a non-empty SF Symbol name', () => {
+    for (const symbol of Object.values(genericEntitySymbol)) {
+      expect(symbol.length).toBeGreaterThan(0);
+      expect(symbol).toMatch(SF_SYMBOL);
+    }
+  });
+
+  it('supplies the iOS-16-safe fallback for the iOS-26 holding glyph', () => {
+    // `text.pad.header` is an iOS-26 symbol; a consumer renders it through
+    // SymbolIcon's fallback seam. The fallback is exported alongside so the
+    // consumer can pass it explicitly if it renders the glyph outside SymbolIcon.
+    expect(genericEntitySymbolFallback.holding).toBe('list.bullet.rectangle');
   });
 });

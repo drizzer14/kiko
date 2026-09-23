@@ -16,10 +16,16 @@ export type DateFieldProps = {
   // TextField / ChipRow treatment. A synced (Monobank) transaction's date uses
   // this so its bank-owned date cannot be changed.
   disabled?: boolean;
+  // The validation-failure message for this field, or `undefined` when it's
+  // currently valid — same contract as TextField's own `error`. Renders via
+  // the shared FieldError directly under the field, and tints the label
+  // negative, uniform with every other field type (Option A: no per-field
+  // outline — see text-field.component.tsx's own doc comment). REFLOW, not
+  // reserve: no error node at all while valid.
+  error?: string;
   // An optional testID applied to the field's Pressable trigger, so a flow can
-  // open the picker sheet deterministically.
+  // open the picker sheet deterministically. When set, the FieldError message
+  // (when shown) additionally takes `${testID}-error`, matching TextField's
+  // derived-testID contract.
   testID?: string;
-  // An optional testID applied to the sheet's dismiss backdrop, so a flow can
-  // close the sheet by tapping the scrim (the sheet is a full-screen Modal).
-  backdropTestID?: string;
 };

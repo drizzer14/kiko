@@ -90,6 +90,60 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"holdings"."type"');
   });
 
+  it('includes the change group id in the joined all-transactions projection', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('change_group_id');
+  });
+
+  it('includes the source in the joined all-transactions projection, so Home can tell a synced row from a manual one', () => {
+    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+
+    expect(sql).toContain('"transactions"."source"');
+  });
+
+  it('builds a DISTINCT manual-descriptions query ordered newest-first (D1 autocomplete)', () => {
+    const { sql } = transactionsRepo.distinctDescriptionsQuery().toSQL();
+    const lower = sql.toLowerCase();
+
+    // DISTINCT so a repeated merchant name is offered once, projecting only the
+    // description column the suggestion row consumes.
+    expect(lower).toContain('select distinct');
+    expect(lower).toContain('"description"');
+    // Newest-first (recency, not frequency): ordered by the transaction time,
+    // descending.
+    expect(lower).toContain('order by');
+    expect(lower).toContain('"transactions"."time" desc');
+  });
+
+  it('restricts the distinct-descriptions query to MANUAL rows with a non-empty description', () => {
+    const { sql, params } = transactionsRepo.distinctDescriptionsQuery().toSQL();
+
+    // Synced/bank descriptions are excluded — only the user's own manual rows
+    // seed the suggestion list.
+    expect(sql).toContain('"transactions"."source"');
+    expect(params).toContain('manual');
+    // The empty-description rows (a blank manual row, a description-less
+    // exchange leg) are filtered out in SQL via `<> ''`.
+    expect(sql).toContain('<>');
+    expect(params).toContain('');
+  });
+
+  it('builds a most-recent-manual-holding query: source manual, time desc, single row (B)', () => {
+    const { sql, params } = transactionsRepo.latestManualHoldingQuery().toSQL();
+    const lower = sql.toLowerCase();
+
+    // The default primary-leg holding for a global add comes from the newest
+    // MANUAL transaction's holding, so the query projects only `holding_id`,
+    // filters the manual source, orders newest-first, and takes a single row.
+    expect(lower).toContain('"holding_id"');
+    expect(lower).toContain('"transactions"."source"');
+    expect(params).toContain('manual');
+    expect(lower).toContain('"transactions"."time" desc');
+    expect(lower).toContain('limit');
+    expect(params).toContain(1);
+  });
+
   it('records a manual transaction and adjusts the balance atomically', async () => {
     const captured: { insert?: Record<string, unknown>; set?: Record<string, unknown> } = {};
     mockTx = {
@@ -574,6 +628,88 @@ describe('transactionsRepo.addManyDedup upsert', () => {
 
     expect(captured.inserted).toHaveLength(2);
     expect(inserted).toBe(2);
+  });
+});
+
+// A STORE-backed fake transaction handle for `addManyDedup`, unlike
+// `makeAddManyTx` above (which only CAPTURES the issued insert/conflict
+// config for one call). `insert(...).onConflictDoUpdate(...)` here actually
+// applies the real `(source, external_id)` unique-index semantics against a
+// plain array — merging into an existing row on a match, pushing a new one
+// otherwise — so a test can run `addManyDedup` TWICE against the SAME store
+// (mirroring two providers' own syncs) and read back what actually persisted,
+// not just the SQL shape a single call would have issued.
+const makeAddManyStoreTx = (store: Record<string, unknown>[]) => ({
+  select: () => ({
+    from: (table: unknown) => ({
+      // `categoryOverrides` never carries a matching rule here (no test row
+      // seeded), and the countNewRows existing-rows probe over `transactions`
+      // does not need to be clause-accurate — mirrors `holdings.repo.test.ts`'s
+      // `makeTx`, which resolves the whole table rather than interpreting
+      // `.where(...)`.
+      where: async () => (table === categoryOverrides ? [] : store),
+    }),
+  }),
+  insert: () => ({
+    values: (values: Record<string, unknown>[]) => ({
+      onConflictDoUpdate: () => {
+        for (const row of values) {
+          const existingIndex = store.findIndex(
+            (stored) => stored.source === row.source && stored.externalId === row.externalId,
+          );
+
+          if (existingIndex >= 0) {
+            store[existingIndex] = { ...store[existingIndex], ...row };
+          } else {
+            store.push(row);
+          }
+        }
+
+        return Promise.resolve();
+      },
+    }),
+  }),
+});
+
+describe('transactionsRepo.addManyDedup cross-provider externalId namespacing', () => {
+  // Global Constraints invariant: `externalId` is namespaced
+  // `${accountId}:${providerStatementId}`, so two DIFFERENT providers can
+  // legitimately land on the identical namespaced string (e.g. Monobank's
+  // statement id "1" and Binance's transfer id "1" on the SAME internal
+  // account id) without colliding, because the unique index is
+  // `(source, external_id)`, not `external_id` alone.
+  it('keeps both rows when two different providers report the SAME namespaced externalId, because source differs', async () => {
+    const store: Record<string, unknown>[] = [];
+    mockTx = makeAddManyStoreTx(store);
+
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-monobank',
+        amountMinorUnits: -150,
+        time: 1,
+        source: 'monobank',
+        description: 'Coffee',
+        externalId: 'acc-1:1',
+      },
+    ]);
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-binance',
+        amountMinorUnits: 5000,
+        time: 2,
+        source: 'binance',
+        description: 'Salary',
+        externalId: 'acc-1:1',
+      },
+    ]);
+
+    expect(store).toHaveLength(2);
+    const monobankRow = store.find((row) => row.source === 'monobank');
+    const binanceRow = store.find((row) => row.source === 'binance');
+    expect(monobankRow?.externalId).toBe('acc-1:1');
+    expect(monobankRow?.amountMinorUnits).toBe(-150);
+    expect(binanceRow?.externalId).toBe('acc-1:1');
+    expect(binanceRow?.amountMinorUnits).toBe(5000);
   });
 });
 
@@ -1118,5 +1254,79 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         time: 1,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('transactionsRepo.recordManualWithReturns', () => {
+  it('writes the payment + N return rows sharing ONE changeGroupId in one transaction', async () => {
+    const { tx, inserts, updates } = makeExchangeTx([
+      [{ balanceMinorUnits: 50_000 }], // payer balance read
+      [{ balanceMinorUnits: 1_000 }], // return holding B balance read
+      [{ balanceMinorUnits: 2_000 }], // return holding C balance read
+    ]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: {
+        holdingId: 'payer-1',
+        amountMinorUnits: -21_200,
+        time: 123,
+        category: 'groceries',
+      },
+      returns: [
+        { holdingId: 'hold-b', amountMinorUnits: 20 },
+        { holdingId: 'hold-c', amountMinorUnits: 8 },
+      ],
+    });
+
+    // One shared group id across all three rows.
+    const groupIds = inserts.map((row) => row.changeGroupId);
+    expect(new Set(groupIds).size).toBe(1);
+    expect(groupIds[0]).toEqual(expect.any(String));
+
+    expect(inserts).toEqual([
+      expect.objectContaining({
+        holdingId: 'payer-1',
+        amountMinorUnits: -21_200,
+        time: 123,
+        category: 'groceries',
+        source: 'manual',
+      }),
+      expect.objectContaining({
+        holdingId: 'hold-b',
+        amountMinorUnits: 20,
+        time: 123,
+        source: 'manual',
+      }),
+      expect.objectContaining({
+        holdingId: 'hold-c',
+        amountMinorUnits: 8,
+        time: 123,
+        source: 'manual',
+      }),
+    ]);
+
+    // base 50_000 - 21_200 = 28_800 (payer); 1_000 + 20 = 1_020; 2_000 + 8 = 2_008
+    expect(updates).toEqual([
+      { table: holdings, values: { balanceMinorUnits: 28_800 } },
+      { table: holdings, values: { balanceMinorUnits: 1_020 } },
+      { table: holdings, values: { balanceMinorUnits: 2_008 } },
+    ]);
+  });
+
+  it('writes only the payment row when there are no returns', async () => {
+    const { tx, inserts, updates } = makeExchangeTx([[{ balanceMinorUnits: 50_000 }]]);
+    mockTx = tx;
+
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'payer-1', amountMinorUnits: -5_000, time: 7, category: 'transport' },
+      returns: [],
+    });
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toEqual(
+      expect.objectContaining({ holdingId: 'payer-1', amountMinorUnits: -5_000 }),
+    );
+    expect(updates).toEqual([{ table: holdings, values: { balanceMinorUnits: 45_000 } }]);
   });
 });

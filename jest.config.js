@@ -1,6 +1,17 @@
+// `react-native-dotenv` inlines `@env` from `process.env.ENVFILE || '.env'`
+// at transform time, and `.env` is gitignored, so a Jest run must NOT depend
+// on a local `.env`. Default every Jest run to the committed `.env.test`; an
+// explicit `ENVFILE` still wins.
+process.env.ENVFILE = process.env.ENVFILE || '.env.test';
+
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['./jest/setup.js'],
+  // Resets every jest.fn()'s recorded calls/instances/results before each
+  // test (does NOT touch mockImplementation/mockReturnValue setup) so a
+  // module-scoped mock's call history from one `it` never leaks into the
+  // next `it` in the same file/describe block.
+  clearMocks: true,
   // fnts ships as pure ESM; Babel must transpile it to CJS for Jest, so it is
   // exempted from the preset's node_modules transform-ignore list.
   // react-native-unistyles resolves its "react-native" package.json export
@@ -24,9 +35,21 @@ module.exports = {
   // Day components (a different module specifier, so unaffected by that
   // mock) to prove the actual selected/today text-color precedence the
   // library applies, not just the marks data Kiko hands it.
+  //
+  // windows-1251 (Phase 3, statement-import's cp1251 decoder) ships ONLY an
+  // ESM entry point (`"exports": "./windows-1251.mjs"`, no CJS build at
+  // all) — same reason as the ESM-only deps above.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars|@noble)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-screens|fnts|react-native-unistyles|react-native-gesture-handler|react-native-reanimated|react-native-worklets|react-native-sortables|react-native-calendars|@noble|windows-1251)/)',
   ],
+  // windows-1251 ships ONLY a `.mjs` entry point (`"exports":
+  // "./windows-1251.mjs"`, no CJS build, no `"main"` field at all) — the RN
+  // preset's own `transform` only matches `.(js|ts|tsx)$` (this key merges
+  // INTO that map, it does not replace it), so `.mjs` needs its own entry
+  // here for Babel to transpile its `import`/`export` syntax to CJS.
+  transform: {
+    '^.+\\.mjs$': 'babel-jest',
+  },
   // `@kiko/*` path aliases map to `src/*` (mirrors tsconfig `paths` and the
   // babel `module-resolver` alias) so tests resolve the same specifiers the
   // app does.

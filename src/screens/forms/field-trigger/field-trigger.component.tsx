@@ -1,13 +1,14 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
-import FieldLabel from '../../../design-system/components/field-label';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import FieldLabel from '../../../design-system/components/field-label';
 
-import type { FieldTriggerProps } from './field-trigger.props';
 import { styles } from './field-trigger.styles';
+import type { FieldTriggerProps } from './field-trigger.props';
 
 // The shared "labeled field that opens a picker sheet" trigger: a caption
 // above a bordered row showing the current icon + value, tapping which opens
@@ -22,34 +23,59 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   onPress,
   icon,
   iconColor,
+  leadingText,
   value,
   valueTone,
   trailing,
   required,
+  disabled = false,
+  hideLabel = false,
   testID,
-}) => (
-  <Box gap={1}>
-    <FieldLabel label={label} required={required} />
+}) => {
+  const { theme } = useUnistyles();
 
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      testID={testID}
-    >
-      <Box direction="row" gap={2} style={styles.field}>
-        {icon !== undefined && (
-          <SymbolIcon name={icon} size={18} tone="textSecondary" color={iconColor} />
-        )}
+  return (
+    <Box gap={1}>
+      {!hideLabel && <FieldLabel label={label} required={required} />}
 
-        <Text variant="body" tone={valueTone}>
-          {value}
-        </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        onPress={onPress}
+        testID={testID}
+      >
+        <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
+          {icon !== undefined && (
+            <SymbolIcon
+              name={icon}
+              size={theme.iconSizes.body}
+              tone="textSecondary"
+              color={iconColor}
+            />
+          )}
 
-        {trailing}
-      </Box>
-    </Pressable>
-  </Box>
-);
+          {icon === undefined && leadingText !== undefined && (
+            <Text
+              variant="body"
+              tone="textSecondary"
+              numberOfLines={1}
+              style={styles.leadingTextMark}
+            >
+              {leadingText}
+            </Text>
+          )}
+
+          <Text variant="body" tone={valueTone}>
+            {value}
+          </Text>
+
+          {trailing}
+        </Box>
+      </Pressable>
+    </Box>
+  );
+};
 
 export default FieldTrigger;

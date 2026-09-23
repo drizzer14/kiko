@@ -15,6 +15,14 @@ describe('synced predicates', () => {
     expect(isSyncedAccount({ institution: null })).toBe(false);
     expect(isSyncedAccount({ institution: 'kraken' })).toBe(false);
   });
+
+  // Guideline 5.6 remediation: PrivatBank, bunq, and Starling bank-CONNECT
+  // were removed entirely — their institution ids are no longer synced.
+  it('rejects every removed provider institution', () => {
+    expect(isSyncedAccount({ institution: 'privatbank' })).toBe(false);
+    expect(isSyncedAccount({ institution: 'bunq' })).toBe(false);
+    expect(isSyncedAccount({ institution: 'starling' })).toBe(false);
+  });
 });
 
 describe('isSyncedHolding', () => {

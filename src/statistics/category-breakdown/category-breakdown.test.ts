@@ -27,6 +27,7 @@ const tx = (over: Partial<BreakdownTransaction>): BreakdownTransaction => ({
   counterIban: null,
   description: '',
   exchangeCounterpartHoldingId: null,
+  changeGroupId: null,
   currency: 'UAH',
   ...over,
 });
@@ -48,6 +49,26 @@ describe('buildCategoryBreakdown', () => {
     // transport (40_00) sorts before groceries (50_00)? No: groceries 50_00 > transport 40_00.
     expect(slices.map((slice) => slice.key)).toEqual(['groceries', 'transport']);
     expect(slices.map((slice) => slice.amount)).toEqual([50_00, 40_00]);
+  });
+
+  it("nets a split payment's linked change-returns into its category (not overstated by the change)", () => {
+    const slices = buildCategoryBreakdown({
+      transactions: [
+        tx({ id: 'pay', category: 'groceries', amountMinorUnits: -212_00, changeGroupId: 'grp-1' }),
+        tx({ id: 'r1', category: null, amountMinorUnits: 20, changeGroupId: 'grp-1' }),
+        tx({ id: 'r2', category: null, amountMinorUnits: 8, changeGroupId: 'grp-1' }),
+      ],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+    });
+
+    // −212_00 payment, +20 and +8 returns → the category shows the NET 211_72,
+    // not the bare 212_00. The positive returns are skipped as income (never a
+    // separate slice) and only reduce the payment's magnitude.
+    expect(slices.map((slice) => slice.key)).toEqual(['groceries']);
+    expect(slices[0].amount).toBe(211_72);
   });
 
   it('excludes income (positive) transactions entirely', () => {

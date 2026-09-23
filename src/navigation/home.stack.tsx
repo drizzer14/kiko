@@ -1,7 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 
-import TransactionFormScreen from '../screens/forms/transaction-form.screen';
+import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HomeScreen from '../screens/home/home.screen';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';

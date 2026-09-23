@@ -84,6 +84,18 @@ if [ -z "${KIKO_MUTATION_FULL:-}" ]; then
   if [ -n "$merge_base" ]; then
     changed="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null \
       | grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+    # Part 2: drop zero/low-logic barrels (**/index.ts) + pure-static
+    # *.styles.ts from the mutate set, preserving the 3 logic-bearing files
+    # (src/i18n/index.ts, bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
+    # These MUST be filtered here too: on this diff-scoped run --mutate REPLACES
+    # the config mutate[] wholesale (deepMerge replaces arrays, deep-merge.js:13),
+    # so the config negations in stryker.conf.json do NOT apply here. Kept
+    # bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
+    if [ -n "$changed" ]; then
+      reinc="$(printf '%s\n' "$changed" | grep -E '((^|/)i18n/index\.ts$|(^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
+      changed="$(printf '%s\n' "$changed" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
+      changed="$(printf '%s\n' "$changed" "$reinc" | grep -v '^[[:space:]]*$' | sort -u || true)"
+    fi
     if [ -z "$changed" ]; then
       # This branch changed no mutable source file — nothing to mutate, pass.
       exit 0

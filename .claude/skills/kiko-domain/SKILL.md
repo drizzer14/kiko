@@ -23,8 +23,26 @@ absent** — this skill states the shape and non-enum facts only:
 
 - **Account** — a bank, cash stash, or crypto wallet. `id`, `name`,
   `kind` (see `schema.ts`'s `accounts.kind` enum for the current
-  member set), `institution` (nullable, e.g. `monobank`), `icon`,
-  `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+  member set), `institution` (nullable, e.g. `monobank` — marks a LIVE
+  sync connection), `bankId` (nullable, migration `0033`; see below),
+  `icon`, `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
+
+  **`bankId`** is the "which bank does this account represent" field
+  set from the account-form's bank picker (`BankTypeField`,
+  `src/screens/forms/bank-type-field/`), backed by the catalog at
+  `src/bank-sync/bank-catalog/` — read that file for the current
+  6-bank set (`BankId`/`bankCatalog`) rather than trusting a list
+  copied here. It is **identity-only, independent of `institution`**:
+  only Monobank has a live API Connect today (`connectable: true` in
+  the catalog), the other 5 entries are import-only, scoping which
+  `statement-import` parser applies. `bankId` is deliberately **never
+  read** by `isSyncedAccount`/`isSyncedHolding`
+  (`src/holdings/deletable/`) or any provider-registry lookup — those
+  stay keyed on `institution` alone, so tagging an account
+  `bankId: 'privatbank'` can never make it look connected. This is the
+  Guideline 5.6 invariant (see `guidelines-compliance-is-architecture-rule`
+  in memory): never wire a picker selection into a connected-ness
+  check.
 - **Holding** — a balance-bearing thing under an account (a card, a
   jar, a term deposit, a crypto asset). `id`, `accountId` (FK),
   `name`, `type` (see `schema.ts`'s `holdings.type` enum), `currency`
@@ -50,7 +68,7 @@ absent** — this skill states the shape and non-enum facts only:
   bank-owned columns — the settled `amountMinorUnits` and `hold`
   among them — and **never** its `category` (the user's override, or
   a name rule's rewrite) or `comment`. Read `addManyDedup` in
-  `src/transactions/transactions.repo.ts` for the exact refreshable
+  `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
   pending item is imported at its provisional amount at all, rather
   than trusting a column list restated here.
@@ -66,7 +84,7 @@ absent** — this skill states the shape and non-enum facts only:
   live column set rather than trusting a list here. One is `trendFilter`,
   the Statistics trend chart's saved filter: a JSON `TrendFilter` union
   (`{ mode:'manual', keys } | { mode:'top', amount, by } | null`, see
-  `src/statistics/trend-filter.ts`). It SUPERSEDES the retained-dead
+  `src/statistics/`). It SUPERSEDES the retained-dead
   `trendCategoryKeys` column (migration 0025 copies any saved keys across
   as a manual filter; the old column is pinned reader-less in
   `src/db/settings-columns.test.ts`). The Monobank token is never stored
@@ -79,7 +97,7 @@ repository functions enforce it, and every balance a USER sets goes
 through one of them:
 
 - **An edit**: `holdingsRepo.updateWithBalanceDelta`
-  (`src/holdings/holdings.repo.ts`) writes the patch AND, when
+  (`src/holdings/`) writes the patch AND, when
   `balanceMinorUnits` differs from the stored value, the DIFFERENCE as
   a `manual` row — one `db.transaction()`, delta computed from the row
   re-read inside it (never a render snapshot), no row at all for a zero
@@ -88,7 +106,7 @@ through one of them:
   non-balance writers (icon/color/metadata, the sync's own writes,
   reorder) and must never be handed a `balanceMinorUnits`.
 - **A new holding's opening balance**: `holdingsRepo.create`
-  (`src/holdings/holdings.repo.ts`) seeds the same kind of row for
+  (`src/holdings/`) seeds the same kind of row for
   a non-zero `balanceMinorUnits`, in the transaction that inserts the
   holding. Zero seeds nothing.
 - **A new cash account's opening balance**: `accountsRepo.createCashAccount`
@@ -105,33 +123,47 @@ stops reconciling with its own displayed Value. None of the three routes
 through `transactionsRepo.recordManual` (which would apply the amount to
 the balance a second time), and none persists a description or a
 category — the label resolves at render time (see the exchange section
-below and `src/transactions/row-description.ts`). A null category folds
+below and `transactionRowDescription`, `src/transactions/`). A null category folds
 onto `settings.defaultCategoryKey`, so a downward correction counts as
 spending like any other uncategorised manual row; that is a RULED
 decision (the row is editable), not an oversight to be quietly patched.
 
 A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
-`holdings.repo.ts`), and the form hides the balance field for a synced
+`src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
 
 ## Sync-only holding types are not manually creatable
 
 Some `Holding.type` members are owned exclusively by the Monobank sync
-pipeline (`src/monobank/sync.ts`, which creates those rows
+pipeline (`src/monobank/sync/`, which creates those rows
 programmatically) and must never appear as an option on the manual
 create form — a bank's create form offers only the remaining,
 non-sync types. Per Layer 2, this rule's exact type membership is not
-restated here: read `src/holdings/holding-type.ts`
+restated here: read `src/holdings/holding-type/holding-type.ts`
 (`syncOnlyHoldingTypes`, `isSyncOnlyHoldingType`,
-`creatableHoldingTypesForAccountKind`) for the current sync-only set
+`creatableHoldingTypesForAccount`) for the current sync-only set
 and the derived creatable-per-account-kind set, and cross-check
 against `sync.ts` for which types it actually writes.
+
+The creatable set additionally depends on whether THAT PARTICULAR
+account is live-synced, not just its kind:
+`creatableHoldingTypesForAccount(kind, isSynced)` takes both — read
+that file directly for the exact filter. `jar` is excluded
+UNCONDITIONALLY, synced or not (it's a Monobank-API-specific
+sub-account concept with no equivalent in a bank statement, so an
+import-only account has nothing to name a manual "jar" after); `card`
+is excluded ONLY when `isSynced` is true — an import-only bank account
+(`isSynced` false, one of the 5 statement-import-only banks) CAN
+manually create a `card` holding, since there is no sync pipeline
+already owning one for it. Do not assume "sync-only type" means
+"excluded regardless of `isSynced`" — `jar` and `card` behave
+differently for exactly this reason.
 
 ## Entity glyphs: one source of truth
 
 The default SF Symbol for an `Account.kind` and for a `Holding.type`
-each has exactly one source of truth: `src/holdings/entity-symbols.ts`
+each has exactly one source of truth: `src/holdings/`
 (`accountKindSymbol`, `holdingTypeSymbol`). Every reader — the account
 card, the account-detail header, the Kind select, the holding card,
 the holding-detail header, the holding-form icon-chip fallback, the
@@ -150,7 +182,7 @@ why this is the deliberate exception to functional-first). It holds
   per-currency: `BTC` uses 8 decimals (satoshis); `USD`, `EUR`, and
   `UAH` use 2 (cents).
 - The value object itself — construction, arithmetic, and the
-  currency-mismatch guard — lives in `src/currency/money.ts`. Read it
+  currency-mismatch guard — lives in `src/currency/`. Read it
   directly for the current method set rather than trusting a list
   restated here; it drifts (this skill once claimed `Money` had
   `convert`/`format`/comparison methods it does not have).
@@ -159,7 +191,7 @@ why this is the deliberate exception to functional-first). It holds
   Read that directory for the current conversion entry point.
 - Formatting a `Money` for display is not a `Money` method either —
   that owns a separate concern and lives in
-  `src/currency/format.ts`. Read it for the current formatting entry
+  `src/currency/`. Read it for the current formatting entry
   point.
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
@@ -180,20 +212,33 @@ Monobank statement currencies arrive as ISO 4217 numeric codes
 literal with `ts-pattern` at the sync boundary, never store the raw
 numeric code.
 
+**One source of truth for the currency-code set: `currencyOptions` in
+`src/currency/`.** The Drizzle column enums in
+`src/db/schema.ts` were once a HIDDEN second, hard-coded copy of this
+set (a real drift risk — the same class of bug the `Account.kind`
+"broker" incident above documents); they now DERIVE from
+`currencyOptions` instead. When you add, remove, or rename a currency
+code, change `currency.ts` only, then verify (do not re-hardcode) that
+`schema.ts`'s currency-bearing column enums, `rates-refresh.ts`'s
+`allCurrencies`, and `monobank-rates.ts`'s `fiatCurrencies` all still
+derive from `currencyOptions` rather than carrying their own literal
+list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
+hint, not a DB constraint, so changing the set needs no migration.
+
 ## Category color resolution
 
 A category's display color is never read as a raw
 `category.color ?? undefined` at the call site — every renderer
 (chart legend, chart slice, filter chip, transaction-row icon)
 resolves it through `resolveCategoryColor(storedColor, key)`
-(`src/statistics/category-breakdown.ts`), which falls back to a stable
+(`src/statistics/`), which falls back to a stable
 per-key palette hash when no color is stored. The raw-fallback pattern
 renders gray for an uncolored category while a chip for that same
 category shows a palette hue — a past transaction-row icon regressed
 this way.
 
 The ten categories `0002_seed_categories.sql` seeds do NOT rely on that
-hash fallback in practice: migration `0017_seed_category_colors`
+hash fallback in practice: migration `0017_default_category_colors`
 (`drizzle/migrations/`) gives each seeded key an explicit, distinct
 `categories.color` — one `theme.colors.entityColors` member per key,
 guarded `WHERE color IS NULL` so it never overwrites a color the user
@@ -207,7 +252,7 @@ that normally never fires.
 
 The `key` handed to it is never a raw stored value. A stored category
 resolves through `resolveCategoryKey` / `resolveCategoryDisplay`
-(`src/categories/category-display.ts`): lowercased, with a null, empty,
+(`src/categories/`): lowercased, with a null, empty,
 or unknown-to-the-categories-table slug folding onto the **default**
 key (`settings.defaultCategoryKey`, read at the call site — never a
 separate "uncategorized" bucket). One fold, one place: the spending
@@ -217,7 +262,7 @@ keys — and therefore two hues — at once.
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
-(`src/monobank/mcc-category.ts`) emits the slug, not a display title,
+(`src/monobank/`) emits the slug, not a display title,
 and migration `0014_lowercase_categories` lowercased the legacy rows a
 capitalized-title era had already written. Because neither
 `transactions.category` nor `category_overrides.category` is COLLATE
@@ -231,10 +276,10 @@ instead of being orphaned on a deleted slug.
 An internal money movement (cash-out, own-account transfer, one leg of
 a same-user transfer between holdings, an Exchange/Convert leg) is
 excluded from the spending view — read
-`src/statistics/transfer-exclusion.ts` (MCC/description based, backed by
+the transfer-exclusion module (`src/statistics/`, MCC/description based, backed by
 `transactions.counterIban` and `settings.defaultCategoryKey`),
-`src/statistics/internal-transfers.ts` (the matched-pair fallback), and
-`src/statistics/exchange-exclusion.ts` (the exchange-marker rule)
+the internal-transfers module (`src/statistics/`, the matched-pair fallback), and
+the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
@@ -244,20 +289,21 @@ An Exchange/Convert leg is NOT identified by its description. Both legs
 carry the counterpart holding's id in a dedicated column — read
 `src/db/schema.ts` (`transactions.exchangeCounterpartHoldingId`, whose
 comment records why it is a column rather than a reserved `category`
-value or a shared `externalId`) and `src/transactions/transactions.repo.ts`
+value or a shared `externalId`) and `src/transactions/`
 (`recordExchange` / `recordExchangeCounterpart`, which write it on both
 legs inside the one transaction; an exchange into a term deposit writes
 the marker on its single debit leg). Three consequences hold together:
 
-- The marker is what the spending view excludes on
-  (`src/statistics/exchange-exclusion.ts`): no other rule can see these
+- The marker is what the spending view excludes on, in the
+  exchange-exclusion module (`src/statistics/`): no other rule can see these
   rows — a null `mcc`, an empty description, and a cross-currency pair
   the matched-pair matcher rejects.
 - **The repository never writes a description for a leg.** The label is
   resolved at render time through `t` from the marker plus the
   counterpart's CURRENT name (a description the USER later types on that
-  row still wins — the resolver prefers a stored one) — `src/transactions/exchange-description.ts`, applied by both
-  transaction lists via `src/transactions/row-description.ts`. A
+  row still wins — the resolver prefers a stored one) — `exchangeLegDescription`
+  (`src/transactions/`), applied by both
+  transaction lists via `transactionRowDescription` (`src/transactions/`). A
   persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
 - A repository input therefore carries holding IDs, never holding
@@ -267,7 +313,7 @@ the marker on its single debit leg). Three consequences hold together:
 
 `settings.lockEnabled` is LIVE — wired through `src/auth/use-app-lock.ts`
 and the `AppLockSetting` component
-(`src/screens/settings/app-lock-setting/`). `settings.lockGraceSeconds`
+(`src/screens/settings/system/app-lock-setting/`). `settings.lockGraceSeconds`
 is LEGACY/DEAD: it defaults to 30 and has no reader anywhere in `src/`
 (a grace-period-after-backgrounding design was built, then replaced
 with a cold-launch-only lock; the column was intentionally left in
@@ -288,10 +334,10 @@ rather than assuming only these two.
 
 ## Dates
 
-Interest and schedule math (`src/holdings/interest.ts` — deposit
+Interest and schedule math (`src/holdings/` — deposit
 maturity, period boundaries, coupon dates, accrual day counts) is
 built entirely with **local-midnight instants**, not UTC. Read the
-`daysBetween` comment in that file for why: a raw
+`daysBetween` comment in that module for why: a raw
 `floor((end-start)/DAY_MS)` under- or over-counts by a day across a
 Kyiv DST transition, so every boundary (`atDay`, `midCredit`,
 `addMonths`) is deliberately constructed from local Y/M/D fields and
@@ -304,7 +350,7 @@ to local midnight, so a non-midnight input keeps its hour/minute/
 second/millisecond across the step.
 
 Tests for these helpers use two input styles side by side in
-`interest.test.ts`, and both stay valid because `addMonths` preserves
+`src/holdings/`'s interest test, and both stay valid because `addMonths` preserves
 the input's time-of-day rather than forcing local midnight: the file's
 own `local(year, monthIndex, day)` helper for anything that crosses a
 DST boundary, and `Date.UTC(...)` where the comment at the call site
@@ -324,10 +370,14 @@ assume a specific convention for it without one.
 Net worth is **assets-only** — liabilities and debt are out of scope
 for this sub-project. It is the sum of every non-archived holding's
 balance, each converted to the user's selected base currency (stored
-in `Settings.baseCurrency`) using the latest cached `CurrencyRate`.
-An archived account's or closed holding's balance is excluded. The
-headline total (`guardedNetWorth`) and the per-currency breakdown
-shown beneath it (`guardedBreakdown`) share one `canConvert` filter
-in `src/rates/net-worth-view.ts`, so a currency with no cached rate
-(e.g. BTC on a first run, before any sync) is dropped from both —
-never included in the breakdown after being excluded from the total.
+in `Settings.baseCurrency`). An archived account's or closed holding's
+balance is excluded. The headline total (`guardedNetWorth`) and the
+per-currency breakdown shown beneath it (`guardedBreakdown`) share one
+`canConvert` filter in `src/rates/`, so a currency with no resolvable
+rate is dropped from both — never included in the breakdown after
+being excluded from the total. See kiko-architecture's "Price data"
+section for how a rate is resolved (Monobank → NBU → bundled fiat
+seed); today CRYPTO is the only currency class that can still hit
+this silent-drop path (no offline seed, so an unrated crypto holding
+is excluded until a live CoinGecko price lands) — every fiat currency
+is covered by the bundled seed and effectively never drops.

@@ -18,11 +18,11 @@ availability risk for little.
 
 | Host | Used by | Carries a secret | Pinned | Rationale |
 |---|---|---|---|---|
-| `api.monobank.ua` | `src/monobank/monobank.client.ts` (`X-Token` header) | yes — the personal bank token | **yes** | The token grants read access to every account and full statement history. |
+| `api.monobank.ua` | `src/monobank/` (`X-Token` header) | yes — the personal bank token | **yes** | The token grants read access to every account and full statement history. |
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
-| `api.coingecko.com` | `src/rates/coingecko.ts`, `src/rates/coingecko-history.ts` | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
+| `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
-| `bank.gov.ua` | `src/rates/nbu-history.ts` | no | no | Public NBU historical fiat rates, no auth header. |
+| `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`) | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. |
 
 ### Current chains (verified 2026-09-06)
 
@@ -120,7 +120,7 @@ and immediately if a sync starts failing with a TLS error.
   changes (multi-user, data sharing, wider distribution).
 - **A Monobank token saved before the `accessible` hardening shipped** keeps its
   default Keychain policy until the user disconnects and re-saves it (or until a
-  legacy-service migration re-saves it — `src/monobank/token.ts` now applies the
+  legacy-service migration re-saves it — `src/monobank/` now applies the
   hardened policy on that path). No forced migration for an already-current-service
   item.
 - **Plaintext → encrypted database migration residuals.** The key is stored only
@@ -179,67 +179,14 @@ and immediately if a sync starts failing with a TLS error.
   Esplora instance — both larger changes than this warrants today. The address
   is format-validated before use (`bitcoin-address.ts:7-11`) and URL-encoded at
   the call site, so it cannot be used to inject a path.
-- **The widget's App Group snapshot is a cleartext derivative of encrypted
-  data (S2/S3).** `ios/Kiko/WidgetBridge.swift` writes `net-worth-snapshot.json` into
-  the `group.com.dmytro.pff` container so the `KikoWidget` extension — a
-  separate process that can neither open the SQLCipher database nor run app
-  JavaScript — has something to render. Four controls bound it, and the residual
-  risk is stated after them:
-  - **Minimised payload.** The snapshot (`src/widget/net-worth-snapshot.ts`)
-    carries only what the widget actually draws: `baseCurrency`, the formatted
-    total, and the per-currency breakdown. The 30-day trend series it used to
-    carry was removed on 2026-09-06 — the widget stopped rendering a trend
-    line, so it was a wealth history on disk with no reader. Do not add a
-    field the SwiftUI view does not render.
-  - **Redaction.** `ios/KikoWidget/NetWorthWidgetView.swift`'s private
-    `moneyText(_:...)` helper is the single place the total and every
-    breakdown row's amount get rendered (a 2026-09-07 user decision, security
-    task 21): when `redactionReasons` reports `.privacy` (WidgetKit sets this
-    while the surface draws on a locked device — Lock Screen Today View,
-    StandBy) it renders the literal string `---`, marked `.unredacted()` so
-    WidgetKit does not also draw its default redaction bar over it; otherwise
-    it renders the real formatted value marked `.privacySensitive()` as
-    defense in depth — if the environment check is ever bypassed, WidgetKit
-    still redacts. The "Net worth" label and every currency code sit outside
-    that helper and are always visible, locked or not.
-  - **Lock-aware lifecycle.** When `settings.lockEnabled` is on,
-    `src/widget/use-net-worth-widget.ts` calls `widgetBridge.clearSnapshot()`
-    instead of writing, on every debounce tick and on every background
-    transition, so there is no real snapshot on disk at all while the lock is
-    enabled; the widget renders its placeholder. Turning the lock off rewrites
-    it on the next tick.
-  - **At-rest attributes.** Every write re-applies `isExcludedFromBackup` (so
-    the file never enters an iCloud/iTunes backup — the leak F2 closed for the
-    database) and an explicit
-    `FileProtectionType.completeUntilFirstUserAuthentication`. Both must be
-    re-applied after every write: `atomically: true` replaces the inode and
-    drops them. `.complete` is not usable — it would make the file unreadable
-    exactly when WidgetKit renders. If either attribute cannot be applied,
-    `writeProtected` deletes the file it just wrote and rejects, so a failure
-    leaves no snapshot rather than an unprotected one.
-
-  **Residual risk, accepted.** With the app lock OFF (the default), the file
-  exists in plain JSON and is readable after first unlock without any Keychain
-  access, so a jailbroken or forensically-imaged device yields the net worth and
-  currency composition, whereas the database would require the
-  `WHEN_UNLOCKED_THIS_DEVICE_ONLY` key. That is the unavoidable cost of having a
-  widget at all: the extension has no way to hold a key. A user who wants that
-  closed enables the app lock. Separately, on a locked Lock Screen the currency
-  codes and the number of breakdown rows stay visible next to the `---`
-  placeholders (`USD ---`, `EUR ---`), so the currency composition of the net
-  worth — not its amounts — is disclosed to anyone holding the device. Accepted
-  because the user explicitly asked for the codes to stay visible (2026-09-07);
-  hiding them would mean rendering the rows as anonymous placeholders.
-  Enforced by `kiko-widget-money-view-needs-privacysensitive` and
-  `kiko-appgroup-write-needs-protection` in `rules/semgrep-mobile.yml`.
 
 ## Next steps
 
-- **Distribution signing across both targets (audit finding S11, INFO).** The
-  `Kiko` target's Release block sets `CODE_SIGN_IDENTITY = "Apple Development"`,
-  and the `KikoWidget` extension target's Release block sets no explicit
-  identity at all and inherits. Both must become a distribution identity, with
-  the App Group capability provisioned on both targets, before the first App
-  Store upload. Out of scope for the security pass — it is tracked and belongs
-  to `docs/superpowers/plans/2026-09-04-app-store-publishing.md`; do that plan's
-  signing steps across **both** targets, not just the app.
+- **Distribution signing (audit finding S11, INFO).** The `Kiko` target's
+  Release block sets `CODE_SIGN_IDENTITY = "Apple Development"`; it must
+  become a distribution identity before an App Store upload. (This finding
+  used to also cover the `KikoWidget` extension target; the widget feature
+  and that target have since been removed from the project.) Out of scope
+  for the security pass — it is tracked and belongs to
+  `docs/superpowers/plans/2026-09-04-app-store-publishing.md`; do that plan's
+  signing steps.

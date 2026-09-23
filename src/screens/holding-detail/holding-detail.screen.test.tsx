@@ -1,9 +1,18 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import type { ComponentProps, ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 import { transactionsRepo } from '@kiko/transactions/repo';
 
+import { formatDate } from '../../dates/format';
+import {
+  DELETE_ACTION_TEST_ID,
+  DELETE_CONFIRM_TEST_ID,
+  DUPLICATE_ACTION_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { ancestorWithStyle } from '../../test-support/ancestor-with-style';
@@ -12,6 +21,13 @@ import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support
 import HoldingDetailScreen from './holding-detail.screen';
 
 type HoldingDetailProps = ComponentProps<typeof HoldingDetailScreen>;
+
+// A row's delete menu is a react-native-gesture-handler long-press (via the
+// shared CardContextMenu), so the screen must mount under a
+// GestureHandlerRootView (the app supplies one at its root in production).
+const gestureRootWrapper = ({ children }: { children: ReactNode }) => (
+  <GestureHandlerRootView>{children}</GestureHandlerRootView>
+);
 
 // The Text primitive's tone -> color mapping lives inside a unistyles variant
 // that the project Jest mock strips before a test can inspect it, so a money
@@ -225,6 +241,7 @@ const renderScreen = () =>
       navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
       route={route}
     />,
+    { wrapper: gestureRootWrapper },
   );
 
 describe('HoldingDetailScreen', () => {
@@ -398,7 +415,9 @@ describe('HoldingDetailScreen', () => {
 
     // The separate schedule card is gone; the lifecycle renders inline. A brand-
     // new deposit's future accruals render dimmed with a "Projected" marker.
-    expect(getAllByText(/^Projected ·/).length).toBeGreaterThan(0);
+    // futureDepositHolding is a term_deposit (day-granular), so the marker
+    // carries no trailing time separator.
+    expect(getAllByText('Projected').length).toBeGreaterThan(0);
   });
 
   it('renders the deposit lifecycle inline in the transactions list', async () => {
@@ -432,13 +451,14 @@ describe('HoldingDetailScreen', () => {
 
     const { getAllByTestId } = await renderScreen();
 
-    // Each ledger row is wrapped in a GlassSurface, matching the app's
-    // glass-card language, rather than a plain surface-filled box.
+    // Each ledger row is wrapped in the shared solid content-layer `Card`,
+    // matching the app's card language, rather than a plain surface-filled box.
     expect(getAllByTestId('ledger-row').length).toBeGreaterThan(0);
   });
 
-  it('stamps a time-specific holding row with the full date and HH:MM time', async () => {
-    // A card is time-specific: its row shows "DD.MM.YYYY HH:MM".
+  it('stamps a time-specific holding row with the bare HH:MM time', async () => {
+    // A card is time-specific: its row shows the bare "HH:MM" — the day
+    // header (not the row) now owns the date.
     const at = new Date(2024, 0, 15, 9, 5).getTime();
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Coffee', source: 'manual' },
@@ -446,7 +466,7 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText } = await renderScreen();
 
-    expect(getByText('15.01.2024 09:05')).toBeTruthy();
+    expect(getByText('09:05')).toBeTruthy();
   });
 
   it('right-aligns the stored transaction row timestamp so it sits below the value, like Home', async () => {
@@ -460,7 +480,7 @@ describe('HoldingDetailScreen', () => {
     // The timestamp caption is wrapped in a right-aligned footer container
     // (alignSelf 'flex-end') so it lands under the amount column rather than
     // left-aligned under the description — mirroring the Home row layout.
-    const footer = ancestorWithStyle(getByText('15.01.2024 09:05'), 'alignSelf');
+    const footer = ancestorWithStyle(getByText('09:05'), 'alignSelf');
     expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
   });
 
@@ -469,18 +489,19 @@ describe('HoldingDetailScreen', () => {
 
     const { getAllByText } = await renderScreen();
 
-    // The derived "Computed · date" caption uses the same right-aligned footer
-    // container, so it too sits under the amount column.
-    const footer = ancestorWithStyle(getAllByText(/^Computed ·/)[0], 'alignSelf');
+    // The derived "Computed" caption uses the same right-aligned footer
+    // container, so it too sits under the amount column. depositHolding is a
+    // term_deposit (day-granular), so the caption carries no trailing time.
+    const footer = ancestorWithStyle(getAllByText('Computed')[0], 'alignSelf');
     expect(StyleSheet.flatten(footer.props.style)).toMatchObject({ alignSelf: 'flex-end' });
   });
 
   it.each([
     ['a term_deposit', depositHolding],
     ['a bond', bondHolding],
-  ])('drops the HH:MM time on %s row, showing the date only', async (_label, holding) => {
-    // A deposit/bond event is day-granular, so its row shows the date with no
-    // trailing time.
+  ])('renders no HH:MM on %s row, leaving the date to the day header', async (_label, holding) => {
+    // A deposit/bond event is day-granular, so the row renders no footer at
+    // all: the shared day-section header is the ONLY place the date appears.
     const at = new Date(2024, 5, 20, 9, 5).getTime();
     seed(holding, [
       { id: 'x1', amountMinorUnits: -5000, time: at, description: 'Top-up', source: 'manual' },
@@ -488,6 +509,8 @@ describe('HoldingDetailScreen', () => {
 
     const { getByText, queryByText } = await renderScreen();
 
+    // getByText throws on more than one match, so this also proves the date is
+    // emitted exactly once — by the day header, not repeated in the row footer.
     expect(getByText('20.06.2024')).toBeTruthy();
     expect(queryByText('20.06.2024 09:05')).toBeNull();
   });
@@ -659,24 +682,77 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { transactionId: 'txn-7' });
   });
 
-  it('deletes a manual transaction via the swipe action', async () => {
+  it('wires a manual transaction row to the shared long-press context menu, not a swipe-to-delete row', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
     ]);
 
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      const destructive = (buttons ?? []).find((button) => button.style === 'destructive');
-      destructive?.onPress?.();
+    const { queryByTestId } = await renderScreen();
+
+    // The delete affordance is the shared CardContextMenu long-press — the row
+    // is wrapped in its `card-context-menu` layer and registers the hold
+    // gesture — rather than the old SwipeableRow's `*-actions` layer.
+    // `getByGestureTestId` throws when the hold gesture is absent, so reaching
+    // it asserts the affordance.
+    expect(queryByTestId('card-context-menu')).not.toBeNull();
+    expect(getByGestureTestId(HOLD_GESTURE_TEST_ID)).toBeTruthy();
+    expect(queryByTestId('swipeable-row-actions')).toBeNull();
+  });
+
+  it('deletes a manual transaction via the themed deep-press delete confirm', async () => {
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    // A hold that reaches ACTIVE (stayed still past the min duration, under
+    // the max distance) opens the Duplicate/Delete choice; choosing Delete
+    // hands off to the themed ConfirmSheet (not a native ActionSheetIOS), whose
+    // destructive confirm removes the transaction via `transactionsRepo.remove`.
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
     });
 
-    const { getByLabelText } = await renderScreen();
+    await act(async () => {
+      fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
 
-    // The delete action is a11y-hidden on a closed row, so it must be queried
-    // with hidden elements included.
-    await fireEvent.press(getByLabelText('Delete', { includeHiddenElements: true }));
-
+    expect(getByText('Delete "Coffee"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
-    alertSpy.mockRestore();
+  });
+
+  it('duplicates a manual transaction row to a pre-filled create form (D2)', async () => {
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByTestId } = await renderScreen();
+
+    // A hold opens the Duplicate/Delete choice; Duplicate navigates to the
+    // shared form with the `duplicateOfTransactionId` param, never editing or
+    // removing the source row.
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
+
+    await act(async () => {
+      fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+      duplicateOfTransactionId: 'txn-9',
+    });
+    expect(transactionsRepo.remove).not.toHaveBeenCalled();
   });
 
   it('does not offer delete on a synced transaction row', async () => {
@@ -690,9 +766,11 @@ describe('HoldingDetailScreen', () => {
       },
     ]);
 
-    const { queryByLabelText } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // A synced (Monobank) row is not deletable, so CardContextMenu renders it
+    // bare — no card-context-menu wrapper and no hold gesture to intercept it.
+    expect(queryByTestId('card-context-menu')).toBeNull();
   });
 
   it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {
@@ -707,17 +785,20 @@ describe('HoldingDetailScreen', () => {
     expect(getAllByText('Interest accrual').length).toBeGreaterThan(0);
     expect(getAllByText('Income tax 18%').length).toBeGreaterThan(0);
     expect(getAllByText('Military levy 5%').length).toBeGreaterThan(0);
-    // Every settled derived row carries a "Computed" marker so it reads as derived.
-    expect(getAllByText(/^Computed ·/).length).toBeGreaterThanOrEqual(3);
+    // Every settled derived row carries a "Computed" marker so it reads as
+    // derived. depositHolding is a term_deposit (day-granular), so the marker
+    // carries no trailing time separator.
+    expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
   });
 
-  it('renders derived rows read-only: no swipe-delete and not tappable to the form', async () => {
+  it('renders derived rows read-only: no context menu and not tappable to the form', async () => {
     seed(depositHolding);
 
-    const { getByText, queryByLabelText } = await renderScreen();
+    const { getByText, queryByTestId } = await renderScreen();
 
-    // A derived-only deposit (no real transactions) offers no delete action at all.
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    // A derived-only deposit (no real transactions) offers no delete action at
+    // all — no row is wrapped in the shared CardContextMenu.
+    expect(queryByTestId('card-context-menu')).toBeNull();
     // Pressing a derived row's label opens no transaction form.
     await fireEvent.press(getByText('Opening deposit'));
     expect(navigation.navigate).not.toHaveBeenCalled();
@@ -734,13 +815,15 @@ describe('HoldingDetailScreen', () => {
       },
     ]);
 
-    const { getByText, getByLabelText } = await renderScreen();
+    const { getByText, getAllByTestId } = await renderScreen();
 
     // Both the real transaction and the derived opening deposit render together.
     expect(getByText('Fee')).toBeTruthy();
     expect(getByText('Opening deposit')).toBeTruthy();
-    // Only the real row is deletable; the derived rows expose no delete action.
-    expect(getByLabelText('Delete', { includeHiddenElements: true })).toBeTruthy();
+    // Only the real row is deletable; the derived rows expose no delete
+    // action, so exactly one card-context-menu wrapper renders for the whole
+    // ledger.
+    expect(getAllByTestId('card-context-menu')).toHaveLength(1);
   });
 
   it('colors a deposit tax row red and an interest accrual green in the ledger', async () => {
@@ -832,6 +915,81 @@ describe('HoldingDetailScreen', () => {
 
     expect(queryByTestId('screen-footer')).toBeNull();
     expect(queryByText('Add transaction')).toBeNull();
+  });
+
+  it('groups the ledger by day with Today/Yesterday separators, newest day first', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    // Ordered newest-first, matching the repo query's own `desc(time)` order.
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: now, description: 'TodayTxn', source: 'manual' },
+      {
+        id: 'x2',
+        amountMinorUnits: -5000,
+        time: now - day,
+        description: 'YesterdayTxn',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByText, getAllByText } = await renderScreen();
+
+    expect(getByText('Today')).toBeTruthy();
+    expect(getByText('Yesterday')).toBeTruthy();
+
+    // getAllByText returns matches in tree order, so the rendered order of the
+    // separators and their rows proves the newest day (and its row) comes
+    // first — the same grouping shape and assertion style Home's own
+    // day-grouping test uses.
+    const rendered = getAllByText(/^(Today|TodayTxn|Yesterday|YesterdayTxn)$/).map(
+      (node) => node.props.children,
+    );
+    expect(rendered).toEqual(['Today', 'TodayTxn', 'Yesterday', 'YesterdayTxn']);
+  });
+
+  it('collapses same-day transactions under a single day header', async () => {
+    const now = Date.now();
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: now,
+        description: 'FirstToday',
+        source: 'manual',
+      },
+      {
+        id: 'x2',
+        amountMinorUnits: -3000,
+        time: now - 60 * 1000,
+        description: 'SecondToday',
+        source: 'manual',
+      },
+    ]);
+
+    const { getAllByTestId, getByText } = await renderScreen();
+
+    // Both same-day rows render...
+    expect(getByText('FirstToday')).toBeTruthy();
+    expect(getByText('SecondToday')).toBeTruthy();
+    // ...but only ONE day header is emitted for the whole ledger, proving the
+    // second row did not open its own section.
+    expect(getAllByTestId('ledger-day-header')).toHaveLength(1);
+  });
+
+  it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const older = now - 5 * day;
+    const expectedHeader = formatDate(older);
+    seed(cardHolding, [
+      { id: 'x1', amountMinorUnits: -5000, time: older, description: 'OldTxn', source: 'manual' },
+    ]);
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(expectedHeader)).toBeTruthy();
+    expect(queryByText('Today')).toBeNull();
+    expect(queryByText('Yesterday')).toBeNull();
   });
 
   it('keeps the footer add action for a disconnected former-Monobank holding', async () => {

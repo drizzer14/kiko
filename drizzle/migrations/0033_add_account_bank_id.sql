@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `bank_id` text;

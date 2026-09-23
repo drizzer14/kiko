@@ -22,8 +22,11 @@ Rules:
 - Load the project skills that match your focus for the mental model: kiko-architecture
   and kiko-domain for storage/sync/Money; kiko-charts and kiko-gestures for render cost;
   kiko-design-system and kiko-code-style for styling and conventions. For a security
-  focus, also apply the security-review skill mindset and the "`.env` is public-only" rule
-  in CLAUDE.md.
+  focus, also run the built-in Claude Code `security-review` skill ("Complete a security
+  review of the pending changes on the current branch"), and apply the standing refs
+  `kiko-compliance` and `docs/harness/dependency-hygiene.md`, plus the "`.env` is
+  public-only" rule in CLAUDE.md. For a whole-codebase App Store compliance sweep, load
+  `kiko-compliance` too.
 - Reconcile against any prior audit doc named in your brief. Do not re-report an item that
   the current code already fixed — grep to confirm each before you list it.
 - Verify every finding against the CURRENT code. Give each one a short id, a `file:line`,

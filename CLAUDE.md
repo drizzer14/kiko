@@ -25,9 +25,6 @@ below).
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
-| `npm run check:screenshots` | Maestro (`.maestro/regression.yaml`, RICH scenario) + pixelmatch (`scripts/checks/screenshot-diff/compare-png.js`), diffed against the STABLE-glass `screenshots/regression/6.9-inch/uk/` baseline (NOT the marketing `screenshots/appstore/...` set) | any captured image's per-pixel mismatch ratio over 0.5% (`maxMismatchRatio`) at pixelmatch `threshold` 0.1 fails; so does a missing baseline, a missing captured file, a Maestro run that fails or captures zero PNGs, or `maestro` missing from PATH | deep/manual only — needs a booted, pinned simulator with the RICH-scenario STABLE-glass screenshot-mode build (`ENVFILE=.env.screenshots.stable`) already installed (ops), so it is NOT in `check:all`/`check:deep` and NOT hook-wired |
-| `npm run check:screenshots:empty` | Same engine as `check:screenshots` (`scripts/checks/screenshots.sh`, scenario env vars set by the `scripts/checks/screenshots-empty.sh` wrapper), running `.maestro/regression-empty.yaml` against the `screenshots/regression-empty/6.9-inch/uk/` baseline | same thresholds/fail-closed guards as `check:screenshots` | deep/manual only — needs the EMPTY-scenario STABLE-glass build (`ENVFILE=.env.screenshots.empty.stable`) installed (ops); not in `check:all`/`check:deep`, not hook-wired |
-| `npm run check:screenshots:locked` | Same engine as `check:screenshots` (`scripts/checks/screenshots-locked.sh` wrapper), running `.maestro/regression-locked.yaml` (the single app-lock gate frame) against `screenshots/regression-locked/6.9-inch/uk/` | same thresholds/fail-closed guards as `check:screenshots` | deep/manual only — needs the LOCKED-scenario STABLE-glass build (`ENVFILE=.env.screenshots.locked.stable`) installed (ops); not in `check:all`/`check:deep`, not hook-wired |
 
 Composite scripts:
 
@@ -40,13 +37,13 @@ Composite scripts:
   default the mutation step mutates ONLY the source files changed
   against the merge-base with `${KIKO_MUTATION_BASE:-main}`
   (tests/fixtures excluded); set `KIKO_MUTATION_FULL=1` to force a
-  whole-project run. The mutation step tees its output to a stable,
+  whole-project run. When you deep-gate an integration branch stacked on `next`, pass `KIKO_MUTATION_BASE=next make deep`: the default `main` base diffs against the last release and re-mutates the ENTIRE next-vs-main delta (2026-09-17: 199 files / ~8850 mutants) instead of the integration's own changes (86 files vs `next`). Reserve the `main` base for a genuine full release-scope gate. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports
-  that count — for a human to watch directly; agents still must not poll
-  it — the exit code remains the only signal. See the `kiko-linter`
-  skill.
+  that count — for a human to watch directly. The full never-poll rule
+  (agents await only the exit code) lives in the `ops` skill — see it,
+  and the `kiko-linter` skill, before running this yourself.
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
@@ -70,48 +67,15 @@ failure back to the agent. A fresh checkout must run `npm install`
 before these hooks work — every wrapper's tool lives in
 `node_modules`.
 
-**Content dedup (a check skips when its inputs did not change).**
-`Stop` and `SubagentStop` both call the medium tier, so a
-subagent-driven session runs it once per finished subagent plus once
-for the coordinator; a developer agent also re-ran `check:deep` after
-only an icon asset was added. To stop these duplicate runs, every check
-records a fingerprint of its own real inputs when it passes, and skips
-the next run whose fingerprint is identical (helpers in
-`scripts/checks/_lib.sh`). The fast tier fingerprints the single target
-file plus its config and tool version; `dup` and `override-guard`
-fingerprint the changed-file set; `knip`, `deps`, and `mutation`
-fingerprint the `.ts/.tsx/.js` source state relative to `HEAD` plus the
-manifests and configs (so a non-source change — an icon asset, an
-`ios/` file, a doc — skips them). `medium.sh` also holds a per-worktree
-single-flight lock so parallel `SubagentStop`/`Stop` runs do not launch
-concurrent `knip`/`deps`/`jscpd`; `mutation.sh` holds a GLOBAL
-(machine-wide) single-flight lock at a fixed path NOT keyed by the
-worktree, so only one Stryker can run at a time across all worktrees —
-if a live run already holds it, a second run fails fast (exit 2) with a
-block naming the holding pid and worktree rather than blocking or
-queueing, and the lock is released on normal exit and on INT/TERM via a
-trap so a killed run never strands it. Stryker's own `concurrency` is
-2. The fingerprint state lives
-outside the repo, keyed by the worktree path, and is shared across
-sessions in that worktree — one session's pass lets another skip. A
-skip is recorded only on a PASS, so a failing check always re-runs.
-`osv-scanner` is deliberately never deduped: its result depends on the
-external vulnerability database, which changes even when the lockfile
-does not.
-
-
-### `check:screenshots` (App Store screenshot visual regression)
-
-The screenshot visual-regression checks (`check:screenshots` and its
-`:empty` / `:locked` siblings, and the separate marketing capture flow)
-are documented IN FULL in **`docs/harness/screenshots-check.md`** —
-marketing-vs-regression split, the 3 scenarios and their baselines, the
-stable-glass build requirement, the Maestro 2.10.0 path constraint, and
-the pixelmatch tolerances. Read that file before you touch any
-`.maestro/*regression*.yaml` flow, `scripts/checks/screenshots*.sh`,
-`scripts/checks/screenshot-diff/*`, or a `screenshots/regression*/`
-baseline. These checks are deep/manual only — not in
-`check:all`/`check:deep`, not hook-wired.
+**Content dedup (a check skips when its inputs did not change).** Every
+check fingerprints its own real inputs and skips its next run when that
+fingerprint is unchanged, so a subagent-driven session or a non-source
+change does not re-trigger a check that already passed; `osv-scanner` is
+the one exception — it is never deduped, because its result depends on
+the external vulnerability database, which changes even when the
+lockfile does not. Full mechanism (fingerprint scope per tier, the
+`medium.sh` and `mutation.sh` locks, skip-only-on-PASS) is in
+`docs/harness/checks-internals.md`.
 
 ## Override protocol
 
@@ -140,82 +104,34 @@ Every ignore-list / suppression exception in this repo is a real, verified
 usage with a concrete justification — not dead weight. The full inventory
 (`knip.json`, `tsconfig.json` `types`, `.depcheckrc.json`, `.gitleaks.toml`,
 `.jscpd.json`, `rules/fixtures/**`, the Stryker mutate-set and sandbox
-exclusions, `.npmrc` `min-release-age-exclude`, and the `check:screenshots`
-diff exclusions) lives in **`docs/harness/documented-exceptions.md`**. Read
+exclusions, `.npmrc` `min-release-age-exclude`, and the tracked public-only
+`.env.test`) lives in
+**`docs/harness/documented-exceptions.md`**. Read
 and UPDATE that file when you add, change, or rely on an exception. The
 standing rule holds: a suppression is acceptable only when it names a
 concrete reason a human or agent can verify (see "Override protocol" above).
 
+## Guideline 5.6 — no hidden features
+
+Standing architecture rule, not a one-off cleanup: every feature ships
+VISIBLE to an App Store reviewer in a release build — no flag-gated or
+conditional-visibility feature, and no demo/seed/screenshot module in
+or imported from app `src/`. The full rule, the mechanized Semgrep
+check (`kiko-no-hidden-feature-flag-or-demo-import`), and its known
+limits live in **`.claude/skills/kiko-architecture/SKILL.md`**
+("Guideline 5.6 — no hidden features"). Read that section before
+adding any build/env flag that controls what a user sees, or any
+dev-only demo/seed module.
+
 ## Dependency hygiene
 
-`.npmrc` enforces a 7-day dependency minimum age:
-
-```
-min-release-age=7
-min-release-age-exclude[]=Kiko
-min-release-age-exclude[]=react-native
-```
-
-Note for anyone editing this: the real npm 11 config keys are
-`min-release-age` (a plain number of **days**) and
-`min-release-age-exclude`. `minimum-release-age` /
-`minimum-release-age-exclude[]` are **not** recognized keys — npm
-silently warns "Unknown project config" and enforces nothing. This
-was verified against the npm CLI's own config definitions and by
-testing: a version published 2 days ago was blocked; a years-old
-version installed normally.
-
-This requires npm 11.10+. Global npm on this machine was upgraded
-(user-approved) from 10.9.3 to 11.19.1 to enable it.
-
-`check:deep`'s osv-scanner step previously failed on 6 known CVEs in
-transitive dev dependencies pulled in by the React Native CLI
-toolchain (`@babel/core`, `ajv`, `image-size`, `tmp`). Four had a
-patched version available and are now remediated via the
-`overrides` block in `package.json` (`@babel/core`, `ajv`, `tmp`);
-two (in `image-size`) do not yet — see "Known dependency CVEs"
-below. This is tracked, real risk, not a harness bug — do not
-suppress it.
-
-`check:deep`'s osv-scanner also flagged CVE GHSA-67mh-4wv8-2f99:
-esbuild <0.25.0, pulled in transitively by drizzle-kit's deprecated
-`@esbuild-kit/core-utils`. Same pattern as the other three: pinned
-via the `overrides` block in `package.json` to `^0.25.12`.
-
-### `.env` is public-only
-
-`react-native-dotenv` inlines every `.env` value into the JS bundle at
-build time, so anything placed there ships in plaintext to every device.
-Only public, non-secret values (a public API URL, a feature flag) belong
-in `.env`. Secrets live in the iOS Keychain (`react-native-keychain`),
-never in `.env`, `.env.local`, the database, or a log.
-
-`.env` is not tracked; only the public `.env.example` template is. The
-`postinstall` step (`scripts/ensure-env.js`) copies `.env.example` to
-`.env` automatically when `.env` is missing, so a fresh checkout,
-worktree, or CI has a working `.env` with no manual step. It never
-overwrites an existing `.env`, so a hand-edited file or a `.env.local`
-override survives `npm install`.
-
-### Known dependency CVEs
-
-`check:deep` will continue to flag 2 `image-size` advisories
-(GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr) at version 1.2.1, a
-transitive dev dependency of the React Native CLI toolchain. No
-patched release exists upstream yet, so there is nothing to pin via
-`overrides`. This is accepted debt, not a suppressed finding — do
-not silence it. Re-run `npm run check:deep` periodically and upgrade
-`image-size` (via `overrides`) the moment a fixed version ships.
-
-`check:deep` also flags `decode-uri-component` 0.2.2, advisory
-GHSA-vcc3-ghjq-m6fr (CVSS 6.6), pulled transitively via
-`@react-navigation/native` -> `@react-navigation/core` ->
-`query-string` -> `decode-uri-component`. The fixed release (0.5.0)
-is ESM-only and breaks `query-string@7.1.3` (CommonJS) and Jest, so
-it cannot be pinned via `overrides` today. Accepted as tracked debt,
-same class as the `image-size` CVEs above — do not suppress it;
-re-check periodically and pin once `query-string` ships an
-ESM-compatible or patched line.
+Exact-pinning, the `.npmrc` 7-day minimum age, the npm version
+requirement, the `.env` public-only rule, and the tracked/accepted
+dependency CVEs are documented IN FULL in
+**`docs/harness/dependency-hygiene.md`**. Standing rule: the accepted
+CVEs there (`image-size`, `decode-uri-component`) are tracked, real
+debt, not a suppressed finding — never silence them; re-check
+periodically and pin the moment a fix ships.
 
 ## Future stubs (disabled — do not enable without discussion)
 
@@ -252,7 +168,7 @@ gap — it does not do the task itself.
 | developer | Writes all TypeScript/React Native code | sonnet | high | `claude --agent developer --effort high` |
 | planner | Writes implementation plans from a spec or feature request | opus | medium | `claude --agent planner --effort medium` |
 | debugger | Isolates faults, writes no code | sonnet | high | `claude --agent debugger --effort high` |
-| reviewer | Reviews diffs: correctness, project conventions, then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
+| reviewer | Reviews diffs: correctness, project conventions, App Store compliance (`kiko-compliance` skill), then ponytail over-engineering findings | opus | high | `claude --agent reviewer --effort high` |
 | qa | Writes Jest/RNTL unit tests and Maestro E2E flows | sonnet | medium | `claude --agent qa --effort medium` |
 | designer | Owns theme tokens and shared styled components | sonnet | medium | `claude --agent designer --effort medium` |
 | explorer | Read-only codebase search | sonnet | low | `claude --agent explorer --effort low` |

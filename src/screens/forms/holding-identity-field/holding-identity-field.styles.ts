@@ -18,6 +18,14 @@ export const styles = StyleSheet.create((theme) => ({
   nameBlock: {
     flex: 1,
   },
+  // The row-level error's own left offset (round-4 device feedback item 5):
+  // the icon chip's fixed `theme.spacing(11)` width (icon-editor.styles.ts's
+  // `iconChip`) plus the row's own `gap={3}` before the name column — so the
+  // message aligns under the NAME INPUT it actually describes, not flush-left
+  // under the icon beside it.
+  nameFieldError: {
+    marginLeft: theme.spacing(11) + theme.spacing(3),
+  },
   // A labelled name field: a bordered, filled input so the editable name reads
   // as a proper field rather than a tiny inline control. Pinned to the shared
   // control height (the iOS 44pt minimum tap target) with a fixed `height`, not
@@ -27,7 +35,7 @@ export const styles = StyleSheet.create((theme) => ({
   // matching the icon chip's fixed square beside it.
   nameField: {
     color: theme.colors.textPrimary,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(2),

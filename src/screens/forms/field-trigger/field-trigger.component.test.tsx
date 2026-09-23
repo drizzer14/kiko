@@ -30,4 +30,33 @@ describe('FieldTrigger', () => {
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
   });
+
+  it('renders a leading text mark when `leadingText` is passed and no `icon` is given', async () => {
+    const { getByText } = await render(
+      <FieldTrigger
+        label="Currency"
+        onPress={jest.fn()}
+        value="AED — UAE Dirham"
+        valueTone="textPrimary"
+        leadingText="AED"
+      />,
+    );
+
+    expect(getByText('AED')).toBeTruthy();
+  });
+
+  it('prefers `icon` over `leadingText` when both are somehow passed', async () => {
+    const { queryByText } = await render(
+      <FieldTrigger
+        label="Category"
+        onPress={jest.fn()}
+        value="Groceries"
+        valueTone="textPrimary"
+        icon="cart.fill"
+        leadingText="AED"
+      />,
+    );
+
+    expect(queryByText('AED')).toBeNull();
+  });
 });

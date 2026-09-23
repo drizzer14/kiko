@@ -1,15 +1,18 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActionSheetIOS, StyleSheet } from 'react-native';
-import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
-import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import { StyleSheet } from 'react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
+import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 
-import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
-import { entityCardBackground } from '../../design-system/entity-tint';
-import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
+import { darkTheme } from '../../design-system/theme';
+import { entityIconTileGradient } from '../../design-system/entity-tint';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -238,7 +241,7 @@ describe('AccountsScreen', () => {
     });
     const { getAllByTestId } = await renderAccounts();
 
-    // Each account maps to its own GlassSurface card (testID `account-card`),
+    // Each account maps to its own Card (testID `account-card`),
     // so two active accounts yield two distinct cards rather than one group.
     expect(getAllByTestId('account-card')).toHaveLength(2);
   });
@@ -254,15 +257,12 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
-  it('deletes a manual account via the deep-press delete menu confirm', async () => {
+  it('deletes a manual account via the themed deep-press delete confirm', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    const sheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1));
-    await renderAccounts();
+    const { getByTestId, getByText } = await renderAccounts();
     // The manual card is wrapped in the deep-press long-press. A hold that stays
-    // still opens the destructive delete sheet; confirming its destructive index
-    // removes the account.
+    // still opens the themed ConfirmSheet (not a native ActionSheetIOS); pressing
+    // its destructive confirm removes the account.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -270,12 +270,9 @@ describe('AccountsScreen', () => {
         { state: State.END },
       ]);
     });
-    expect(sheetSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ options: ['Cancel', 'Delete "Cash"'] }),
-      expect.any(Function),
-    );
+    expect(getByText('Delete "Cash"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
-    sheetSpy.mockRestore();
   });
 
   it('opens the account (does not delete) on a plain tap of the card', async () => {
@@ -350,7 +347,13 @@ describe('AccountsScreen', () => {
     expect(queryByLabelText('Change Cash icon')).toBeNull();
   });
 
-  it('tints the account icon with its stored color', async () => {
+  // The squircle-gradient icon tile is the permanent treatment (see
+  // `EntityIconTile`): the account's color drives the icon TILE's gradient
+  // fill (never the raw glyph tint, which is the fixed legible `onAccent`
+  // white), and the card itself is a plain neutral surface instead of an
+  // entity-colored wash. See holding-card.component.test.tsx for the
+  // identical pair of tests on the holding card.
+  it('tints the account icon glyph with the legible onAccent token, not the raw entity color', async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -359,18 +362,10 @@ describe('AccountsScreen', () => {
     });
     const { getByLabelText } = await renderAccounts();
 
-    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.blue);
+    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  it('falls back to the kind default color when the account has no stored color', async () => {
-    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
-    const { getByLabelText } = await renderAccounts();
-
-    // A `cash` account with no color reads the cash kind default (khaki).
-    expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
-  });
-
-  it('washes each account card with a flat darkened background of its color on first render', async () => {
+  it("derives the icon tile's gradient from the account's stored color", async () => {
     setLiveData({
       accounts: [
         { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
@@ -379,17 +374,36 @@ describe('AccountsScreen', () => {
     });
     const { getByTestId } = await renderAccounts();
 
-    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.blue));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.blue);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
   });
 
-  it('washes an uncolored account card with a flat darkened background of its kind default', async () => {
+  it("derives the icon tile's gradient from the kind default when the account has no stored color", async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId } = await renderAccounts();
 
     // A `cash` account with no color reads the cash kind default (khaki).
-    const flat = StyleSheet.flatten(getByTestId('account-card-wash').props.style);
-    expect(flat.backgroundColor).toBe(entityCardBackground(darkTheme.colors.entityColors.khaki));
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.khaki);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
+  });
+
+  it('leaves the account card itself the shared solid surface, not an entity-color wash', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', color: darkTheme.colors.entityColors.blue },
+      ],
+      holdings: [],
+    });
+    const { getByTestId } = await renderAccounts();
+
+    // The color lives on the icon tile only (see the tests above) — the card
+    // itself is the shared solid content-layer `Card`: a flat `surface` fill
+    // applied directly to its own node (no separate base/wash sub-layer the
+    // way `GlassSurface` used to render, and no colored wash at all).
+    const flat = StyleSheet.flatten(getByTestId('account-card').props.style);
+    expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
   it('draws the shared hairline card border on first render (G2)', async () => {

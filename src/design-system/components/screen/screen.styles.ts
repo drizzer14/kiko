@@ -48,18 +48,19 @@ export const styles = StyleSheet.create((theme) => ({
       ? theme.spacing(FOOTER_GAP_STEP) + bottomClearance
       : theme.spacing(4),
   }),
-  // The scroll-mode content container: no `flex: 1` (a ScrollView's content
-  // container sizes to its content, not the viewport), same base padding as
-  // the non-scroll `content` above. When a `footer` sits below it (outside
-  // the ScrollView, as a sibling — see `screen.component.tsx`), this
-  // container drops its own bottom padding so the footer's own
-  // `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the ONE gap above
-  // the footer button, instead of both adding `theme.spacing(FOOTER_GAP_STEP)`
-  // back to back — the doubled, disproportionate gap feedback flagged on a
-  // short unscrolled form (e.g. deposit-edit), since the two views are
-  // adjacent siblings with no shared box to collapse the stacked padding.
-  // With no `footer`, this container legitimately owns the scroll content's
-  // own trailing edge, so it keeps the base bottom padding.
+  // The scroll-mode content container: no `flex: 1` by default (a
+  // ScrollView's content container sizes to its content, not the viewport),
+  // same base padding as the non-scroll `content` above. When a `footer` sits
+  // below it (outside the ScrollView, as a sibling — see
+  // `screen.component.tsx`), this container drops its own bottom padding so
+  // the footer's own `paddingTop: theme.spacing(FOOTER_GAP_STEP)` below is the
+  // ONE gap above the footer button, instead of both adding
+  // `theme.spacing(FOOTER_GAP_STEP)` back to back — the doubled,
+  // disproportionate gap feedback flagged on a short unscrolled form (e.g.
+  // deposit-edit), since the two views are adjacent siblings with no shared
+  // box to collapse the stacked padding. With no `footer`, this container
+  // legitimately owns the scroll content's own trailing edge, so it keeps the
+  // base bottom padding.
   scrollContent: (hasFooter: boolean) => ({
     padding: theme.spacing(4),
     paddingBottom: hasFooter ? 0 : theme.spacing(4),

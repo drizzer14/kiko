@@ -264,6 +264,22 @@ describe('PieChart', () => {
     expect(within(getByTestId('pie-chart-legend-toggle')).getByText('Show all')).toBeTruthy();
   });
 
+  it('shows a down chevron beside the toggle label when collapsed, and an up chevron once expanded', async () => {
+    const { getByTestId } = await render(
+      <PieChart slices={mixedShareSlices} baseCurrency="USD" legendMinShare={0.05} />,
+    );
+
+    expect(getByTestId('pie-chart-legend-toggle-chevron').props.name).toBe('chevron.down');
+
+    await fireEvent.press(getByTestId('pie-chart-legend-toggle'));
+
+    expect(getByTestId('pie-chart-legend-toggle-chevron').props.name).toBe('chevron.up');
+
+    await fireEvent.press(getByTestId('pie-chart-legend-toggle'));
+
+    expect(getByTestId('pie-chart-legend-toggle-chevron').props.name).toBe('chevron.down');
+  });
+
   it('still draws every arc while the legend is collapsed — the ring is never cropped', async () => {
     const { getByTestId } = await render(
       <PieChart slices={mixedShareSlices} baseCurrency="USD" legendMinShare={0.05} />,

@@ -59,6 +59,14 @@ const makeTx = (allTransactions: { id: string; description: string }[]) => {
   return { tx, captured };
 };
 
+describe('categoryOverridesRepo.allQuery', () => {
+  it('builds a reactive query targeting category_overrides', () => {
+    // The read query returns a Drizzle builder (never executed data), so the
+    // form can hand it to useLiveQuery. Only the SQL shape is asserted here.
+    expect(categoryOverridesRepo.allQuery().toSQL().sql).toContain('category_overrides');
+  });
+});
+
 describe('categoryOverridesRepo.upsertCategoryOverride', () => {
   it('upserts the rule keyed by the normalized name and rewrites matching transactions', async () => {
     const { tx, captured } = makeTx([

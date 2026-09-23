@@ -2,69 +2,42 @@ import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { ratesRepo } from '@kiko/rates/repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
-import { useSync } from '@kiko/sync/use-sync';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
+import { pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { TFunction } from 'i18next';
 import type { FC } from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, type ScrollViewInstance } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useUnistyles } from 'react-native-unistyles';
 
-import type { Currency } from '../../currency/currency';
 import type { AccountRow } from '../../db/schema';
-import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import Button from '../../design-system/components/button';
-import CardContextMenu from '../../design-system/components/card-context-menu';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import EditHeaderButton from '../../design-system/components/edit-header-button';
-import Screen from '../../design-system/components/screen';
-import SymbolIcon from '../../design-system/components/symbol';
+import EntityHeaderIcon from '../entity-header-icon';
+import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
+import type { Currency } from '../../currency/currency';
+import EntityAmountHeader from '../entity-amount-header';
+import Button from '../../design-system/components/button';
+import Screen from '../../design-system/components/screen';
+import { isSyncedHolding } from '../../holdings/deletable';
+import { sumByCurrency } from '../../rates/currency-totals';
+import { accountKindSymbol } from '../../holdings/entity-symbols';
+import { defaultAccountColor } from '../../holdings/entity-colors';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { onGridDragEnd } from '../../design-system/grid-interaction';
-import { isSyncedHolding } from '../../holdings/deletable';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { accountKindSymbol } from '../../holdings/entity-symbols';
-import { disconnectMonobank } from '../../monobank/disconnect';
-import { readToken } from '../../monobank/token';
 import type { AccountsStackParamList } from '../../navigation/types';
-import { sumByCurrency } from '../../rates/currency-totals';
+import { isConnectableBank, statementFormatIdForBank } from '../../bank-sync/bank-catalog';
 import { buildRateTable, guardedNetWorth } from '../../rates/net-worth-view';
-import EntityAmountHeader from '../entity-amount-header';
-import EntityHeaderIcon from '../entity-header-icon';
+import CardContextMenu from '../../design-system/components/card-context-menu';
+import EditHeaderButton from '../../design-system/components/edit-header-button';
+import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
 
-import { styles } from './account-detail.styles';
-import CryptoSyncSection from './crypto-sync-section';
-import { formatLastSyncAt } from './format-last-sync';
 import HoldingCard from './holding-card';
-import MonobankTokenField from './monobank-token-field';
-
-// Connect (mark institution + first import) and Sync (re-import) are the same
-// action; the label, glyph, and emphasis differ. A link glyph on the neutral
-// `secondaryTonal` fill while the action still establishes the connection; a
-// refresh glyph on the affirmative blue `primary` fill once it re-imports. The
-// variant is decided here (not inline) so the screen component's JSX stays a
-// straight read and its cognitive-complexity budget is unaffected.
-const actionPresentation = (
-  isConnectedToMonobank: boolean,
-  isSyncing: boolean,
-  t: TFunction,
-): { label: string; icon: string; variant: 'primary' | 'secondaryTonal' } => {
-  if (!isConnectedToMonobank) {
-    return { label: t('accountDetail.connectMonobank'), icon: 'link', variant: 'secondaryTonal' };
-  }
-
-  return {
-    label: isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow'),
-    icon: 'arrow.triangle.2.circlepath',
-    variant: 'primary',
-  };
-};
+import { styles } from './account-detail.styles';
+import BankSyncSection from './bank-sync-section';
+import CryptoSyncSection from './crypto-sync-section';
 
 // The account's display identity for the view-only header: its stored icon (or
 // the kind default), and its effective color resolved through the SAME
@@ -94,11 +67,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  // The Monobank "last sync" line reads this account's OWN cursor from the
-  // per-connection `sync_state` table (de-globalized from `settings` — see the
-  // `syncState` table comment in `db/schema.ts`), so a second connection never
-  // shows another's time.
-  const { data: syncStateRows } = useLiveQuery(syncStateRepo.getQuery(accountId), ['sync_state']);
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -145,89 +113,89 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   const isBankAccount = account?.kind === 'bank';
   const isCryptoAccount = account?.kind === 'crypto';
-  const isConnectedToMonobank = account?.institution === 'monobank';
-
-  const { isSyncing, error, sync } = useSync();
-  const [tokenMessage, setTokenMessage] = useState<string | undefined>();
-  // Guards a fast double-tap: the button is disabled only on `isSyncing`, which
-  // is still false during the `readToken(accountId)` await below, so a second press
-  // could fire `sync` again before the first resolves.
-  const inFlight = useRef(false);
-
-  // Connect (mark institution + first import) and Sync (re-import) are the
-  // same action against a bank account; only the label differs. Guard on a
-  // stored token first so a missing token points the user at the token field
-  // above (NO_TOKEN_MESSAGE) instead of surfacing an opaque sync failure.
-  const handlePress = async (): Promise<void> => {
-    if (inFlight.current) {
-      return;
-    }
-    inFlight.current = true;
-    try {
-      setTokenMessage(undefined);
-      if ((await readToken(accountId)) === undefined) {
-        setTokenMessage(t('accountDetail.noTokenMessage'));
-        return;
-      }
-      await sync(accountId);
-    } finally {
-      inFlight.current = false;
-    }
-  };
-
-  // Disconnect is the required first step before a Monobank account can be
-  // deleted: it clears the connection and the stored Keychain token, turning the
-  // account manual (its data kept as a historical snapshot). Confirm first, since
-  // it discards the token. Once it resolves, the live query flips `institution`
-  // to null and the account becomes swipe-deletable on the accounts list.
-  const runDisconnect = async (): Promise<void> => {
-    try {
-      await disconnectMonobank(accountId);
-    } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
-    }
-  };
-
-  const confirmDisconnect = (): void => {
-    Alert.alert(
-      t('accountDetail.disconnectMonobank'),
-      t('accountDetail.disconnectMonobankMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('accountDetail.disconnectAction'),
-          style: 'destructive',
-          onPress: () => {
-            runDisconnect();
-          },
-        },
-      ],
-    );
-  };
-
-  const {
-    label: actionLabel,
-    icon: actionIcon,
-    variant: actionVariant,
-  } = actionPresentation(isConnectedToMonobank, isSyncing, t);
 
   // Every bank account shows the connect/sync affordance independently — there
-  // is no single-connection gate, so a second Monobank account can connect
-  // alongside the first (each binds its own per-account token and cursor).
-  const showActionButton = isBankAccount;
+  // is no single-connection gate, so a second connection can connect
+  // alongside the first (each binds its own per-account credential and cursor).
+  // Gated on the account's picked bank being CONNECTABLE (device-feedback-
+  // round-4 item 4 — the SAME `bankCatalog` capability BankTypeField's picker
+  // already reads): an import-only bank (e.g. PrivatBank) must show NO
+  // sync/connect section, only the Import-statement footer button below. An
+  // account with no bank picked yet (or one from before this feature)
+  // defaults to connectable rather than guessing it is import-only.
+  const showActionButton = isBankAccount && isConnectableBank(account?.bankId);
+  // The Import-statement footer button only makes sense once the account's
+  // picked bank resolves to a known statement format (cash/crypto accounts,
+  // and a bank account with no bank picked yet, have nothing to scope an
+  // import to).
+  const canImportStatement = statementFormatIdForBank(account?.bankId) !== undefined;
+
+  // The document-picker statement-import entry point (docs/plans/statement-
+  // import.md section B.1), same style as the create-form's `connectMonobank`
+  // closure: open the picker, then — on a real pick, not a cancel — hand the
+  // picked `uri` straight to `StatementImportScreen`, which owns the actual
+  // read/decode/detect/parse/preview. This handler does NOT pre-read the
+  // file: an earlier revision read it here too (as a validity check before
+  // navigating), but that made every pick pay for two reads of the same file
+  // and, worse, left the READ's own failure mode (an iCloud placeholder not
+  // yet downloaded, a revoked security-scoped URL) unhandled right here —
+  // the single read now lives entirely in `StatementImportScreen`, which
+  // already guards it and renders a graceful error state on failure. The
+  // accepted-type list includes xlsx from the start even though Phase 1 only
+  // ships the Monobank CSV format (PrivatBank XLSX lands in a later phase
+  // and must not need this list revisited). A cancelled picker rejects with
+  // `OPERATION_CANCELED` — caught and swallowed here, not surfaced as an
+  // error.
+  const pickAndOpenStatement = async (): Promise<void> => {
+    let results: Awaited<ReturnType<typeof pick>>;
+
+    try {
+      results = await pick({ type: [types.csv, types.xlsx, types.plainText, types.allFiles] });
+    } catch {
+      // A cancelled picker rejects with `OPERATION_CANCELED` — the expected
+      // case, handled the same as every other connect-field's `catch {}`
+      // above: fail silently and leave the screen exactly as it was, no
+      // error surfaced for the (very common) "user backed out" path.
+      return;
+    }
+
+    const picked = results.at(0);
+
+    if (!picked) {
+      return;
+    }
+
+    navigation.navigate('StatementImport', {
+      filePath: picked.uri,
+      accountId,
+      expectedFormatId: statementFormatIdForBank(account?.bankId),
+    });
+  };
 
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
       footer={
-        <Button
-          variant="primary"
-          fullWidth
-          onPress={() => navigation.navigate('HoldingForm', { accountId })}
-        >
-          {t('accountDetail.addHolding')}
-        </Button>
+        <Box gap={2}>
+          {canImportStatement && (
+            <Button
+              variant="secondaryTonal"
+              fullWidth
+              onPress={pickAndOpenStatement}
+              icon="doc.badge.plus"
+            >
+              {t('accountDetail.importStatement')}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            fullWidth
+            onPress={() => navigation.navigate('HoldingForm', { accountId })}
+          >
+            {t('accountDetail.addHolding')}
+          </Button>
+        </Box>
       }
     >
       <Box gap={4} testID="account-detail-content">
@@ -250,79 +218,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           </>
         )}
 
-        {showActionButton && <Box style={styles.divider} />}
-
-        {showActionButton && (
-          <MonobankTokenField accountId={accountId} isConnected={isConnectedToMonobank} />
-        )}
-
-        {showActionButton && (
-          // gap={4} (not 2) so the "last synced" line ↔ actions-row spacing equals
-          // the surrounding content container's gap={4}, keeping one even vertical
-          // rhythm. The Sync and Disconnect buttons themselves sit SIDE BY SIDE in
-          // the single actions row below, not stacked.
-          <Box gap={4} testID="monobank-sync-status-actions">
-            {isConnectedToMonobank && (
-              <Box direction="row" gap={2} style={styles.statusLine}>
-                <SymbolIcon name="clock" tone="textSecondary" />
-                <Text variant="body" tone="textSecondary">
-                  {t('accountDetail.lastSync', {
-                    // The DISPLAY stamp (moves on any run that imported rows,
-                    // including a partial failure), falling back to the pure
-                    // statement cursor for installs that predate the display
-                    // column (it reads null there).
-                    time: formatLastSyncAt(
-                      syncStateRows.at(0)?.lastSyncDisplayAt ??
-                        syncStateRows.at(0)?.lastSyncAt ??
-                        null,
-                      t,
-                    ),
-                  })}
-                </Text>
-              </Box>
-            )}
-            {/* Sync and Disconnect share a single row. The Sync action is the
-              affirmative blue `primary` CTA once connected; before connection the
-              same button is the neutral Connect affordance (secondaryTonal).
-              Disconnect stays a neutral tonal action beside it — never blue. */}
-            <Box direction="row" gap={2} testID="monobank-sync-actions-row">
-              <Button
-                variant={actionVariant}
-                size="small"
-                fullWidth={false}
-                onPress={() => {
-                  handlePress();
-                }}
-                disabled={isSyncing}
-                icon={actionIcon}
-              >
-                {actionLabel}
-              </Button>
-              {isConnectedToMonobank && (
-                <Button
-                  variant="secondaryTonal"
-                  size="small"
-                  fullWidth={false}
-                  onPress={confirmDisconnect}
-                  icon="link.badge.plus"
-                >
-                  {t('accountDetail.disconnectAction')}
-                </Button>
-              )}
-            </Box>
-          </Box>
-        )}
-
-        {tokenMessage !== undefined && (
-          <Text variant="body" tone="negative">
-            {tokenMessage}
-          </Text>
-        )}
-
-        {error !== undefined && (
-          <Text variant="body" tone="negative">
-            {error}
-          </Text>
+        {showActionButton && account && (
+          <>
+            <Box style={styles.divider} />
+            <BankSyncSection account={account} />
+          </>
         )}
 
         <Box style={styles.divider} />

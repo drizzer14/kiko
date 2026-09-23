@@ -1,12 +1,11 @@
-import Clipboard from '@react-native-clipboard/clipboard';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, Text as RNText } from 'react-native';
+import { Linking, Pressable } from 'react-native';
 
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import TextField from '../../../design-system/components/text-field';
 import { styles } from '../account-detail.styles';
+import Box from '../../../design-system/components/box';
+import ClipboardTextField from '../clipboard-text-field';
+import Text from '../../../design-system/components/text';
 
 import type { MonobankTokenInputProps } from './monobank-token-input.props';
 
@@ -14,9 +13,9 @@ const MONOBANK_API_URL = 'https://api.monobank.ua/';
 
 // The shared, presentational Monobank token-entry surface: the
 // "Open api.monobank.ua" link, the token TextField, and its trailing paste-icon
-// button (which reads the clipboard into the field). It owns NO Save button,
+// button (which reads the clipboard into the field). It owns NO Connect button,
 // sync status, or Disconnect action — those are edit-surface-only concerns that
-// stay with `MonobankTokenField`. Both the account-detail edit surface and the
+// stay with `MonobankConnectField`. Both the account-detail edit surface and the
 // add-account create form consume this so the two entry surfaces stay identical
 // rather than drifting as two hand-rolled copies.
 const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }) => {
@@ -24,12 +23,6 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
 
   const handleOpenMonobank = (): void => {
     Linking.openURL(MONOBANK_API_URL);
-  };
-
-  const handlePasteToken = (): void => {
-    Clipboard.getString().then((clipboardValue) => {
-      onChangeText(clipboardValue.trim());
-    });
   };
 
   return (
@@ -40,31 +33,25 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText }
         onPress={handleOpenMonobank}
         style={styles.linkPressable}
       >
-        <RNText style={styles.link}>{t('accountDetail.openMonobankLink')}</RNText>
+        <Text variant="body" tone="accent">
+          {t('accountDetail.openMonobankLink')}
+        </Text>
       </Pressable>
 
-      <Box direction="row" gap={3} style={styles.fieldRow}>
-        <Box style={styles.tokenFieldColumn}>
-          <TextField
-            label={t('accountDetail.tokenLabel')}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={t('accountDetail.monobankTokenPlaceholder')}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </Box>
+      <ClipboardTextField
+        label={t('accountDetail.tokenLabel')}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={t('accountDetail.monobankTokenPlaceholder')}
+        pasteAccessibilityLabel={t('accountDetail.pasteFromClipboard')}
+        secureTextEntry
+      />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('accountDetail.pasteFromClipboard')}
-          onPress={handlePasteToken}
-          style={styles.iconButton}
-        >
-          <SymbolIcon name="doc.on.clipboard" tone="textSecondary" />
-        </Pressable>
-      </Box>
+      {/* Guideline 5.6 data-handling disclosure: the token never leaves the
+          device except straight to Monobank's own API. */}
+      <Text variant="caption" tone="textSecondary">
+        {t('accountDetail.monobankKeychainDisclosure')}
+      </Text>
     </Box>
   );
 };

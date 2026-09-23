@@ -1,4 +1,3 @@
-import { SCREENSHOT_MODE } from '@env';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
 import { initDatabase } from '@kiko/db/client';
@@ -86,30 +85,6 @@ const migratePerAccountBinanceCredential = async (): Promise<void> => {
   await migrateBinanceCredentialToPerAccount(connected.at(0)?.id);
 };
 
-/**
- * DEV/TEST-ONLY. In a build made against `.env.screenshots*`
- * (`SCREENSHOT_MODE=true`), rebuild the deterministic App Store screenshot
- * dataset before the gate paints its children.
- *
- * PRODUCTION SAFETY (App Store Guideline 5.6): the committed `.env` carries no
- * `SCREENSHOT_MODE`, so react-native-dotenv inlines `undefined` here
- * (babel.config.js), this comparison constant-folds to `false`, and Metro's
- * constant-folding pass deletes the whole block — INCLUDING the `require` —
- * BEFORE dependency collection, exactly as it does for `if (__DEV__)
- * require(...)`. The screenshot seed and its fabricated dataset are therefore
- * never bundled into the shipping binary. The `require` is intentionally lazy
- * and lexically inside the guard for precisely this reason; a static import (or
- * a `require` behind an `isScreenshotMode()` CALL) would defeat the DCE.
- */
-const seedScreenshotDataIfEnabled = async (): Promise<void> => {
-  if (SCREENSHOT_MODE === 'true') {
-    const { seedScreenshotData } =
-      require('@kiko/screenshot/seed/screenshot-seed') as typeof import('@kiko/screenshot/seed/screenshot-seed');
-
-    await seedScreenshotData();
-  }
-};
-
 const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [state, setState] = useState<MigrationState>({ status: 'pending' });
@@ -135,7 +110,6 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
       .then(applyPersistedLanguage)
-      .then(seedScreenshotDataIfEnabled)
       .then(migrateLegacyToken)
       .then(migratePerAccountMonobankToken)
       .then(migratePerAccountBinanceCredential)

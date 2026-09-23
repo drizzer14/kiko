@@ -7,7 +7,8 @@ description: Invoke when touching a react-native-svg chart component (BarChart, 
 
 Source files: `src/screens/statistics/bar-chart/`,
 `src/screens/statistics/pie-chart/`,
-`src/screens/statistics/net-worth-line/`, and the manual mock at
+`src/screens/statistics/net-worth-line/`,
+`src/screens/statistics/category-trend-line/`, and the manual mock at
 `__mocks__/react-native-svg.tsx`.
 
 ## Fixed logical coordinate space + stretch-to-fit
@@ -19,15 +20,17 @@ container's real pixel width. The `<Svg>` is then rendered with
 `width="100%"` and `viewBox="0 0 <VIEW_WIDTH> <height>"` plus
 `preserveAspectRatio="none"`, which stretches that fixed logical space to
 fill whatever width the container actually lays out at. This means every
-scale/tick builder (`buildScales`, `buildTicks`, `buildXTicks`, and
-`bar-chart`/`pie-chart`'s equivalents) works in the same fixed logical
-units regardless of device width — do not read `Dimensions` or a layout
-`onLayout` width inside a chart's geometry math.
+scale/tick builder (`buildScales`, `buildTicks`,
+`buildXGridTicks`/`buildXLabelTicks`, and `bar-chart`/`pie-chart`'s
+equivalents) works in the same fixed logical units regardless of device
+width — do not read `Dimensions` or a layout `onLayout` width inside a
+chart's geometry math.
 
 ## Hand-rolled scale/tick builders
 
-There is no charting library — `buildScales`/`buildTicks`/`buildXTicks`
-in `net-worth-line.component.tsx` are hand-rolled. Read that file for
+There is no charting library —
+`buildScales`/`buildTicks`/`buildXGridTicks`/`buildXLabelTicks` in
+`net-worth-line.component.tsx` are hand-rolled. Read that file for
 their current shape before extending or copying the pattern to a new
 chart; it is the most complete example in the app and includes:
 
@@ -56,15 +59,21 @@ chart; it is the most complete example in the app and includes:
   instead of spreading `TICK_COUNT` ticks across a zero-width range, which
   would otherwise draw every label and every Y gridline on top of each
   other at the same y;
-- an X-axis (time) tick set (`buildXTicks`) with intermediate date labels
-  between the two range extremes, each pinned under its own vertical
-  gridline by a percentage `left` offset computed from the same `x()`
-  scale the plotted line uses, plus a single-instant collapse case (one
-  point, or every point at the same time) that returns just the start
-  label instead of stacking every date at the same x;
-- vertical gridlines for the interior X ticks, drawn in the same `<Svg>`
-  alongside the horizontal Y gridlines, so the plot reads as a real grid
-  rather than only horizontal bands.
+- an X-axis (time) tick set, DECOUPLED into two separate fraction sets
+  built from one shared helper (`buildXTickSet`): `buildXGridTicks`
+  (`X_GRID_FRACTIONS`) draws the interior vertical gridlines, while
+  `buildXLabelTicks` (`X_LABEL_FRACTIONS`) places the date labels — read
+  those constants in `net-worth-line.component.tsx` for their current
+  fractions rather than a restated number here. Each interior label is
+  pinned under its own x by a percentage `left` offset computed from the
+  same `x()` scale the plotted line uses; both builders separately
+  collapse a single-instant range (one point, or every point at the same
+  time) — the labels to just the start label, the gridlines to none —
+  instead of stacking every tick at the same x;
+- vertical gridlines for the interior X ticks (`buildXGridTicks`), drawn
+  in the same `<Svg>` alongside the horizontal Y gridlines, so the plot
+  reads as a real grid rather than only horizontal bands, independent of
+  however many date labels render below it.
 
 A new chart with its own axis should follow this same split: a pure
 `buildScales`/`buildTicks` function returning plain data (never JSX), then
@@ -81,7 +90,7 @@ polyline's `points`) is to look the element up by `testID` through the
 manual mock and read its props back. A chart primitive with no `testID`
 is untestable geometry — always add one when adding a new primitive,
 following the existing `<chart-name>-<primitive>[-<key>]` naming (e.g.
-`bar-chart-bar-card`, `net-worth-line-x-grid-0.25`).
+`bar-chart-bar-card`, `net-worth-line-x-grid-0.50`).
 
 ## Adding a new chart requires extending the mock
 
@@ -164,27 +173,48 @@ function for the tie-break rule before touching legend percent rendering.
 (`src/screens/statistics/category-trend-line/category-trend-line.component.tsx`)
 is the "Spending Trend by Category" chart: a multi-line plot, one
 `<Polyline>` per category, each point that category's total EXPENSE
-inside one calendar-month bucket (a per-period figure, never
-cumulative), in the base currency's MAJOR units.
+inside one day-or-week bucket over the active Statistics date range (a
+per-period figure, never cumulative), in the base currency's MAJOR
+units.
 
 The builder, `buildCategoryTrend`
-(`src/statistics/category-trend.ts`), reuses the donut's exact
+(`src/statistics/category-trend/category-trend.ts`), reuses the donut's exact
 expense/exclusion/default-fold/conversion rules — see
 `category-breakdown.ts` (`buildCategoryBreakdown`) rather than
 restating them here — and resolves each line's color the same way the
-donut does, via `resolveCategoryColor`. It buckets every kept expense
-by UTC calendar month, zero-fills every month in the earliest-to-latest
-span for every series so all lines share one set of X positions even
-where a category had no spend in a given month, and sorts the returned
-series by total spend descending.
+donut does, via `resolveCategoryColor`. It no longer buckets by
+calendar month: it takes an explicit `range` (`{ from, to }`) and
+`bucketDays`, and folds every kept expense into
+`bucketTimes(range.from, range.to, bucketDays)` — the SAME bucket
+positions `buildNetWorthSeries` plots for the same `range`/`bucketDays`
+(see `src/statistics/buckets/`), so the trend chart honors the
+Statistics screen's own date-range picker rather than a fixed span, and
+zero-fills every bucket in that range for every series so all lines
+share one set of X positions even where a category had no spend in a
+given bucket. It sorts the returned series by total spend descending.
+Read `bucketDaysForSpan` (`src/statistics/buckets/`, how the screen
+picks day-vs-week bucketing from the active range) and `category-trend.ts`
+itself for the exact bucket math rather than trusting a restated
+cadence here.
 
 The component follows this file's "Fixed logical coordinate space" and
 "Hand-rolled scale/tick builders" conventions above, mirroring
 `net-worth-line`'s `VIEW_WIDTH` + `preserveAspectRatio="none"` +
-hand-rolled `buildScales`/`buildTicks`/`buildXTicks` split — but its
-Y-scale is rooted at 0 with headroom only above the peak, not anchored
-to a start-value reference baseline the way `net-worth-line`'s is,
-since spending has no natural reference point to diff against.
+hand-rolled `buildScales`/`buildTicks`/`buildXGridTicks`/`buildXLabelTicks`
+split — but its Y-scale is rooted at 0 with headroom only above the peak,
+not anchored to a start-value reference baseline the way `net-worth-line`'s
+is, since spending has no natural reference point to diff against. Its X
+axis mirrors `net-worth-line`'s own DECOUPLED gridline/label split
+(`X_GRID_FRACTIONS`/`buildXGridTicks` for the interior vertical gridlines,
+`X_LABEL_FRACTIONS`/`buildXLabelTicks` for the date labels, both built
+from a shared `buildXTickSet` helper) — read those constants in
+`category-trend-line.component.tsx` for the current fractions rather than
+a restated number here. It formats each label with the shared
+`formatDayMonth` helper as a zero-padded numeric `DD.MM` (e.g. `01.01`),
+read against LOCAL calendar fields — never a month name — since the
+buckets are LOCAL-midnight instants (`bucketTimes` steps from the
+screen's `startOfLocalDay` range start), matching `net-worth-line`'s own
+`formatAxisTime` exactly.
 
 Its `testID`-per-primitive scheme (see "testID scheme per SVG
 primitive" above for why): `category-trend-line-line-<key>` (one
@@ -207,7 +237,7 @@ opening a `BottomSheet` — and feeds the result through the SAME
 `excludedCategories` path the builder already had. Manual mode passes explicit
 keys; Top mode ranks the categories live over the fixed 30-day window with
 `buildCategoryMeasures` + `selectTopCategories`
-(`src/statistics/category-trend.ts`, `src/statistics/trend-filter.ts`) by one
+(`src/statistics/category-trend/`, `src/statistics/trend-filter/`) by one
 of three measures — Contribution (total spend), Frequency (kept-row count), or
 Rising (the least-squares slope of daily spend across the 30 window days,
 most-positive first) — then excludes every windowed category NOT in the top N.

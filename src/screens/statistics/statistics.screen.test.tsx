@@ -65,6 +65,18 @@ jest.mock('../../navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
+// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
+// the same real-context requirement as the hook above; a standalone screen
+// render has none, so stand it in with a `useState`-seeded read — a `Date.now()`
+// taken once at mount and held STABLE across re-renders, the same behavior the
+// screen's old `useMemo(() => Date.now(), [])` had (no test here drives a focus
+// event, so the value never needs to change mid-test).
+jest.mock('./use-focus-refreshed-now', () => {
+  const { useState } = jest.requireActual('react');
+
+  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+});
+
 type Account = {
   id: string;
   name: string;
@@ -1110,28 +1122,29 @@ describe('StatisticsScreen', () => {
 
     const range = defaultDateRange();
 
-    // Narrow away from the 30-day default: the picker moves the bound nearer to
-    // the pick, so picking 3 days ago pulls the `to` bound down to it while the
-    // `from` bound stays on the default range start.
+    // Narrow away from the 30-day default. The picker RESETS on each pick: a pick
+    // on the already-applied (complete) default range starts a fresh single-date
+    // selection at the pick, so picking 3 days ago collapses the range to that
+    // one day (from === to === narrowedDay), clearly off the default window.
     await act(async () => {
       fireEvent.press(getByLabelText('Date range'));
     });
-    const narrowedTo = new Date();
-    narrowedTo.setDate(narrowedTo.getDate() - 3);
+    const narrowedDay = new Date();
+    narrowedDay.setDate(narrowedDay.getDate() - 3);
     const calendar = getByTestId('date-range-calendar').props as {
       onDayPress: (day: unknown) => void;
     };
     await act(async () => {
       calendar.onDayPress({
-        year: narrowedTo.getFullYear(),
-        month: narrowedTo.getMonth() + 1,
-        day: narrowedTo.getDate(),
+        year: narrowedDay.getFullYear(),
+        month: narrowedDay.getMonth() + 1,
+        day: narrowedDay.getDate(),
       });
     });
     await act(async () => {
       fireEvent.press(getByText('Apply'));
     });
-    expect(getByText(`${formatDate(range.from)} – ${formatDate(narrowedTo)}`)).toBeTruthy();
+    expect(getByText(`${formatDate(narrowedDay)} – ${formatDate(narrowedDay)}`)).toBeTruthy();
 
     // Clearing must land back on the 30-day default, NOT on all-time.
     await act(async () => {

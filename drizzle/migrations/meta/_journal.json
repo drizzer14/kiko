@@ -211,6 +211,34 @@
       "when": 1789125600000,
       "tag": "0029_namespace_external_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1789386262203,
+      "tag": "0030_add_change_group_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1789386262204,
+      "tag": "0031_icon_health_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1789386262205,
+      "tag": "0032_icon_crypto_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1789719446662,
+      "tag": "0033_add_account_bank_id",
+      "breakpoints": true
     }
   ]
 }

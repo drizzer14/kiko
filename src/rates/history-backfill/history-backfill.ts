@@ -1,14 +1,16 @@
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
-import type { Currency } from '../../currency/currency';
-import type { CurrencyRateHistoryRow } from '../../db/schema';
-import { fetchBTCHistory } from '../coingecko-history';
-import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { fetchNbuHistory } from '../nbu-history';
+import { fetchCryptoHistory } from '../coingecko-history';
+import type { CurrencyRateHistoryRow } from '../../db/schema';
+import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
+import { type Currency, currencyOptions, isCrypto } from '../../currency/currency';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const allCurrencies: Currency[] = ['BTC', 'USD', 'EUR', 'UAH'];
+// The fiat anchors NBU quotes (USD/EUR against UAH) plus every crypto, derived
+// from currency.ts so a newly added crypto composes chart history automatically.
+const allCurrencies: Currency[] = ['USD', 'EUR', 'UAH', ...currencyOptions.filter(isCrypto)];
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
@@ -33,7 +35,7 @@ export type BackfillDeps = {
   /** Today, defaulting to the current UTC day. */
   today?: number;
   fetchNbuHistory?: (start: number, end: number) => Promise<HistoryRateEntry[]>;
-  fetchBTCHistory?: (days: number) => Promise<HistoryRateEntry[]>;
+  fetchCryptoHistory?: (days: number) => Promise<HistoryRateEntry[]>;
   upsertMany?: (rows: NewHistoryRow[]) => Promise<void>;
 };
 
@@ -67,9 +69,37 @@ export const missingDays = (
   return days;
 };
 
-/** Choose the stored source for a composed pair — BTC legs come from CoinGecko. */
+/**
+ * Decide whether the incremental backfill must (re)run for `spanStart`, and from
+ * where. It runs when it has never run (`ranForSpanStart === null`) or when
+ * `spanStart` has moved strictly EARLIER than a prior run covered — an older
+ * transaction appeared mid-session, opening a gap BELOW the newest stored day.
+ * On that earlier-extension case it resumes from `null` so `missingDays`
+ * recomputes the WHOLE span from `spanStart` (the idempotent upsert skips the
+ * already-stored newer days); `missingDays`' forward cursor resumes ABOVE the
+ * newest stored day and structurally cannot see the freshly-opened earlier gap
+ * otherwise. A first, forward run keeps the incremental `lastBackfilledDay`
+ * resume so it fetches only the new days.
+ */
+export const planBackfillRun = (
+  spanStart: number,
+  ranForSpanStart: number | null,
+  lastBackfilledDay: number | null,
+): { run: boolean; resumeFrom: number | null } => {
+  if (ranForSpanStart === null) {
+    return { run: true, resumeFrom: lastBackfilledDay };
+  }
+
+  if (spanStart < ranForSpanStart) {
+    return { run: true, resumeFrom: null };
+  }
+
+  return { run: false, resumeFrom: null };
+};
+
+/** Choose the stored source for a composed pair — crypto legs come from CoinGecko. */
 const pairSource = (base: Currency, quote: Currency): NewHistoryRow['source'] =>
-  base === 'BTC' || quote === 'BTC' ? 'coingecko' : 'nbu';
+  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'nbu';
 
 /** Each currency's value expressed in UAH — the pivot for composing pairs. */
 type UahPrice = Partial<Record<Currency, number>>;
@@ -112,28 +142,34 @@ const groupTimelines = (entries: HistoryRateEntry[]): Map<string, HistoryRateEnt
 
 /**
  * Build the UAH pivot for `day` from the anchor timelines: USD/EUR anchor to UAH
- * directly, BTC through its USD price so BTC pairs stay consistent with fiat.
+ * directly, every crypto through its USD price so crypto pairs stay consistent
+ * with fiat.
  */
 const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): UahPrice => {
   const price: UahPrice = { UAH: 1 };
   const usd = nearestAtOrBefore(timelines.get('USD:UAH') ?? [], day);
   const eur = nearestAtOrBefore(timelines.get('EUR:UAH') ?? [], day);
-  const btcUsd = nearestAtOrBefore(timelines.get('BTC:USD') ?? [], day);
   if (usd !== undefined) {
     price.USD = usd;
   }
   if (eur !== undefined) {
     price.EUR = eur;
   }
-  if (btcUsd !== undefined && usd !== undefined) {
-    price.BTC = btcUsd * usd;
+  if (usd !== undefined) {
+    for (const crypto of currencyOptions.filter(isCrypto)) {
+      const cryptoUsd = nearestAtOrBefore(timelines.get(`${crypto}:USD`) ?? [], day);
+      if (cryptoUsd !== undefined) {
+        price[crypto] = cryptoUsd * usd;
+      }
+    }
   }
   return price;
 };
 
 /**
- * Compose every ordered cross pair among {BTC,USD,EUR,UAH} for each target day
- * from the day's UAH-anchored prices (mirrors the per-current-day pivot in
+ * Compose every ordered cross pair among the priced currencies (USD/EUR/UAH plus
+ * every crypto) for each target day from the day's UAH-anchored prices (mirrors
+ * the per-current-day pivot in
  * `rates-refresh.ts`, per historical day). A pair is emitted only when both
  * currencies are priced for that day. Rates are stored as strings, never floats.
  */
@@ -161,8 +197,8 @@ export const composeHistoryRows = (
 
 /**
  * Run one incremental pass: compute the still-missing days, fetch the fiat range
- * from NBU and the BTC series from CoinGecko for that span, compose every cross
- * pair per day, and upsert them. Idempotent (upsert on the pair-day index) and
+ * from NBU and every crypto's series from CoinGecko for that span, compose every
+ * cross pair per day, and upsert them. Idempotent (upsert on the pair-day index) and
  * resumable — a fresh call picks up wherever `lastBackfilledDay` leaves off.
  * Returns a terminal `complete` status the screen can render.
  */
@@ -175,22 +211,22 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   }
 
   const loadNbu = deps.fetchNbuHistory ?? ((start, end) => fetchNbuHistory(start, end));
-  const loadBTC = deps.fetchBTCHistory ?? ((count) => fetchBTCHistory(count));
+  const loadCrypto = deps.fetchCryptoHistory ?? ((count) => fetchCryptoHistory(count));
   const upsertMany = deps.upsertMany ?? rateHistoryRepo.upsertMany;
 
   const spanStart = days[0];
-  const btcDays = Math.ceil((today - spanStart) / DAY_MS) + 1;
+  const cryptoDays = Math.ceil((today - spanStart) / DAY_MS) + 1;
   // Settle the two providers independently: CoinGecko's free tier can 401 a
-  // long BTC span, and an all-or-nothing `Promise.all` would then discard the
+  // long crypto span, and an all-or-nothing `Promise.all` would then discard the
   // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
-  const [nbuResult, btcResult] = await Promise.allSettled([
+  const [nbuResult, cryptoResult] = await Promise.allSettled([
     loadNbu(spanStart, today),
-    loadBTC(btcDays),
+    loadCrypto(cryptoDays),
   ]);
   const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
-  const btc = btcResult.status === 'fulfilled' ? btcResult.value : [];
+  const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
 
-  const rows = composeHistoryRows([...nbu, ...btc], days);
+  const rows = composeHistoryRows([...nbu, ...crypto], days);
   if (rows.length === 0) {
     // Nothing composed (both providers empty for the span), so nothing is
     // persisted. Leave the resume cursor where it was rather than claiming the

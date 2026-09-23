@@ -1,13 +1,30 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+import { currencyOptions } from '../currency/currency';
 import type { TrendFilter } from '../statistics/trend-filter';
+
+// The currency columns below are TS-enum-typed text columns (SQLite stores plain
+// text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
+// needs no migration). Each derives its enum from `currencyOptions` in
+// currency.ts so the persisted set can never drift from the app's supported
+// currencies — the same single-source-of-truth rule the rate layer follows.
 
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   kind: text('kind', { enum: ['bank', 'cash', 'crypto'] }).notNull(),
   institution: text('institution'),
+  // The bank this account REPRESENTS (device-feedback-round-1 item 3,
+  // `src/bank-sync/bank-catalog/`), independent of `institution`
+  // (which marks a LIVE sync connection). Set from the account-form's bank
+  // picker at create time; import-only for 5 of the 6 catalog entries.
+  // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
+  // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
+  // on `institution` alone, so tagging an account `bankId: 'privatbank'`
+  // can never make it look connected. TS-only enum (no DB CHECK), matching
+  // every other free-text catalog-id column in this table.
+  bankId: text('bank_id'),
   icon: text('icon'),
   color: text('color'),
   sortOrder: integer('sort_order').notNull().default(0),
@@ -26,7 +43,7 @@ export const holdings = sqliteTable('holdings', {
   type: text('type', {
     enum: ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'],
   }).notNull(),
-  currency: text('currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+  currency: text('currency', { enum: currencyOptions }).notNull(),
   icon: text('icon'),
   color: text('color'),
   balanceMinorUnits: integer('balance_minor_units').notNull().default(0),
@@ -99,13 +116,39 @@ export const transactions = sqliteTable(
     // is manual — a bank-owned (monobank) row is never mutated by this app, so
     // a synced debit converted into another currency still counts as spending.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
+    // Split-change grouping: a shared id across ONE manual payment row and the
+    // N return rows that distribute its change into OTHER holdings, all written
+    // atomically in one `write(...)` by `recordManualWithReturns`
+    // (transactions/repo/transactions.repo.ts). Nullable — a plain
+    // manual/exchange/synced row carries null and is unaffected. The spending
+    // pie NETS a payment's linked returns into its category so the category is
+    // not overstated by the change (statistics/category-breakdown). A column,
+    // not a reserved `category` value, for the same reason the exchange marker
+    // is: the category picker rewrites `category` and would destroy it.
+    changeGroupId: text('change_group_id'),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
     // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
     // 'btc_wallet' still writes none.
-    source: text('source', { enum: ['manual', 'monobank', 'btc_wallet', 'binance'] }).notNull(),
+    // Guideline 5.6 remediation: 'privatbank', 'bunq', and 'starling' were
+    // removed from this enum — those bank-CONNECT providers were deleted
+    // entirely (src/bank-sync/provider/provider.ts), and no user release
+    // ever shipped a transaction row with one of those sources, so no
+    // migration was needed to narrow this TS-only enum (SQLite stores this
+    // column as plain `text`, with no CHECK constraint).
+    // 'import' (`docs/plans/statement-import.md`): a row parsed from a
+    // user-picked statement file (Monobank CSV and later formats), fed
+    // through the SAME `addManyDedup` upsert as every synced source. Shared
+    // by every bank format in the registry — the FORMAT is recorded only via
+    // `ParsedStatement.formatId`, not a per-bank source value. Like
+    // 'monobank'/'binance', `isSyncedTransaction` refuses an individual-row
+    // delete on it (`src/holdings/deletable/deletable.ts`), so a bad import
+    // is undone by deleting its whole (always-plain) holding, not one row.
+    source: text('source', {
+      enum: ['manual', 'monobank', 'btc_wallet', 'binance', 'import'],
+    }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   },
@@ -125,10 +168,10 @@ export type TransactionRow = typeof transactions.$inferSelect;
 export const currencyRates = sqliteTable(
   'currency_rates',
   {
-    base: text('base', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
-    quote: text('quote', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    base: text('base', { enum: currencyOptions }).notNull(),
+    quote: text('quote', { enum: currencyOptions }).notNull(),
     rate: text('rate').notNull(),
-    source: text('source', { enum: ['monobank', 'coingecko'] }).notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
   (table) => ({
@@ -141,8 +184,8 @@ export type CurrencyRateRow = typeof currencyRates.$inferSelect;
 export const currencyRateHistory = sqliteTable(
   'currency_rate_history',
   {
-    base: text('base', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
-    quote: text('quote', { enum: ['BTC', 'USD', 'EUR', 'UAH'] }).notNull(),
+    base: text('base', { enum: currencyOptions }).notNull(),
+    quote: text('quote', { enum: currencyOptions }).notNull(),
     /**
      * The rate's day, as a normalized UTC-midnight epoch value in
      * MILLISECONDS (00:00:00.000 UTC of that calendar day). Same millisecond
@@ -165,9 +208,7 @@ export type CurrencyRateHistoryRow = typeof currencyRateHistory.$inferSelect;
 
 export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
-  baseCurrency: text('base_currency', { enum: ['BTC', 'USD', 'EUR', 'UAH'] })
-    .notNull()
-    .default('UAH'),
+  baseCurrency: text('base_currency', { enum: currencyOptions }).notNull().default('UAH'),
   // SUPERSEDED (retained): the global Monobank statement CURSOR. De-globalized
   // to the per-connection `syncState` table (2026-09-11 multi-account plan);
   // migration 0028 backfills the connected account's row from it. The sync no

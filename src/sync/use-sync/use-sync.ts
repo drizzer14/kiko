@@ -35,20 +35,28 @@ export const useSyncAction = <Input>(
 
     const result = await either<unknown, void>(async () => {
       await run(input);
-      const lastRefreshAt = await ratesRepo.latestFetchedAt();
-      await refreshRates({ lastRefreshAt });
     });
 
-    // Always clear the syncing flag, whether the run succeeded or failed —
-    // this is the old `finally` block.
-    setIsSyncing(false);
-
     if (isLeft(result)) {
+      // Always clear the syncing flag, whether the run succeeded or failed —
+      // this is the old `finally` block.
+      setIsSyncing(false);
       const caught = bifold(result);
       setError(caught instanceof Error ? caught.message : String(caught));
 
       return false;
     }
+
+    // One rate refresh per sync, run only after a SUCCESSFUL account sync and
+    // wrapped in its OWN either — so a rate-refresh failure never turns a
+    // successful sync into a reported failure, mirroring `useSyncAll`'s
+    // `fanOutAndRefresh`.
+    await either(async () => {
+      const lastRefreshAt = await ratesRepo.latestFetchedAt();
+      await refreshRates({ lastRefreshAt });
+    });
+
+    setIsSyncing(false);
 
     return true;
   };

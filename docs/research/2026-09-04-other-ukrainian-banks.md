@@ -2,6 +2,10 @@
 
 Date: 2026-09-04 · Status: research (not implemented)
 
+> **Superseded (2026-09-18):** the 1.0.0 Guideline 5.6 remediation removed
+> the non-Monobank bank-CONNECT work this research fed; see `CLAUDE.md`'s
+> "Guideline 5.6 — no hidden features". This research is historical.
+
 ## Headline
 Ukraine Open Banking went legally live 1 August 2025 (NBU Resolution
 No. 80), with compliance due 1 January 2026 and a transitional period

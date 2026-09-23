@@ -64,8 +64,8 @@ this, and none is planned. A syntactically faithful rule (flag every
 arrow whose concise body contains `&&`/`||`/`?:`) was tried during
 review and matched 62 arrows against the ~15 actually worth
 converting, with identical shapes intentionally treated oppositely
-(`isSyncedAccount` in `src/holdings/deletable.ts` was converted to a
-block body; `isBalanceProviderId` in `src/crypto-sync/provider.ts`
+(`isSyncedAccount` in `src/holdings/` was converted to a
+block body; `isBalanceProviderId` in `src/crypto-sync/`
 stayed concise) — no low-false-positive syntactic rule exists, so
 this stays a human/agent judgment call, applied in code and in
 review.
@@ -119,10 +119,10 @@ From `biome.json`'s `linter.rules`:
 Default to functional or procedural code. Reach for OOP only when
 modeling a **data type with behavior attached to it** — the
 canonical example is the `Money` value object (see `kiko-domain`):
-immutable, with methods like `add`/`subtract`/`convert` that must
-enforce invariants (no currency mismatch, no float drift) every time
-the value is touched. A class earns its place when the invariant
-needs enforcing at every call site, not just at construction.
+immutable, with methods like `add`/`subtract` that must enforce
+invariants (no currency mismatch, no float drift) every time the
+value is touched. A class earns its place when the invariant needs
+enforcing at every call site, not just at construction.
 
 A value object's internals use native private fields and methods
 (`#field`, `#method`), not the TS `private` keyword — TS `private` is
@@ -232,15 +232,53 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   wherever a narrowed `Right` value leaves nothing for TypeScript to
   infer `LeftValue` from.
 
+## Form validation model
+
+Every Kiko form (`account-form.screen.tsx` and its siblings) follows
+one validation model — don't hand-roll a different one:
+
+- The Save/submit button is **always enabled**, never a standing
+  `disabled={!isValid}` gate. Validate on press instead: the submit
+  handler checks its own guard (e.g. `canSave = trimmedName !== ''`)
+  and returns early when it fails, only then revealing the error.
+- A blocked field shows its message via the shared `FieldError`
+  component (`src/design-system/components/field-error/`), not a
+  hand-rolled `Box`+`Text` caption — see that component's own doc
+  comment for the rationale.
+- The error's visibility is its own piece of state (e.g.
+  `showNameError`), set true only after a failed submit attempt, so a
+  fresh form shows no error before the user has tried to save.
+
 ## Import ordering and `import type`
 
-Import grouping and ordering is mechanized: Biome's `organizeImports`
-assist, configured in `biome.json`'s
-`assist.actions.source.organizeImports`, groups and sorts every
-import automatically. Run `npm run check:lint` rather than
-hand-ordering imports, and read that config directly for the current
-group definitions and order — don't restate them here, they'd only
-drift from the file that actually governs them.
+Import grouping and ordering is **hand-enforced, not mechanized**.
+Biome's `organizeImports` assist cannot express this project's
+convention — it forces a natural within-group sort — so
+`biome.json`'s `assist.actions.source.organizeImports.level` is set
+to `"off"`. `npm run check:lint` therefore does **not** check import
+order at all; `kiko:reviewer` must verify it by hand on every
+reviewed file.
+
+The convention (handwritten, Prettier-only exemplar:
+`~/Developer/Projects/ovpn-ui`):
+
+- Keep 3 import GROUPS in this order, each separated by a blank line:
+  (1) external packages, (2) `../**` parent-relative, (3) `./**`
+  sibling-relative.
+- WITHIN each group, sort by LENGTH ASCENDING. The sort key is the
+  length of the statement's ENDING physical line: the whole line for
+  a single-line import; the `} from '...';` closing line for a
+  wrapped/multiline import (NOT the `import {` first line, NOT the
+  flattened statement). Example from ovpn-ui: a wrapped
+  `@floating-ui/react` import sorts by its 28-char
+  `} from '@floating-ui/react';` closing line, so it lands right
+  after `import clsx from 'clsx';` (24 chars).
+- Within a group, VALUE imports come before `import type` imports
+  only as an equal-length tiebreaker — length dominates.
+- A bare side-effect import (e.g.
+  `import '../../design-system/unistyles';`) is an ordering BARRIER:
+  never move an import across it — module-initialization order must
+  be preserved.
 
 Use `import type` when the entire import is types:
 
@@ -258,6 +296,16 @@ import { type FC, useState } from 'react';
 Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
 the type/value distinction to be explicit.
+
+**Recommendation: a dedicated whole-`src/screens` import re-sort.**
+Because this ordering is hand-enforced rather than mechanized, it
+drifts — two separate `kiko:reviewer` passes have flagged pre-existing
+length-sort violations under `src/screens/` that predate this rule
+being written down. A standalone pass that re-sorts every import block
+under `src/screens/` (and, opportunistically, wherever else a reviewer
+next finds it) against this rule is recommended, rather than only
+fixing a violation the next time that exact file happens to be
+touched.
 
 ## Variable naming
 
@@ -283,7 +331,7 @@ const maskedPan = holding.metadata.maskedPan; // wrong
 external wire/API payload keeps that payload's own casing on purpose,
 even where it disagrees with the acronym rule above. `maskedPan` and
 `counterIban` (`src/db/schema.ts`, `src/monobank/monobank.types.d.ts`,
-`src/monobank/sync.ts`) are the standing example: those are the
+`src/monobank/`) are the standing example: those are the
 literal Monobank API JSON field names, not names chosen in application
 code, so they stay lower-`an`/lower-`iban` rather than becoming
 `maskedPAN`/`counterIBAN`. This is an intentional, allowed exception,
@@ -329,7 +377,7 @@ the domain's own glyph map (see `kiko-domain`'s "Entity glyphs" rule).
   siblings) are components, just named for what React Navigation calls
   them rather than generically.
 - A gate component: `<name>.gate.tsx` — an early-return guard component
-  such as `src/migration/migrations.gate.tsx` (the lock gate).
+  such as `migrations.gate.tsx` (`src/migration/`, the lock gate).
 
 `.stack.tsx` and `.gate.tsx` are **component-bearing suffixes**,
 admitted alongside `.component.tsx` and `.screen.tsx`: a file under

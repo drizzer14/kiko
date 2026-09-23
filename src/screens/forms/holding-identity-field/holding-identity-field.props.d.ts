@@ -1,4 +1,12 @@
+import type { RefObject } from 'react';
+import type { TextInputInstance } from 'react-native';
+
 export type HoldingIdentityFieldProps = {
+  // The closed pool of SF Symbol names the icon picker offers, forwarded to the
+  // shared IconEditor. This field is used by both the entity forms (account /
+  // holding → KIKO_ENTITIES_ICONS) and the category rows (→ KIKO_CATEGORIES_ICONS),
+  // so each caller passes the pool that matches its flow.
+  icons: readonly string[];
   // The holding's currently stored SF Symbol name, or null when it has no
   // custom icon yet (the chip then shows `fallbackIcon`).
   icon: string | null;
@@ -40,12 +48,16 @@ export type HoldingIdentityFieldProps = {
   onFocus?: () => void;
   // Optional placeholder shown while the name is empty.
   namePlaceholder?: string;
-  // Focus the name input as soon as it mounts. A caller that reveals this field
-  // on demand (the inline "Add category" row, which only mounts the field once
-  // its form expands) passes `true` so the keyboard opens straight onto the
-  // name field without a second tap. Forwarded to the inner TextInput's
-  // `autoFocus`; omit it (the default) for an always-mounted field.
-  autoFocus?: boolean;
+  // A ref to the inner name TextInput, forwarded to its `ref`. A caller that
+  // reveals this field on demand (the inline "Add category" row, which only
+  // mounts the field once its form expands) uses this to call `.focus()`
+  // imperatively, deferred to the next frame, once the sibling keyboard
+  // accessory has registered. Native `autoFocus` is deliberately NOT used for
+  // this: it fires `becomeFirstResponder` in the same commit the sibling
+  // InputAccessoryView's native content view mounts, and iOS captures
+  // `inputAccessoryView` at that exact moment — before the accessory has
+  // registered — so the keyboard opens with no Done accessory attached.
+  nameInputRef?: RefObject<TextInputInstance | null>;
   // Whether to render the "Icon"/"Name" field captions above the two controls
   // (defaults to true, the form treatment). A dense list row (a category row)
   // passes `false` for a bare, caption-free icon+name pair, vertically centered
@@ -54,4 +66,15 @@ export type HoldingIdentityFieldProps = {
   // When true (and `captioned`), the Name caption shows a red asterisk marking
   // the name as required. Defaults to false. See the shared FieldLabel.
   required?: boolean;
+  // The validation-failure message for the NAME field, or `undefined` when
+  // valid — same contract as TextField's own `error` (see text-field.props.d.ts).
+  // Only takes effect when `captioned` (the form treatment); a bare row never
+  // shows a message it can never validate. Renders BELOW the whole icon+name
+  // row (REFLOW, not reserve — Option A) so the icon never shifts relative to
+  // the name field when the message mounts/unmounts.
+  error?: string;
+  // Optional testID applied to the outer column. When set, the FieldError
+  // message (when shown) additionally takes `${testID}-error` — same
+  // derived-testID contract as TextField's.
+  testID?: string;
 };

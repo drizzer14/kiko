@@ -1,16 +1,21 @@
 import type { ReactNode } from 'react';
 import type { ViewProps } from 'react-native';
 
-type GlassRadius = 'md' | 'lg';
+// `full` is the capsule/pill sentinel (`theme.radii.full`, see its own doc
+// comment in `theme.ts`) — a value set well past any control's half-height,
+// so iOS's native corner-radius clamping (the real `LiquidGlassView` path)
+// and Yoga's own clamping (the flat fallback `View` path) both round it down
+// to exactly half the control's shorter dimension, a true capsule at ANY
+// height. The keyboard Done accessory pill is the first consumer.
+type GlassRadius = 'md' | 'lg' | 'full';
 
 export type GlassSurfaceProps = ViewProps & {
   children?: ReactNode;
   padding?: number;
   radius?: GlassRadius;
   // An optional flat entity-color background for the surface: one resolved,
-  // OPAQUE `#RRGGBB` string (see `entityCardBackground` in
-  // `design-system/entity-tint.ts` — the entity hue, darkened enough to read
-  // as a card tone, with no alpha compositing on top). Rendered as a plain
+  // OPAQUE `#RRGGBB` string (an entity hue darkened enough to read as a card
+  // tone, with no alpha compositing on top). Rendered as a plain
   // absolutely-positioned `View` sibling filling the surface, BEHIND
   // `children` and clipped to the surface's own rounded corners by
   // `styles.surface`'s `overflow: hidden`. It is a normal child element, not

@@ -39,6 +39,17 @@ describe('WalletAddressField', () => {
     expect(getByText('Connect wallet')).toBeTruthy();
   });
 
+  it('uses the lock glyph for Connect and the Kiko UI clipboard glyph for Paste', async () => {
+    const { root } = await render(<WalletAddressField onConnect={onConnect} />);
+
+    // Connect carries the `lock` glyph; the paste button carries the Kiko UI
+    // `document.on.clipboard` spelling (SFSymbolView forwards `name`).
+    expect((root?.queryAll((node) => node.props.name === 'lock') ?? []).length).toBeGreaterThan(0);
+    expect(
+      (root?.queryAll((node) => node.props.name === 'document.on.clipboard') ?? []).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('fills the input from the clipboard, trimmed', async () => {
     mockGetString.mockResolvedValue(`  ${ADDRESS}\n`);
     const { getByLabelText, getByPlaceholderText } = await render(

@@ -10,6 +10,11 @@ export type FieldTriggerProps = {
   // The caption shown above the field AND the Pressable's accessibility
   // label, mirroring every other labeled form field.
   label: string;
+  // Suppress the visible caption above the field while keeping `label` as the
+  // Pressable's accessibility label. Defaults to false. Set by a caller that
+  // already labels the control externally (e.g. a Settings row's own header),
+  // so the caption is not shown twice.
+  hideLabel?: boolean;
   onPress: () => void;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.
@@ -20,6 +25,11 @@ export type FieldTriggerProps = {
   // An explicit entity-color tint for the icon, overriding its default tone —
   // omitted falls back to SymbolIcon's own tone.
   iconColor?: string;
+  // A leading TEXT mark rendered in place of `icon` — for a glyph with no SF
+  // Symbol representation (a currency sign or ISO code, e.g. "$", "AED").
+  // Ignored when `icon` is also passed — the two are mutually exclusive in
+  // practice, no current caller passes both.
+  leadingText?: string;
   // The current selection's display text, or the placeholder copy when
   // nothing is selected yet — the caller resolves which.
   value: string;
@@ -27,6 +37,12 @@ export type FieldTriggerProps = {
   // Extra content rendered after the value (e.g. a trailing account-name
   // caption) — optional, so a field with nothing to disambiguate omits it.
   trailing?: ReactNode;
+  /**
+   * Read-only: the trigger renders dimmed and its press is inert. Defaults to
+   * false. Used by a field the domain forbids changing after creation (a
+   * holding's currency in edit mode).
+   */
+  disabled?: boolean;
   // An optional testID applied to the Pressable trigger, so a flow can tap the
   // field to open its picker sheet. Omitted leaves the trigger untagged.
   testID?: string;

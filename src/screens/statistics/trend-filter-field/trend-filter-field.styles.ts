@@ -7,7 +7,7 @@ export const styles = StyleSheet.create((theme) => ({
   field: {
     alignSelf: 'flex-start',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.surface,
@@ -46,10 +46,5 @@ export const styles = StyleSheet.create((theme) => ({
   },
   scrollContent: {
     gap: theme.spacing(1),
-  },
-  // The Clear/Save action row, pinned to the trailing edge below the scroll
-  // region so both actions stay reachable regardless of scroll position.
-  actions: {
-    justifyContent: 'flex-end',
   },
 }));

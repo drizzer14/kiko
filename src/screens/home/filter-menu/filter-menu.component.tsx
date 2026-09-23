@@ -1,15 +1,16 @@
+import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 import Box from '../../../design-system/components/box';
-import SelectableRow from '../../../design-system/components/selectable-row';
-import SymbolIcon from '../../../design-system/components/symbol';
 import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
+import BottomSheet from '../../../design-system/components/bottom-sheet';
+import SelectableRow from '../../../design-system/components/selectable-row';
 
-import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 import { styles } from './filter-menu.styles';
+import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 
 /** The default option in every filter menu — selecting it clears that dimension. */
 export const FILTER_ALL = 'All';
@@ -27,7 +28,15 @@ const isChecked = (value: string, selected: Set<string>): boolean =>
  * itself whenever its actions change on toggle, which no prop reliably prevents,
  * so a pure-JS sheet owns this behaviour instead.)
  */
-const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, testID }) => {
+const FilterMenu: FC<FilterMenuProps> = ({
+  label,
+  options,
+  selected,
+  onToggle,
+  triggerIcon = 'line.3.horizontal.decrease.circle',
+  testID,
+}) => {
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -57,7 +66,7 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         testID={testID}
       >
         <Box direction="row" gap={2} style={styles.button}>
-          <SymbolIcon name="line.3.horizontal.decrease.circle" size={18} tone="textPrimary" />
+          <SymbolIcon name={triggerIcon} size={theme.iconSizes.body} tone="textPrimary" />
 
           <Text variant="body">{buttonLabel}</Text>
         </Box>
@@ -67,10 +76,9 @@ const FilterMenu: FC<FilterMenuProps> = ({ label, options, selected, onToggle, t
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={2}
+        header={<Text variant="heading">{label}</Text>}
         backdropTestID={`${testID}-backdrop`}
       >
-        <Text variant="heading">{label}</Text>
-
         {rows.map((option) => (
           <SelectableRow
             key={option.value}

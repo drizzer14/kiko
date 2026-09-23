@@ -1,12 +1,15 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActionSheetIOS, Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '../../design-system/unistyles';
 
 import { formatDateTime } from '../../dates/format';
-import { HOLD_GESTURE_TEST_ID } from '../../design-system/components/card-context-menu';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '../../design-system/components/card-context-menu';
 import { darkTheme } from '../../design-system/theme';
 import { i18n } from '../../i18n';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
@@ -43,7 +46,12 @@ jest.mock('../../design-system/components/text', () => {
 // receives — following the contribution-buttons precedent — while still
 // rendering the label (and forwarding onPress/disabled) so every
 // getByText/press assertion in this file is unaffected.
-const mockButtonProps: { variant?: string; children: ReactNode }[] = [];
+const mockButtonProps: {
+  variant?: string;
+  children: ReactNode;
+  icon?: string;
+  fullWidth?: boolean;
+}[] = [];
 
 jest.mock('../../design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
@@ -57,8 +65,15 @@ jest.mock('../../design-system/components/button', () => {
       disabled?: boolean;
       accessibilityLabel?: string;
       testID?: string;
+      icon?: string;
+      fullWidth?: boolean;
     }) => {
-      mockButtonProps.push({ variant: props.variant, children: props.children });
+      mockButtonProps.push({
+        variant: props.variant,
+        children: props.children,
+        icon: props.icon,
+        fullWidth: props.fullWidth,
+      });
 
       return (
         <Pressable
@@ -77,10 +92,10 @@ jest.mock('../../design-system/components/button', () => {
 const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseSync = jest.fn();
-const mockReadToken = jest.fn();
-const mockHasToken = jest.fn();
 const mockSaveToken = jest.fn();
 const mockFetchClientInfo = jest.fn();
+const mockPick = jest.fn();
+const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
 const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
@@ -106,6 +121,8 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+// `BankSyncSection` (real, unmocked here) calls `useSync` once per render for
+// its sole shipped provider (Guideline 5.6 remediation: Monobank-only).
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
@@ -113,12 +130,20 @@ jest.mock('../../monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('../../monobank/token', () => ({
-  readToken: (...args: unknown[]) => mockReadToken(...args),
-  hasToken: (...args: unknown[]) => mockHasToken(...args),
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
 jest.mock('../../monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
+jest.mock('@react-native-documents/picker', () => ({
+  pick: (...args: unknown[]) => mockPick(...args),
+  types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+  isErrorWithCode: (error: unknown): error is { code: string } =>
+    typeof error === 'object' && error !== null && 'code' in error,
+}));
+jest.mock('react-native-fs', () => ({
+  readFile: (...args: unknown[]) => mockReadFile(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
@@ -168,6 +193,7 @@ type Account = {
   name: string;
   kind: string;
   institution?: string | null;
+  bankId?: string | null;
   icon?: string | null;
   color?: string | null;
 };
@@ -262,14 +288,25 @@ const renderScreen = async () => {
   return { ...view, navigation };
 };
 
+/**
+ * Drives the disconnected picker flow up to (not including) the Connect
+ * press: opens `AddBankProviderSheet` via the "Add a bank" trigger, then
+ * selects the Monobank row — the sheet reports the choice and closes itself,
+ * leaving `MonobankConnectField` mounted for the caller to drive further.
+ */
+const openMonobankConnectField = async (
+  view: Pick<Awaited<ReturnType<typeof render>>, 'getByText' | 'getByTestId'>,
+): Promise<void> => {
+  await fireEvent.press(view.getByText(i18n.t('accountDetail.addBankAction')));
+  await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+};
+
 describe('AccountDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    mockReadToken.mockResolvedValue('token-abc');
-    mockHasToken.mockResolvedValue(false);
     mockSaveToken.mockResolvedValue(undefined);
     mockFetchClientInfo.mockResolvedValue({ name: 'Jane Doe' });
     setLiveData({
@@ -287,9 +324,7 @@ describe('AccountDetailScreen', () => {
     const { getByTestId } = await renderScreen();
 
     const contentGap = StyleSheet.flatten(getByTestId('account-detail-content').props.style).gap;
-    const groupGap = StyleSheet.flatten(
-      getByTestId('monobank-sync-status-actions').props.style,
-    ).gap;
+    const groupGap = StyleSheet.flatten(getByTestId('bank-sync-status-actions').props.style).gap;
 
     expect(groupGap).toBe(contentGap);
   });
@@ -300,7 +335,7 @@ describe('AccountDetailScreen', () => {
     const { getByTestId } = await renderScreen();
 
     // The two buttons now share one horizontal row rather than stacking.
-    const row = getByTestId('monobank-sync-actions-row');
+    const row = getByTestId('bank-sync-actions-row');
     expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
   });
 
@@ -319,16 +354,18 @@ describe('AccountDetailScreen', () => {
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
-  it('keeps the not-yet-connected Connect action neutral (secondaryTonal), not blue', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })] });
+  it('uses the Kiko UI sync glyph for the connected Sync button and the open-lock glyph for Disconnect', async () => {
+    setLiveData({ accounts: [account({ institution: 'monobank' })] });
 
     mockButtonProps.length = 0;
     await renderScreen();
 
-    // Before connection the same action button is the neutral Connect affordance,
-    // so making Sync blue must NOT bleed into the Connect state.
-    const connectEntry = mockButtonProps.find((entry) => entry.children === 'Connect Monobank');
-    expect(connectEntry?.variant).toBe('secondaryTonal');
+    // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
+    // the iOS-16-safe fallback for free); Disconnect takes the open-lock glyph.
+    const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
+    const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
+    expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(disconnectEntry?.icon).toBe('lock.open');
   });
 
   it('lists holdings for the account', async () => {
@@ -549,8 +586,10 @@ describe('AccountDetailScreen', () => {
     {
       description: 'a bank account not yet connected to Monobank',
       account: account({ kind: 'bank', institution: null }),
-      visible: ['Connect Monobank'],
-      hidden: ['Sync'],
+      // Disconnected now shows the "Add a bank" picker trigger, not the
+      // Monobank field directly — see the picker-flow tests below.
+      visible: ['Add a bank'],
+      hidden: ['Connect Monobank', 'Sync'],
     },
     {
       description: 'a bank account connected to Monobank',
@@ -562,6 +601,24 @@ describe('AccountDetailScreen', () => {
       description: 'a cash account',
       account: account({ kind: 'cash', institution: null }),
       visible: [],
+      hidden: ['Connect Monobank', 'Sync'],
+    },
+    {
+      // device-feedback-round-4 item 4: an import-only bank (bankCatalog's
+      // `connectable: false`) must show NO sync/connect affordance at all —
+      // not even the disconnected "Add a bank" trigger.
+      description: 'a bank account whose picked bank is import-only (e.g. PrivatBank)',
+      account: account({ kind: 'bank', bankId: 'privatbank', institution: null }),
+      visible: [],
+      hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
+    },
+    {
+      // A bank account whose picked bank IS connectable (Monobank) keeps the
+      // disconnected "Add a bank" trigger — only a KNOWN import-only bank
+      // hides the section.
+      description: 'a bank account whose picked bank is connectable (Monobank), not yet connected',
+      account: account({ kind: 'bank', bankId: 'monobank', institution: null }),
+      visible: ['Add a bank'],
       hidden: ['Connect Monobank', 'Sync'],
     },
   ];
@@ -580,6 +637,20 @@ describe('AccountDetailScreen', () => {
     },
   );
 
+  it('hides the whole Synchronization section (heading included) for an import-only bank account', async () => {
+    // device-feedback-round-4 item 4: a non-syncable (import-only) bank
+    // account must show NO trace of the sync section — not merely the
+    // buttons the table above checks, but the "Synchronization" heading
+    // itself, which `BankSyncSection` renders at its own top.
+    setLiveData({
+      accounts: [account({ kind: 'bank', bankId: 'privatbank', institution: null })],
+      holdings: [],
+    });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText(i18n.t('accountDetail.synchronization'))).toBeNull();
+  });
+
   it('lets a bank account connect independently, with no single-connection gate or hint', async () => {
     // The single-connection gate is gone: a bank account shows Connect on its
     // own — the screen no longer queries whether another account already holds a
@@ -588,16 +659,10 @@ describe('AccountDetailScreen', () => {
       accounts: [account({ id: 'a', kind: 'bank', institution: null })],
       holdings: [],
     });
-    const { getByText, queryByText } = await renderScreen();
-    expect(getByText('Connect Monobank')).toBeTruthy();
-    expect(queryByText('Monobank is connected to another account')).toBeNull();
-  });
-
-  it('syncs the account when a Monobank token exists (Connect action)', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('Connect Monobank'));
-    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    expect(view.getByText('Connect Monobank')).toBeTruthy();
+    expect(view.queryByText('Monobank is connected to another account')).toBeNull();
   });
 
   it('re-syncs a connected account when Sync is pressed', async () => {
@@ -607,33 +672,71 @@ describe('AccountDetailScreen', () => {
     await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
   });
 
-  it('points the user at the on-screen token input and does not sync when no token is stored', async () => {
-    mockReadToken.mockResolvedValue(undefined);
+  it('connects a bank account by validating the token, saving it, then syncing it (Connect folds save into connect)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByText, findByText, queryByText, navigation } = await renderScreen();
-    await fireEvent.press(getByText('Connect Monobank'));
-    expect(await findByText(/Add your Monobank token above/)).toBeTruthy();
-    // The token existence guard probes THIS account's own per-account item.
-    expect(mockReadToken).toHaveBeenCalledWith('a');
-    // The pointer no longer sends the user to global Settings.
-    expect(queryByText(/in Settings/)).toBeNull();
-    expect(mockSync).not.toHaveBeenCalled();
-    expect(navigation.navigate).not.toHaveBeenCalled();
-  });
-
-  it('renders the Monobank token input and saves it via the token path for a bank account', async () => {
-    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
-    const { getByPlaceholderText, getByText } = await renderScreen();
-    const input = getByPlaceholderText('Monobank token');
-    expect(input).toBeTruthy();
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const input = view.getByPlaceholderText('Monobank token');
     await fireEvent.changeText(input, 'entered-here');
     await act(async () => {
-      await fireEvent.press(getByText('Save'));
+      await fireEvent.press(view.getByText('Connect Monobank'));
     });
+
+    // Validate BEFORE save: fetchClientInfo runs first, and only a successful
+    // validation reaches saveToken — no orphaned Keychain item on an invalid
+    // token (see the invalid-token test below).
     expect(mockFetchClientInfo).toHaveBeenCalledWith('entered-here');
     // The token binds to THIS account's id (per-account Keychain item), not a
     // shared global slot.
     expect(mockSaveToken).toHaveBeenCalledWith('a', 'entered-here');
+    await waitFor(() => expect(mockSync).toHaveBeenCalledWith('a'));
+  });
+
+  it('never saves an invalid token: validation failure keeps the field usable and skips saveToken/sync entirely', async () => {
+    mockFetchClientInfo.mockRejectedValue(new Error('401'));
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const input = view.getByPlaceholderText('Monobank token');
+    await fireEvent.changeText(input, 'bad-token');
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Monobank'));
+    });
+
+    expect(await view.findByText('Invalid token')).toBeTruthy();
+    expect(mockSaveToken).not.toHaveBeenCalled();
+    expect(mockSync).not.toHaveBeenCalled();
+    // The entered text is kept so the user can retry immediately, without
+    // re-entering the token.
+    expect(view.getByPlaceholderText('Monobank token').props.value).toBe('bad-token');
+  });
+
+  it('keeps a valid-but-unsynced token retryable: a failed connect keeps the field usable for an immediate retry', async () => {
+    mockSync.mockResolvedValueOnce(false);
+    setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
+    const view = await renderScreen();
+    await openMonobankConnectField(view);
+    const { getByPlaceholderText, getByText, findByText } = view;
+    const input = getByPlaceholderText('Monobank token');
+    await fireEvent.changeText(input, 'entered-here');
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Monobank'));
+    });
+
+    expect(await findByText('Could not connect Monobank')).toBeTruthy();
+    // The token is kept in the field (not cleared) so a retry does not require
+    // re-entering it.
+    expect(getByPlaceholderText('Monobank token').props.value).toBe('entered-here');
+
+    // Retrying without re-entering the token succeeds: Connect stayed pressable
+    // and re-runs the same validated token through save + sync.
+    mockSync.mockResolvedValueOnce(true);
+    await act(async () => {
+      await fireEvent.press(getByText('Connect Monobank'));
+    });
+    expect(mockSaveToken).toHaveBeenCalledTimes(2);
+    expect(mockSaveToken).toHaveBeenLastCalledWith('a', 'entered-here');
+    await waitFor(() => expect(mockSync).toHaveBeenCalledTimes(2));
   });
 
   it('shows the last sync time on a connected bank account, formatted as DD.MM.YYYY HH:mm', async () => {
@@ -696,18 +799,15 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the deep-press delete menu confirm', async () => {
+  it('deletes a manual holding via the themed deep-press delete confirm', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const sheetSpy = jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1));
-    await renderScreen();
+    const { getByTestId, getByText } = await renderScreen();
     // The manual holding card is wrapped in the deep-press long-press. A hold
-    // that stays still opens the destructive delete sheet; confirming its
-    // destructive index removes the holding.
+    // that stays still opens the themed ConfirmSheet (not a native
+    // ActionSheetIOS); pressing its destructive confirm removes the holding.
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -715,12 +815,9 @@ describe('AccountDetailScreen', () => {
         { state: State.END },
       ]);
     });
-    expect(sheetSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ options: ['Cancel', 'Delete "Black card"'] }),
-      expect.any(Function),
-    );
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockRemove).toHaveBeenCalledWith('h1');
-    sheetSpy.mockRestore();
   });
 
   it('wires an auto-scroll ref and an edge activation offset to the holdings grid (F9)', async () => {
@@ -761,16 +858,18 @@ describe('AccountDetailScreen', () => {
     expect(mockReorder).toHaveBeenCalledWith(['h2', 'h1']);
   });
 
-  it('replaces the swipe-to-delete row with a plain card (no SwipeableRow in the grid)', async () => {
+  it('wires a manual holding card to the shared long-press menu, not a swipe-to-delete row', async () => {
     setLiveData({
       accounts: [account()],
       holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
-    const { queryByTestId, queryByLabelText } = await renderScreen();
-    // SwipeableRow renders a `*-actions` layer and an a11y "Delete" affordance;
-    // neither should exist now that the grid uses a long-press menu instead.
-    expect(queryByTestId('swipeable-row-actions')).toBeNull();
-    expect(queryByLabelText('Delete', { includeHiddenElements: true })).toBeNull();
+    const { queryByTestId } = await renderScreen();
+    // The delete affordance is the shared CardContextMenu long-press — the card
+    // is wrapped in its `card-context-menu` layer and registers the hold
+    // gesture — rather than a swipe-to-delete row. `getByGestureTestId` throws
+    // when the hold gesture is absent, so reaching it asserts the affordance.
+    expect(queryByTestId('card-context-menu')).not.toBeNull();
+    expect(getByGestureTestId(HOLD_GESTURE_TEST_ID)).toBeTruthy();
   });
 
   it('renders no context menu on a synced holding (monobankId)', async () => {
@@ -841,21 +940,31 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
-  it('offers a Disconnect action on a connected account and confirms before disconnecting', async () => {
+  it('offers a Disconnect action on a connected account and confirms via the themed sheet before disconnecting', async () => {
     mockDisconnect.mockResolvedValue(undefined);
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      (buttons ?? []).find((b) => b.style === 'destructive')?.onPress?.();
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: 'monobank' })],
+      holdings: [],
     });
+    const { getByText, getByTestId } = await renderScreen();
+    await fireEvent.press(getByText('Disconnect'));
+    // The themed ConfirmSheet (not a native Alert.alert) opens before the
+    // connection + token are cleared.
+    expect(getByText('Disconnect Monobank')).toBeTruthy();
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    await fireEvent.press(getByTestId('bank-disconnect-confirm'));
+    await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
+  });
+
+  it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: 'monobank' })],
       holdings: [],
     });
     const { getByText } = await renderScreen();
     await fireEvent.press(getByText('Disconnect'));
-    // The action confirms (an Alert) before it clears the connection + token.
-    expect(alertSpy).toHaveBeenCalled();
-    await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a'));
-    alertSpy.mockRestore();
+    await fireEvent.press(getByText('Cancel'));
+    expect(mockDisconnect).not.toHaveBeenCalled();
   });
 
   it('does not offer Disconnect on an account that is not connected', async () => {
@@ -865,6 +974,27 @@ describe('AccountDetailScreen', () => {
     });
     const { queryByText } = await renderScreen();
     expect(queryByText('Disconnect')).toBeNull();
+  });
+
+  // Guideline 5.6 remediation: PrivatBank, bunq, and Starling bank-CONNECT
+  // were removed entirely — Monobank is the sole shipped native provider, so
+  // the picker sheet lists exactly one row and no cross-provider routing
+  // remains to exercise (that coverage now lives in
+  // `bank-sync-section.component.test.tsx` and `add-bank-sheet.component.test.tsx`).
+  it('opens the add-a-bank picker sheet for a disconnected bank account, listing the shipped native provider', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'bank', institution: null })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+
+    // No provider's field is mounted before a choice is made.
+    expect(view.queryByText('Connect Monobank')).toBeNull();
+
+    await fireEvent.press(view.getByText('Add a bank'));
+
+    expect(view.getByTestId('add-bank-sheet')).toBeTruthy();
+    expect(view.getByText('Monobank')).toBeTruthy();
   });
 
   it('reflects term-deposit growth in net worth (now is passed)', async () => {
@@ -932,14 +1062,144 @@ describe('AccountDetailScreen', () => {
   });
 });
 
+describe('AccountDetailScreen — statement import (footer button + pickAndOpenStatement)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+  });
+
+  it('renders an Import statement action beside Add holding in the footer', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+  });
+
+  it('renders Import statement with the secondaryTonal variant and its doc icon (Add holding stays primary)', async () => {
+    await renderScreen();
+
+    const importButton = mockButtonProps.find((props) => props.children === 'Import statement');
+    const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
+
+    expect(importButton?.variant).toBe('secondaryTonal');
+    expect(importButton?.icon).toBe('doc.badge.plus');
+    expect(addHoldingButton?.variant).toBe('primary');
+  });
+
+  it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {
+    await renderScreen();
+
+    const importButton = mockButtonProps.find((props) => props.children === 'Import statement');
+
+    expect(importButton?.fullWidth).toBe(true);
+  });
+
+  it('opens the document picker with csv/xlsx/plainText/allFiles accepted types when Import statement is pressed', async () => {
+    mockPick.mockRejectedValue({ code: 'OPERATION_CANCELED' });
+    const { getByText } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(mockPick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: ['text/csv', 'application/xlsx', 'text/plain', '*/*'],
+      }),
+    );
+  });
+
+  it('handles a cancelled picker gracefully: no file read, no navigation, no thrown error', async () => {
+    mockPick.mockRejectedValue({ code: 'OPERATION_CANCELED' });
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalledWith('StatementImport', expect.anything());
+  });
+
+  it('navigates to StatementImport with the resolved filePath and accountId on success, without reading the file itself', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    // `pickAndOpenStatement` hands the picked `uri` straight to
+    // `StatementImportScreen`, which owns the ONE read of this file — a
+    // pre-read here would pay for the read twice and leave its own failure
+    // mode unhandled at this call site (see the handler's own doc comment).
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'monobank-csv',
+    });
+  });
+
+  it('passes expectedFormatId resolved from the account bankId when navigating to StatementImport', async () => {
+    setLiveData({ accounts: [account({ bankId: 'privatbank' })], holdings: [] });
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.xlsx', name: 'statement.xlsx', type: 'application/xlsx' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///mock/statement.xlsx',
+      accountId: 'a',
+      expectedFormatId: 'privatbank-xlsx',
+    });
+  });
+
+  it('hides Import statement for a cash account', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('hides Import statement for a crypto account', async () => {
+    setLiveData({ accounts: [account({ kind: 'crypto', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('hides Import statement for a bank account with no bank picked (no statement format to scope to)', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', bankId: null })], holdings: [] });
+    const { queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('shows Import statement for a bank account whose picked bank resolves to a statement format', async () => {
+    setLiveData({ accounts: [account({ kind: 'bank', bankId: 'privatbank' })], holdings: [] });
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Import statement')).toBeTruthy();
+  });
+});
+
 describe('AccountDetailScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    mockReadToken.mockResolvedValue('token-abc');
-    mockHasToken.mockResolvedValue(false);
     setLiveData({ accounts: [account({ kind: 'bank', institution: null })], holdings: [] });
   });
 
@@ -954,12 +1214,19 @@ describe('AccountDetailScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByText, queryByText } = await renderScreen();
+    const view = await renderScreen();
 
-    expect(getByText('Додати актив')).toBeTruthy();
-    expect(getByText('Активи')).toBeTruthy();
-    expect(getByText('Підключити Monobank')).toBeTruthy();
-    expect(queryByText('Add holding')).toBeNull();
-    expect(queryByText('Connect Monobank')).toBeNull();
+    expect(view.getByText('Додати актив')).toBeTruthy();
+    expect(view.getByText('Активи')).toBeTruthy();
+    expect(view.getByText('Додати банк')).toBeTruthy();
+    expect(view.queryByText('Add holding')).toBeNull();
+
+    // Opening the picker and choosing Monobank renders its connect field
+    // from the same Ukrainian catalog.
+    await fireEvent.press(view.getByText('Додати банк'));
+    await fireEvent.press(view.getByTestId('add-bank-option-monobank'));
+
+    expect(view.getByText('Підключити Monobank')).toBeTruthy();
+    expect(view.queryByText('Connect Monobank')).toBeNull();
   });
 });

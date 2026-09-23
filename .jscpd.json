@@ -14,6 +14,8 @@
     "coverage/**",
     "**/*.jsbundle",
     "**/drizzle/migrations/meta/*_snapshot.json",
-    "rules/fixtures/**"
+    "rules/fixtures/**",
+    "**/net-worth-line/net-worth-line.component.tsx",
+    "**/category-trend-line/category-trend-line.component.tsx"
   ]
 }

@@ -3,8 +3,8 @@ import { renderHook, waitFor } from '@testing-library/react-native';
 const mockRefreshRates = jest.fn();
 const mockLatestFetchedAt = jest.fn();
 const mockSyncStateGetQuery = jest.fn();
-const mockConnectedQuery = jest.fn();
-const mockHasToken = jest.fn();
+const mockListQuery = jest.fn();
+const mockMonobankHasCredentials = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
@@ -23,8 +23,10 @@ jest.mock('../sync-jobs', () => ({
     return [];
   },
 }));
-jest.mock('../../monobank/token', () => ({
-  hasToken: (...args: unknown[]) => mockHasToken(...args),
+jest.mock('../../bank-sync/registry', () => ({
+  bankProviderRegistry: {
+    monobank: { hasCredentials: (...args: unknown[]) => mockMonobankHasCredentials(...args) },
+  },
 }));
 jest.mock('../../rates/rates-refresh', () => ({
   refreshRates: (...args: unknown[]) => mockRefreshRates(...args),
@@ -41,7 +43,7 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
-    connectedQuery: (...args: unknown[]) => mockConnectedQuery(...args),
+    listQuery: (...args: unknown[]) => mockListQuery(...args),
   },
 }));
 
@@ -71,8 +73,8 @@ describe('useAutoSync', () => {
     mockRefreshRates.mockResolvedValue(undefined);
     mockLatestFetchedAt.mockResolvedValue(null);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: null }]);
-    mockConnectedQuery.mockResolvedValue([]);
-    mockHasToken.mockResolvedValue(true);
+    mockListQuery.mockResolvedValue([]);
+    mockMonobankHasCredentials.mockResolvedValue(true);
   });
 
   it('refreshes live rates but runs no sync for a manual-only user (no connected sync account)', async () => {
@@ -81,7 +83,7 @@ describe('useAutoSync', () => {
     // non-base-currency holding is dropped from every net-worth aggregation
     // (`canConvert` in net-worth-view). The sync fan-out stays gated on jobs; the
     // rate refresh must not be — `refreshRates` is itself self-throttled.
-    mockConnectedQuery.mockResolvedValue([]);
+    mockListQuery.mockResolvedValue([]);
     mockLatestFetchedAt.mockResolvedValue(7);
 
     await renderHook(() => useAutoSync());
@@ -93,12 +95,12 @@ describe('useAutoSync', () => {
   });
 
   it('does nothing when the connected Monobank account synced within the throttle window', async () => {
-    mockConnectedQuery.mockResolvedValue([monobank]);
+    mockListQuery.mockResolvedValue([monobank]);
     mockSyncStateGetQuery.mockResolvedValue([{ lastSyncAt: Date.now() }]);
 
     await renderHook(() => useAutoSync());
 
-    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockListQuery).toHaveBeenCalled());
     await waitFor(() => expect(mockSyncStateGetQuery).toHaveBeenCalledWith('acc-mono'));
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
@@ -107,7 +109,7 @@ describe('useAutoSync', () => {
   });
 
   it('syncs the Monobank account then refreshes rates when tokened and past the throttle window', async () => {
-    mockConnectedQuery.mockResolvedValue([monobank]);
+    mockListQuery.mockResolvedValue([monobank]);
     mockLatestFetchedAt.mockResolvedValue(42);
 
     await renderHook(() => useAutoSync());
@@ -119,8 +121,8 @@ describe('useAutoSync', () => {
   it('skips the Monobank account but still syncs crypto when no token is stored', async () => {
     // A Monobank job needs a token; a crypto account needs none. A tokenless user
     // with both connected still gets its crypto balances + Binance history synced.
-    mockConnectedQuery.mockResolvedValue([monobank, binance]);
-    mockHasToken.mockResolvedValue(false);
+    mockListQuery.mockResolvedValue([monobank, binance]);
+    mockMonobankHasCredentials.mockResolvedValue(false);
 
     await renderHook(() => useAutoSync());
 
@@ -130,13 +132,14 @@ describe('useAutoSync', () => {
   });
 
   it('runs no sync but still refreshes rates when the only connected account is a tokenless Monobank one', async () => {
-    mockConnectedQuery.mockResolvedValue([monobank]);
-    mockHasToken.mockResolvedValue(false);
+    mockListQuery.mockResolvedValue([monobank]);
+    mockMonobankHasCredentials.mockResolvedValue(false);
 
     await renderHook(() => useAutoSync());
 
-    // The token gate probes the connected Monobank account's OWN per-account item.
-    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono'));
+    // The credential gate probes the connected Monobank account's OWN item,
+    // through the registry.
+    await waitFor(() => expect(mockMonobankHasCredentials).toHaveBeenCalledWith('acc-mono'));
 
     // The tokenless account yields no job, so nothing syncs — but the live-rate
     // refresh is decoupled from the fan-out and still runs.
@@ -148,25 +151,25 @@ describe('useAutoSync', () => {
   it('drops ONLY the tokenless Monobank account and keeps the tokened one plus crypto', async () => {
     const monobankA = { id: 'acc-mono-a', name: 'Mono A', institution: 'monobank' };
     const monobankB = { id: 'acc-mono-b', name: 'Mono B', institution: 'monobank' };
-    mockConnectedQuery.mockResolvedValue([monobankA, monobankB, binance]);
-    // The token gate is now PER ACCOUNT: only account A has an item stored.
-    mockHasToken.mockImplementation(async (id: string) => id === 'acc-mono-a');
+    mockListQuery.mockResolvedValue([monobankA, monobankB, binance]);
+    // The credential gate is now PER ACCOUNT: only account A has an item stored.
+    mockMonobankHasCredentials.mockImplementation(async (id: string) => id === 'acc-mono-a');
 
     await renderHook(() => useAutoSync());
 
-    // Both Monobank accounts are probed for their OWN token independently.
-    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono-a'));
-    await waitFor(() => expect(mockHasToken).toHaveBeenCalledWith('acc-mono-b'));
+    // Both Monobank accounts are probed for their OWN credential independently.
+    await waitFor(() => expect(mockMonobankHasCredentials).toHaveBeenCalledWith('acc-mono-a'));
+    await waitFor(() => expect(mockMonobankHasCredentials).toHaveBeenCalledWith('acc-mono-b'));
     // Only the tokened Monobank account yields a job; the tokenless one is dropped.
     await waitFor(() => expect(mockMonobankRun).toHaveBeenCalledTimes(1));
-    // Crypto is unaffected by the Monobank token gate.
+    // Crypto is unaffected by the Monobank credential gate.
     await waitFor(() => expect(mockCryptoRun).toHaveBeenCalled());
   });
 
   it('syncs a connected crypto account on open even with no Monobank account', async () => {
     // The reported gap: an app-open sync used to be Monobank-only, so a crypto
     // user who only OPENED the app never triggered the Binance import.
-    mockConnectedQuery.mockResolvedValue([binance]);
+    mockListQuery.mockResolvedValue([binance]);
 
     await renderHook(() => useAutoSync());
 
@@ -176,7 +179,7 @@ describe('useAutoSync', () => {
   });
 
   it('fans out to BOTH the Monobank and the crypto account when both are connected', async () => {
-    mockConnectedQuery.mockResolvedValue([monobank, binance]);
+    mockListQuery.mockResolvedValue([monobank, binance]);
 
     await renderHook(() => useAutoSync());
 
@@ -185,7 +188,7 @@ describe('useAutoSync', () => {
   });
 
   it('isolates a failing job (partial success) and still refreshes rates', async () => {
-    mockConnectedQuery.mockResolvedValue([monobank, binance]);
+    mockListQuery.mockResolvedValue([monobank, binance]);
     mockMonobankRun.mockRejectedValue(new Error('sync boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
@@ -195,13 +198,21 @@ describe('useAutoSync', () => {
   });
 
   it('swallows an error thrown while reading the connected accounts', async () => {
-    mockConnectedQuery.mockRejectedValue(new Error('read boom'));
+    mockListQuery.mockRejectedValue(new Error('read boom'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
-    await waitFor(() => expect(mockConnectedQuery).toHaveBeenCalled());
+    await waitFor(() => expect(mockListQuery).toHaveBeenCalled());
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();
   });
+
+  // Item A (whole-branch review): the cross-open throttle used to read ONLY a
+  // Monobank account's cursor, so a non-Monobank-only user's `lastSyncAt`
+  // always resolved `null` and every cold open bypassed the throttle. The
+  // cursor is read from ANY connected bank account (`bankAccountIdFor`),
+  // proven above by the Monobank cases — Guideline 5.6 remediation removed
+  // the other native providers this used to also cover (PrivatBank, bunq,
+  // Starling), so no cross-provider case remains to exercise here.
 });

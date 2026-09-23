@@ -2,17 +2,17 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
-import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import { i18n } from '../../i18n';
-import clientInfo from '../__fixtures__/client-info.json';
-import statement from '../__fixtures__/statement.json';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 import {
   getProgressSnapshot,
   isFastPhaseDone,
   getSnapshot as isSyncingSnapshot,
   subscribeProgress,
 } from '../sync-status';
+import { i18n } from '../../i18n';
+import statement from '../__fixtures__/statement.json';
+import clientInfo from '../__fixtures__/client-info.json';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 
 import {
   mapAccountToHolding,
@@ -161,6 +161,7 @@ const bankAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   name: 'My Bank',
   kind: 'bank',
   institution: null,
+  bankId: null,
   sortOrder: 0,
   archivedAt: null,
   createdAt: 0,
@@ -295,6 +296,9 @@ const makeInMemoryDeps = (
         // A synced row is never an exchange leg — that marker is written only
         // by the manual Exchange/Convert paths.
         exchangeCounterpartHoldingId: null,
+        // A synced row is never part of a split-change group — that marker is
+        // written only by the manual `recordManualWithReturns` path.
+        changeGroupId: null,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
@@ -770,8 +774,10 @@ describe('runSync', () => {
   });
 
   // A foreign-currency sub-account (a multi-currency card, a FOP account, a
-  // foreign jar) carries a currency Kiko cannot represent (anything other than
-  // UAH/USD/EUR). Such an account/jar must be SILENTLY SKIPPED — excluded from
+  // foreign jar) carries a currency Kiko cannot represent (anything outside the
+  // supported fiat set — e.g. RUB 643, or an unassigned code). Such an
+  // account/jar must be
+  // SILENTLY SKIPPED — excluded from
   // net worth — rather than aborting the entire sync: the mappers throw on an
   // unrepresentable currency, and `upsertHoldings` used to call them inside its
   // loop with no guard, so ONE foreign card threw before any card imported and
@@ -783,11 +789,11 @@ describe('runSync', () => {
     const supported = clientInfo.accounts[0] as MonobankAccount; // UAH (980)
     const unsupportedAccount: MonobankAccount = {
       ...(clientInfo.accounts[1] as MonobankAccount),
-      currencyCode: 985, // PLN — not representable in Kiko
+      currencyCode: 643, // RUB — not representable in Kiko
     };
     const unsupportedJar: MonobankJar = {
       ...(clientInfo.jars[0] as MonobankJar),
-      currencyCode: 826, // GBP — not representable in Kiko
+      currencyCode: 999, // unassigned ISO code — not representable in Kiko
     };
     const { deps, holdingsStore, transactionsStore } = makeInMemoryDeps(onlyFirstAccount, [
       connected,
@@ -803,8 +809,8 @@ describe('runSync', () => {
 
     const result = await runSync(deps);
 
-    // Only the supported card landed as a holding — the PLN account and GBP jar
-    // were skipped, never upserted.
+    // Only the supported card landed as a holding — the RUB account and the
+    // unassigned-code jar were skipped, never upserted.
     expect(holdingsStore).toHaveLength(1);
     expect(holdingsStore[0].type).toBe('card');
     expect(holdingsStore[0].currency).toBe('UAH');

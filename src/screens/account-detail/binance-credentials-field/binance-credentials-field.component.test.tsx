@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 import BinanceCredentialsField from '../binance-credentials-field';
@@ -21,6 +22,22 @@ jest.mock('react-native/Libraries/Linking/Linking', () => ({
 jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: () => mockGetString(),
 }));
+
+// The Text primitive's tone -> color mapping lives in a react-native-unistyles
+// variant that the project's Jest mock strips before a test can inspect it.
+// Mock Text here — following the account-detail screen test precedent — so the
+// resolved `tone` the link renders with is observable via a testID, while the
+// label still renders as plain text so every getByText assertion is unaffected.
+jest.mock('../../../design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ tone, children }: { tone?: string; children: ReactNode }) => (
+      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
+    ),
+  };
+});
 
 const fillBoth = async (
   getByPlaceholderText: Awaited<ReturnType<typeof render>>['getByPlaceholderText'],
@@ -50,6 +67,19 @@ describe('BinanceCredentialsField', () => {
     expect(getByText('Connect Binance')).toBeTruthy();
   });
 
+  it('uses the lock glyph for Connect and the Kiko UI clipboard glyph for both Paste buttons', async () => {
+    const { root } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+
+    // Connect carries the `lock` glyph; both paste buttons (key + secret) carry
+    // the Kiko UI `document.on.clipboard` spelling (SFSymbolView forwards `name`).
+    expect((root?.queryAll((node) => node.props.name === 'lock') ?? []).length).toBeGreaterThan(0);
+    expect(
+      (root?.queryAll((node) => node.props.name === 'document.on.clipboard') ?? []).length,
+    ).toBe(2);
+  });
+
   it('disables Connect until both the API key and secret are entered', async () => {
     const { getByPlaceholderText, getByRole } = await render(
       <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
@@ -67,6 +97,17 @@ describe('BinanceCredentialsField', () => {
     // Both fields entered enables the action.
     await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
     expect(connect()).not.toBeDisabled();
+  });
+
+  it('renders the Binance link through the shared Text primitive with the accent tone', async () => {
+    const { getByText } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+
+    // The link reads as a tappable inline label via the shared `Text` tone
+    // token, matching the pie legend's "Show all" toggle, rather than an
+    // inline-styled raw RN `Text`.
+    expect(getByText('Open Binance API Management').props.testID).toBe('text-tone-accent');
   });
 
   it('opens the Binance API management page from the link', async () => {
@@ -165,6 +206,19 @@ describe('BinanceCredentialsField', () => {
     });
 
     expect(await findByText('Could not connect Binance')).toBeTruthy();
+  });
+
+  it('shows the Keychain-only data-handling disclosure as a secondary caption', async () => {
+    const { getByText } = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+
+    const disclosure = getByText(
+      "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
+    );
+
+    expect(disclosure).toBeTruthy();
+    expect(disclosure.props.testID).toBe('text-tone-textSecondary');
   });
 
   it('clears a stale status when either field is edited afterward', async () => {

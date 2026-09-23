@@ -17,7 +17,4 @@ export type TimeFieldProps = {
   // An optional testID applied to the field's Pressable trigger, so a flow can
   // open the picker sheet deterministically.
   testID?: string;
-  // An optional testID applied to the sheet's dismiss backdrop, so a flow can
-  // close the sheet by tapping the scrim (the sheet is a full-screen Modal).
-  backdropTestID?: string;
 };

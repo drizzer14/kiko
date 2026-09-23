@@ -1,6 +1,6 @@
 import type { Repository } from '@kiko/db/repository';
 import { appendDepositContributionTx } from '@kiko/holdings/repo';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 
 import { database, write } from '../../db/client';
@@ -28,7 +28,12 @@ type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 't
   >;
 
 type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time'> &
-  Partial<Pick<TransactionRow, 'description' | 'category' | 'exchangeCounterpartHoldingId'>>;
+  Partial<
+    Pick<
+      TransactionRow,
+      'description' | 'category' | 'exchangeCounterpartHoldingId' | 'changeGroupId'
+    >
+  >;
 
 type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
   Partial<Pick<TransactionRow, 'description'>> & { transactionId: string };
@@ -59,6 +64,18 @@ type ExchangeCounterpartInput = {
   time: number;
 };
 
+// One change-return of a split payment: a POSITIVE amount on a holding OTHER
+// than the payer. `recordManualWithReturns` writes each as its own manual row,
+// tied to the payment by a shared `changeGroupId`.
+type ChangeReturn = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits'>;
+
+type ManualWithReturnsInput = {
+  // The full payment (amount < 0), carrying its category, on the paying holding.
+  payment: ManualTransaction;
+  // Each return (amount > 0) on a DIFFERENT holding, in the payment's currency.
+  returns: ChangeReturn[];
+};
+
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
 // transaction handle. The balance base is read from the DB *inside* the same
 // transaction, never from a render snapshot, so concurrent writes cannot clobber
@@ -80,6 +97,7 @@ const recordManualTx = async (
     description,
     category,
     exchangeCounterpartHoldingId,
+    changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
   await tx.insert(transactions).values({
@@ -90,6 +108,7 @@ const recordManualTx = async (
     description: description ?? '',
     category: category ?? null,
     exchangeCounterpartHoldingId: exchangeCounterpartHoldingId ?? null,
+    changeGroupId: changeGroupId ?? null,
     source: 'manual',
   });
 
@@ -254,6 +273,13 @@ export const transactionsRepo = {
         // it to resolve an exchange leg's label, and Statistics reads it to
         // drop both legs from the spending pie.
         exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+        // The split-change group id travels too: the spending pie nets a
+        // payment's linked returns into its category (statistics/category-breakdown).
+        changeGroupId: transactions.changeGroupId,
+        // Home reads the source to tell a synced (Monobank/crypto) row from a
+        // manual one (`isSyncedTransaction`), gating its long-press delete —
+        // only a manual row is deletable.
+        source: transactions.source,
         category: transactions.category,
         accountId: accounts.id,
         accountName: accounts.name,
@@ -266,6 +292,39 @@ export const transactionsRepo = {
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .orderBy(desc(transactions.time)),
+  /**
+   * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
+   * first — the source of the create-form's inline description suggestions (D1).
+   * The `source = 'manual'` filter EXCLUDES synced/bank descriptions (a Monobank
+   * merchant name is not a manual entry the user re-types), and `<> ''` drops the
+   * blank rows (a description-less exchange leg, a blank manual entry). Ordering
+   * by `time` desc makes the ranking RECENCY, not frequency — the most recently
+   * used names bubble up. The final capping and the fuzzy, case-insensitive
+   * match against what the user is typing happen in JS (`normalizeTransactionName`),
+   * never in SQL, since SQLite's `lower()` is ASCII-only.
+   */
+  distinctDescriptionsQuery: () =>
+    database
+      .selectDistinct({ description: transactions.description })
+      .from(transactions)
+      .where(and(eq(transactions.source, 'manual'), ne(transactions.description, '')))
+      .orderBy(desc(transactions.time)),
+  /**
+   * The holding id of the user's MOST RECENT manual transaction (a single
+   * `{ holdingId }` row, or none) — the default primary leg for the global
+   * add-transaction entry (Bundle B). `source = 'manual'` excludes bank/crypto
+   * imports (a synced holding is never a manual-create target), `time` desc
+   * makes it the newest, and `limit 1` takes just that one. The form seeds its
+   * primary-holding seam from this once, falling back to the first eligible
+   * holding when the user has no manual history yet.
+   */
+  latestManualHoldingQuery: () =>
+    database
+      .select({ holdingId: transactions.holdingId })
+      .from(transactions)
+      .where(eq(transactions.source, 'manual'))
+      .orderBy(desc(transactions.time))
+      .limit(1),
   add: (input: NewTransaction) =>
     write((tx) => tx.insert(transactions).values({ id: id(), ...input })),
   /**
@@ -398,6 +457,33 @@ export const transactionsRepo = {
         .exhaustive();
 
       await markExistingLegTx(tx, input);
+    }),
+  /**
+   * Record a manual payment and N linked change-returns as N+1 INDEPENDENT
+   * ledger rows in ONE op-sqlite transaction, tied by a shared generated
+   * `changeGroupId`. The payment (amount < 0) lands on its own holding carrying
+   * its category; each return (amount > 0) lands on a DIFFERENT holding. Net
+   * worth nets automatically because every balance moves inside the one
+   * transaction; the spending pie nets the linked returns into the payment's
+   * category (statistics/category-breakdown). Any failure rolls back every row,
+   * so the ledger and every balance can never desync. Balances are read INSIDE
+   * the transaction, never from a render snapshot, exactly as `recordManual`
+   * does.
+   */
+  recordManualWithReturns: (input: ManualWithReturnsInput) =>
+    write(async (tx) => {
+      const changeGroupId = id();
+
+      await recordManualTx(tx, { ...input.payment, changeGroupId });
+
+      for (const change of input.returns) {
+        await recordManualTx(tx, {
+          holdingId: change.holdingId,
+          amountMinorUnits: change.amountMinorUnits,
+          time: input.payment.time,
+          changeGroupId,
+        });
+      }
     }),
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance

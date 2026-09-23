@@ -5,6 +5,7 @@ import '../../unistyles';
 import { i18n } from '../../../i18n';
 
 import IconEditor from '.';
+import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal/icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof IconEditor>>;
 
@@ -14,6 +15,7 @@ const setup = async (overrides: Overrides = {}) => {
 
   const utils = await render(
     <IconEditor
+      icons={KIKO_CATEGORIES_ICONS}
       icon={null}
       fallbackIcon="building.columns"
       label="Icon"

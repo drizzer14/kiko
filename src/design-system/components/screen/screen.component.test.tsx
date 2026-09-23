@@ -149,12 +149,30 @@ describe('Screen', () => {
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.contentInsetAdjustmentBehavior).toBe('automatic');
   });
 
-  it('leaves the ScrollView bounce at the RN default outside screenshot mode (real users keep it)', async () => {
+  it('adjusts the ScrollView content inset for the keyboard so a focused input scrolls clear of it (and the Done accessory)', async () => {
     const { getByTestId } = await renderScreen({ scroll: true });
 
-    // Production must be unchanged: `bounces` is left `undefined`, so RN applies
-    // its default (`true`) and real users keep the native overscroll bounce.
-    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.bounces).toBeUndefined();
+    // iOS-only UIScrollView prop: when the keyboard changes size, iOS adjusts
+    // this scroll view's contentInset/scrollIndicatorInsets and scrolls the
+    // first responder above the keyboard. The Done accessory's height is part
+    // of the native keyboard frame on iOS, so this clears both at once — the
+    // whole shared auto-scroll-to-focus feature. Harmlessly ignored on Android.
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
+  });
+
+  it('defaults automaticallyAdjustKeyboardInsets to true so a focused input scrolls clear of the keyboard', async () => {
+    const { getByTestId } = await renderScreen({ scroll: true });
+
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(true);
+  });
+
+  it('forwards automaticallyAdjustKeyboardInsets={false} so a caller can suspend it while a sheet above it can be focused', async () => {
+    const { getByTestId } = await renderScreen({
+      scroll: true,
+      automaticallyAdjustKeyboardInsets: false,
+    });
+
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustKeyboardInsets).toBe(false);
   });
 
   it('enables scrollToOverflow so a programmatic scroll-to-top re-expands the large title', async () => {

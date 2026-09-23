@@ -2,11 +2,11 @@ import type { FC } from 'react';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import SymbolIcon from '../symbol';
 import Text from '../text';
+import SymbolIcon from '../symbol';
 
-import type { SelectableRowProps } from './selectable-row.props';
 import { styles } from './selectable-row.styles';
+import type { SelectableRowProps } from './selectable-row.props';
 
 // The shared single-select row style: a 44pt-minimum tap target that fills
 // with the accent background when selected (the OptionPills/ChipRow selection
@@ -19,14 +19,17 @@ const SelectableRow: FC<SelectableRowProps> = ({
   label,
   icon,
   iconColor,
+  leadingText,
   reserveIconSlot = false,
   accessibilityRole = 'button',
   accessibilityLabel,
+  description,
+  trailing,
   onLayout,
   testID,
 }) => {
   const { theme } = useUnistyles();
-  const showIconSlot = icon != null || reserveIconSlot;
+  const showIconSlot = icon !== undefined || leadingText !== undefined || reserveIconSlot;
 
   return (
     <Pressable
@@ -46,13 +49,26 @@ const SelectableRow: FC<SelectableRowProps> = ({
         </View>
 
         {showIconSlot && (
-          <View style={styles.icon}>
-            {icon != null && (
+          <View style={leadingText !== undefined ? styles.iconText : styles.icon}>
+            {icon !== undefined && (
               <SymbolIcon
                 name={icon}
                 size={theme.iconSizes.body}
                 {...(selected ? { tone: 'onAccent' as const } : { color: iconColor })}
               />
+            )}
+
+            {icon === undefined && leadingText !== undefined && (
+              <Text
+                variant="body"
+                tone={selected ? 'onAccent' : 'textSecondary'}
+                style={styles.leadingTextMark}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {leadingText}
+              </Text>
             )}
           </View>
         )}
@@ -61,9 +77,29 @@ const SelectableRow: FC<SelectableRowProps> = ({
             Text's `style` prop intentionally allows only typography keys, so the
             row's space-filling belongs on a layout wrapper, not the Text. */}
         <View style={styles.label}>
-          <Text variant="body" tone={selected ? 'onAccent' : 'textPrimary'}>
-            {label}
-          </Text>
+          {/* `trailing` (e.g. the bank picker's capability icons) sits on the
+              SAME line as the title, pinned to the far right and top-aligned
+              to its first line — a sibling of `description` below, not
+              nested inside it, so the wrappable description caption never
+              has to share its row with anything else. */}
+          <View style={styles.titleRow}>
+            <View style={styles.titleText}>
+              <Text variant="body" tone={selected ? 'onAccent' : 'textPrimary'}>
+                {label}
+              </Text>
+            </View>
+
+            {trailing !== undefined && <View style={styles.trailing}>{trailing}</View>}
+          </View>
+
+          {description !== undefined && (
+            <View
+              testID={testID ? `${testID}-description` : undefined}
+              style={styles.descriptionRow}
+            >
+              {description}
+            </View>
+          )}
         </View>
       </View>
     </Pressable>

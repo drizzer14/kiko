@@ -1,0 +1,81 @@
+diff --git a/node_modules/read-excel-file/commonjs/zip/unzipFromArrayBuffer.js b/node_modules/read-excel-file/commonjs/zip/unzipFromArrayBuffer.js
+index 583d0db..0ba80d0 100644
+--- a/node_modules/read-excel-file/commonjs/zip/unzipFromArrayBuffer.js
++++ b/node_modules/read-excel-file/commonjs/zip/unzipFromArrayBuffer.js
+@@ -59,17 +59,20 @@ function unzipFromArrayBufferUsingFunction(input) {
+   });
+ }
+ function unzipAsync(archive) {
+-  return new Promise(function (resolve, reject) {
+-    // `unzip()` will resort to "synchronous" decompression in two edge cases:
+-    // * When the archive size is less than `512KB`.
+-    // * When the data is barely compressed, i.e. the compression ratio is less than 20% reduction in size.
+-    (0, _fflate.unzip)(archive, function (error, files) {
+-      if (error) {
+-        reject(error);
+-      } else {
+-        resolve(files);
+-      }
+-    });
++  return new Promise(function (resolve) {
++    // KIKO PATCH (Hermes safety, see patches/read-excel-file+9.3.10.patch):
++    // `fflate`'s async `unzip()` unconditionally does `new Worker(...)` for
++    // any archive entry that decompresses to >= 512KB AND compresses to
++    // under 80% of its original size (near-certain for repetitive XML like
++    // a bank statement's `sheet1.xml`/`sharedStrings.xml`). React Native's
++    // Hermes engine has no `Worker` global, so that branch throws
++    // `ReferenceError: Property 'Worker' doesn't exist` on-device — a crash
++    // that never reproduces under Jest (small fixtures stay under 512KB,
++    // and Node's `read-excel-file/node` entry never reaches this file at
++    // all). `unzipSync` always takes the synchronous, pure-JS `inflateSync`
++    // path — no `Worker`, no browser-only API — so it is used here
++    // unconditionally instead of the size-dependent async path.
++    resolve((0, _fflate.unzipSync)(archive));
+   });
+ }
+ 
+diff --git a/node_modules/read-excel-file/modules/zip/unzipFromArrayBuffer.js b/node_modules/read-excel-file/modules/zip/unzipFromArrayBuffer.js
+index d8c19dc..3be7720 100644
+--- a/node_modules/read-excel-file/modules/zip/unzipFromArrayBuffer.js
++++ b/node_modules/read-excel-file/modules/zip/unzipFromArrayBuffer.js
+@@ -4,7 +4,7 @@
+ // This is because using web workers comes with an overhead of
+ // both creating a new worker and sending data back and forth.
+ //
+-import { unzip } from 'fflate';
++import { unzipSync } from 'fflate';
+ import { createUnzipError } from './UnzipError.js';
+ 
+ /**
+@@ -52,17 +52,20 @@ export function unzipFromArrayBufferUsingFunction(input) {
+   });
+ }
+ function unzipAsync(archive) {
+-  return new Promise(function (resolve, reject) {
+-    // `unzip()` will resort to "synchronous" decompression in two edge cases:
+-    // * When the archive size is less than `512KB`.
+-    // * When the data is barely compressed, i.e. the compression ratio is less than 20% reduction in size.
+-    unzip(archive, function (error, files) {
+-      if (error) {
+-        reject(error);
+-      } else {
+-        resolve(files);
+-      }
+-    });
++  return new Promise(function (resolve) {
++    // KIKO PATCH (Hermes safety, see patches/read-excel-file+9.3.10.patch):
++    // `fflate`'s async `unzip()` unconditionally does `new Worker(...)` for
++    // any archive entry that decompresses to >= 512KB AND compresses to
++    // under 80% of its original size (near-certain for repetitive XML like
++    // a bank statement's `sheet1.xml`/`sharedStrings.xml`). React Native's
++    // Hermes engine has no `Worker` global, so that branch throws
++    // `ReferenceError: Property 'Worker' doesn't exist` on-device — a crash
++    // that never reproduces under Jest (small fixtures stay under 512KB,
++    // and Node's `read-excel-file/node` entry never reaches this file at
++    // all). `unzipSync` always takes the synchronous, pure-JS `inflateSync`
++    // path — no `Worker`, no browser-only API — so it is used here
++    // unconditionally instead of the size-dependent async path.
++    resolve(unzipSync(archive));
+   });
+ }
+ 

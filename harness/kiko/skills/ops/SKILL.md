@@ -25,6 +25,34 @@ Rules:
   and tears its own workers down. Never run `npx stryker run` directly and
   never background a mutation run or put it in a Monitor loop — an orphaned
   Stryker spawns one worker per core and can overload the machine.
+- **Launching a mutation run (check:deep / check:mutation): run it
+  detached, never read its own progress.** Launch the command with
+  `run_in_background` and await ITS exit code as the only signal —
+  never `Read`, `tail`, `cat`, `Monitor()`, or loop-read the running
+  mutation progress log INTO your own context (`scripts/checks/
+  mutation.sh` already tees output and the harness re-invokes you on
+  completion; pulling the log into context mid-run only burns tokens
+  for zero decision value). REFINEMENT: on each launch you should ALSO
+  spawn a separate background `tail -F <progress-log>` — but purely
+  for the HUMAN to watch in their own terminal/task viewer; never read
+  that background tail's own output yourself. The two are compatible:
+  the human gets live visibility, you still never pull progress into
+  context. Compute the log path with `source scripts/checks/_lib.sh;
+  harness_mutation_progress_log "$(git rev-parse --show-toplevel)"`
+  (see that function for the exact path — it lives under
+  `$TMPDIR/kiko-harness/<hash>/mutation/progress.log`, one per
+  worktree). Use `tail -F` (capital F) because `mutation.sh` truncates
+  and recreates the log at the start of every run — plain `-f` would
+  keep following the old inode. If the user is already tailing the
+  log, do not launch a duplicate `tail`.
+- **`make deep` / `check:deep` is the COORDINATOR's own job, not an ops
+  dispatch.** The coordinator runs the long, no-incremental checks
+  (Stryker mutation + osv) ITSELF as a background process and launches
+  the human `tail -F` of the progress log at the same time
+  (`scripts/checks/mutation.sh` prints the exact tail command near the
+  start). NEVER dispatch a `kiko:ops` subagent to "run `make deep` and
+  wait": a watching subagent only polls the run, burns tokens, and
+  cannot be stopped mid-flight.
 
 ## Device-deploy recipe
 

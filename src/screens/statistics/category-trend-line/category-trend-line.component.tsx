@@ -3,20 +3,23 @@ import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 
-import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
-import type { Currency } from '../../../currency/currency';
+import { formatDayMonth } from '../../../dates/format';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import { activeLocale } from '../../../i18n/active-locale';
+import type { Currency } from '../../../currency/currency';
 import type { CategoryTrendSeries } from '../../../statistics/category-trend';
+import { chooseCompactUnit, formatCompactMoney } from '../../../currency/compact';
 
 import { styles } from './category-trend-line.styles';
 
 /**
  * The per-category spending trend: one line per category, each point that
- * category's total EXPENSE inside one UTC-day bucket (per-period spend, not
+ * category's total EXPENSE inside one bucket period (per-period spend, not
  * cumulative), in the base currency's MAJOR units. Every series shares one set
- * of day buckets over the last 30 days on the X axis and a common Y scale rooted
+ * of buckets on the X axis — spanning the SAME Statistics date-range picker
+ * window the net-worth line plots, daily under ~180 days and weekly beyond
+ * (see `bucketDaysForSpan`/`buildCategoryTrend`) — and a common Y scale rooted
  * at 0. A legend below the plot pairs each line's color with its category title.
  * Renders an empty state when `series` is empty.
  */
@@ -43,10 +46,16 @@ const GRID_STROKE_WIDTH = 1;
 const VALUE_PADDING_RATIO = 0.1;
 // Roughly four ticks across the value range (an inclusive 0..3).
 const TICK_COUNT = 4;
-// The evenly-spaced fractions of the time range the X-axis labels the timeline
-// at: the two extremes plus three interior days, so the axis reads as a real
-// timeline rather than just its endpoints.
-const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+// The X-axis GRIDLINE fractions: three interior verticals (no edge lines — the
+// plot border already draws the extremes). Deliberately decoupled from
+// X_LABEL_FRACTIONS below: five evenly-spaced labels crowd a narrow phone
+// axis and the interior middle label was dropping out on-device, so the
+// labels now render at a sparser set while the gridlines keep their original
+// density and testIDs (`*-x-grid-0.25`/`0.50`/`0.75`).
+const X_GRID_FRACTIONS = [0.25, 0.5, 0.75] as const;
+// The X-axis LABEL fractions: first, middle, last only, so the middle date is
+// always legible instead of crowding out under five labels.
+const X_LABEL_FRACTIONS = [0, 0.5, 1] as const;
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
 
@@ -103,16 +112,13 @@ const buildTicks = (maxValue: number): Tick[] =>
 // the start's `leftPercent` is the plot's left padding, never exactly 0.
 type XTick = { key: string; time: number; leftPercent: number; isEdge: boolean; isStart: boolean };
 
-// The X-axis day ticks across the range. A single-instant range (one bucket,
-// or every point at the same time) collapses to a lone start label — the evenly
-// spaced set would otherwise stack every day on the same x.
-const buildXTicks = (scales: Scales): XTick[] => {
+// One X tick per fraction of the time span, shared by the grid and label
+// builders below — the only difference between the two is which fraction set
+// (and which collapse behavior) they feed in.
+const buildXTickSet = (scales: Scales, fractions: readonly number[]): XTick[] => {
   const timeSpan = scales.maxTime - scales.minTime;
-  if (timeSpan <= 0) {
-    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
-  }
 
-  return X_TICK_FRACTIONS.map((fraction) => {
+  return fractions.map((fraction) => {
     const time = scales.minTime + fraction * timeSpan;
 
     return {
@@ -125,19 +131,41 @@ const buildXTicks = (scales: Scales): XTick[] => {
   });
 };
 
+// The X-axis day LABEL ticks across the range. A single-instant range (one
+// bucket, or every point at the same time) collapses to a lone start label —
+// the evenly spaced set would otherwise stack every day on the same x.
+const buildXLabelTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [{ key: '0.00', time: scales.minTime, leftPercent: 0, isEdge: true, isStart: true }];
+  }
+
+  return buildXTickSet(scales, X_LABEL_FRACTIONS);
+};
+
+// The X-axis vertical GRIDLINE ticks across the range. A single-instant range
+// collapses to zero gridlines — there is no interior to mark — matching the
+// gridline count today (the label collapse's lone tick is an edge, which the
+// old single fraction-set render filtered out of the gridlines anyway).
+const buildXGridTicks = (scales: Scales): XTick[] => {
+  const timeSpan = scales.maxTime - scales.minTime;
+  if (timeSpan <= 0) {
+    return [];
+  }
+
+  return buildXTickSet(scales, X_GRID_FRACTIONS);
+};
+
 const toPolylinePoints = (points: CategoryTrendSeries['points'], scales: Scales): string =>
   points.map((point) => `${scales.x(point.t)},${scales.y(point.amount)}`).join(' ');
 
-// The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
-// label must format in UTC too — without `timeZone: 'UTC'`, a negative-UTC-
-// offset locale renders every label one day early (a UTC-midnight instant is
-// still the previous local day there).
-const formatAxisTime = (t: number): string =>
-  new Date(t).toLocaleDateString(activeLocale(), {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+// The buckets are LOCAL-midnight instants (`bucketTimes` steps from the
+// screen's `startOfLocalDay` range start), so the label must read LOCAL
+// calendar fields — matching net-worth-line's own `formatAxisTime` exactly.
+// Forcing `timeZone: 'UTC'` here reads the WRONG calendar day on a
+// positive-UTC-offset device: local midnight is still the previous UTC day
+// there, so the start label rendered one day early.
+const formatAxisTime = (t: number): string => formatDayMonth(t);
 
 // The `%` left offset for an interior label, as an RN dimension. Built from a
 // runtime number, so it widens to `string` and needs the cast onto the
@@ -187,7 +215,8 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
 
   const scales = buildScales(series, height);
   const ticks = buildTicks(scales.maxValue);
-  const xTicks = buildXTicks(scales);
+  const xLabelTicks = buildXLabelTicks(scales);
+  const xGridTicks = buildXGridTicks(scales);
   // One compact unit for the whole axis, chosen from the spread of tick values
   // so adjacent labels stay distinct while staying short (see chooseCompactUnit).
   const axisUnit = chooseCompactUnit(ticks.map((tick) => tick.value));
@@ -239,20 +268,18 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
             </G>
 
             <G>
-              {xTicks
-                .filter((tick) => !tick.isEdge)
-                .map((tick) => (
-                  <Line
-                    key={tick.key}
-                    testID={`category-trend-line-x-grid-${tick.key}`}
-                    x1={scales.x(tick.time)}
-                    y1={PADDING_Y}
-                    x2={scales.x(tick.time)}
-                    y2={baselineY}
-                    stroke={theme.colors.border}
-                    strokeWidth={GRID_STROKE_WIDTH}
-                  />
-                ))}
+              {xGridTicks.map((tick) => (
+                <Line
+                  key={tick.key}
+                  testID={`category-trend-line-x-grid-${tick.key}`}
+                  x1={scales.x(tick.time)}
+                  y1={PADDING_Y}
+                  x2={scales.x(tick.time)}
+                  y2={baselineY}
+                  stroke={theme.colors.border}
+                  strokeWidth={GRID_STROKE_WIDTH}
+                />
+              ))}
             </G>
 
             <Line
@@ -285,7 +312,7 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
         <View testID="category-trend-line-x-axis-spacer" style={styles.xAxisSpacer} />
 
         <View style={styles.xAxisTrack}>
-          {xTicks.map((tick) => (
+          {xLabelTicks.map((tick) => (
             <View
               key={tick.key}
               testID={`category-trend-line-x-tick-${tick.key}`}

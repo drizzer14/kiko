@@ -31,6 +31,13 @@ const series: CategoryTrendSeries[] = [
   },
 ];
 
+// Flatten a (possibly nested/array) style prop into its plain object layers so a
+// test can assert a single directive regardless of how Unistyles composed it.
+const styleLayers = (style: unknown): Record<string, unknown>[] =>
+  (Array.isArray(style) ? style.flat(Number.POSITIVE_INFINITY) : [style]).filter(
+    (layer): layer is Record<string, unknown> => layer != null && typeof layer === 'object',
+  );
+
 // Parse a polyline's `points` prop into an array of [x, y] number pairs.
 const pairsOf = (raw: string): [number, number][] =>
   raw
@@ -108,34 +115,65 @@ describe('CategoryTrendLine', () => {
     expect(getByText('Transport')).toBeTruthy();
   });
 
-  it('draws the X and Y gridlines', async () => {
-    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+  it('draws the X and Y gridlines at the two extremes plus three interior fractions', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={series} baseCurrency="UAH" />,
+    );
 
     expect(getByTestId('category-trend-line-y-grid-0')).toBeTruthy();
-    for (const key of ['0.25', '0.50', '0.75']) {
-      expect(getByTestId(`category-trend-line-x-grid-${key}`)).toBeTruthy();
+    // Exactly three interior gridlines — independent of however many X-axis
+    // date labels render (see the label test below): the gridline and label
+    // fraction sets are deliberately decoupled.
+    expect(getAllByTestId(/^category-trend-line-x-grid-/)).toHaveLength(3);
+    for (const fraction of ['0.25', '0.50', '0.75']) {
+      expect(getByTestId(`category-trend-line-x-grid-${fraction}`)).toBeTruthy();
     }
+    expect(queryByTestId('category-trend-line-x-grid-0.00')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-grid-1.00')).toBeNull();
   });
 
-  it('labels the X axis at day granularity, so the tick numbers vary across the window', async () => {
-    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+  it('labels the X axis with distinct numeric day.month values at only the start, middle, and end — decoupled from the interior gridlines', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={series} baseCurrency="UAH" />,
+    );
 
-    // Each X tick reads month-abbrev + day-of-month (e.g. "Jan 1"), so the
-    // trailing number is the DAY and varies across the 5 ticks. The old
-    // month/year format ("Jan 25") put the constant 2-digit year there, so
-    // every tick's trailing number would be identical — this asserts it is not.
+    // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
+    // fractions get no label of their own.
+    expect(getAllByTestId(/^category-trend-line-x-tick-/)).toHaveLength(3);
+    expect(queryByTestId('category-trend-line-x-tick-0.25')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-tick-0.75')).toBeNull();
+
+    // Each X tick reads a zero-padded "DD.MM" (e.g. "01.01"), not a month name.
     const tickLabel = (fraction: string): string => {
       const node = within(getByTestId(`category-trend-line-x-tick-${fraction}`)).getByText(/\d/);
 
       return String(node.props.children);
     };
-    const trailingNumbers = new Set(
-      ['0.00', '0.25', '0.50', '0.75', '1.00'].map((fraction) =>
-        tickLabel(fraction).replace(/^\D+/, ''),
-      ),
-    );
+    const labels = ['0.00', '0.50', '1.00'].map(tickLabel);
 
-    expect(trailingNumbers.size).toBeGreaterThan(1);
+    for (const label of labels) {
+      expect(label).toMatch(/^\d{2}\.\d{2}$/);
+    }
+    // Every label distinct — in particular, the regression this fix targets:
+    // the middle label must read a genuinely different date from both edges.
+    expect(new Set(labels).size).toBe(3);
+  });
+
+  // Regression guard: a fixed `width: 0` parent constrains its `<Text>`
+  // child's measured width to 0 on iOS, so the middle date drew nothing on
+  // device even though this same style read fine under Jest/RNTL (no real
+  // layout engine). The fix centers the label on its `left: n%` anchor via a
+  // `-50%` translateX instead, leaving the row auto-width so its Text child
+  // can measure and render normally.
+  it('does not zero-width the middle label, centering it via translateX instead', async () => {
+    const { getByTestId } = await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+
+    const midStyle = styleLayers(getByTestId('category-trend-line-x-tick-0.50').props.style);
+    const width = midStyle.map((layer) => layer.width).find((value) => value !== undefined);
+    const transform = midStyle.map((layer) => layer.transform).find((value) => value !== undefined);
+
+    expect(width).toBeUndefined();
+    expect(transform).toEqual([{ translateX: '-50%' }]);
   });
 
   it('renders an empty state when there are no series', async () => {
@@ -147,24 +185,56 @@ describe('CategoryTrendLine', () => {
     expect(queryByTestId('category-trend-line-line-groceries')).toBeNull();
   });
 
-  // The buckets are UTC-midnight instants (`dayBucket` uses `Date.UTC`), so the
-  // axis labels must be formatted in UTC too — otherwise, in a negative-UTC-
-  // offset locale, a UTC-midnight instant is still the PREVIOUS local day and
-  // every label reads one day early. The formatter therefore must pass
-  // `timeZone: 'UTC'`, which a spy on `toLocaleDateString` verifies directly
-  // (the jest worker's own timezone is fixed and can't be changed at runtime,
-  // so asserting the option is the deterministic proof).
-  it('formats every X-axis label in UTC so the bucket day is never off by one', async () => {
-    const spy = jest.spyOn(Date.prototype, 'toLocaleDateString');
+  // The buckets are LOCAL-midnight instants (`bucketTimes` steps from the
+  // screen's `startOfLocalDay` range start — see category-trend.ts), so the
+  // axis labels must be read off LOCAL calendar fields, exactly like
+  // net-worth-line's own axis. On a POSITIVE-UTC-offset device (e.g. Kyiv),
+  // reading UTC fields instead renders the start date one day EARLY: local
+  // midnight Jan 15 is still Jan 14 in UTC there. Pinning the process TZ to a
+  // positive-offset zone at runtime is the deterministic proof: reading UTC
+  // fields would render '14.01', not the correct local day '15.01'.
+  it('labels the start bucket with the LOCAL calendar day, not the UTC day, on a positive-offset device', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Europe/Kyiv';
     try {
-      await render(<CategoryTrendLine series={series} baseCurrency="UAH" />);
+      const localSeries: CategoryTrendSeries[] = [
+        {
+          key: 'groceries',
+          title: 'Groceries',
+          color: '#ff0000',
+          points: [
+            { t: new Date(2025, 0, 15).getTime(), amount: 10 },
+            { t: new Date(2025, 0, 17).getTime(), amount: 20 },
+          ],
+        },
+      ];
+      const { getByTestId } = await render(
+        <CategoryTrendLine series={localSeries} baseCurrency="UAH" />,
+      );
 
-      expect(spy).toHaveBeenCalled();
-      for (const call of spy.mock.calls) {
-        expect(call[1]).toMatchObject({ timeZone: 'UTC' });
-      }
+      expect(getByTestId('category-trend-line-x-tick-0.00')).toHaveTextContent('15.01');
     } finally {
-      spy.mockRestore();
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
     }
+  });
+
+  it('collapses the X axis to a single date when every point shares one instant', async () => {
+    // A single-instant range has no time span, so the first/middle/last ticks
+    // would all stack on the same x — it falls back to one start-edge date
+    // label with no middle label and no interior gridline.
+    const onePointSeries: CategoryTrendSeries[] = [
+      { key: 'groceries', title: 'Groceries', color: '#ff0000', points: [{ t: JAN, amount: 10 }] },
+    ];
+    const { getByTestId, queryByTestId } = await render(
+      <CategoryTrendLine series={onePointSeries} baseCurrency="UAH" />,
+    );
+
+    expect(getByTestId('category-trend-line-x-tick-0.00')).toBeTruthy();
+    expect(queryByTestId('category-trend-line-x-tick-0.50')).toBeNull();
+    expect(queryByTestId('category-trend-line-x-grid-0.50')).toBeNull();
   });
 });

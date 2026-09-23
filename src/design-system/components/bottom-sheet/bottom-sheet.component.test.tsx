@@ -1,14 +1,16 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
-import { Dimensions, StyleSheet, Text } from 'react-native';
+import type { ReactElement } from 'react';
 import { State } from 'react-native-gesture-handler';
+import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';
 import '../../unistyles';
 import { darkTheme } from '../../theme';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import BottomSheet from '.';
-import { SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
+import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
 
 // The global jest/setup.js mock renders LiquidGlassView as a plain View and
 // pins `isLiquidGlassSupported` to false (the non-glass fallback path). This
@@ -101,8 +103,18 @@ describe('BottomSheet', () => {
     // never one without the other (dropping the inset is bug A2; the base step
     // is what the four sheets previously drifted on, 4 vs 6 vs missing).
     expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
-    expect(sheetStyle.paddingTop).toBe(SHEET_BASE_PADDING);
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
+
+    // The sheet card's own top inset no longer lives here: it moved INTO the
+    // draggable grabber region below (see the "extends the drag region up to
+    // the card's top edge" test), so the card itself carries none.
+    expect(sheetStyle.paddingTop).toBeUndefined();
+
+    // The base step that used to sit on the card now sits on the grabber
+    // region instead, so the whole band from the card's rounded top edge down
+    // through the pill is inside the one draggable hit area.
+    const grabberStyle = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-grabber`).props.style);
+    expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
   });
 
   // The sheet card's own background is a real translucent blur MATERIAL,
@@ -382,6 +394,151 @@ describe('BottomSheet', () => {
     });
   });
 
+  // DEVICE BUG fix: a `KeyboardAvoidingView` wrapping the sheet's OWN body
+  // (attempt B) had ZERO effect on device — a KAV repositions its subtree
+  // within its PARENT's layout, but this sheet's parent is the Modal's own
+  // transparent root, which never resizes for the keyboard. The real fix
+  // lifts the CARD itself, driven by RN core `Keyboard` events (not
+  // reanimated's own `useAnimatedKeyboard`, whose native observer crashes
+  // under this app's iOS UIScene lifecycle — see `bottom-sheet.component.tsx`'s
+  // CRASH fix comment): the live height feeds both the card's own
+  // `translateY` (so it rises clear of the keyboard) and a shrunk ratio cap
+  // (`resolveKeyboardAwareMaxHeight`, unit-tested on its own in
+  // `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list still
+  // fits entirely above the keyboard rather than merely sliding upward while
+  // capped against the full, keyboard-occluded window height.
+  describe('keyboard-aware lift', () => {
+    // Captures the handler each `Keyboard.addListener` call registers, keyed
+    // by event name, so a test can simulate a native keyboard notification by
+    // invoking it directly — the same "spy on the real RN module" approach as
+    // driving the gesture handler above, since RN ships no keyboard-event
+    // test utility of its own.
+    let addListenerSpy: jest.SpyInstance;
+    const listeners = new Map<string, (event: unknown) => void>();
+
+    beforeEach(() => {
+      listeners.clear();
+      addListenerSpy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+        eventType: string,
+        handler: (event: unknown) => void,
+      ) => {
+        listeners.set(eventType, handler);
+
+        return { remove: jest.fn() };
+      }) as typeof Keyboard.addListener);
+    });
+
+    afterEach(() => {
+      addListenerSpy.mockRestore();
+    });
+
+    it('is a no-op with no keyboard shown — no translateY offset, and the plain 66% ratio cap', async () => {
+      const { getByTestId } = await render(
+        <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.transform).toEqual([{ translateY: 0 }]);
+      expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
+    });
+
+    // A fresh element per call (never the SAME element object reused across
+    // `render`/`rerender`) — reusing one referentially-identical element lets
+    // the renderer bail out of re-invoking the function component entirely,
+    // which would never pick up the mutation the listener just wrote to the
+    // shared value.
+    const renderSheet = (): ReactElement => (
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>
+    );
+
+    // `KEYBOARD_CORNER_OVERLAP` folds into the same "accessory height" as an
+    // extra amount subtracted from the lift (and added to the padding, in the
+    // next test): the sheet's glass extends this far PAST the top of the keys
+    // to cover the keyboard's own rounded top corners (device bug — small
+    // black notches where the sheet's flat corner met the keyboard's curve).
+    const EFFECTIVE_ACCESSORY_HEIGHT = KEYBOARD_ACCESSORY_HEIGHT + KEYBOARD_CORNER_OVERLAP;
+
+    it('lifts the card by the keyboard height MINUS the effective accessory height, and shrinks the ratio cap to match', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      const keyboardHeight = 250;
+      const expectedLift = keyboardHeight - EFFECTIVE_ACCESSORY_HEIGHT;
+      const willChangeFrame = listeners.get('keyboardWillChangeFrame');
+      expect(willChangeFrame).toBeDefined();
+      willChangeFrame?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - keyboardHeight },
+        duration: 250,
+      });
+      // The mock `useAnimatedStyle` (unlike the real, worklet-driven one) only
+      // re-evaluates its factory on a React render pass, not on a bare shared
+      // value mutation — see `jest/reanimated-mock.js` — so force one here to
+      // pick up the height the listener just wrote.
+      await rerender(renderSheet());
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      // `endCoordinates` includes the keyboard's own `InputAccessoryView` (the
+      // floating "Done" pill strip) sitting above the real keys — lifting by
+      // the FULL keyboard height would land the sheet's bottom edge at the
+      // TOP of that strip instead of the top of the keys, leaving the strip's
+      // transparent container over the dark modal scrim (the black-band bug,
+      // builds 17/18). See `resolveKeyboardLift`.
+      expect(sheetStyle.transform).toEqual([{ translateY: -expectedLift }]);
+      expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - expectedLift) * MAX_HEIGHT_RATIO);
+    });
+
+    // VISUAL fix (build 19): build 18 dropped the bottom safe-area inset,
+    // leaving only the base padding step — the wrong direction. The sheet's
+    // bottom edge now lands at the BOTTOM of the accessory strip
+    // (`resolveKeyboardLift`), so the strip's own height sits BEHIND the
+    // sheet's last content row. Padding set to the FULL accessory height
+    // (first pass) still read wrong on device: every sheet's content ALSO
+    // carries its own fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
+    // `SHEET_PADDING_STEP` token as `SHEET_BASE_PADDING` here) beneath its
+    // last row, which stacks UNDER this outer padding — subtracting it here
+    // cancels that stack so the two together total exactly the (effective)
+    // accessory height, landing the content flush with the strip's own top
+    // edge (see `resolveKeyboardAwareBottomPadding`'s own doc for the full
+    // gap-symmetry reasoning). `KEYBOARD_CORNER_OVERLAP` on top of the base
+    // accessory height keeps the corner-notch fix (previous test) from
+    // shifting the content's own position at all.
+    it('grows the sheet padding to the effective accessory height minus the base step while the keyboard is shown', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      listeners.get('keyboardWillChangeFrame')?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - 250 },
+        duration: 250,
+      });
+      await rerender(renderSheet());
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.paddingBottom).toBe(EFFECTIVE_ACCESSORY_HEIGHT - SHEET_BASE_PADDING);
+    });
+
+    it('resets the lift back to zero when the keyboard hides', async () => {
+      const { getByTestId, rerender } = await render(renderSheet());
+
+      listeners.get('keyboardWillChangeFrame')?.({
+        endCoordinates: { screenY: WINDOW_HEIGHT - 250 },
+        duration: 250,
+      });
+      listeners.get('keyboardWillHide')?.({});
+      await rerender(renderSheet());
+
+      const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
+
+      expect(sheetStyle.transform).toEqual([{ translateY: 0 }]);
+      expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
+      expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
+    });
+  });
+
   // The grabber handle + drag-down-to-close. The vertical Pan lives on the
   // grabber region only (never the scrollable body), and dismisses on a release
   // past ~25% of the sheet's measured height (or a fast downward flick). The
@@ -476,6 +633,35 @@ describe('BottomSheet', () => {
       const scrollView = getByTestId(`${HEADER_SHEET_ID}-scroll`);
       expect(within(grabberRegion).queryByTestId(`${HEADER_SHEET_ID}-scroll`)).toBeNull();
       expect(within(scrollView).getByText('sheet body')).toBeTruthy();
+    });
+
+    // The gap below a header band is a single named token (`TITLE_TO_BODY_GAP_STEP`
+    // in bottom-sheet.styles.ts), not a bare per-sheet magic number — every
+    // migrated sheet's title now reads its title-to-body breathing room from
+    // here. The region's OWN top padding is the sheet card's former base step,
+    // moved here so the draggable band reaches the card's rounded top edge
+    // instead of stopping short of it (see the "owns the bottom safe-area
+    // inset" test above, which pins the same paddingTop value on a headerless
+    // sheet).
+    it('gives the header band the single title-to-body gap token, and extends the drag region to the card top edge', async () => {
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={HEADER_SHEET_ID}
+          header={<Text>sheet header</Text>}
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      const grabberStyle = StyleSheet.flatten(
+        getByTestId(`${HEADER_SHEET_ID}-grabber`).props.style,
+      );
+
+      // theme.spacing(4) === 4 * 4 = 16.
+      expect(grabberStyle.paddingBottom).toBe(16);
+      expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
     });
 
     it('still dismisses on a drag past the threshold when a header is present', async () => {

@@ -16,7 +16,15 @@
 import { chartSeriesDark, entityColorsDark } from './palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
-const radii = { sm: 6, md: 10, lg: 16 } as const;
+// `full` is a capsule/pill sentinel, not a fourth point value in the sm/md/lg
+// progression: it is set well past any control's half-height (the point past
+// which a corner radius stops changing the silhouette), so both iOS's native
+// corner-radius clamping (a `UIView`/Liquid Glass layer) and React Native's
+// Yoga layout clamp it down to exactly half the control's shorter dimension —
+// a true capsule at ANY height, with no need to know or match that height
+// here. `GlassSurface`'s `radius="full"` (the keyboard Done accessory pill,
+// `use-keyboard-done-accessory.tsx`) is the first consumer.
+const radii = { sm: 6, md: 10, lg: 16, full: 999 } as const;
 const typography = {
   // One step above `title` — a hero numeral (e.g. Home's net-worth
   // balance), styled at the same weight but larger, for the one or two
@@ -52,23 +60,38 @@ const iconSizes = {
 export const darkTheme = {
   colors: {
     background: '#000000', // systemBackground (dark)
-    surface: '#1C1C1E', // secondarySystemBackground
-    // The `surface` hue (#1C1C1E) at 60% alpha — the see-through frosted-panel
-    // fill for a `transparent` GlassSurface (see its `transparent` prop). It is
-    // used in two matching places so the glass and the non-glass fallback paths
+    // `#111112` (rgb 17,17,18) — DARKENED from the original `#1C1C1E`
+    // (secondarySystemBackground) on live-review feedback: the solid content
+    // `Card` fill (see `card.styles.ts`) read too bright at `#1C1C1E`. This is
+    // not an arbitrary darker pick — it is the EXACT tone the old translucent
+    // glass system already composited to: `surfaceTranslucent` below
+    // (`rgba(28,28,30,0.60)`, the `#1C1C1E` hue) over the true-black
+    // `background` blends to ~rgb(17,17,18). So the flat `Card` fill now
+    // reads identically to how a frosted `GlassSurface` card used to look on
+    // this same screen, restoring the pre-migration tone rather than
+    // inventing a new one. `surfaceTranslucent`/`surfaceTranslucentStrong`
+    // keep their own `#1C1C1E`-hue rgba literals below UNCHANGED — they are
+    // no longer tied to this token's value (see each one's own doc comment)
+    // — so this change cannot silently drift them.
+    surface: '#111112',
+    // The `#1C1C1E` hue at 60% alpha — the see-through frosted-panel fill for
+    // a `transparent` GlassSurface (see its `transparent` prop). It is used
+    // in two matching places so the glass and the non-glass fallback paths
     // read alike: as the translucent backdrop the see-through glass material
     // samples (a partial pin that softens the live-sample lightness drift), and
     // as the flat fill on the non-glass fallback. Over the true-black
-    // `background` it composites to ~rgb(17,17,18), so white `textPrimary` body
-    // text stays legible on it. This is a distinct token from `scrim` (the
-    // modal dim) — same alpha convention, different role.
+    // `background` it composites to ~rgb(17,17,18) — the same tone `surface`
+    // above is now pinned to directly, so a solid `Card` and a translucent
+    // `GlassSurface` panel read as the same darkness even though only one of
+    // them still does any live sampling. This is a distinct token from
+    // `scrim` (the modal dim) — same alpha convention, different role.
     surfaceTranslucent: 'rgba(28,28,30,0.60)',
-    // The same #1C1C1E hue as `surfaceTranslucent`, but a HIGHER alpha (0.80 vs
-    // 0.60) — a stronger backdrop pin for a scrolling card that must drift LESS
-    // in lightness on scroll while staying see-through. It is the middle option
-    // between `transparent`'s 0.60 partial pin and an opaque `tint` card: more
-    // opaque than `surfaceTranslucent`, still translucent (never 1.0). This is
-    // the Home transaction card's backdrop.
+    // The same `#1C1C1E` hue as `surfaceTranslucent`, but a HIGHER alpha (0.80
+    // vs 0.60) — a stronger backdrop pin for a scrolling card that must drift
+    // LESS in lightness on scroll while staying see-through. It is the middle
+    // option between `transparent`'s 0.60 partial pin and an opaque `tint`
+    // card: more opaque than `surfaceTranslucent`, still translucent (never
+    // 1.0). This is the Home transaction card's backdrop.
     surfaceTranslucentStrong: 'rgba(28,28,30,0.80)',
     // A NEUTRAL DARK overlay painted OVER the finished `translucentStrong`
     // GlassSurface (its `wash` layer — a sibling drawn atop the glass base, not
@@ -99,12 +122,17 @@ export const darkTheme = {
     // so a control on the sheet (an OptionPills selected pill, at `surfaceHigh`)
     // reads as raised instead of blending into the sheet. Before this, the sheet
     // used `surfaceHigh` itself, the SAME tone as a selected pill, so the two
-    // blended (on-device review). This is `#1C1C1E` — the same value as
-    // `surface` today, but kept a DISTINCT semantic token (like `onAccent` vs
-    // `textPrimary`) because its role is the sheet's grouped base, not a card
-    // surface, and the two may diverge. It is deliberately NOT the true-black
-    // `background`: a pure-black sheet would vanish against the black screen
-    // behind it instead of reading as an elevated card.
+    // blended (on-device review). This is `#1C1C1E` — kept a DISTINCT
+    // semantic token from `surface` (like `onAccent` vs `textPrimary`)
+    // because its role is the sheet's grouped base, not a card surface, and
+    // the two were always meant to be free to diverge: `surface` was later
+    // darkened to `#111112` (see its own doc comment) while `sheetBackground`
+    // stayed at the original `#1C1C1E` — the two tokens sharing a literal
+    // value was only ever a coincidence of the moment this comment was
+    // written, never a guarantee callers could rely on. It is deliberately
+    // NOT the true-black `background`: a pure-black sheet would vanish
+    // against the black screen behind it instead of reading as an elevated
+    // card.
     sheetBackground: '#1C1C1E',
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel

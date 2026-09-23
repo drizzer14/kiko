@@ -49,10 +49,15 @@ const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 /**
- * The metadata fields that mark a holding as owned by a sync, one per source:
- * `monobankId` (a Monobank card/jar), `walletAddress` (a BTC public-address
- * wallet), `binanceAsset` (a Binance spot balance). The single source of truth
- * for `isSyncedHolding` and for the metadata-key upserts in the holdings repo.
+ * The metadata fields that mark a holding as owned by a sync, one per
+ * source: `monobankId` (a Monobank card/jar), `walletAddress` (a BTC
+ * public-address wallet), `binanceAsset` (a Binance spot balance). The
+ * single source of truth for `isSyncedHolding` and for the metadata-key
+ * upserts in the holdings repo.
+ *
+ * Guideline 5.6 remediation: `privatbankId`, `bunqId`, and `starlingId` were
+ * removed — those bank-CONNECT providers were deleted entirely, and no user
+ * release ever shipped a holding with one of those keys.
  */
 export const syncedMetadataFields = ['monobankId', 'walletAddress', 'binanceAsset'] as const;
 

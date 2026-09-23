@@ -1,9 +1,16 @@
+import { bankProviderIds } from '../../bank-sync/provider';
+import { syncedMetadataFields } from '../holding-metadata';
 import { balanceProviderIds } from '../../crypto-sync/provider';
 import type { AccountRow, HoldingRow, TransactionRow } from '../../db/schema';
-import { syncedMetadataFields } from '../holding-metadata';
 
-/** Every `accounts.institution` value that marks an account as owned by a sync. */
-const syncedInstitutions = ['monobank', ...balanceProviderIds] as const;
+/**
+ * Every `accounts.institution` value that marks an account as owned by a
+ * sync. Driven by the registry's own id lists (`bankProviderIds`,
+ * `balanceProviderIds`), never hardcoded, so a provider removed from either
+ * registry (Guideline 5.6 remediation: PrivatBank, bunq, Starling) falls out
+ * of this list automatically.
+ */
+const syncedInstitutions = [...bankProviderIds, ...balanceProviderIds] as const;
 
 export type SyncedInstitution = (typeof syncedInstitutions)[number];
 

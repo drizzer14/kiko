@@ -1,17 +1,28 @@
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import { type FC, useEffect } from 'react';
-import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../box';
 import GlassSurface from '../glass-surface';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
 import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
+import {
+  resolveKeyboardAwareBottomPadding,
+  resolveKeyboardAwareMaxHeight,
+  resolveKeyboardLift,
+} from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
-import { styles } from './bottom-sheet.styles';
+import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
 
 // Every sheet caps at 66% of the current window height, no exceptions — a
 // tall sheet scrolls past that point instead of growing over the status bar /
@@ -21,6 +32,28 @@ import { styles } from './bottom-sheet.styles';
 // drift past it the way the icon picker (80%) and the category field (70%)
 // each used to hand-roll their own, looser cap.
 const MAX_HEIGHT_RATIO = 0.66;
+
+// The iOS system keyboard's own top corners are rounded (a redesigned,
+// continuous-corner keyboard shape, iOS 26+) — a curve the keyboard itself
+// draws, not something this app controls. The sheet's card, by contrast, has
+// a perfectly FLAT bottom edge (see `bottom-sheet.styles.ts`'s `sheet`), so
+// once that flat edge lands exactly at the top of the keys
+// (`resolveKeyboardLift`), the keyboard's own corner curve exposes a small
+// triangular sliver of whatever sits BEHIND both of them at the top-left/
+// top-right corners — the dark modal scrim, not the sheet's glass, reading as
+// two small black notches (device bug, on-device review). Folding this extra
+// distance into the SAME "accessory height" both `resolveKeyboardLift` and
+// `resolveKeyboardAwareBottomPadding` already take (see `sheetAnimatedStyle`
+// below) lifts the sheet LESS (its bottom edge now extends this far PAST the
+// top of the keys, behind them, where its own glass fills the notch) while
+// growing the bottom padding by the exact same amount, so the content's own
+// position — and the symmetric gap around the Done pill
+// (`resolveKeyboardAwareBottomPadding`'s own doc) — stays pixel-identical.
+// Measured on an iOS 27 sim Release build (`Maestro` view-hierarchy dump plus
+// a pixel-level fit of the corner curve, ~80px on a 3x device -> ~27pt);
+// rounded up to a clean spacing step for a small safety margin so the curve
+// is always fully covered rather than landing exactly on its edge.
+export const KEYBOARD_CORNER_OVERLAP = 28;
 
 // The spring the sheet settles back on when a drag is released short of the
 // dismiss threshold: a snappy, non-bouncy return to rest (translateY 0).
@@ -117,6 +150,11 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // only tighten it further, never loosen it past 66%.
   const capHeight = windowHeight * MAX_HEIGHT_RATIO;
   const resolvedMaxHeight = maxHeight === undefined ? capHeight : Math.min(maxHeight, capHeight);
+  // The sheet's own base bottom-padding step (no safe-area inset) — resolved
+  // once, on the JS thread, from the same token `styles.sheet` uses, so the
+  // keyboard-aware override below (`resolveKeyboardAwareBottomPadding`) never
+  // re-derives it as a second, drifting magic number on the UI thread.
+  const sheetBasePadding = theme.spacing(SHEET_PADDING_STEP);
 
   // The sheet card's live vertical offset, driven by the top grabber's Pan. It
   // rests at 0; a downward drag follows the finger (clamped so it never rises
@@ -126,9 +164,105 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // dismiss threshold (a fraction of it). Seeded to the resolved cap so the
   // very first drag — before onLayout has fired — still has a sane threshold.
   const sheetHeight = useSharedValue(resolvedMaxHeight);
-  const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  // DEVICE BUG fix: a `KeyboardAvoidingView` around the sheet's OWN body
+  // (attempt B) does nothing for a Modal-anchored sheet like this one — a KAV
+  // repositions its own subtree within its PARENT's layout, but this sheet's
+  // parent is the Modal's own transparent root, which never resizes for the
+  // keyboard, so the KAV had zero effect on device. What actually needs to
+  // move is the CARD itself: a live keyboard-height shared value, so the
+  // card's own translateY (already driven by the drag gesture below) also
+  // subtracts it, lifting the whole sheet — its top-pinned search field AND
+  // its own shrinking result list — clear of the keyboard.
+  // `resolveKeyboardAwareMaxHeight` shrinks the 66% cap by the same live
+  // height so the lifted sheet still fits above the keyboard instead of
+  // merely sliding up while staying capped against the FULL
+  // (keyboard-occluded) window height. Both terms are exactly 0 with no
+  // keyboard shown, so every one of the 12+ keyboard-less sheet consumers
+  // (date-field, filter-menu, confirm-sheet, etc.) sees no layout change at
+  // all — see `bottom-sheet.keyboard.ts`'s own no-op doc.
+  //
+  // VISUAL fix (build 19): `endCoordinates` (what `keyboardHeight` reads)
+  // covers the WHOLE keyboard frame on iOS, including the attached
+  // `InputAccessoryView` — the floating "Done" pill strip
+  // (`use-keyboard-done-accessory.tsx`) rendered directly above the real
+  // keys. Lifting the sheet by that FULL height (builds 17/18) put the
+  // sheet's own bottom edge at the TOP of the accessory strip, leaving the
+  // strip's own transparent container sitting between the sheet and the
+  // keys — the dark modal scrim behind the sheet showed straight through it
+  // as a solid black band. `resolveKeyboardLift` lifts by the keys' own
+  // height instead (the raw keyboard height minus the accessory's fixed
+  // height, `KEYBOARD_ACCESSORY_HEIGHT`), landing the sheet's bottom edge at
+  // the BOTTOM of the strip — the real top of the keys — so the accessory now
+  // floats directly over the sheet's own glass. `resolveKeyboardAwareMaxHeight`
+  // and `sheetAnimatedStyle`'s `paddingBottom` (via
+  // `resolveKeyboardAwareBottomPadding`) both take this SAME lift/accessory
+  // height so the cap and the padding never drift out of sync with the lift:
+  // the padding grows to the accessory's own height MINUS `sheetBasePadding`
+  // (build 18 instead dropped the bottom safe-area inset — the wrong
+  // direction; a first build-19 pass then set it to the FULL accessory
+  // height, which still read wrong — every sheet's content carries its own
+  // fixed bottom buffer, the SAME base-padding token, stacked underneath this
+  // one, so subtracting it here is what makes the gap above the Done pill
+  // match its own fixed gap below to the keys — confirmed on an iOS 27 sim
+  // Release build; see `resolveKeyboardAwareBottomPadding`'s own doc for the
+  // full derivation). Both reduce to a no-op with no keyboard shown
+  // (`keyboardHeight` 0 -> `resolveKeyboardLift` 0), so every one of the 12+
+  // keyboard-less sheet consumers (date-field, filter-menu, confirm-sheet,
+  // etc.) sees no layout change at all.
+  //
+  // CRASH fix: this used to read reanimated's own `useAnimatedKeyboard()`,
+  // whose native observer (`REAKeyboardEventObserver`) reaches for
+  // `[[UIApplication sharedApplication] delegate] window]` — a legacy
+  // AppDelegate-owns-the-window assumption. This app runs the iOS UIScene
+  // lifecycle (`SceneDelegate` owns the window, `AppDelegate` has none), so
+  // that call hit an unrecognized selector and crashed on cold launch, on
+  // every screen that renders a `BottomSheet` (all of them, via this one
+  // shared primitive). RN core's `Keyboard` events read the frame straight
+  // off the notification's `userInfo` — no AppDelegate/window lookup, so it
+  // is Scene-safe — and drive the same shared value by hand instead.
+  const keyboardHeight = useSharedValue(0);
+  useEffect(() => {
+    const willChange = Keyboard.addListener('keyboardWillChangeFrame', (event) => {
+      keyboardHeight.value = withTiming(Math.max(0, windowHeight - event.endCoordinates.screenY), {
+        duration: event.duration ?? 250,
+      });
+    });
+    const willHide = Keyboard.addListener('keyboardWillHide', () => {
+      keyboardHeight.value = withTiming(0, { duration: 250 });
+    });
+
+    return () => {
+      willChange.remove();
+      willHide.remove();
+    };
+  }, [keyboardHeight, windowHeight]);
+  const sheetAnimatedStyle = useAnimatedStyle(() => {
+    // `KEYBOARD_CORNER_OVERLAP` folds into the SAME "accessory height" both
+    // `resolveKeyboardLift` and `resolveKeyboardAwareBottomPadding` take (see
+    // that constant's own doc): it lifts the sheet less, extending its glass
+    // this far PAST the top of the keys to cover the keyboard's own rounded
+    // top corners, while growing the bottom padding by the exact same amount
+    // so the content's position (and the symmetric Done-pill gap) is
+    // unaffected.
+    const effectiveAccessoryHeight = KEYBOARD_ACCESSORY_HEIGHT + KEYBOARD_CORNER_OVERLAP;
+    const keyboardLift = resolveKeyboardLift(keyboardHeight.value, effectiveAccessoryHeight);
+
+    return {
+      transform: [{ translateY: translateY.value - keyboardLift }],
+      maxHeight: resolveKeyboardAwareMaxHeight(
+        windowHeight,
+        keyboardLift,
+        MAX_HEIGHT_RATIO,
+        maxHeight,
+      ),
+      paddingBottom: resolveKeyboardAwareBottomPadding(
+        sheetBasePadding,
+        insets.bottom,
+        keyboardHeight.value,
+        effectiveAccessoryHeight,
+      ),
+    };
+  });
 
   // A reopened sheet must start at rest even if it was left mid-drag when it
   // dismissed (the Modal keeps this subtree mounted while hidden), so snap the

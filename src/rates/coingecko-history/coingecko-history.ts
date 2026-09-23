@@ -1,18 +1,20 @@
 import { guard } from 'fnts';
 
+import { cryptoCoinGeckoId } from '../coingecko-ids';
+import type { Currency } from '../../currency/currency';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 
 /**
- * CoinGecko's `market_chart` returns a full daily price series in ONE call, so
- * the whole backfill span costs a single request (unlike the per-date NBU
- * source). Quoted in USD; other BTC pairs are composed downstream from fiat.
+ * CoinGecko's `market_chart` returns a full daily price series in ONE call per
+ * coin, so a whole crypto backfill span costs one request per coin. Quoted in
+ * USD; other crypto pairs are composed downstream from fiat.
  */
-const MARKET_CHART_ENDPOINT = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart';
+const MARKET_CHART_BASE = 'https://api.coingecko.com/api/v3/coins';
 
-// CoinGecko's free/demo tier caps `market_chart` at ~365 days of history and
-// 401s on a longer span, so the request is clamped to this ceiling. A multi-year
-// account simply has no BTC history before the window; the composed series
-// carries the earliest available rate backward for those older days.
+// CoinGecko's free/demo tier caps `market_chart` at ~365 days and 401s on a
+// longer span, so the request is clamped to this ceiling. A multi-year account
+// has no crypto history before the window; the composed series carries the
+// earliest available rate backward for those older days.
 const MAX_MARKET_CHART_DAYS = 365;
 
 /** The `market_chart` body: `prices` is a `[epochMs, price]` pair per day. */
@@ -31,22 +33,17 @@ const readChart = guard(
 // No `interval` parameter: `interval=daily` is a paid-tier feature that 401s on
 // the free key. Omitted, CoinGecko auto-selects the granularity (daily past ~90
 // days); any finer intraday points collapse to one entry per day downstream.
-const chartUrl = (days: number): string =>
-  `${MARKET_CHART_ENDPOINT}?vs_currency=usd&days=${Math.min(days, MAX_MARKET_CHART_DAYS)}`;
+const chartUrl = (id: string, days: number): string =>
+  `${MARKET_CHART_BASE}/${id}/market_chart?vs_currency=usd&days=${Math.min(days, MAX_MARKET_CHART_DAYS)}`;
 
-/**
- * Fetch the daily BTC->USD price series for the last `days` days from CoinGecko
- * in a single request (clamped to the free tier's 365-day ceiling). Each
- * `[ts, price]` point is normalized to its UTC day; a trailing intraday point
- * that lands on the same day as the last daily point overwrites it (latest price
- * wins). Non-finite prices are dropped. Entries are returned in ascending day
- * order.
- */
-export const fetchBTCHistory = async (
+/** Fetch and day-normalize one coin's USD series. Throws on a non-ok response. */
+const fetchOneCoinHistory = async (
+  currency: Currency,
+  id: string,
   days: number,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch,
 ): Promise<HistoryRateEntry[]> => {
-  const response = await fetchImpl(chartUrl(days));
+  const response = await fetchImpl(chartUrl(id, days));
   const { prices } = await readChart(response);
 
   const byDay = new Map<number, number>();
@@ -58,5 +55,34 @@ export const fetchBTCHistory = async (
 
   return [...byDay.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([day, rate]) => ({ base: 'BTC', quote: 'USD', day, rate, source: 'coingecko' }));
+    .map(([day, rate]) => ({ base: currency, quote: 'USD', day, rate, source: 'coingecko' }));
+};
+
+/**
+ * Fetch the daily USD price series for the last `days` days for EVERY supported
+ * crypto, one `market_chart` request per coin (clamped to the free tier's
+ * 365-day ceiling). Coins are settled independently: a single coin's 401 drops
+ * only that coin's history, and the function throws only when EVERY coin request
+ * fails (so `runBackfill`'s outer `allSettled` keeps the NBU fiat anchors when at
+ * least one coin survives). Each `[ts, price]` point is normalized to its UTC day
+ * (latest price wins), non-finite prices dropped, entries ascending per coin.
+ */
+export const fetchCryptoHistory = async (
+  days: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<HistoryRateEntry[]> => {
+  const results = await Promise.allSettled(
+    (Object.entries(cryptoCoinGeckoId) as [Currency, string][]).map(([currency, id]) =>
+      fetchOneCoinHistory(currency, id, days, fetchImpl),
+    ),
+  );
+
+  const fulfilled = results.filter(
+    (r): r is PromiseFulfilledResult<HistoryRateEntry[]> => r.status === 'fulfilled',
+  );
+  if (fulfilled.length === 0) {
+    throw new Error('CoinGecko history request failed for every coin');
+  }
+
+  return fulfilled.flatMap((r) => r.value);
 };

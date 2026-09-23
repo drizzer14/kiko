@@ -1,7 +1,9 @@
 import { act, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
 import ExchangeFields from './exchange-fields.component';
 
@@ -55,6 +57,43 @@ describe('ExchangeFields', () => {
     // The Value Out, destination (To), and Value In fields all gate save, so
     // each shows the required asterisk; Date and Time do not.
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(3);
+  });
+
+  it('applies valueOutError to the Value Out field and renders it there', async () => {
+    const { getByLabelText, getByText } = await setup({
+      valueOutError: 'Enter a Value Out greater than 0.',
+    });
+
+    expect(getByText('Enter a Value Out greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value Out').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
+  });
+
+  it('renders destinationError directly after the destination picker', async () => {
+    const { getByText } = await setup({ destinationError: 'Select a destination account.' });
+
+    expect(getByText('Select a destination account.')).toBeTruthy();
+  });
+
+  it('adds the same vertical gap above the destination error that a text field has above its own', async () => {
+    const { getByText } = await setup({ destinationError: 'Select a destination account.' });
+
+    // FieldError's own root is the Text's immediate parent; the gap lives one
+    // level up, on the Box wrapping the picker + its error (round-4 device
+    // feedback item 1 — a select field lacked the gap TextField's own `Box
+    // gap={1}` already gives its error line).
+    const errorGroup = getByText('Select a destination account.').parent?.parent;
+    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+  });
+
+  it('applies valueInError to the Value In field', async () => {
+    const { getByLabelText, getByText } = await setup({
+      valueInError: 'Enter a Value In greater than 0.',
+    });
+
+    expect(getByText('Enter a Value In greater than 0.')).toBeTruthy();
+    const flatStyle = StyleSheet.flatten(getByLabelText('Value In').props.style);
+    expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
 
   describe('localization', () => {

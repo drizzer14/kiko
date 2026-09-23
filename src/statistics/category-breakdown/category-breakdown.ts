@@ -25,6 +25,7 @@ export type BreakdownTransaction = Pick<
   | 'counterIban'
   | 'description'
   | 'exchangeCounterpartHoldingId'
+  | 'changeGroupId'
 > & {
   currency: HoldingRow['currency'];
 };
@@ -96,6 +97,39 @@ const groupKey = (
   defaultKey: string,
 ): string => resolveCategoryKey(category, byKey, defaultKey);
 
+// Sum the POSITIVE change-returns per group so a split payment's category is
+// netted by its change (design F2-6). Returns are same-currency as their
+// payment for v1, so this sums raw minor units in the payment's own currency.
+// Shared shape with category-trend's own per-group return sum.
+export const sumReturnsByGroup = (
+  transactions: readonly Pick<BreakdownTransaction, 'changeGroupId' | 'amountMinorUnits'>[],
+): Map<string, number> => {
+  const returnsByGroup = new Map<string, number>();
+
+  for (const transaction of transactions) {
+    if (transaction.changeGroupId != null && transaction.amountMinorUnits > 0) {
+      const running = returnsByGroup.get(transaction.changeGroupId) ?? 0;
+      returnsByGroup.set(transaction.changeGroupId, running + transaction.amountMinorUnits);
+    }
+  }
+
+  return returnsByGroup;
+};
+
+// A payment's spend magnitude (positive minor units) after subtracting its own
+// group's summed positive returns. A non-split row (`changeGroupId` nullish —
+// `null` or `undefined`) nets nothing, so its magnitude is the bare
+// `-amountMinorUnits`. Shared shape with category-trend's own netting.
+export const netMagnitudeOf = (
+  transaction: Pick<BreakdownTransaction, 'changeGroupId' | 'amountMinorUnits'>,
+  returnsByGroup: ReadonlyMap<string, number>,
+): number => {
+  const returned =
+    transaction.changeGroupId != null ? (returnsByGroup.get(transaction.changeGroupId) ?? 0) : 0;
+
+  return -transaction.amountMinorUnits - returned;
+};
+
 /**
  * Build one pie slice per spending category for the "Spending by Category"
  * chart. Only EXPENSES count: a transaction with a negative `amountMinorUnits`
@@ -138,6 +172,7 @@ export const buildCategoryBreakdown = (input: {
   // representative raw category value, so the display resolves off the same key
   // the Home screen stored rather than a re-derived label.
   const totals = new Map<string, { amount: number; representative: string | null }>();
+  const returnsByGroup = sumReturnsByGroup(transactions);
 
   for (const transaction of transactions) {
     if (transaction.amountMinorUnits >= 0) {
@@ -155,8 +190,14 @@ export const buildCategoryBreakdown = (input: {
       continue;
     }
 
+    const netMagnitude = netMagnitudeOf(transaction, returnsByGroup);
+
+    if (netMagnitude <= 0) {
+      continue;
+    }
+
     const spend = convert(
-      Money.of(transaction.currency, -transaction.amountMinorUnits),
+      Money.of(transaction.currency, netMagnitude),
       baseCurrency,
       rateTable,
     ).minorUnits;

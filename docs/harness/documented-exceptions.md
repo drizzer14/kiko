@@ -129,6 +129,23 @@ verified usage, not dead weight:
   is a pure false positive on them. Only the generated `*_snapshot.json`
   files are excluded; the hand-authored `.sql` migrations and every
   other JSON file stay in scope.
+- **`.jscpd.json` `ignore`**: `**/net-worth-line/net-worth-line.component.tsx`
+  and `**/category-trend-line/category-trend-line.component.tsx` — the two
+  line-chart components intentionally mirror each other's structure
+  (documented in the `kiko-charts` skill: parallel scale/tick/path-building
+  helpers for a two-axis SVG line chart). Verified PRE-EXISTING at base
+  `5838bf7` (before the chart date-label change): the two files already
+  shared 182 lines (13.03%) scoped together, not introduced by that change.
+  Project-level `npm run check:dup` and `make gate` both PASS (the
+  duplication only trips the changed-file-scoped medium-tier run when both
+  files are in scope together). The `kiko:reviewer` ponytail review verdict
+  on this pair was "lean already, nothing to cut" — there is no shared
+  block left to extract without coupling two independently-evolving chart
+  components through an artificial abstraction. Only these two component
+  files are ignored; their test files and every other chart file stay in
+  scope. Revisit or remove this exception if the two charts' structure
+  ever diverges enough that the duplication is no longer a deliberate
+  mirror.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that
@@ -147,7 +164,7 @@ verified usage, not dead weight:
   fixture or starts matching its negative one.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
-  two NON-LOGIC categories are excluded from the set of files Stryker
+  four NON-LOGIC categories are excluded from the set of files Stryker
   mutates, in both run modes (the whole-project fallback array and the
   diff-scoped changed-file filter). (1) **i18n locale catalogs
   (`src/i18n/locales/**`)** — pure nested string-data objects with no
@@ -157,14 +174,48 @@ verified usage, not dead weight:
   under Jest, so string/casing coverage is unaffected — only the mutation
   report drops those keys. (2) **`**/*.d.ts`** — type-only declarations,
   erased at compile time, so Stryker generates no runtime mutants from
-  them; excluding them only trims the mutate-list. Nothing else is
-  excluded: `src/design-system/palette.ts`, `theme.ts`, `entity-tint.ts`,
-  every `*.styles.ts`, `src/i18n/index.ts`, the mixed const+function
-  modules, and the barrels all stay IN scope. `drizzle/migrations/**` is
-  already outside the `.ts/.tsx` mutate scope and needs no pattern. See
-  the `mutate` array in `stryker.conf.json` and the changed-file `grep
-  -Ev` filter in `scripts/checks/mutation.sh` for the exact patterns
-  (not restated here so they cannot drift).
+  them; excluding them only trims the mutate-list. (3) **barrels
+  (`**/index.ts`)** — pure re-export modules (`export ... from './x'`)
+  whose only mutable token is the module-path string; no branch, no
+  arithmetic, no logic, and no test imports the excluded barrels
+  directly. The SOLE non-barrel `index.ts` is `src/i18n/index.ts` (an
+  `i18next.init(...)` side-effect module with config booleans/strings),
+  so it is RE-INCLUDED (`**/i18n/index.ts`, a positive pattern after the
+  negation). (4) **pure-static styles (`**/*.styles.ts`)** — pure
+  `StyleSheet.create` objects (string/number/object-literal tokens only,
+  no conditionals or arithmetic); no test imports any `.styles` file, so
+  their mutants are pure denominator noise. The two logic-bearing styles
+  are RE-INCLUDED (positive patterns after the negation):
+  `**/bottom-sheet.styles.ts` (runtime style functions with real `+`
+  arithmetic, covered by `bottom-sheet.component.test.tsx`) and
+  `**/entity-icon-tile.styles.ts` (exports the `iconTileSize` helper
+  function). The mechanism is PURELY glob-based, not logic-based: the
+  drop is by PATTERN — EVERY `**/index.ts` and EVERY `**/*.styles.ts`
+  is negated — and ONLY the three named files above
+  (`src/i18n/index.ts`, `bottom-sheet.styles.ts`,
+  `entity-icon-tile.styles.ts`) are re-included, BY NAME. So the files
+  that stay in scope (`src/design-system/palette.ts`, `theme.ts`,
+  `entity-tint.ts`, the mixed const+function modules,
+  `drizzle/migrations/**`, and every other non-`.styles`, non-barrel
+  source) stay in scope simply because they never match the `index.ts`
+  or `*.styles.ts` globs — NOT because any logic test spared them.
+  MAINTENANCE: a NEW logic-bearing barrel or `*.styles.ts` will be
+  SILENTLY dropped (its mutants lost) unless it is added to the
+  re-include list in BOTH `stryker.conf.json` `mutate[]` AND the `grep`
+  in `scripts/checks/mutation.sh` — the two must stay in sync.
+  `drizzle/migrations/**` is
+  already outside the `.ts/.tsx` mutate scope and needs no pattern.
+  Order matters: each re-include is a positive pattern placed AFTER its
+  negation (config patterns apply in array order; a later positive
+  re-enables a file a prior `!`-negation disabled — `project-reader.js`).
+  NOTE: the CLI `--mutate` REPLACES the config `mutate[]` wholesale
+  (`deepMerge` replaces arrays, `deep-merge.js:13`), so on the
+  diff-scoped run the config negations do NOT apply — which is why these
+  same excludes/re-includes are mirrored in `mutation.sh`'s own `grep`
+  filter, not only in `stryker.conf.json`. See the `mutate` array in
+  `stryker.conf.json` and the changed-file `grep` filter in
+  `scripts/checks/mutation.sh` for the exact patterns and re-includes
+  (not restated in full here so they cannot drift).
 - **Stryker sandbox exclusions (`stryker.conf.json` `ignorePatterns`)**:
   Stryker copies every non-ignored project file into a temp sandbox before
   each run (verified in `@stryker-mutator/core` 8.7.1
@@ -208,24 +259,42 @@ verified usage, not dead weight:
   `min-release-age` filtering RN out of the packument means npm
   cannot validate that range against it — surfacing as an ERESOLVE
   error without `--legacy-peer-deps`).
-- **`scripts/checks/screenshots.sh` `EXCLUDE_FROM_DIFF`**: 3 of the 10
-  `check:screenshots` shots (`02-home-transactions-scrolled`,
-  `07-statistics-account-contribution`,
-  `08-statistics-expenses-by-category`) are captured and committed
-  like every other shot but are skipped by the pixel-diff itself (via
-  `compare-png.js`'s `excludeCsv` CLI arg). Verified, reproducible
-  cause: all 3 are `scrollUntilVisible`-to-mid-content shots, and
-  Maestro's scroll-stop offset for a target in the MIDDLE of a
-  scrollable range is momentum-dependent — a few px of run-to-run
-  landing drift shifts the whole captured frame (measured 7.75%,
-  18.9%, and 10.6% mismatch respectively on an otherwise byte-stable,
-  stable-glass build where the other 7 shots diff at 0%). This is not
-  a tolerance loosening (`THRESHOLD`/`MAX_MISMATCH_RATIO` are
-  unchanged) and not a glass or animation issue (stable-glass and
-  `waitForAnimationToEnd` already remove those) — it is the exclusion
-  of a genuinely non-deterministic INPUT the pixel-diff cannot be made
-  to tolerate without hiding a real regression on every OTHER shot
-  too. See the `check:screenshots` section above for the full
-  writeup, including the untried mitigation (a gentler
-  `scrollUntilVisible` `speed`) that could reclaim these 3 shots.
+- **`.env.test` (tracked, public-only test env file)**: a committed `.env`
+  variant that mirrors `.env.example`.
+  `jest.config.js` defaults `ENVFILE` to it (`process.env.ENVFILE = process.env.ENVFILE || '.env.test'`),
+  so a fresh checkout runs hermetic Jest tests with no hand-edited local
+  `.env`; an explicit `ENVFILE` still wins. Concrete
+  justification: the native-banks render tests were non-hermetic — they
+  depended on a hand-edited local `.env`, so a medium-tier green on one
+  machine was not proof of a fresh checkout; defaulting to a committed file
+  makes them reproducible. Every value is public, non-secret config (same
+  rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
+  Updated 2026-09-18 (Guideline 5.6 remediation, Task 1): `.env.test` no
+  longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
+  visibility gate was removed outright, not merely defaulted off. The "add
+  a bank" sheet's `visibleCatalogEntries`
+  (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
+  now takes no flag argument: it shows every wired-registry provider in the
+  catalog unconditionally, so there is nothing left for a test-env value to
+  gate. See the `kiko-architecture` skill's "Guideline 5.6 — no hidden
+  features" section for the standing rule this codifies.
+- **`e2e/screenshot/` — the demo-dataset subsystem lives outside `src/`,
+  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 5.6
+  remediation).** `src/` now has **zero** references into `e2e/`, of any
+  kind — no static import, no dynamic `require`. The one dynamic `require`
+  that used to reach `screenshot-seed.ts` from `MigrationsGate`
+  (`src/migration/migrations-gate/migrations.gate.tsx`,
+  `seedScreenshotDataIfEnabled`) was deleted outright: demo data now enters
+  the app only through the real, user-visible Import UI, never a boot-time
+  seed. The tightened Semgrep rule
+  (`kiko-no-hidden-feature-flag-or-demo-import`, `rules/semgrep-mobile.yml`)
+  enforces this for both shapes going forward — a static `e2e/` import and
+  a dynamic `e2e/` `require` are both findings now, with no exemption.
+  `e2e/screenshot/` still needs no `knip.json` config for the one reason
+  that remains: Knip's Jest plugin already treats every file Jest's own
+  (unmodified) default `testMatch` matches as an entry point, and that
+  default pattern is repo-wide, not scoped to `src/` — so
+  `e2e/screenshot/**/*.test.ts` (the dataset builder's, the snapshot
+  mapper's, and the `.kiko` generator's colocated tests) keeps the whole
+  subsystem in Knip's reachable graph without any repo-wide edit.
 

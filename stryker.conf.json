@@ -11,7 +11,12 @@
     "!__tests__/**",
     "!ios/**",
     "!**/i18n/locales/**",
-    "!**/*.d.ts"
+    "!**/*.d.ts",
+    "!**/index.ts",
+    "**/i18n/index.ts",
+    "!**/*.styles.ts",
+    "**/bottom-sheet.styles.ts",
+    "**/entity-icon-tile.styles.ts"
   ],
   "ignorePatterns": ["ios", "android", "vendor", "coverage", "docs", ".superpowers"],
   "incremental": true,

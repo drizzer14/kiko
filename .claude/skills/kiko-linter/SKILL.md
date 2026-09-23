@@ -9,12 +9,20 @@ Source of truth: `CLAUDE.md` (the checks table, "Override protocol",
 "Documented exceptions") and `scripts/checks/_lib.sh`. This skill
 states the conventions for adding to the harness itself — the checks
 that check the app, not the app's own code style (see
-`kiko-code-style` for that). Some files named below
+`kiko-code-style` for that). The files named below
 (`scripts/checks/semgrep-rules.sh`, `scripts/checks/plist.sh`,
-`scripts/checks/typecheck.sh`, `rules/fixtures/`) land with the
-2026-09-06 security-pass-fixes / bug-hunt-fixes branches — check
-`ls scripts/checks/` before assuming a given wrapper already exists on
-the branch you're on.
+`scripts/checks/typecheck.sh`, `rules/fixtures/`) all exist in the
+tree today.
+
+The root `Makefile`'s `verify` target (`make verify`, wrapping
+`scripts/checks/verify.sh`) is the single end-of-work command for the
+developer/qa agents: it runs lint, then the full Jest suite, then
+`check:all` (the fast+medium gate) as ORDERED, FAIL-FAST stages,
+stopping at the first failing stage rather than always running all
+three. Read `verify.sh` directly for the exact stage commands rather
+than restating them here; a new harness check that belongs in the
+fast+medium gate is picked up by `make verify` automatically through
+`check:all`, with no `Makefile` change needed.
 
 ## The wrapper contract
 
@@ -42,15 +50,23 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
-  `${KIKO_MUTATION_BASE:-main}` (tests and fixtures — `*.test.ts(x)`,
-  `__tests__/`, `rules/fixtures/` — excluded to match the config's mutate
-  excludes), passed to Stryker as an explicit `--mutate` list that
-  overrides the whole-tree glob. An empty changed set exits 0 (nothing to
-  mutate). `KIKO_MUTATION_FULL=1` forces the whole project, and an
-  unresolvable merge-base also falls back to the whole project — the gate
-  never silently mutates nothing. This keeps the manual `check:deep`
-  cheap; the diff logic is tested hermetically (a throwaway git repo, the
-  real script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
+  `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as an explicit
+  `--mutate` list that overrides the whole-tree glob — and this
+  `--mutate` list REPLACES the config's own `mutate[]` excludes
+  wholesale, so the script's own filtering is the only thing excluding
+  tests/fixtures/low-logic files on a diff-scoped run. Do not restate
+  that exclusion set here — it drifts; read `scripts/checks/mutation.sh`
+  directly for the current filter (both the path-pattern exclusion and
+  the barrel/`.styles.ts` drop-with-reinclusion step) and `CLAUDE.md`'s
+  "Documented exceptions" for the mutate-set and sandbox exclusions this
+  mirrors. An empty changed set exits 0 (nothing to mutate).
+  `KIKO_MUTATION_FULL=1` forces the whole project, and an unresolvable
+  merge-base also falls back to the whole project — the gate never
+  silently mutates nothing. See `CLAUDE.md`'s `check:deep` section for
+  when to override the base (`KIKO_MUTATION_BASE=next` when deep-gating
+  an integration stacked on `next`). This keeps the manual `check:deep` cheap;
+  the diff logic is tested hermetically (a throwaway git repo, the real
+  script, an arg-capturing stub) in `__tests__/mutation-stream.test.ts`.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
   per-mutant-rate ETA, so nobody polls the run — its exit code stays the only
@@ -134,7 +150,7 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
 ## Semgrep facts verified on 1.175 — don't relearn these the hard way
 
 - `paths.include` must be a **basename** pattern (e.g. `"*.swift"`),
-  never path-prefixed (e.g. `"ios/KikoWidget/*.swift"`). A
+  never path-prefixed (e.g. `"ios/Kiko/*.swift"`). A
   path-prefixed include silently matches **nothing** when the fixture
   runner scans `rules/fixtures/` directly (the fixture isn't under
   that prefix) — verified by sabotage: the prefixed form drew zero
@@ -191,6 +207,25 @@ is excluded from Biome/Knip/jscpd/the real Semgrep scan, each
 independently verified as load-bearing by probing with a deliberately
 bad file and confirming the check would otherwise fire on it.
 
+## Backlog: a rule for a plain function called inside a worklet
+
+A proposed but NOT YET IMPLEMENTED Semgrep rule (documentation only —
+do not implement without a dedicated pass): flag a plain,
+non-`'worklet'`-tagged function called synchronously inside a
+reanimated worklet hook (`useAnimatedStyle`, `useDerivedValue`,
+`useAnimatedReaction`, `useAnimatedScrollHandler`, a `Gesture.*`
+worklet callback). This is a real, previously-shipped bug class (see
+`kiko-gestures`'s "Every function called inside a worklet needs its
+own `'worklet'` directive" and memory
+`worklet-directive-debug-swallows-release-aborts`): the missing
+directive is invisible to `tsc` and to Jest (reanimated's worklet
+runtime is mocked there, and Debug builds only warn), and only
+SIGABRTs in a RELEASE build — exactly the class of finding this
+harness exists to mechanize so it stops depending on a reviewer
+happening to notice it. Needs a `rules/fixtures/<rule-id>.bad.ts` /
+`.good.ts` pair per the fixture contract above before it can land;
+tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
+
 ## Every mechanized finding gets an inventory row
 
 `docs/harness/review-to-biome-inventory.md` tracks every review
@@ -222,5 +257,5 @@ named assertions (e.g. every credential-bearing host resolved from
 `src/` + `.env` must appear in `NSPinnedDomains`). Add a new plist
 invariant there as another named assertion in that same script, not as
 a new standalone wrapper — `plist.sh` already owns `plutil -lint` on
-both `ios/Kiko/Info.plist` and `ios/KikoWidget/Info.plist` plus the
-fail-closed proofs for a missing file or a broken `plutil`.
+`ios/Kiko/Info.plist` plus the fail-closed proofs for a missing file
+or a broken `plutil`.

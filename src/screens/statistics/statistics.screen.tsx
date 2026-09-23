@@ -17,7 +17,7 @@ import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
 import Box from '../../design-system/components/box';
-import GlassSurface from '../../design-system/components/glass-surface';
+import Card from '../../design-system/components/card';
 import Screen from '../../design-system/components/screen';
 import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
@@ -28,6 +28,7 @@ import {
   type BackfillStatus,
   deriveLastBackfilledDay,
   missingDays,
+  planBackfillRun,
   runBackfill,
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
@@ -67,6 +68,7 @@ import NetWorthLine from './net-worth-line';
 import PieChart from './pie-chart';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
+import { useFocusRefreshedNow } from './use-focus-refreshed-now';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -182,10 +184,12 @@ const StatisticsScreen: FC = () => {
   // it them.
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
-  // `now` is fixed at mount: the default date-range seed below, the default
-  // line window, the backfill's "today", and every memo below key on it, and a
-  // fresh `Date.now()` each render would defeat that memoization.
-  const now = useMemo(() => Date.now(), []);
+  // `now` is seeded at mount and REFRESHED on every screen focus (see
+  // useFocusRefreshedNow): the default date-range seed, the default line window,
+  // the backfill's "today", and every memo below key on it, and it stays stable
+  // across renders so a fresh `Date.now()` each render never defeats that
+  // memoization — only a re-focus advances it.
+  const now = useFocusRefreshedNow();
 
   // The date-range bounds default to the last 30 days on mount; a user pick
   // can still set either to null (open-ended) via the date-range field.
@@ -267,30 +271,48 @@ const StatisticsScreen: FC = () => {
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
 
   // Drive the incremental, non-blocking backfill and surface its status to the
-  // line. It runs at most once per mount, only when there is a bounded span
-  // (transactions exist) with days still to fill; the ref guards against the
-  // re-render the backfill's own writes trigger (which advance `lastBackfilledDay`
-  // and would otherwise re-enter). The bar and pie never wait on this.
-  const backfillStartedRef = useRef(false);
+  // line. It runs when there is a bounded span (transactions exist) with days
+  // still to fill, AND re-runs when an older-dated transaction extends the span
+  // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
+  // earlier extension so `missingDays` recomputes the whole span — the forward
+  // resume cursor cannot see a gap that opens below the newest stored day). The
+  // ref holds the `spanStart` the last run covered, so the re-render the
+  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
+  // re-enter for the same span. The bar and pie never wait on this.
+  const backfillRanForSpanRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
     state: 'idle',
     lastDay: null,
   });
 
   useEffect(() => {
-    if (backfillStartedRef.current || transactions.length === 0) {
+    if (transactions.length === 0) {
       return;
     }
-    if (missingDays(spanStart, lastBackfilledDay, now).length === 0) {
+
+    const { run, resumeFrom } = planBackfillRun(
+      spanStart,
+      backfillRanForSpanRef.current,
+      lastBackfilledDay,
+    );
+
+    if (!run) {
+      return;
+    }
+
+    // Mark this span covered BEFORE the async run so the write's own re-render
+    // (which advances lastBackfilledDay) does not re-enter for the same span.
+    backfillRanForSpanRef.current = spanStart;
+
+    if (missingDays(spanStart, resumeFrom, now).length === 0) {
       setBackfillStatus({ state: 'complete', lastDay: lastBackfilledDay });
 
       return;
     }
 
-    backfillStartedRef.current = true;
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
     let cancelled = false;
-    runBackfill({ earliestDay: spanStart, lastBackfilledDay, today: now })
+    runBackfill({ earliestDay: spanStart, lastBackfilledDay: resumeFrom, today: now })
       .then((status) => {
         if (!cancelled) {
           setBackfillStatus(status);
@@ -412,6 +434,7 @@ const StatisticsScreen: FC = () => {
         counterIban: transaction.counterIban,
         description: transaction.description,
         exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
+        changeGroupId: transaction.changeGroupId,
         currency: transaction.currency,
       })),
     [transactionsWithCurrency],
@@ -436,15 +459,17 @@ const StatisticsScreen: FC = () => {
           counterIban: transaction.counterIban,
           description: transaction.description,
           exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
+          changeGroupId: transaction.changeGroupId,
           currency: transaction.currency,
         })),
     [transactionsWithCurrency, rangeFrom, rangeTo],
   );
 
   // The spending-trend builder needs everything the breakdown does PLUS each
-  // row's `time`, so it can bucket the expense into its UTC-day within the last
-  // 30 days. Built separately from `breakdownTransactions` (which carries no
-  // time) so neither memo has to change shape for the other.
+  // row's `time`, so it can bucket the expense into the active
+  // rangeFrom/rangeTo window the same way the net-worth line does. Built
+  // separately from `breakdownTransactions` (which carries no time) so neither
+  // memo has to change shape for the other.
   const trendTransactions = useMemo<TrendTransaction[]>(
     () =>
       transactionsWithCurrency.map((transaction) => ({
@@ -455,6 +480,7 @@ const StatisticsScreen: FC = () => {
         counterIban: transaction.counterIban,
         description: transaction.description,
         exchangeCounterpartHoldingId: transaction.exchangeCounterpartHoldingId,
+        changeGroupId: transaction.changeGroupId,
         currency: transaction.currency,
         time: transaction.time,
       })),
@@ -630,9 +656,9 @@ const StatisticsScreen: FC = () => {
     return resolveTrendFilter(settingsRows.at(0)?.trendFilter ?? null, existingKeys);
   }, [settingsRows, categories]);
 
-  // The per-category ranking measures over the fixed 30-day trend window — the
-  // universe both the Top-N ranking and the exclusion set below are computed
-  // from (NOT the range-scoped `allCategorySlices`, whose window differs).
+  // The per-category ranking measures over the SAME range/bucket set the
+  // trend line and the net-worth line both use — the universe both the Top-N
+  // ranking and the exclusion set below are computed from.
   const trendMeasures = useMemo(
     () =>
       buildCategoryMeasures({
@@ -640,10 +666,19 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        now,
+        range: { from: rangeFrom, to: rangeTo },
+        bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedTransactionIds,
       }),
-    [trendTransactions, rateTable, baseCurrency, defaultCategoryKey, now, excludedTransactionIds],
+    [
+      trendTransactions,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      rangeFrom,
+      rangeTo,
+      excludedTransactionIds,
+    ],
   );
 
   // The category keys the chart draws: the explicit manual keys, or the live
@@ -673,6 +708,9 @@ const StatisticsScreen: FC = () => {
     );
   }, [trendMeasures, trendSelectedKeys]);
 
+  // The chart's own bucket set is the SAME range/bucketDays the net-worth line
+  // plots, so both charts share one X-axis convention (see `buildNetWorthSeries`
+  // above).
   const trendSeries = useMemo(
     () =>
       buildCategoryTrend({
@@ -681,7 +719,8 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        now,
+        range: { from: rangeFrom, to: rangeTo },
+        bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
       }),
@@ -691,7 +730,8 @@ const StatisticsScreen: FC = () => {
       rateTable,
       baseCurrency,
       defaultCategoryKey,
-      now,
+      rangeFrom,
+      rangeTo,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
     ],
@@ -736,6 +776,7 @@ const StatisticsScreen: FC = () => {
             options={accountOptions}
             selected={selectedAccounts}
             onToggle={toggleFilter(setSelectedAccounts)}
+            triggerIcon="tray"
           />
 
           <DateRangeField
@@ -748,7 +789,7 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <GlassSurface testID="statistics-block-line" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-line" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.netWorthOverTime')}
@@ -761,9 +802,9 @@ const StatisticsScreen: FC = () => {
               loading={backfillStatus.state === 'loading'}
             />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-bar" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-bar" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.byType')}
@@ -771,9 +812,9 @@ const StatisticsScreen: FC = () => {
 
             <BarChart data={typeSlices} baseCurrency={baseCurrency} />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-pie" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-pie" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.accountContribution')}
@@ -781,9 +822,9 @@ const StatisticsScreen: FC = () => {
 
             <PieChart slices={slices} baseCurrency={baseCurrency} />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-category" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-category" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.expensesByCategory')}
@@ -796,6 +837,7 @@ const StatisticsScreen: FC = () => {
                 options={categoryOptions}
                 selected={selectedCategories}
                 onToggle={toggleFilter(setSelectedCategories)}
+                triggerIcon="tag"
               />
             </Box>
 
@@ -809,9 +851,9 @@ const StatisticsScreen: FC = () => {
               legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
             />
           </Box>
-        </GlassSurface>
+        </Card>
 
-        <GlassSurface testID="statistics-block-trend" transparent bloom padding={4} radius="lg">
+        <Card testID="statistics-block-trend" padding={4} radius="lg">
           <Box gap={3}>
             <Text variant="heading" style={styles.cardTitle}>
               {t('statistics.spendingTrendByCategory')}
@@ -832,7 +874,7 @@ const StatisticsScreen: FC = () => {
               emptyLabel={t('statistics.noSpendingToShow')}
             />
           </Box>
-        </GlassSurface>
+        </Card>
       </Box>
     </Screen>
   );

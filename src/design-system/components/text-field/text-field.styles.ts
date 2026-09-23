@@ -11,14 +11,29 @@ export const styles = StyleSheet.create((theme) => ({
   // mirrors this SAME `theme.spacing(11)` token so the two land on exactly
   // the same height and, bottom-aligned against this field's captioned
   // column, on the same vertical center too.
+  //
+  // Exception: a `multiline` field must grow to fit its content instead (e.g.
+  // the export screen's Encryption-Key field, which holds a 44-character
+  // base64 key that must be fully visible without scrolling). The component
+  // layers `inputMultiline` on top of this base style in that case, which
+  // overrides `height` with a `minHeight` floor of the same 44pt token.
   input: {
     height: theme.spacing(11),
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
     padding: theme.spacing(3),
     color: theme.colors.textPrimary,
     ...theme.typography.body,
+  },
+  // Applied on top of `input` when `multiline === true`: drops the fixed
+  // `height` in favor of a `minHeight` floor (keeping the same 44pt tap
+  // target) so the field grows to fit its content, and top-aligns the text
+  // so it starts at the field's top edge rather than vertically centering.
+  inputMultiline: {
+    height: undefined,
+    minHeight: theme.spacing(11),
+    textAlignVertical: 'top',
   },
   // Applied on top of `input` when `editable === false`, so the field reads
   // clearly as non-editable rather than merely un-focusable.
@@ -32,11 +47,28 @@ export const styles = StyleSheet.create((theme) => ({
   inputWithSuffix: {
     paddingRight: theme.spacing(9),
   },
-  // Positioned parent for the absolutely-pinned suffix slot: the input keeps
-  // its full width and 44pt tap area, and the slot overlays only the reserved
-  // trailing padding.
-  suffixContainer: {
+  // Extra leading room reserved on top of `input`'s own `padding` when a
+  // leading icon renders, so the placeholder and caret never slide under the
+  // pinned glyph. Mirrors `inputWithSuffix` on the leading edge.
+  inputWithLeadingIcon: {
+    paddingLeft: theme.spacing(9),
+  },
+  // Positioned parent for the absolutely-pinned leading/suffix slots: the input
+  // keeps its full width and 44pt tap area, and a slot overlays only the
+  // reserved leading/trailing padding.
+  insetContainer: {
     position: 'relative',
+  },
+  // The leading glyph, pinned to the leading edge and vertically centered
+  // against the field's fixed height. `pointerEvents: 'none'` lets a tap in the
+  // leading area still fall through to the input rather than being swallowed.
+  leadingSlot: {
+    position: 'absolute',
+    left: theme.spacing(3),
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    pointerEvents: 'none',
   },
   // The suffix glyph, pinned to the trailing edge and vertically centered
   // against the field's fixed height. `pointerEvents: 'none'` lets a tap in the

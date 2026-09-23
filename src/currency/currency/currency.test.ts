@@ -1,20 +1,105 @@
-import { currencyOptions, isCurrency } from './currency';
+import {
+  isFiat,
+  isCrypto,
+  isCurrency,
+  currencyScale,
+  currencySymbol,
+  currencyOptions,
+  fiatCurrencyOptions,
+  applySymbolPlacement,
+} from './currency';
 
 describe('currencyOptions', () => {
-  it('lists the currencies in the canonical display order UAH, USD, EUR, BTC', () => {
-    expect([...currencyOptions]).toEqual(['UAH', 'USD', 'EUR', 'BTC']);
+  it('opens with the originally shipped fiat set in canonical order', () => {
+    expect(currencyOptions.slice(0, 5)).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF']);
+  });
+
+  it('ends with the crypto block: BTC, ETH, USDT', () => {
+    expect(currencyOptions.slice(-3)).toEqual(['BTC', 'ETH', 'USDT']);
+  });
+
+  it('includes the additional Monobank-priced fiats', () => {
+    for (const code of ['JPY', 'PLN', 'CAD', 'AUD', 'TRY', 'INR', 'GEL'] as const) {
+      expect(currencyOptions).toContain(code);
+    }
+  });
+
+  it('has no duplicate codes', () => {
+    expect(new Set(currencyOptions).size).toBe(currencyOptions.length);
   });
 });
 
 describe('isCurrency', () => {
-  it('accepts each of the four supported currency codes', () => {
-    expect(isCurrency('BTC')).toBe(true);
-    expect(isCurrency('USD')).toBe(true);
-    expect(isCurrency('EUR')).toBe(true);
-    expect(isCurrency('UAH')).toBe(true);
+  it('accepts every supported currency code', () => {
+    for (const code of currencyOptions) {
+      expect(isCurrency(code)).toBe(true);
+    }
   });
 
-  it('rejects an unsupported code', () => {
-    expect(isCurrency('GBP')).toBe(false);
+  it('rejects a code the app does not support', () => {
+    // RUB is not in Monobank's UAH-priced fiat set, so it stays unsupported.
+    expect(isCurrency('RUB')).toBe(false);
+    expect(isCurrency('XYZ')).toBe(false);
+  });
+});
+
+describe('fiat / crypto classification', () => {
+  it('treats BTC, ETH, and USDT as crypto and everything else as fiat', () => {
+    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+      expect(isCrypto(code)).toBe(true);
+      expect(isFiat(code)).toBe(false);
+    }
+    for (const code of fiatCurrencyOptions) {
+      expect(isCrypto(code)).toBe(false);
+      expect(isFiat(code)).toBe(true);
+    }
+  });
+
+  it('exposes the fiat subset (every option except the crypto block), order-preserving', () => {
+    const cryptoBlock = new Set(['BTC', 'ETH', 'USDT']);
+    expect([...fiatCurrencyOptions]).toEqual(
+      currencyOptions.filter((code) => !cryptoBlock.has(code)),
+    );
+    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+      expect(fiatCurrencyOptions).not.toContain(code);
+    }
+  });
+
+  it('assigns a defined scale and mark to each new crypto', () => {
+    expect(currencyScale.ETH).toBe(8);
+    expect(currencyScale.USDT).toBe(2);
+    expect(currencySymbol.ETH).toBe('Ξ');
+    expect(currencySymbol.USDT).toBe('₮');
+  });
+});
+
+describe('currencySymbol', () => {
+  it('maps every currency to a non-empty mark (never a generic placeholder)', () => {
+    for (const code of currencyOptions) {
+      expect(currencySymbol[code].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('applySymbolPlacement', () => {
+  it('suffixes UAH with a space before the symbol', () => {
+    expect(applySymbolPlacement('UAH', '', '2,500.00')).toBe('2,500.00 ₴');
+  });
+
+  it('prefixes a real-glyph currency tight, with no space', () => {
+    expect(applySymbolPlacement('USD', '', '1,234.50')).toBe('$1,234.50');
+    expect(applySymbolPlacement('BTC', '', '0.05000000')).toBe('₿0.05000000');
+  });
+
+  it('prefixes a bare-code currency (no conventional symbol) with a space', () => {
+    expect(applySymbolPlacement('AED', '', '1,234.50')).toBe('AED 1,234.50');
+    expect(applySymbolPlacement('BGN', '', '10.00')).toBe('BGN 10.00');
+    expect(applySymbolPlacement('KES', '', '500.00')).toBe('KES 500.00');
+  });
+
+  it('keeps the sign outside the symbol on every placement path', () => {
+    expect(applySymbolPlacement('USD', '-', '1,234.50')).toBe('-$1,234.50');
+    expect(applySymbolPlacement('UAH', '-', '2,500.00')).toBe('-2,500.00 ₴');
+    expect(applySymbolPlacement('AED', '-', '1,234.50')).toBe('-AED 1,234.50');
   });
 });

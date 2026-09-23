@@ -454,4 +454,92 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
     expect(result.args).toContain('run');
     expect((result.args ?? []).some((arg) => arg.startsWith('--mutate'))).toBe(false);
   });
+
+  // Part 2 file-level exclusion: barrels (**/index.ts) and pure-static
+  // *.styles.ts are dropped from the diff-scoped mutate set, EXCEPT the
+  // logic-bearing re-includes (src/i18n/index.ts, bottom-sheet.styles.ts,
+  // entity-icon-tile.styles.ts). These must be filtered out in mutation.sh's own
+  // grep because `--mutate` REPLACES the config mutate[] (deepMerge replaces
+  // arrays), so the config negations do NOT apply on the diff-scoped run.
+  it('drops barrels and pure-static styles but keeps the logic-bearing re-includes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
+    gitq(root, 'init', '-q', '-b', 'main');
+    gitq(root, 'config', 'user.email', 'test@example.com');
+    gitq(root, 'config', 'user.name', 'Test');
+    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
+    copyFileSync(
+      join(__dirname, '../scripts/checks/_lib.sh'),
+      mkAndReturn(root, 'scripts/checks/_lib.sh'),
+    );
+    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'base');
+    gitq(root, 'checkout', '-q', '-b', 'feature');
+    // A logic-bearing source file so the changed set is never empty.
+    writeFile(root, 'src/changed.ts', 'export const b = 2;\n');
+    // Barrels: a plain re-export index (DROPPED) and the i18n init module (KEPT).
+    writeFile(root, 'src/foo/index.ts', "export * from './foo';\n");
+    writeFile(root, 'src/i18n/index.ts', 'export const init = () => 1;\n');
+    // Styles: a pure-static one (DROPPED) and the 2 logic re-includes (KEPT).
+    writeFile(root, 'src/foo/foo.styles.ts', 'export const s = {};\n');
+    writeFile(
+      root,
+      'src/design-system/components/bottom-sheet/bottom-sheet.styles.ts',
+      'export const s = {};\n',
+    );
+    writeFile(
+      root,
+      'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
+      'export const s = {};\n',
+    );
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'part2 change');
+
+    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
+      KIKO_MUTATION_BASE: 'main',
+    });
+
+    expect(result.code).toBe(0);
+    const mutate = (result.args ?? []).find((arg) => arg.startsWith('--mutate='));
+    expect(mutate).toBeDefined();
+    // In scope.
+    expect(mutate).toContain('src/changed.ts');
+    expect(mutate).toContain('src/i18n/index.ts');
+    expect(mutate).toContain('src/design-system/components/bottom-sheet/bottom-sheet.styles.ts');
+    expect(mutate).toContain(
+      'src/design-system/components/entity-icon-tile/entity-icon-tile.styles.ts',
+    );
+    // Dropped.
+    expect(mutate).not.toContain('src/foo/index.ts');
+    expect(mutate).not.toContain('src/foo/foo.styles.ts');
+  });
+
+  it('passes cleanly without Stryker when the only changed mutable files are barrels/styles', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kiko-mutrepo-'));
+    gitq(root, 'init', '-q', '-b', 'main');
+    gitq(root, 'config', 'user.email', 'test@example.com');
+    gitq(root, 'config', 'user.name', 'Test');
+    copyFileSync(SCRIPT, mkAndReturn(root, 'scripts/checks/mutation.sh'));
+    copyFileSync(
+      join(__dirname, '../scripts/checks/_lib.sh'),
+      mkAndReturn(root, 'scripts/checks/_lib.sh'),
+    );
+    writeFile(root, 'src/keep.ts', 'export const a = 1;\n');
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'base');
+    gitq(root, 'checkout', '-q', '-b', 'feature');
+    // ONLY a plain barrel and a pure-static style change — the filter empties the
+    // set, so the "nothing to mutate, pass" early exit must still fire.
+    writeFile(root, 'src/foo/index.ts', "export * from './foo';\n");
+    writeFile(root, 'src/foo/foo.styles.ts', 'export const s = {};\n');
+    gitq(root, 'add', '-A');
+    gitq(root, 'commit', '-qm', 'barrel and style only');
+
+    const result = runInRepo(join(root, 'scripts/checks/mutation.sh'), {
+      KIKO_MUTATION_BASE: 'main',
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.args).toBeNull();
+  });
 });
