@@ -17,8 +17,8 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { captureSetTx } from '@kiko/db/capture-set-tx';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 
 import { accounts, holdings } from '../../db/schema';
 import { holdingValueAt } from '../../statistics/holding-value-at';

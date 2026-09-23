@@ -15,6 +15,7 @@ jest.mock('../../db/client', () => {
 
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 
+import { accountsRepo } from '../../accounts/accounts.repo';
 import { accounts, categoryOverrides, holdings, transactions } from '../../db/schema';
 
 import { transactionsRepo } from './transactions.repo';
@@ -2214,5 +2215,124 @@ describe('transactionsRepo.importRows boundary sources (D-I2: only a TRUE hand-s
     // April counts in full because the exchange leg never stamped
     // `balanceSetAt`; no boundary was ever established.
     expect(holding.balanceMinorUnits).toBe(-3_500);
+  });
+});
+
+// N1 (round-1 re-review): `accountsRepo.createCashAccount`'s typed starting
+// balance IS a hand-set balance, the same as `holdingsRepo.create`'s — it
+// must stamp `balanceSetAt` too, or an import-only-looking holding (never
+// touched through `holdingsRepo`) loses its boundary. This is a real
+// cross-repo integration test — it drives BOTH real `accountsRepo` and
+// `transactionsRepo` functions against one shared, mutable store — rather
+// than simulating the pre-condition, because the bug was exactly that
+// `createCashAccount` DIDN'T do what its sibling create path does.
+describe('createCashAccount + importRows integration (N1)', () => {
+  type IntegrationStore = {
+    accounts: Record<string, unknown>[];
+    holdings: Record<string, unknown>[];
+    transactions: Record<string, unknown>[];
+  };
+
+  const keyOf = (table: unknown): keyof IntegrationStore => {
+    if (table === accounts) {
+      return 'accounts';
+    }
+
+    return table === holdings ? 'holdings' : 'transactions';
+  };
+
+  /** Serves BOTH `accountsRepo.createCashAccount` (a bare `nextSortOrder`
+   * select, three single-row inserts) and `transactionsRepo.importRows`
+   * (`.where().limit(1)` reads, the sync-boundary aggregate, the dedup
+   * upsert, the balance update) against one shared `store` — the two real
+   * repos see each other's writes, the way two real app actions would. */
+  const makeIntegrationTx = (store: IntegrationStore) => {
+    const resolveRows = (rows: unknown[]) =>
+      Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+
+    return {
+      select: (fields?: Record<string, unknown>) => ({
+        from: (table: unknown) => {
+          // `nextSortOrder` (accounts.repo.ts): a bare, un-`.where()`'d
+          // `select({ value }).from(accounts)`.
+          if (table === accounts && fields && 'value' in fields) {
+            return Promise.resolve([{ value: -1 }]);
+          }
+
+          if (table === transactions && fields && 'time' in fields) {
+            const syncTimes = store.transactions
+              .filter((row) => row.source !== 'manual' && row.source !== 'import')
+              .map((row) => row.time as number);
+
+            return {
+              where: () =>
+                resolveRows(syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : []),
+            };
+          }
+
+          return { where: () => resolveRows(store[keyOf(table)]) };
+        },
+      }),
+      insert: (table: unknown) => ({
+        values: (values: Record<string, unknown> | Record<string, unknown>[]) => {
+          if (Array.isArray(values)) {
+            return {
+              onConflictDoUpdate: async () => {
+                store.transactions.push(...values);
+              },
+            };
+          }
+
+          // A real SQLite `holdings` row column with no explicit value on
+          // INSERT reads back as `null` (its schema default), never
+          // `undefined` — normalize here so a fix that OMITS `balanceSetAt`
+          // entirely (rather than passing `null`) still red-fails.
+          store[keyOf(table)].push(table === holdings ? { balanceSetAt: null, ...values } : values);
+
+          return Promise.resolve();
+        },
+      }),
+      update: (table: unknown) => ({
+        set: (values: Record<string, unknown>) => ({
+          where: async () => {
+            if (table === holdings) {
+              store.holdings = store.holdings.map((row) => ({ ...row, ...values }));
+            }
+          },
+        }),
+      }),
+    };
+  };
+
+  it('a cash account created with a typed starting balance keeps it after importing an OLDER statement', async () => {
+    const store: IntegrationStore = { accounts: [], holdings: [], transactions: [] };
+
+    mockTx = makeIntegrationTx(store);
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalanceMinorUnits: 5_000,
+    });
+
+    const holdingId = store.holdings[0].id as string;
+
+    mockTx = makeIntegrationTx(store);
+    const imported = await transactionsRepo.importRows({
+      holdingId,
+      rows: [
+        {
+          holdingId,
+          amountMinorUnits: -1_000,
+          time: Date.UTC(2020, 0, 1),
+          source: 'import',
+        },
+      ],
+    });
+
+    // The older statement's row still inserts as real ledger history, but
+    // `createCashAccount`'s own typed starting balance already set
+    // `balanceSetAt`, so it lands as history and moves nothing.
+    expect(imported).toBe(1);
+    expect(store.holdings[0].balanceMinorUnits).toBe(5_000);
   });
 });

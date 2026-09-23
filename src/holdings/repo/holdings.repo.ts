@@ -1,16 +1,16 @@
 import type { Repository } from '@kiko/db/repository';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
-import { database, write } from '../../db/client';
-import { id } from '../../db/id';
-import { accounts, type HoldingRow, holdings, transactions } from '../../db/schema';
-import { isSyncedHolding } from '../deletable';
 import {
   asTermDepositMeta,
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
 } from '../holding-metadata';
+import { id } from '../../db/id';
+import { isSyncedHolding } from '../deletable';
+import { database, write } from '../../db/client';
+import { accounts, type HoldingRow, holdings, transactions } from '../../db/schema';
 
 // The next free grid slot for a new holding under one account: one past that
 // account's current highest `sortOrder` (or 0 when it has no holdings yet), so
@@ -178,9 +178,9 @@ export const holdingsRepo = {
    *
    * The same non-zero opening balance also stamps `holdings.balanceSetAt` —
    * `transactionsRepo.importRows`'s own doc comment is the full statement of
-   * why. `accountsRepo.createCashAccount` deliberately does NOT (a bound
-   * user decision): its first-holding-of-a-new-account bootstrap stays off
-   * the statement-import boundary.
+   * why. `accountsRepo.createCashAccount` (a cash account's first holding)
+   * stamps it too, for the same reason: a typed starting balance IS a
+   * hand-set balance, whichever create path writes it.
    */
   create: (input: NewHolding): Promise<string> =>
     write(async (tx) => {

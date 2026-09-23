@@ -106,12 +106,19 @@ export const accountsRepo = {
    * balance the insert above has already set. It carries no description and no
    * category: the label resolves at render time
    * (transactions/row-description.ts).
+   *
+   * A non-zero initial balance also stamps the holding's `balanceSetAt` — it
+   * IS a hand-set balance, the same as `holdingsRepo.create`'s own typed
+   * opening balance (see `transactionsRepo.importRows`'s doc comment for why
+   * this matters) — at the SAME instant as the ledger row's `time`.
    */
   createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
     write(async (tx) => {
       const accountId = id();
       const holdingId = id();
       const sortOrder = await nextSortOrder(tx);
+      const now = Date.now();
+
       await tx.insert(accounts).values({
         id: accountId,
         name,
@@ -127,6 +134,7 @@ export const accountsRepo = {
         type: 'cash',
         currency,
         balanceMinorUnits: initialBalanceMinorUnits,
+        balanceSetAt: initialBalanceMinorUnits !== 0 ? now : null,
       });
 
       if (initialBalanceMinorUnits === 0) {
@@ -137,7 +145,7 @@ export const accountsRepo = {
         id: id(),
         holdingId,
         amountMinorUnits: initialBalanceMinorUnits,
-        time: Date.now(),
+        time: now,
         description: '',
         category: null,
         source: 'manual',

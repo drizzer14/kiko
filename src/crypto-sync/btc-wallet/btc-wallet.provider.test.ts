@@ -1,12 +1,12 @@
 import type { HoldingRow } from '../../db/schema';
 import type { SyncTarget } from '../provider';
 
-import { fetchAddressBalance } from './btc-wallet.client';
 import {
   type BitcoinWalletDeps,
   bitcoinWalletProvider,
   defaultBitcoinWalletDeps,
 } from './btc-wallet.provider';
+import { fetchAddressBalance } from './btc-wallet.client';
 
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
