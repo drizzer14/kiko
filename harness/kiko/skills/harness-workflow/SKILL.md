@@ -11,6 +11,8 @@ Rules:
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
   caller persists any durable finding via `kiko:scribe`.
+- For a device-test request, copy `kiko:ops`'s "Device verification
+  checklist" section into the request to the user.
 - Use these superpowers skills directly: brainstorming, writing-plans, executing-plans,
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
