@@ -339,9 +339,11 @@ not drift to fix — do not "correct" a wire-mirrored field to match the
 acronym rule.
 
 This applies inside a compound name too, not just standalone —
-`fetchBtcPrice` was renamed to `fetchBTCPrice` during review (and its
-callers, `loadBTC` and `RefreshDeps.fetchBTCPrice`, followed the same
-rule).
+`isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
+`isBtcEntry`, is a live example. (History: `fetchBtcPrice` was renamed
+`fetchBTCPrice` during review for the same reason; that function no
+longer exists — read the current tree for a live example rather than
+assuming this name still does.)
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
