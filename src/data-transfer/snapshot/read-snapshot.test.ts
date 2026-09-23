@@ -14,7 +14,7 @@ jest.mock('../../db/client', () => ({
 import { readDataSnapshot } from './read-snapshot';
 
 describe('readDataSnapshot', () => {
-  it('reads all nine tables, in order, into the matching snapshot fields', async () => {
+  it('reads all ten tables, in order, into the matching snapshot fields', async () => {
     mockResultQueue = [
       [{ id: 'a1' }], // accounts
       [{ id: 'h1' }], // holdings
@@ -25,6 +25,7 @@ describe('readDataSnapshot', () => {
       [{ accountId: 'a1' }], // syncState
       [{ key: 'food' }], // categories
       [{ normalizedName: 'x' }], // categoryOverrides
+      [{ instrument: 'share:AAPL', day: 1 }], // pricePoints
     ];
 
     const snapshot = await readDataSnapshot();
@@ -38,10 +39,11 @@ describe('readDataSnapshot', () => {
     expect(snapshot.syncState).toEqual([{ accountId: 'a1' }]);
     expect(snapshot.categories).toEqual([{ key: 'food' }]);
     expect(snapshot.categoryOverrides).toEqual([{ normalizedName: 'x' }]);
+    expect(snapshot.pricePoints).toEqual([{ instrument: 'share:AAPL', day: 1 }]);
   });
 
   it('returns empty arrays for tables with no rows', async () => {
-    mockResultQueue = [[], [], [], [], [], [], [], [], []];
+    mockResultQueue = [[], [], [], [], [], [], [], [], [], []];
 
     const snapshot = await readDataSnapshot();
 

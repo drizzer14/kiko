@@ -20,7 +20,7 @@ argument (Guideline 5.6):
 | `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset |
 | `kiko-demo-en.kiko` | Same, English dataset |
 | `kiko-demo.key` | The base64 AES-256 key, **shared by both files** |
-| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 9 logical tables) |
+| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 10 logical tables) |
 | `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
 

@@ -7,6 +7,7 @@ import {
   currencyRateHistory,
   currencyRates,
   holdings,
+  pricePoints,
   settings,
   syncState,
   transactions,
@@ -30,7 +31,7 @@ const chunk = <T>(rows: T[], size: number): T[][] => {
 };
 
 /**
- * Replaces every row in every one of the 9 logical tables with the given
+ * Replaces every row in every one of the 10 logical tables with the given
  * snapshot's rows, inside ONE `write()` transaction — so a failure partway
  * leaves the live database untouched (op-sqlite's transaction auto-rolls-back
  * on a thrown error, same guarantee every other `write()` caller relies on).
@@ -46,6 +47,13 @@ const chunk = <T>(rows: T[], size: number): T[][] => {
  * rejects a delete/insert that violates a `holdings.accountId`,
  * `transactions.holdingId`, or `syncState.accountId` reference otherwise
  * (the same ordering `accountsRepo.remove` hand-codes for one account).
+ *
+ * `snapshot.pricePoints` is read defensively with `?? []`: `price_points`
+ * (T11) postdates every other table here, so a `.kiko` file exported before
+ * it existed carries no `pricePoints` key at all despite the `DataSnapshot`
+ * type declaring it required — that JSON simply never had the field. Such a
+ * legacy import must still restore cleanly, with an EMPTY `price_points`
+ * table, rather than throw on the missing key.
  */
 export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
   write(async (tx) => {
@@ -59,6 +67,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       await tx.delete(currencyRateHistory);
       await tx.delete(currencyRates);
       await tx.delete(settings);
+      await tx.delete(pricePoints);
     };
 
     // Split into three sequential groups (rather than one 9-loop function) to
@@ -97,6 +106,11 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
       }
       for (const part of chunk(snapshot.settings, CHUNK_SIZE)) {
         await tx.insert(settings).values(part);
+      }
+      // `?? []`: see the doc comment above — a pre-T11 export carries no
+      // `pricePoints` key at all.
+      for (const part of chunk(snapshot.pricePoints ?? [], CHUNK_SIZE)) {
+        await tx.insert(pricePoints).values(part);
       }
     };
 

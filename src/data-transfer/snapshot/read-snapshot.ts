@@ -9,6 +9,7 @@ import {
   currencyRateHistory,
   currencyRates,
   holdings,
+  pricePoints,
   settings,
   syncState,
   transactions,
@@ -46,4 +47,8 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(categoryOverrides)
     .orderBy(asc(categoryOverrides.normalizedName)),
+  pricePoints: await database
+    .select()
+    .from(pricePoints)
+    .orderBy(asc(pricePoints.instrument), asc(pricePoints.day)),
 });

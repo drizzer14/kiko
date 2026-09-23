@@ -163,5 +163,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     syncState: [],
     categories: buildCategories(),
     categoryOverrides: [],
+    pricePoints: [],
   };
 };

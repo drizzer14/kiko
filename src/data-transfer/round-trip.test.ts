@@ -110,6 +110,15 @@ const fixturePayload = (): ExportPayload => ({
         updatedAt: 1700000000000,
       } as never,
     ],
+    pricePoints: [
+      {
+        instrument: 'share:AAPL',
+        day: 1700000000000,
+        price: '190.00',
+        currency: 'USD',
+        source: 'eodhd',
+      } as never,
+    ],
   },
   secrets: {
     dbKeyHex: 'a'.repeat(64),

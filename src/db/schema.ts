@@ -393,3 +393,36 @@ export const categoryOverrides = sqliteTable('category_overrides', {
 });
 
 export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
+
+/**
+ * One priced point for a share/metal/holding on a given day (T11). Keyed the
+ * same way `currencyRateHistory` keys a rate: one row per (instrument, day),
+ * carried forward across a gap by the reader (`src/prices/price-book/`), not
+ * backfilled here.
+ */
+export const pricePoints = sqliteTable(
+  'price_points',
+  {
+    /**
+     * The priced thing's key — `share:<symbol>`, `metal:<metal>`, or
+     * `holding:<holdingId>` (see `src/prices/instrument/instrument.ts`).
+     * Free-text, not an FK: it may point at a symbol/metal with no matching
+     * row anywhere, or at a holding that has since been deleted.
+     */
+    instrument: text('instrument').notNull(),
+    /**
+     * The price's day, as a normalized UTC-midnight epoch value in
+     * MILLISECONDS (00:00:00.000 UTC of that calendar day) — same convention
+     * as `currencyRateHistory.day`. One row per (instrument, day).
+     */
+    day: integer('day').notNull(),
+    price: text('price').notNull(),
+    currency: text('currency', { enum: currencyOptions }).notNull(),
+    source: text('source', { enum: ['manual', 'nbu', 'eodhd'] }).notNull(),
+  },
+  (table) => ({
+    instrumentDayUnique: uniqueIndex('price_points_instrument_day').on(table.instrument, table.day),
+  }),
+);
+
+export type PricePointRow = typeof pricePoints.$inferSelect;

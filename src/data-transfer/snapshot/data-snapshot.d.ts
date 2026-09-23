@@ -6,6 +6,7 @@ import type {
   CurrencyRateHistoryRow,
   CurrencyRateRow,
   HoldingRow,
+  PricePointRow,
   SettingsRow,
   SyncStateRow,
   TransactionRow,
@@ -27,4 +28,5 @@ export type DataSnapshot = {
   syncState: SyncStateRow[];
   categories: CategoryRow[];
   categoryOverrides: CategoryOverrideRow[];
+  pricePoints: PricePointRow[];
 };
