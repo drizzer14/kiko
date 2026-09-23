@@ -195,7 +195,7 @@ export const uk: typeof en = {
       },
       metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
-      noBank: 'Без банку',
+      noBank: 'Довільний',
       property: 'Майно',
       selectBankPlaceholder: 'Оберіть банк (необов’язково)',
     },

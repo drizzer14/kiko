@@ -53,7 +53,7 @@ describe('BankTypeField', () => {
     expect(getAllByText('Statement import only — no live connection.')).toHaveLength(5);
   });
 
-  it('offers a "No bank" option that is selected by default and reports null when pressed', async () => {
+  it('offers a "Free" option that is selected by default and reports null when pressed', async () => {
     const onSelect = jest.fn();
     const { getByTestId } = await render(
       <BankTypeField
@@ -73,7 +73,7 @@ describe('BankTypeField', () => {
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
-  it('marks "No bank" unselected once a real bank is picked', async () => {
+  it('marks "Free" unselected once a real bank is picked', async () => {
     const onSelect = jest.fn();
     const { getByTestId } = await render(
       <BankTypeField

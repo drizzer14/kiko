@@ -814,7 +814,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
   });
 
-  it('edit form’s bank picker lists the same six banks the create form does, plus "No bank"', async () => {
+  it('edit form’s bank picker lists the same six banks the create form does, plus "Free"', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
     ];
@@ -831,7 +831,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('bank-type-option-alfa')).toBeTruthy();
   });
 
-  it('opens with "No bank" selected for an account with no bankId', async () => {
+  it('opens with "Free" selected for an account with no bankId', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
     ];
@@ -858,7 +858,7 @@ describe('AccountFormScreen edit mode', () => {
     );
   });
 
-  it('persists clearing a picked bankId back to null on Save (privatbank -> "No bank")', async () => {
+  it('persists clearing a picked bankId back to null on Save (privatbank -> "Free")', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
     ];
