@@ -243,6 +243,9 @@ const makeInMemoryDeps = (
       // marker starts NULL. The sync advances it (via `setSyncedBalance`) only
       // after a card's statements commit — the real repository does the same.
       syncedBalanceMinorUnits: null,
+      // A synced holding's balance is never set by a closing-balance-carrying
+      // statement import (R1(b)) — the sync pipeline owns it outright.
+      closingBalanceAppliedAt: null,
       ...rest,
       // The dep's input carries neither column, but a stored row declares both
       // as `string | null` — the real repository defaults them the same way.
@@ -2181,6 +2184,7 @@ describe('runSync stale-holding reconciliation', () => {
     closedAt: null,
     createdAt: 0,
     syncedBalanceMinorUnits: null,
+    closingBalanceAppliedAt: null,
     ...over,
   });
 

@@ -142,6 +142,7 @@ type FakeHolding = {
   currency: string;
   balanceMinorUnits: number;
   accountId: string;
+  closingBalanceAppliedAt: number | null;
   metadata?: unknown;
 };
 
@@ -150,6 +151,7 @@ const defaultHolding = (overrides: Partial<FakeHolding> = {}): FakeHolding => ({
   currency: 'UAH',
   balanceMinorUnits: 0,
   accountId: 'acc-1',
+  closingBalanceAppliedAt: null,
   metadata: null,
   ...overrides,
 });
@@ -176,9 +178,13 @@ type ImportTxOpts = {
 
 /** The rows one fake `select(fields).from(table).where(...)` resolves to,
  * dispatched by table identity — and, for the two no-`.limit()` `transactions`
- * reads (the newest-existing-time aggregate vs. the dedup partition probe),
- * by the PROJECTED field set (`{ time }` vs `{ source, externalId }`), since
- * both share the same table identity. */
+ * reads (the hand-set-boundary aggregate vs. the dedup partition probe), by
+ * the PROJECTED field set (`{ time }` vs `{ source, externalId }`), since
+ * both share the same table identity. R1(b): the "time" read mirrors the
+ * REAL query's own `source = 'manual'` filter — a plain `import`-sourced
+ * row (an earlier statement) must NOT surface here; every seeded row in
+ * this file's own fixtures below is already `source: 'manual'`, so this
+ * filter changes nothing they assert, only what a future fixture could. */
 const resolveImportSelect = (
   opts: ImportTxOpts,
   table: unknown,
@@ -197,9 +203,11 @@ const resolveImportSelect = (
   }
 
   if (table === transactions && fields && 'time' in fields) {
-    const times = opts.store.transactions.map((row) => row.time);
+    const manualTimes = opts.store.transactions
+      .filter((row) => row.source === 'manual')
+      .map((row) => row.time);
 
-    return times.length > 0 ? [{ time: Math.max(...times) }] : [{ time: null }];
+    return manualTimes.length > 0 ? [{ time: Math.max(...manualTimes) }] : [{ time: null }];
   }
 
   return opts.store.transactions.map((row) => ({ source: row.source, externalId: row.externalId }));
@@ -442,7 +450,13 @@ describe('importStatement', () => {
 
       await importStatement(monobankInput, 'holding-1');
 
-      expect(captured.holdingSet).toEqual({ balanceMinorUnits: 10_000_000 });
+      // R1(b): applying the closing balance also marks
+      // `closingBalanceAppliedAt` as this holding's new boundary source (b)
+      // for a later import — the fixture's own last row's time.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 10_000_000,
+        closingBalanceAppliedAt: 1_683_912_636_000,
+      });
     });
 
     it('never moves a SYNCED holding’s balance, even though its new rows still import', async () => {
@@ -498,8 +512,12 @@ describe('importStatement', () => {
 
       // Monobank CSV's closing balance is the fixture's last row's own
       // "Залишок після операції": 100000.00 UAH -> 10_000_000 minor units —
-      // NOT base + net (which would be -999_999 + -21_794).
-      expect(captured.holdingSet).toEqual({ balanceMinorUnits: 10_000_000 });
+      // NOT base + net (which would be -999_999 + -21_794). R1(b):
+      // `closingBalanceAppliedAt` moves to that same instant too.
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 10_000_000,
+        closingBalanceAppliedAt: 1_683_912_636_000,
+      });
     });
 
     // User ruling (I2): a statement entirely OLDER than the holding's newest

@@ -116,6 +116,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         color: holding.color,
         balanceMinorUnits,
         syncedBalanceMinorUnits: null,
+        closingBalanceAppliedAt: null,
         metadata: null,
         sortOrder: holdingIndex,
         closedAt: null,

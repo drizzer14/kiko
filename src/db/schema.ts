@@ -65,6 +65,18 @@ export const holdings = sqliteTable('holdings', {
   // balance, so the skip cannot fire), which also RECOVERS any card the old bug
   // had stranded, and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
+  // The as-of instant (ms) of the last statement import that wrote its own
+  // closing balance OUTRIGHT to this holding (`transactionsRepo.importRows`,
+  // `useClosingBalance` — see that function's own doc comment, the ONE full
+  // statement of the rule). A closing-balance write never inserts a ledger
+  // row (unlike a hand-set balance, which already leaves a `source: 'manual'`
+  // transaction `importRows` can read back), so this is the only durable
+  // record that "the balance was set as of THIS instant" — user ruling R1(b):
+  // it becomes a BOUNDARY for a later import the same way a hand-set
+  // balance's own transaction time already is. Null until the first
+  // closing-balance-carrying import (Monobank CSV today) is actually applied
+  // to this holding.
+  closingBalanceAppliedAt: integer('closing_balance_applied_at'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),

@@ -119,6 +119,7 @@ const holding = (metadata: unknown): HoldingRow => ({
   color: null,
   balanceMinorUnits: 0,
   syncedBalanceMinorUnits: null,
+  closingBalanceAppliedAt: null,
   metadata,
   sortOrder: 0,
   closedAt: null,

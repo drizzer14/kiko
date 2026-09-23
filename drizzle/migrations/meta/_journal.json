@@ -239,6 +239,13 @@
       "when": 1789719446662,
       "tag": "0033_add_account_bank_id",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1790202233376,
+      "tag": "0034_add_closing_balance_applied_at",
+      "breakpoints": true
     }
   ]
 }

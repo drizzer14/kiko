@@ -1417,6 +1417,7 @@ const baseHolding = {
   accountId: 'acc-1',
   currency: 'UAH',
   balanceMinorUnits: 0,
+  closingBalanceAppliedAt: null,
   metadata: null,
 };
 
@@ -1532,8 +1533,13 @@ describe('transactionsRepo.importRows', () => {
     });
 
     // asOfSeconds 2 -> 2_000ms >= newestExistingTime 1_000, so the closing
-    // balance wins outright instead of base + net (-6_000).
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -50_000 });
+    // balance wins outright instead of base + net (-6_000). R1(b): applying
+    // it also marks `closingBalanceAppliedAt` (2_000ms) as this holding's
+    // new boundary source (b) for a later import.
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: -50_000,
+      closingBalanceAppliedAt: 2_000,
+    });
   });
 
   it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AT/AFTER the boundary', async () => {
@@ -1616,7 +1622,10 @@ describe('transactionsRepo.importRows', () => {
       closingBalance: { minorUnits: -5_000, currency: 'UAH', asOfSeconds: 1 },
     });
 
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -5_000 });
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: -5_000,
+      closingBalanceAppliedAt: 1_000,
+    });
   });
 
   // Review follow-up (M5): the eligibility check is `asOfSeconds * 1000 >=
@@ -1639,7 +1648,10 @@ describe('transactionsRepo.importRows', () => {
 
     // asOfSeconds 2 -> 2_000ms === newestExistingTime 2_000: the closing
     // balance wins outright instead of base + net (-6_000).
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -50_000 });
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: -50_000,
+      closingBalanceAppliedAt: 2_000,
+    });
   });
 
   // User ruling (I2): a row dated BEFORE the boundary (the holding's newest
@@ -1711,7 +1723,10 @@ describe('transactionsRepo.importRows', () => {
     // from its OWN newest row, so no row is ever after it (see
     // `resolveClosingBalance`) — this proves the rule still adds correctly
     // on the rare batch where one is.
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -5_300 });
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: -5_300,
+      closingBalanceAppliedAt: 1_000,
+    });
   });
 
   // User ruling (I2, "Getting (b)"): `holdingsRepo.create` writes a 'manual'
@@ -1822,7 +1837,10 @@ describe('transactionsRepo.importRows', () => {
         },
       });
 
-      expect(captured.holdingSet).toEqual({ balanceMinorUnits: 12_345 });
+      expect(captured.holdingSet).toEqual({
+        balanceMinorUnits: 12_345,
+        closingBalanceAppliedAt: HAND_SET_TIME + 1,
+      });
     });
   });
 });
@@ -1837,8 +1855,16 @@ describe('transactionsRepo.importRows', () => {
 // just one static decision, per the comment on `makeImportRowsTx`.
 type OrderedStoreRow = { time: number; source: string; externalId: string | null };
 
+type OrderedImportHolding = {
+  id: string;
+  accountId: string;
+  currency: string;
+  balanceMinorUnits: number;
+  closingBalanceAppliedAt: number | null;
+};
+
 type OrderedImportTxOpts = {
-  holding: { id: string; accountId: string; currency: string; balanceMinorUnits: number };
+  holding: OrderedImportHolding;
   account: { institution: string | null };
   store: OrderedStoreRow[];
 };
@@ -1847,7 +1873,11 @@ type OrderedImportTxOpts = {
  * fakes above and in `import-statement.test.ts`: dispatch by table identity,
  * and — for the two no-`.limit()` `transactions` reads sharing that table —
  * by the PROJECTED field set. Pulled out of the closure below purely to
- * stay under Biome's cognitive-complexity cap. */
+ * stay under Biome's cognitive-complexity cap. R1(b): the "time" read now
+ * mirrors the REAL query's own `source = 'manual'` filter — the store's
+ * `import`-sourced rows (a prior plain import) must NOT surface here, only
+ * a hand-set balance's own 'manual' row does; the applied-closing-balance
+ * boundary source comes back separately, straight off `opts.holding`. */
 const resolveOrderedSelect = (
   opts: OrderedImportTxOpts,
   table: unknown,
@@ -1866,9 +1896,9 @@ const resolveOrderedSelect = (
   }
 
   if (table === transactions && fields && 'time' in fields) {
-    const times = opts.store.map((row) => row.time);
+    const manualTimes = opts.store.filter((row) => row.source === 'manual').map((row) => row.time);
 
-    return times.length > 0 ? [{ time: Math.max(...times) }] : [{ time: null }];
+    return manualTimes.length > 0 ? [{ time: Math.max(...manualTimes) }] : [{ time: null }];
   }
 
   return opts.store.map((row) => ({ source: row.source, externalId: row.externalId }));
@@ -1899,8 +1929,14 @@ const makeOrderedImportTx = (opts: OrderedImportTxOpts) => {
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
-        if (table === holdings && 'balanceMinorUnits' in values) {
-          opts.holding.balanceMinorUnits = values.balanceMinorUnits as number;
+        if (table === holdings) {
+          if ('balanceMinorUnits' in values) {
+            opts.holding.balanceMinorUnits = values.balanceMinorUnits as number;
+          }
+
+          if ('closingBalanceAppliedAt' in values) {
+            opts.holding.closingBalanceAppliedAt = values.closingBalanceAppliedAt as number;
+          }
         }
 
         return { where: () => Promise.resolve() };
@@ -1971,5 +2007,117 @@ describe('transactionsRepo.importRows order independence (I2 test A)', () => {
     // other (April's net never survives past May's outright overwrite).
     expect(orderOneHolding.balanceMinorUnits).toBe(orderTwoHolding.balanceMinorUnits);
     expect(orderOneHolding.balanceMinorUnits).toBe(-50_000);
+  });
+});
+
+// User ruling (R1, "(b)"): the boundary now comes ONLY from (1) a hand-set
+// balance and (2) an applied closing balance — NEVER from an earlier plain
+// import's own rows. These three tests are the ruling's own pinned cases.
+describe('transactionsRepo.importRows boundary sources (R1 ruling b)', () => {
+  const APRIL_TIME = Date.UTC(2024, 3, 15);
+  const MAY_TIME = Date.UTC(2024, 4, 15);
+
+  it('R1 test 1: an import-only holding (never hand-set, no closing balance) reaches the same final balance whether May or April imports first', async () => {
+    const mayRows = [
+      { holdingId: 'hold-1', amountMinorUnits: -1_000, time: MAY_TIME, source: 'import' as const },
+    ];
+    const aprilRows = [
+      {
+        holdingId: 'hold-1',
+        amountMinorUnits: -2_000,
+        time: APRIL_TIME,
+        source: 'import' as const,
+      },
+    ];
+
+    const orderOneHolding = { ...baseHolding };
+    const orderOneStore: OrderedStoreRow[] = [];
+
+    mockTx = makeOrderedImportTx({
+      holding: orderOneHolding,
+      account: unsyncedAccount,
+      store: orderOneStore,
+    });
+    await transactionsRepo.importRows({ holdingId: 'hold-1', rows: mayRows });
+    mockTx = makeOrderedImportTx({
+      holding: orderOneHolding,
+      account: unsyncedAccount,
+      store: orderOneStore,
+    });
+    await transactionsRepo.importRows({ holdingId: 'hold-1', rows: aprilRows });
+
+    const orderTwoHolding = { ...baseHolding };
+    const orderTwoStore: OrderedStoreRow[] = [];
+
+    mockTx = makeOrderedImportTx({
+      holding: orderTwoHolding,
+      account: unsyncedAccount,
+      store: orderTwoStore,
+    });
+    await transactionsRepo.importRows({ holdingId: 'hold-1', rows: aprilRows });
+    mockTx = makeOrderedImportTx({
+      holding: orderTwoHolding,
+      account: unsyncedAccount,
+      store: orderTwoStore,
+    });
+    await transactionsRepo.importRows({ holdingId: 'hold-1', rows: mayRows });
+
+    // Neither import ever hand-sets a balance or carries a closing balance,
+    // so R1(b) leaves this holding with NO boundary at all, ever — every
+    // row counts in both orders, converging on net_April + net_May
+    // (-2_000 + -1_000 = -3_000) regardless of which statement lands first.
+    expect(orderOneHolding.balanceMinorUnits).toBe(orderTwoHolding.balanceMinorUnits);
+    expect(orderOneHolding.balanceMinorUnits).toBe(-3_000);
+  });
+
+  it('R1 test 2: a hand-set balance leaves an OLDER statement (every row before the hand-set time) unchanged', async () => {
+    const HAND_SET_TIME = 10_000;
+    const { tx, captured } = makeImportRowsTx({
+      holding: { ...baseHolding, balanceMinorUnits: 250_00 },
+      account: unsyncedAccount,
+      newestExistingTime: HAND_SET_TIME,
+    });
+    mockTx = tx;
+
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [
+        {
+          holdingId: 'hold-1',
+          amountMinorUnits: -1_000,
+          time: HAND_SET_TIME - 1,
+          source: 'import',
+        },
+      ],
+    });
+
+    expect(imported).toBe(1);
+    expect(captured.holdingSet).toBeUndefined();
+  });
+
+  it('R1 test 3: an applied closing balance (which writes no ledger row of its own) leaves an OLDER non-closing statement unchanged', async () => {
+    const holding = { ...baseHolding };
+    const store: OrderedStoreRow[] = [];
+
+    mockTx = makeOrderedImportTx({ holding, account: unsyncedAccount, store });
+    await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [],
+      closingBalance: { minorUnits: 100_000, currency: 'UAH', asOfSeconds: MAY_TIME / 1000 },
+    });
+
+    expect(holding.balanceMinorUnits).toBe(100_000);
+
+    mockTx = makeOrderedImportTx({ holding, account: unsyncedAccount, store });
+    await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [{ holdingId: 'hold-1', amountMinorUnits: -2_000, time: APRIL_TIME, source: 'import' }],
+    });
+
+    // The first import applied its closing balance with NO row of its own —
+    // the closing WRITE itself, not some inserted row's own time, must be
+    // the boundary: April predates May's closing instant, so it lands as
+    // history and the balance stays exactly the applied closing balance.
+    expect(holding.balanceMinorUnits).toBe(100_000);
   });
 });

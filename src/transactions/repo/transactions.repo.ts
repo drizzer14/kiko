@@ -302,6 +302,61 @@ const insertDedupRowsTx = async (
   return newRows;
 };
 
+/** The LATER of two nullable instants, treating `null` as "no boundary from
+ * this source" rather than as an actual instant to compare — used by
+ * `importRows` to combine its two R1(b) boundary sources (a hand-set
+ * balance, an applied closing balance) without a nested ternary. */
+const laterOf = (a: number | null, b: number | null): number | null => {
+  if (a === null) {
+    return b;
+  }
+
+  if (b === null) {
+    return a;
+  }
+
+  return Math.max(a, b);
+};
+
+type ImportBalanceDecision = {
+  nextBalance: number;
+  closingBalanceAppliedAt?: number;
+};
+
+/** `importRows`'s pure balance decision, pulled out of the write closure to
+ * stay under Biome's cognitive-complexity cap — see that function's own doc
+ * comment for the full rule this implements. `closingBalanceAppliedAt` is
+ * present only when a closing balance actually applied this call (R1(b)'s
+ * boundary source (b)); the caller writes it to `holdings` alongside
+ * `nextBalance`. */
+const resolveImportBalance = (
+  holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
+  boundary: number | null,
+  newRows: NewTransaction[],
+  closingBalance: ClosingBalance | undefined,
+): ImportBalanceDecision => {
+  const netDelta = newRows
+    .filter((row) => boundary === null || row.time >= boundary)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+  const useClosingBalance =
+    closingBalance !== undefined &&
+    closingBalance.currency === holding.currency &&
+    (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
+
+  if (!useClosingBalance) {
+    return { nextBalance: holding.balanceMinorUnits + netDelta };
+  }
+
+  const postClosingNet = newRows
+    .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+
+  return {
+    nextBalance: closingBalance.minorUnits + postClosingNet,
+    closingBalanceAppliedAt: closingBalance.asOfSeconds * 1000,
+  };
+};
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
@@ -677,40 +732,67 @@ export const transactionsRepo = {
    * `holdings`, so an import-only holding's displayed balance stayed 0
    * forever even though its transaction list showed the real imported rows.
    *
-   * THE BOUNDARY (user ruling, I2): every decision below is relative to one
-   * "as-of" instant — the LATER of (a) the holding's newest PRE-EXISTING
-   * transaction time (`boundary`, read below, BEFORE the new rows
-   * land) and (b) the time the user last set this holding's balance BY HAND
-   * (a create with a typed opening balance, or a later manual balance edit).
-   * In code this reduces to (a) ALONE: `holdingsRepo.create` writes a
-   * 'manual' transaction at create time for any NON-ZERO typed opening
-   * balance, and `holdingsRepo.updateWithBalanceDelta` writes one at edit
-   * time for a manual balance edit (`holdings/repo/holdings.repo.ts`) — both
-   * hand-set events are therefore ALREADY a transaction row, already
-   * included in "the holding's newest existing transaction." No separate
-   * signal or schema column is needed, and none was added. A holding whose
-   * opening balance was typed as an explicit 0 is indistinguishable in code
-   * from one whose balance field was left blank (both skip that insert, per
-   * `openingBalance !== 0` in `holdingsRepo.create`) — both are treated as
-   * "never hand-set", i.e. contribute nothing to the boundary. Do NOT use
-   * `holdings.createdAt` as a stand-in boundary: a brand-new, never-hand-set
-   * holding must have NO boundary at all (see below), and `createdAt` would
-   * wrongly impose one, bringing back the original bug (an import-only
-   * holding's own rows would count as "history" and move nothing).
+   * THE BOUNDARY (user ruling, R1(b), replacing I2's original definition):
+   * every decision below is relative to one "as-of" instant — the LATER of
+   * (a) the time the user last set this holding's balance BY HAND (a create
+   * with a typed opening balance, or a later manual balance edit) and (b)
+   * the as-of instant of the last statement import that WROTE its own
+   * closing balance outright to this holding (`useClosingBalance` below).
+   * An earlier PLAIN import — one with no closing balance, or one whose
+   * closing balance didn't apply — is explicitly NOT a boundary source,
+   * even though its own rows are real ledger history by now: I2's original
+   * rule read the boundary off the holding's newest transaction of ANY
+   * source, which quietly made a plain net-delta import part of its own
+   * future boundary — re-importing an OLDER statement after a NEWER one
+   * (neither carrying a closing balance) then silently dropped the older
+   * statement's own net, an import-ORDER dependence the doc used to
+   * (wrongly) claim didn't exist. R1(b) narrows the boundary to only the
+   * two signals a user action or a bank's own stated closing figure
+   * actually explains.
    *
-   * `boundary === null` (no prior transaction AND no hand-set
-   * balance) means the holding has NO boundary: every genuinely new row
-   * moves the balance regardless of its own date, and a `closingBalance` is
-   * always eligible — this is the original bug-fix case (an import-only
-   * holding must show the statement's net/closing balance, not 0).
+   * (a) needs no separate signal or schema column: `holdingsRepo.create`
+   * writes a 'manual' transaction at create time for any NON-ZERO typed
+   * opening balance, and `holdingsRepo.updateWithBalanceDelta` writes one at
+   * edit time for a manual balance edit (`holdings/repo/holdings.repo.ts`)
+   * — both hand-set events are therefore already a `source: 'manual'`
+   * transaction row, read here as `max(transactions.time) WHERE source =
+   * 'manual'`. A holding whose opening balance was typed as an explicit 0 is
+   * indistinguishable in code from one whose balance field was left blank
+   * (both skip that insert, per `openingBalance !== 0` in
+   * `holdingsRepo.create`) — both are treated as "never hand-set", i.e.
+   * contribute nothing to (a). Do NOT use `holdings.createdAt` as a
+   * stand-in for (a): a brand-new, never-hand-set holding must have NO
+   * boundary at all (see below), and `createdAt` would wrongly impose one,
+   * bringing back the original bug (an import-only holding's own rows would
+   * count as "history" and move nothing).
+   *
+   * (b) DOES need a signal: the closing-balance write below never inserts a
+   * ledger row (see "The closing-balance write" below), and a `source:
+   * 'import'` row from that same statement is not a safe stand-in either —
+   * a closing balance can apply with an EMPTY `rows` batch, or with rows
+   * that stop short of its own as-of instant. `holdings.closingBalanceAppliedAt`
+   * (nullable, additive migration) is written with `closingBalance.asOfSeconds
+   * * 1000` every time this function actually applies a closing balance, and
+   * read back here as (b) directly — this is the only new schema R1(b)
+   * required.
+   *
+   * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
+   * holding: every genuinely new row moves the balance regardless of its own
+   * date, and a `closingBalance` is always eligible — this is the original
+   * bug-fix case (an import-only holding must show the statement's
+   * net/closing balance, not 0), and it now ALSO makes a plain-import-only
+   * holding's balance order-INDEPENDENT: with no hand-set balance and no
+   * applied closing balance ever recorded, every import — in any order —
+   * adds its own full net, so "May then April" and "April then May"
+   * converge on the same total (R1 test 1).
    *
    * With a boundary, each genuinely new row (from `insertDedupRowsTx`) is
    * split by its OWN `time` against it: a row dated BEFORE the boundary is
    * HISTORY — it still inserts as a real ledger row, but contributes 0 to
-   * `netDelta` (order independence: re-importing an older statement AFTER a
-   * newer one is already in the ledger can never move the balance a second
-   * time for events the ledger has already moved past). A row dated AT/AFTER
-   * the boundary is CURRENT and counts at its full amount.
+   * `netDelta` (a row the ledger already knows post-dates a hand-set balance
+   * or an applied closing balance can never move that figure a second
+   * time). A row dated AT/AFTER the boundary is CURRENT and counts at its
+   * full amount.
    *
    * The balance move is `base + netDelta` — the sum of only the CURRENT new
    * rows — so a re-import of an already-imported file (every row refreshed,
@@ -729,9 +811,12 @@ export const transactionsRepo = {
    * The closing-balance write is `nextBalance = closingBalance.minorUnits +
    * postClosingNet`, not `base + netDelta` — the implicit adjustment this
    * makes, `D = closingBalance.minorUnits - (base + netDelta)`, is never
-   * recorded as a ledger row, it just overwrites `base`. For a holding with
-   * NO prior transaction (`base` is always 0, and this statement's own rows
-   * are the WHOLE history) this is exact: nothing is left unaccounted for.
+   * recorded as a ledger row, it just overwrites `base`; the only durable
+   * trace this write leaves behind is the `closingBalanceAppliedAt` marker
+   * set alongside it (see THE BOUNDARY above), not a transaction row. For a
+   * holding with NO prior transaction (`base` is always 0, and this
+   * statement's own rows are the WHOLE history) this is exact: nothing is
+   * left unaccounted for.
    * For a holding with pre-existing history, `D` silently absorbs whatever
    * happened before this statement's own coverage started — a prior manual
    * entry error, an out-of-band transfer, or a real gap this particular
@@ -786,7 +871,12 @@ export const transactionsRepo = {
    * wrong (0 or under-counted) balance into (user ruling, I3): `1.0.0` is
    * not published — build 25 was still in App Store review when this fix
    * landed — so no real user has broken data to repair; a corrected build
-   * simply starts applying this rule to every import going forward.
+   * simply starts applying this rule to every import going forward. This is
+   * distinct from `closingBalanceAppliedAt`'s OWN migration (R1(b)): that
+   * one is a structural, additive column (`db/schema.ts`, nullable, every
+   * existing row defaults to `null` = "never applied"), not a data repair —
+   * I3's reasoning about not repairing an already-wrong `balanceMinorUnits`
+   * is unaffected by it.
    */
   importRows: (input: {
     holdingId: string;
@@ -818,14 +908,15 @@ export const transactionsRepo = {
 
       // Read BEFORE the new rows are upserted below, so this reflects the
       // holding's ledger as it stood going into this import — never a row
-      // this very import is about to add. This IS the I2 boundary: see the
-      // doc comment above for why a hand-set balance needs no separate
-      // signal here.
-      const newestExistingRows = await tx
+      // this very import is about to add. This IS boundary source (a): see
+      // THE BOUNDARY in the doc comment above for why a hand-set balance
+      // needs no separate schema signal, only this source-filtered read.
+      const handSetRows = await tx
         .select({ time: sql<number | null>`max(${transactions.time})` })
         .from(transactions)
-        .where(eq(transactions.holdingId, input.holdingId));
-      const boundary = newestExistingRows.at(0)?.time ?? null;
+        .where(and(eq(transactions.holdingId, input.holdingId), eq(transactions.source, 'manual')));
+      const handSetBoundary = handSetRows.at(0)?.time ?? null;
+      const boundary = laterOf(handSetBoundary, holding.closingBalanceAppliedAt ?? null);
 
       const newRows = await insertDedupRowsTx(tx, input.rows);
 
@@ -833,26 +924,24 @@ export const transactionsRepo = {
         return newRows.length;
       }
 
-      const netDelta = newRows
-        .filter((row) => boundary === null || row.time >= boundary)
-        .reduce((sum, row) => sum + row.amountMinorUnits, 0);
-      const closingBalance = input.closingBalance;
-      const useClosingBalance =
-        closingBalance !== undefined &&
-        closingBalance.currency === holding.currency &&
-        (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
-      const nextBalance = useClosingBalance
-        ? closingBalance.minorUnits +
-          newRows
-            .filter((row) => row.time > closingBalance.asOfSeconds * 1000)
-            .reduce((sum, row) => sum + row.amountMinorUnits, 0)
-        : holding.balanceMinorUnits + netDelta;
+      const { nextBalance, closingBalanceAppliedAt } = resolveImportBalance(
+        holding,
+        boundary,
+        newRows,
+        input.closingBalance,
+      );
+      const patch: Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'closingBalanceAppliedAt'>> = {};
 
       if (nextBalance !== holding.balanceMinorUnits) {
-        await tx
-          .update(holdings)
-          .set({ balanceMinorUnits: nextBalance })
-          .where(eq(holdings.id, input.holdingId));
+        patch.balanceMinorUnits = nextBalance;
+      }
+
+      if (closingBalanceAppliedAt !== undefined) {
+        patch.closingBalanceAppliedAt = closingBalanceAppliedAt;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await tx.update(holdings).set(patch).where(eq(holdings.id, input.holdingId));
       }
 
       return newRows.length;

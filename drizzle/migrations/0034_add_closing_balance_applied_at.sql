@@ -1,0 +1,1 @@
+ALTER TABLE `holdings` ADD `closing_balance_applied_at` integer;
