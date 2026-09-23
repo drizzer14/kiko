@@ -42,7 +42,7 @@ Legend: **[verified]** = read on a primary source or tested live. **[secondary]*
 | D27 | Generic import | **New first phase: generic column-mapping statement import (POC)**, tested by the user on the device before the rest — see §15 | user, round 5 |
 
 **Deferred until a real account or a real sample exists (D24).** These are not rejected. The research for each stays in this spec (§3.1, §3.3, §13, §14):
-- Trading 212 sync (read-only key, `live.trading212.com`).
+- Trading 212 sync (read-only API access; host `live.trading212.com`).
 - Interactive Brokers Flex sync and Flex XML/CSV file import (and the `saxen` dependency).
 - Freedom24 sync (Tradernet API spike).
 - Revolut trading statement import.
