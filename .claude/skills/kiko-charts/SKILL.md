@@ -107,14 +107,17 @@ render under Jest** — extend `__mocks__/react-native-svg.tsx` with the
 new primitive in the same passthrough style before writing the chart's
 test, not after chasing a mysterious render failure.
 
-## An SVG gradient, if one is ever needed again
+## An SVG gradient template
 
-`GlassSurface` no longer uses an SVG gradient for its entity-color wash —
-it renders one flat `entityCardBackground` color as a plain `View`
-`backgroundColor` (see `kiko-design-system`'s "Entity color and tint"),
-so there is currently no `<LinearGradient>` usage anywhere in the app to
-follow as a template. If a future chart genuinely needs an SVG gradient,
-the general `react-native-svg` shape is: an absolutely-positioned,
+`net-worth-line.component.tsx` and `EntityIconTile`
+(`src/design-system/components/entity-icon-tile/`) both use a real
+`react-native-svg` `<LinearGradient>` today — read either directly for
+a working example before adding a new one. `GlassSurface`'s own
+entity-color wash does not use an SVG gradient (see
+`kiko-design-system`'s "Entity color and tint" — its content-layer
+counterpart, `Card`/`EntityIconTile`, renders a flat resolved-hue
+background instead). The general `react-native-svg` shape for a new
+gradient: an absolutely-positioned,
 `pointerEvents="none"` `<Svg>` containing a `<Defs><LinearGradient
 id="..."><Stop .../><Stop .../></LinearGradient></Defs>` plus a single
 `<Rect fill="url(#...)" />` sized to `100%`/`100%`, with each `<Stop>`
@@ -273,7 +276,7 @@ per-entity override exists); `pie-chart` colors each donut wedge and its
 legend swatch with the same slice's resolved entity color. See
 `kiko-design-system`'s "Entity color and tint" section for the full color
 pipeline (`defaultAccountColor`/`defaultHoldingColor`,
-`resolveEntityColor`, `entityCardBackground`) — a new chart follows the
+`resolveEntityColor`, `entityIconTileGradient`) — a new chart follows the
 same pipeline rather than inventing its own color set, so a swatch in a
 chart legend always matches that same entity's color everywhere else in
 the app (its card, its icon tint).
