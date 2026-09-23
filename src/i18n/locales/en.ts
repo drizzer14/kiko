@@ -201,6 +201,12 @@ export const en = {
       initialValue: 'Initial value',
       initialValuePlaceholder: '1000.00',
       kind: 'Kind',
+      kindSubtitle: {
+        bank: 'Synced or imported from a bank statement.',
+        cash: 'Cash you hold outside a bank.',
+        crypto: 'A wallet or exchange account.',
+        property: 'Real estate, car, valuables, money you lent',
+      },
       namePlaceholder: 'Monobank',
       property: 'Property',
       selectBankPlaceholder: 'Select a bank (optional)',

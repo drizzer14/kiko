@@ -477,6 +477,30 @@ new component can land between reviews of this skill:
   `ScrollView` applies for its search field, per that file's comment); any
   new sheet content that combines a focusable input with a tappable list
   below it needs the same prop.
+- **SelectableRow** (`src/design-system/components/selectable-row/`) —
+  the shared single-select row for a `BottomSheet` list: a 44pt-minimum
+  tap target that fills with the accent background when `selected` (the
+  OptionPills/ChipRow selection vocabulary), with a leading checkmark
+  slot, an optional leading `icon` (SF Symbol) or `leadingText` mark
+  (mutually exclusive, for a glyph with no SF Symbol form — a currency
+  sign or ISO code), an optional trailing node pinned to the row's far
+  right and top-aligned to the label (the bank picker's capability
+  icons), and an optional `description` — a second line rendered below
+  the label in the SAME leading-slot-aligned column, wrapping onto
+  multiple lines rather than truncating, for a subtitle explaining what
+  the option means (the account-kind picker's "Real estate, car,
+  valuables, money you lent" hint, `AccountKindField`,
+  `src/screens/forms/account-kind-field/`). The caller owns any tone
+  switching (e.g. `onAccent` once selected) on whatever it renders in
+  `description`/`trailing` — `SelectableRow` does not inspect either.
+  This is the ONE select-sheet row: a labeled-field-plus-`BottomSheet`
+  picker (`FieldTrigger` + `BottomSheet` + a `SelectableRow` per option)
+  is the shared "select field" family replacing the older inline
+  `ChipRow` for a picker with more than a couple of options —
+  `ModeSelectField`, `BankTypeField`, and `AccountKindField`
+  (`src/screens/forms/`) all follow this exact shape; a new field-plus-
+  sheet picker reaches for the same three rather than hand-rolling a new
+  option row.
 - **ConfirmSheet** (`src/design-system/components/confirm-sheet/`) —
   the themed confirm-or-cancel `BottomSheet`: a title, an optional
   body `message` (omitted for a bare title-only confirm), a `confirmLabel`,

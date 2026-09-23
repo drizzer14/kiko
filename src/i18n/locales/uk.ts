@@ -186,6 +186,12 @@ export const uk: typeof en = {
       initialValue: 'Початкова сума',
       initialValuePlaceholder: '1 000,00',
       kind: 'Вид',
+      kindSubtitle: {
+        bank: 'Синхронізується або імпортується з виписки банку.',
+        cash: 'Готівка поза банком.',
+        crypto: 'Гаманець або обліковий запис біржі.',
+        property: 'Нерухомість, авто, цінності, позики іншим',
+      },
       namePlaceholder: 'Монобанк',
       property: 'Майно',
       selectBankPlaceholder: 'Оберіть банк (необов’язково)',

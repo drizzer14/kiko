@@ -27,11 +27,12 @@ import CurrencyField from '../../../design-system/components/currency-field';
 import MonobankConnectField from '../../account-detail/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
+import type { AccountRow } from '../../../db/schema';
 import type { BankId } from '../../../bank-sync/bank-catalog';
 
-import ChipRow from '../chip-row';
 import ColorPicker from '../color-picker';
 import BankTypeField from '../bank-type-field';
+import AccountKindField from '../account-kind-field';
 import { groupAmount } from '../amount-format/amount-format';
 import HoldingIdentityField from '../holding-identity-field';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
@@ -43,19 +44,24 @@ import {
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
-// The account kinds offered in this form (a subset of the `kind` enum in
-// db/schema.ts). A crypto account is created like a bank account — no initial
-// holding/currency at creation; holdings are added later — so only cash needs
-// the currency + initial-value fields below.
-const kinds = ['cash', 'bank', 'crypto'] as const;
+// The account kinds this form offers, derived from `accountKindSymbol` — a
+// `Record<AccountKind, string>` typed over the FULL `accounts.kind` schema
+// union (see entity-symbols.ts's own exhaustiveness doc comment) — rather
+// than a hand-copied array, so a later schema widening (metals, debt, broker)
+// is a compile error here until this form (and the symbol/color/subtitle maps
+// it already forces) accounts for the new kind. A crypto account is created
+// like a bank account — no initial holding/currency at creation; holdings are
+// added later — so only cash needs the currency + initial-value fields below;
+// property has no extra creation fields yet (the holding section is T16).
+const kinds = Object.keys(accountKindSymbol) as AccountRow['kind'][];
 type Kind = (typeof kinds)[number];
 
-// `accounts.kind` (db/schema.ts) is wider than this form's own `Kind` — T13
-// added `'property'`, which this ChipRow-based picker does not yet offer as a
-// choice (T15 replaces it with a dedicated `AccountKindField`). Guards the
-// edit-mode hydration below against that wider stored value so hydrating an
-// existing (currently uncreatable-from-this-form) property account's kind
-// never assigns outside `Kind`'s own type.
+// A stored `kind` can still hold a value that is no longer part of the CURRENT
+// schema enum — the schema's `enum` is TS-only (no DB CHECK constraint), so a
+// once-valid, since-removed kind (e.g. the retired `broker`) can persist.
+// Guards the edit-mode hydration below against that case so an unrecognized
+// stored kind never assigns outside `Kind`'s own type (and the symbol/color
+// lookups below never silently miss).
 const isSupportedKind = (value: string): value is Kind =>
   (kinds as readonly string[]).includes(value);
 
@@ -81,7 +87,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const isEdit = editId !== undefined;
 
   const { t } = useTranslation();
-  // Human display text for the account kinds; the chip still reports the
+  // Human display text for the account kinds; the field still reports the
   // underlying value on select. Built from the catalog inside the component
   // (rather than a module-level constant) so it always reflects the active
   // language.
@@ -89,6 +95,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     bank: t('forms.account.bank'),
     cash: t('forms.account.cash'),
     crypto: t('forms.account.crypto'),
+    property: t('forms.account.property'),
+  };
+  // The one-line "which kind is this?" hint shown under each row in the
+  // AccountKindField sheet (device-feedback: a bare label does not say what
+  // belongs there) — see `forms.account.kindSubtitle` in en.ts/uk.ts.
+  const kindSubtitles: Record<Kind, string> = {
+    bank: t('forms.account.kindSubtitle.bank'),
+    cash: t('forms.account.kindSubtitle.cash'),
+    crypto: t('forms.account.kindSubtitle.crypto'),
+    property: t('forms.account.kindSubtitle.property'),
   };
 
   const [name, setName] = useState('');
@@ -210,8 +226,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       await accountsRepo.create({
         id: pendingAccountId,
         name: trimmedName,
-        // The current kind — only 'bank' or 'crypto' is reachable here, since the
-        // cash path creates through createCashAccount and returns before this.
+        // The current kind — 'bank', 'crypto', or 'property' is reachable here,
+        // since the cash path creates through createCashAccount and returns
+        // before this.
         kind,
         color,
         bankId,
@@ -363,14 +380,15 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // Bank and crypto share one create path now — `kind` here is 'bank' or
-      // 'crypto' (cash returned above). A field's own Connect may already have
-      // inserted the row via ensureAccount (Option A); if so, persist any
-      // name/color/icon edited AFTER connecting rather than inserting a DUPLICATE
-      // account (the field already handled the credential + first sync). Otherwise
-      // this Save is the first write, so create the row now — an unconnected
-      // bank/crypto account is valid; the user connects a source later from its
-      // detail screen.
+      // Bank, crypto, and property share one create path now — `kind` here is
+      // 'bank', 'crypto', or 'property' (cash returned above). A field's own
+      // Connect may already have inserted the row via ensureAccount (Option A);
+      // if so, persist any name/color/icon edited AFTER connecting rather than
+      // inserting a DUPLICATE account (the field already handled the credential
+      // + first sync). Otherwise this Save is the first write, so create the row
+      // now — an unconnected bank/crypto account is valid (the user connects a
+      // source later from its detail screen), and a property account has no
+      // source to connect at all — it always takes this branch.
       if (accountCreate.current !== null) {
         await accountsRepo.update(pendingAccountId, { name: trimmedName, color, bankId });
         await accountsRepo.setIcon(pendingAccountId, icon);
@@ -446,14 +464,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             locks once a bank/crypto source has been connected (which already
             inserted the row): switching kind afterwards would make Save create a
             SECOND account and orphan the started row. */}
-        <ChipRow
+        <AccountKindField
           label={t('forms.account.kind')}
           options={kinds}
           selected={kind}
           onSelect={handleSelectKind}
           labels={kindLabels}
+          subtitles={kindSubtitles}
           icons={accountKindSymbol}
           disabled={isEdit || accountRowStarted}
+          testID="account-kind-field"
         />
 
         {/* The currency + initial value seed the cash account's initial holding
