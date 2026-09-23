@@ -1,3 +1,6 @@
+import { buildPriceBook } from '../../prices/price-book';
+import { holdingInstrument } from '../../prices/instrument';
+
 import { buildRateTable, canConvert, guardedBreakdown, guardedNetWorth } from './net-worth-view';
 
 // A fixed evaluation instant. Every holding in these cases is plain cash (no
@@ -131,6 +134,35 @@ describe('guardedNetWorth', () => {
     const total = guardedNetWorth(holdings, 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(0);
+  });
+
+  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // holding's value, overriding its lots-cost-basis default.
+  it('values a property_item holding at its priced value when a book is passed', () => {
+    const holdings = [
+      {
+        id: 'prop',
+        currency: 'UAH' as const,
+        type: 'property_item' as const,
+        balanceMinorUnits: 0,
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      },
+    ];
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: NOW,
+        price: '7000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    expect(guardedNetWorth(holdings, 'UAH', rates, NOW).minorUnits).toBe(500_000);
+    expect(guardedNetWorth(holdings, 'UAH', rates, NOW, book).minorUnits).toBe(700_000);
   });
 });
 

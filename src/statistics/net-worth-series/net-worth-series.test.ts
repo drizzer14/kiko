@@ -8,7 +8,9 @@ import type { MonobankStatementItem } from '../../monobank/monobank.types';
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { mapStatementItem } from '../../monobank/sync';
+import { holdingInstrument } from '../../prices/instrument';
 import type { SeriesHolding } from '../holding-value-at';
+import { buildPriceBook } from '../../prices/price-book';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
@@ -795,5 +797,66 @@ describe('buildNetWorthSeries', () => {
     });
 
     expect(series).toEqual({ points: [], startReference: 0 });
+  });
+
+  // T14: `property_item` is ledgerless — its value derives from its `lots`
+  // metadata (priced at read time), never from `txByHolding` — so the series
+  // is flat across every bucket even with an EMPTY transaction map, and it is
+  // valued at its cost basis (never 0) by default, without a `book`.
+  it('values a property flat via its lots cost basis, with no ledger rows', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      currency: 'USD',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      txByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 20_000, 20_000]);
+  });
+
+  // T14: threading a real `PriceBook` through overrides the cost-basis
+  // fallback with the priced value — proving `book` reaches `holdingValueAt`
+  // through the whole builder, not just its own default.
+  it('values a property at its priced value when a PriceBook is supplied, not its cost basis', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      currency: 'USD',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: D0,
+        price: '25000',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      txByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(25_000);
   });
 });

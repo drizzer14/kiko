@@ -1,4 +1,6 @@
 import type { HoldingRow } from '../../db/schema';
+import { buildPriceBook } from '../../prices/price-book';
+import { holdingInstrument } from '../../prices/instrument';
 import type { RateTable } from '../../rates/conversion';
 
 import { type BreakdownHolding, buildTypeBreakdown, type TypeSlice } from './type-breakdown';
@@ -83,5 +85,42 @@ describe('buildTypeBreakdown', () => {
 
     expect(result.map((slice) => slice.amount)).toEqual([30_000, 12_000, 5_000]);
     expect(result.map((slice) => slice.type)).toEqual(['card', 'jar', 'cash']);
+  });
+
+  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // holding's value; with no book it falls back to its lots cost basis.
+  it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
+    const holdings = [
+      holding({
+        id: 'prop',
+        type: 'property_item',
+        currency: 'USD',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: 0, quantityDelta: '1', costMinorUnits: 20_000 }],
+        },
+      }),
+    ];
+
+    const noBook = buildTypeBreakdown({ holdings, rateTable: rates, baseCurrency: 'USD', now: 0 });
+    expect(noBook).toEqual([{ type: 'property_item', amount: 20_000 }]);
+
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: 0,
+        price: '250',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+    const withBook = buildTypeBreakdown({
+      holdings,
+      rateTable: rates,
+      baseCurrency: 'USD',
+      now: 0,
+      book,
+    });
+    expect(withBook).toEqual([{ type: 'property_item', amount: 25_000 }]);
   });
 });

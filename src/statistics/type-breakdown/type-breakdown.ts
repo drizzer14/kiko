@@ -5,6 +5,7 @@ import { type HoldingType, holdingTypes } from '../../holdings/holding-type';
 import { holdingValue } from '../../holdings/holding-value';
 import { convert, type RateTable } from '../../rates/conversion';
 import { canConvert } from '../../rates/net-worth-view';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 
 /** A holding as the by-type bar needs it: its type plus its convertible value. */
 export type BreakdownHolding = Pick<
@@ -32,8 +33,9 @@ export const buildTypeBreakdown = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
+  book?: PriceBook;
 }): TypeSlice[] => {
-  const { holdings, rateTable, baseCurrency, now } = input;
+  const { holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
 
   return holdingTypes
     .map((type) => {
@@ -43,7 +45,8 @@ export const buildTypeBreakdown = (input: {
             holding.type === type && canConvert(holding.currency, baseCurrency, rateTable),
         )
         .reduce(
-          (sum, holding) => sum.add(convert(holdingValue(holding, now), baseCurrency, rateTable)),
+          (sum, holding) =>
+            sum.add(convert(holdingValue(holding, now, book), baseCurrency, rateTable)),
           Money.of(baseCurrency, 0),
         );
 

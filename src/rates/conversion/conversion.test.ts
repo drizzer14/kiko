@@ -1,4 +1,6 @@
 import { Money } from '../../currency/money';
+import { buildPriceBook } from '../../prices/price-book';
+import { holdingInstrument } from '../../prices/instrument';
 
 import { convert, netWorth, rateTableFromRows } from './conversion';
 
@@ -55,6 +57,52 @@ describe('netWorth', () => {
     const total = netWorth([], 'UAH', rates, NOW);
     expect(total.currency).toBe('UAH');
     expect(total.minorUnits).toBe(0);
+  });
+
+  // T14: with no `book` argument, a priced holding (property_item) falls back
+  // to its lots cost basis rather than reading 0.
+  it('values a property_item holding at its cost basis when no book is passed', () => {
+    const holdings = [
+      {
+        id: 'prop',
+        currency: 'UAH' as const,
+        type: 'property_item' as const,
+        balanceMinorUnits: 0,
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      },
+    ];
+    const total = netWorth(holdings, 'UAH', rates, NOW);
+    expect(total.minorUnits).toBe(500_000);
+  });
+
+  // T14: threading a real `PriceBook` overrides the cost-basis fallback.
+  it('values a property_item holding at its priced value when a book is passed', () => {
+    const holdings = [
+      {
+        id: 'prop',
+        currency: 'UAH' as const,
+        type: 'property_item' as const,
+        balanceMinorUnits: 0,
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      },
+    ];
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: NOW,
+        price: '7000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const total = netWorth(holdings, 'UAH', rates, NOW, book);
+    expect(total.minorUnits).toBe(700_000);
   });
 });
 

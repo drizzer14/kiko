@@ -23,6 +23,7 @@ import Text from '../../design-system/components/text';
 import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import { ibanOf } from '../../holdings/holding-metadata';
+import { usePriceBook } from '../../prices/use-price-book';
 import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import {
   type BackfillStatus,
@@ -213,6 +214,7 @@ const StatisticsScreen: FC = () => {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
+  const priceBook = usePriceBook();
 
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those, and a holding then feeds the charts only when it is open AND its
@@ -341,8 +343,9 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now],
+    [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
   const netWorth = useMemo(
@@ -359,8 +362,19 @@ const StatisticsScreen: FC = () => {
         // sitting a few percent off on the day's NBU official rate.
         liveRateTable: rateTable,
         today: now,
+        book: priceBook,
       }),
-    [filtered, transactions, historyRows, baseCurrency, rangeFrom, rangeTo, rateTable, now],
+    [
+      filtered,
+      transactions,
+      historyRows,
+      baseCurrency,
+      rangeFrom,
+      rangeTo,
+      rateTable,
+      now,
+      priceBook,
+    ],
   );
 
   const slices = useMemo(
@@ -371,8 +385,9 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now],
+    [filtered, rateTable, baseCurrency, now, priceBook],
   );
 
   // The spending pie sums EXPENSE transactions (negative amounts) by category, in

@@ -18,6 +18,7 @@ import EntityHeaderIcon from '../entity-header-icon';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
+import { usePriceBook } from '../../prices/use-price-book';
 import EntityAmountHeader from '../entity-amount-header';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
@@ -67,6 +68,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const priceBook = usePriceBook();
   const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
@@ -100,8 +102,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // Deposit/bond holdings grow with time, so net worth is evaluated as of now —
   // otherwise their accrued value never reflects in the account balance.
   const now = Date.now();
-  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now);
-  const breakdown = sumByCurrency(activeHoldings, now);
+  const overallBalance = guardedNetWorth(activeHoldings, baseCurrency, rateTable, now, priceBook);
+  const breakdown = sumByCurrency(activeHoldings, now, priceBook);
   // The grid renders in the query's order — `listByAccountQuery` already sorts by
   // the user-controlled `sortOrder` (the drag-and-drop order), so manual drag
   // order is the sole ordering key and no screen-level re-sort is needed.
@@ -260,6 +262,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                       now={now}
                       baseCurrency={baseCurrency}
                       rateTable={rateTable}
+                      priceBook={priceBook}
                       onOpen={() =>
                         navigation.navigate('HoldingDetail', {
                           holdingId: item.id,

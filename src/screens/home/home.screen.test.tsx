@@ -913,13 +913,14 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('reads accounts, holdings, rates, settings, then transactions in that order', async () => {
+  it('reads accounts, holdings, rates, prices, settings, then transactions in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 5).map((call) => call[1][0]);
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 6).map((call) => call[1][0]);
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',
       'currency_rates',
+      'price_points',
       'settings',
       'transactions',
     ]);

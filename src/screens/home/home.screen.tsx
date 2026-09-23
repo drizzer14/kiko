@@ -22,6 +22,7 @@ import {
   resolveCategoryKey,
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
+import { usePriceBook } from '../../prices/use-price-book';
 import { defaultDateRange } from '../../dates/default-range';
 import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -105,6 +106,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
+  const priceBook = usePriceBook();
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
   const { data: transactions } = useLiveQuery(transactionsRepo.listAllWithContextQuery(), [
     'transactions',
@@ -201,8 +203,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   );
 
   const active = activeHoldings(holdings, accounts);
-  const total = guardedNetWorth(active, baseCurrency, rateTable, now);
-  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now);
+  const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
+  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook);
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user

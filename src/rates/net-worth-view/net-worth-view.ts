@@ -4,6 +4,7 @@ import type { Currency } from '../../currency/currency';
 import { FIAT_RATE_SEED_TABLE } from '../fiat-rate-seed';
 import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
 import { netWorth, type RateTable, rateTableFromRows } from '../conversion';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 
 type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
 
@@ -58,9 +59,10 @@ export const guardedNetWorth = (
   base: Currency,
   rates: RateTable,
   now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): Money => {
   const convertible = holdings.filter((holding) => canConvert(holding.currency, base, rates));
-  return netWorth(convertible, base, rates, now);
+  return netWorth(convertible, base, rates, now, book);
 };
 
 /**
@@ -81,8 +83,10 @@ export const guardedBreakdown = (
   base: Currency,
   rates: RateTable,
   now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): Money[] =>
   sumByCurrency(
     holdings.filter((holding) => canConvert(holding.currency, base, rates)),
     now,
+    book,
   );

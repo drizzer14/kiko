@@ -20,6 +20,7 @@ import {
   resolveCategoryDisplay,
 } from '../../categories/category-display';
 import type { Currency } from '../../currency/currency';
+import { usePriceBook } from '../../prices/use-price-book';
 import { formatMoney } from '../../currency/format';
 import { Money } from '../../currency/money';
 import { formatTime } from '../../dates/format';
@@ -379,6 +380,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // converted base-currency caption beneath it — the same second line the
   // holding card shows for a holding in a non-base currency.
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
+  const priceBook = usePriceBook();
 
   // Resolve each transaction row's stored category to its display (icon + title)
   // through the same shared mapping Home uses, so a rename flows through here too.
@@ -390,7 +392,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   const now = Date.now();
-  const breakdown = holding ? holdingValueBreakdown(holding, now) : null;
+  const breakdown = holding ? holdingValueBreakdown(holding, now, priceBook) : null;
   // The owning account, so the footer's sync gate can read its `institution`.
   // `isSyncedHolding` requires BOTH a connected synced institution AND a sync
   // key in metadata, so a disconnected former-Monobank holding counts as manual

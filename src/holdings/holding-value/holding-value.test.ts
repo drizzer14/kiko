@@ -1,5 +1,7 @@
 import { Money } from '../../currency/money';
 import { asBondMeta } from '../holding-metadata';
+import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../prices/price-book';
+import { holdingInstrument } from '../../prices/instrument';
 
 import {
   bondExpectedProfitMinor,
@@ -357,6 +359,97 @@ describe('holdingValueBreakdown', () => {
 
   it('holdingValue returns the net value', () => {
     expect(holdingValue(deposit({}), AFTER_1Y).minorUnits).toBe(107679);
+  });
+});
+
+// Property lots and price points key on `dayKeyOf`'s UTC-anchored convention
+// (`Date.UTC(y, m, d)` — `src/prices/price-book/`), NOT the file's own
+// `local()` helper above (which builds a real LOCAL-time instant for the
+// bond cases) — matching `lots.test.ts`/`price-book.test.ts`'s own fixtures.
+const propertyDay2024 = Date.UTC(2024, 0, 1);
+const propertyDay2026 = Date.UTC(2026, 0, 1);
+
+const property = (over: Record<string, unknown> = {}): ValuableHolding => ({
+  id: 'prop-1',
+  type: 'property_item',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  metadata: {
+    category: 'real_estate',
+    lots: [{ day: propertyDay2024, quantityDelta: '1', costMinorUnits: 18_000_00 }],
+    ...over,
+  },
+});
+
+describe('holdingValueBreakdown — property_item (priced)', () => {
+  it('values a property at its point at-or-before now, and at the next point once its day arrives', () => {
+    const point2024 = propertyDay2024;
+    const point2026 = propertyDay2026;
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: point2024,
+        price: '20000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: point2026,
+        price: '16000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const holding = property();
+
+    const between = holdingValueBreakdown(holding, point2024 + 200 * day, book);
+    expect(between.gross.minorUnits).toBe(2_000_000);
+    expect(between.net.minorUnits).toBe(2_000_000);
+
+    const after = holdingValueBreakdown(holding, point2026, book);
+    expect(after.gross.minorUnits).toBe(1_600_000);
+    expect(after.net.minorUnits).toBe(1_600_000);
+  });
+
+  it('falls back to the lots cost basis when there is no price point yet (Review Focus 5)', () => {
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.gross.minorUnits).toBe(18_000_00);
+    expect(breakdown.net.minorUnits).toBe(18_000_00);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('defaults to the empty price book (cost basis) when no book is passed', () => {
+    const holding = property();
+
+    expect(holdingValue(holding, propertyDay2024).minorUnits).toBe(18_000_00);
+  });
+
+  it('reports the lots cost basis as principalOrCost even when a price point exists', () => {
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop-1'),
+        day: propertyDay2024,
+        price: '25000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, book);
+    expect(breakdown.gross.minorUnits).toBe(2_500_000);
+    expect(breakdown.principalOrCost.minorUnits).toBe(18_000_00);
+  });
+
+  it('reports no interest or tax — a priced holding never accrues either', () => {
+    const holding = property();
+
+    const breakdown = holdingValueBreakdown(holding, propertyDay2024, EMPTY_PRICE_BOOK);
+    expect(breakdown.interest.minorUnits).toBe(0);
+    expect(breakdown.tax.minorUnits).toBe(0);
   });
 });
 

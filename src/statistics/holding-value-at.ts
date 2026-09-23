@@ -1,6 +1,8 @@
 import { startOfLocalDay } from '../dates/local-day';
 import type { HoldingRow } from '../db/schema';
+import { isLedgerlessHoldingType } from '../holdings/holding-type';
 import { holdingValueBreakdown } from '../holdings/holding-value';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../prices/price-book';
 
 /** A holding as the series builders need it: identity, currency, and value inputs. */
 export type SeriesHolding = Pick<
@@ -16,8 +18,10 @@ export type SeriesTransaction = { time: number; amountMinorUnits: number };
  * the per-currency indexed series and the converted net-worth series so the
  * reconstruction lives in exactly one place.
  *
- * - term_deposit / bond: computed via `holdingValueBreakdown(holding, t)` so
- *   accrued interest / coupons are correct at each past date (no ledger needed).
+ * - a ledgerless type (`isLedgerlessHoldingType` — term_deposit, bond,
+ *   property_item): computed via `holdingValueBreakdown(holding, t, book)` so
+ *   accrued interest / coupons / a `PriceBook` lookup are correct at each past
+ *   date (no ledger needed).
  * - everything else (card / cash / jar / crypto_asset): the running balance,
  *   reconstructed as opening balance + every transaction whose LOCAL DAY is at
  *   or before `t`'s local day. Comparing by local day (not raw instant) matches
@@ -32,9 +36,10 @@ export const holdingValueAt = (
   holding: SeriesHolding,
   transactions: SeriesTransaction[],
   t: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): number => {
-  if (holding.type === 'term_deposit' || holding.type === 'bond') {
-    return holdingValueBreakdown(holding, t).net.minorUnits;
+  if (isLedgerlessHoldingType(holding.type)) {
+    return holdingValueBreakdown(holding, t, book).net.minorUnits;
   }
   const openingBalance =
     holding.balanceMinorUnits -

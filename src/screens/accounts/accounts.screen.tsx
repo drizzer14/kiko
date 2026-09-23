@@ -15,6 +15,7 @@ import Card from '../../design-system/components/card';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
+import { usePriceBook } from '../../prices/use-price-book';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { isSyncedAccount } from '../../holdings/deletable';
@@ -40,6 +41,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
   const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
   const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const priceBook = usePriceBook();
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
@@ -136,7 +138,13 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               keyExtractor={(account) => account.id}
               renderItem={({ item }) => {
                 const accountHoldings = holdingsByAccount.get(item.id) ?? [];
-                const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now);
+                const balance = guardedNetWorth(
+                  accountHoldings,
+                  baseCurrency,
+                  rateTable,
+                  now,
+                  priceBook,
+                );
                 const color = resolveEntityColor(item.color, defaultAccountColor[item.kind]);
 
                 return (

@@ -1,14 +1,25 @@
+import { costBasisMinorAt } from '../lots';
+import { taxOnInterestMinor } from '../tax';
 import { Money, toMajor } from '../../currency/money';
 import { startOfLocalDay } from '../../dates/local-day';
 import type { HoldingRow } from '../../db/schema';
-import { asBondMeta, asTermDepositMeta, type BondMeta } from '../holding-metadata';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
+import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
+import { asBondMeta, asPropertyMeta, asTermDepositMeta, type BondMeta } from '../holding-metadata';
 import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
-import { taxOnInterestMinor } from '../tax';
 
+/**
+ * `id` is optional — mirroring `PricedHolding` (`src/holdings/priced-value/`)
+ * — so every existing test fixture across the app's holding-value suites
+ * (a synthetic cash/deposit/bond literal with no real row) keeps compiling
+ * unchanged. A PRICED holding (`isPricedHoldingType`) needs its own `id` to
+ * resolve its `holding:<id>` instrument key; one with no `id` simply reads as
+ * having no stored price point (falls back to its lots' cost basis).
+ */
 export type ValuableHolding = Pick<
   HoldingRow,
   'type' | 'currency' | 'balanceMinorUnits' | 'metadata'
->;
+> & { id?: HoldingRow['id'] };
 
 export type HoldingValueBreakdown = {
   gross: Money;
@@ -147,6 +158,35 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
   };
 };
 
+// A priced holding's (currently only `property_item` — `isPricedHoldingType`)
+// gross/net are its `pricedValueMinor` (a `PriceBook` lookup), falling back to
+// its lots' cost basis when there is no stored price point yet — Review Focus
+// 5: never 0. `principalOrCost` is ALWAYS the cost basis (not the priced
+// value), so the holding-detail breakdown can show a live gain/loss against
+// it. It never accrues interest or withholds tax, so both stay zero.
+const pricedBreakdown = (
+  holding: ValuableHolding,
+  now: number,
+  book: PriceBook,
+): HoldingValueBreakdown => {
+  const meta = asPropertyMeta(holding.metadata);
+  if (meta === null) {
+    return flat(holding.currency, holding.balanceMinorUnits);
+  }
+  const { currency } = holding;
+  const costBasisMinor = costBasisMinorAt(meta.lots, now);
+  const valueMinor = pricedValueMinor(holding, book, now) ?? costBasisMinor;
+  const zero = Money.of(currency, 0);
+
+  return {
+    gross: Money.of(currency, valueMinor),
+    principalOrCost: Money.of(currency, costBasisMinor),
+    interest: zero,
+    tax: zero,
+    net: Money.of(currency, valueMinor),
+  };
+};
+
 // The bond's expected lifetime profit (minor units): the sum of every net
 // coupon plus the redeemed nominal, less the price actually paid. Reproduces the
 // figure the user's bank shows (e.g. 3 * 8,175 + 100,000 - 107,868 = 16,657).
@@ -172,7 +212,12 @@ export const bondExpectedProfitMinor = (
 export const holdingValueBreakdown = (
   holding: ValuableHolding,
   now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): HoldingValueBreakdown => {
+  if (isPricedHoldingType(holding.type)) {
+    return pricedBreakdown(holding, now, book);
+  }
+
   switch (holding.type) {
     case 'term_deposit':
       return depositBreakdown(holding, now);
@@ -183,5 +228,8 @@ export const holdingValueBreakdown = (
   }
 };
 
-export const holdingValue = (holding: ValuableHolding, now: number): Money =>
-  holdingValueBreakdown(holding, now).net;
+export const holdingValue = (
+  holding: ValuableHolding,
+  now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
+): Money => holdingValueBreakdown(holding, now, book).net;

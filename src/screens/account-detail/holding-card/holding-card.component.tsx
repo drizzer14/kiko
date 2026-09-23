@@ -10,6 +10,7 @@ import { activeLocale } from '../../../i18n/active-locale';
 import { canConvert } from '../../../rates/net-worth-view';
 import type { Currency } from '../../../currency/currency';
 import { holdingValue } from '../../../holdings/holding-value';
+import type { PriceBook } from '../../../prices/price-book';
 import { convert, type RateTable } from '../../../rates/conversion';
 import MoneyText from '../../../design-system/components/money-text';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -43,10 +44,11 @@ const HoldingCard: FC<{
   now: number;
   baseCurrency: Currency;
   rateTable: RateTable;
+  priceBook: PriceBook;
   onOpen: () => void;
-}> = ({ holding, now, baseCurrency, rateTable, onOpen }) => {
+}> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
-  const value = holdingValue(holding, now);
+  const value = holdingValue(holding, now, priceBook);
   // The smaller base-currency figure below the value, shown ONLY for a holding
   // in a different currency that also has a cached rate to the base. `convert`
   // throws on a missing rate pair, so `canConvert` guards it — a currency with

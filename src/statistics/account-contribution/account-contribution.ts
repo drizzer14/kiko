@@ -4,6 +4,7 @@ import { resolveEntityColor } from '../../design-system/entity-tint';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 import type { RateTable } from '../../rates/conversion';
 import { guardedNetWorth } from '../../rates/net-worth-view';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two
@@ -48,14 +49,21 @@ export const buildAccountContribution = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
+  book?: PriceBook;
 }): AccountSlice[] => {
-  const { accounts, holdings, rateTable, baseCurrency, now } = input;
+  const { accounts, holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
   const accountDefaults = defaultAccountColor;
 
   const valued = accounts
     .map((account) => {
       const accountHoldings = holdings.filter((holding) => holding.accountId === account.id);
-      const amount = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now).minorUnits;
+      const amount = guardedNetWorth(
+        accountHoldings,
+        baseCurrency,
+        rateTable,
+        now,
+        book,
+      ).minorUnits;
       // `resolveEntityColor` (design-system/entity-tint.ts) is the ONE function
       // that picks an entity's effective color: a valid stored hex, else the
       // kind default, else a safe gray. A bare `stored ?? default` let an

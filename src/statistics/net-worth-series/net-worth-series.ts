@@ -1,15 +1,16 @@
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
-import type { Currency } from '../../currency/currency';
 import { Money, toMajor } from '../../currency/money';
-import type { CurrencyRateHistoryRow } from '../../db/schema';
-import { asBondMeta } from '../../holdings/holding-metadata';
-import { convert, type RateTable } from '../../rates/conversion';
-import { toUtcMidnight } from '../../rates/history-entry';
 import { canConvert } from '../../rates/net-worth-view';
+import type { Currency } from '../../currency/currency';
+import { toUtcMidnight } from '../../rates/history-entry';
+import { asBondMeta } from '../../holdings/holding-metadata';
+import type { CurrencyRateHistoryRow } from '../../db/schema';
+import { convert, type RateTable } from '../../rates/conversion';
+import { reconcileBondFunding } from '../reconcile-bond-funding';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { bucketTimes } from '../buckets';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from '../holding-value-at';
-import { reconcileBondFunding } from '../reconcile-bond-funding';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
@@ -57,6 +58,7 @@ export const buildNetWorthSeries = (input: {
   bucketDays?: number;
   liveRateTable?: RateTable;
   today?: number;
+  book?: PriceBook;
 }): NetWorthSeries => {
   const {
     holdings,
@@ -67,6 +69,7 @@ export const buildNetWorthSeries = (input: {
     bucketDays = 1,
     liveRateTable,
     today,
+    book = EMPTY_PRICE_BOOK,
   } = input;
 
   if (historyRows.length === 0) {
@@ -134,7 +137,7 @@ export const buildNetWorthSeries = (input: {
       .filter((holding) => canConvert(holding.currency, baseCurrency, table))
       .reduce(
         (sum, holding) => {
-          const value = holdingValueAt(holding, txByHolding.get(holding.id) ?? [], t);
+          const value = holdingValueAt(holding, txByHolding.get(holding.id) ?? [], t, book);
           return sum.add(convert(Money.of(holding.currency, value), baseCurrency, table));
         },
         Money.of(baseCurrency, 0),

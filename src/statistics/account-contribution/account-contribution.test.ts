@@ -1,4 +1,6 @@
 import type { AccountRow, HoldingRow } from '../../db/schema';
+import { buildPriceBook } from '../../prices/price-book';
+import { holdingInstrument } from '../../prices/instrument';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 
 import {
@@ -173,5 +175,51 @@ describe('buildAccountContribution', () => {
     });
 
     expect(slices.map((slice) => slice.accountId)).toEqual(['a']);
+  });
+
+  // T14: threading a `PriceBook` through reaches a priced (property_item)
+  // holding's value; with no book it falls back to its lots cost basis.
+  it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
+    const accounts = [account('a', 'Property')];
+    const holdings = [
+      holding({
+        id: 'prop',
+        accountId: 'a',
+        type: 'property_item',
+        currency: 'UAH',
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: NOW, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      }),
+    ];
+
+    const noBook = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+    expect(noBook[0].amount).toBe(500_000);
+
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: NOW,
+        price: '7000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+    const withBook = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+      book,
+    });
+    expect(withBook[0].amount).toBe(700_000);
   });
 });

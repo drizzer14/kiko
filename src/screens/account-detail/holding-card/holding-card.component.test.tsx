@@ -6,6 +6,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
 import { darkTheme } from '../../../design-system/theme';
+import { EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';
 
 import HoldingCard from './holding-card.component';
@@ -37,6 +38,7 @@ const renderCard = (overrides: Partial<ComponentProps<typeof HoldingCard>> = {})
       now={NOW}
       baseCurrency="UAH"
       rateTable={{}}
+      priceBook={EMPTY_PRICE_BOOK}
       onOpen={jest.fn()}
       {...overrides}
     />,
