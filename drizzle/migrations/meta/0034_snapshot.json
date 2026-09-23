@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cd06d625-7aba-44f3-a4ae-19495c517ead",
+  "id": "38e98ff2-3c22-4a6d-9496-84c2609773ee",
   "prevId": "58c46a76-aa74-4a0c-8d84-9cbc4715a57f",
   "tables": {
     "accounts": {
@@ -348,8 +348,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "closing_balance_applied_at": {
-          "name": "closing_balance_applied_at",
+        "balance_set_at": {
+          "name": "balance_set_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

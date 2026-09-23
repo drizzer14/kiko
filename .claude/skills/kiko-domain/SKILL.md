@@ -167,21 +167,10 @@ and that holding's own card showed 0 even though its transaction list
 showed the real imported rows.
 
 `importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
-full statement of the exact rule — the R1(b) boundary (the LATER of
-(a) the time the user last set the balance by hand and (b) the as-of
-instant of the last APPLIED closing balance, tracked in the new
-`holdings.closingBalanceAppliedAt` column since a closing-balance write
-leaves no ledger row of its own; an earlier PLAIN import is explicitly
-NOT a boundary source, replacing I2's original "newest existing
-transaction of any source" definition), imported rows before that
-boundary inserting as history that add 0 to the balance, rows at/after
-it moving it by their net, the closing-balance override and its
-eligibility gate, the drift a closing-balance write can silently
-absorb, the wall-clock-as-UTC skew in that gate, the synced-holding
-exception, and why no migration was written for pre-fix data (I3:
-1.0.0 was never published, distinct from `closingBalanceAppliedAt`'s
-own additive schema migration) — read it there rather than trusting a
-restated summary here.
+full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
+the closing-balance override, the wall-clock skew, the synced-holding
+exception, and why no migration repairs pre-fix data — read it there
+rather than trusting a restated summary here.
 
 ## Sync-only holding types are not manually creatable
 

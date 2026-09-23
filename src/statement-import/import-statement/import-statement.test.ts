@@ -142,7 +142,7 @@ type FakeHolding = {
   currency: string;
   balanceMinorUnits: number;
   accountId: string;
-  closingBalanceAppliedAt: number | null;
+  balanceSetAt: number | null;
   metadata?: unknown;
 };
 
@@ -151,7 +151,7 @@ const defaultHolding = (overrides: Partial<FakeHolding> = {}): FakeHolding => ({
   currency: 'UAH',
   balanceMinorUnits: 0,
   accountId: 'acc-1',
-  closingBalanceAppliedAt: null,
+  balanceSetAt: null,
   metadata: null,
   ...overrides,
 });
@@ -178,13 +178,12 @@ type ImportTxOpts = {
 
 /** The rows one fake `select(fields).from(table).where(...)` resolves to,
  * dispatched by table identity — and, for the two no-`.limit()` `transactions`
- * reads (the hand-set-boundary aggregate vs. the dedup partition probe), by
- * the PROJECTED field set (`{ time }` vs `{ source, externalId }`), since
- * both share the same table identity. R1(b): the "time" read mirrors the
- * REAL query's own `source = 'manual'` filter — a plain `import`-sourced
- * row (an earlier statement) must NOT surface here; every seeded row in
- * this file's own fixtures below is already `source: 'manual'`, so this
- * filter changes nothing they assert, only what a future fixture could. */
+ * reads (the sync-boundary aggregate vs. the dedup partition probe), by the
+ * PROJECTED field set (`{ time }` vs `{ source, externalId }`), since both
+ * share the same table identity. The "time" read mirrors the REAL query's
+ * own sync-source filter (`source NOT IN ('manual', 'import')`) — the
+ * hand-set boundary source comes back separately, straight off
+ * `opts.holding.balanceSetAt`. */
 const resolveImportSelect = (
   opts: ImportTxOpts,
   table: unknown,
@@ -203,11 +202,11 @@ const resolveImportSelect = (
   }
 
   if (table === transactions && fields && 'time' in fields) {
-    const manualTimes = opts.store.transactions
-      .filter((row) => row.source === 'manual')
+    const syncTimes = opts.store.transactions
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
       .map((row) => row.time);
 
-    return manualTimes.length > 0 ? [{ time: Math.max(...manualTimes) }] : [{ time: null }];
+    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
   return opts.store.transactions.map((row) => ({ source: row.source, externalId: row.externalId }));
@@ -395,7 +394,7 @@ describe('importStatement', () => {
   // `guardedNetWorth` (the Home net-worth path) read
   // `holding.balanceMinorUnits` verbatim (`holding-value.ts` `flat()`), so
   // proving the repo's write here is the same proof for Home.
-  describe('balance write (I2 boundary: net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
+  describe('balance write (net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
     // Ukrsibbank business CSV carries no closing balance at all (its own
     // format doc comment; see `ParsedStatement.closingBalance`), so this
     // isolates the boundary's plain net-delta arithmetic with no closing-balance
@@ -450,12 +449,12 @@ describe('importStatement', () => {
 
       await importStatement(monobankInput, 'holding-1');
 
-      // R1(b): applying the closing balance also marks
-      // `closingBalanceAppliedAt` as this holding's new boundary source (b)
-      // for a later import — the fixture's own last row's time.
+      // Applying the closing balance also stamps `balanceSetAt` — the
+      // fixture's own last row's time — as this holding's boundary for a
+      // later import.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
-        closingBalanceAppliedAt: 1_683_912_636_000,
+        balanceSetAt: 1_683_912_636_000,
       });
     });
 
@@ -497,14 +496,12 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({ balanceMinorUnits: -12_345 });
     });
 
-    it('sets the balance to the closing balance when the statement is at or after the newest existing transaction', async () => {
-      const store: { transactions: StoredRow[] } = {
-        // An older manual/prior row, well before the fixture's own dates.
-        transactions: [
-          { id: 'old-1', source: 'manual', externalId: null, time: 1, holdingId: 'holding-1' },
-        ],
-      };
-      const holding = defaultHolding({ balanceMinorUnits: -999_999 });
+    it('sets the balance to the closing balance when the statement is at or after the hand-set boundary', async () => {
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      // A hand-set balance well before the fixture's own dates (D-I2:
+      // `balanceSetAt`, not a seeded ledger row — see `holdings.repo.test.ts`
+      // for `holdingsRepo.create`/`updateWithBalanceDelta` writing it for real).
+      const holding = defaultHolding({ balanceMinorUnits: -999_999, balanceSetAt: 1 });
       const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
       mockTx = tx;
 
@@ -512,33 +509,25 @@ describe('importStatement', () => {
 
       // Monobank CSV's closing balance is the fixture's last row's own
       // "Залишок після операції": 100000.00 UAH -> 10_000_000 minor units —
-      // NOT base + net (which would be -999_999 + -21_794). R1(b):
-      // `closingBalanceAppliedAt` moves to that same instant too.
+      // NOT base + net (which would be -999_999 + -21_794). Applying it also
+      // moves `balanceSetAt` to that same instant.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
-        closingBalanceAppliedAt: 1_683_912_636_000,
+        balanceSetAt: 1_683_912_636_000,
       });
     });
 
-    // User ruling (I2): a statement entirely OLDER than the holding's newest
-    // existing transaction is history from end to end — its own closing
-    // balance is ignored (as before), and now its rows ALSO contribute 0 to
-    // the balance (they still land as real ledger rows). A row newer than
-    // every date in the Monobank fixture (which ends 2023-05-12) makes the
-    // statement the older one.
+    // A statement entirely OLDER than the holding's hand-set boundary is
+    // history from end to end — its own closing balance is ignored, and its
+    // rows contribute 0 to the balance (they still land as real ledger
+    // rows). A boundary newer than every date in the Monobank fixture
+    // (which ends 2023-05-12) makes the statement the older one.
     it('treats an entirely OLDER statement as history: its closing balance is ignored, its rows land but move nothing', async () => {
-      const store: { transactions: StoredRow[] } = {
-        transactions: [
-          {
-            id: 'newer-1',
-            source: 'manual',
-            externalId: null,
-            time: Date.UTC(2025, 0, 1),
-            holdingId: 'holding-1',
-          },
-        ],
-      };
-      const holding = defaultHolding({ balanceMinorUnits: 500_000 });
+      const store: { transactions: StoredRow[] } = { transactions: [] };
+      const holding = defaultHolding({
+        balanceMinorUnits: 500_000,
+        balanceSetAt: Date.UTC(2025, 0, 1),
+      });
       const { tx, captured } = makeImportTx({ store, holding, account: unsyncedAccount });
       mockTx = tx;
 
@@ -546,10 +535,10 @@ describe('importStatement', () => {
 
       // All 4 rows still land as ledger history (imported: 4) — the
       // fixture's own closing balance (10_000_000) is ignored (as before),
-      // and now (I2) every row is also dated before the boundary, so the
-      // net-delta fallback adds 0: the balance stays exactly 500_000.
+      // and every row is also dated before the boundary, so the net-delta
+      // fallback adds 0: the balance stays exactly 500_000.
       expect(result.imported).toBe(4);
-      expect(store.transactions).toHaveLength(5);
+      expect(store.transactions).toHaveLength(4);
       expect(captured.holdingSet).toBeUndefined();
     });
   });

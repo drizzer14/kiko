@@ -243,8 +243,8 @@
     {
       "idx": 34,
       "version": "6",
-      "when": 1790202233376,
-      "tag": "0034_add_closing_balance_applied_at",
+      "when": 1790204031122,
+      "tag": "0034_add_balance_set_at",
       "breakpoints": true
     }
   ]

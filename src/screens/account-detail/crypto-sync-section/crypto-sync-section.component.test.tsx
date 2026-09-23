@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 
+import { i18n } from '../../../i18n';
 import { formatDateTime } from '../../../dates/format';
 import type { AccountRow, HoldingRow } from '../../../db/schema';
-import { i18n } from '../../../i18n';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -119,7 +119,7 @@ const holding = (metadata: unknown): HoldingRow => ({
   color: null,
   balanceMinorUnits: 0,
   syncedBalanceMinorUnits: null,
-  closingBalanceAppliedAt: null,
+  balanceSetAt: null,
   metadata,
   sortOrder: 0,
   closedAt: null,
