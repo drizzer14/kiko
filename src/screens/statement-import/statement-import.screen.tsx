@@ -2,8 +2,6 @@ import type { FC } from 'react';
 import * as RNFS from 'react-native-fs';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import readXlsxFile from 'read-excel-file/browser';
-import { decode as decodeWindows1251 } from 'windows-1251';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
@@ -14,6 +12,12 @@ import type {
 } from '../../statement-import/parser';
 import { formatDate } from '../../dates/format';
 import { holdingsRepo } from '../../holdings/repo';
+import {
+  fileNameOf,
+  isXlsxFile,
+  decodeStatementText,
+  readSheetRowsSafely,
+} from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
@@ -35,96 +39,6 @@ import TargetHoldingSheet from './target-holding-sheet';
 import type { TargetHoldingOption } from './target-holding-sheet/target-holding-sheet.props';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
-
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-// Decodes a base64 string to its raw bytes, WITHOUT `Buffer` (not guaranteed
-// to exist as a global under Hermes — this app has no `buffer` polyfill
-// anywhere, confirmed by grep) and without `atob` (a standard global too, but
-// one that only ever yields a Latin-1 byte string, one JS char per byte —
-// exactly the shape `decodeUtf8Bytes` below needs, so a real `atob` would
-// have worked as the FIRST half of this pipeline; it is avoided here purely
-// because its Hermes availability is equally unverified, not because of any
-// UTF-8 defect in what it returns). Table lookup + bit-shifting only, so this
-// is provably correct under both Jest's Node engine and Hermes — no
-// engine-specific API, just arithmetic.
-const decodeBase64ToBytes = (base64: string): number[] => {
-  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
-  const bytes: number[] = [];
-  let buffer = 0;
-  let bitsCollected = 0;
-
-  // The regex above already dropped every character not in
-  // `BASE64_ALPHABET`, so `BASE64_ALPHABET.indexOf(char)` can never miss
-  // here — no `=== -1` guard needed.
-  for (const char of clean) {
-    const sextet = BASE64_ALPHABET.indexOf(char);
-
-    buffer = (buffer << 6) | sextet;
-    bitsCollected += 6;
-
-    if (bitsCollected >= 8) {
-      bitsCollected -= 8;
-      bytes.push((buffer >> bitsCollected) & 0xff);
-    }
-  }
-
-  return bytes;
-};
-
-// Decodes a UTF-8 byte sequence to a JS string, handling every 1/2/3/4-byte
-// form (the Monobank fixture's Cyrillic descriptions are 2-byte) — this is
-// the step a bare `atob()` skips, which is what corrupts multi-byte text
-// (see the task brief's base64-decode ruling): `atob` alone treats each BYTE
-// as one Latin-1 CHARACTER, so a 2-byte Cyrillic codepoint renders as two
-// mangled Latin-1 characters instead of being recombined into one.
-const decodeUtf8Bytes = (bytes: number[]): string => {
-  let result = '';
-  let index = 0;
-
-  while (index < bytes.length) {
-    const byte1 = bytes[index];
-
-    if (byte1 < 0x80) {
-      result += String.fromCharCode(byte1);
-      index += 1;
-    } else if ((byte1 & 0xe0) === 0xc0) {
-      const codepoint = ((byte1 & 0x1f) << 6) | (bytes[index + 1] & 0x3f);
-      result += String.fromCharCode(codepoint);
-      index += 2;
-    } else if ((byte1 & 0xf0) === 0xe0) {
-      const codepoint =
-        ((byte1 & 0x0f) << 12) | ((bytes[index + 1] & 0x3f) << 6) | (bytes[index + 2] & 0x3f);
-      result += String.fromCharCode(codepoint);
-      index += 3;
-    } else {
-      const codepoint =
-        ((byte1 & 0x07) << 18) |
-        ((bytes[index + 1] & 0x3f) << 12) |
-        ((bytes[index + 2] & 0x3f) << 6) |
-        (bytes[index + 3] & 0x3f);
-      const surrogatePair = codepoint - 0x10000;
-      result += String.fromCharCode(
-        0xd800 + (surrogatePair >> 10),
-        0xdc00 + (surrogatePair & 0x3ff),
-      );
-      index += 4;
-    }
-  }
-
-  return result;
-};
-
-// The one Hermes-safe base64 -> UTF-8 decode path for a picked file's
-// content — see `decodeBase64ToBytes`/`decodeUtf8Bytes` above for why this
-// does not reach for `Buffer` or `atob`.
-const decodeBase64Utf8 = (base64: string): string => decodeUtf8Bytes(decodeBase64ToBytes(base64));
-
-// The file's own basename, derived from the resolved `filePath` — none of the
-// shipped formats' `detect`/`parse` actually reads `fileName` (see
-// `monobank-csv.format.ts`), but `StatementFormatInput` still carries it, so
-// a real (if inert) value is passed rather than an empty string.
-const fileNameOf = (filePath: string): string => filePath.split('/').pop() ?? filePath;
 
 // The one format `expectedFormatId` names, or `undefined` when the route
 // carries none (an account with no `bankId`, or the accountId-less Share
@@ -155,38 +69,6 @@ const formatFor = (
   }
 
   return detectFormat(input);
-};
-
-// PrivatBank XLSX is the only spreadsheet format in scope (section C.5) —
-// an honest, visible extension check decides the text-vs-spreadsheet branch
-// below, not a hidden flag. Every other picked file (every CSV format
-// shipped so far) takes the existing UTF-8 text path.
-const isXlsxFile = (fileName: string): boolean => fileName.toLowerCase().endsWith('.xlsx');
-
-// Runs the async `read-excel-file` parse ONCE, ahead of `detectFormat`/
-// `format.parse` (both synchronous — see `StatementFormatInput.sheetRows`'s
-// doc comment in `parser.ts`). [VERIFY AT BUILD TIME]: the `/browser` entry
-// point is the Hermes-safe choice picked here — it accepts a plain
-// `ArrayBuffer` (no Node `Buffer`, no DOM `File`/`Blob`), matching exactly
-// what `decodeBase64ToBytes` above already produces from the picked file's
-// base64 content; this cannot be proven under Jest (which runs on Node, not
-// Hermes), only by a real on-device import.
-const readSheetRowsSafely = async (
-  base64: string,
-): Promise<SpreadsheetCellValue[][] | undefined> => {
-  const arrayBuffer = new Uint8Array(decodeBase64ToBytes(base64)).buffer;
-
-  try {
-    const sheets = await readXlsxFile(arrayBuffer);
-
-    return sheets[0]?.data as SpreadsheetCellValue[][] | undefined;
-  } catch {
-    // A genuinely invalid/corrupted `.xlsx` — degrades to the same "we don't
-    // recognize this file" state `previewStats` already shows for any other
-    // format-level failure (no `sheetRows` means `detectFormat` recognizes
-    // nothing), rather than a distinct crash/error path.
-    return undefined;
-  }
 };
 
 type PreviewStats = {
@@ -334,7 +216,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
           return;
         }
 
-        const utf8Text = decodeBase64Utf8(base64);
+        const utf8Text = decodeStatementText(base64, 'utf-8');
         const utf8Input = { text: utf8Text, fileName: fileNameOf(filePath) };
 
         // Sensebank (and Phase 4's FOP CSVs) are cp1251-encoded, not UTF-8 —
@@ -345,7 +227,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         // (UTF-8) pass matched no known format.
         const text = detectFormat(utf8Input)
           ? utf8Text
-          : decodeWindows1251(new Uint8Array(decodeBase64ToBytes(base64)));
+          : decodeStatementText(base64, 'windows-1251');
 
         setLoadState({ kind: 'ready', text });
       })
