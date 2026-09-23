@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 import * as RNFS from 'react-native-fs';
-import { useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -11,6 +11,7 @@ import type {
   StatementFormatId,
   StatementFormatInput,
 } from '../../statement-import/parser';
+import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import {
   fileNameOf,
   isXlsxFile,
@@ -18,9 +19,12 @@ import {
   readSheetRowsSafely,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
+import { accountsRepo } from '../../accounts/accounts.repo';
+import { settingsRepo } from '../../settings/settings.repo';
 import type { AccountsStackParamList } from '../../navigation/types';
 import {
   detectFormat,
@@ -133,6 +137,16 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
   const holdingOptions = useTargetHoldingOptions(accountId);
 
+  // T7's auto-replace check: an account's own `bankId` and its saved
+  // column-mapping entries. `accountId` is optional on this route (the
+  // Share Extension entry point has none) — an empty-string id query simply
+  // returns no rows rather than being skipped, so every render still calls
+  // the SAME hooks (React's rules of hooks).
+  const { data: accountRows } = useLiveQuery(accountsRepo.byIdQuery(accountId ?? ''), ['accounts']);
+  const bankId = accountRows.at(0)?.bankId;
+  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const savedMappings = settingsRows.at(0)?.statementMappings;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -197,6 +211,29 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const format = formatFor(input, expectedFormat);
   const stats = statsFor(format, input);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
+
+  // T7: when this file matched NO format (unrecognized, or a bank
+  // mismatch) and an EXACT saved mapping exists for this account's own
+  // bank, skip straight to the manual-mapping screen instead of showing the
+  // "we don't recognize this file" state — `ColumnMapping` still requires
+  // its own Import tap (Review Focus 3), so this never imports anything on
+  // its own. Runs at most once (`autoReplacedRef`), so a re-render (the
+  // settings query resolving after the file read, say) never re-navigates.
+  const autoReplacedRef = useRef(false);
+
+  useEffect(() => {
+    if (autoReplacedRef.current || !accountId || input === undefined || format !== undefined) {
+      return;
+    }
+
+    const { rows } = readTableRows(input);
+    const saved = findSavedMapping(savedMappings, bankId, rows);
+
+    if (saved?.exact) {
+      autoReplacedRef.current = true;
+      navigation.replace('ColumnMapping', { filePath, accountId });
+    }
+  }, [accountId, input, format, savedMappings, bankId, filePath, navigation]);
   // Covers every "this file cannot be imported as-is" outcome EXCEPT the
   // bank-mismatch case (which renders its own, more specific message below):
   // the read itself failed, OR the read succeeded but no format recognized
@@ -220,6 +257,18 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       setImportError(error instanceof Error ? error.message : String(error));
     } finally {
       setImporting(false);
+    }
+  };
+
+  // T7's manual entry point into the generic column-mapping screen. Only
+  // navigates when `accountId` is known — the Share Extension entry point
+  // (no `accountId`) has no defined "map for which account" behavior yet,
+  // same carve-out `TargetHoldingSheet`'s own `onCreateNew` below already
+  // makes, so this stays a harmless no-op rather than crashing on a missing
+  // required `accountId`.
+  const handleMapColumnsManually = (): void => {
+    if (accountId) {
+      navigation.navigate('ColumnMapping', { filePath, accountId });
     }
   };
 
@@ -298,6 +347,17 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
             <ImportOutcome error={importError} result={importResult} />
           </Box>
+        )}
+
+        {/* The generic column-mapping entry point (T7): offered under a
+            recognized preview (`stats` above), AND in the unrecognized/
+            bank-mismatch states — anywhere `input` resolved at all — but
+            never during the unreadable-read state (`input` stays
+            `undefined` there). */}
+        {input !== undefined && (
+          <Button variant="secondaryTonal" fullWidth={false} onPress={handleMapColumnsManually}>
+            {t('statementImport.mapColumnsManually')}
+          </Button>
         )}
       </Box>
 

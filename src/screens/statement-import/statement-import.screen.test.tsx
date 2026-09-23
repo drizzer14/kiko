@@ -7,6 +7,7 @@ import '../../design-system/unistyles';
 import { i18n } from '../../i18n';
 import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
 import { supportedFormatNames } from '../../statement-import/registry';
+import { headerFingerprint } from '../../statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -25,6 +26,9 @@ const fixtureText = readFileSync(
   'utf-8',
 );
 const fixtureBase64 = Buffer.from(fixtureText, 'utf-8').toString('base64');
+// The fixture's own real header row — used to build a saved mapping whose
+// `fingerprint` genuinely matches this file (T7's auto-replace check).
+const fixtureHeaderRow = fixtureText.split('\n')[0].split(',');
 
 const unrelatedBase64 = Buffer.from(
   'Date,Amount,Description\n2024-01-01,-10.00,Coffee\n',
@@ -73,7 +77,15 @@ jest.mock('@kiko/holdings/repo', () => ({
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    byIdQuery: (accountId: string) => ({ toSQL: () => ({ sql: '', params: [accountId] }) }),
+    byIdQuery: (accountId: string) => ({
+      __kind: 'account-by-id',
+      toSQL: () => ({ sql: '', params: [accountId] }),
+    }),
+  },
+}));
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: {
+    getQuery: () => ({ __kind: 'settings', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 
@@ -235,12 +247,38 @@ const renderScreen = async (params: {
   return { ...view, navigation };
 };
 
+// Drives the `useLiveQuery` calls this screen (plus the shared
+// `useTargetHoldingOptions` hook it renders through) makes, keyed on the
+// query's own `__kind` — the account-by-id and settings queries need their
+// own shapes (T7's auto-replace-to-ColumnMapping check), everything else
+// (the holdings/accounts-list pair `useTargetHoldingOptions` reads) keeps
+// the same single-holding default every pre-T7 test in this file relies on.
+const setLiveData = (data: {
+  holdings?: { id: string; name: string; accountId: string; accountName: string }[];
+  account?: { id: string; bankId?: string | null };
+  statementMappings?: Record<string, unknown> | null;
+}): void => {
+  const holdings = data.holdings ?? [
+    { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+  ];
+
+  mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
+    if (query.__kind === 'account-by-id') {
+      return { data: data.account ? [data.account] : [] };
+    }
+
+    if (query.__kind === 'settings') {
+      return { data: [{ statementMappings: data.statementMappings ?? null }] };
+    }
+
+    return { data: holdings };
+  });
+};
+
 describe('StatementImportScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseLiveQuery.mockReturnValue({
-      data: [{ id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' }],
-    });
+    setLiveData({});
   });
 
   it('reads the picked file, recognizes the Monobank CSV format, and renders its preview', async () => {
@@ -498,5 +536,130 @@ describe('StatementImportScreen', () => {
       // path never goes anywhere near the cp1251 branch.
       expect(sensebankDetectFormatCalls).toHaveLength(0);
     });
+  });
+});
+
+// T7: the "Map columns manually" entry point into the generic column-mapping
+// import screen, plus the auto-replace shortcut for a file that already has
+// an exact saved mapping under a DIFFERENT bank than the one recognized.
+describe('StatementImportScreen — column-mapping entry point (T7)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({});
+  });
+
+  it('offers "Map columns manually" under a recognized preview, alongside the existing actions', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getByText } = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(getByText('Monobank (CSV)')).toBeTruthy());
+    expect(getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy();
+  });
+
+  it('offers "Map columns manually" for an unrecognized file, and it navigates with filePath/accountId', async () => {
+    mockReadFile.mockResolvedValue(unrelatedBase64);
+
+    const { getByText, navigation } = await renderScreen({
+      filePath: '/mock/other.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() =>
+      expect(getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy(),
+    );
+
+    await fireEvent.press(getByText(i18n.t('statementImport.mapColumnsManually')));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ColumnMapping', {
+      filePath: '/mock/other.csv',
+      accountId: 'a',
+    });
+  });
+
+  it('offers "Map columns manually" for a bank-mismatch file too', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const { getByText } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(
+        getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy();
+  });
+
+  it('does NOT offer "Map columns manually" while the file read itself failed', async () => {
+    mockReadFile.mockRejectedValue(new Error('ENOENT: file not found'));
+
+    const { queryByText } = await renderScreen({
+      filePath: '/mock/missing.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() =>
+      expect(
+        queryByText(
+          i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames }),
+        ),
+      ).toBeTruthy(),
+    );
+    expect(queryByText(i18n.t('statementImport.mapColumnsManually'))).toBeNull();
+  });
+
+  it('replaces the route to ColumnMapping when a bank-mismatch file has an exact saved mapping under the account’s own bank', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: {
+        'bank:sensebank': {
+          headerRowIndex: 0,
+          decimalSeparator: '.',
+          dateColumn: 0,
+          dateFormat: 'DD.MM.YYYY HH:MM:SS',
+          amount: { mode: 'single', column: 3 },
+          descriptionColumn: 1,
+          currency: { mode: 'fixed', currency: 'UAH' },
+          fingerprint: headerFingerprint(fixtureHeaderRow),
+          savedAt: 1_700_000_000_000,
+        },
+      },
+    });
+
+    const { navigation } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith('ColumnMapping', {
+        filePath: '/mock/statement.csv',
+        accountId: 'a',
+      }),
+    );
+  });
+
+  it('does not auto-replace when no exact saved mapping exists for a bank-mismatch file', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({ account: { id: 'a', bankId: 'sensebank' } });
+
+    const { navigation, getByText } = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() =>
+      expect(
+        getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(navigation.replace).not.toHaveBeenCalled();
   });
 });

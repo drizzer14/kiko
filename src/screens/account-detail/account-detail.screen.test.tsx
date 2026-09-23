@@ -1179,11 +1179,16 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(queryByText('Import statement')).toBeNull();
   });
 
-  it('hides Import statement for a bank account with no bank picked (no statement format to scope to)', async () => {
+  // T7: `canImportStatement` became `isBankAccount` — EVERY bank account
+  // offers the entry point now, with or without a known statement format,
+  // since an unrecognized/mismatched file still routes through the generic
+  // column-mapping screen (`statement-import.screen.tsx`'s own "Map columns
+  // manually" button) rather than dead-ending.
+  it('shows Import statement for a bank account with no bank picked (no known statement format, still a bank account)', async () => {
     setLiveData({ accounts: [account({ kind: 'bank', bankId: null })], holdings: [] });
-    const { queryByText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
-    expect(queryByText('Import statement')).toBeNull();
+    expect(getByText('Import statement')).toBeTruthy();
   });
 
   it('shows Import statement for a bank account whose picked bank resolves to a statement format', async () => {

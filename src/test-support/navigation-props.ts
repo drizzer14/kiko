@@ -11,6 +11,7 @@
  */
 export type NavigationSpy = {
   navigate: jest.Mock;
+  replace: jest.Mock;
   setOptions: jest.Mock;
   goBack: jest.Mock;
   push: jest.Mock;
@@ -22,6 +23,7 @@ export type NavigationSpy = {
 
 export const navigationSpy = (): NavigationSpy => ({
   navigate: jest.fn(),
+  replace: jest.fn(),
   setOptions: jest.fn(),
   goBack: jest.fn(),
   push: jest.fn(),
