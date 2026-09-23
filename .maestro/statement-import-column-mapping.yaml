@@ -1,0 +1,153 @@
+# Functional flow for T7/T8's generic column-mapping import entry point
+# (docs/plans/statement-import.md; the shares-property-metals-debts P0
+# brief, T8). NOT a screenshot-diff check — no `takeScreenshot` step, no
+# baseline; there is no automated screenshot check of any kind any more
+# (2026-09-19, Guideline 5.6 remediation). This asserts real end-to-end
+# BEHAVIOR: picking the committed uabean Monobank CSV fixture, landing on
+# the dedicated (Monobank-recognized) preview, tapping into the GENERIC
+# column-mapping screen instead of trusting the dedicated format, mapping
+# date/amount/description columns and a fixed currency by hand, seeing the
+# resulting transaction count, choosing a holding, importing, and seeing
+# the success count.
+#
+# LOCALE: `.maestro/regression.yaml`'s own seeded content is Ukrainian
+# ("Монобанк", "Додати актив", …), so this flow asserts the UKRAINIAN
+# catalog strings too (`src/i18n/locales/uk.ts`'s `accountDetail.importStatement`,
+# `statementImport.*`, and `columnMapping.*`) to match whatever locale that
+# same screenshot-mode build runs. The parsed format's OWN `displayName`
+# ("Monobank (CSV)", `monobank-csv.format.ts`) is data, not a catalog
+# string, so it stays English regardless of locale.
+#
+# PREREQUISITE (ops): the committed fixture
+# (src/statement-import/formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv)
+# must be reachable from the iOS Files app on the target simulator/device
+# BEFORE this flow runs — e.g. pushed into the simulator's "On My iPhone"
+# location (`xcrun simctl` file operations, or AirDrop/Files-app import on a
+# real device) under a stable name. This is a real, low-PII, MIT-licensed
+# sample (see NOTICE.md) — sharing it via the picker in a headless run
+# carries none of the live-credential constraints that block the
+# bank-connect flows from being exercised this way.
+#
+# This flow was authored WITHOUT a live Maestro run (no booted simulator
+# with the fixture provisioned was available at authoring time) — ops/qa
+# must verify the exact step sequence on a real simulator the first time
+# this flow executes, the same caveat `.maestro/statement-import.yaml`'s own
+# header carries for its own untested flow. Spots that in particular need
+# live confirmation: the native Files-picker navigation (step 2 — no app
+# testID reaches it); the `index: 1` disambiguation below (the seeded
+# Монобанк account AND its one seeded holding share the exact same name, so
+# the holding row inside the target-holding sheet is presumed to be the
+# SECOND "Монобанк" match on screen — verify this ordinal against the real
+# sheet, same as `.maestro/statement-import.yaml`); and the fixture's own
+# header row (`Дата i час операції, Деталі операції, MCC, Сума в валюті
+# картки (UAH), …`, 0-indexed columns 0/1/3) being auto-selected as the
+# header row by `guessHeaderRowIndex` before any tap here, so no raw-preview
+# row tap is scripted — verify that guess still holds on a live run.
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 1. Accounts tab -> an account's detail screen
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "wallet.pass.fill"
+- assertVisible:
+    id: "accounts-grid"
+- tapOn:
+    id: "account-card"
+- assertVisible:
+    id: "account-detail-content"
+
+# ---------------------------------------------------------------------------
+# 2. Open the document picker from the footer's "Import statement" action
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Імпортувати виписку"
+
+# The native iOS document picker (UIDocumentPickerViewController) — not an
+# app screen, so there is no app testID to assert on here. "Recents" is the
+# picker's default browse tab (native iOS chrome, not a Kiko catalog string,
+# so it stays in the device's own language — English on a US-locale
+# simulator).
+- assertVisible:
+    text: "Recents"
+- tapOn:
+    text: "uabean-monobank-sample"
+
+# ---------------------------------------------------------------------------
+# 3. StatementImportScreen: the dedicated Monobank preview, then the T7
+#    manual "Map columns manually" entry point into the generic screen
+#    instead of trusting the dedicated parse.
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "statement-import-content"
+- assertVisible:
+    text: "Monobank (CSV)"
+
+- tapOn:
+    text: "Зіставити стовпці вручну"
+
+# ---------------------------------------------------------------------------
+# 4. ColumnMappingScreen: map date (column + format), amount, and
+#    description columns by hand, then pick a fixed UAH currency.
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "column-mapping-content"
+
+# Column 0: "Дата i час операції" (date/time).
+- tapOn:
+    id: "column-mapping-date-column"
+- tapOn:
+    id: "column-mapping-date-column-option-0"
+- tapOn:
+    id: "column-mapping-date-format"
+- tapOn:
+    id: "column-mapping-date-format-option-DD.MM.YYYY HH:MM:SS"
+
+# Column 3: "Сума в валюті картки (UAH)" (single-amount mode, already the
+# screen's default).
+- tapOn:
+    id: "column-mapping-amount-column"
+- tapOn:
+    id: "column-mapping-amount-column-option-3"
+
+# Column 1: "Деталі операції" (description).
+- tapOn:
+    id: "column-mapping-description-column"
+- tapOn:
+    id: "column-mapping-description-column-option-1"
+
+# Fixed currency (the screen's default mode) -> UAH, explicitly, regardless
+# of whatever the target holding's own currency already defaults it to.
+- tapOn:
+    id: "column-mapping-fixed-currency"
+- tapOn:
+    id: "currency-option-UAH"
+
+# ---------------------------------------------------------------------------
+# 5. Result: exactly 4 mapped rows (the fixture, C.4/NOTICE.md, carries 4).
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "column-mapping-transaction-count"
+- assertVisible:
+    text: "4"
+
+# ---------------------------------------------------------------------------
+# 6. Choose the seeded holding, import, and confirm the outcome.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Оберіть актив"
+- tapOn:
+    text: "Монобанк"
+    index: 1
+
+- tapOn:
+    text: "Імпортувати"
+- assertVisible:
+    text: "Імпортовано 4 з 4"
