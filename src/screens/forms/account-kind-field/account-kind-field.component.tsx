@@ -3,9 +3,8 @@ import { type FC, useState } from 'react';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import FieldTrigger from '../../../design-system/components/field-trigger';
 import SelectableRow from '../../../design-system/components/selectable-row';
-
-import FieldTrigger from '../field-trigger';
 
 import type { AccountKind, AccountKindFieldProps } from './account-kind-field.props';
 

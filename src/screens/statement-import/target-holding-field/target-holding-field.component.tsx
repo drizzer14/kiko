@@ -1,9 +1,9 @@
 import type { FC } from 'react';
 import { useState } from 'react';
 
-import FieldTrigger from '../../forms/field-trigger';
-
 import TargetHoldingSheet from '../target-holding-sheet';
+import FieldTrigger from '../../../design-system/components/field-trigger';
+
 import type { TargetHoldingFieldProps } from './target-holding-field.props';
 
 /**

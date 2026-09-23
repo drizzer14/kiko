@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 
 import Text from '../../../design-system/components/text';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
+import FieldTrigger from '../../../design-system/components/field-trigger';
 import SelectableRow from '../../../design-system/components/selectable-row';
-import FieldTrigger from '../../../screens/forms/field-trigger';
 
 import type { ColumnSelectFieldProps } from './column-select-field.props';
 
