@@ -1,8 +1,8 @@
 import type { Repository } from '@kiko/db/repository';
 import { max, sql } from 'drizzle-orm';
 
-import { chunkForTable } from '../../db/chunk-for-table';
 import { database, write } from '../../db/client';
+import { chunkForTable } from '../../db/chunk-for-table';
 import { type CurrencyRateRow, currencyRates } from '../../db/schema';
 
 type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fetchedAt'>;

@@ -49,9 +49,9 @@ jest.mock('../../db/client', () => {
   };
 });
 
-import { currencyOptions } from '../../currency/currency';
 import { initDatabase } from '../../db/client';
 import type { CurrencyRateRow } from '../../db/schema';
+import { currencyOptions } from '../../currency/currency';
 
 import { ratesRepo } from './rates.repo';
 
