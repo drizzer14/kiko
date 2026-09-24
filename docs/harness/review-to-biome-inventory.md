@@ -127,6 +127,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `exportedComponentNames` (one-component-per-file) | kiko-code-style's "One component per file" | Jest invariant (`src/code-style/one-component-per-file/one-component-per-file.test.ts`) | Semgrep has no same-file cross-declaration cardinality primitive, so this is a Jest invariant rather than a Semgrep rule — see the kiko-linter skill's "One exported component per `.tsx`" section for the scanner design and the jest.mock exemption's structural reason (a mock factory body can never syntactically contain a top-level `export`). Walks every real `.tsx` under `src/`; 0 violations today. |
 
+### Enforced — 2026-09-25 R1 behavior-free refactor (R1.c)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `scripts/checks/import-order.js`/`.sh` | kiko-code-style's "Import ordering" — hand-enforced rather than mechanized, so it drifted (two prior `kiko:reviewer` passes flagged pre-existing violations under `src/screens/`) | Shell + JS check (fast tier, per-file; project-wide via `npm run check:import-order`) | Biome's `organizeImports` cannot express this project's length-sort convention, so this is a hand-rolled scanner, not a Biome/Semgrep rule — see the kiko-linter skill's "Import length-sort" section for the scanner design, the file-header-comment pinning rule, and the `--write` auto-fix mode. The R1.c sweep found 210 violating files; `--write` fixed all but 7 (each with a comment glued to a non-first import), fixed by hand. `check:import-order` now reports zero violations across `src/`. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

@@ -159,6 +159,17 @@ verified usage, not dead weight:
   directly by `__tests__/kill-guard.test.ts`, which spawns
   `kill-guard.sh` (and so `kill-guard.js`) as a subprocess, not an import,
   so Jest's coverage does not make Knip see it as reachable either.
+- **`knip.json` `ignore`**: `scripts/checks/import-order.js` — the same
+  shape as `kill-guard.js` above. `scripts/checks/import-order.sh`
+  reaches it only via a `node` invocation (both the fast-tier per-file
+  check and the project-wide `check:import-order` mode), never a static
+  `import`/`require`, and never a package.json script Knip's static scan
+  can see, so Knip's reachability graph reports it as unused. Exercised
+  directly by `__tests__/import-order.test.ts`, which spawns
+  `import-order.sh` (and so `import-order.js`) as a subprocess, and by a
+  direct `node import-order.js --write` invocation in the same test file
+  — neither of which Jest's static import graph makes Knip see as
+  reachable.
 - **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and `--exclude 'fixtures'` in
   `scripts/checks/security.sh`)**: the positive/negative fixture pair that

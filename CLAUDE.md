@@ -22,6 +22,7 @@ below).
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore` (no `OVERRIDE(...)`) fails | medium |
+| `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -30,7 +31,7 @@ Composite scripts:
 
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
-  typecheck.
+  import-order, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. **Run this before declaring a feature done.** It is not
   wired to any hook because it is slow; it is a manual checkpoint. By
@@ -47,8 +48,8 @@ Composite scripts:
 
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 `kiko` plugin — see "Harness agents" below): the fast tier
-(`scripts/checks/fast.sh`: lint, security, secrets on the touched
-file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
+(`scripts/checks/fast.sh`: lint, security, secrets, import-order on
+the touched file) runs on `PostToolUse` for `Edit|Write|MultiEdit`. The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck

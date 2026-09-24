@@ -304,8 +304,9 @@ The other three candidates from this same backlog are now implemented
 quoting" below for the one gotcha that cost the most time writing it.
 The one-exported-component-per-`.tsx` check is a Jest invariant, not
 Semgrep — see "One exported component per `.tsx` — a Jest invariant,
-not Semgrep" below. The import-length-sort check is documented once
-R1.c lands in this same file.
+not Semgrep" below. The import-length-sort check is a hand-rolled
+shell+JS checker/fixer at the fast tier — see "Import length-sort — a
+hand-rolled checker (and fixer)" below.
 
 ## One exported component per `.tsx` — a Jest invariant, not Semgrep
 
@@ -349,7 +350,59 @@ shipped with — so a mock factory's own `const`/`function` text can
 never be mistaken for a *local* declaration a later `export default
 Name;` might resolve to either.
 
-These are implemented later in the refactor batch, not by this brief.
+## Import length-sort — a hand-rolled checker (and fixer)
+
+`scripts/checks/import-order.js` (+ its wrapper `import-order.sh`)
+mechanizes kiko-code-style's "Import ordering" rule — see that
+section for the exact rule (3 blank-line-separated groups, sort
+ascending by ending-physical-line length, value-before-type as an
+equal-length tiebreak, a bare side-effect import as a barrier). Wired
+at the **fast tier** (`fast.sh`, alongside `lint.sh`/`security.sh`/
+`secrets.sh`): the rule is purely per-file with no cross-file
+dependency, so per-edit feedback catches drift immediately instead of
+waiting for `Stop`. It is ALSO wired project-wide
+(`npm run check:import-order`, part of `check:all`) — `import-order.sh`
+takes an optional file argument: given one (the fast-tier hook), it
+checks only that file; given none, it walks every `.ts`/`.tsx` under
+`src/` (overridable via `IMPORT_ORDER_SRC_ROOT`, used only by the
+test to point at a disposable temp fixture tree instead of the real,
+much larger repo `src/`).
+
+Tested by spawning the `.sh` end-to-end against fixture files on disk
+(`__tests__/import-order.test.ts`, the `__tests__/kill-guard.test.ts`
+pattern) — not by importing `import-order.js`'s internals directly.
+`import-order.js` is in `knip.json`'s `ignore` list for the same
+reason `kill-guard.js` is (see `docs/harness/documented-exceptions.md`):
+it is reached only via a `node` invocation from its `.sh` wrapper,
+never a static `import`/`require`, so Knip's reachability graph can't
+see it.
+
+The scanner is a hand-rolled heuristic (blank comments/strings first,
+then walk the leading column-0 run of blank/comment/import lines),
+the same style as the one-component-per-file scanner above, with one
+extra design point worth knowing before touching it: a comment run
+sitting directly above the FIRST import of a blank-line-delimited
+group is treated as a PINNED group-level prefix — it never moves, and
+is never treated as "belonging" to that first import — which is what
+lets a file's own header doc-comment (or a general group-rationale
+comment) stay put even when the import beneath it needs to move to a
+new position. A comment glued to any OTHER (non-first) import in a
+group, by contrast, must travel WITH that import when it moves — the
+scanner marks the whole group "unsafe" and its `--write` mode leaves
+it completely untouched, rather than guess where the comment should
+end up. This is a real, load-bearing distinction, not a hypothetical:
+the R1.c sweep found 210 files with a real violation; `--write`
+resolved all but 7 of them, each left unresolved by exactly this
+"comment glued to a non-first import" safety rule. Those 7 were
+re-sorted by hand (moving the comment WITH its import, alongside the
+file-level prefix comment when both were present in the same file —
+see `net-worth-series.test.ts` in the R1.c commit history for a
+worked example of both rules applying in the same file at once).
+
+`--write` (`node scripts/checks/import-order.js --write <file...>`) is
+a repo-sweep tool, not part of the check-wrapper contract (see "The
+wrapper contract" above — a checker only checks) — it is invoked by
+hand, never from `import-order.sh`.
 
 ## Every mechanized finding gets an inventory row
 

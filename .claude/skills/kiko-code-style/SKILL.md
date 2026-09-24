@@ -418,13 +418,19 @@ one validation model — don't hand-roll a different one:
 
 ## Import ordering and `import type`
 
-Import grouping and ordering is **hand-enforced, not mechanized**.
-Biome's `organizeImports` assist cannot express this project's
-convention — it forces a natural within-group sort — so
-`biome.json`'s `assist.actions.source.organizeImports.level` is set
-to `"off"`. `npm run check:lint` therefore does **not** check import
-order at all; `kiko:reviewer` must verify it by hand on every
-reviewed file.
+Import grouping and ordering is mechanized by a dedicated check, not
+by Biome: `organizeImports` cannot express this project's convention
+— it forces a natural within-group sort — so `biome.json`'s
+`assist.actions.source.organizeImports.level` stays `"off"`, and
+`npm run check:lint` does **not** check import order. Instead,
+`scripts/checks/import-order.sh` (+ its `import-order.js` analyzer)
+mechanizes the exact rule below: fast-tier per-file on every
+`Edit`/`Write`/`MultiEdit`, and project-wide via
+`npm run check:import-order` (part of `check:all`). See the
+kiko-linter skill's "Import length-sort — a hand-rolled checker (and
+fixer)" section for the scanner's design, its jest.mock-adjacent
+"file-header comment" pinning rule, and the `--write` auto-fix mode
+used for the repo-wide sweep.
 
 The convention (handwritten, Prettier-only exemplar:
 `~/Developer/Projects/ovpn-ui`):
@@ -464,15 +470,16 @@ Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
 the type/value distinction to be explicit.
 
-**Recommendation: a dedicated whole-`src/screens` import re-sort.**
-Because this ordering is hand-enforced rather than mechanized, it
-drifts — two separate `kiko:reviewer` passes have flagged pre-existing
-length-sort violations under `src/screens/` that predate this rule
-being written down. A standalone pass that re-sorts every import block
-under `src/screens/` (and, opportunistically, wherever else a reviewer
-next finds it) against this rule is recommended, rather than only
-fixing a violation the next time that exact file happens to be
-touched.
+**Whole-repo import re-sort — DONE (R1.c, 2026-09-25).** Two separate
+`kiko:reviewer` passes had flagged pre-existing length-sort violations
+under `src/screens/` that predated this rule being written down (this
+was previously a "recommended, not yet done" note). The mechanized
+checker's `--write` mode fixed 205 files in one pass; the 7 files it
+declined to touch (a comment glued to a non-first import — see the
+kiko-linter skill) were re-sorted by hand. `npm run check:import-order`
+now reports zero violations across `src/`, and (being fast-tier
+per-file) catches new drift immediately rather than waiting for a
+reviewer to notice it.
 
 ## Variable naming
 
