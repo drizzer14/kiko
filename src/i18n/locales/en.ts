@@ -730,10 +730,11 @@ export const en = {
     // repeated verbatim — the established "Select a …" copy style shared
     // with `columnMapping.dateColumnPlaceholder` and its siblings.
     chooseHoldingPlaceholder: 'Select a holding',
-    // Shown on the field when Import/Save was pressed with no holding chosen
-    // — "Pick …" matches the established picker-field error copy style (see
-    // `forms.holding.couponFrequencyRequiredError`).
-    chooseHoldingError: 'Pick a holding to import into.',
+    // Shown on the field when Import was pressed with no holding chosen —
+    // "No X selected." is the shared picker-field error shape (see the
+    // 7 columnMapping.*ColumnError keys and forms.holding.loanStartDateError),
+    // never a synonym of the placeholder's own "Select …" verb above.
+    chooseHoldingError: 'No holding selected.',
     createNewHolding: 'Create new holding',
     importButton: 'Import',
     // A caught `importStatement`/`importParsedStatement` failure shows as
