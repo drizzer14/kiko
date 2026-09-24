@@ -213,6 +213,49 @@ describe('buildAccountContribution', () => {
     expect(slices.every((slice) => slice.amount > 0)).toBe(true);
   });
 
+  // I2 (T27 round 1, spec §5.2/§5.3): the account pie is ASSETS ONLY — a
+  // slice sums only its POSITIVE holding values; a negative holding (a
+  // credit-card debit balance, spec §5.2) never reduces it. An account whose
+  // only holding is negative therefore has nothing positive to show at all.
+  it('excludes an account whose only holding is a negative (credit-card debt) balance from the pie', () => {
+    const accounts = [account('a', 'Card')];
+    const holdings = [
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    expect(slices).toEqual([]);
+  });
+
+  it('sums ONLY the positive holding values of an account — a negative holding never nets against a positive one', () => {
+    const accounts = [account('a', 'Mixed')];
+    const holdings = [
+      holding({ accountId: 'a', type: 'cash', currency: 'UAH', balanceMinorUnits: 500_000 }),
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const slices = buildAccountContribution({
+      accounts,
+      holdings,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      now: NOW,
+    });
+
+    // Not 500_000 - 300_000 = 200_000 (a net); the positive cash holding
+    // alone, unreduced by the negative card holding.
+    expect(slices).toEqual([
+      { accountId: 'a', name: 'Mixed', amount: 500_000, share: 1, color: expect.any(String) },
+    ]);
+  });
+
   // T14: threading a `PriceBook` through reaches a priced (property_item)
   // holding's value; with no book it falls back to its lots cost basis.
   it('values a property_item holding via the PriceBook, falling back to cost basis with no book', () => {
@@ -306,7 +349,7 @@ describe('buildDebtTotal', () => {
     expect(total.minorUnits).toBe(-500_000 - 10_000 * 40);
   });
 
-  it('ignores every non-loan holding entirely', () => {
+  it('ignores a POSITIVE non-loan holding entirely — only a negative balance counts as debt', () => {
     const holdings = [
       holding({ accountId: 'a', type: 'cash', currency: 'UAH', balanceMinorUnits: 100_000 }),
     ];
@@ -314,6 +357,44 @@ describe('buildDebtTotal', () => {
     const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
 
     expect(total.minorUnits).toBe(0);
+  });
+
+  // I2 (T27 round 1, spec §5.2): "Credit-card negative balances count as
+  // debt too." A negative non-loan holding balance (a card in debit) is not
+  // a `loan` holding, but its own value is negative all the same, so it
+  // counts toward the Debts total exactly like a loan's negative outstanding.
+  it('counts a negative non-loan holding balance (credit-card debt) toward the Debts total', () => {
+    const holdings = [
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(-300_000);
+  });
+
+  it('sums a loan and a negative non-loan balance together, converted to base', () => {
+    const holdings = [
+      holding({
+        id: 'loan-1',
+        accountId: 'd',
+        type: 'loan',
+        currency: 'UAH',
+        metadata: {
+          kind: 'mortgage',
+          principalMinorUnits: 500_000,
+          startDate: NOW,
+          annualRatePct: 10,
+          termMonths: 12,
+          schedule: 'annuity',
+        },
+      }),
+      holding({ accountId: 'a', type: 'card', currency: 'UAH', balanceMinorUnits: -300_000 }),
+    ];
+
+    const total = buildDebtTotal({ holdings, rateTable: {}, baseCurrency: 'UAH', now: NOW });
+
+    expect(total.minorUnits).toBe(-500_000 - 300_000);
   });
 
   it('is 0 when there are no loan holdings at all', () => {
