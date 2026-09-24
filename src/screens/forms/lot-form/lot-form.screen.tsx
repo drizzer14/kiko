@@ -29,7 +29,7 @@ import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import FieldLabel from '../../../design-system/components/field-label';
 import type { AccountsStackParamList } from '../../../navigation/types';
-import OptionPills from '../../../design-system/components/option-pills';
+import SegmentedControl from '../../../design-system/components/segmented-control';
 import { asLots, costBasisMinorAt, quantityAt, type Lot } from '../../../holdings/lots';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 
@@ -223,11 +223,17 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
       <Box gap={4}>
         <Box gap={1}>
           <FieldLabel label={t('forms.lot.type')} />
-          <OptionPills
+          {/* F4 audit item 18, superseded by the Q2 tabs-vs-chips rule
+              (decision 14): Buy/Sell shows/hides the Total cost field below
+              (`direction === 'buy'`), so — unlike a value selection that
+              leaves the form the same — this is a mode toggle and takes
+              `SegmentedControl`, not a chip row. */}
+          <SegmentedControl<LotDirection>
             options={directions}
             selected={direction}
             onSelect={setDirection}
-            label={(option) => t(`forms.lot.${option}`)}
+            labels={{ buy: t('forms.lot.buy'), sell: t('forms.lot.sell') }}
+            accessibilityLabel={t('forms.lot.type')}
           />
         </Box>
 
