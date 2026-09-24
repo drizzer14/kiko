@@ -328,3 +328,65 @@ export const asMetalMeta = (value: unknown): MetalMeta | null => {
 
   return { metal, form, unit, purity, lots: parsedLots };
 };
+
+// The closed set of `loan` kinds (T26, spec 5.1): the last, `personal`, is
+// "money the user owes a person" — an informal debt, typically `schedule:
+// 'none'`, but not enforced to be (a person-to-person loan can still carry
+// interest and a schedule).
+export const loanKinds = ['mortgage', 'car_loan', 'consumer_loan', 'personal'] as const;
+
+export type LoanKind = (typeof loanKinds)[number];
+
+const isLoanKind = (value: unknown): value is LoanKind =>
+  typeof value === 'string' && (loanKinds as readonly string[]).includes(value);
+
+// `annuity`/`differentiated` compute the outstanding balance at read time from
+// the schedule math (`src/holdings/loan-schedule/`); `none` is an informal
+// debt whose outstanding is a manual series, the same `holding:<id>`
+// price-point mechanism Property uses (kiko-pricing).
+export const loanSchedules = ['annuity', 'differentiated', 'none'] as const;
+
+export type LoanSchedule = (typeof loanSchedules)[number];
+
+const isLoanSchedule = (value: unknown): value is LoanSchedule =>
+  typeof value === 'string' && (loanSchedules as readonly string[]).includes(value);
+
+export type LoanMeta = {
+  kind: LoanKind;
+  principalMinorUnits: number;
+  startDate: number;
+  // Required by the form unless `schedule === 'none'` (an informal debt has
+  // no known rate/term); left `undefined` for a `none` loan, mirroring
+  // `BondMeta.isin`'s optional-field convention.
+  annualRatePct?: number;
+  termMonths?: number;
+  schedule: LoanSchedule;
+};
+
+export const asLoanMeta = (value: unknown): LoanMeta | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const { kind, principalMinorUnits, startDate, annualRatePct, termMonths, schedule } = value;
+
+  if (
+    !isLoanKind(kind) ||
+    !isNumber(principalMinorUnits) ||
+    !isNumber(startDate) ||
+    !isLoanSchedule(schedule) ||
+    (annualRatePct !== undefined && !isNumber(annualRatePct)) ||
+    (termMonths !== undefined && !isNumber(termMonths))
+  ) {
+    return null;
+  }
+
+  return {
+    kind,
+    principalMinorUnits,
+    startDate,
+    annualRatePct,
+    termMonths,
+    schedule,
+  };
+};

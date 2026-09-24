@@ -15,7 +15,9 @@ import type { SavedColumnMapping } from '../statement-import/column-mapping/save
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  kind: text('kind', { enum: ['bank', 'cash', 'crypto', 'property', 'metals'] }).notNull(),
+  kind: text('kind', {
+    enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'],
+  }).notNull(),
   institution: text('institution'),
   // The bank this account REPRESENTS (device-feedback-round-1 item 3,
   // `src/bank-sync/bank-catalog/`), independent of `institution`
@@ -43,7 +45,17 @@ export const holdings = sqliteTable('holdings', {
     .references(() => accounts.id),
   name: text('name').notNull(),
   type: text('type', {
-    enum: ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar', 'property_item', 'metal'],
+    enum: [
+      'card',
+      'term_deposit',
+      'bond',
+      'cash',
+      'crypto_asset',
+      'jar',
+      'property_item',
+      'metal',
+      'loan',
+    ],
   }).notNull(),
   currency: text('currency', { enum: currencyOptions }).notNull(),
   icon: text('icon'),

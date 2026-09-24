@@ -22,16 +22,18 @@ definitions before relying on a specific member being present or
 absent** — this skill states the shape and non-enum facts only:
 
 - **Account** — a bank, cash stash, crypto wallet, standalone property
-  holder, or standalone precious-metals holder. `id`, `name`, `kind`
-  (see `schema.ts`'s `accounts.kind` enum for the current member set —
-  as of T17 this includes `property` and `metals` alongside `bank`/
-  `cash`/`crypto`; both are manually-created-only kinds with no sync
-  concept), `institution` (nullable, e.g. `monobank` — marks a LIVE
-  sync connection), `bankId` (nullable, migration `0033`; see below),
-  `icon`, `color`, `sortOrder`, `archivedAt` (nullable), `createdAt`.
-  `holdingTypesForAccountKind` (`src/holdings/holding-type/`) maps
-  each account kind to its allowed `Holding.type` set — `property`
-  maps to `property_item`, `metals` maps to `metal` — read that file
+  holder, standalone precious-metals holder, or debt holder. `id`,
+  `name`, `kind` (see `schema.ts`'s `accounts.kind` enum for the
+  current member set — as of T26 this includes `property`, `metals`,
+  and `debt` alongside `bank`/`cash`/`crypto`; all three of the
+  non-`bank`/`cash`/`crypto` kinds are manually-created-only kinds
+  with no sync concept), `institution` (nullable, e.g. `monobank` —
+  marks a LIVE sync connection), `bankId` (nullable, migration
+  `0033`; see below), `icon`, `color`, `sortOrder`, `archivedAt`
+  (nullable), `createdAt`. `holdingTypesForAccountKind`
+  (`src/holdings/holding-type/`) maps each account kind to its
+  allowed `Holding.type` set — `property` maps to `property_item`,
+  `metals` maps to `metal`, `debt` maps to `loan` — read that file
   rather than trusting a mapping copied here. `metal` is ALSO
   creatable under a `bank`-kind account, gated by that bank's own
   `sellsMetals` catalog flag (see `kiko-pricing`'s "Bank metal
@@ -636,3 +638,78 @@ ONE `useEffect` (each independently guarded by its own predicate) —
 again purely to keep the component's cognitive-complexity score under
 budget, not a functional requirement; each guard is idempotent, so
 sharing one dependency array never mis-fires any of the three.
+
+## Debts — the `debt` kind, `loan` type, and schedule math (T26)
+
+`accounts.kind` gains `debt` (en "Debt", uk "Борг" — the label ships
+in T26; the "Debts" net-worth/accounts-screen wiring is T27) and
+`holdings.type` gains `loan`, TS-only enum widenings (no migration,
+same as `property`/`metals` at T13/T17). `loan` is `isLedgerlessHoldingType`
+(`src/holdings/holding-type/`) — like `property_item`/`metal`, a loan
+holding writes NO `Transaction` ledger rows of its own; every payment
+lives on the LINKED bank holding instead (T29's `loanHoldingId`
+column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,
+and `loan` is excluded from every Exchange source/destination
+predicate in `exchange-destination.ts` (a loan is never an Exchange
+leg). Entity glyph/color: `minus.circle.fill` / `entityColorsDark.red`,
+shared between the `debt` kind and its sole `loan` type — the same
+kind-and-type icon/color reuse `property`/`property_item` and
+`metals`/`metal` already follow.
+
+`LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
+`kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —
+`personal` is money owed to a person, not a bank), `principalMinorUnits`,
+`startDate`, `schedule` (`'annuity' | 'differentiated' | 'none'`), and
+`annualRatePct?`/`termMonths?` — both OPTIONAL, since a `none`
+(informal) loan carries no known rate/term; the create form is
+expected to require them for `annuity`/`differentiated` (T28), not
+`asLoanMeta` itself, which accepts either shape. A loan the user GAVE
+to someone (not owed BY them) is not a `loan` holding at all — it
+stays the existing `property` category `loan_given` (T13), which is
+an ASSET, not a debt.
+
+`src/holdings/loan-schedule/` is the amortization math, mirroring
+`src/holdings/interest/`'s pattern (local-midnight `addMonths` due
+dates, integer-minor-unit rounding, the last period absorbing drift)
+rather than the BigInt decimal-string helpers — an interest RATE is a
+plain percentage `number`, the same convention `TermDepositMeta.annualRatePct`/
+`BondMeta.couponPct` already use, never the price/quantity/purity
+decimal-string rule.
+
+- `loanInstallments(meta)`: the full monthly amortization table for
+  `annuity`/`differentiated` (empty for `none` — an informal debt has
+  no schedule at all). `annuity` computes one constant payment per
+  period via the standard formula and rounds it ONCE; every period but
+  the last derives its principal as `roundedPayment - interest`.
+  `differentiated` instead holds a constant PRINCIPAL per period
+  (`round(principal / termMonths)`). Either way the LAST installment's
+  principal is simply whatever balance remains, so the schedule always
+  reduces to EXACTLY 0, never a stray rounding kopeck.
+- `loanOutstandingMinorAt(meta, holdingId, book, instant)` (open
+  question N10a, binding default): `none` reads the manual
+  `holding:<id>` price-point series directly (the same mechanism
+  Property's "Update value" uses), clamped to never go below 0.
+  `annuity`/`differentiated` are computed AT READ TIME from the
+  schedule: the LATEST manual correction point on the loan's own
+  `holding:<id>` instrument (if any, at or before `instant`'s local
+  day) anchors a fresh baseline value; only the scheduled PRINCIPAL
+  due STRICTLY AFTER that correction's day (and at or before `instant`)
+  is subtracted from it. With no correction ever recorded, the anchor
+  is simply the loan's own principal at `startDate`. Either path
+  clamps to 0 — an overpaid/over-corrected loan reads as paid off,
+  never negative.
+- `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
+  (open question N10b, binding default; D14's "interest-only spending"
+  — the derived-entry wiring itself is a later task): `none` always
+  counts 0 interest (an informal debt has no schedule to derive
+  interest from). Otherwise the payment maps to the installment whose
+  `dueDate` is NEAREST to the payment's own local day (not necessarily
+  the next unpaid one), and the interest counted is that installment's
+  scheduled interest capped at `paymentAbsMinor` — a partial payment
+  can never count more interest than it actually paid.
+
+Not yet wired as of T26 (later tasks): `holding-value.ts`'s valuation
+branch (`gross = net = -outstanding`), net worth's assets-minus-debt
+rule change, the loan create-form section, and the automatic
+payment-linking matcher (spec 5.4) — read T27-T29's own briefs before
+assuming any of that already works.

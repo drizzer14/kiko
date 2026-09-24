@@ -15,6 +15,7 @@ export const holdingTypes = [
   'jar',
   'property_item',
   'metal',
+  'loan',
 ] as const satisfies readonly HoldingRow['type'][];
 
 export type HoldingType = (typeof holdingTypes)[number];
@@ -34,6 +35,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
   crypto: ['crypto_asset'],
   property: ['property_item'],
   metals: ['metal'],
+  debt: ['loan'],
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per
@@ -63,7 +65,11 @@ export const isTimeExemptHoldingType = (type: HoldingType): boolean =>
 // disagree on which types are ledgerless. T17, T26, and T35 extend this set as
 // metals, loans, and shares land.
 export const isLedgerlessHoldingType = (type: HoldingType): boolean =>
-  type === 'term_deposit' || type === 'bond' || type === 'property_item' || type === 'metal';
+  type === 'term_deposit' ||
+  type === 'bond' ||
+  type === 'property_item' ||
+  type === 'metal' ||
+  type === 'loan';
 
 // The holding types whose buy/sell history is recorded through the dedicated
 // Lot form (T18 — holding-detail's `addLot` footer action, see

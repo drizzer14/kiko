@@ -11,33 +11,39 @@ import type { HoldingType } from '../holding-type';
 type AccountKind = AccountRow['kind'];
 
 // bank -> building.columns.fill, cash -> banknote, crypto ->
-// bitcoinsign.circle, property -> house.fill, metals -> cube.fill. Typed
-// over the full `AccountKind` union, so adding an account kind is a compile
-// error here until its default symbol is supplied. `bank` is the filled classic
-// bank-with-columns glyph (SF Symbols iOS 14), confirmed to paint on this
-// device; `building.classical.columns.fill` is an iOS-27-only SF Symbol
-// confirmed invisible on this device, so it is not used here. The crypto
-// ACCOUNT default is persisted at create time, so its change to
-// `bitcoinsign.circle` ships alongside migration 0032_icon_crypto_account,
+// bitcoinsign.circle, property -> house.fill, metals -> cube.fill, debt ->
+// minus.circle.fill. Typed over the full `AccountKind` union, so adding an
+// account kind is a compile error here until its default symbol is supplied.
+// `bank` is the filled classic bank-with-columns glyph (SF Symbols iOS 14),
+// confirmed to paint on this device; `building.classical.columns.fill` is an
+// iOS-27-only SF Symbol confirmed invisible on this device, so it is not used
+// here. The crypto ACCOUNT default is persisted at create time, so its change
+// to `bitcoinsign.circle` ships alongside migration 0032_icon_crypto_account,
 // which refines un-customized existing rows. `cube.fill` (SF Symbols 1, safe
 // on the iOS-16 floor) is the T17 pick for `metals` — brief left icon choice
-// unspecified, as with `house.fill` for `property` at T13.
+// unspecified, as with `house.fill` for `property` at T13. `minus.circle.fill`
+// (SF Symbols 1) is the T26 pick for `debt` — same "negative amount owed"
+// semantics as its sole holding type below, mirroring the property/metals
+// kind-and-type icon reuse.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
   property: 'house.fill',
   metals: 'cube.fill',
+  debt: 'minus.circle.fill',
 };
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
-// property_item -> house.fill, metal -> cube.fill. Typed over the full
-// `HoldingType` union for the same exhaustiveness guarantee as the account
-// map above. The `jar` and `crypto_asset` HOLDING defaults are pure
-// render-time fallbacks (holdings persist a null icon until the user picks
-// one), so these changes update every un-customized holding with NO data
-// migration — unlike the crypto ACCOUNT default above.
+// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill.
+// Typed over the full `HoldingType` union for the same exhaustiveness
+// guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
+// defaults are pure render-time fallbacks (holdings persist a null icon
+// until the user picks one), so these changes update every un-customized
+// holding with NO data migration — unlike the crypto ACCOUNT default above.
+// `loan` shares its `debt` kind's icon, the same reuse `property_item`/
+// `metal` already follow for their own standalone kinds.
 export const holdingTypeSymbol: Record<HoldingType, string> = {
   card: 'creditcard',
   term_deposit: 'calendar',
@@ -47,6 +53,7 @@ export const holdingTypeSymbol: Record<HoldingType, string> = {
   crypto_asset: 'bitcoinsign.circle',
   property_item: 'house.fill',
   metal: 'cube.fill',
+  loan: 'minus.circle.fill',
 };
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty

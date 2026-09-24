@@ -28,14 +28,15 @@ describe('defaultAccountColor', () => {
     }
   });
 
-  it('assigns bank white, cash khaki, crypto yellow, property brown, metals gray', () => {
-    const { white, khaki, yellow, brown, gray } = entityColorsDark;
+  it('assigns bank white, cash khaki, crypto yellow, property brown, metals gray, debt red', () => {
+    const { white, khaki, yellow, brown, gray, red } = entityColorsDark;
 
     expect(defaultAccountColor.bank).toBe(white);
     expect(defaultAccountColor.cash).toBe(khaki);
     expect(defaultAccountColor.crypto).toBe(yellow);
     expect(defaultAccountColor.property).toBe(brown);
     expect(defaultAccountColor.metals).toBe(gray);
+    expect(defaultAccountColor.debt).toBe(red);
   });
 });
 
@@ -53,8 +54,8 @@ describe('defaultHoldingColor', () => {
     }
   });
 
-  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow, property_item brown, metal gray', () => {
-    const { white, blue, green, violet, khaki, yellow, brown, gray } = entityColorsDark;
+  it('assigns card white, term_deposit blue, bond green, jar violet, cash khaki, crypto_asset yellow, property_item brown, metal gray, loan red', () => {
+    const { white, blue, green, violet, khaki, yellow, brown, gray, red } = entityColorsDark;
 
     expect(defaultHoldingColor.card).toBe(white);
     expect(defaultHoldingColor.term_deposit).toBe(blue);
@@ -64,5 +65,6 @@ describe('defaultHoldingColor', () => {
     expect(defaultHoldingColor.crypto_asset).toBe(yellow);
     expect(defaultHoldingColor.property_item).toBe(brown);
     expect(defaultHoldingColor.metal).toBe(gray);
+    expect(defaultHoldingColor.loan).toBe(red);
   });
 });

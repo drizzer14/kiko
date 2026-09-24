@@ -263,7 +263,7 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Broker')).toBeNull();
   });
 
-  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals', async () => {
+  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals, Debt', async () => {
     const { getByTestId, getAllByTestId } = await renderForm();
 
     await fireEvent.press(getByTestId('account-kind-field'));
@@ -276,7 +276,7 @@ describe('AccountFormScreen', () => {
       (node.props.testID as string).replace('account-kind-option-', ''),
     );
 
-    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals']);
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt']);
   });
 
   it('shows a subtitle under every kind option in the sheet', async () => {

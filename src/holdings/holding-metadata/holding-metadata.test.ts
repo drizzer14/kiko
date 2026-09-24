@@ -1,15 +1,19 @@
 import type {
   BondMeta,
   CompoundingFrequency,
+  LoanMeta,
   MetalMeta,
   PropertyMeta,
   TermDepositMeta,
 } from './holding-metadata';
 import {
   asBondMeta,
+  asLoanMeta,
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
+  loanKinds,
+  loanSchedules,
   metalForms,
   metalUnits,
   preciousMetals,
@@ -328,5 +332,73 @@ describe('asMetalMeta', () => {
 
   it('returns null for null', () => {
     expect(asMetalMeta(null)).toBeNull();
+  });
+});
+
+describe('asLoanMeta', () => {
+  const valid = {
+    kind: 'mortgage' as const,
+    principalMinorUnits: 120_000_00,
+    startDate: 1_700_000_000_000,
+    annualRatePct: 12,
+    termMonths: 240,
+    schedule: 'annuity' as const,
+  };
+
+  it('returns the typed object for a valid shape', () => {
+    const result: LoanMeta | null = asLoanMeta(valid);
+    expect(result).toEqual(valid);
+  });
+
+  it('accepts every loan kind in the closed set', () => {
+    for (const kind of loanKinds) {
+      expect(asLoanMeta({ ...valid, kind })?.kind).toBe(kind);
+    }
+  });
+
+  it('accepts every schedule in the closed set', () => {
+    for (const schedule of loanSchedules) {
+      expect(asLoanMeta({ ...valid, schedule })?.schedule).toBe(schedule);
+    }
+  });
+
+  it('rejects an unknown kind', () => {
+    expect(asLoanMeta({ ...valid, kind: 'nonsense' })).toBeNull();
+  });
+
+  it('rejects an unknown schedule', () => {
+    expect(asLoanMeta({ ...valid, schedule: 'nonsense' })).toBeNull();
+  });
+
+  it('rejects a non-numeric principal or start date', () => {
+    expect(asLoanMeta({ ...valid, principalMinorUnits: 'abc' })).toBeNull();
+    expect(asLoanMeta({ ...valid, startDate: 'abc' })).toBeNull();
+  });
+
+  it('rejects a missing kind', () => {
+    const { kind, ...rest } = valid;
+    expect(asLoanMeta(rest)).toBeNull();
+  });
+
+  it('rejects a missing schedule', () => {
+    const { schedule, ...rest } = valid;
+    expect(asLoanMeta(rest)).toBeNull();
+  });
+
+  it('allows annualRatePct and termMonths to be omitted (an informal, none-schedule loan)', () => {
+    const { annualRatePct, termMonths, ...rest } = valid;
+    const informal = { ...rest, schedule: 'none' as const };
+    const result = asLoanMeta(informal);
+    expect(result?.annualRatePct).toBeUndefined();
+    expect(result?.termMonths).toBeUndefined();
+  });
+
+  it('rejects a non-numeric annualRatePct or termMonths when present', () => {
+    expect(asLoanMeta({ ...valid, annualRatePct: 'abc' })).toBeNull();
+    expect(asLoanMeta({ ...valid, termMonths: 'abc' })).toBeNull();
+  });
+
+  it('returns null for null', () => {
+    expect(asLoanMeta(null)).toBeNull();
   });
 });

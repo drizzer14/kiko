@@ -98,6 +98,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     crypto: t('forms.account.crypto'),
     property: t('forms.account.property'),
     metals: t('forms.account.metals'),
+    debt: t('forms.account.debt'),
   };
   // The one-line "which kind is this?" hint shown under each row in the
   // AccountKindField sheet (device-feedback: a bare label does not say what
@@ -107,6 +108,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     cash: t('forms.account.kindSubtitle.cash'),
     crypto: t('forms.account.kindSubtitle.crypto'),
     property: t('forms.account.kindSubtitle.property'),
+    debt: t('forms.account.kindSubtitle.debt'),
     metals: t('forms.account.kindSubtitle.metals'),
   };
 

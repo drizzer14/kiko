@@ -44,6 +44,11 @@ const holdingTypeLabel = (type: HoldingType, t: ReturnType<typeof useTranslation
     .with('jar', () => t('forms.holding.jar'))
     .with('property_item', () => t('forms.holding.propertyItem'))
     .with('metal', () => t('forms.holding.metal'))
+    // `loan` never actually reaches this bar chart — `buildTypeBreakdown`
+    // (T27) excludes it, since a loan's value is a NEGATIVE outstanding
+    // balance, not a positive breakdown slice. Handled here only to satisfy
+    // `match`'s exhaustiveness over the full `HoldingType` union.
+    .with('loan', () => t('forms.holding.loan'))
     .exhaustive();
 
 // One bar row: the type name and its converted amount above a bar whose width

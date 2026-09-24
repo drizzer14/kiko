@@ -792,6 +792,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     jar: t('forms.holding.jar'),
     property_item: t('forms.holding.propertyItem'),
     metal: t('forms.holding.metal'),
+    loan: t('forms.holding.loan'),
   };
   const bondKindLabels: Record<BondKind, string> = {
     government: t('forms.holding.government'),
@@ -1421,7 +1422,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       .with('bond', isBondValid)
       .with('property_item', isPropertyValid)
       .with('metal', isMetalValid)
-      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
+      // `loan` (T26) has no dedicated create-form section yet — that lands in
+      // T28 alongside its own validation (principal/schedule/rate/term),
+      // mirroring `property_item`'s own T13 -> T16 gap and `metal`'s T17 ->
+      // T20 one: a `debt` account and its sole `loan` type ARE already
+      // reachable through the account/holding Type pickers (same as those
+      // two were during their own gaps), so a loan can be created bare
+      // (name/currency/balance only) until then — grouped with the other
+      // no-extra-fields types purely to satisfy `match`'s exhaustiveness.
+      .with('card', 'cash', 'crypto_asset', 'jar', 'loan', () => true)
       .exhaustive();
 
   const [attemptedSave, setAttemptedSave] = useState(false);
