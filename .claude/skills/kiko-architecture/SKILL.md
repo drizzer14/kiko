@@ -689,8 +689,8 @@ change:
 ## Spending-exclusion pipeline
 
 See `kiko-domain`'s "Spending-exclusion pipeline" section for the
-transfer-exclusion/internal-transfers/exchange-exclusion module
-pointers — read it there rather than a duplicated list here.
+transfer-exclusion/internal-transfers/exchange-exclusion/loan-payments
+module pointers — read it there rather than a duplicated list here.
 
 ## Binance exchange sync — every wallet, three holdings (Spot / Funding / Earn)
 

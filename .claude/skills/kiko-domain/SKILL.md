@@ -388,6 +388,32 @@ the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+A linked loan payment (T29/T30, spec 5, D14 — "interest-only
+spending") is excluded the same way, but REPLACED rather than simply
+dropped: the loan-payments module (`src/statistics/loan-payments/`)
+exports `loanPaymentExcludedTxIds(transactions, loanHoldings)`, which
+drops a row from the pie/trend the same way every other exclusion
+rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
+(T29) points at a holding present in `loanHoldings` — Review Focus 7
+(`global-constraints.md`): a dangling link (its loan holding was
+deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
+the marker transactionally the moment that happens, T29) is NOT
+excluded, so it counts as ordinary spending under its own category,
+exactly like an unlinked row. The same module's
+`loanInterestEntries({ transactions, loanHoldings })` derives one
+synthetic entry per excluded row — id `loan-interest:<txId>`,
+category the seeded `loan_interest` key
+(`drizzle/migrations/0039_seed_loan_interest_category.sql`), amount
+the NEGATIVE interest portion only (never the principal) — mapping
+the payment to the installment whose due date is nearest to its own
+local day and capping at the payment's own amount
+(`loanInterestForPaymentMinor`, `src/holdings/loan-schedule/`, N10b).
+`statistics.screen.tsx` feeds these derived entries into BOTH
+`buildCategoryBreakdown` and the category trend, alongside every real
+row — not into the exclusion-RULE inputs themselves (a synthetic
+entry carries no mcc/description/IBAN signal, so it plays no part in
+detecting a transfer).
+
 ## Exchange/Convert legs: a structural marker, a resolved label
 
 An Exchange/Convert leg is NOT identified by its description. Both legs
@@ -812,23 +838,31 @@ decimal-string rule.
   clamps to 0 — an overpaid/over-corrected loan reads as paid off,
   never negative.
 - `loanInterestForPaymentMinor(meta, paymentTime, paymentAbsMinor)`
-  (open question N10b, binding default; D14's "interest-only spending"
-  — the derived-entry wiring itself is a later task): `none` always
-  counts 0 interest (an informal debt has no schedule to derive
-  interest from). Otherwise the payment maps to the installment whose
-  `dueDate` is NEAREST to the payment's own local day (not necessarily
-  the next unpaid one), and the interest counted is that installment's
+  (open question N10b, binding default; D14's "interest-only
+  spending" — the derived-entry wiring itself is the "Spending-
+  exclusion pipeline" section above): `none` always counts 0 interest
+  (an informal debt has no schedule to derive interest from).
+  Otherwise the payment maps to the installment whose `dueDate` is
+  NEAREST to the payment's own local day (not necessarily the next
+  unpaid one), and the interest counted is that installment's
   scheduled interest capped at `paymentAbsMinor` — a partial payment
-  can never count more interest than it actually paid.
+  can never count more interest than it actually paid. M2 (T26
+  review, fixed at T30): a payment MORE THAN ONE PERIOD outside the
+  schedule (before `addMonths(startDate, 0)`, after
+  `addMonths(startDate, installments.length + 1)`) counts 0 instead of
+  still mapping to the nearest boundary installment — both bounds are
+  inclusive, only a payment strictly beyond one counts 0.
 
 `holding-value.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
 accrues either AT VALUATION time) and the net-worth assets-minus-debt
 rule change landed at T27. The `loanHoldingId` link column + its repo
-functions landed at T29 (own subsection below). Not yet wired as of
-T29 (later tasks): interest-only spending (T30), the transaction-form
-field (T31), and the automatic payment-linking matcher itself (T32,
-spec 5.4) — read each task's own brief before assuming that works.
+functions landed at T29 (own subsection below). Interest-only
+spending (T30) landed as the "Spending-exclusion pipeline" section's
+loan-payments module, above. Not yet wired as of T30 (later tasks):
+the transaction-form field (T31) and the automatic payment-linking
+matcher itself (T32, spec 5.4) — read each task's own brief before
+assuming that works.
 
 ### Loan form + detail (T28)
 
