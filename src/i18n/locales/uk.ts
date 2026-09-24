@@ -371,10 +371,9 @@ export const uk: typeof en = {
       amountError: 'Сума має бути більшою за 0.',
       amountPlaceholder: '250,00',
       apply: 'Застосувати',
-      // Full-stop DECISION (F4): rewritten to the SAME two-sentence
-      // structure as en.ts — a question about the existing transactions,
-      // then a separate statement about future imports — rather than one
-      // combined question.
+      // The SAME two-sentence structure as en.ts — a question about the
+      // existing transactions, then a separate statement about future
+      // imports — rather than one combined question.
       applyCategoryMessage:
         'Застосувати категорію «{{category}}» до всіх транзакцій з назвою «{{name}}»? Це також стосуватиметься майбутніх імпортів.',
       applyCategoryToAll: 'Застосувати категорію до всіх',

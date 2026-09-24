@@ -6,12 +6,10 @@ export type DateFieldProps = {
   value: number | null;
   // Reports the picked day as a unix-millis timestamp (local midnight).
   onChange: (timestamp: number) => void;
-  // Shown in the field when `value` is null. Required — a caller that omits
-  // it used to fall back to repeating `label` as the unset-value text (the
-  // caption AND the unset value reading the same word), the same class of
-  // bug `ColumnSelectField`/`TargetHoldingField` hit independently. Every
-  // call site names its own "Select a …" copy instead, so tsc catches a
-  // missing one rather than a silent repeat.
+  // Shown in the field when `value` is null. Required — every call site
+  // names its own "Select a …" copy, so tsc catches a missing one rather
+  // than the field silently repeating `label` as its own unset-value text
+  // (the caption AND the unset value reading the same word).
   placeholder: string;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.

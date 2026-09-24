@@ -1,7 +1,6 @@
 // src/i18n/locales/en.final-stop-by-role.test.ts
 //
-// One final-"." rule per UI role (F4 full-stop DECISION, 2026-09-24 — the
-// binding measure + decision lives in
+// One final-"." rule per UI role (the binding measure + decision lives in
 // .superpowers/sdd/shares-property-metals-debts/fullstop-measure.md):
 //
 //   No final "." — titles, headings, sheet titles, buttons, chips/options,
@@ -22,10 +21,10 @@
 // re-derive the FULL per-key role classification the measure's own audit
 // did for every other role (option subtitles, toast/alert bodies have no
 // equally reliable name suffix to key off) — it mechanizes the roles a
-// pattern verifies WITHOUT the Title role's own blind spot (CASE fix round
-// 1/5: a pattern can't silently exempt something from a check it's never
-// applied to, only wrongly INCLUDE it — a wrongly-matched key fails LOUDLY
-// here, not pass silently).
+// pattern verifies WITHOUT the Title role's own blind spot: a pattern can't
+// silently exempt something from a check it's never applied to, only
+// wrongly INCLUDE it — a wrongly-matched key fails LOUDLY here, not pass
+// silently.
 import { en } from './en';
 import { uk } from './uk';
 import { TITLE_KEYS } from './title-keys';

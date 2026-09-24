@@ -157,11 +157,11 @@ The mechanized invariant lives in
 side, and checks every OTHER role with a reliable name/path/value
 convention: a leaf key whose OWN name ends `Error` always ends "." or
 "?" (`forms.holding.quantityError`, `columnMapping.dateColumnError`,
-...; no key ends `Error_<plural suffix>` — a plural key's own root
-never carries the `Error` suffix itself, only its interpolated body
-does, e.g. `skippedWrongCurrency_one`); `*Placeholder` and
-`*ErrorTitle` keys never end ".";  `*Message` and `*Hint` keys always
-end "." (`*Message` also allows "?"); a `kindSubtitle.*` path always
+...; no key is ever shaped `Error_<plural suffix>` — a plural key's own
+root, e.g. `skippedWrongCurrency`, never carries the `Error` suffix at
+all); `*Placeholder` and `*ErrorTitle` keys never end "."; `*Message`
+and `*Hint` keys always end "." (`*Message` also allows "?"); a
+`kindSubtitle.*` path always
 ends "."; and a value shaped like a plain `"Label: {{value}}"`
 fragment (no "." in the label part) never ends "." either, except the
 DECISION's one named exception (`accountDetail.unsupportedCurrencyCode`,

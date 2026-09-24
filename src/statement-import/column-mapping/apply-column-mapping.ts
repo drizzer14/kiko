@@ -186,13 +186,11 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
 
 // The account currency, resolved straight off the mapped currency COLUMN's
 // own cells across every data row — independent of whether that row's date
-// or amount also resolves. A `'column'` mapping used to learn its currency
-// only from a row that resolved END TO END, so a wrong date format failing
-// every row also blamed a currency column that was genuinely fine (it threw
-// "no known account currency" instead of reporting the real, per-row date
-// errors). Scanning the cells directly is the same resolution `resolveRow`
-// itself would reach for a fully-valid row, just decoupled from the other
-// fields' own success.
+// or amount also resolves, so an unrelated field (a wrong date format, say)
+// failing every row never blames a currency column that is genuinely fine.
+// Scanning the cells directly is the same resolution `resolveRow` itself
+// would reach for a fully-valid row, just decoupled from the other fields'
+// own success.
 const resolveAccountCurrency = (
   dataRows: TableCell[][],
   mapping: ColumnMapping,
