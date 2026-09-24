@@ -67,6 +67,7 @@ import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import { transactionSpan } from '../../transactions/transaction-span';
 import DateRangeField from '../home/date-range-field';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
 
 import BarChart from './bar-chart';
 import CategoryTrendLine from './category-trend-line';
@@ -460,6 +461,36 @@ const StatisticsScreen: FC = () => {
     [transactionsWithCurrency],
   );
 
+  // T30 (spec 5/D14 — "interest-only spending"): every LOAN holding
+  // currently in the ledger, read off the raw (unfiltered-by-account,
+  // unfiltered-by-`closedAt`) `holdings` query. A payment's linked loan can
+  // live under an account the user has filtered OUT of the other charts,
+  // and a closed/paid-off loan still EXISTS (only a DELETED one clears its
+  // links — Review Focus 7) — neither should change whether its payment's
+  // interest counts.
+  const loanHoldings = useMemo(
+    () => holdings.filter((holding) => holding.type === 'loan'),
+    [holdings],
+  );
+
+  // A linked loan payment never counts its PRINCIPAL as spending — only its
+  // INTEREST does (N10b). Every raw linked row (whose loan still exists) is
+  // dropped from the pie/trend by id below, alongside the other exclusion
+  // rules; `loanInterestRows` (below) replaces each one with its own
+  // derived "Loan interest" entry, fed into the SAME breakdown/trend
+  // builders. Computed over the FULL, unfiltered `transactionsWithCurrency`
+  // — same as every exclusion rule above — the range is applied only to the
+  // rows actually shown (see `rangeFilteredBreakdownTransactions` below).
+  const loanPaymentExcludedIds = useMemo(
+    () => loanPaymentExcludedTxIds(transactionsWithCurrency, loanHoldings),
+    [transactionsWithCurrency, loanHoldings],
+  );
+
+  const loanInterestRows = useMemo(
+    () => loanInterestEntries({ transactions: transactionsWithCurrency, loanHoldings }),
+    [transactionsWithCurrency, loanHoldings],
+  );
+
   const breakdownTransactions = useMemo<BreakdownTransaction[]>(
     () =>
       transactionsWithCurrency.map((transaction) => ({
@@ -482,10 +513,13 @@ const StatisticsScreen: FC = () => {
   // below), so the donut and its center total agree with the range field
   // rendered above them. The exclusion sets above are computed over the
   // FULL, unfiltered ledger (see `transactionsWithCurrency`'s comment); only
-  // the rows actually SHOWN are scoped to the range here.
+  // the rows actually SHOWN are scoped to the range here. `loanInterestRows`
+  // is range-filtered the SAME way as the real rows (T30) — each derived
+  // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
+  // must obey the same window that row would have.
   const rangeFilteredBreakdownTransactions = useMemo<BreakdownTransaction[]>(
-    () =>
-      transactionsWithCurrency
+    () => [
+      ...transactionsWithCurrency
         .filter((transaction) => transaction.time >= rangeFrom && transaction.time <= rangeTo)
         .map((transaction) => ({
           id: transaction.id,
@@ -498,17 +532,21 @@ const StatisticsScreen: FC = () => {
           changeGroupId: transaction.changeGroupId,
           currency: transaction.currency,
         })),
-    [transactionsWithCurrency, rangeFrom, rangeTo],
+      ...loanInterestRows.filter((entry) => entry.time >= rangeFrom && entry.time <= rangeTo),
+    ],
+    [transactionsWithCurrency, rangeFrom, rangeTo, loanInterestRows],
   );
 
   // The spending-trend builder needs everything the breakdown does PLUS each
   // row's `time`, so it can bucket the expense into the active
   // rangeFrom/rangeTo window the same way the net-worth line does. Built
   // separately from `breakdownTransactions` (which carries no time) so neither
-  // memo has to change shape for the other.
+  // memo has to change shape for the other. `loanInterestRows` (T30) is
+  // appended UNFILTERED, same as the real rows here — `buildCategoryTrend`/
+  // `buildCategoryMeasures` do their own range bucketing internally.
   const trendTransactions = useMemo<TrendTransaction[]>(
-    () =>
-      transactionsWithCurrency.map((transaction) => ({
+    () => [
+      ...transactionsWithCurrency.map((transaction) => ({
         id: transaction.id,
         category: transaction.category,
         amountMinorUnits: transaction.amountMinorUnits,
@@ -520,7 +558,9 @@ const StatisticsScreen: FC = () => {
         currency: transaction.currency,
         time: transaction.time,
       })),
-    [transactionsWithCurrency],
+      ...loanInterestRows,
+    ],
+    [transactionsWithCurrency, loanInterestRows],
   );
 
   // The user's OWN card IBANs, read from each holding's stored metadata. A 4829
@@ -564,8 +604,10 @@ const StatisticsScreen: FC = () => {
   );
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
-  // the exchange-marker rule, and the cheap secondary matched-pair matcher. A
-  // row is dropped from the spending pie if ANY rule catches it.
+  // the exchange-marker rule, the cheap secondary matched-pair matcher, and
+  // the linked-loan-payment rule (T30 — its own derived interest entry,
+  // `loanInterestRows` above, replaces the raw row this drops). A row is
+  // dropped from the spending pie if ANY rule catches it.
   const excludedTransactionIds = useMemo(
     () =>
       new Set([
@@ -573,8 +615,15 @@ const StatisticsScreen: FC = () => {
         ...mccExcludedIds,
         ...descriptionExcludedIds,
         ...exchangeExcludedIds,
+        ...loanPaymentExcludedIds,
       ]),
-    [internalTransferIds, mccExcludedIds, descriptionExcludedIds, exchangeExcludedIds],
+    [
+      internalTransferIds,
+      mccExcludedIds,
+      descriptionExcludedIds,
+      exchangeExcludedIds,
+      loanPaymentExcludedIds,
+    ],
   );
 
   // The active-range breakdown of every spending category (category-filter-

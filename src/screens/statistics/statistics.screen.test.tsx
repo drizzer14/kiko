@@ -104,6 +104,7 @@ type Transaction = {
   mcc?: number | null;
   counterIban?: string | null;
   exchangeCounterpartHoldingId?: string | null;
+  loanHoldingId?: string | null;
 };
 type CategoryRow = { key: string; title: string; icon: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -130,6 +131,7 @@ const setLiveData = (data: LiveData): void => {
     // `undefined` here would be a fixture artefact the device never produces.
     transactions: (data.transactions ?? []).map((row) => ({
       exchangeCounterpartHoldingId: null,
+      loanHoldingId: null,
       ...row,
     })),
     currency_rate_history: data.history ?? [],
@@ -1200,6 +1202,180 @@ describe('StatisticsScreen', () => {
     });
 
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
+  });
+
+  describe('Loan interest (T30, spec 5/D14)', () => {
+    // A single-installment (termMonths: 1) annuity loan whose one due date
+    // falls exactly on "now" (`addMonths(startDate, 1)` reconstructs today's
+    // Y/M/D from a start one calendar month earlier), so a payment a couple
+    // of days before "now" lands comfortably inside the schedule's window.
+    // 900,000.00 principal at 12% annual (1% monthly) gives 9,000.00 interest.
+    const startDate = (() => {
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - 1);
+      return date.getTime();
+    })();
+    const LOAN_META = {
+      kind: 'personal',
+      principalMinorUnits: 900_000_00,
+      startDate,
+      annualRatePct: 12,
+      termMonths: 1,
+      schedule: 'annuity',
+    };
+    const LOAN_HOLDING: Holding = {
+      id: 'loan1',
+      accountId: 'b',
+      currency: 'UAH',
+      type: 'loan',
+      balanceMinorUnits: 0,
+      metadata: LOAN_META,
+      closedAt: null,
+    };
+    const INFORMAL_LOAN_HOLDING: Holding = {
+      id: 'loan-informal',
+      accountId: 'b',
+      currency: 'UAH',
+      type: 'loan',
+      balanceMinorUnits: 0,
+      metadata: { kind: 'personal', principalMinorUnits: 50_000_00, startDate, schedule: 'none' },
+      closedAt: null,
+    };
+    const LOAN_CATEGORIES: CategoryRow[] = [
+      ...CATEGORIES,
+      { key: 'loan_interest', title: 'Loan interest', icon: 'percent' },
+    ];
+
+    it('a linked -12,000 payment with installment interest 9,000 shows 9,000 under Loan interest, nothing from the raw row', async () => {
+      const linkedPayment: Transaction = {
+        id: 'lp1',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan1',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [linkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-loan_interest')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-groceries')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('9,000.00 ₴')).toBeTruthy();
+    });
+
+    it('an informal (none-schedule) linked loan payment counts 0 interest — no slice at all', async () => {
+      const informalPayment: Transaction = {
+        id: 'lp2',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan-informal',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, INFORMAL_LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [informalPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-empty')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      expect(queryByTestId('category-pie-arc-groceries')).toBeNull();
+    });
+
+    it('an unlinked payment counts in full under its own category', async () => {
+      const unlinkedPayment: Transaction = {
+        id: 'lp3',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [unlinkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('12,000.00 ₴')).toBeTruthy();
+    });
+
+    it('Review Focus 7: a payment linked to a MISSING loan holding counts as normal spending', async () => {
+      const danglingPayment: Transaction = {
+        id: 'lp4',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'ghost-loan',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        // The loan holding this payment links to is absent entirely (deleted).
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [danglingPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+      expect(queryByTestId('category-pie-arc-loan_interest')).toBeNull();
+      const centerTotal = within(getByTestId('category-pie-center-total'));
+      expect(centerTotal.getByText('12,000.00 ₴')).toBeTruthy();
+    });
+
+    it('feeds the derived interest into the spending trend too', async () => {
+      const linkedPayment: Transaction = {
+        id: 'lp1',
+        holdingId: 'h1',
+        time: now - 2 * DAY,
+        amountMinorUnits: -12_000_00,
+        category: 'groceries',
+        loanHoldingId: 'loan1',
+      };
+
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING, LOAN_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: [linkedPayment],
+        history: HISTORY,
+        categories: LOAN_CATEGORIES,
+      });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-trend-line-line-loan_interest')).toBeTruthy();
+    });
   });
 });
 
