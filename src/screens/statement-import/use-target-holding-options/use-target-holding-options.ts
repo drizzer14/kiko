@@ -1,6 +1,6 @@
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 
 import { useLiveQuery } from '../../../db/use-live-query';
 import { accountsRepo } from '../../../accounts/accounts.repo';
