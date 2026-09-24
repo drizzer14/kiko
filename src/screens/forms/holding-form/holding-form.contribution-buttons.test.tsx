@@ -101,7 +101,8 @@ describe('HoldingFormScreen contribution button variants', () => {
   it('hands the Add contribution button the faint secondaryTonal treatment at the small size', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await fireEvent.press(screen.getByTestId('holding-type-field'));
+    await fireEvent.press(screen.getByTestId('holding-type-field-option-term_deposit'));
 
     const addEntries = mockButtonProps.filter((entry) => entry.children === 'Add contribution');
 
@@ -127,7 +128,8 @@ describe('HoldingFormScreen contribution button variants', () => {
   it('groups the Add contribution button with the contributions under a tighter gap', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await fireEvent.press(screen.getByTestId('holding-type-field'));
+    await fireEvent.press(screen.getByTestId('holding-type-field-option-term_deposit'));
 
     const group = screen.getByTestId('contributions-group');
 
@@ -143,7 +145,8 @@ describe('HoldingFormScreen contribution button variants', () => {
   it('hands each Remove contribution button the tinted destructiveTonal variant', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await fireEvent.press(screen.getByTestId('holding-type-field'));
+    await fireEvent.press(screen.getByTestId('holding-type-field-option-term_deposit'));
     // A second row makes the per-row Remove control appear on every row.
     await fireEvent.press(screen.getByText('Add contribution'));
 

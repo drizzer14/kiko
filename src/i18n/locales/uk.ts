@@ -344,6 +344,8 @@ export const uk: typeof en = {
       termMonthsPlaceholder: '12',
       terms: 'Умови',
       type: 'Тип',
+      typePlaceholder: 'Оберіть тип',
+      typeSheetTitle: 'Оберіть тип',
     },
     lot: {
       addTitle: 'Додати лот',

@@ -9,7 +9,6 @@ import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import ChipRow from '../../../design-system/components/chip-row';
 import DateField from '../date-field';
 import {
   creatableHoldingTypesForAccount,
@@ -43,6 +42,7 @@ import {
 } from '../scroll-to-field/scroll-to-field';
 import { Money } from '../../../currency/money';
 import type { Lot } from '../../../holdings/lots';
+import HoldingTypeField from '../holding-type-field';
 import type { HoldingRow } from '../../../db/schema';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
@@ -54,6 +54,7 @@ import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
+import ChipRow from '../../../design-system/components/chip-row';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
@@ -1034,10 +1035,10 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { accountId, holdingId, returnTo } = route.params;
   const { t } = useTranslation();
-  // Human display text for the id-like holding types, the bond kind, and the
-  // two frequency chip rows below; the chips still report the underlying
-  // value on select. Built from the catalog inside the component (rather than
-  // a module-level constant) so it always reflects the active language.
+  // Human display text for the id-like holding types (the select field
+  // below still reports the underlying value on select). Built from the
+  // catalog inside the component (rather than a module-level constant) so it
+  // always reflects the active language.
   const typeLabels: Record<HoldingType, string> = {
     card: t('forms.holding.card'),
     term_deposit: t('forms.holding.deposit'),
@@ -1956,26 +1957,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             bank create offers only term_deposit / bond. Edit mode uses the full
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
-        {/* F4 Q2 sweep (decision 14, review row U10-select): the review
-            asks whether this should move to a select sheet like
-            AccountKindField (up to 9 long type names in the disabled
-            edit-mode fallback — the same "too long for chips" reasoning
-            that moved PropertySection's category and LoanSection's kind
-            onto `SelectField`). Left as `ChipRow` this round: that is an
-            open review QUESTION, not a ruling (unlike audit item 9's
-            property/loan kind pickers), and 30+ existing tests on this
-            screen assert every type chip renders inline and pressable
-            without opening a sheet first — converting needs its own
-            dedicated test-rewrite pass. Flagged in the F4 part 2 report
-            for a coordinator call before converting. */}
-        <ChipRow
-          label={t('forms.holding.type')}
+        {/* A select sheet, mirroring AccountKindField — up to 9 long type
+            names (e.g. "Строковий депозит") run too wide for a chip row,
+            the same label-width reasoning that moved PropertySection's
+            category and LoanSection's kind onto `SelectField`. */}
+        <HoldingTypeField
           options={typeOptions}
           selected={type}
           onSelect={setType}
           labels={typeLabels}
           icons={holdingTypeSymbol}
           disabled={isEdit}
+          testID="holding-type-field"
         />
 
         {/* A metal holding's value is hard-fixed to UAH (NBU quotes precious

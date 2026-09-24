@@ -403,6 +403,14 @@ export const en = {
       termMonthsPlaceholder: '12',
       terms: 'Terms',
       type: 'Type',
+      // The holding-type SelectField's placeholder — unreachable today (a
+      // holding's type is always a concrete value, never `null`), kept for
+      // the SelectField contract's `selected: null` case, same as every
+      // other select field's placeholder.
+      typePlaceholder: 'Select a type',
+      // The holding-type SelectField's sheet header — Title Case, distinct
+      // from the sentence-case field label (`type` above).
+      typeSheetTitle: 'Select a Type',
     },
     lot: {
       addTitle: 'Add Lot',

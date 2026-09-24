@@ -13,6 +13,7 @@ import {
 } from '../../../test-support/navigation-props';
 import { dayKeyOf } from '../../../prices/price-book';
 import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import type { HoldingType } from '../../../holdings/holding-type';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -183,6 +184,20 @@ const fill = async (screen: Screen, label: string, value: string): Promise<void>
   await fireEvent.changeText(screen.getByLabelText(label), value);
 };
 
+// The holding-type field is now a select sheet (HoldingTypeField on
+// SelectField), not an inline ChipRow: a type press has to open the sheet
+// first, then press the option row — keyed on the underlying HoldingType
+// value (not the display label), since the trigger and a still-selected
+// row can show the SAME label text at once.
+const openHoldingTypeSheet = async (screen: Screen): Promise<void> => {
+  await fireEvent.press(screen.getByTestId('holding-type-field'));
+};
+
+const selectHoldingType = async (screen: Screen, type: HoldingType): Promise<void> => {
+  await openHoldingTypeSheet(screen);
+  await fireEvent.press(screen.getByTestId(`holding-type-field-option-${type}`));
+};
+
 // A local-midnight timestamp for the given calendar day, matching what the
 // DateField reports from a `react-native-calendars` day press (never UTC).
 const localDay = (year: number, month: number, day: number): number =>
@@ -211,7 +226,7 @@ const pickDate = async (
 // A bond CREATE defaults to ISIN mode (T25); every test here exercises the
 // classic Manual-mode fields, so it switches over first.
 const fillBondFields = async (screen: Screen): Promise<void> => {
-  await fireEvent.press(screen.getByText('Bond'));
+  await selectHoldingType(screen, 'bond');
   await fireEvent.press(screen.getByText('Manual'));
   await fill(screen, 'Name', 'My bond');
   await fill(screen, 'Quantity', '10');
@@ -222,7 +237,7 @@ const fillBondFields = async (screen: Screen): Promise<void> => {
 };
 
 const fillTermDepositFields = async (screen: Screen): Promise<void> => {
-  await fireEvent.press(screen.getByText('Deposit'));
+  await selectHoldingType(screen, 'term_deposit');
   await fill(screen, 'Name', 'My deposit');
   await fill(screen, 'Contribution 1 amount', '1000');
   await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -317,7 +332,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('separates the color picker and the details sub-heading with form dividers (bond)', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     // One divider after the color picker, one before "Details".
     expect(screen.getAllByTestId('form-divider')).toHaveLength(2);
@@ -326,7 +341,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('renders a visible text label above every term-deposit field', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
 
     // The repeatable contributions list starts with one row.
     expect(screen.getByLabelText('Contribution 1 amount')).toBeTruthy();
@@ -341,7 +356,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('renders a visible text label above every ISIN-mode bond field, defaulting to ISIN mode', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     // ISIN mode (the CREATE default, T25) shows quantity/purchase date —
     // always visible — plus the mode toggle and the ISIN field itself.
@@ -354,7 +369,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('renders a visible text label above every Manual-mode bond field', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
 
     for (const label of [
@@ -372,7 +387,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('saves a term_deposit with a single contribution in its metadata', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -394,7 +409,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('creates a deposit with two contributions', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -429,7 +444,7 @@ describe('HoldingFormScreen term deposit', () => {
     });
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     scrollToFieldMock.mockClear();
     await fireEvent.press(screen.getByText('Add contribution'));
 
@@ -453,7 +468,7 @@ describe('HoldingFormScreen term deposit', () => {
     });
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     scrollToFieldMock.mockClear();
     await fireEvent.press(screen.getByText('Add contribution'));
     // The SAME `lastContributionFieldRef` object is passed on every call — a
@@ -475,7 +490,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('blocks save and shows an inline error on a new contribution row left blank (round-4 device feedback item 10)', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -500,7 +515,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('blocks save on a new contribution row that has only an amount, no date (round-4 device feedback item 10)', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -522,7 +537,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('creates the deposit once the second row is filled in, clearing its inline error', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -553,7 +568,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('saves once the blank second row is removed instead of filled in', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -575,7 +590,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('does not save a deposit when no contribution row is valid', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Annual rate %', '12');
     await fill(screen, 'Term (months)', '12');
@@ -588,7 +603,7 @@ describe('HoldingFormScreen term deposit', () => {
   it('removes a contribution row via its remove control', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fireEvent.press(screen.getByText('Add contribution'));
 
     expect(screen.getByLabelText('Contribution 2 amount')).toBeTruthy();
@@ -700,7 +715,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
   it('defaults a bond create to ISIN mode', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(
       screen.getByTestId('bond-isin-mode-control-option-isin').props.accessibilityState.selected,
@@ -710,7 +725,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
   it('calls refreshBondRegisterIfStale once the bond section opens', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(refreshBondRegisterIfStale).toHaveBeenCalledTimes(1);
   });
@@ -719,7 +734,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     mockBondRegisterRows = [foundRegisterRow];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
@@ -749,7 +764,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     mockBondRegisterRows = [];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
 
     expect(screen.getByText('Not in the NBU register.')).toBeTruthy();
@@ -766,7 +781,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
   it('blocks save with a check-digit error for an invalid ISIN', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
     // A valid-shaped ISIN with a wrong check digit (T23 fixture).
@@ -781,7 +796,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
   it('renders the Diia hint in both ISIN and Manual mode', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(
       screen.getByText('Bought in Diia? Add the bond under the bank or broker you chose there.'),
@@ -819,7 +834,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     mockBondRegisterRows = [foundRegisterRow];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
@@ -841,7 +856,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     mockBondRegisterRows = [foundRegisterRow];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
 
@@ -877,7 +892,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     ];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
@@ -913,7 +928,7 @@ describe('HoldingFormScreen bond ISIN mode (T25)', () => {
     ];
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
@@ -950,7 +965,7 @@ describe('HoldingFormScreen section titles', () => {
   it('renders "Contributions" and "Terms" section titles in the term-deposit block', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
 
     expect(screen.getByText('Contributions')).toBeTruthy();
     expect(screen.getByText('Terms')).toBeTruthy();
@@ -959,7 +974,7 @@ describe('HoldingFormScreen section titles', () => {
   it('renders the "Details" section title in the bond block', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(screen.getByText('Details')).toBeTruthy();
   });
@@ -975,7 +990,7 @@ describe('HoldingFormScreen save validation', () => {
   it('keeps Save always enabled for a term deposit missing its contribution, rate, and term', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
 
     expect(screen.getByText('Save')).not.toBeDisabled();
@@ -984,7 +999,7 @@ describe('HoldingFormScreen save validation', () => {
   it('does not create and shows no reason before Save is pressed, for an incomplete term deposit', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
 
     expect(
@@ -996,7 +1011,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows an inline reason for a term deposit missing its contribution, rate, and term, only after Save is pressed', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1009,7 +1024,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the annual-rate error directly on that field, not only after unrelated fields below it', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -1023,7 +1038,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the term reason directly on that field, once the rate is set but the term is missing', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
@@ -1038,7 +1053,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the contributions-required reason inside the contributions group, anchored to the first row', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fireEvent.press(screen.getByText('Save'));
 
@@ -1052,7 +1067,7 @@ describe('HoldingFormScreen save validation', () => {
   it('clears the term-deposit reason once every field becomes valid, without a second Save press', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fireEvent.press(screen.getByText('Save'));
     expect(
@@ -1074,7 +1089,7 @@ describe('HoldingFormScreen save validation', () => {
   it('keeps Save always enabled for a bond missing its numeric fields and dates', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fill(screen, 'Name', 'My bond');
 
     expect(screen.getByText('Save')).not.toBeDisabled();
@@ -1083,7 +1098,7 @@ describe('HoldingFormScreen save validation', () => {
   it('does not create a bond whose maturity is not after its purchase date, and shows the reason directly under the maturity date field', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
@@ -1113,7 +1128,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the quantity reason directly on that field, for a bond missing its numeric fields', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fill(screen, 'Name', 'My bond');
 
     expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
@@ -1128,7 +1143,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the face-value reason directly on that field, once quantity is set but face value is missing', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
@@ -1142,7 +1157,7 @@ describe('HoldingFormScreen save validation', () => {
   it('shows the coupon reason directly on that field, once face value is set but the coupon is missing', async () => {
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
@@ -1192,7 +1207,7 @@ describe('HoldingFormScreen save validation', () => {
     scrollToFieldMock.mockClear();
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Deposit'));
+    await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
     await fireEvent.press(screen.getByText('Save'));
     const [, contributionsRef] = scrollToFieldMock.mock.calls[0];
@@ -1497,7 +1512,7 @@ describe('HoldingFormScreen metal', () => {
     // tests).
     await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'USD');
     await fireEvent.press(screen.getByTestId('currency-option-USD'));
-    await fireEvent.press(screen.getByText('Precious metal'));
+    await selectHoldingType(screen, 'metal');
     await fill(screen, 'Name', 'Gold bar');
     await fill(screen, 'Quantity', '1');
     await fill(screen, 'Total cost', '80000');
@@ -1511,7 +1526,7 @@ describe('HoldingFormScreen metal', () => {
     mockAccountBankId = 'privatbank';
     const screen = await renderScreen();
 
-    await fireEvent.press(screen.getByText('Precious metal'));
+    await selectHoldingType(screen, 'metal');
 
     expect(screen.getByText('Form')).toBeTruthy();
     expect(screen.getByText('Unit')).toBeTruthy();
@@ -2249,7 +2264,7 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
     // term_deposit default is calendar; switching to bond swaps the shown default
     // to the bond glyph (receipt), because the icon has not been manually picked
     // (not dirty).
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Icon receipt')).toBeTruthy();
   });
@@ -2265,29 +2280,30 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
 
     // Once picked, the icon is dirty: switching type no longer moves it off the
     // user's choice.
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
     expect(screen.queryByLabelText('Icon receipt')).toBeNull();
   });
 });
 
-describe('HoldingFormScreen type chips are constrained by the account kind', () => {
+describe('HoldingFormScreen type options are constrained by the account kind', () => {
   it('offers only the manually-creatable types (term_deposit, bond) on a SYNCED bank, excluding sync-only card and jar', async () => {
     mockAccountKind = 'bank';
     mockAccountInstitution = 'monobank';
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
     // Monobank owns card + jar (its sync creates them), so the manual create form
     // drops both; a synced bank create offers only term_deposit and bond. Cash
     // and crypto_asset are forbidden under a bank regardless.
-    expect(screen.getByText('Deposit')).toBeTruthy();
-    expect(screen.getByText('Bond')).toBeTruthy();
-    expect(screen.queryByText('Card')).toBeNull();
-    expect(screen.queryByText('Jar')).toBeNull();
-    expect(screen.queryByText('Cash')).toBeNull();
-    expect(screen.queryByText('Crypto asset')).toBeNull();
+    expect(screen.getByTestId('holding-type-field-option-term_deposit')).toBeTruthy();
+    expect(screen.getByTestId('holding-type-field-option-bond')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field-option-card')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-jar')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-cash')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-crypto_asset')).toBeNull();
   });
 
   it('offers Card on a NON-synced (statement-import-only) bank — no sync owns it there — while still excluding Jar', async () => {
@@ -2295,26 +2311,28 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     mockAccountInstitution = null;
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
     // No Monobank connection means no sync creates a card for this account, so
     // the user must be able to create one manually. Jar stays sync-only always
     // (a Monobank-API-specific concept with no import equivalent).
-    expect(screen.getByText('Card')).toBeTruthy();
-    expect(screen.getByText('Deposit')).toBeTruthy();
-    expect(screen.getByText('Bond')).toBeTruthy();
-    expect(screen.queryByText('Jar')).toBeNull();
-    expect(screen.queryByText('Cash')).toBeNull();
-    expect(screen.queryByText('Crypto asset')).toBeNull();
+    expect(screen.getByTestId('holding-type-field-option-card')).toBeTruthy();
+    expect(screen.getByTestId('holding-type-field-option-term_deposit')).toBeTruthy();
+    expect(screen.getByTestId('holding-type-field-option-bond')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field-option-jar')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-cash')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-crypto_asset')).toBeNull();
   });
 
   it('offers only the crypto_asset holding type on a crypto account', async () => {
     mockAccountKind = 'crypto';
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
-    expect(screen.getByText('Crypto asset')).toBeTruthy();
-    expect(screen.queryByText('Card')).toBeNull();
-    expect(screen.queryByText('Deposit')).toBeNull();
+    expect(screen.getByTestId('holding-type-field-option-crypto_asset')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field-option-card')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-term_deposit')).toBeNull();
   });
 
   it('snaps an out-of-range default type into the account kind allowed set', async () => {
@@ -2333,10 +2351,11 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     mockAccountInstitution = null;
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
-    expect(screen.getByText('Precious metal')).toBeTruthy();
-    expect(screen.queryByText('Card')).toBeNull();
-    expect(screen.queryByText('Deposit')).toBeNull();
+    expect(screen.getByTestId('holding-type-field-option-metal')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field-option-card')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-term_deposit')).toBeNull();
   });
 
   it('drops metal from a bank account with no bankId (T17 allow-list)', async () => {
@@ -2345,8 +2364,9 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     mockAccountBankId = null;
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
-    expect(screen.queryByText('Precious metal')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-metal')).toBeNull();
   });
 
   it('drops metal from a bank account whose bankId is not allow-listed (monobank)', async () => {
@@ -2355,8 +2375,9 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     mockAccountBankId = 'monobank';
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
-    expect(screen.queryByText('Precious metal')).toBeNull();
+    expect(screen.queryByTestId('holding-type-field-option-metal')).toBeNull();
   });
 
   it('offers metal on a bank account whose bankId is allow-listed (privatbank)', async () => {
@@ -2365,8 +2386,9 @@ describe('HoldingFormScreen type chips are constrained by the account kind', () 
     mockAccountBankId = 'privatbank';
 
     const screen = await renderScreen();
+    await openHoldingTypeSheet(screen);
 
-    expect(screen.getByText('Precious metal')).toBeTruthy();
+    expect(screen.getByTestId('holding-type-field-option-metal')).toBeTruthy();
   });
 });
 
@@ -2387,7 +2409,7 @@ describe('HoldingFormScreen color follows type until dirty', () => {
 
     // term_deposit default is blue; switching to bond swaps the selected default
     // swatch to green, because the color has not been manually picked (not dirty).
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Color green').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('Color blue').props.accessibilityState.selected).toBe(false);
@@ -2402,7 +2424,7 @@ describe('HoldingFormScreen color follows type until dirty', () => {
 
     // Once picked, the color is dirty: switching type no longer moves it off the
     // user's choice onto the bond default (green).
-    await fireEvent.press(screen.getByText('Bond'));
+    await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('Color green').props.accessibilityState.selected).toBe(false);
@@ -2538,12 +2560,14 @@ describe('HoldingFormScreen edit mode', () => {
   });
 
   it('shows type and currency read-only (disabled) so neither can change', async () => {
-    const { getByText, getByTestId, queryByTestId } = await renderEdit(cardHolding);
+    const { getByTestId, queryByTestId } = await renderEdit(cardHolding);
 
     // A synced card's type is dropped from the CREATE options, but edit mode uses
-    // the full set — so the Card chip still renders (read-only) rather than
+    // the full set — so the type field still shows Card (read-only) rather than
     // crashing on a type that is no longer manually creatable.
-    expect(getByText('Card').parent?.props.accessibilityState.disabled).toBe(true);
+    expect(getByTestId('holding-type-field').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(getByTestId('holding-type-field'));
+    expect(queryByTestId('holding-type-field-option-bond')).toBeNull();
     // The currency field is disabled in edit mode: its trigger reports the
     // disabled state and pressing it opens no sheet, so the currency is fixed.
     expect(getByTestId('holding-currency-field').props.accessibilityState.disabled).toBe(true);
@@ -2552,7 +2576,7 @@ describe('HoldingFormScreen edit mode', () => {
   });
 
   it('renders an existing synced jar holding read-only, though jar is not manually creatable', async () => {
-    const { getByText } = await renderEdit({
+    const { getByTestId } = await renderEdit({
       id: 'h-9',
       name: 'Coffee jar',
       type: 'jar',
@@ -2563,8 +2587,9 @@ describe('HoldingFormScreen edit mode', () => {
     });
 
     // Same as the card case: jar is sync-only (excluded from create), but edit
-    // mode's full set still shows the Jar chip read-only rather than crashing.
-    expect(getByText('Jar').parent?.props.accessibilityState.disabled).toBe(true);
+    // mode's full set still shows the type field (Jar), read-only, rather than
+    // crashing.
+    expect(getByTestId('holding-type-field').props.accessibilityState.disabled).toBe(true);
   });
 
   it('saves a simple type through update with the edited name, color, and balance', async () => {
@@ -2751,8 +2776,9 @@ describe('HoldingFormScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByText } = await renderScreen();
-    await fireEvent.press(getByText('Облігація'));
+    const { getByText, getByTestId } = await renderScreen();
+    await fireEvent.press(getByTestId('holding-type-field'));
+    await fireEvent.press(getByTestId('holding-type-field-option-bond'));
     await fireEvent.press(getByText('Вручну'));
 
     expect(getByText('Деталі облігації')).toBeTruthy();

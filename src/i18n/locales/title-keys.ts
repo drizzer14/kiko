@@ -39,6 +39,7 @@ export const TITLE_KEYS = new Set([
   'forms.holding.couponFrequencySheetTitle',
   'forms.holding.editTitle',
   'forms.holding.loanKindSheetTitle',
+  'forms.holding.typeSheetTitle',
   'forms.lot.addTitle',
   'forms.pricePoint.loanTitle',
   'forms.pricePoint.title',
