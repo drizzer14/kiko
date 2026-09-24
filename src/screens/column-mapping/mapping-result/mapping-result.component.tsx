@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
+import FieldError from '../../../design-system/components/field-error';
 import SummaryTable from '../../../design-system/components/summary-table';
 import ExampleTransaction from '../../statement-import/example-transaction';
 
@@ -51,9 +52,7 @@ const MappingResult: FC<MappingResultProps> = ({
       )}
 
       {!hasResolvedTransactions && noRowsResolvedError !== undefined && (
-        <Text variant="body" tone="negative">
-          {noRowsResolvedError}
-        </Text>
+        <FieldError message={noRowsResolvedError} />
       )}
 
       {stats !== undefined && (
