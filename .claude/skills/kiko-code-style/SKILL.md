@@ -428,9 +428,9 @@ mechanizes the exact rule below: fast-tier per-file on every
 `Edit`/`Write`/`MultiEdit`, and project-wide via
 `npm run check:import-order` (part of `check:all`). See the
 kiko-linter skill's "Import length-sort — a hand-rolled checker (and
-fixer)" section for the scanner's design, its jest.mock-adjacent
-"file-header comment" pinning rule, and the `--write` auto-fix mode
-used for the repo-wide sweep.
+fixer)" section for the scanner's design, its "file-header comment"
+pinning rule, and the `--write` auto-fix mode used for the repo-wide
+sweep.
 
 The convention (handwritten, Prettier-only exemplar:
 `~/Developer/Projects/ovpn-ui`):
@@ -470,14 +470,15 @@ Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
 the type/value distinction to be explicit.
 
-**Whole-repo import re-sort — DONE (R1.c, 2026-09-25).** Two separate
-`kiko:reviewer` passes had flagged pre-existing length-sort violations
-under `src/screens/` that predated this rule being written down (this
-was previously a "recommended, not yet done" note). The mechanized
-checker's `--write` mode fixed 205 files in one pass; the 7 files it
-declined to touch (a comment glued to a non-first import — see the
-kiko-linter skill) were re-sorted by hand. `npm run check:import-order`
-now reports zero violations across `src/`, and (being fast-tier
+**Whole-repo import re-sort — DONE.** Two separate `kiko:reviewer`
+passes had flagged pre-existing length-sort violations under
+`src/screens/` that predated this rule being written down (this was
+previously a "recommended, not yet done" note). The mechanized
+checker's `--write` mode fixed 203 of the 210 violating files in one
+pass; the other 7 it declined to touch (a comment glued to a
+non-first import — see the kiko-linter skill) were re-sorted by hand.
+`npm run check:import-order` now reports zero violations across
+`src/`, `__tests__/`, `e2e/`, and `App.tsx`, and (being fast-tier
 per-file) catches new drift immediately rather than waiting for a
 reviewer to notice it.
 
