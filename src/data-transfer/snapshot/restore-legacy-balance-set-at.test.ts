@@ -12,10 +12,10 @@
 // an entirely OLDER statement as history" test proves for a holding whose
 // `balanceSetAt` was already live in the database, not recovered from a
 // legacy restore.
-let mockTx: unknown;
+let mockTransaction: unknown;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
-  return { ...actual, write: (work: (db: unknown) => unknown) => work(mockTx) };
+  return { ...actual, write: (work: (db: unknown) => unknown) => work(mockTransaction) };
 });
 
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -36,10 +36,10 @@ type Row = Record<string, unknown>;
  * drive a restore first. Single holding, so table identity alone (no
  * `.where()` clause interpretation) is enough to route each call, mirroring
  * `transactions.repo.test.ts`'s and `import-statement.test.ts`'s own fakes. */
-const makeRestoreThenImportTx = (store: {
+const makeRestoreThenImportTransaction = (store: {
   holdings: Row[];
   transactions: Row[];
-}): { tx: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
+}): { transaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
   let sequence = 0;
   const nextId = (): string => `row-${++sequence}`;
   const captured: { holdingSet?: Record<string, unknown> } = {};
@@ -73,7 +73,7 @@ const makeRestoreThenImportTx = (store: {
     return store.transactions.map((row) => ({ source: row.source, externalId: row.externalId }));
   };
 
-  const tx = {
+  const transaction = {
     delete: () => Promise.resolve(),
     select: (fields?: Record<string, unknown>) => ({
       from: (table: unknown) => ({
@@ -107,7 +107,7 @@ const makeRestoreThenImportTx = (store: {
     }),
   };
 
-  return { tx, captured };
+  return { transaction, captured };
 };
 
 const emptySnapshot: DataSnapshot = {
@@ -127,8 +127,8 @@ const emptySnapshot: DataSnapshot = {
 describe('restoring a build-25-shaped snapshot, then importing an older statement', () => {
   it('backfills the hand-set boundary on restore, then treats an OLDER import as history (0 balance move)', async () => {
     const store: { holdings: Row[]; transactions: Row[] } = { holdings: [], transactions: [] };
-    const { tx } = makeRestoreThenImportTx(store);
-    mockTx = tx;
+    const { transaction } = makeRestoreThenImportTransaction(store);
+    mockTransaction = transaction;
 
     const handSetAt = Date.UTC(2025, 0, 1); // the pre-migration hand-set instant
     const legacyHolding = {
@@ -176,8 +176,8 @@ describe('restoring a build-25-shaped snapshot, then importing an older statemen
     // have backfilled on-device.
     expect(store.holdings[0].balanceSetAt).toBe(handSetAt);
 
-    const { tx: importTx, captured } = makeRestoreThenImportTx(store);
-    mockTx = importTx;
+    const { transaction: importTransaction, captured } = makeRestoreThenImportTransaction(store);
+    mockTransaction = importTransaction;
 
     const imported = await transactionsRepo.importRows({
       holdingId: 'hold-1',

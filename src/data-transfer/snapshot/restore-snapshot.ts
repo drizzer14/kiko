@@ -142,19 +142,19 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
  * never actually had, undoing migration 0036's own backfill for that user.
  */
 export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
-  write(async (tx) => {
+  write(async (transaction) => {
     const deleteAllTables = async (): Promise<void> => {
-      await tx.delete(transactions);
-      await tx.delete(syncState);
-      await tx.delete(holdings);
-      await tx.delete(accounts);
-      await tx.delete(categoryOverrides);
-      await tx.delete(categories);
-      await tx.delete(currencyRateHistory);
-      await tx.delete(currencyRates);
-      await tx.delete(settings);
-      await tx.delete(pricePoints);
-      await tx.delete(bondRegister);
+      await transaction.delete(transactions);
+      await transaction.delete(syncState);
+      await transaction.delete(holdings);
+      await transaction.delete(accounts);
+      await transaction.delete(categoryOverrides);
+      await transaction.delete(categories);
+      await transaction.delete(currencyRateHistory);
+      await transaction.delete(currencyRates);
+      await transaction.delete(settings);
+      await transaction.delete(pricePoints);
+      await transaction.delete(bondRegister);
     };
 
     // Split into four sequential groups (rather than one 10-loop function) to
@@ -162,46 +162,46 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     // insert order is unchanged because the groups themselves run in order.
     const insertAccountsHoldingsCategories = async (): Promise<void> => {
       for (const part of chunkForTable(accounts, snapshot.accounts)) {
-        await tx.insert(accounts).values(part);
+        await transaction.insert(accounts).values(part);
       }
       const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
       const holdingsToInsert = snapshot.holdings.map((holding) =>
         withLegacyBalanceSetAtBackfilled(holding, boundaries),
       );
       for (const part of chunkForTable(holdings, holdingsToInsert)) {
-        await tx.insert(holdings).values(part);
+        await transaction.insert(holdings).values(part);
       }
       for (const part of chunkForTable(categories, withLoanInterestReseeded(snapshot.categories))) {
-        await tx.insert(categories).values(part);
+        await transaction.insert(categories).values(part);
       }
     };
 
     const insertOverridesTransactionsSyncState = async (): Promise<void> => {
       for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
-        await tx.insert(categoryOverrides).values(part);
+        await transaction.insert(categoryOverrides).values(part);
       }
       for (const part of chunkForTable(transactions, snapshot.transactions)) {
-        await tx.insert(transactions).values(part);
+        await transaction.insert(transactions).values(part);
       }
       for (const part of chunkForTable(syncState, snapshot.syncState)) {
-        await tx.insert(syncState).values(part);
+        await transaction.insert(syncState).values(part);
       }
     };
 
     const insertRatesAndSettings = async (): Promise<void> => {
       for (const part of chunkForTable(currencyRates, snapshot.currencyRates)) {
-        await tx.insert(currencyRates).values(part);
+        await transaction.insert(currencyRates).values(part);
       }
       for (const part of chunkForTable(currencyRateHistory, snapshot.currencyRateHistory)) {
-        await tx.insert(currencyRateHistory).values(part);
+        await transaction.insert(currencyRateHistory).values(part);
       }
       for (const part of chunkForTable(settings, snapshot.settings)) {
-        await tx.insert(settings).values(part);
+        await transaction.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — a pre-T11 export carries no
       // `pricePoints` key at all.
       for (const part of chunkForTable(pricePoints, snapshot.pricePoints ?? [])) {
-        await tx.insert(pricePoints).values(part);
+        await transaction.insert(pricePoints).values(part);
       }
     };
 
@@ -210,7 +210,7 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     // reason a pre-T11 export carries no `pricePoints` key.
     const insertBondRegister = async (): Promise<void> => {
       for (const part of chunkForTable(bondRegister, snapshot.bondRegister ?? [])) {
-        await tx.insert(bondRegister).values(part);
+        await transaction.insert(bondRegister).values(part);
       }
     };
 
