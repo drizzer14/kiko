@@ -36,7 +36,7 @@ jest.mock('../../db/encrypted-database', () => ({
 // transaction handle and count invocations, so a test can prove every chunk
 // of a large batch runs inside the SAME transaction — the same pattern
 // `rateHistoryRepo`'s own chunking test uses (`rate-history.repo.test.ts`).
-let mockTx: unknown;
+let mockTransaction: unknown;
 let writeCalls = 0;
 jest.mock('../../db/client', () => {
   const actual = jest.requireActual('../../db/client');
@@ -44,7 +44,7 @@ jest.mock('../../db/client', () => {
     ...actual,
     write: (work: (db: unknown) => unknown) => {
       writeCalls += 1;
-      return work(mockTx);
+      return work(mockTransaction);
     },
   };
 });
@@ -73,7 +73,7 @@ type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fet
 // A fake `insert(...).values(...).onConflictDoUpdate(...)` chain backed by a
 // plain array, recording each `.values(...)` call's row count so a test can
 // assert every executed statement stays under the bound-parameter ceiling.
-const makeUpsertTx = (store: NewRate[], chunkSizes: number[]): unknown => ({
+const makeUpsertTransaction = (store: NewRate[], chunkSizes: number[]): unknown => ({
   insert: () => ({
     values: (rows: NewRate[]) => {
       if (rows.length * PARAMS_PER_ROW > SQLITE_MAX_VARIABLE_NUMBER) {
@@ -144,7 +144,7 @@ describe('ratesRepo', () => {
     it('chunks a full-sync batch under the SQLite bound-parameter limit, in one transaction', async () => {
       const store: NewRate[] = [];
       const chunkSizes: number[] = [];
-      mockTx = makeUpsertTx(store, chunkSizes);
+      mockTransaction = makeUpsertTransaction(store, chunkSizes);
 
       const rates = buildRates();
       expect(rates).toHaveLength(11_990);
@@ -167,7 +167,7 @@ describe('ratesRepo', () => {
     it('issues no insert for an empty batch', async () => {
       const store: NewRate[] = [];
       const chunkSizes: number[] = [];
-      mockTx = makeUpsertTx(store, chunkSizes);
+      mockTransaction = makeUpsertTransaction(store, chunkSizes);
 
       await ratesRepo.upsertMany([]);
 

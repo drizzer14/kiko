@@ -18,12 +18,12 @@ export const rateHistoryRepo = {
   /** Reactive select of the whole rate-history table — hand straight to `useLiveQuery`. */
   historyRowsQuery: () => database.select().from(currencyRateHistory),
   upsertMany: (rows: NewHistoryRow[]) =>
-    write(async (tx) => {
+    write(async (transaction) => {
       // Chunk so a large first backfill never exceeds SQLite's bound-variable
       // limit. Upsert on the (base, quote, day) unique index: a re-fetched rate
       // for an existing pair-day overwrites its value and source in place.
       for (let start = 0; start < rows.length; start += UPSERT_CHUNK_SIZE) {
-        await tx
+        await transaction
           .insert(currencyRateHistory)
           .values(rows.slice(start, start + UPSERT_CHUNK_SIZE))
           .onConflictDoUpdate({

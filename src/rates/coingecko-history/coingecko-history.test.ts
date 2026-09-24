@@ -75,9 +75,9 @@ describe('fetchCryptoHistory', () => {
       }),
     );
 
-    expect(result.some((e) => e.base === 'BTC')).toBe(true);
-    expect(result.some((e) => e.base === 'USDT')).toBe(true);
-    expect(result.some((e) => e.base === 'ETH')).toBe(false);
+    expect(result.some((entry) => entry.base === 'BTC')).toBe(true);
+    expect(result.some((entry) => entry.base === 'USDT')).toBe(true);
+    expect(result.some((entry) => entry.base === 'ETH')).toBe(false);
   });
 
   it('throws only when every coin request fails', async () => {
