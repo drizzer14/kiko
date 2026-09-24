@@ -12,6 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import Box from '../../design-system/components/box';
 import Card from '../../design-system/components/card';
+import Divider from '../../design-system/components/divider';
 import { useLiveQuery } from '../../db/use-live-query';
 import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
@@ -92,6 +93,24 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
     return byAccount;
   }, [holdings]);
+
+  // M2 (T27 round 1 ruling): the Debts section shows a SECTION total
+  // (negative), not just each card's own balance (spec §5.3 — "a 'Debts'
+  // section with totals shown as negative"). Every debt-kind account holds
+  // only `loan` holdings (`holdingTypesForAccountKind`), so summing them all
+  // through `guardedNetWorth` gives the same negative total the section's
+  // cards already individually show, added together.
+  const debtsTotal = useMemo(
+    () =>
+      guardedNetWorth(
+        debtAccounts.flatMap((account) => holdingsByAccount.get(account.id) ?? []),
+        baseCurrency,
+        rateTable,
+        now,
+        priceBook,
+      ),
+    [debtAccounts, holdingsByAccount, baseCurrency, rateTable, now, priceBook],
+  );
 
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
@@ -228,9 +247,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // the user actually has a debt account (data-driven, not a
               // build flag — Guideline 5.6).
               <>
-                {mainAccounts.length > 0 && <Box style={styles.divider} />}
+                {mainAccounts.length > 0 && <Divider spacing={2} />}
                 <Box gap={3}>
-                  <Text variant="heading">{t('accounts.debtsSection')}</Text>
+                  <Box direction="row" style={styles.debtsHeadingRow}>
+                    <Text variant="heading">{t('accounts.debtsSection')}</Text>
+                    <Box testID="accounts-debts-total">
+                      <MoneyText money={debtsTotal} context="balance" />
+                    </Box>
+                  </Box>
                   <Box testID="accounts-debts-grid">
                     <Sortable.Grid
                       data={debtAccounts}

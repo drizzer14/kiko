@@ -1,13 +1,12 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create((theme) => ({
-  // T27: separates the main accounts grid from the "Debts" section below it,
-  // matching the hairline divider account-detail.styles.ts uses between its
-  // own sections.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: theme.spacing(2),
-    backgroundColor: theme.colors.border,
+export const styles = StyleSheet.create(() => ({
+  // T27 round 1 (M2): the Debts section heading row — the "Debts" label on
+  // the left, the section total on the right, same space-between shape the
+  // account card's own `row` style below uses.
+  debtsHeadingRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   // The screen's content column: fills the available space below the header.
   content: {

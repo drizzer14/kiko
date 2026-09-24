@@ -481,11 +481,29 @@ describe('AccountsScreen', () => {
         holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }, loanHolding()],
       });
 
-      const { getByText } = await renderAccounts();
+      const { getByText, getAllByText } = await renderAccounts();
 
       expect(getByText('Debts')).toBeTruthy();
       expect(getByText('Mortgage')).toBeTruthy();
-      expect(getByText(/-5,000\.00 ₴/)).toBeTruthy();
+      // The card's own negative balance AND the section total (M2, one debt
+      // account -> the same figure) both read -5,000.00 ₴.
+      expect(getAllByText(/-5,000\.00 ₴/).length).toBe(2);
+    });
+
+    // M2 (T27 round 1 ruling): the Debts section shows a SECTION total
+    // (negative), not only each card's own negative balance — the spec's
+    // "a 'Debts' section with totals shown as negative" (§5.3).
+    it('shows a Debts section total next to the heading, summing every debt account', async () => {
+      setLiveData({
+        accounts: [debtAccount(), debtAccount({ id: 'e', name: 'Car loan' })],
+        holdings: [loanHolding(), loanHolding({ accountId: 'e' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+
+      // Two loans, each -5,000.00 UAH (full principal, no installment due
+      // yet) -> section total -10,000.00 UAH.
+      expect(within(getByTestId('accounts-debts-total')).getByText(/-10,000\.00 ₴/)).toBeTruthy();
     });
 
     it('keeps the debt account out of the main grid, in its own section grid', async () => {
