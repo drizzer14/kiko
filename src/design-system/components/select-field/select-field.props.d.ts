@@ -32,5 +32,4 @@ export type SelectFieldProps<Option extends string> = {
   // field (reflow, not reserve) and tints the label negative.
   error?: string;
   testID?: string;
-  sheetTestID?: string;
 };

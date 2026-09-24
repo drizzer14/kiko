@@ -664,39 +664,29 @@ new component can land between reviews of this skill:
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
-  shared chips component (F4 codebase-review decision 24): this used to
-  be two near-duplicate selectable-pill-row components — the original
-  `ChipRow` (`src/screens/forms/chip-row/`, a compact wrap-flow row for
-  a short code/label, e.g. the account-kind/holding-type/currency
-  chips) and a separate `design-system/components/option-pills`
-  (equal-width column grid pills — `LanguageSwitch`, the Statistics
-  trend-filter sheet's amount/measure rows) — merged into this one, in
-  the original `ChipRow`'s compact look (`OptionPills`'s equal-width
-  `columns` grid did NOT carry over; every migrated consumer now wraps
-  like every other `ChipRow`, a deliberate visual change). Read the
-  folder directly for the current props; the load-bearing ones beyond
+  shared chips component: a compact wrap-flow row for a short
+  code/label chip, never an equal-width column grid. Read the folder
+  directly for the current props; the load-bearing ones beyond
   `options`/`selected`/`onSelect`: `Option` is `string | number` (the
   trend-filter amount pills are `1 | 2 | 3 | 4 | 5`); `selected` accepts
   `undefined` for a PICK LIST with no single-select toggle semantics —
   `DescriptionSuggestions` passes `undefined` so no chip ever renders
   highlighted, rather than faking it with a value (`''`) that matches
-  nothing; `labels`/`icons` are optional maps (id-like value -> display
-  text / SF Symbol name); `labelVariant` (default `'body'`) drops the
-  chip label a type step for a value sitting under its own larger
-  section label (the trend-filter sheet's amount/measure rows pass
-  `'caption'`); at every step, the chip also holds a real 44pt tap
-  target — `minHeight: 44` at the default `'body'` step, a compact
-  visible size restored to 44pt via `hitSlop` at `'caption'` (mirroring
-  `Button`'s `small` size). A selected chip's icon size follows the same
-  `labelVariant` step through `theme.iconSizes`, never a hardcoded
-  literal. See `kiko-statement-import`'s column-mapping section for the
-  fullest worked comparison against `SegmentedControl` below. Because a
+  nothing; `labels` is an optional value -> display-text map;
+  `labelVariant` (default `'body'`) drops the chip label a type step
+  for a value sitting under its own larger section label (the
+  trend-filter sheet's amount/measure rows pass `'caption'`); at every
+  step, the chip also holds a real 44pt tap target — `minHeight: 44` at
+  the default `'body'` step, a compact visible size restored to 44pt
+  via `hitSlop` at `'caption'` (mirroring `Button`'s `small` size). See
+  `kiko-statement-import`'s column-mapping section for the fullest
+  worked comparison against `SegmentedControl` below. Because a
   design-system component may never import from `src/screens/**`
-  (`kiko-no-import-screens-outside-ui`), `ChipRow` had to live in
-  `design-system/components/` the moment a design-system component
-  (`LanguageSwitch`) needed to render one — the SAME reason `FieldTrigger`
-  moved out of `screens/forms/` earlier; a screen-level consumer imports
-  it from there like any other design-system component.
+  (`kiko-no-import-screens-outside-ui`), `ChipRow` lives in
+  `design-system/components/` since a design-system component
+  (`LanguageSwitch`) renders one — the SAME reason `FieldTrigger` lives
+  there too; a screen-level consumer imports it from there like any
+  other design-system component.
 - **SegmentedControl** (`src/design-system/components/segmented-control/`)
   — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
   Interface Guidelines
@@ -766,18 +756,17 @@ new component can land between reviews of this skill:
   "Tabs (SegmentedControl) are used when the selection changes the
   appearance, for example it shows different form fields (like import
   mapping's currency field). Otherwise use chips (a value selection
-  that leaves the form the same)." A long option list (more than a
-  handful — the loan-kind picker's 4 long kind names, e.g. "Погашення
-  за іншого", already ran too wide for a comfortable chip row) still
-  uses `SelectField`'s select sheet regardless of whether it changes
-  fields. Verify EVERY choice control against this rule before adding
-  or changing one — do not assume a control's existing type is
-  correct. An orchestrator DEFAULT must never widen this rule on its
-  own (a past regression moved the column-mapping screen's encoding and
-  decimal-separator selectors from `ChipRow` to `SegmentedControl` as
-  an unrequested DEFAULT, against the user's own explicit "tabs ONLY
-  for amount and currency modes" instruction — reverted; do not
-  re-apply it). Current app state:
+  that leaves the form the same)." A long-label option set — even one
+  that leaves the form unchanged — still uses `SelectField`'s select
+  sheet instead: a chip row's width scales with its label text, and a
+  handful of long labels (the loan-kind picker's 4 kind names —
+  Автокредит, Споживчий кредит, Іпотека, Позика в особи — already ran
+  too wide for a comfortable chip row) breaks its wrap-flow layout,
+  which `SelectField`'s list rows do not. Verify EVERY choice control
+  against this rule before adding or changing one — do not assume a
+  control's existing type is correct, and never move a control between
+  `ChipRow`/`SegmentedControl`/`SelectField` as an unrequested DEFAULT
+  without a specific instruction naming that control. Current app state:
   - `SegmentedControl` (changes fields): the column-mapping screen's
     amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
     the Bond form's ISIN/Manual mode (`BondIsinSection`,
@@ -796,10 +785,10 @@ new component can land between reviews of this skill:
     elsewhere in the same sheet).
   - `ChipRow` (leaves the form the same): the column-mapping screen's
     encoding, delimiter, and decimal-separator pickers; the holding
-    form's metal-element/form/unit chips and the term-deposit/bond
+    form's metal-element/form/unit chips and the term-deposit
     Compounding chips; the Manual-mode bond-kind chips
     (`ManualBondFields`); the Statistics trend-filter sheet's amount
-    (1-5) and by-measure pills.
+    (1-5) and by-measure pills; the Settings `LanguageSwitch`.
   - `SelectField` (long list, regardless of field-change): the
     property-category and loan-kind pickers (6 and 4 options — too
     wide for a `ChipRow`); the bond coupon-frequency picker (shared by

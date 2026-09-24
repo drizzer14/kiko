@@ -31,7 +31,6 @@ const SelectField = <Option extends string>({
   disabled,
   error,
   testID,
-  sheetTestID,
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
   const selectedOption = maybe(selected);
@@ -60,7 +59,6 @@ const SelectField = <Option extends string>({
         onDismiss={() => setOpen(false)}
         gap={2}
         header={<Text variant="heading">{sheetTitle}</Text>}
-        testID={sheetTestID}
       >
         {options.map((option) => {
           const isSelected = option === selected;

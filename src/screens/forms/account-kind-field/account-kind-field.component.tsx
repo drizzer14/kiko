@@ -39,7 +39,6 @@ const AccountKindField: FC<AccountKindFieldProps> = ({
       placeholder={t('forms.account.kindPlaceholder')}
       disabled={disabled}
       testID={testID}
-      sheetTestID="account-kind-sheet"
     />
   );
 };
