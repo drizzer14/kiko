@@ -315,97 +315,12 @@ const isSaveDisabled = (params: SaveDisabledParams): boolean => {
   return !isPositiveAmountText(params.amount) || params.selectedCategory === null;
 };
 
-// One reason helper per `isSaveDisabled` branch, each mirroring that
-// branch's OWN condition (comments above each pair it verbatim) — split out
-// so `saveDisabledReason` below stays a flat dispatch instead of one deeply
-// nested function, keeping every helper under the cognitive-complexity
-// budget while the two stay impossible to drift apart.
-
-// Mirrors `isSaveDisabled`'s converting branch: `counterpartHoldingId ===
-// null || !isPositiveAmountText(counterpartAmount)`.
-const convertingReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.counterpartHoldingId === null) {
-    return t('forms.transaction.selectCounterpartError');
-  }
-
-  return isPositiveAmountText(params.counterpartAmount)
-    ? null
-    : t('forms.transaction.counterpartAmountError');
-};
-
-// Mirrors `isSaveDisabled`'s exchange branch: `destinationHoldingId ===
-// null || !isPositiveAmountText(amount) || !isPositiveAmountText(valueIn)`.
-const exchangeReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.destinationHoldingId === null) {
-    return t('forms.transaction.selectDestinationError');
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return t('forms.transaction.valueOutError');
-  }
-
-  return isPositiveAmountText(params.valueIn) ? null : t('forms.transaction.valueInError');
-};
-
-// Mirrors `isSaveDisabled`'s split branch: `selectedCategory === null ||
-// !canSaveSplit(amount, changeReturns, currency)`.
-const splitReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.selectedCategory === null) {
-    return t('forms.transaction.selectCategoryError');
-  }
-
-  return canSaveSplit(params.amount, params.changeReturns, params.currency)
-    ? null
-    : t('forms.transaction.splitInvalidError');
-};
-
-// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
-// in the same order: read-only is never disabled; editing needs only a
-// positive amount; a fresh add needs a positive amount AND a category.
-const plainReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.isReadOnly) {
-    return null;
-  }
-
-  if (params.isEditing) {
-    return isPositiveAmountText(params.amount) ? null : t('forms.transaction.amountError');
-  }
-
-  if (!isPositiveAmountText(params.amount)) {
-    return t('forms.transaction.amountError');
-  }
-
-  return params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : null;
-};
-
-// The reason `isSaveDisabled` above returns true, for the SAME branches in
-// the SAME priority order (converting, exchange, split, then the trailing
-// read-only/editing/fresh-add group), so the two can never disagree — a
-// drift here would disable Save for one reason while explaining another.
-// `t` is threaded in explicitly, the same way `resolveDescriptionPlaceholder`
-// above takes it, so this stays a pure module-level helper.
-const saveDisabledReason = (params: SaveDisabledParams, t: TFunction): string | null => {
-  if (params.converting) {
-    return convertingReason(params, t);
-  }
-
-  if (params.isExchange) {
-    return exchangeReason(params, t);
-  }
-
-  if (params.isSplit) {
-    return splitReason(params, t);
-  }
-
-  return plainReason(params, t);
-};
-
-// The field key each save-blocking reason above belongs to — so its message
-// can render beside that field instead of in the footer. One pure function per
-// `xxxReason` helper, mirroring its branches EXACTLY (same order, same
-// conditions — see the comment above each `xxxReason` pair), returning a
-// field-key literal instead of a translated string. The two families must
-// never disagree about WHICH branch is active, only about key-vs-message.
+// The field key each save-blocking condition above belongs to. Used ONLY to
+// pick the Save-block scroll target (`save`'s `onSettled` callback below) —
+// each field's DISPLAYED error comes from `transactionFieldErrors` further
+// down instead, which computes every field's OWN reason independently
+// rather than stopping at the first one in priority order (see that
+// function's own doc comment for why the two must stay separate).
 type SaveDisabledField =
   | 'counterpartHolding'
   | 'counterpartAmount'
@@ -416,7 +331,7 @@ type SaveDisabledField =
   | 'splitReturns'
   | 'amount';
 
-// Mirrors `convertingReason`'s branches exactly.
+// Mirrors `isSaveDisabled`'s converting branch, in priority order.
 const convertingField = (params: SaveDisabledParams): SaveDisabledField | null => {
   if (params.counterpartHoldingId === null) {
     return 'counterpartHolding';
@@ -425,7 +340,7 @@ const convertingField = (params: SaveDisabledParams): SaveDisabledField | null =
   return isPositiveAmountText(params.counterpartAmount) ? null : 'counterpartAmount';
 };
 
-// Mirrors `exchangeReason`'s branches exactly.
+// Mirrors `isSaveDisabled`'s exchange branch, in priority order.
 const exchangeField = (params: SaveDisabledParams): SaveDisabledField | null => {
   if (params.destinationHoldingId === null) {
     return 'destinationHolding';
@@ -438,7 +353,7 @@ const exchangeField = (params: SaveDisabledParams): SaveDisabledField | null => 
   return isPositiveAmountText(params.valueIn) ? null : 'valueIn';
 };
 
-// Mirrors `splitReason`'s branches exactly.
+// Mirrors `isSaveDisabled`'s split branch, in priority order.
 const splitField = (params: SaveDisabledParams): SaveDisabledField | null => {
   if (params.selectedCategory === null) {
     return 'selectedCategory';
@@ -447,7 +362,8 @@ const splitField = (params: SaveDisabledParams): SaveDisabledField | null => {
   return canSaveSplit(params.amount, params.changeReturns, params.currency) ? null : 'splitReturns';
 };
 
-// Mirrors `plainReason`'s branches exactly.
+// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
+// in the same order.
 const plainField = (params: SaveDisabledParams): SaveDisabledField | null => {
   if (params.isReadOnly) {
     return null;
@@ -464,8 +380,8 @@ const plainField = (params: SaveDisabledParams): SaveDisabledField | null => {
   return params.selectedCategory === null ? 'selectedCategory' : null;
 };
 
-// Mirrors `saveDisabledReason`'s dispatcher exactly — the two must never
-// disagree about WHICH branch is active, only about key-vs-message.
+// Mirrors `isSaveDisabled`'s own dispatcher exactly — the two must never
+// disagree about WHICH branch is active.
 const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null => {
   if (params.converting) {
     return convertingField(params);
@@ -480,6 +396,105 @@ const saveDisabledField = (params: SaveDisabledParams): SaveDisabledField | null
   }
 
   return plainField(params);
+};
+
+// Every field's OWN independent error, gated only by which mode is ACTIVE
+// (converting/isExchange/isSplit/plain are mutually exclusive, so only one
+// of these ever renders at a time) — unlike `saveDisabledField` above, which
+// stops at the FIRST blocking field in priority order. A form that gates a
+// field's displayed error on the first-blocking-field chain makes fixing one
+// field re-target the SAME shared reason onto the next invalid sibling
+// instead of clearing it (the reported bug this fixes), so `fieldError`
+// below reads from here instead — `saveDisabledField` stays in use for the
+// Save-block gate's scroll target only.
+type TransactionFieldErrors = Record<SaveDisabledField, string | undefined>;
+
+const NO_TRANSACTION_FIELD_ERRORS: TransactionFieldErrors = {
+  counterpartHolding: undefined,
+  counterpartAmount: undefined,
+  destinationHolding: undefined,
+  valueOut: undefined,
+  valueIn: undefined,
+  selectedCategory: undefined,
+  splitReturns: undefined,
+  amount: undefined,
+};
+
+// Mirrors `isSaveDisabled`'s converting branch, independently per field.
+const convertingFieldErrors = (
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => ({
+  ...NO_TRANSACTION_FIELD_ERRORS,
+  counterpartHolding:
+    params.counterpartHoldingId === null
+      ? t('forms.transaction.selectCounterpartError')
+      : undefined,
+  counterpartAmount: isPositiveAmountText(params.counterpartAmount)
+    ? undefined
+    : t('forms.transaction.counterpartAmountError'),
+});
+
+// Mirrors `isSaveDisabled`'s exchange branch, independently per field.
+const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  ...NO_TRANSACTION_FIELD_ERRORS,
+  destinationHolding:
+    params.destinationHoldingId === null
+      ? t('forms.transaction.selectDestinationError')
+      : undefined,
+  valueOut: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.valueOutError'),
+  valueIn: isPositiveAmountText(params.valueIn) ? undefined : t('forms.transaction.valueInError'),
+});
+
+// Mirrors `isSaveDisabled`'s split branch, independently per field.
+const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  ...NO_TRANSACTION_FIELD_ERRORS,
+  selectedCategory:
+    params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : undefined,
+  splitReturns: canSaveSplit(params.amount, params.changeReturns, params.currency)
+    ? undefined
+    : t('forms.transaction.splitInvalidError'),
+});
+
+// Mirrors `isSaveDisabled`'s trailing read-only/editing/fresh-add branches,
+// independently per field — a fresh add's amount and category are two
+// SEPARATE fields (unlike `plainField`'s priority chain above), so both
+// show at once instead of the category error waiting for amount to clear
+// first.
+const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => {
+  if (params.isReadOnly) {
+    return NO_TRANSACTION_FIELD_ERRORS;
+  }
+
+  return {
+    ...NO_TRANSACTION_FIELD_ERRORS,
+    amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
+    selectedCategory:
+      params.isEditing || params.selectedCategory !== null
+        ? undefined
+        : t('forms.transaction.selectCategoryError'),
+  };
+};
+
+// Dispatches to the ACTIVE mode's own independent errors — mirrors
+// `saveDisabledField`'s dispatcher order exactly.
+const transactionFieldErrors = (
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => {
+  if (params.converting) {
+    return convertingFieldErrors(params, t);
+  }
+
+  if (params.isExchange) {
+    return exchangeFieldErrors(params, t);
+  }
+
+  if (params.isSplit) {
+    return splitFieldErrors(params, t);
+  }
+
+  return plainFieldErrors(params, t);
 };
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
@@ -1832,24 +1847,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     changeReturns,
     currency,
   };
-  // `saveDisabledReason` returns null in every branch exactly where
-  // `isSaveDisabled` returns false (they are twins — see the comment above
-  // `saveDisabledReason`), so it is safe to call unconditionally here rather
-  // than gating it on `disableSave` — which would cost this component's own
-  // cognitive-complexity budget one more branch for no behavioral gain.
   const disableSave = isSaveDisabled(saveDisabledParams);
-  const disableSaveReason = saveDisabledReason(saveDisabledParams, t);
-  // `saveDisabledField` is `disableSaveReason`'s twin (see the comment above
-  // `saveDisabledField`): non-null in exactly the same branches, naming the
-  // field to scroll to and to blame instead of the translated message.
+  // Non-null in exactly the same branches `isSaveDisabled` blocks on, naming
+  // the field to scroll to and focus — see `SaveDisabledField`'s own doc
+  // comment for why this stays separate from the DISPLAYED errors below.
   const disableSaveField = saveDisabledField(saveDisabledParams);
-  // Each field's own inline error: the shared reason, shown only once the
-  // user has attempted a Save AND that field is the one currently blaming it —
-  // so the SAME reason text lands beside its own field instead of stacking one
-  // copy per field. Kept as a small closure (rather than one `fieldError(key)`
-  // computed per call site) so every render reads the same two latched values.
+  // Every field's OWN independent error (see `transactionFieldErrors`'s own
+  // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
+  // once here instead of at each of the eight call sites below.
+  const activeFieldErrors = transactionFieldErrors(saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
-    attemptedSave && disableSaveField === key ? (disableSaveReason ?? undefined) : undefined;
+    attemptedSave ? activeFieldErrors[key] : undefined;
 
   // An explicit category pick: record the choice AND flag it, so a later
   // description blur (the A1 auto-pick) never overwrites what the user chose.

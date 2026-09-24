@@ -537,6 +537,24 @@ describe('TransactionFormScreen — add mode', () => {
     expect(utils.queryByText('Select a category.')).toBeNull();
   });
 
+  it('shows the amount and category errors together at the same Save press, each clearing only its own field', async () => {
+    const utils = await renderAdd();
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+
+    await pickCategory(utils, 'Groceries');
+
+    expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
   it('adds the same vertical gap above the category error that a text field has above its own', async () => {
     const utils = await renderAdd();
 
@@ -1934,29 +1952,30 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(mockRecordExchange).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an inline reason through the Exchange steps, only after Save is pressed', async () => {
+  it('shows every Exchange field its own reason at the same Save press, only after Save is pressed', async () => {
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
 
     expect(utils.queryByText('Select a destination account.')).toBeNull();
     await fireEvent.press(utils.getByText('Save'));
+
+    // Destination, Value out, AND Value in are all still blank — every one
+    // shows its own reason at this SAME press (Value out/Value in share the
+    // identical "Amount must be greater than 0." copy, so two nodes carry it
+    // at once).
     expect(utils.getByText('Select a destination account.')).toBeTruthy();
+    expect(utils.getAllByText('Amount must be greater than 0.')).toHaveLength(2);
     expect(
       within(utils.getByTestId('screen-footer')).queryByText('Select a destination account.'),
     ).toBeNull();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
+    expect(utils.queryByText('Select a destination account.')).toBeNull();
+    expect(utils.getAllByText('Amount must be greater than 0.')).toHaveLength(2);
 
     await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
-    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
+    expect(utils.getAllByText('Amount must be greater than 0.')).toHaveLength(1);
 
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
@@ -2472,6 +2491,26 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
   });
 
+  it('shows the destination and amount errors together at the same Save press, each clearing only its own field', async () => {
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
+
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
+
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
+    expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
+
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+
+    expect(utils.queryByText('Select an account to convert into.')).toBeNull();
+  });
+
   it('never calls update/remove on the existing row when converting', async () => {
     const { getByText, getByLabelText } = await renderEdit('expense-synced');
 
@@ -2621,6 +2660,28 @@ describe('TransactionFormScreen — Split-change mode', () => {
         'Enter a payment amount and at least one valid return.',
       ),
     ).toBeNull();
+  });
+
+  it('shows the category and split-returns errors together at the same Save press, each clearing only its own field', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+
+    await pickCategory(utils, 'Groceries');
+
+    expect(utils.queryByText('Select a category.')).toBeNull();
+    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
   });
 
   it('does not write an otherwise-valid split until a category is picked', async () => {
