@@ -35,9 +35,10 @@ Never use pkill, killall, or any pattern or group kill. Stop only a
 process ID you started yourself (kill <pid>), or let the tool timeout
 end a hung command. Read-only roles (reviewer, auditor, explorer,
 debugger, pm, retrospect) do not stop processes at all. The
-`kiko-guard` PreToolUse hook (`scripts/checks/kill-guard.sh`, on
-`Bash`) denies these commands mechanically — this rule states it for
-agents to follow directly, not just get blocked by.
+PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
+`harness/kiko/hooks/hooks.json`) denies these commands
+mechanically — this rule states it for agents to follow directly, not
+just get blocked by.
 
 ## Run verbose commands through an Orca terminal
 
@@ -65,3 +66,26 @@ Do not rely on `terminal wait --for exit` for a shell-backed
 terminal — the shell persists after the command exits, so that wait
 never fires. Close the terminal only after reading, to keep the
 workspace clean.
+
+## Orchestrator handover
+
+An orchestrator session cannot see its own context-usage gauge (it is
+in the terminal status line). The coordinator watches it from outside
+and hands over at about 70%: the session writes a handoff file in its
+worktree, waits until its own in-process subagents finish (closing
+the terminal kills them mid-work), then the coordinator closes the
+old terminal and starts a new claude session in the same worktree
+that reads the handoff file.
+
+## Orchestrator defaults never widen or contradict
+
+An orchestrator's default choices never contradict an established
+design or code pattern, and never widen a user instruction beyond
+what was asked; take the narrowest reading.
+
+## UI feedback rounds: audit before fixing
+
+Before fixing a round of UI feedback, run a UX-consistency audit of
+the affected screens against `kiko-design-system` and against how
+the same pattern is already built elsewhere; fix the pattern
+everywhere it appears, then distill new rules into the skill.

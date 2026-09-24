@@ -17,7 +17,9 @@ Rules:
 - Read the `ops` skill (`harness/kiko/skills/ops/SKILL.md`) before running
   any long/no-incremental-output command (`check:deep`, `check:mutation`,
   `osv.sh`, `check:all`, a device deploy) — it owns the full "never poll"
-  mechanics and the mutation-run launch recipe; do not re-derive them here.
+  mechanics, the mutation-run launch recipe, and the dedicated
+  "Device-test checkout" (`~/orca/workspaces/pff-ios/device-deploy`) to
+  build device installs from; do not re-derive them here.
 - **`make deep` / `check:deep` is the COORDINATOR's own job.** NEVER accept
   a dispatch to run `make deep`/`check:deep` and wait for it — that check
   is the coordinator's own background job, not an ops subagent's. A

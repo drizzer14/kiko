@@ -27,3 +27,7 @@ Rules:
   that changes often. Apply this whenever you write or edit a skill, and when retrospect
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
+- A skill states the RULE, never a survey of current usage: "always do X" or
+  "never do Y", not "today every call site does X". Descriptive wording goes
+  stale the moment one new call site breaks the pattern, and it still reads
+  as correct.

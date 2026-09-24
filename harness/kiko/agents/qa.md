@@ -26,7 +26,10 @@ Rules:
   against that fake. See `src/holdings/repo/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the
   fake across two repos in one store when a test exercises both (e.g. a
-  disconnect-then-reconnect sequence).
+  disconnect-then-reconnect sequence). A hand-rolled fake DB or
+  transaction handle must THROW on an unknown column or table, not
+  silently accept it; a permissive fake hides a real bug behind a
+  green test.
 - Before adding a prop to a hand-written `__mocks__` module, check the
   real library's own type in `node_modules` first. A mock that accepts
   a prop the real component discards (e.g. `barTintColor` on
