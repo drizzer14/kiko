@@ -20,7 +20,7 @@ import { type TabRootScrollable, useScrollToTopOnTabPress } from './use-scroll-t
 // device itself reported) and the focus/first-route gating that guards against
 // scrolling a non-focused or pushed screen.
 
-type TabPressHandler = (e: { defaultPrevented: boolean }) => void;
+type TabPressHandler = (event: { defaultPrevented: boolean }) => void;
 type FrameCallback = (time: number) => void;
 
 const ROUTE_KEY = 'tab-root-route';
@@ -52,8 +52,8 @@ const frameCallbacks: FrameCallback[] = [];
 
 const flushFrames = () => {
   const pending = frameCallbacks.splice(0);
-  for (const cb of pending) {
-    cb(0);
+  for (const callback of pending) {
+    callback(0);
   }
 };
 
@@ -85,12 +85,12 @@ const setup = async (ref: RefObject<TabRootScrollable | null>, options: SetupOpt
   const tabNavigation = {
     getState: () => ({ type: 'tab', routes: [{ key: ROUTE_KEY }], index: 0 }),
     getParent: () => undefined,
-    addListener: (event: string, cb: TabPressHandler) => {
+    addListener: (event: string, callback: TabPressHandler) => {
       if (event === 'tabPress') {
-        handlers.push(cb);
+        handlers.push(callback);
       }
       return () => {
-        const index = handlers.indexOf(cb);
+        const index = handlers.indexOf(callback);
         if (index >= 0) {
           handlers.splice(index, 1);
         }
@@ -172,8 +172,8 @@ describe('useScrollToTopOnTabPress', () => {
     await setWindowFrame(PORTRAIT_FRAME);
     // Queue the hook's deferred scroll instead of firing it, so `fireTabPress`
     // can flush it deterministically without re-entering React's `act` flush.
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      frameCallbacks.push(cb);
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      frameCallbacks.push(callback);
       return frameCallbacks.length;
     });
   });

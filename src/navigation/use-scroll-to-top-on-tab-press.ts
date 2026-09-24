@@ -331,7 +331,7 @@ export const useScrollToTopOnTabPress = (
         // there are multiple tab implementations.
         // @ts-expect-error the `tabPress` event is only available when navigation type is tab
         'tabPress',
-        (e: EventArg<'tabPress', true>) => {
+        (event: EventArg<'tabPress', true>) => {
           // Scroll only when this screen is the focused one...
           const isFocused = navigation.isFocused();
 
@@ -347,7 +347,7 @@ export const useScrollToTopOnTabPress = (
           requestAnimationFrame(() => {
             const scrollable = getScrollableNode(ref);
 
-            if (!isFocused || !isFirst || !scrollable || e.defaultPrevented) {
+            if (!isFocused || !isFirst || !scrollable || event.defaultPrevented) {
               return;
             }
 
