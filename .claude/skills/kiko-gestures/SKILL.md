@@ -101,13 +101,38 @@ from there throws or silently no-ops.
 
 ## Sortables grid conventions
 
-Both grids — `accounts.screen.tsx` (1 column) and the account-detail
-holding grid (2 columns) — share the same tuning, so a value drifting on
-one and not the other is a bug, not a deliberate difference. Read the
-current values in both files before restating them; do not trust a copy
-in this skill. As of this writing both grids use `activeItemScale={1.03}`
-(a barely-there lift on touch-and-hold — the library default of `1.1` pops
-the card up too far) and `autoScrollActivationOffset={75}`.
+Three grids — `accounts.screen.tsx`'s main grid (1 column), its own
+"Debts" section grid below it (T27, also 1 column — see "Section-scoped
+grids must persist the FULL order" below), and the account-detail
+holding grid (2 columns) — share the same tuning, so a value drifting
+on one and not the others is a bug, not a deliberate difference. Read
+the current values in all three before restating them; do not trust a
+copy in this skill. As of this writing all three grids use
+`activeItemScale={1.03}` (a barely-there lift on touch-and-hold — the
+library default of `1.1` pops the card up too far) and
+`autoScrollActivationOffset={75}`. (The categories grid,
+`src/screens/settings/categories/`, is a FOURTH grid with a
+deliberately different `dragActivationDelay` — see its own entry below
+— it is not part of this shared-tuning claim.)
+
+### Section-scoped grids must persist the FULL order (T27 round 1, I1)
+
+`accountsRepo.reorder(orderedIds)` rewrites `sortOrder = index` for
+ONLY the ids it is given — its contract is "the full new front-to-back
+order", not "this grid's own ids". When a screen splits one list into
+several grids by a filter (accounts.screen.tsx's main grid vs. its
+Debts grid, by `kind === 'debt'`), persisting only the dragged grid's
+own reordered ids restarts THAT SECTION's `sortOrder` back at 0 on
+every drag, colliding with the other section's own 0-based run — every
+OTHER `listQuery` consumer that reads the full, unfiltered list
+(Statistics' account filter, the transaction-form account rank, Home,
+statement import) then sees the two sections interleaved instead of
+kept apart. Fix: each grid's `onDragEnd` persists the WHOLE order,
+splicing its own new order back into the other section's (unchanged)
+ids at the same relative position — read `accounts.screen.tsx`'s two
+`onDragEnd` handlers for the current exact shape. A screen introducing
+a THIRD such filtered section must extend this the same way, not
+revert to passing a single grid's own ids straight through.
 
 - **`scrollableRef` + `autoScrollActivationOffset`**: the grid is nested
   inside the screen's own `ScrollView`, so it needs that `ScrollView`'s

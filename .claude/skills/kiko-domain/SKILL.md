@@ -537,15 +537,33 @@ seed and effectively never drops.
 `buildTypeBreakdown` (`src/statistics/type-breakdown/`, the by-type
 bar) excludes `loan` outright rather than letting it slip through as a
 negative bar — it is an ASSET breakdown, and debt has its own total
-(see below). `buildAccountContribution` (`src/statistics/account-contribution/`,
-the account pie) already filtered to `amount > 0` before T27, so a
-debt account's negative net worth was excluded structurally with no
-code change; the SAME file's `buildDebtTotal` sums every `loan`
-holding's own value (already negative) into the separate "Debts"
-total shown on Statistics under the pie, on Home (folded into the
-headline, since Home has no separate debts line), and on Accounts (its
-own "Debts" section, `accounts.screen.tsx`) — read `kiko-charts` for
-the pie/line-specific rules.
+(see below).
+
+**The account pie (`buildAccountContribution`,
+`src/statistics/account-contribution/`) is ASSETS ONLY (T27 round 1,
+I2 — spec §5.2/§5.3):** an account's slice sums only its POSITIVE
+holding values; a negative holding (a `loan`'s own value, or a
+non-loan holding in debit, e.g. a credit card) never reduces it and
+never nets against a positive one in the same account. An account
+with nothing positive to show gets no slice at all, rather than a
+negative one. **The "Debts" total (`buildDebtTotal`, same file) is
+where that debt goes instead**, and — per spec §5.2, "Credit-card
+negative balances count as debt too" — it sums EVERY holding whose
+own value is negative, not loans only: a `loan`'s already-negative
+outstanding, and a non-loan holding in debit, are summed the same way,
+by sign alone, no type check. `buildDebtTotal` is called ONLY on
+Statistics (`statistics.screen.tsx`, rendered under the account pie).
+Home has no separate debts line (ruling M3): its `guardedNetWorth`
+headline and its `guardedBreakdown` per-currency breakdown both stay
+SIGNED (net) sums of every holding, so the breakdown still adds up to
+the headline exactly as it always did — a debt nets into its own
+currency's cell there, unlike Statistics' assets-only pie. Accounts'
+own "Debts" section (`accounts.screen.tsx`) computes its OWN section
+total independently, via `guardedNetWorth` of just the debt-kind
+accounts' holdings (M2 — every debt-kind account holds only `loan`
+holdings, so this total is always <= 0); it does not call
+`buildDebtTotal`, which sums across every account kind. Read
+`kiko-charts` for the pie/line-specific rules.
 
 ## Price series and priced holdings
 

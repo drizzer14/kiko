@@ -33,12 +33,12 @@ import {
   runBackfill,
 } from '../../rates/history-backfill';
 import { buildRateTable } from '../../rates/net-worth-view';
-import MoneyText from '../../design-system/components/money-text';
 import {
   type AccountSlice,
   buildAccountContribution,
   buildDebtTotal,
 } from '../../statistics/account-contribution';
+import MoneyText from '../../design-system/components/money-text';
 import { bucketDaysForSpan } from '../../statistics/buckets';
 import {
   type BreakdownTransaction,
