@@ -28,8 +28,8 @@ const MappingResult: FC<MappingResultProps> = ({
   stats,
   rowErrors,
   holdingName,
+  mappingIncomplete,
   noRowsResolvedError,
-  currencyColumnUnresolved = false,
 }) => {
   const { t } = useTranslation();
   const visibleRowErrors = rowErrors.slice(0, ROW_ERROR_PREVIEW_COUNT);
@@ -44,13 +44,13 @@ const MappingResult: FC<MappingResultProps> = ({
     <Box gap={3} style={styles.resultBlock}>
       <Text variant="heading">{t('columnMapping.result')}</Text>
 
-      {stats === undefined && !currencyColumnUnresolved && (
+      {mappingIncomplete && (
         <Text variant="body" tone="textSecondary">
           {t('columnMapping.incomplete')}
         </Text>
       )}
 
-      {stats !== undefined && !hasResolvedTransactions && noRowsResolvedError !== undefined && (
+      {!hasResolvedTransactions && noRowsResolvedError !== undefined && (
         <Text variant="body" tone="negative">
           {noRowsResolvedError}
         </Text>

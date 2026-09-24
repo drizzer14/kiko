@@ -377,14 +377,64 @@ const applyMappingSafely = (
 };
 
 // True once the mapping applied without throwing but literally zero rows
-// survived their own per-row checks — split out of the screen component
-// purely to stay under Biome's cognitive-complexity cap.
+// resolved to a transaction — whatever the reason (every row failed its own
+// check, OR there were no data rows to begin with) — split out of the
+// screen component purely to stay under Biome's cognitive-complexity cap.
 const noRowsResolvedFor = (applyResult: MappedResult | undefined): boolean =>
-  applyResult !== undefined &&
-  applyResult.statement.transactions.length === 0 &&
-  applyResult.rowErrors.length > 0;
+  applyResult !== undefined && applyResult.statement.transactions.length === 0;
 
 const cellText = (cell: TableCell | undefined): string => (cell === undefined ? '' : String(cell));
+
+// True when a `currency: { mode: 'column' }` mapping's own column has zero
+// non-empty cells across every data row — the reason `applyColumnMapping`
+// throws in that case is "there is no data to read", not "the codes in this
+// column aren't recognized", so the screen shows the no-rows error instead
+// of a false currency-column complaint.
+const currencyColumnIsBlank = (
+  rows: TableCell[][],
+  headerRowIndex: number,
+  currencyColumn: number,
+): boolean =>
+  rows.slice(headerRowIndex + 1).every((row) => cellText(row[currencyColumn]).trim() === '');
+
+type ColumnMappingResolutionState = {
+  // `applyColumnMapping` throws ONLY when a `currency: { mode: 'column' }`
+  // mapping resolves NO known code anywhere in the mapped currency column —
+  // so once every required field IS structurally mapped (`mapping !==
+  // undefined`) and the apply still failed (`applyResult === undefined`),
+  // that is exactly this state, never a false positive from some other
+  // per-row failure (see `applyColumnMapping`'s own doc comment) — EXCEPT a
+  // blank currency column, which is really the no-rows case below.
+  currencyColumnUnresolved: boolean;
+  // Every required field IS mapped and the apply succeeded, but zero rows
+  // resolved to a transaction (a date format that matches none of the
+  // file's actual cells, say) — OR the apply THREW because the mapped
+  // currency column had no data to read at all, which is also "nothing to
+  // import", the same as a defined result with none.
+  noRowsResolved: boolean;
+};
+
+// Both booleans above share `currencyColumnBlank` — split out of the screen
+// component purely to stay under Biome's cognitive-complexity cap.
+const resolutionStateFor = (
+  rows: TableCell[][],
+  mapping: ColumnMapping | undefined,
+  applyResult: MappedResult | undefined,
+): ColumnMappingResolutionState => {
+  const currencyColumnBlank =
+    mapping !== undefined &&
+    mapping.currency.mode === 'column' &&
+    currencyColumnIsBlank(rows, mapping.headerRowIndex, mapping.currency.column);
+
+  return {
+    currencyColumnUnresolved:
+      mapping !== undefined &&
+      applyResult === undefined &&
+      mapping.currency.mode === 'column' &&
+      !currencyColumnBlank,
+    noRowsResolved: noRowsResolvedFor(applyResult) || currencyColumnBlank,
+  };
+};
 
 const columnOptionsFor = (headerRow: TableCell[]): ColumnSelectFieldOption<number>[] =>
   headerRow.map((cell, index) => {
@@ -529,8 +579,8 @@ type ColumnMappingFormProps = {
   stats: PreviewStats | undefined;
   rowErrors: ColumnMappingRowError[];
   // Forwarded to `MappingResult` — see that component's own `stats` doc
-  // comment for why this suppresses the generic incomplete hint.
-  currencyColumnUnresolved: boolean;
+  // comment for why this gates the generic incomplete hint.
+  mappingIncomplete: boolean;
   holdingOptions: ReturnType<typeof useTargetHoldingOptions>;
   accountId: string;
   selectedHoldingId: string | undefined;
@@ -583,7 +633,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   onBalanceColumnChange,
   stats,
   rowErrors,
-  currencyColumnUnresolved,
+  mappingIncomplete,
   holdingOptions,
   accountId,
   selectedHoldingId,
@@ -798,7 +848,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           rowErrors={rowErrors}
           holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
           noRowsResolvedError={validation.noRowsResolvedError}
-          currencyColumnUnresolved={currencyColumnUnresolved}
+          mappingIncomplete={mappingIncomplete}
         />
       </View>
 
@@ -1038,21 +1088,17 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     ? previewStats(applyResult.statement, t('columnMapping.title'))
     : undefined;
   const loadMessageKey = loadStateMessageKey(loadState.kind);
+  // A required column/date-format is still unset — the Result block's own
+  // `columnMapping.incomplete` hint gate (see `MappingResult`'s own `stats`
+  // doc comment for why a structurally complete mapping that merely failed
+  // to APPLY never shows this hint).
+  const mappingIncomplete = mapping === undefined;
 
-  // `applyColumnMapping` throws ONLY when a `currency: { mode: 'column' }`
-  // mapping resolves NO known code anywhere in the mapped currency column —
-  // so once every required field IS structurally mapped (`mapping !==
-  // undefined`) and the apply still failed (`applyResult === undefined`),
-  // that is exactly this state, never a false positive from some other
-  // per-row failure (see `applyColumnMapping`'s own doc comment).
-  const currencyColumnUnresolved =
-    mapping !== undefined && applyResult === undefined && currencyMode === 'column';
-  // Every required field IS mapped and the apply succeeded, but zero rows
-  // survived their own per-row checks (a date format that matches none of
-  // the file's actual cells, say) — the Result block's own error, distinct
-  // from `currencyColumnUnresolved` above (a THROW, so `applyResult` itself
-  // would be `undefined` there, not a defined result with an empty list).
-  const noRowsResolved = noRowsResolvedFor(applyResult);
+  const { currencyColumnUnresolved, noRowsResolved } = resolutionStateFor(
+    rows,
+    mapping,
+    applyResult,
+  );
 
   // Computed FRESH on every render, never gated on `attemptedImport` itself
   // (see `ColumnMappingFieldErrors`'s own doc comment) — `handleImport` below
@@ -1244,7 +1290,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             onBalanceColumnChange={setBalanceColumn}
             stats={stats}
             rowErrors={applyResult?.rowErrors ?? []}
-            currencyColumnUnresolved={currencyColumnUnresolved}
+            mappingIncomplete={mappingIncomplete}
             holdingOptions={holdingOptions}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}

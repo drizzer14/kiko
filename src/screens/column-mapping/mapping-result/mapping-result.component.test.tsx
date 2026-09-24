@@ -7,44 +7,55 @@ import { i18n } from '../../../i18n';
 import MappingResult from './mapping-result.component';
 
 describe('MappingResult', () => {
-  it('shows the incomplete hint when stats is undefined', async () => {
+  it('shows the incomplete hint when a required field is still unmapped', async () => {
     const { getByText, queryByTestId } = await render(
-      <MappingResult stats={undefined} rowErrors={[]} />,
+      <MappingResult stats={undefined} rowErrors={[]} mappingIncomplete />,
     );
 
     expect(getByText(i18n.t('columnMapping.incomplete'))).toBeTruthy();
     expect(queryByTestId('column-mapping-transaction-count')).toBeNull();
   });
 
-  // A currency-column-unresolved throw shows ONLY on the currency field
-  // itself (validate-on-press, gated by the caller) — this block never
-  // carries its own currency-specific variant, so it can never leak the red
-  // message before a press or duplicate the field's own.
-  it('shows no currency-specific hint when stats is undefined', async () => {
-    const { queryByText } = await render(<MappingResult stats={undefined} rowErrors={[]} />);
-
-    expect(queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
-  });
-
-  // Every OTHER required column IS mapped when a `currency: { mode: 'column' }`
-  // mapping throws — the generic "choose the date, amount, description
-  // columns" hint would misname the real problem, so this block shows
-  // neither that hint nor a currency-specific copy of its own; the currency
-  // field's own error is the sole message.
-  it('shows no hint at all when stats is undefined because only the currency column is unresolved', async () => {
+  // Every required field IS mapped here — `applyColumnMapping` merely failed
+  // to apply (a currency-column-unresolved throw, say) — so the generic
+  // "choose the date, amount, description columns" hint would misname the
+  // real problem. That reason's own message shows elsewhere (the currency
+  // field's error, gated on the first Import press), never a copy here.
+  it('shows no hint at all when stats is undefined but every required field is mapped', async () => {
     const { queryByText } = await render(
-      <MappingResult stats={undefined} rowErrors={[]} currencyColumnUnresolved />,
+      <MappingResult stats={undefined} rowErrors={[]} mappingIncomplete={false} />,
     );
 
     expect(queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
     expect(queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
   });
 
+  // A `currency: { mode: 'column' }` mapping can throw because its own
+  // column has no data to read at all (a header-only file) — `stats` is
+  // `undefined` there too, but the caller's `noRowsResolvedError` (gated on
+  // the first Import press) still surfaces, the same as the "applied but 0
+  // rows resolved" case below.
+  it('shows the noRowsResolvedError message even when stats is undefined', async () => {
+    const { getByText, queryByText } = await render(
+      <MappingResult
+        stats={undefined}
+        rowErrors={[]}
+        mappingIncomplete={false}
+        noRowsResolvedError={i18n.t('columnMapping.noRowsResolvedError')}
+      />,
+    );
+
+    expect(getByText(i18n.t('columnMapping.noRowsResolvedError'))).toBeTruthy();
+    expect(queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
+  });
+
   // The heading shows in BOTH the incomplete and complete states — it never
   // jumps position/spacing when the last required column gets mapped
   // (SummaryTable gets no `title` of its own).
   it('shows exactly one "Result" heading, whether the mapping is complete or not', async () => {
-    const incomplete = await render(<MappingResult stats={undefined} rowErrors={[]} />);
+    const incomplete = await render(
+      <MappingResult stats={undefined} rowErrors={[]} mappingIncomplete />,
+    );
     expect(incomplete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
 
     const complete = await render(
@@ -59,6 +70,7 @@ describe('MappingResult', () => {
           detectedCurrencies: ['UAH'],
         }}
         rowErrors={[]}
+        mappingIncomplete={false}
       />,
     );
     expect(complete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
@@ -77,6 +89,7 @@ describe('MappingResult', () => {
           detectedCurrencies: ['UAH'],
         }}
         rowErrors={[]}
+        mappingIncomplete={false}
       />,
     );
 
@@ -103,6 +116,7 @@ describe('MappingResult', () => {
           detectedCurrencies: [],
         }}
         rowErrors={rowErrors}
+        mappingIncomplete={false}
       />,
     );
 
@@ -125,6 +139,7 @@ describe('MappingResult', () => {
           detectedCurrencies: [],
         }}
         rowErrors={rowErrors}
+        mappingIncomplete={false}
       />,
     );
 
@@ -151,6 +166,7 @@ describe('MappingResult', () => {
           detectedCurrencies: [],
         }}
         rowErrors={rowErrors}
+        mappingIncomplete={false}
         noRowsResolvedError={i18n.t('columnMapping.noRowsResolvedError')}
       />,
     );
@@ -179,6 +195,7 @@ describe('MappingResult', () => {
           detectedCurrencies: [],
         }}
         rowErrors={[]}
+        mappingIncomplete={false}
       />,
     );
 

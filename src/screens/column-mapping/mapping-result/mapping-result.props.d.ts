@@ -2,27 +2,30 @@ import type { ColumnMappingRowError } from '../../../statement-import/column-map
 import type { PreviewStats } from '../../statement-import/preview-stats/preview-stats';
 
 export type MappingResultProps = {
-  // `undefined` when the mapping is not yet structurally complete (a
-  // required column/date-format is still unset) OR `applyColumnMapping`
-  // itself failed. A currency-column-unresolved throw (`currencyColumnUnresolved`
-  // below) is the one `stats === undefined` cause this block never shows
-  // `columnMapping.incomplete` for — every OTHER required column IS mapped
-  // in that case, so that hint would misname the real problem; the currency
-  // field's own error (`columnMapping.currencyColumnUnresolvedError`, gated
-  // on the first Import press, same as every other field error) is the sole
-  // message for that reason.
+  // `undefined` while the mapping is not yet structurally complete OR once
+  // it is but `applyColumnMapping` still failed (a `currency: { mode:
+  // 'column' }` mapping that resolves no known code anywhere, including an
+  // entirely blank column). `mappingIncomplete` below is what decides
+  // whether THIS block shows `columnMapping.incomplete` for a `stats ===
+  // undefined` render — a structurally complete mapping that merely failed
+  // to apply has its own, more specific message elsewhere (the currency
+  // field's error, or `noRowsResolvedError` below), so showing the generic
+  // hint too would misname the real problem.
   stats: PreviewStats | undefined;
   rowErrors: ColumnMappingRowError[];
-  // True once every required field IS mapped but a `currency: { mode:
-  // 'column' }` mapping still threw — see `stats`'s own doc comment above.
-  currencyColumnUnresolved?: boolean;
-  // Every required field IS mapped and `applyColumnMapping` succeeded, but
-  // literally zero rows survived their own per-row checks — no single INPUT
-  // field is at fault (the itemized `rowErrors` below explain the real, and
-  // possibly mixed, per-row reasons), so this renders on the Result block
-  // itself instead. Already gated by the caller on the first Import press
-  // (`columnMapping.noRowsResolvedError` translated), matching every other
-  // field's validate-on-press message — `undefined` renders nothing.
+  // True while a required column/date-format is still unset — see `stats`'s
+  // own doc comment above for what this gates.
+  mappingIncomplete: boolean;
+  // Every required field IS mapped, but literally zero rows resolved to a
+  // transaction — whether because `applyColumnMapping` succeeded with none
+  // (`stats` is defined at `transactionCount: 0`, and the itemized
+  // `rowErrors` below explain the real, possibly mixed, per-row reasons) or
+  // because it threw on a currency column with no data to read at all
+  // (`stats` is `undefined`) — no single INPUT field is at fault either
+  // way, so this renders on the Result block itself instead. Already gated
+  // by the caller on the first Import press (`columnMapping.noRowsResolvedError`
+  // translated), matching every other field's validate-on-press message —
+  // `undefined` renders nothing.
   noRowsResolvedError?: string;
   // The chosen target holding's name, forwarded to `ExampleTransaction`'s
   // own `holdingName` prop (F3 fix round 2, N3) — feeds its income/expense
