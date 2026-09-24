@@ -228,17 +228,26 @@ a P0 UI fix round driven by device feedback:
   component the deposit/bond value-breakdown block also uses — never
   each other's columns, only the row layout.
 - **`ExampleTransaction`** (`src/screens/statement-import/example-
-  transaction/`) is the ONE shared "first parsed row" preview (date,
-  description, amount via `MoneyText`), rendered under the summary
-  table on both screens from `PreviewStats.firstTransaction` (the
-  first `ParsedTransaction` in ON-FILE order, not chronological order
+  transaction/`) is the ONE shared "first parsed row" preview, rendered
+  under the summary table on both screens from `PreviewStats.firstTransaction`
+  (the first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional
-  since an existing `PreviewStats` object literal predates the field).
-  As of F3 item 4 it renders its row through the shared `Card` content
-  surface (the same one Home's `TransactionRow` and the holding-detail
-  ledger's `LedgerRowItem` use), not a bare `Box`, so it reads as an
-  actual sample transaction card; both callers (`StatementPreviewBlock`,
-  `MappingResult`) wrap it in a `Divider` above AND below (F3 item 5).
+  since an existing `PreviewStats` object literal predates the field). As
+  of F3 fix round 1 (C1) it renders through the shared `TransactionCard`
+  (`src/screens/home/transaction-row/transaction-card/`) — the SAME
+  presentational card Home's own `TransactionRow` uses, extracted out of
+  that component so both consumers stay pixel-identical, NOT a rebuilt
+  card wrapping the base `Card` primitive (the original F3 item 4 attempt,
+  which showed the date as its title and the amount with no income color —
+  see the review's C1 finding). The category comes from the row's own
+  `mcc` via `categoryForMcc` (the same key `mapParsedTransaction` writes),
+  resolved through the live categories table exactly as Home resolves a
+  real row's category (`ExampleTransaction` queries `categoriesRepo`/
+  `settingsRepo` itself), and the amount uses `context="transaction"`, so
+  an income preview row shows the same icon and income (green) color a
+  Home row would. `ExampleTransaction` owns its own `Divider`s above and
+  below (F3 item 5) — a caller renders just `<ExampleTransaction ... />`,
+  not a Divider/ExampleTransaction/Divider triple.
 - **The raw preview grid** (`column-mapping/raw-preview/`) gives each
   column a CONSISTENT width across every row
   (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
@@ -249,8 +258,10 @@ a P0 UI fix round driven by device feedback:
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard
   filled-accent selection vocabulary (OptionPills/ChipRow/SelectableRow),
-  with its own cell text turned BOLD too (F3 item 8, `fontWeight: '700'`)
-  so the selected row reads as distinct even without color.
+  with its own cell text turned SEMIBOLD too (F3 item 8, `fontWeight:
+  '600'` — the app's selected-label weight everywhere else, not `'700'`;
+  fixed from an initial `'700'` pass in F3 fix round 1, M3) so the
+  selected row reads as distinct even without color.
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
   `textSecondary` caption, so it reads clearly above the grid, and
@@ -265,29 +276,48 @@ a P0 UI fix round driven by device feedback:
   `SegmentedControl`** (`src/design-system/components/segmented-control/`,
   F3 item 9) — an iOS `UISegmentedControl` per the HIG, superseding the
   `ChipRow` pass 21d53cc gave them (see `kiko-design-system`'s own
-  `SegmentedControl` entry for the full HIG citation and elevation
-  rationale). Every OTHER mode toggle on this screen still uses the
-  app's existing compact `ChipRow` (`src/screens/forms/chip-row/`), not
-  `OptionPills` — `OptionPills`' 44pt-minimum centered pill reads as
-  oversized for a short code/label. This covers encoding, delimiter,
-  and decimal-separator (flagged "too-large chips" originally) —
-  `ChipRow` and `SegmentedControl` now coexist on this screen, one per
-  the shape of the choice it renders (short code/label vs. a true 2-way
-  mode toggle).
-- **Every section shows its own heading** (F3 items 12/13/14): the
-  screen's former in-body title (duplicating the native stack header's
-  own `title: t('columnMapping.title')`, `accounts.stack.tsx`) is
-  REMOVED (item 12); every section — raw preview, file format, dates,
-  amount columns, currency, additional details (description/
-  counterparty/balance), and result — instead shows its own
-  `heading`-step `Text` (item 14), each carrying the SAME bottom margin
-  the removed title had below it (`column-mapping.styles.ts`'s
-  `sectionHeading`, `theme.spacing(3)` — item 13). `MappingResult`'s own
-  "incomplete" heading uses the identical margin via its own
-  `mapping-result.styles.ts` `sectionHeading`; its `stats !== undefined`
-  branch's heading is `SummaryTable`'s own shared `title` row and is
-  left at that component's own internal spacing (a deliberate scoping
-  choice — `SummaryTable` is shared by other screens too).
+  `SegmentedControl` entry for the full HIG citation, contrast fix, and
+  accessibility details — fix round 1 addressed I3/M1/M2/M4). Both
+  `AmountFields` and `CurrencyFields` pass their own `accessibilityLabel`
+  (the section heading text, `columnMapping.sectionAmount`/
+  `sectionCurrency`), a REQUIRED prop. Every OTHER mode toggle on this
+  screen still uses the app's existing compact `ChipRow`
+  (`src/screens/forms/chip-row/`), not `OptionPills` — `OptionPills`'
+  44pt-minimum centered pill reads as oversized for a short code/label.
+  This covers encoding, delimiter, and decimal-separator (flagged
+  "too-large chips" originally) — `ChipRow` and `SegmentedControl` now
+  coexist on this screen, one per the shape of the choice it renders
+  (short code/label vs. a true 2-way mode toggle). Encoding and decimal
+  separator ARE both genuinely 2-way choices that fit `SegmentedControl`
+  just as well (delimiter is 3-way and fits too) — F3 fix round 1's M5
+  DEFAULT leaves them as `ChipRow` pending a user decision on whether to
+  swap them, not because they don't fit the shape (see "DEFAULTS" in the
+  F3-part2-report.md fix-round-1 section).
+- **Every section shows its own heading, at ONE uniform spacing** (F3
+  items 12/13/14, fixed in fix round 1 I1/I2): the screen's former
+  in-body title (duplicating the native stack header's own `title:
+  t('columnMapping.title')`, `accounts.stack.tsx`) is REMOVED (item 12);
+  every section — raw preview, file format, dates, amount columns,
+  currency, additional details (description/counterparty/balance), and
+  result — shows its own `heading`-step `Text` (item 14) as the PLAIN
+  FIRST CHILD of its section's own `gap={3}` Box — no wrapper `Box` and
+  no `marginBottom` style of its own. An earlier pass (F3 item 13's first
+  landing) gave each heading an explicit `marginBottom: spacing(3)` INSIDE
+  a `gap={3}` parent, which — Yoga adds a child's own margin ON TOP OF the
+  parent's `gap`, same as CSS flexbox — actually produced 24pt below most
+  headings, 12pt below the raw-preview one (no `gap` sibling), and 20pt
+  below `MappingResult`'s "incomplete" heading (`gap={2}`), not the
+  uniform spacing the comment claimed; `column-mapping.styles.ts` no
+  longer has a `sectionHeading` style at all. `MappingResult` renders its
+  own `columnMapping.result` heading UNCONDITIONALLY, in BOTH the
+  `stats === undefined` and `stats !== undefined` branches, passing NO
+  `title` to `SummaryTable` in the complete branch — before this fix the
+  complete branch's heading was `SummaryTable`'s own `title` row (a
+  `gap={1}` Box, 4pt below it), so the heading visibly jumped position the
+  moment the last required column got mapped; `SummaryTable` itself is
+  UNCHANGED (its `title` prop stays optional for its other callers, e.g.
+  the statement-import preview, whose own `SummaryTable` title is outside
+  this "MAP COLUMNS" screen's item-13 scope).
 - **Fields are grouped with the shared `Divider`** between: (a)
   encoding/separators, (b) dates, (c) amounts/currency, (d)
   description/counterparty/balance (moved to the BOTTOM, in their own

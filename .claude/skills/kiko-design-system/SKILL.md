@@ -665,26 +665,32 @@ new component can land between reviews of this skill:
   (https://developer.apple.com/design/human-interface-guidelines/segmented-controls):
   a rounded track one elevation step above the screen background
   (`theme.colors.surface`), holding N equal-width segments, with the
-  SELECTED segment raised to the next elevation step
-  (`theme.colors.surfaceHigh`) — the OLED "elevation via translucent
-  overlay" scale (see "Dark-only theme" above), NOT the app's other
-  filled-accent selection vocabulary (`OptionPills`/`ChipRow`/
-  `SelectableRow`): a segmented control reads as its own distinct iOS
-  control, not another chip row. No segmented-control NATIVE library is a
+  SELECTED segment raised to `theme.colors.segmentSelected` — its own token
+  (F3 fix round 1, I3), not `surfaceHigh`: `surfaceHigh` against `surface`
+  only reaches a 1.35:1 contrast ratio, under the WCAG 1.4.11 3:1 floor for
+  a UI state indicator; `segmentSelected` (`#636366`, iOS `systemGray`)
+  reaches 3.15:1 (see the token's own doc comment in `theme.ts`). This is
+  still NOT the app's other filled-accent selection vocabulary
+  (`OptionPills`/`ChipRow`/`SelectableRow`) — a segmented control reads as
+  its own distinct iOS control. No segmented-control NATIVE library is a
   dependency of this app (checked at F3 item 9); this renders the same
   visual/interaction contract in plain `Pressable`/`Box`/`Text` instead of
-  adding one. Its VISIBLE height (`SEGMENT_MIN_HEIGHT`, 36pt,
-  `segmented-control.styles.ts`) sits below the 44pt HIG floor on purpose —
-  the same visible-short/hitSlop-restored split `Button`'s own `size="small"`
-  documents — and restores the 44pt touch target via `SEGMENT_HIT_SLOP`
-  (`segmented-control.component.tsx`). Props mirror `ChipRow`'s own
-  (`options`/`selected`/`onSelect`/`label`/`required`/`labels`/`disabled`/
-  `testID`, no `icons`) so the two read as siblings; `ChipRow` remains the
-  compact short-code/label picker (encoding, delimiter, decimal separator on
-  the column-mapping screen), while `SegmentedControl` is for a true 2-3-way
-  MODE toggle — the column-mapping screen's amount-mode and currency-mode
-  selectors (`AmountFields`/`CurrencyFields`) are its first consumers,
-  superseding `ChipRow` there (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
+  adding one. Its VISIBLE track height is ~32pt (`SEGMENT_MIN_HEIGHT` 24pt +
+  the track's own `spacing(1)` padding on both edges,
+  `segmented-control.styles.ts`), matching native `UISegmentedControl`; the
+  44pt HIG touch target is restored per segment via `SEGMENT_HIT_SLOP`
+  (`segmented-control.component.tsx`). The selected label is semibold
+  (`fontWeight: '600'`), matching UIKit. Props: `options`/`selected`/
+  `onSelect`/`labels`/`accessibilityLabel` (required — VoiceOver has no
+  other group name to read) /`testID`; each segment carries
+  `accessibilityRole="tab"` inside the track's own `accessibilityRole=
+  "tablist"`, plus `accessibilityValue` announcing its "N / M" position.
+  `ChipRow` remains the compact short-code/label picker (encoding,
+  delimiter, decimal separator on the column-mapping screen), while
+  `SegmentedControl` is for a true 2-3-way MODE toggle — the column-mapping
+  screen's amount-mode and currency-mode selectors
+  (`AmountFields`/`CurrencyFields`) are its first consumers, superseding
+  `ChipRow` there (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
