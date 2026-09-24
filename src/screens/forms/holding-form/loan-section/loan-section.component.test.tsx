@@ -22,14 +22,14 @@ const baseProps = {
 };
 
 describe('LoanSection', () => {
-  it('renders every loan kind as a chip, under the Kind label', async () => {
+  it('renders every loan kind as a chip, under the Loan Kind label', async () => {
     const { getByText } = await render(<LoanSection {...baseProps} />);
 
-    expect(getByText('Kind')).toBeTruthy();
+    expect(getByText('Loan Kind')).toBeTruthy();
     expect(getByText('Mortgage')).toBeTruthy();
     expect(getByText('Car loan')).toBeTruthy();
     expect(getByText('Consumer loan')).toBeTruthy();
-    expect(getByText('Personal')).toBeTruthy();
+    expect(getByText('From a person')).toBeTruthy();
   });
 
   it('reports the tapped kind', async () => {

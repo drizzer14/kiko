@@ -1705,11 +1705,11 @@ describe('HoldingFormScreen loan (T28)', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Car loan');
-    expect(screen.queryByText('Enter a principal greater than 0.')).toBeNull();
+    expect(screen.queryByText('Principal must be greater than 0.')).toBeNull();
 
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Enter a principal greater than 0.')).toBeTruthy();
+    expect(screen.getByText('Principal must be greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -1741,7 +1741,7 @@ describe('HoldingFormScreen loan (T28)', () => {
   it('renders a visible text label above every loan field', async () => {
     const screen = await renderScreen();
 
-    expect(screen.getByText('Kind')).toBeTruthy();
+    expect(screen.getByText('Loan Kind')).toBeTruthy();
     expect(screen.getByLabelText('Principal')).toBeTruthy();
     expect(screen.getByLabelText('Start Date')).toBeTruthy();
     expect(screen.getByText('Schedule')).toBeTruthy();

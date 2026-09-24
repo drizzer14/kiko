@@ -292,11 +292,11 @@ export const en = {
         carLoan: 'Car loan',
         consumerLoan: 'Consumer loan',
         mortgage: 'Mortgage',
-        personal: 'Personal',
+        personal: 'From a person',
       },
-      loanKindLabel: 'Kind',
+      loanKindLabel: 'Loan Kind',
       loanPrincipal: 'Principal',
-      loanPrincipalError: 'Enter a principal greater than 0.',
+      loanPrincipalError: 'Principal must be greater than 0.',
       loanPrincipalPlaceholder: '1000.00',
       // The Loan form's own schedule SegmentedControl option map (T28).
       loanSchedule: {

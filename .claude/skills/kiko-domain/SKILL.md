@@ -824,9 +824,11 @@ decimal-string rule.
 `holding-value.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
 accrues either AT VALUATION time) and the net-worth assets-minus-debt
-rule change landed at T27. Not yet wired as of T28 (a later task):
-the automatic payment-linking matcher (spec 5.4) — read T29/T30's own
-briefs before assuming that works.
+rule change landed at T27. Not yet wired as of T28 (later tasks): the
+`loanHoldingId` link column (T29), interest-only spending (T30), the
+transaction-form field (T31), and the automatic payment-linking
+matcher itself (T32, spec 5.4) — read each task's own brief before
+assuming that works.
 
 ### Loan form + detail (T28)
 
