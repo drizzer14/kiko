@@ -115,6 +115,12 @@ because it can compare against the actual pinned set.
 | `kiko-no-use-animated-keyboard` | #16 — `useAnimatedKeyboard()` was prose-only banned in `kiko-gestures` (its native observer reaches `AppDelegate.window`, which SIGABRTs under this app's UIScene lifecycle) | Semgrep (TS/JS, ERROR) | Flags any `useAnimatedKeyboard(` call. `bottom-sheet.component.tsx` drives its keyboard height from RN core `Keyboard` events instead — see `kiko-gestures`. |
 | `kiko-no-textdecoder-textencoder` | #16 — Hermes has no working `TextDecoder`/`TextEncoder`; `src/data-transfer/utf8`/`base64` hand-roll the equivalent, prose-only in `kiko-code-style`'s dependency notes | Semgrep (TS/JS, ERROR) | Flags `new TextDecoder(` / `new TextEncoder(` anywhere under `src/`. A comment merely mentioning the names does not match — the pattern requires the `new …(` call syntax. |
 
+### Enforced — 2026-09-25 R1 behavior-free refactor (R1.a)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-nullable-map-ternary` | kiko-code-style's "Banned: the nullable-map ternary" — `x === undefined ? undefined : f(x)` and its `null`/`== null`/list-or-empty variants, previously prose-only | Semgrep (TS, ERROR) | Every `pattern-either` branch is a literal branch shape (basename `paths.include` N/A — no path scope needed, the rule applies repo-wide including tests), covering the direct (`===`/`==`-first) and inverted (`!==`/`!=`-first) forms plus the `||`/`&&`-joined longhand spelling of `== null` seen in `transactions.repo.test.ts`. Deliberately has NO test-file exclusion — the sweep this rule lands with converts existing test-file instances too. A default-value ternary (fallback is a real value, not a null/undefined/`[]` literal) and a validator-error ternary (opposite polarity: a real message on the absent side, `undefined` on the present side) both verified to draw zero findings on the negative fixture.|
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

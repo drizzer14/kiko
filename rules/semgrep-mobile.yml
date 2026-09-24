@@ -217,6 +217,67 @@ rules:
       - pattern-either:
           - pattern: const pipe = $F
           - pattern: const compose = $F
+  # R1.a (behavior-free refactor). kiko-code-style's "Banned: the nullable-map
+  # ternary" — `x === undefined ? undefined : f(x)` (and the `null`/`== null`/
+  # list-or-empty variants) hand-rolls exactly what `fnts`'s `maybe` + `foldMap`
+  # already does, without the type making the "might be absent" case visible.
+  # Every `pattern-either` branch below is a LITERAL branch shape (the
+  # null-like sentinel is `undefined`/`null`/`[]`, spelled out at the exact AST
+  # position the comparison operator implies), not a general `$A ? $B : $C` —
+  # so a genuine default-value ternary (`x !== null ? f(x) : fallback`, where
+  # the fallback is a real value, not one of the three sentinels) never
+  # matches, and neither does a validator-error ternary that returns a real
+  # message on the ABSENT side and `undefined` on the present side (the
+  # opposite polarity from a nullable map) — both verified empirically against
+  # the negative fixture. The `===`/`==`-first and `!==`/`!=`-first pairs cover
+  # the direct and "inverted" forms; the `||`/`&&`-joined pairs cover the
+  # `x === undefined || x === null ? … : …` spelling of `== null` written out
+  # longhand (seen in `transactions.repo.test.ts`). Deliberately NOT scoped to
+  # `paths.exclude` test files — the brief includes existing test-file
+  # instances in the sweep, unlike the Hermes TextDecoder rule above.
+  - id: kiko-no-nullable-map-ternary
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Hand-rolled nullable-map ternary. `x === undefined ? undefined : f(x)`
+      (and the `null`/`== null`/list-or-empty variants) duplicates what
+      `fnts`'s `maybe` + `foldMap` already does, without the type making the
+      "might be absent" case visible at the call site. Use
+      `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the
+      list-or-empty form) — see kiko-code-style's "Banned: the nullable-map
+      ternary".
+    patterns:
+      - pattern-either:
+          - pattern: "$X === undefined ? undefined : $E"
+          - pattern: "$X === undefined ? null : $E"
+          - pattern: "$X === undefined ? [] : $E"
+          - pattern: "$X === null ? undefined : $E"
+          - pattern: "$X === null ? null : $E"
+          - pattern: "$X === null ? [] : $E"
+          - pattern: "$X == null ? undefined : $E"
+          - pattern: "$X == null ? null : $E"
+          - pattern: "$X == null ? [] : $E"
+          - pattern: "$X !== undefined ? $E : undefined"
+          - pattern: "$X !== undefined ? $E : null"
+          - pattern: "$X !== undefined ? $E : []"
+          - pattern: "$X !== null ? $E : undefined"
+          - pattern: "$X !== null ? $E : null"
+          - pattern: "$X !== null ? $E : []"
+          - pattern: "$X != null ? $E : undefined"
+          - pattern: "$X != null ? $E : null"
+          - pattern: "$X != null ? $E : []"
+          - pattern: "$X === undefined || $X === null ? undefined : $E"
+          - pattern: "$X === null || $X === undefined ? undefined : $E"
+          - pattern: "$X === undefined || $X === null ? null : $E"
+          - pattern: "$X === null || $X === undefined ? null : $E"
+          - pattern: "$X === undefined || $X === null ? [] : $E"
+          - pattern: "$X === null || $X === undefined ? [] : $E"
+          - pattern: "$X !== undefined && $X !== null ? $E : undefined"
+          - pattern: "$X !== null && $X !== undefined ? $E : undefined"
+          - pattern: "$X !== undefined && $X !== null ? $E : null"
+          - pattern: "$X !== null && $X !== undefined ? $E : null"
+          - pattern: "$X !== undefined && $X !== null ? $E : []"
+          - pattern: "$X !== null && $X !== undefined ? $E : []"
   # skill-gap-analysis #16. AST `pattern:` (not `pattern-regex`), so a
   # comment merely naming `useAnimatedKeyboard` — several already exist,
   # documenting the crash this rule guards against, see

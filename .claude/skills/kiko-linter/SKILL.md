@@ -200,6 +200,22 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   (`rules/semgrep-mobile.yml`) uses a path-prefixed `paths.exclude` for
   `src/screens/**`/`src/navigation/**` instead of trying to scope the
   rule down with `paths.include`.
+- A `pattern:`/`pattern-either` string containing a bare `:` (a ternary
+  `? … : …`, an object literal, a type annotation) MUST be YAML-quoted
+  (`pattern: "$X ? $A : $B"`), never left bare
+  (`pattern: $X ? $A : $B`). Left bare, YAML parses everything after
+  the first unquoted `:` as a nested mapping key, which Semgrep then
+  rejects as "Invalid YAML file: mapping values are not allowed here"
+  — but that error is only visible when the config is invalid; a
+  **subtly wrong but still-parseable** unquoted pattern silently
+  matches NOTHING instead of erroring, which is what actually happened
+  writing `kiko-no-nullable-map-ternary`: `pattern: $A ? $B : $C`
+  parsed as valid YAML with a truncated pattern string and produced
+  zero findings against a fixture the rule was later proven (once
+  quoted) to match. Verified empirically: the bare form gave 0
+  findings on a trivial `true ? 1 : 2` fixture; the quoted form gave 1.
+  Quote every ternary/object/type-annotation pattern string from the
+  start, rather than debugging a mysteriously-empty result set.
 
 ## Class A vs Class B
 
@@ -269,9 +285,10 @@ tracked as a backlog item in `docs/harness/review-to-biome-inventory.md`.
 
 ## Backlog: F4 code-style mechanization candidates
 
-Four proposed but NOT YET IMPLEMENTED checks (documentation only — do
-not implement without a dedicated pass; each needs its own inventory
-row in `docs/harness/review-to-biome-inventory.md` when it lands):
+One proposed but NOT YET IMPLEMENTED check remains (documentation
+only — do not implement without a dedicated pass; needs its own
+inventory row in `docs/harness/review-to-biome-inventory.md` when it
+lands):
 
 - A comment-history check (Semgrep `pattern-regex` or a grep wrapper)
   over `src` comments for a task id (`\bT\d{1,3}\b`), a review-round id
@@ -279,14 +296,14 @@ row in `docs/harness/review-to-biome-inventory.md` when it lands):
   number (`"spec \d"`, `\bD\d{1,2}\b`) — see kiko-code-style's
   "Comments" section for the rule this mechanizes. Needs
   false-positive tuning before it can be Class A.
-- A nullable-ternary Semgrep ERROR rule for
-  `x === undefined ? undefined : f(x)` and its `null`/`== null`
-  variants — see kiko-code-style's "Banned: the nullable-map ternary".
-- An at-most-one-exported-component-per-`.tsx` check (Semgrep or a
-  Jest invariant) — see kiko-code-style's "One component per file"
-  section for the rule and its small-local-component exception.
-- An import length-sort checker for the hand-enforced ordering rule —
-  see kiko-code-style's "Import ordering and `import type`" section.
+
+The other three candidates from this same backlog are now implemented
+(R1 of the behavior-free refactor): the nullable-ternary rule is
+`kiko-no-nullable-map-ternary` (Semgrep ERROR,
+`rules/semgrep-mobile.yml`) — see "Semgrep pattern strings need
+quoting" below for the one gotcha that cost the most time writing it.
+The one-exported-component-per-`.tsx` and import-length-sort checks
+are documented where they live once R1.b/R1.c land in this same file.
 
 These are implemented later in the refactor batch, not by this brief.
 
