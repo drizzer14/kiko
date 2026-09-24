@@ -1,8 +1,8 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
-import type { Metal, MetalForm, MetalUnit } from '../../../../holdings/holding-metadata';
 import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
+import type { Metal, MetalForm, MetalUnit } from '../../../../holdings/holding-metadata';
 
 export type MetalSectionProps = {
   metal: Metal;
@@ -13,9 +13,9 @@ export type MetalSectionProps = {
   onSelectUnit: (unit: MetalUnit) => void;
   purity: string;
   onChangePurity: (text: string) => void;
-  // F4 audit 8: purity is validated on Save (0 < purity <= 1) in BOTH create
-  // and edit mode — a garbled or out-of-range value blocks Save instead of
-  // silently falling back to the standard fineness default.
+  // Purity is validated on Save (0 < purity <= 1) in BOTH create and edit
+  // mode — a garbled or out-of-range value blocks Save instead of silently
+  // falling back to the standard fineness default.
   purityError?: string;
   purityFieldRef?: RefObject<FieldInstance | null>;
   purityInputRef?: RefObject<TextInputInstance | null>;

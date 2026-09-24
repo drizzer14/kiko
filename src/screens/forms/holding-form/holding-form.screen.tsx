@@ -9,6 +9,8 @@ import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import ChipRow from '../chip-row';
+import DateField from '../date-field';
 import {
   creatableHoldingTypesForAccount,
   type HoldingType,
@@ -16,6 +18,7 @@ import {
   isLedgerlessHoldingType,
   holdingTypesForAccountKind,
 } from '../../../holdings/holding-type';
+import ColorPicker from '../color-picker';
 import {
   asBondMeta,
   asLoanMeta,
@@ -33,6 +36,11 @@ import {
   type CompoundingFrequency,
   type TermDepositMeta,
 } from '../../../holdings/holding-metadata';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 import { Money } from '../../../currency/money';
 import type { Lot } from '../../../holdings/lots';
 import type { HoldingRow } from '../../../db/schema';
@@ -40,11 +48,13 @@ import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
+import HoldingIdentityField from '../holding-identity-field';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
 import Switch from '../../../design-system/components/switch';
 import { usePriceBook } from '../../../prices/use-price-book';
 import Divider from '../../../design-system/components/divider';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import TextField from '../../../design-system/components/text-field';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { dayKeyOf, type PriceBook } from '../../../prices/price-book';
@@ -54,22 +64,11 @@ import { resolveEntityColor } from '../../../design-system/entity-tint';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import { loanOutstandingMinorAt } from '../../../holdings/loan-schedule';
 import CurrencyField from '../../../design-system/components/currency-field';
+import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
 import { type Currency, currencyScale, currencySymbol } from '../../../currency/currency';
 import { compareDecimal, normalizeDecimal, shiftDecimal } from '../../../currency/decimal';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-
-import ChipRow from '../chip-row';
-import DateField from '../date-field';
-import ColorPicker from '../color-picker';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
-import HoldingIdentityField from '../holding-identity-field';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
 
 import LoanSection from './loan-section';
 import MetalSection from './metal-section';

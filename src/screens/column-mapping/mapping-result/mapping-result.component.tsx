@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import SummaryTable from '../../../design-system/components/summary-table';
+import ExampleTransaction from '../../statement-import/example-transaction';
 
 import { styles } from './mapping-result.styles';
 import type { MappingResultProps } from './mapping-result.props';
-import ExampleTransaction from '../../statement-import/example-transaction';
 
 const ROW_ERROR_PREVIEW_COUNT = 20;
 

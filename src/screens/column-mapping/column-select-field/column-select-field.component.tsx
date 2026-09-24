@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
 import { useState } from 'react';
+import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Text from '../../../design-system/components/text';

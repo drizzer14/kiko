@@ -1,8 +1,8 @@
-import type { FC, RefObject } from 'react';
 import * as RNFS from 'react-native-fs';
+import type { FC, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useRef, useEffect, useState } from 'react';
+import { View, Alert, type ScrollViewInstance } from 'react-native';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -13,7 +13,16 @@ import type {
   StatementFormatId,
   StatementFormatInput,
 } from '../../statement-import/parser';
-import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
+import {
+  detectFormat,
+  statementFormats,
+  supportedFormatNames,
+} from '../../statement-import/registry';
+import {
+  scrollToField,
+  useHeaderInset,
+  type FieldInstance,
+} from '../forms/scroll-to-field/scroll-to-field';
 import {
   fileNameOf,
   isXlsxFile,
@@ -28,13 +37,9 @@ import Button from '../../design-system/components/button';
 import Screen from '../../design-system/components/screen';
 import { accountsRepo } from '../../accounts/accounts.repo';
 import { settingsRepo } from '../../settings/settings.repo';
-import SummaryTable from '../../design-system/components/summary-table';
 import type { AccountsStackParamList } from '../../navigation/types';
-import {
-  detectFormat,
-  statementFormats,
-  supportedFormatNames,
-} from '../../statement-import/registry';
+import SummaryTable from '../../design-system/components/summary-table';
+import { readTableRows, findSavedMapping } from '../../statement-import/column-mapping';
 import { importStatement, type ImportResult } from '../../statement-import/import-statement';
 
 import { styles } from './statement-import.styles';
@@ -43,11 +48,6 @@ import PreviewDetailList from './preview-detail-list';
 import ExampleTransaction from './example-transaction';
 import TargetHoldingField from './target-holding-field';
 import { previewStats } from './preview-stats/preview-stats';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '../forms/scroll-to-field/scroll-to-field';
 import { useTargetHoldingOptions } from './use-target-holding-options/use-target-holding-options';
 
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
