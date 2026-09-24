@@ -157,7 +157,11 @@ export const isConnectableBank = (bankId: string | null | undefined): boolean =>
  * metals (T17's `metal` holding allow-list): `false` for an unset/
  * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
  * unknown bank must not silently unlock the `metal` holding type — and for
- * every catalog entry except PrivatBank. */
+ * every catalog entry whose own `sellsMetals` is `false` (as of T22:
+ * PrivatBank, PUMB, Oschadbank, and Ukrgasbank sell metals; Monobank,
+ * Sensebank, ProCredit, UKRSIBBANK, Alfa-Bank, and Raiffeisen don't — read
+ * the catalog's own `sellsMetals` field rather than trusting a list
+ * restated here, it drifts). */
 export const bankSellsMetals = (bankId: string | null | undefined): boolean =>
   isBankId(bankId)
     ? (bankCatalog.find((entry) => entry.id === bankId)?.sellsMetals ?? false)
