@@ -176,6 +176,8 @@ export const uk: typeof en = {
       searchCurrencyPlaceholder: 'Пошук за кодом або назвою',
       selectCategory: 'Оберіть категорію',
       selectCurrency: 'Оберіть валюту',
+      selectDatePlaceholder: 'Оберіть дату',
+      selectTimePlaceholder: 'Оберіть час',
       time: 'Час',
     },
     account: {

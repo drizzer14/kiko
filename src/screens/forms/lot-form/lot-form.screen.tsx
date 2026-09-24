@@ -261,7 +261,12 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
           </View>
         )}
 
-        <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
+        <DateField
+          label={t('forms.fields.date')}
+          value={date}
+          onChange={setDate}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
+        />
       </Box>
     </Screen>
   );

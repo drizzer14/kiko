@@ -200,6 +200,13 @@ export const en = {
       searchCurrencyPlaceholder: 'Search by code or name',
       selectCategory: 'Select category',
       selectCurrency: 'Select currency',
+      // F4 audit 16: DateField/TimeField fall back to their OWN `label`
+      // prop as the placeholder when a caller passes none — a caller that
+      // omits this repeats "Date"/"Time" as both the caption AND the
+      // unset-value text. Matches the established "Select a date" copy
+      // style (`forms.holding.selectDatePlaceholder`).
+      selectDatePlaceholder: 'Select a date',
+      selectTimePlaceholder: 'Select a time',
       time: 'Time',
     },
     account: {

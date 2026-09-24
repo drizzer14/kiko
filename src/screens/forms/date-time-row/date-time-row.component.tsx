@@ -35,6 +35,7 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
           value={time}
           onChange={onChangeTime}
           disabled={disabled}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
           testID={dateTestID}
         />
       </View>
@@ -45,6 +46,7 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
           value={time}
           onChange={onChangeTime}
           disabled={disabled}
+          placeholder={t('forms.fields.selectTimePlaceholder')}
           testID={timeTestID}
         />
       </View>
