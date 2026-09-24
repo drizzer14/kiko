@@ -1,8 +1,8 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { Text as RNText, StyleSheet } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import GlassSurface from '../../../design-system/components/glass-surface';
 import { darkTheme } from '../../../design-system/theme';
+import GlassSurface from '../../../design-system/components/glass-surface';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';

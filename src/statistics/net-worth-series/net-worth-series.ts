@@ -1,5 +1,6 @@
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
+import { bucketTimes } from '../buckets';
 import { Money, toMajor } from '../../currency/money';
 import { canConvert } from '../../rates/net-worth-view';
 import type { Currency } from '../../currency/currency';
@@ -9,7 +10,6 @@ import type { CurrencyRateHistoryRow } from '../../db/schema';
 import { convert, type RateTable } from '../../rates/conversion';
 import { reconcileBondFunding } from '../reconcile-bond-funding';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
-import { bucketTimes } from '../buckets';
 import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from '../holding-value-at';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;

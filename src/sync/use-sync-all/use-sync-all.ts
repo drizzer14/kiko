@@ -1,6 +1,6 @@
-import { ratesRepo } from '@kiko/rates/repo';
 import either from 'fnts/either';
 import { useState } from 'react';
+import { ratesRepo } from '@kiko/rates/repo';
 
 import { refreshRates } from '../../rates/rates-refresh';
 import { refreshMetalPrices } from '../../prices/metal-refresh';

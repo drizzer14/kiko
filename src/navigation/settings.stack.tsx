@@ -1,15 +1,15 @@
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import SystemScreen from '../screens/settings/system/system.screen';
+import SettingsScreen from '../screens/settings/settings/settings.screen';
 import CategoriesScreen from '../screens/settings/categories/categories.screen';
 import ExportDataScreen from '../screens/settings/export-data/export-data.screen';
 import ImportDataScreen from '../screens/settings/import-data/import-data.screen';
-import SettingsScreen from '../screens/settings/settings/settings.screen';
-import SystemScreen from '../screens/settings/system/system.screen';
 
-import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { SettingsStackParamList } from './types';
+import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
 

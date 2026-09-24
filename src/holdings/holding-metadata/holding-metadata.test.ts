@@ -1,11 +1,3 @@
-import type {
-  BondMeta,
-  CompoundingFrequency,
-  LoanMeta,
-  MetalMeta,
-  PropertyMeta,
-  TermDepositMeta,
-} from './holding-metadata';
 import {
   asBondMeta,
   asLoanMeta,
@@ -19,6 +11,14 @@ import {
   preciousMetals,
   syncedAtOf,
   walletAddressOf,
+} from './holding-metadata';
+import type {
+  BondMeta,
+  CompoundingFrequency,
+  LoanMeta,
+  MetalMeta,
+  PropertyMeta,
+  TermDepositMeta,
 } from './holding-metadata';
 
 describe('asTermDepositMeta', () => {

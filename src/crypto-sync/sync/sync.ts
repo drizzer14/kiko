@@ -1,7 +1,6 @@
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
-import type { AccountRow, HoldingRow } from '../../db/schema';
 import { i18n } from '../../i18n';
 import {
   beginProgressSession,
@@ -10,6 +9,7 @@ import {
   endProgressSession,
   registerWork,
 } from '../../monobank/sync-status';
+import type { AccountRow, HoldingRow } from '../../db/schema';
 import { type BalanceProvider, type BalanceProviderId, providerDisplayName } from '../provider';
 
 /**

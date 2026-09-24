@@ -1,14 +1,14 @@
-import type { Repository } from '@kiko/db/repository';
 import { asc, eq, sql } from 'drizzle-orm';
+import type { Repository } from '@kiko/db/repository';
 
 import { clearLoanLinksForHoldingsTx } from '@kiko/holdings/repo';
 
-import type { Currency } from '../currency/currency';
-import { database, write } from '../db/client';
 import { id } from '../db/id';
-import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
-import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
+import { database, write } from '../db/client';
+import type { Currency } from '../currency/currency';
 import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
+import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
+import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
 
 // The next free grid slot for a new account, read inside the same write
 // transaction as the insert so a concurrent create cannot observe a stale

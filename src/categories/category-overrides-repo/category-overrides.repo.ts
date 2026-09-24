@@ -1,5 +1,5 @@
-import type { Repository } from '@kiko/db/repository';
 import { inArray, sql } from 'drizzle-orm';
+import type { Repository } from '@kiko/db/repository';
 
 import { database, write } from '../../db/client';
 import { categoryOverrides, transactions } from '../../db/schema';

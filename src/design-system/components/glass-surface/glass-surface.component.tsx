@@ -1,11 +1,11 @@
-import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 import type { FC, ReactNode } from 'react';
-import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet as RNStyleSheet, View } from 'react-native';
+import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
 
+import { styles } from './glass-surface.styles';
 import type { GlassSurfaceProps } from './glass-surface.props';
 import { useBloomResample } from './glass-surface.resample.hook';
-import { styles } from './glass-surface.styles';
 
 // Extracted to keep the component's own cognitive complexity down: the
 // backdrop fill has a strict precedence — an entity `tint` (opaque) beats

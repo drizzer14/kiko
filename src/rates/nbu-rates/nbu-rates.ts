@@ -1,7 +1,7 @@
 import { guard } from 'fnts';
 
-import { isCurrency, isFiat } from '../../currency/currency';
 import type { RateEntry } from '../conversion';
+import { isCurrency, isFiat } from '../../currency/currency';
 
 /**
  * NBU's public, tokenless CURRENT-rate endpoint — one request returns every

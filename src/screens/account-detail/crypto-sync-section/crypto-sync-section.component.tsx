@@ -1,27 +1,27 @@
-import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import type { TFunction } from 'i18next';
 import type { FC } from 'react';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
+import { Alert } from 'react-native';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 
-import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
 } from '../../../crypto-sync/provider';
-import { resyncRequest } from '../../../crypto-sync/resync-request';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
-import { styles } from '../account-detail.styles';
 import CryptoSyncForm from '../crypto-sync-form';
+import { styles } from '../account-detail.styles';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import Button from '../../../design-system/components/button';
+import type { AccountRow, HoldingRow } from '../../../db/schema';
+import SymbolIcon from '../../../design-system/components/symbol';
+import { resyncRequest } from '../../../crypto-sync/resync-request';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
+import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
+import ConfirmSheet from '../../../design-system/components/confirm-sheet';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;

@@ -1,5 +1,5 @@
-import type { HoldingRow } from '../../db/schema';
 import type { SyncTarget } from '../provider';
+import type { HoldingRow } from '../../db/schema';
 
 import {
   type BinanceAccount,

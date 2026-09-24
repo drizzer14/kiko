@@ -1,5 +1,5 @@
-import { act, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { act, render } from '@testing-library/react-native';
 
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';

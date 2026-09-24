@@ -6,11 +6,11 @@ import {
   EXPORT_VERSION,
   type ExportEnvelope,
 } from './crypto/envelope';
+import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
-import { utf8Decode } from './utf8/utf8';
 
 // Not exported: nothing outside this file imports it yet (the Import Data
 // screen, Task 13, currently consumes only `importData`'s inferred return

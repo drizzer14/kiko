@@ -1,6 +1,6 @@
+import { useState } from 'react';
 import { ratesRepo } from '@kiko/rates/repo';
 import either, { bifold, isLeft } from 'fnts/either';
-import { useState } from 'react';
 
 import { runSync } from '../../monobank/sync';
 import { refreshRates } from '../../rates/rates-refresh';

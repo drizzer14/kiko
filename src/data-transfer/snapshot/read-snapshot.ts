@@ -1,7 +1,6 @@
 // src/data-transfer/snapshot/read-snapshot.ts
 import { asc } from 'drizzle-orm';
 
-import { database } from '../../db/client';
 import {
   accounts,
   bondRegister,
@@ -15,6 +14,7 @@ import {
   syncState,
   transactions,
 } from '../../db/schema';
+import { database } from '../../db/client';
 
 import type { DataSnapshot } from './data-snapshot';
 

@@ -1,10 +1,9 @@
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
 import {
   asNavigationProp,
@@ -12,6 +11,7 @@ import {
   navigationSpy,
 } from '../../../test-support/navigation-props';
 import { dayKeyOf } from '../../../prices/price-book';
+import { darkTheme } from '../../../design-system/theme';
 import type { HoldingType } from '../../../holdings/holding-type';
 import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import { refreshBondRegisterIfStale } from '../../../bonds/bond-register-repo';

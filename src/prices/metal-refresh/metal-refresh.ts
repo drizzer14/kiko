@@ -1,12 +1,12 @@
-import { holdingsRepo } from '@kiko/holdings/repo';
 import maybe, { foldMap } from 'fnts/maybe';
+import { holdingsRepo } from '@kiko/holdings/repo';
 
-import type { HoldingRow, PricePointRow } from '../../db/schema';
-import { asMetalMeta, type Metal } from '../../holdings/holding-metadata';
-import { fetchNbuMetalHistory, fetchNbuMetalsCurrent, type NbuMetalRate } from '../nbu-metals';
 import { dayKeyOf } from '../price-book';
 import { metalInstrument } from '../instrument';
 import { pricePointsRepo } from '../price-points-repo';
+import type { HoldingRow, PricePointRow } from '../../db/schema';
+import { asMetalMeta, type Metal } from '../../holdings/holding-metadata';
+import { fetchNbuMetalHistory, fetchNbuMetalsCurrent, type NbuMetalRate } from '../nbu-metals';
 
 type HeldHolding = Pick<HoldingRow, 'type' | 'metadata'>;
 type StoredPoint = Pick<PricePointRow, 'instrument' | 'day'>;

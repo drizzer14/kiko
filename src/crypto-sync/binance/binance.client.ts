@@ -1,5 +1,5 @@
-import { BINANCE_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
+import { BINANCE_API_ENDPOINT } from '@env';
 import either, { bifold, isRight } from 'fnts/either';
 
 import { signQuery } from './binance.hmac';

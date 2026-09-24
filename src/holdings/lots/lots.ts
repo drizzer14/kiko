@@ -1,5 +1,5 @@
-import { addDecimal, compareDecimal } from '../../currency/decimal';
 import { dayKeyOf } from '../../prices/price-book';
+import { addDecimal, compareDecimal } from '../../currency/decimal';
 
 /**
  * One quantity/cost event against a priced, ledgerless holding

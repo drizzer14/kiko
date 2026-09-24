@@ -1,14 +1,8 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
-import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
+import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
 
-import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
-import { i18n } from '../../i18n';
-import { fetchClientInfo, fetchStatement } from '../client';
-import { currencyFromCode } from '../currency-code';
-import { categoryForMcc } from '../mcc-category';
-import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 import {
   beginProgressSession,
   commitHolding,
@@ -17,8 +11,14 @@ import {
   registerWork,
   setFastPhaseDone,
 } from '../sync-status';
-import { createRequestGate, type RequestGate } from '../throttle';
+import { i18n } from '../../i18n';
 import { readToken } from '../token';
+import { categoryForMcc } from '../mcc-category';
+import { currencyFromCode } from '../currency-code';
+import { fetchClientInfo, fetchStatement } from '../client';
+import { createRequestGate, type RequestGate } from '../throttle';
+import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '../../db/schema';
+import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank.types';
 
 type NewHolding = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
   Partial<Pick<HoldingRow, 'balanceMinorUnits' | 'metadata' | 'sortOrder'>>;

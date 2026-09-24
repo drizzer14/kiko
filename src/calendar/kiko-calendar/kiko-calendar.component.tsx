@@ -4,8 +4,8 @@ import { useUnistyles } from 'react-native-unistyles';
 
 import CalendarHeader from '../calendar-header';
 
-import type { KikoCalendarProps } from './kiko-calendar.props';
 import { buildCalendarTheme } from './kiko-calendar.theme';
+import type { KikoCalendarProps } from './kiko-calendar.props';
 
 // The shared calendar used by both date sheets (Home's range picker and the
 // forms' single-day picker). It centralizes three behaviors:

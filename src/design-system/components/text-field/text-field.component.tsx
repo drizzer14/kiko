@@ -7,8 +7,8 @@ import Text from '../text';
 import SymbolIcon from '../symbol';
 import FieldError from '../field-error';
 import FieldLabel from '../field-label';
-import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 import { deriveFieldTestID } from '../../derive-field-test-id';
+import { useKeyboardDoneAccessory } from '../keyboard-done-accessory';
 
 import { styles } from './text-field.styles';
 import type { TextFieldProps } from './text-field.props';

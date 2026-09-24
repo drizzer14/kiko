@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../../../design-system/unistyles';
 import '../../../../i18n';
 import { darkTheme } from '../../../../design-system/theme';

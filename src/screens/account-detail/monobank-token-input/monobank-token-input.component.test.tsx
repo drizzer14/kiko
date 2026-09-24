@@ -1,5 +1,5 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 

@@ -1,7 +1,7 @@
-import { FlatList, Keyboard } from 'react-native';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
+import { FlatList, Keyboard } from 'react-native';
 import { type FC, useEffect, useState } from 'react';
 
 import Box from '../box';

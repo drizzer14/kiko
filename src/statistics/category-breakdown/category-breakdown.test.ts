@@ -1,9 +1,9 @@
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
+import { darkTheme } from '../../design-system/theme';
+import { chartSeriesDark } from '../../design-system/palette';
 import { buildCategoryDisplayMap } from '../../categories/category-display';
 import { readSeedCategoryColors } from '../../db/__fixtures__/seed-category-colors';
-import { chartSeriesDark } from '../../design-system/palette';
-import { darkTheme } from '../../design-system/theme';
 
 import {
   type BreakdownTransaction,

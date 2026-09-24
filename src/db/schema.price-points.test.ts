@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const migrationsDir = join(__dirname, '../../drizzle/migrations');
 

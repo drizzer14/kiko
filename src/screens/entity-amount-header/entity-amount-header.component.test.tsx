@@ -1,5 +1,5 @@
-import { render, within } from '@testing-library/react-native';
 import { Text as RNText } from 'react-native';
+import { render, within } from '@testing-library/react-native';
 import '../../design-system/unistyles';
 import { Money } from '../../currency/money';
 

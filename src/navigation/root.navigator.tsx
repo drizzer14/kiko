@@ -1,15 +1,15 @@
-import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
+import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 
 import { genericEntitySymbol } from '../holdings/entity-symbols';
 
-import AccountsStack from './accounts.stack';
 import HomeStack from './home.stack';
+import type { TabParamList } from './types';
+import AccountsStack from './accounts.stack';
 import SettingsStack from './settings.stack';
 import StatisticsStack from './statistics.stack';
-import type { TabParamList } from './types';
 
 const Tabs = createNativeBottomTabNavigator<TabParamList>();
 

@@ -1,5 +1,5 @@
-import { isCurrency } from '../../currency/currency';
 import type { RateEntry } from '../conversion';
+import { isCurrency } from '../../currency/currency';
 import { buildRateTable, canConvert } from '../net-worth-view';
 
 import { type RefreshDeps, refreshRates } from './rates-refresh';

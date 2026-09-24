@@ -1,11 +1,11 @@
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 import HomeScreen from '../screens/home/home.screen';
+import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
 
-import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { HomeStackParamList } from './types';
+import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 

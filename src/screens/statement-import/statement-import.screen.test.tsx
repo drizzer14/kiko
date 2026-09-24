@@ -5,9 +5,9 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
-import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
 import { supportedFormatNames } from '../../statement-import/registry';
 import { headerFingerprint } from '../../statement-import/column-mapping';
+import type { ParsedStatement, StatementFormat } from '../../statement-import/parser';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';

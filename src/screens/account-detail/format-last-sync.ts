@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
-import { formatDateTime } from '../../dates/format';
 import type { HoldingRow } from '../../db/schema';
+import { formatDateTime } from '../../dates/format';
 import { syncedAtOf } from '../../holdings/holding-metadata';
 
 /**

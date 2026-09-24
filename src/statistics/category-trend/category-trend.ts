@@ -1,15 +1,15 @@
-import { resolveCategoryDisplay } from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { Money, toMajor } from '../../currency/money';
-import { convert, type RateTable } from '../../rates/conversion';
-import { canConvert } from '../../rates/net-worth-view';
-import { bucketTimes } from '../buckets';
 import {
   type BreakdownTransaction,
   netMagnitudeOf,
   resolveCategoryColor,
   sumReturnsByGroup,
 } from '../category-breakdown';
+import { bucketTimes } from '../buckets';
+import { Money, toMajor } from '../../currency/money';
+import { canConvert } from '../../rates/net-worth-view';
+import type { Currency } from '../../currency/currency';
+import { convert, type RateTable } from '../../rates/conversion';
+import { resolveCategoryDisplay } from '../../categories/category-display';
 
 /**
  * One point on a category's spending line: `amount` is that category's total

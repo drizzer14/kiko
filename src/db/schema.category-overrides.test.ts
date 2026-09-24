@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { darkTheme } from '../design-system/theme';

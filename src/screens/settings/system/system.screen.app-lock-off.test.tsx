@@ -1,5 +1,5 @@
-import { render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import {
   asNavigationProp,

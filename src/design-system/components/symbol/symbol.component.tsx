@@ -1,9 +1,9 @@
 import type { FC } from 'react';
-import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 import { useUnistyles } from 'react-native-unistyles';
+import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
-import { toSFSymbolTintColor } from './symbol.color';
 import type { SymbolProps } from './symbol.props';
+import { toSFSymbolTintColor } from './symbol.color';
 import { currentOsMajor, effectiveFallbackName, resolveSymbolName } from './symbol.availability';
 
 // Named SymbolIcon, not Symbol, to avoid shadowing the global `Symbol`

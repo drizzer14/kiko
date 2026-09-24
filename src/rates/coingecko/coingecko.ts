@@ -1,5 +1,5 @@
-import { PRICE_ENDPOINT } from '@env';
 import { guard } from 'fnts';
+import { PRICE_ENDPOINT } from '@env';
 
 import type { RateEntry } from '../conversion';
 import type { Currency } from '../../currency/currency';

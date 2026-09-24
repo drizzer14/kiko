@@ -1,32 +1,15 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { categoriesRepo } from '@kiko/categories/repo';
 import type { ScrollViewInstance } from 'react-native';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 
-import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { Money } from '../../currency/money';
-import { defaultDateRange } from '../../dates/default-range';
-import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import Text from '../../design-system/components/text';
-import Screen from '../../design-system/components/screen';
-import MoneyText from '../../design-system/components/money-text';
-import SummaryTable from '../../design-system/components/summary-table';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import { ibanOf } from '../../holdings/holding-metadata';
-import { usePriceBook } from '../../prices/use-price-book';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
@@ -34,48 +17,65 @@ import {
   planBackfillRun,
   runBackfill,
 } from '../../rates/history-backfill';
-import { buildRateTable } from '../../rates/net-worth-view';
 import {
-  type AccountSlice,
-  buildAccountContribution,
-  buildDebtTotal,
-} from '../../statistics/account-contribution';
-import { bucketDaysForSpan } from '../../statistics/buckets';
+  resolveTrendFilter,
+  selectTopCategories,
+  type TrendFilter,
+} from '../../statistics/trend-filter';
+import {
+  buildCategoryMeasures,
+  buildCategoryTrend,
+  type TrendTransaction,
+} from '../../statistics/category-trend';
+import { Money } from '../../currency/money';
 import {
   type BreakdownTransaction,
   buildCategoryBreakdown,
   type CategorySlice,
 } from '../../statistics/category-breakdown';
 import {
-  buildCategoryMeasures,
-  buildCategoryTrend,
-  type TrendTransaction,
-} from '../../statistics/category-trend';
-import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
-import type { SeriesTransaction } from '../../statistics/holding-value-at';
-import { internalTransferTxIds } from '../../statistics/internal-transfers';
-import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
-import { buildNetWorthSeries } from '../../statistics/net-worth-series';
-import {
   descriptionExcludedTransferTxIds,
   mccExcludedTransferTxIds,
 } from '../../statistics/transfer-exclusion';
 import {
-  resolveTrendFilter,
-  selectTopCategories,
-  type TrendFilter,
-} from '../../statistics/trend-filter';
+  type AccountSlice,
+  buildAccountContribution,
+  buildDebtTotal,
+} from '../../statistics/account-contribution';
+import Box from '../../design-system/components/box';
+import DateRangeField from '../home/date-range-field';
+import { useLiveQuery } from '../../db/use-live-query';
+import Card from '../../design-system/components/card';
+import Text from '../../design-system/components/text';
+import type { Currency } from '../../currency/currency';
+import { ibanOf } from '../../holdings/holding-metadata';
+import Screen from '../../design-system/components/screen';
+import { usePriceBook } from '../../prices/use-price-book';
+import { buildRateTable } from '../../rates/net-worth-view';
+import { defaultDateRange } from '../../dates/default-range';
+import { bucketDaysForSpan } from '../../statistics/buckets';
+import MoneyText from '../../design-system/components/money-text';
+import { defaultAccountColor } from '../../holdings/entity-colors';
+import { resolveEntityColor } from '../../design-system/entity-tint';
 import { buildTypeBreakdown } from '../../statistics/type-breakdown';
 import { transactionSpan } from '../../transactions/transaction-span';
-import DateRangeField from '../home/date-range-field';
+import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
+import SummaryTable from '../../design-system/components/summary-table';
+import { buildNetWorthSeries } from '../../statistics/net-worth-series';
+import type { SeriesTransaction } from '../../statistics/holding-value-at';
+import { exchangeExcludedTxIds } from '../../statistics/exchange-exclusion';
+import { internalTransferTxIds } from '../../statistics/internal-transfers';
 import FilterMenu, { FILTER_ALL, type FilterOption } from '../home/filter-menu';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import { loanInterestEntries, loanPaymentExcludedTxIds } from '../../statistics/loan-payments';
+import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '../../categories/category-display';
 
 import BarChart from './bar-chart';
-import CategoryTrendLine from './category-trend-line';
-import NetWorthLine from './net-worth-line';
 import PieChart from './pie-chart';
+import NetWorthLine from './net-worth-line';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
+import CategoryTrendLine from './category-trend-line';
 import { useFocusRefreshedNow } from './use-focus-refreshed-now';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the

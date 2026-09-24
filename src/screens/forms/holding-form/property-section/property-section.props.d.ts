@@ -1,8 +1,8 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
-import type { PropertyCategory } from '../../../../holdings/holding-metadata';
 import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
+import type { PropertyCategory } from '../../../../holdings/holding-metadata';
 
 export type PropertySectionProps = {
   category: PropertyCategory;

@@ -5,8 +5,8 @@ import { useUnistyles } from 'react-native-unistyles';
 import Box from '../box';
 import Text from '../text';
 
-import type { SwitchProps } from './switch.props';
 import { styles } from './switch.styles';
+import type { SwitchProps } from './switch.props';
 
 const Switch: FC<SwitchProps> = ({ value, onValueChange, disabled = false, label, testID }) => {
   const { theme } = useUnistyles();

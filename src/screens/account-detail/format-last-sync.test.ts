@@ -1,6 +1,6 @@
 import '../../i18n';
-import { formatDateTime } from '../../dates/format';
 import { i18n } from '../../i18n';
+import { formatDateTime } from '../../dates/format';
 
 import { formatLastSyncAt, latestSyncedAt } from './format-last-sync';
 

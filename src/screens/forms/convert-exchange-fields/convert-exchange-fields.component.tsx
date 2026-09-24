@@ -1,6 +1,6 @@
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import DateTimeRow from '../date-time-row';
 import Box from '../../../design-system/components/box';

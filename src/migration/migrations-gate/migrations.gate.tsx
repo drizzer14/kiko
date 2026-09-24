@@ -1,15 +1,15 @@
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
+import { i18n } from '@kiko/i18n';
 import { initDatabase } from '@kiko/db/client';
-import { runMigrations } from '@kiko/db/run-migrations';
+import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
-import { i18n } from '@kiko/i18n';
-import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
+import { runMigrations } from '@kiko/db/run-migrations';
 import { migrateLegacyToken } from '@kiko/monobank/token';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
 import { settingsRepo } from '@kiko/settings/settings.repo';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
+import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance/migrate-binance-credential';
 
 import { styles } from './migrations.gate.styles';
 

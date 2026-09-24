@@ -1,7 +1,7 @@
 import { Money } from '../../currency/money';
 import type { Currency } from '../../currency/currency';
-import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
+import { holdingValue, type ValuableHolding } from '../../holdings/holding-value';
 
 /**
  * Sums a list of holdings into one {@link Money} per distinct currency, valuing

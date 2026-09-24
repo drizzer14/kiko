@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 import type { FC, ReactNode } from 'react';
-import { useSync } from '@kiko/sync/use-sync';
 import maybe, { foldMap } from 'fnts/maybe';
+import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
 import { syncStateRepo } from '@kiko/sync-state/sync-state.repo';
 

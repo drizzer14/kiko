@@ -1,19 +1,19 @@
-import { resolveCategoryDisplay } from '@kiko/categories/category-display';
+import { type FC, memo } from 'react';
+import { Pressable } from 'react-native';
 import { Money } from '@kiko/currency/money';
+import { useTranslation } from 'react-i18next';
 import { formatTime } from '@kiko/dates/format';
-import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedTransaction } from '@kiko/holdings/deletable';
 import { isTimeExemptHoldingType } from '@kiko/holdings/holding-type';
+import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { transactionsRepo } from '@kiko/transactions/repo';
+import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
-import { type FC, memo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
 
 import TransactionCard from './transaction-card';
-import type { TransactionRowProps } from './transaction-row.props';
 import { styles } from './transaction-row.styles';
+import type { TransactionRowProps } from './transaction-row.props';
 
 const TransactionRow: FC<TransactionRowProps> = ({
   item,

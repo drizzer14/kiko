@@ -1,9 +1,9 @@
 import type { FC } from 'react';
 import { useState } from 'react';
+import { i18n } from '@kiko/i18n';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer/import-data';
-import { i18n } from '@kiko/i18n';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 

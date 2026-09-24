@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
 

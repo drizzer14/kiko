@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
-import maybe, { foldMap } from 'fnts/maybe';
 import { type FC, useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 

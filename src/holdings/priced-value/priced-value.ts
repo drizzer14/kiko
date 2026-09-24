@@ -1,10 +1,10 @@
 import { quantityAt } from '../lots';
 import type { HoldingRow } from '../../db/schema';
 import type { HoldingType } from '../holding-type';
-import { asMetalMeta, asPropertyMeta } from '../holding-metadata';
-import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 import { multiplyToMinorUnits } from '../../currency/decimal';
+import { asMetalMeta, asPropertyMeta } from '../holding-metadata';
 import { priceAt, type PriceBook } from '../../prices/price-book';
+import { holdingInstrument, metalInstrument } from '../../prices/instrument';
 
 /**
  * The holding types valued through the `PriceBook` rather than an interest

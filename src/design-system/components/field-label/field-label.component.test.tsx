@@ -1,5 +1,5 @@
-import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { render } from '@testing-library/react-native';
 import '../../unistyles';
 import FieldLabel from '.';
 

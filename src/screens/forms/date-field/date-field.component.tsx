@@ -1,7 +1,7 @@
 import { Pressable } from 'react-native';
 import KikoCalendar from '@kiko/calendar';
-import maybe, { foldMap } from 'fnts/maybe';
 import { type FC, useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
 

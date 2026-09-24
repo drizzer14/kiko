@@ -1,6 +1,6 @@
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { TextInput } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 
 import Box from '../../../design-system/components/box';
@@ -10,8 +10,8 @@ import IconEditor from '../../../design-system/components/icon-editor';
 import { deriveFieldTestID } from '../../../design-system/derive-field-test-id';
 import { useKeyboardDoneAccessory } from '../../../design-system/components/keyboard-done-accessory';
 
-import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 import { styles } from './holding-identity-field.styles';
+import type { HoldingIdentityFieldProps } from './holding-identity-field.props';
 
 // An icon chip beside a labelled name field — the shared identity control used
 // by the holding create form and detail header, the account create form, and

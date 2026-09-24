@@ -3,8 +3,8 @@ import { sumByCurrency } from '../currency-totals';
 import type { Currency } from '../../currency/currency';
 import { FIAT_RATE_SEED_TABLE } from '../fiat-rate-seed';
 import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
-import { netWorth, type RateTable, rateTableFromRows } from '../conversion';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
+import { netWorth, type RateTable, rateTableFromRows } from '../conversion';
 
 type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
 

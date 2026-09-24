@@ -1,11 +1,11 @@
-import type { TFunction } from 'i18next';
 import { match } from 'ts-pattern';
+import type { TFunction } from 'i18next';
 
 import { Money, toMajor } from '../../currency/money';
-import { asBondMeta, asMetalMeta, asTermDepositMeta } from '../holding-metadata';
-import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
-import { bondCouponDates, bondCouponMajor, depositLedger } from '../interest';
 import { compareDecimal } from '../../currency/decimal';
+import { bondCouponDates, bondCouponMajor, depositLedger } from '../interest';
+import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
+import { asBondMeta, asMetalMeta, asTermDepositMeta } from '../holding-metadata';
 import { INCOME_TAX_RATE_PCT, MILITARY_LEVY_RATE_PCT, taxOnInterestMinor } from '../tax';
 
 export type DerivedEntryKind =

@@ -1,5 +1,5 @@
-import type { CategoryDisplay } from '@kiko/categories/category-display';
 import type { transactionsRepo } from '@kiko/transactions/repo';
+import type { CategoryDisplay } from '@kiko/categories/category-display';
 
 // The Home transaction list's row shape — the display projection returned by
 // `listAllWithContextQuery`, the same type `useLiveQuery` infers for that query.

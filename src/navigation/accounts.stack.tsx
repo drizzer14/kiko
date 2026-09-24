@@ -1,21 +1,21 @@
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
 import AccountsScreen from '../screens/accounts/accounts.screen';
-import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
-import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
-import PricePointFormScreen from '../screens/forms/price-point-form/price-point-form.screen';
-import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
 import LotFormScreen from '../screens/forms/lot-form/lot-form.screen';
-import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
+import AccountDetailScreen from '../screens/account-detail/account-detail.screen';
+import AccountFormScreen from '../screens/forms/account-form/account-form.screen';
+import HoldingFormScreen from '../screens/forms/holding-form/holding-form.screen';
 import HoldingDetailScreen from '../screens/holding-detail/holding-detail.screen';
 import ColumnMappingScreen from '../screens/column-mapping/column-mapping.screen';
 import StatementImportScreen from '../screens/statement-import/statement-import.screen';
+import PricePointFormScreen from '../screens/forms/price-point-form/price-point-form.screen';
+import TransactionFormScreen from '../screens/forms/transaction-form/transaction-form.screen';
+import ContributionFormScreen from '../screens/forms/contribution-form/contribution-form.screen';
 
-import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 import type { AccountsStackParamList } from './types';
+import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 

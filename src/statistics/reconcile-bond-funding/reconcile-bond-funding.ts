@@ -1,5 +1,5 @@
-import type { Currency } from '../../currency/currency';
 import { startOfLocalDay } from '../../dates/local-day';
+import type { Currency } from '../../currency/currency';
 import type { BondMeta } from '../../holdings/holding-metadata';
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 

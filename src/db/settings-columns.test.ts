@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 
 /**
  * A removed feature can leave a live-but-unread schema column behind

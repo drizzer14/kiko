@@ -1,16 +1,16 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import { holdingsRepo } from '@kiko/holdings/repo';
 
 import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { scrollToField } from '../scroll-to-field/scroll-to-field';
 
 import ContributionFormScreen from './contribution-form.screen';
 

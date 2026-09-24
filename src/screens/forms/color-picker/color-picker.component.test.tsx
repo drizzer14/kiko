@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
 import ColorPicker from './color-picker.component';
 

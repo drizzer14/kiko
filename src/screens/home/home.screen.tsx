@@ -1,19 +1,19 @@
-import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
 import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { useSyncAll } from '@kiko/sync/use-sync-all';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { CompositeScreenProps } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC, ReactElement } from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { useSyncAll } from '@kiko/sync/use-sync-all';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { RefreshControl, SectionList } from 'react-native';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { settingsRepo } from '@kiko/settings/settings.repo';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 
 import {
   buildCategoryDisplayMap,
@@ -21,35 +21,35 @@ import {
   resolveCategoryDisplay,
   resolveCategoryKey,
 } from '../../categories/category-display';
+import Box from '../../design-system/components/box';
+import { useLiveQuery } from '../../db/use-live-query';
+import Card from '../../design-system/components/card';
+import Text from '../../design-system/components/text';
 import type { Currency } from '../../currency/currency';
 import { usePriceBook } from '../../prices/use-price-book';
 import { defaultDateRange } from '../../dates/default-range';
-import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import MoneyText from '../../design-system/components/money-text';
-import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import type { HomeStackParamList, TabParamList } from '../../navigation/types';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
 import { activeHoldings } from '../../rates/active-holdings';
-import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
+import MoneyText from '../../design-system/components/money-text';
+import { defaultAccountColor } from '../../holdings/entity-colors';
+import { resolveEntityColor } from '../../design-system/entity-tint';
+import { transactionSpan } from '../../transactions/transaction-span';
+import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
 import { resolveCategoryColor } from '../../statistics/category-breakdown';
 import { type DaySection, groupByDay } from '../../transactions/group-by-day';
-import { transactionSpan } from '../../transactions/transaction-span';
+import type { HomeStackParamList, TabParamList } from '../../navigation/types';
+import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
+import Screen, { resolveBottomClearance } from '../../design-system/components/screen';
+import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
+import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
 
-import AddTransactionFab from './add-transaction-fab';
-import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
-import SyncProgressBar from './sync-progress-bar';
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 import TransactionRow from './transaction-row';
-import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
+import SyncProgressBar from './sync-progress-bar';
+import type { FilterOption } from './filter-menu';
+import AddTransactionFab from './add-transaction-fab';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
+import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
+import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props

@@ -3,9 +3,9 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import type { Money } from '../../currency/money';
 import Box from '../../design-system/components/box';
+import Text from '../../design-system/components/text';
 import MoneyText from '../../design-system/components/money-text';
 import type { MoneyTextContext } from '../../design-system/components/money-text/money-text.props';
-import Text from '../../design-system/components/text';
 
 import { styles } from './entity-amount-header.styles';
 

@@ -1,11 +1,11 @@
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { match, P } from 'ts-pattern';
+import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 import { styles } from '../account-detail.styles';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
 
 import type { SyncStatusLineProps } from './sync-status-line.props';
 

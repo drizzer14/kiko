@@ -1,5 +1,5 @@
-import type { Repository } from '@kiko/db/repository';
 import { eq, sql } from 'drizzle-orm';
+import type { Repository } from '@kiko/db/repository';
 
 import { database, write } from '../../db/client';
 import { type PricePointRow, pricePoints } from '../../db/schema';

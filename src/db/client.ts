@@ -1,10 +1,10 @@
-import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
-import type { DB, Scalar } from '@op-engineering/op-sqlite';
 import { drizzle } from 'drizzle-orm/op-sqlite';
+import type { DB, Scalar } from '@op-engineering/op-sqlite';
+import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
 
+import * as schema from './schema';
 import { DB_ENCRYPTION_ENABLED } from './db-config';
 import { openEncryptedDatabase } from './encrypted-database';
-import * as schema from './schema';
 
 let connection: DB | undefined;
 

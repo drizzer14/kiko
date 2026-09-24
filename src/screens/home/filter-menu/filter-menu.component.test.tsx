@@ -1,11 +1,11 @@
-import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
+import { darkTheme } from '../../../design-system/theme';
 
-import FilterMenu, { FILTER_ALL } from './filter-menu.component';
 import type { FilterOption } from './filter-menu.props';
+import FilterMenu, { FILTER_ALL } from './filter-menu.component';
 
 // The menu is a custom sheet: press the anchor (its testID) to open, then each
 // option is a shared `SelectableRow` checkbox at `${testID}-option-${value}`.

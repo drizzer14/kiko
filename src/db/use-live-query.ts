@@ -1,5 +1,5 @@
-import either, { bifold, eitherSync, first, isLeft } from 'fnts/either';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import either, { bifold, eitherSync, first, isLeft } from 'fnts/either';
 
 import { rawDatabase } from './client';
 

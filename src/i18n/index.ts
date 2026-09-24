@@ -1,9 +1,9 @@
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import { appLanguages, deviceLanguage } from './device-language';
 import { en } from './locales/en';
 import { uk } from './locales/uk';
+import { appLanguages, deviceLanguage } from './device-language';
 
 export type { AppLanguage } from './device-language';
 

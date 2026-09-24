@@ -1,4 +1,3 @@
-import { HeaderHeightContext } from '@react-navigation/elements';
 import {
   NavigationContext,
   type NavigationProp,
@@ -6,9 +5,10 @@ import {
   type ParamListBase,
   type RouteProp,
 } from '@react-navigation/native';
-import { act, renderHook } from '@testing-library/react-native';
-import { createRef, type ReactNode, type RefObject } from 'react';
 import { Dimensions } from 'react-native';
+import { act, renderHook } from '@testing-library/react-native';
+import { HeaderHeightContext } from '@react-navigation/elements';
+import { createRef, type ReactNode, type RefObject } from 'react';
 
 import { type TabRootScrollable, useScrollToTopOnTabPress } from './use-scroll-to-top-on-tab-press';
 

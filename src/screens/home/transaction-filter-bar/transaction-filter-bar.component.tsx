@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import Box from '../../../design-system/components/box';
 import DateRangeField from '../date-range-field';
+import Box from '../../../design-system/components/box';
 import FilterMenu, { type FilterOption } from '../filter-menu';
 
 // Re-exported so the Home screen keeps a single import site for the sentinel

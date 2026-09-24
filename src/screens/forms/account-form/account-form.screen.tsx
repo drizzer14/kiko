@@ -1,15 +1,16 @@
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { id } from '../../../db/id';
 import { Money } from '../../../currency/money';
 import { saveToken } from '../../../monobank/token';
+import type { AccountRow } from '../../../db/schema';
 import { parseAmount } from '../../../currency/parse';
 import Box from '../../../design-system/components/box';
 import { useLiveQuery } from '../../../db/use-live-query';
@@ -19,28 +20,27 @@ import Screen from '../../../design-system/components/screen';
 import Divider from '../../../design-system/components/divider';
 import CryptoSyncForm from '../../account-detail/crypto-sync-form';
 import TextField from '../../../design-system/components/text-field';
-import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import { defaultAccountColor } from '../../../holdings/entity-colors';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
+import { type BankId, isBankId } from '../../../bank-sync/bank-catalog';
 import type { AccountsStackParamList } from '../../../navigation/types';
 import CurrencyField from '../../../design-system/components/currency-field';
 import MonobankConnectField from '../../account-detail/monobank-connect-field';
+import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '../../../currency/currency';
 import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
-import type { AccountRow } from '../../../db/schema';
-import { type BankId, isBankId } from '../../../bank-sync/bank-catalog';
 
 import ColorPicker from '../color-picker';
-import BankTypeField from '../bank-type-field';
-import AccountKindField from '../account-kind-field';
-import { groupAmount } from '../amount-format/amount-format';
-import HoldingIdentityField from '../holding-identity-field';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
 } from '../scroll-to-field/scroll-to-field';
+import BankTypeField from '../bank-type-field';
+import AccountKindField from '../account-kind-field';
+import { groupAmount } from '../amount-format/amount-format';
+import HoldingIdentityField from '../holding-identity-field';
+import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 

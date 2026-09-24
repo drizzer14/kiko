@@ -1,5 +1,5 @@
-import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
 import { render } from '@testing-library/react-native';
+import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
 import '../../../../design-system/unistyles';
 import '../../../../i18n';
 

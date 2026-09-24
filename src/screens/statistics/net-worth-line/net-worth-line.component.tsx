@@ -1,8 +1,8 @@
 import { type FC, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUnistyles } from 'react-native-unistyles';
 import { type DimensionValue, View } from 'react-native';
 import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
-import { useUnistyles } from 'react-native-unistyles';
 
 // react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
 // on its path-based primitives (Path, Line, Polyline) but omits it from

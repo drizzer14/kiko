@@ -1,5 +1,5 @@
-import { StackActions } from '@react-navigation/native';
 import maybe, { foldMap } from 'fnts/maybe';
+import { StackActions } from '@react-navigation/native';
 
 import { resetTabStackOnBlur } from './reset-tab-stack-on-blur';
 

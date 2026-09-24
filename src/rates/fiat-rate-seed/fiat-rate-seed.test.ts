@@ -1,5 +1,5 @@
-import { currencyOptions, isFiat } from '../../currency/currency';
 import { canConvert } from '../net-worth-view';
+import { currencyOptions, isFiat } from '../../currency/currency';
 
 import { FIAT_RATE_SEED_TABLE, FIAT_UAH_PRICE_SEED } from './fiat-rate-seed';
 

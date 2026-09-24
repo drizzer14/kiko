@@ -1,11 +1,3 @@
-import { costBasisMinorAt } from '../lots';
-import { taxOnInterestMinor } from '../tax';
-import { Money, toMajor } from '../../currency/money';
-import { startOfLocalDay } from '../../dates/local-day';
-import type { HoldingRow } from '../../db/schema';
-import { loanOutstandingMinorAt } from '../loan-schedule';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
-import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
 import {
   asBondMeta,
   asLoanMeta,
@@ -14,6 +6,14 @@ import {
   asTermDepositMeta,
   type BondMeta,
 } from '../holding-metadata';
+import { costBasisMinorAt } from '../lots';
+import { taxOnInterestMinor } from '../tax';
+import type { HoldingRow } from '../../db/schema';
+import { Money, toMajor } from '../../currency/money';
+import { startOfLocalDay } from '../../dates/local-day';
+import { loanOutstandingMinorAt } from '../loan-schedule';
+import { isPricedHoldingType, pricedValueMinor } from '../priced-value';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '../../prices/price-book';
 import { bondCouponDates, bondCouponMajor, depositAccruedMajor, depositLedger } from '../interest';
 
 /**

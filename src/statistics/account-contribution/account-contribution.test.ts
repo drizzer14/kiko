@@ -1,6 +1,6 @@
-import type { AccountRow, HoldingRow } from '../../db/schema';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';
+import type { AccountRow, HoldingRow } from '../../db/schema';
 import { defaultAccountColor } from '../../holdings/entity-colors';
 
 import {

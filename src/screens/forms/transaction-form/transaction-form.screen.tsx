@@ -1,14 +1,3 @@
-import type { TFunction } from 'i18next';
-import { ratesRepo } from '@kiko/rates/repo';
-import { useTranslation } from 'react-i18next';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
-import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import {
   type FC,
   type ReactElement,
@@ -19,6 +8,17 @@ import {
   useRef,
   useState,
 } from 'react';
+import type { TFunction } from 'i18next';
+import { ratesRepo } from '@kiko/rates/repo';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { categoriesRepo } from '@kiko/categories/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { accountsRepo } from '@kiko/accounts/accounts.repo';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import { Alert, type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 
 import {
   canConvertToExchange,
@@ -43,26 +43,31 @@ import { useLiveQuery } from '../../../db/use-live-query';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import Screen from '../../../design-system/components/screen';
-import Divider from '../../../design-system/components/divider';
-import FieldError from '../../../design-system/components/field-error';
+import { isSyncedHolding } from '../../../holdings/deletable';
 import { buildRateTable } from '../../../rates/net-worth-view';
+import Divider from '../../../design-system/components/divider';
 import SymbolIcon from '../../../design-system/components/symbol';
 import TextField from '../../../design-system/components/text-field';
-import { isSyncedHolding } from '../../../holdings/deletable';
 import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
 import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import { isLedgerlessHoldingType } from '../../../holdings/holding-type';
-import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
+import FieldError from '../../../design-system/components/field-error';
 import type { TransactionFormParams } from '../../../navigation/types';
 import { resolveEntityColor } from '../../../design-system/entity-tint';
+import { isLedgerlessHoldingType } from '../../../holdings/holding-type';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
 import { type Currency, currencySymbol } from '../../../currency/currency';
 import { resolveCategoryColor } from '../../../statistics/category-breakdown';
 import { seedCounterpartMinorUnits } from '../../../holdings/exchange-prefill';
 import { normalizeTransactionName } from '../../../transactions/normalize-name';
+import type { AccountRow, HoldingRow, TransactionRow } from '../../../db/schema';
 import { defaultTransactionDescription } from '../../../transactions/default-description';
 
 import DateTimeRow from '../date-time-row';
+import {
+  useHeaderInset,
+  scrollToField,
+  type FieldInstance,
+} from '../scroll-to-field/scroll-to-field';
 import CategoryField from '../category-field';
 import ExchangeFields from '../exchange-fields';
 import ModeSelectField from '../mode-select-field';
@@ -72,11 +77,6 @@ import DescriptionSuggestions from '../description-suggestions';
 import { useSubmitOnce } from '../use-submit-once/use-submit-once';
 import type { FormMode } from '../mode-select-field/mode-select-field.props';
 import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
 import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists

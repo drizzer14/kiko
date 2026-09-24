@@ -1,7 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 
-import type { Currency } from '../../../currency/currency';
 import { Money } from '../../../currency/money';
+import type { Currency } from '../../../currency/currency';
 import type { AccountSlice } from '../../../statistics/account-contribution';
 import '../../../design-system/unistyles';
 import PieChart from './pie-chart.component';

@@ -1,5 +1,5 @@
-import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
@@ -8,11 +8,11 @@ import '../../design-system/unistyles';
 
 import { i18n } from '../../i18n';
 import { darkTheme } from '../../design-system/theme';
-import { entityIconTileGradient } from '../../design-system/entity-tint';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '../../design-system/components/card-context-menu';
+import { entityIconTileGradient } from '../../design-system/entity-tint';
 import { asNavigationProp, asRouteProp, navigationSpy } from '../../test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';

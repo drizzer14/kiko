@@ -3,9 +3,9 @@ import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { resolveBottomClearance } from './bottom-clearance';
-import type { ScreenProps } from './screen.props';
 import { styles } from './screen.styles';
+import type { ScreenProps } from './screen.props';
+import { resolveBottomClearance } from './bottom-clearance';
 
 // A large-title navigator header owns the top inset itself, so any branch whose
 // content sits under one drops the SafeAreaView's top edge — keeping it would

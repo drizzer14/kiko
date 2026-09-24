@@ -1,16 +1,16 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 
 import { holdingsRepo } from '@kiko/holdings/repo';
 
-import { dayKeyOf } from '../../../prices/price-book';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { dayKeyOf } from '../../../prices/price-book';
 
 import LotFormScreen from './lot-form.screen';
 

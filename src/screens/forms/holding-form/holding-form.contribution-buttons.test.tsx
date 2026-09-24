@@ -1,6 +1,6 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
-import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps, ReactNode } from 'react';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 import {

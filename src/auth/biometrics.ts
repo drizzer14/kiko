@@ -1,5 +1,5 @@
-import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
 import either, { bifold, isLeft } from 'fnts/either';
+import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
 
 /**
  * Lazily resolves the native biometrics module. `@sbaiahmed1/react-native-biometrics`

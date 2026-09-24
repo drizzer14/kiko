@@ -1,5 +1,5 @@
-import { render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import type { RenderedElement } from '../../../test-support/rendered-element';

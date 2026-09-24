@@ -1,22 +1,21 @@
-import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
-import { type FC, useEffect } from 'react';
-import maybe, { foldMap } from 'fnts/maybe';
-import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { type FC, useEffect } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import Box from '../box';
 import GlassSurface from '../glass-surface';
 import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
 
-import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 import {
   resolveKeyboardAwareBottomPadding,
   resolveKeyboardAwareMaxHeight,
@@ -24,6 +23,7 @@ import {
 } from './bottom-sheet.keyboard';
 import type { BottomSheetProps } from './bottom-sheet.props';
 import { SHEET_PADDING_STEP, styles } from './bottom-sheet.styles';
+import { clampSheetTranslate, shouldDismissSheet } from './bottom-sheet.gesture';
 
 // Every sheet caps at 66% of the current window height, no exceptions — a
 // tall sheet scrolls past that point instead of growing over the status bar /

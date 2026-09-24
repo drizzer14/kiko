@@ -1,5 +1,5 @@
-import type { Repository } from '@kiko/db/repository';
 import { max, sql } from 'drizzle-orm';
+import type { Repository } from '@kiko/db/repository';
 
 import { database, write } from '../../db/client';
 import { chunkForTable } from '../../db/chunk-for-table';

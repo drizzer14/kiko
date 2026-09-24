@@ -6,8 +6,8 @@ import { useUnistyles } from 'react-native-unistyles';
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 
-import type { ColorPickerProps } from './color-picker.props';
 import { styles } from './color-picker.styles';
+import type { ColorPickerProps } from './color-picker.props';
 
 // A labeled single-select row of color swatches drawn from the named
 // `entityColors` palette (the one source of truth in the theme). The account and

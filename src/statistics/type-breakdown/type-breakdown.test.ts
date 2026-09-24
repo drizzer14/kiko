@@ -1,7 +1,7 @@
 import type { HoldingRow } from '../../db/schema';
+import type { RateTable } from '../../rates/conversion';
 import { buildPriceBook } from '../../prices/price-book';
 import { holdingInstrument } from '../../prices/instrument';
-import type { RateTable } from '../../rates/conversion';
 
 import { type BreakdownHolding, buildTypeBreakdown, type TypeSlice } from './type-breakdown';
 

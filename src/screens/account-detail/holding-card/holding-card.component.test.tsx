@@ -7,8 +7,8 @@ import type { HoldingRow } from '../../../db/schema';
 import '../../../design-system/unistyles';
 import { formatDate } from '../../../dates/format';
 import { darkTheme } from '../../../design-system/theme';
-import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 import { entityIconTileGradient } from '../../../design-system/entity-tint';
+import { buildPriceBook, EMPTY_PRICE_BOOK } from '../../../prices/price-book';
 
 import HoldingCard from './holding-card.component';
 

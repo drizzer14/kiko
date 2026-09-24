@@ -1,10 +1,10 @@
-import either, { bifold, isLeft } from 'fnts/either';
 import { match } from 'ts-pattern';
+import either, { bifold, isLeft } from 'fnts/either';
 
-import { binanceProvider, defaultBinanceDeps } from '../binance/binance.provider';
-import { syncBinanceTransactions } from '../binance/binance.transactions';
-import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet/btc-wallet.provider';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
+import { syncBinanceTransactions } from '../binance/binance.transactions';
+import { binanceProvider, defaultBinanceDeps } from '../binance/binance.provider';
+import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet/btc-wallet.provider';
 
 /**
  * One user-triggered crypto sync. `address` is set only by the wallet Connect

@@ -2,10 +2,10 @@ import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../../../design-system/components/box';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
 import { styles } from '../settings/settings.styles';
+import Box from '../../../design-system/components/box';
+import Text from '../../../design-system/components/text';
+import SymbolIcon from '../../../design-system/components/symbol';
 
 import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';

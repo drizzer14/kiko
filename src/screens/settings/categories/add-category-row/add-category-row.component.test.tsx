@@ -1,6 +1,6 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, TextInput } from 'react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '../../../../design-system/unistyles';
 import '../../../../i18n';
 import { darkTheme } from '../../../../design-system/theme';

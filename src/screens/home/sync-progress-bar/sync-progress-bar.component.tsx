@@ -1,8 +1,8 @@
+import { View } from 'react-native';
 import { type FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useUnistyles } from 'react-native-unistyles';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';

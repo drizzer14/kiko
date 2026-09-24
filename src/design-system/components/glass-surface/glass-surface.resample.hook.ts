@@ -25,8 +25,8 @@
 // as its own custom hook is what lets the early return stay a true early
 // return without a rules-of-hooks violation, and keeps `GlassSurface`'s own
 // cognitive complexity under budget.
-import { useEffect, useRef, useState } from 'react';
 import type { ViewInstance } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   isPositionSettled,

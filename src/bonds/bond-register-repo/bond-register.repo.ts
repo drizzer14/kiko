@@ -1,5 +1,5 @@
-import type { Repository } from '@kiko/db/repository';
 import { eq, max } from 'drizzle-orm';
+import type { Repository } from '@kiko/db/repository';
 
 import { database, write } from '../../db/client';
 import { dayKeyOf } from '../../prices/price-book';

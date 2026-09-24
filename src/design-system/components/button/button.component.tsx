@@ -1,12 +1,12 @@
 import type { FC } from 'react';
-import { Pressable, Text as RNText } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 import { match } from 'ts-pattern';
+import { useUnistyles } from 'react-native-unistyles';
+import { Pressable, Text as RNText } from 'react-native';
 
 import SymbolIcon from '../symbol';
 
-import type { ButtonProps } from './button.props';
 import { styles } from './button.styles';
+import type { ButtonProps } from './button.props';
 
 // The small size's visible height (34pt) sits below the 44pt HIG touch-target
 // floor, so this hitSlop restores the tap target above and below the pill:

@@ -2,8 +2,8 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import type { DividerProps } from './divider.props';
 import { styles } from './divider.styles';
+import type { DividerProps } from './divider.props';
 
 const Divider: FC<DividerProps> = ({ spacing = 0, style, testID }) => {
   const { theme } = useUnistyles();

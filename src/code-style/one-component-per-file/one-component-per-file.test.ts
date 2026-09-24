@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 
 import { exportedComponentNames } from './one-component-per-file';
 

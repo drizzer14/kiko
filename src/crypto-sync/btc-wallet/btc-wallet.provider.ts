@@ -1,6 +1,6 @@
 import type { HoldingRow } from '../../db/schema';
-import { walletAddressOf } from '../../holdings/holding-metadata';
 import type { BalanceProvider } from '../provider';
+import { walletAddressOf } from '../../holdings/holding-metadata';
 
 import { isValidBitcoinAddress } from './bitcoin-address';
 import { fetchAddressBalance } from './btc-wallet.client';

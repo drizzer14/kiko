@@ -1,5 +1,5 @@
-import { BTC_EXPLORER_ENDPOINT } from '@env';
 import { guard } from 'fnts';
+import { BTC_EXPLORER_ENDPOINT } from '@env';
 
 /** The Esplora `/address/:address` payload fields this client reads. */
 type EsploraAddress = { chain_stats: { funded_txo_sum: number; spent_txo_sum: number } };

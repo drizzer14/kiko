@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
 import { Keyboard, StyleSheet } from 'react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../../i18n';
 import '../../unistyles';
 import TextField from '.';

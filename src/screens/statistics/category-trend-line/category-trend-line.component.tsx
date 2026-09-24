@@ -1,7 +1,7 @@
 import { type FC, memo } from 'react';
+import { useUnistyles } from 'react-native-unistyles';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { formatDayMonth } from '../../../dates/format';
 import Box from '../../../design-system/components/box';

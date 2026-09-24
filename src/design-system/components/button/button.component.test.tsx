@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import { i18n } from '../../../i18n';
 import type { RenderedElement } from '../../../test-support/rendered-element';

@@ -1,15 +1,15 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
 import '../../../i18n';
 
-import { dayKeyOf } from '../../../prices/price-book';
-import { pricePointsRepo } from '../../../prices/price-points-repo';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { dayKeyOf } from '../../../prices/price-book';
+import { pricePointsRepo } from '../../../prices/price-points-repo';
 
 import PricePointFormScreen from './price-point-form.screen';
 

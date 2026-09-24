@@ -1,5 +1,5 @@
-import { bifold, eitherSync, isRight } from 'fnts/either';
 import * as Keychain from 'react-native-keychain';
+import { bifold, eitherSync, isRight } from 'fnts/either';
 
 /**
  * The single GLOBAL Binance credentials service. Historically the app stored ONE

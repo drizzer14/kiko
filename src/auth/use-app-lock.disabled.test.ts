@@ -1,5 +1,5 @@
-import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
 import '../i18n';
 

@@ -1,6 +1,6 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { formatDate } from '../../../dates/format';
 import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';

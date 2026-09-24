@@ -1,14 +1,14 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
 import { i18n } from '../../../i18n';
 import {
   asNavigationProp,
   asRouteProp,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { darkTheme } from '../../../design-system/theme';
 
 import SystemScreen from './system.screen';
 

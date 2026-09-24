@@ -1,4 +1,3 @@
-import { HeaderHeightContext } from '@react-navigation/elements';
 import {
   type EventArg,
   NavigationContext,
@@ -6,8 +5,9 @@ import {
   type ParamListBase,
   useRoute,
 } from '@react-navigation/native';
-import { type RefObject, useContext, useEffect, useRef } from 'react';
 import { useWindowDimensions } from 'react-native';
+import { HeaderHeightContext } from '@react-navigation/elements';
+import { type RefObject, useContext, useEffect, useRef } from 'react';
 
 type ScrollOptions = { x?: number; y?: number; animated?: boolean };
 

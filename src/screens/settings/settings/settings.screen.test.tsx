@@ -1,19 +1,19 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
 import '../../../design-system/unistyles';
 import { i18n } from '../../../i18n';
 import pkg from '../../../../package.json';
-import { darkTheme } from '../../../design-system/theme';
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
 } from '../../../test-support/navigation-props';
+import { darkTheme } from '../../../design-system/theme';
 
-import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 import SettingsScreen from './settings.screen';
+import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
 
 type SettingsProps = ComponentProps<typeof SettingsScreen>;
 

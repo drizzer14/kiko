@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 
 // `updateTitle`/`updateIcon` run their update through the `write` helper (one
 // op-sqlite transaction). Override `write` to run the callback against a fake

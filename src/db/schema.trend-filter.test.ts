@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 
 // The trend-filter migration replaces the single `trend_category_keys` setting
 // with the richer `trend_filter` JSON. It adds the new column and migrates any

@@ -1,7 +1,7 @@
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../base64/base64';
 
-import { decryptEnvelope, encryptEnvelope, EXPORT_FORMAT, EXPORT_VERSION } from './envelope';
 import { generateExportKey } from './generate-key';
+import { decryptEnvelope, encryptEnvelope, EXPORT_FORMAT, EXPORT_VERSION } from './envelope';
 
 describe('encryptEnvelope / decryptEnvelope', () => {
   it('round-trips arbitrary plaintext under the same key', () => {

@@ -1,6 +1,6 @@
-import { authenticateWithOptions } from '@sbaiahmed1/react-native-biometrics';
 import { render, waitFor } from '@testing-library/react-native';
 import { AppState, type AppStateStatus, Text } from 'react-native';
+import { authenticateWithOptions } from '@sbaiahmed1/react-native-biometrics';
 import '../../design-system/unistyles';
 import '../../i18n';
 
