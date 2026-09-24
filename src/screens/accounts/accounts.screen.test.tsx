@@ -592,13 +592,12 @@ describe('AccountsScreen', () => {
       expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'd']);
     });
 
-    // I5 (T30 re-review): `debtsTotal` used to depend on a bare `Date.now()`
-    // read fresh on every function-component render, not the mounted
-    // screen's own stable `now` — so it recomputed (and could drift) on
-    // every re-render, not just on focus. A re-render with the real clock
-    // jumped forward (past another installment boundary, so the loan's
-    // outstanding balance WOULD differ if `now` had advanced) must still
-    // show the SAME total.
+    // `debtsTotal` used to depend on a bare `Date.now()` read fresh on every
+    // function-component render, not the mounted screen's own stable `now`
+    // — so it recomputed (and could drift) on every re-render, not just on
+    // focus. A re-render with the real clock jumped forward (past another
+    // installment boundary, so the loan's outstanding balance WOULD differ
+    // if `now` had advanced) must still show the SAME total.
     it('keeps the Debts total stable across a re-render that is not a focus event', async () => {
       const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1000;
       let clock = Date.now();
