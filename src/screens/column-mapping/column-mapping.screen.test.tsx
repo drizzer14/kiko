@@ -130,7 +130,12 @@ const setLiveData = (data: {
 
 type ColumnMappingProps = ComponentProps<typeof ColumnMappingScreen>;
 
-const renderScreen = async (params: { filePath: string; accountId: string }) => {
+const renderScreen = async (params: {
+  filePath: string;
+  accountId: string;
+  holdingId?: string;
+  newHoldingId?: string;
+}) => {
   const navigation = navigationSpy();
   const route = asRouteProp<ColumnMappingProps['route']>('ColumnMapping', params);
   const view = await render(
@@ -230,6 +235,42 @@ describe('ColumnMappingScreen', () => {
         within(view.getByTestId('target-holding-field')).getByText('New savings'),
       ).toBeTruthy(),
     );
+  });
+
+  // Item 11 (F3): a holding already chosen on the statement-import preview
+  // is passed through as `holdingId` and pre-fills this screen's own
+  // target-holding field, instead of asking again.
+  it('pre-fills the target-holding field from a holdingId carried over from the preview', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        { id: 'h2', name: 'Savings jar', accountId: 'a', currency: 'UAH' },
+      ],
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'h2',
+    });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+
+    expect(within(view.getByTestId('target-holding-field')).getByText('Savings jar')).toBeTruthy();
+  });
+
+  // Item 11 (F3): the holding field carries the same required marker every
+  // other required field on this screen already shows — date, date format,
+  // the single-mode amount column, and description already mark 4; the
+  // holding field adds a 5th.
+  it('marks the target-holding field as required, alongside the screen’s existing required fields', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.title'))).toBeTruthy());
+
+    expect(view.getAllByText('*', { includeHiddenElements: true })).toHaveLength(5);
   });
 
   it('switching the decimal separator changes the parsed result', async () => {

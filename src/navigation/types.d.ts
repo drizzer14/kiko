@@ -117,9 +117,18 @@ export type AccountsStackParamList = {
   // shipped parser recognized. `accountId` is required here (unlike
   // `StatementImport` above): a column mapping always saves under this
   // account's own bank/header key, so there is no accountId-less entry point
-  // for this screen. `newHoldingId` is the same "Create new holding" return
-  // channel `StatementImport` carries above.
-  ColumnMapping: { filePath: string; accountId: string; newHoldingId?: string };
+  // for this screen. `holdingId` (item 11, F3) is the holding already chosen
+  // on the statement-import preview — this screen pre-fills its own
+  // target-holding field from it instead of asking again; still just a
+  // PRE-FILL, not a lock (the field stays editable, and required, like every
+  // other required field on this screen). `newHoldingId` is the same
+  // "Create new holding" return channel `StatementImport` carries above.
+  ColumnMapping: {
+    filePath: string;
+    accountId: string;
+    holdingId?: string;
+    newHoldingId?: string;
+  };
 };
 
 export type SettingsStackParamList = {

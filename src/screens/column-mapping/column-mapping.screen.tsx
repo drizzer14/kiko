@@ -558,6 +558,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
 
       <TargetHoldingField
         label={t('statementImport.chooseHolding')}
+        required
         holdings={holdingOptions}
         accountId={accountId}
         selectedId={selectedHoldingId}
@@ -584,7 +585,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
  * `mappingKeyFor(account.bankId, fingerprint)`.
  */
 const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }) => {
-  const { filePath, accountId, newHoldingId } = route.params;
+  const { filePath, accountId, holdingId, newHoldingId } = route.params;
   const { t } = useTranslation();
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
@@ -608,7 +609,11 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [balanceColumn, setBalanceColumn] = useState<number | undefined>(undefined);
   const [savedApplied, setSavedApplied] = useState(false);
 
-  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
+  // Item 11 (F3): a holding already chosen on the statement-import preview
+  // pre-fills this screen's own target-holding field instead of asking
+  // again — a plain initial-state seed (not a `useEffect`), since this only
+  // ever matters once, at mount.
+  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(holdingId);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);

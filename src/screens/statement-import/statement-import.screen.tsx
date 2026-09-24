@@ -411,7 +411,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // required `accountId`.
   const handleMapColumnsManually = (): void => {
     if (accountId) {
-      navigation.navigate('ColumnMapping', { filePath, accountId });
+      // Item 11 (F3): carry the holding already chosen on THIS preview
+      // through to Map Columns, so it pre-fills instead of asking again.
+      navigation.navigate('ColumnMapping', { filePath, accountId, holdingId: selectedHoldingId });
     }
   };
 
