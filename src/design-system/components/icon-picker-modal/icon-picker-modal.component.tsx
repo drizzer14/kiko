@@ -85,7 +85,7 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
                     // unselected tile therefore uses `surfaceHigh` — one level
                     // ABOVE the sheet base — so it reads as a raised control
                     // instead of blending into the sheet (the same grouped-
-                    // elevation convention as an OptionPills pill). Selected
+                    // elevation convention as a ChipRow chip). Selected
                     // keeps the accent fill.
                     backgroundColor: isSelected ? theme.colors.accent : theme.colors.surfaceHigh,
                   },

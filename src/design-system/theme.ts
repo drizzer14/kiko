@@ -119,7 +119,7 @@ export const darkTheme = {
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
     // grouped surface: its base sits one level BELOW the cards/controls on it,
-    // so a control on the sheet (an OptionPills selected pill, at `surfaceHigh`)
+    // so a control on the sheet (an ChipRow selected chip, at `surfaceHigh`)
     // reads as raised instead of blending into the sheet. Before this, the sheet
     // used `surfaceHigh` itself, the SAME tone as a selected pill, so the two
     // blended (on-device review). This is `#1C1C1E` — kept a DISTINCT

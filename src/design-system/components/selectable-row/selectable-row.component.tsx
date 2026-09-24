@@ -9,7 +9,7 @@ import { styles } from './selectable-row.styles';
 import type { SelectableRowProps } from './selectable-row.props';
 
 // The shared single-select row style: a 44pt-minimum tap target that fills
-// with the accent background when selected (the OptionPills/ChipRow selection
+// with the accent background when selected (ChipRow's selection
 // vocabulary), generalized from the Statistics manual-mode category row
 // (`trend-filter-field.component.tsx`'s `ManualCategoryRow`) so every category
 // picker in the app converges on one style.

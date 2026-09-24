@@ -252,7 +252,7 @@ export const styles = StyleSheet.create((theme) => ({
   // disappeared instead of reading clearly. `textSecondary` (the iOS
   // secondaryLabel translucency, ~6:1 contrast over true-black per
   // `docs/design/2026-09-10-ios-hig-audit.md`'s "Secondary text contrast"
-  // finding) is the same lighter gray `OptionPills`' unselected label already
+  // finding) is the same lighter gray `ChipRow`'s unselected label already
   // uses for a legible-but-subordinate tone, so the pill now reads as a clear
   // affordance without competing with the sheet's primary content.
   // `alignSelf: 'center'` keeps it centered now that its region no longer

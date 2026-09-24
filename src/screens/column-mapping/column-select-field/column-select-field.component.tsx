@@ -15,7 +15,7 @@ import type { ColumnSelectFieldProps } from './column-select-field.props';
  * the option value type (a header-row cell's column INDEX for every column
  * role, or a fixed `DateFormatId` string for the date-format field), so it
  * is a plain function component (an `FC` cannot carry a type parameter,
- * mirroring `OptionPills`). `allowNotUsed` adds a trailing "Not used" row
+ * mirroring `ChipRow`). `allowNotUsed` adds a trailing "Not used" row
  * that selects `undefined` — only meaningful for an OPTIONAL role (the
  * counterparty column); a required field omits it.
  */

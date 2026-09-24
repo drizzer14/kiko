@@ -12,7 +12,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radii.sm,
   },
   // The selected row's fill: the FILLED accent surface — the app's standard
-  // selection vocabulary (OptionPills / ChipRow's selected pill, and the
+  // selection vocabulary (ChipRow's selected chip, and the
   // Statistics manual-mode category row this component generalizes) — so a
   // chosen option reads unambiguously against a low-contrast surface, with
   // the row's onAccent label/icon/checkmark carrying the contrast on top.

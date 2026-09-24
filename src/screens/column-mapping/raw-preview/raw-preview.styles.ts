@@ -27,7 +27,7 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The tapped-as-header row paints the theme's accent BLUE (device-feedback-
   // round-F1 item 12) — the same filled-accent selection vocabulary
-  // OptionPills/ChipRow use, replacing the former neutral `surfaceHigh` tint.
+  // ChipRow uses, replacing the former neutral `surfaceHigh` tint.
   // Its cell text switches to the always-white `onAccent` tone (the
   // `SymbolIcon`/`Text`-on-accent-fill rule, `kiko-design-system`'s "The
   // `onAccent` rule") — done by the component, not here.
@@ -44,7 +44,7 @@ export const styles = StyleSheet.create((theme) => ({
   // caption step's own regular 400 weight, so the chosen row reads as
   // clearly distinct at a glance, not only by its accent fill. `'600'`
   // (semibold) — the app's own selected-label weight everywhere else
-  // (OptionPills, SelectableRow, FieldTrigger), not `'700'` (F3 fix round
+  // (ChipRow, SelectableRow, FieldTrigger), not `'700'` (F3 fix round
   // 1, M3).
   selectedCellText: {
     fontWeight: '600',

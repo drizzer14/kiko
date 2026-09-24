@@ -12,8 +12,8 @@ import Box from '../../../design-system/components/box';
 import Text from '../../../design-system/components/text';
 import Button from '../../../design-system/components/button';
 import SymbolIcon from '../../../design-system/components/symbol';
+import ChipRow from '../../../design-system/components/chip-row';
 import BottomSheet from '../../../design-system/components/bottom-sheet';
-import OptionPills from '../../../design-system/components/option-pills';
 import SheetFooter from '../../../design-system/components/sheet-footer';
 import { FILTER_ALL } from '../../home/filter-menu/filter-menu.component';
 import SelectableRow from '../../../design-system/components/selectable-row';
@@ -52,7 +52,7 @@ const draftToFilter = (draft: Draft): TrendFilter =>
 // tone — the iOS grouped-form header treatment, pulled up from the dim grey
 // (`textSecondary`) it used before so it reads as a clear white sub-heading
 // above its section's controls rather than a weak, washed-out label. `body`
-// (not the former `caption`) keeps the label ABOVE its OptionPills value in
+// (not the former `caption`) keeps the label ABOVE its ChipRow value in
 // the type scale — the value pills below now render at `caption` via
 // `labelVariant`, so the hierarchy reads `heading` (sheet title) > `body`
 // (this label) > `caption` (the value) rather than the inverted
@@ -70,7 +70,7 @@ const SectionHeader: FC<{ children: string }> = ({ children }) => (
 // shared `SelectableRow` — the single source of truth for a category-picker row
 // across the app — so the selected row paints the filled accent surface with an
 // `onAccent` checkmark/icon/label and an unselected row keeps the category's own
-// identity color (the OptionPills / ChipRow selection vocabulary).
+// identity color (ChipRow's selection vocabulary).
 const ManualCategoryRow: FC<{
   option: FilterOption;
   checked: boolean;
@@ -188,6 +188,15 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
   // Save stays disabled until the draft differs from the applied filter, so
   // pressing it can never re-persist the already-applied selection unchanged.
   const dirty = isDraftDirty(draft, filter);
+  // ChipRow (decision 24's merged chips component) takes a `labels` record,
+  // not a function — `measureLabel` stays a function for the button-label
+  // interpolation above, and this is its one-time resolution into a record
+  // for the By pills below.
+  const measureLabels: Record<TrendMeasure, string> = {
+    contribution: measureLabel('contribution'),
+    frequency: measureLabel('frequency'),
+    rising: measureLabel('rising'),
+  };
 
   return (
     <Box gap={1}>
@@ -233,7 +242,7 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             any more (design review: the gray-filled card read as a
             competing surface under a sheet that is already glass). The
             values sit straight on the sheet, the iOS grouped-form look, and
-            drop to the `caption` step via `OptionPills`' `labelVariant` so
+            drop to the `caption` step via `ChipRow`'s `labelVariant` so
             they stay visually subordinate to their now-larger label. */}
         <Box gap={2} testID={`${testID}-group-selection`}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
@@ -262,11 +271,10 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             <Box gap={2} testID={`${testID}-group-amount`}>
               <SectionHeader>{t('statistics.trendFilter.amount')}</SectionHeader>
 
-              <OptionPills
+              <ChipRow<number>
                 options={AMOUNTS}
                 selected={draft.amount}
                 onSelect={setAmount}
-                columns={AMOUNTS.length}
                 labelVariant="caption"
               />
             </Box>
@@ -274,12 +282,11 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
             <Box gap={2} testID={`${testID}-group-by`}>
               <SectionHeader>{t('statistics.trendFilter.by')}</SectionHeader>
 
-              <OptionPills
+              <ChipRow<TrendMeasure>
                 options={MEASURES}
                 selected={draft.by}
                 onSelect={setBy}
-                label={measureLabel}
-                columns={MEASURES.length}
+                labels={measureLabels}
                 labelVariant="caption"
               />
             </Box>
