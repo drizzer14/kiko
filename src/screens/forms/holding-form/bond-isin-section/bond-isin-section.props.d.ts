@@ -2,8 +2,8 @@ import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 
 import type { BondTerms } from '../../../../bonds/nbu-register';
-import type { BondCouponFrequency } from '../../../../holdings/holding-metadata';
 import type { FieldInstance } from '../../scroll-to-field/scroll-to-field';
+import type { BondCouponFrequency } from '../../../../holdings/holding-metadata';
 
 // "ISIN" pre-fills a found bond's terms from the NBU register; "Manual" is
 // the classic hand-entered form (spec 6.3/6.4). A CREATE defaults to

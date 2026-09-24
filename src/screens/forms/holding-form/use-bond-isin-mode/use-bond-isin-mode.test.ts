@@ -89,31 +89,32 @@ describe('useBondIsinMode', () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  // M5 (T25 review round 2): the round-1 version of this test would still
-  // pass even if the fire-and-forget call were left uncaught — it only
-  // asserted `renderHook` itself resolved, which it always does regardless
-  // of the effect's own internal promise. A real regression (someone
-  // reverting `either(() => refreshBondRegisterIfStale())` back to a bare,
-  // uncaught call) is caught here via Node's own `unhandledRejection`
-  // event, which only fires for a promise rejection nothing ever handles.
+  // M5 (T25 review round 2, re-review): the round-1/round-2 version of this
+  // test asserted a `process.on('unhandledRejection', spy)` listener was
+  // never called — but that listener is attached to JEST'S SANDBOXED copy
+  // of `process` (jest-util's `createProcessObject` blacklists `_events`
+  // and re-runs the EventEmitter constructor on the copy), while Node
+  // emits `unhandledRejection` on the REAL process. The spy could never be
+  // called either way, so the assertion could never fail — the same
+  // accidental protection the round-1 test had. The fix (the reviewer's
+  // primary suggestion): drop the spy entirely and flush a MACROTASK
+  // boundary (`setImmediate`, not a microtask `Promise.resolve()`) so
+  // jest-circus's own REAL-process `unhandledRejection` handler gets a
+  // chance to run and fail this test itself — which it does, deterministically,
+  // for a reverted bare `refreshBondRegisterIfStale()` call (verified by
+  // temporarily reverting the production `either(...)` wrap while writing
+  // this test: the test failed with jest-circus's own
+  // "ReferenceError/Error: network down ... unhandled promise rejection"
+  // failure).
   it('never produces an unhandled rejection when the refresh rejects (a caught fire-and-forget)', async () => {
     refreshMock.mockRejectedValueOnce(new Error('network down'));
-    const onUnhandledRejection = jest.fn();
-    process.on('unhandledRejection', onUnhandledRejection);
 
-    try {
-      await renderHook(() => useBondIsinMode(baseParams()));
-      // Flush the fire-and-forget promise chain (the rejection, and
-      // `either`'s own catch, both resolve on a microtask).
-      await act(async () => {
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(onUnhandledRejection).not.toHaveBeenCalled();
-    } finally {
-      process.off('unhandledRejection', onUnhandledRejection);
-    }
+    await renderHook(() => useBondIsinMode(baseParams()));
+    // A macrotask boundary, not a microtask flush: `either()`'s own
+    // `.catch()` resolves on a microtask, but jest-circus only surfaces an
+    // unhandled rejection it observed BEFORE the test's own promise chain
+    // is considered settled, which needs a real event-loop turn.
+    await act(() => new Promise<void>((resolve) => setImmediate(resolve)));
   });
 
   // I1 (T25 review round 1): the found-terms apply must fire ONCE per

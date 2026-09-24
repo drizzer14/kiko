@@ -3,22 +3,22 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
+import ChipRow from '../../chip-row';
+import {
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '../../../../holdings/holding-metadata';
 import { formatDate } from '../../../../dates/format';
+import { validateIsin } from '../../../../bonds/isin';
 import Box from '../../../../design-system/components/box';
 import Text from '../../../../design-system/components/text';
-import { validateIsin } from '../../../../bonds/isin';
 import { activeLocale } from '../../../../i18n/active-locale';
 import Button from '../../../../design-system/components/button';
 import TextField from '../../../../design-system/components/text-field';
 import FieldLabel from '../../../../design-system/components/field-label';
 import FieldError from '../../../../design-system/components/field-error';
-import {
-  bondCouponFrequencies,
-  type BondCouponFrequency,
-} from '../../../../holdings/holding-metadata';
 import SegmentedControl from '../../../../design-system/components/segmented-control';
 
-import ChipRow from '../../chip-row';
 import type { BondEntryMode, BondIsinSectionProps } from './bond-isin-section.props';
 
 const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
@@ -26,7 +26,11 @@ const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
   manual: t('forms.holding.isinModeManual'),
 });
 
-const couponFrequencyLabels = (t: TFunction) => ({
+// Exported (not local to this file) since `ManualBondFields` needs the exact
+// same map for its OWN coupon-frequency `ChipRow` — T25 review round 2,
+// Minor 6: this used to be written out twice; keeping one avoids the two
+// ever drifting apart.
+export const couponFrequencyLabels = (t: TFunction): Record<BondCouponFrequency, string> => ({
   monthly: t('forms.holding.monthly'),
   quarterly: t('forms.holding.quarterly'),
   semiannually: t('forms.holding.semiannually'),

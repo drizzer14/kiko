@@ -3,23 +3,17 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import { bondKinds, bondCouponFrequencies } from '../../../../holdings/holding-metadata';
-import TextField from '../../../../design-system/components/text-field';
-
 import ChipRow from '../../chip-row';
 import DateField from '../../date-field';
+import { couponFrequencyLabels } from '../bond-isin-section';
+import TextField from '../../../../design-system/components/text-field';
+import { bondKinds, bondCouponFrequencies } from '../../../../holdings/holding-metadata';
+
 import type { ManualBondFieldsProps } from './manual-bond-fields.props';
 
 const bondKindLabels = (t: TFunction) => ({
   government: t('forms.holding.government'),
   corporate: t('forms.holding.corporate'),
-});
-
-const couponFrequencyLabels = (t: TFunction) => ({
-  monthly: t('forms.holding.monthly'),
-  quarterly: t('forms.holding.quarterly'),
-  semiannually: t('forms.holding.semiannually'),
-  annually: t('forms.holding.annually'),
 });
 
 /**

@@ -33,7 +33,6 @@ import {
 } from '../../../holdings/holding-metadata';
 import type { Lot } from '../../../holdings/lots';
 import { Money } from '../../../currency/money';
-import { normalizeIsin } from '../../../bonds/isin';
 import type { HoldingRow } from '../../../db/schema';
 import { dayKeyOf } from '../../../prices/price-book';
 import { parseAmount } from '../../../currency/parse';
@@ -1124,7 +1123,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // non-empty but invalid, so a saved value is always well-formed. Left
       // out entirely for a blank Manual-mode ISIN, rather than an empty
       // string, so `asBondMeta`'s optional field round-trips as `undefined`.
-      ...(isin.trim() === '' ? {} : { isin: normalizeIsin(isin) }),
+      // `isin` itself is already normalized (`useBondIsinMode`'s own
+      // `setIsin` wrapper) — a second `normalizeIsin` call here was a
+      // redundant third normalization (T25 review round 2, Minor 9).
+      ...(isin.trim() === '' ? {} : { isin }),
     };
   };
 

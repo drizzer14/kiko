@@ -1,1 +1,1 @@
-export { default } from './bond-isin-section.component';
+export { default, couponFrequencyLabels } from './bond-isin-section.component';
