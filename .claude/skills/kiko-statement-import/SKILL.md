@@ -234,6 +234,11 @@ a P0 UI fix round driven by device feedback:
   first `ParsedTransaction` in ON-FILE order, not chronological order
   — `previewStats` sets it via `parsed.transactions.at(0)`, optional
   since an existing `PreviewStats` object literal predates the field).
+  As of F3 item 4 it renders its row through the shared `Card` content
+  surface (the same one Home's `TransactionRow` and the holding-detail
+  ledger's `LedgerRowItem` use), not a bare `Box`, so it reads as an
+  actual sample transaction card; both callers (`StatementPreviewBlock`,
+  `MappingResult`) wrap it in a `Divider` above AND below (F3 item 5).
 - **The raw preview grid** (`column-mapping/raw-preview/`) gives each
   column a CONSISTENT width across every row
   (`raw-preview/column-widths.ts`'s `computeColumnWidths`, keyed off
@@ -243,24 +248,59 @@ a P0 UI fix round driven by device feedback:
   tapped header row with the theme's accent BLUE
   (`theme.colors.accent`) with `onAccent` cell text — replacing the
   former neutral `surfaceHigh` tint — matching the app's standard
-  filled-accent selection vocabulary (OptionPills/ChipRow/SelectableRow).
+  filled-accent selection vocabulary (OptionPills/ChipRow/SelectableRow),
+  with its own cell text turned BOLD too (F3 item 8, `fontWeight: '700'`)
+  so the selected row reads as distinct even without color.
   "Tap the row with the column names" (`columnMapping.rawPreview`)
   renders at the `heading` type step instead of a muted `body`/
-  `textSecondary` caption, so it reads clearly above the grid.
-- **Every mode toggle on this screen uses the app's existing compact
-  `ChipRow`** (`src/screens/forms/chip-row/`), not `OptionPills` —
-  `OptionPills`' 44pt-minimum centered pill reads as oversized for a
-  short code/label. This covers encoding, delimiter,
-  decimal-separator (flagged "too-large chips" originally), and, as of
-  21d53cc, the amount-mode and currency-mode toggles inside
-  `AmountFields`/`CurrencyFields` too (`amount-fields.component.tsx`,
-  `currency-fields.component.tsx`) — `OptionPills` is fully gone from
-  this screen.
+  `textSecondary` caption, so it reads clearly above the grid, and
+  doubles as this section's own heading. The grid shows at most
+  `PREVIEW_COLUMN_COUNT` (5) columns per row (F3 item 7) — a wide export
+  (multi-card PrivatBank, say) no longer scrolls dozens of columns
+  before the user has even picked a header row; every
+  `ColumnSelectField`'s own option list is unaffected, since that is
+  derived from the FULL header row in `column-mapping.screen.tsx`, not
+  from this capped preview.
+- **The amount-mode and currency-mode toggles are the shared
+  `SegmentedControl`** (`src/design-system/components/segmented-control/`,
+  F3 item 9) — an iOS `UISegmentedControl` per the HIG, superseding the
+  `ChipRow` pass 21d53cc gave them (see `kiko-design-system`'s own
+  `SegmentedControl` entry for the full HIG citation and elevation
+  rationale). Every OTHER mode toggle on this screen still uses the
+  app's existing compact `ChipRow` (`src/screens/forms/chip-row/`), not
+  `OptionPills` — `OptionPills`' 44pt-minimum centered pill reads as
+  oversized for a short code/label. This covers encoding, delimiter,
+  and decimal-separator (flagged "too-large chips" originally) —
+  `ChipRow` and `SegmentedControl` now coexist on this screen, one per
+  the shape of the choice it renders (short code/label vs. a true 2-way
+  mode toggle).
+- **Every section shows its own heading** (F3 items 12/13/14): the
+  screen's former in-body title (duplicating the native stack header's
+  own `title: t('columnMapping.title')`, `accounts.stack.tsx`) is
+  REMOVED (item 12); every section — raw preview, file format, dates,
+  amount columns, currency, additional details (description/
+  counterparty/balance), and result — instead shows its own
+  `heading`-step `Text` (item 14), each carrying the SAME bottom margin
+  the removed title had below it (`column-mapping.styles.ts`'s
+  `sectionHeading`, `theme.spacing(3)` — item 13). `MappingResult`'s own
+  "incomplete" heading uses the identical margin via its own
+  `mapping-result.styles.ts` `sectionHeading`; its `stats !== undefined`
+  branch's heading is `SummaryTable`'s own shared `title` row and is
+  left at that component's own internal spacing (a deliberate scoping
+  choice — `SummaryTable` is shared by other screens too).
 - **Fields are grouped with the shared `Divider`** between: (a)
   encoding/separators, (b) dates, (c) amounts/currency, (d)
-  description/counterparty (moved to the BOTTOM, in their own group,
-  below amounts/currency — description used to sit between the date
-  and amount groups), (e) result.
+  description/counterparty/balance (moved to the BOTTOM, in their own
+  group, below amounts/currency — description used to sit between the
+  date and amount groups), (e) result.
+- **The target-holding picker shows each holding's own icon** (F3 item
+  3, `target-holding-sheet.component.tsx`'s `SelectableRow` rows and
+  `target-holding-field.component.tsx`'s `FieldTrigger`), the same
+  `icon ?? holdingTypeSymbol[type]` / `resolveEntityColor` pair
+  `transaction-form.screen.tsx`'s exchange `HoldingSelectField` resolves
+  — `useTargetHoldingOptions` (shared by both statement-import screens)
+  now resolves `icon`/`color` onto every `TargetHoldingOption` it
+  returns.
 - **Required fields show the red asterisk marker** (`FieldLabel`'s
   `required` prop, forwarded through `ColumnSelectField` and
   `FieldTrigger`) — date, date format, amount/debit/credit column(s),

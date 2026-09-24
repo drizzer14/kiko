@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, OptionPills, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -659,6 +659,32 @@ new component can land between reviews of this skill:
   'hidden'`, the shared radius token, and a hairline `border` (no fill),
   reproducing only the corner-clip and shrink-to-scroll behavior
   `GlassSurface` used to provide.
+- **SegmentedControl** (`src/design-system/components/segmented-control/`)
+  — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
+  Interface Guidelines
+  (https://developer.apple.com/design/human-interface-guidelines/segmented-controls):
+  a rounded track one elevation step above the screen background
+  (`theme.colors.surface`), holding N equal-width segments, with the
+  SELECTED segment raised to the next elevation step
+  (`theme.colors.surfaceHigh`) — the OLED "elevation via translucent
+  overlay" scale (see "Dark-only theme" above), NOT the app's other
+  filled-accent selection vocabulary (`OptionPills`/`ChipRow`/
+  `SelectableRow`): a segmented control reads as its own distinct iOS
+  control, not another chip row. No segmented-control NATIVE library is a
+  dependency of this app (checked at F3 item 9); this renders the same
+  visual/interaction contract in plain `Pressable`/`Box`/`Text` instead of
+  adding one. Its VISIBLE height (`SEGMENT_MIN_HEIGHT`, 36pt,
+  `segmented-control.styles.ts`) sits below the 44pt HIG floor on purpose —
+  the same visible-short/hitSlop-restored split `Button`'s own `size="small"`
+  documents — and restores the 44pt touch target via `SEGMENT_HIT_SLOP`
+  (`segmented-control.component.tsx`). Props mirror `ChipRow`'s own
+  (`options`/`selected`/`onSelect`/`label`/`required`/`labels`/`disabled`/
+  `testID`, no `icons`) so the two read as siblings; `ChipRow` remains the
+  compact short-code/label picker (encoding, delimiter, decimal separator on
+  the column-mapping screen), while `SegmentedControl` is for a true 2-3-way
+  MODE toggle — the column-mapping screen's amount-mode and currency-mode
+  selectors (`AmountFields`/`CurrencyFields`) are its first consumers,
+  superseding `ChipRow` there (F3 item 9, `21d53cc`'s prior `ChipRow` pass).
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
