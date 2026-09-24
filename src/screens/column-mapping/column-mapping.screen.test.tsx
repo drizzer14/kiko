@@ -32,8 +32,11 @@ const sensebankFixtureBase64 = readFileSync(
 ).toString('base64');
 
 const mockReadFile = jest.fn();
+const mockUnlink = jest.fn();
 jest.mock('react-native-fs', () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
+  CachesDirectoryPath: '/mock/caches',
 }));
 
 const mockImportParsedStatement = jest.fn();
@@ -578,5 +581,33 @@ describe('ColumnMappingScreen', () => {
         expect(errors.length).toBe(2);
       });
     });
+  });
+});
+
+// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
+// makes is deleted once this screen is removed from the stack — a
+// successful import's popTo, or the user backing out. This screen never
+// hands the file off (unlike StatementImportScreen's T7 auto-replace), so
+// every unmount is a genuine "done with this file" event.
+describe('ColumnMappingScreen — local copy cleanup (M8)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  it('deletes the local cache copy on unmount', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+    });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    await act(async () => {
+      view.unmount();
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
   });
 });

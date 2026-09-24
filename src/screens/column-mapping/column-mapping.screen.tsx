@@ -14,6 +14,7 @@ import {
   isLegacyXlsFile,
   decodeStatementText,
   readSheetRowsSafely,
+  deleteLocalStatementCopy,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -693,8 +694,17 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         }
       });
 
+    // M8 (F3 part 1 fix round 1, Important): `filePath` is a plaintext local
+    // cache copy (item 6's `keepLocalCopy` fix) outside the encrypted
+    // database — deleted once this screen is REMOVED from the stack (a
+    // successful import's `popTo`, or the user backing all the way out),
+    // never left behind in `Library/Caches`. This screen never hands the
+    // file off to another screen (unlike `StatementImportScreen`'s T7
+    // auto-replace), so no replace-guard is needed here — every unmount is
+    // a genuine "done with this file" event.
     return () => {
       cancelled = true;
+      deleteLocalStatementCopy(filePath);
     };
   }, [filePath]);
 

@@ -17,6 +17,7 @@ import {
   isXlsxFile,
   decodeStatementText,
   readSheetRowsSafely,
+  deleteLocalStatementCopy,
 } from '../../statement-import/read-statement-file';
 import Box from '../../design-system/components/box';
 import { useLiveQuery } from '../../db/use-live-query';
@@ -387,6 +388,28 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       navigation.replace('ColumnMapping', { filePath, accountId });
     }
   }, [accountId, input, format, savedMappings, bankId, filePath, navigation]);
+
+  // M8 (F3 part 1 fix round 1, Important): `filePath` is a plaintext local
+  // cache copy (item 6's `keepLocalCopy` fix) outside the encrypted
+  // database — deleted once this screen is REMOVED from the stack (a
+  // successful import's `popTo`, or the user backing all the way out),
+  // never left behind in `Library/Caches`. `useEffect`'s cleanup fires
+  // exactly on unmount — which native-stack only does when a screen is
+  // actually popped, NOT when merely backgrounded by a push on top (Map
+  // Columns stays reachable, this screen's own `RNFS.readFile` calls keep
+  // working, its column-mapping state is preserved — see C1's real-router
+  // test). Guarded on `autoReplacedRef`: the T7 auto-replace above ALSO
+  // unmounts this screen (`navigation.replace`), but hands the SAME
+  // `filePath` to the ColumnMapping screen that replaces it — that screen
+  // owns the file from then on (its own matching cleanup effect), so this
+  // one must NOT delete out from under it.
+  useEffect(() => {
+    return () => {
+      if (!autoReplacedRef.current) {
+        deleteLocalStatementCopy(filePath);
+      }
+    };
+  }, [filePath]);
   // Covers every "this file cannot be imported as-is" outcome EXCEPT the
   // bank-mismatch case (which renders its own, more specific message below):
   // the read itself failed, OR the read succeeded but no format recognized

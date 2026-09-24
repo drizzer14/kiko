@@ -1,3 +1,4 @@
+import * as RNFS from 'react-native-fs';
 import readXlsxFile from 'read-excel-file/browser';
 import { decode as decodeWindows1251 } from 'windows-1251';
 
@@ -138,4 +139,35 @@ export const decodeStatementText = (base64: string, encoding: 'utf-8' | 'windows
   const bytes = decodeBase64ToBytes(base64);
 
   return encoding === 'utf-8' ? decodeUtf8Bytes(bytes) : decodeWindows1251(new Uint8Array(bytes));
+};
+
+// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
+// makes (`account-detail.screen.tsx`'s `pickAndOpenStatement`, via
+// `keepLocalCopy`) is a PLAINTEXT copy of a bank statement in
+// `Library/Caches`, outside the app's SQLCipher-encrypted database — this
+// deletes it once the import flow that owns it ends (a successful import,
+// or a back-out), so no plaintext statement is left behind. Callers own
+// WHEN to call this (`StatementImportScreen`/`ColumnMappingScreen`'s own
+// unmount cleanup — see each screen's own comment for the exact trigger);
+// this function owns only the SAFE deletion itself:
+// - Guarded to a path INSIDE the app's own cache directory. `filePath` can
+//   also be the RAW picked uri — the fallback `pickAndOpenStatement` uses
+//   when `keepLocalCopy` itself failed — which is a provider-owned external
+//   file this app must never touch; that path never starts with
+//   `RNFS.CachesDirectoryPath`, so this guard doubles as the correctness
+//   check and the safety check.
+// - Best-effort: a failed `unlink` (already deleted — e.g. a sibling
+//   screen's own cleanup fired first on the same multi-screen pop) is
+//   swallowed. This is hygiene, not a correctness guarantee (see the
+//   review's own framing: "privacy hygiene, not a guideline breach").
+export const deleteLocalStatementCopy = async (filePath: string): Promise<void> => {
+  if (!filePath.startsWith(RNFS.CachesDirectoryPath)) {
+    return;
+  }
+
+  try {
+    await RNFS.unlink(filePath);
+  } catch {
+    // Already gone, or never existed — nothing to do.
+  }
 };

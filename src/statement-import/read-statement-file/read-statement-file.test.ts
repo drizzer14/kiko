@@ -3,7 +3,17 @@ import { readFileSync } from 'node:fs';
 
 import { SENSEBANK_PREAMBLE } from '../formats/sensebank-csv';
 
-import { isLegacyXlsFile, decodeStatementText } from './read-statement-file';
+const mockUnlink = jest.fn();
+jest.mock('react-native-fs', () => ({
+  unlink: (...args: unknown[]) => mockUnlink(...args),
+  CachesDirectoryPath: '/mock/caches',
+}));
+
+import {
+  isLegacyXlsFile,
+  decodeStatementText,
+  deleteLocalStatementCopy,
+} from './read-statement-file';
 
 // The real Monobank fixture, read as raw bytes then base64-encoded — the
 // exact shape `RNFS.readFile(filePath, 'base64')` hands the screen — so this
@@ -44,5 +54,35 @@ describe('isLegacyXlsFile', () => {
 
   it('is false for a .xlsx extension', () => {
     expect(isLegacyXlsFile('a.xlsx')).toBe(false);
+  });
+});
+
+// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
+// makes (`keepLocalCopy`) is a plaintext bank-statement copy outside the
+// SQLCipher-encrypted database — best-effort deleted once the flow that
+// owns it ends.
+describe('deleteLocalStatementCopy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('unlinks a path inside the app cache directory', async () => {
+    await deleteLocalStatementCopy('/mock/caches/statement-123.csv');
+
+    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
+  });
+
+  it('never unlinks a path outside the app cache directory (the raw-uri fallback)', async () => {
+    await deleteLocalStatementCopy('file:///private/var/mobile/Containers/Shared/statement.csv');
+
+    expect(mockUnlink).not.toHaveBeenCalled();
+  });
+
+  it('swallows an unlink failure (already deleted, or never existed) rather than throwing', async () => {
+    mockUnlink.mockRejectedValue(new Error('ENOENT'));
+
+    await expect(
+      deleteLocalStatementCopy('/mock/caches/statement-123.csv'),
+    ).resolves.toBeUndefined();
   });
 });

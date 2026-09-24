@@ -48,8 +48,11 @@ const malformedRowBase64 = Buffer.from(
 ).toString('base64');
 
 const mockReadFile = jest.fn();
+const mockUnlink = jest.fn();
 jest.mock('react-native-fs', () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
+  CachesDirectoryPath: '/mock/caches',
 }));
 
 // Not used by this screen directly (only `account-detail.screen.tsx`'s
@@ -774,5 +777,78 @@ describe('StatementImportScreen — column-mapping entry point (T7)', () => {
       ).toBeTruthy(),
     );
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+});
+
+// M8 (F3 part 1 fix round 1, Important): the local cache copy item 6's fix
+// makes is deleted once THIS screen is removed from the stack — a genuine
+// unmount, not a mere push-on-top (Map Columns).
+describe('StatementImportScreen — local copy cleanup (M8)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({});
+  });
+
+  it('deletes the local cache copy on unmount (a successful import or a back-out)', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    await act(async () => {
+      view.unmount();
+    });
+
+    expect(mockUnlink).toHaveBeenCalledWith('/mock/caches/statement-123.csv');
+  });
+
+  it('does NOT delete the local copy while merely pushed under Map Columns (still mounted)', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    await fireEvent.press(view.getByText(i18n.t('statementImport.mapColumnsManually')));
+
+    expect(mockUnlink).not.toHaveBeenCalled();
+  });
+
+  it('does NOT delete the local copy when T7 auto-replaces to ColumnMapping — that screen now owns the SAME file', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: {
+        'bank:sensebank': {
+          headerRowIndex: 0,
+          decimalSeparator: '.',
+          dateColumn: 0,
+          dateFormat: 'DD.MM.YYYY HH:MM:SS',
+          amount: { mode: 'single', column: 3 },
+          descriptionColumn: 1,
+          currency: { mode: 'fixed', currency: 'UAH' },
+          fingerprint: headerFingerprint(fixtureHeaderRow),
+          savedAt: 1_700_000_000_000,
+        },
+      },
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() => expect(view.navigation.replace).toHaveBeenCalled());
+
+    view.unmount();
+
+    expect(mockUnlink).not.toHaveBeenCalled();
   });
 });
