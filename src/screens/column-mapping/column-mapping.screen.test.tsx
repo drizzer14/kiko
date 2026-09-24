@@ -295,6 +295,22 @@ describe('ColumnMappingScreen', () => {
     expect(view.getByText(i18n.t('columnMapping.result'))).toBeTruthy();
   });
 
+  // The Result block's generic incomplete hint shows as soon as the screen
+  // loads (nothing is mapped yet) and disappears once every required column
+  // IS mapped — this is the ONE screen-level assertion that the
+  // `mappingIncomplete` wiring actually reaches `MappingResult`.
+  it('shows the incomplete hint while a required column is unmapped, then hides it once mapping completes', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    expect(view.getByText(i18n.t('columnMapping.incomplete'))).toBeTruthy();
+
+    await mapMonobankColumns(view);
+
+    expect(view.queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
+  });
+
   // F4 item 8: the date-format picker shows a worked example ("31.12.2026
   // 23:59:59") instead of the raw preset id — meaningless to a user who
   // doesn't already know date-format notation.
